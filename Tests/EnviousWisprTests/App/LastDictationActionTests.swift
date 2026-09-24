@@ -484,13 +484,36 @@ struct LastDictationActionTests {
     fake.yieldOnSleep = true
     let action = makeAction(fake)
     let copying = action.copyFromChord()  // waits: the clipboard stays held
-    while fake.sleeps == 0 { await Task.yield() }  // the copy is inside its wait
+    // The copy is inside its wait. Bounded, so a copy that never sleeps fails instead of hanging.
+    for _ in 0..<1000 where fake.sleeps == 0 { await Task.yield() }
+    try #require(fake.sleeps > 0, "the copy never entered its clipboard wait")
     fake.clipboardHeldPolls = 0  // released; the paste goes straight through
     await action.pasteFromMenu(rowID: fake.row?.id, target: a)
     await copying.value
     #expect(fake.pastes.count == 1)
     #expect(fake.copies.isEmpty, "the older copy did not wake and overwrite the pasted text")
     #expect(outcomes(fake).sorted() == ["cancelled", "dispatched"])
+  }
+
+  @Test("A newer Copy supersedes an older Paste still waiting, so the paste cannot replace it")
+  func copySupersedesWaitingPaste() async throws {
+    let (a, _) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = a
+    fake.clipboardHeldPolls = Int.max
+    fake.yieldOnSleep = true
+    let action = makeAction(fake)
+    action.notePasteChordPressed()
+    let pasting = action.pasteFromChord()  // waits: the clipboard stays held
+    for _ in 0..<1000 where fake.sleeps == 0 { await Task.yield() }
+    try #require(fake.sleeps > 0, "the paste never entered its clipboard wait")
+    fake.row = (UUID(), "A newer dictation.")
+    fake.clipboardHeldPolls = 0
+    await action.copyFromChord().value  // the newer action: copies B
+    await pasting.value
+    #expect(fake.copies == ["A newer dictation."])
+    #expect(fake.pastes.isEmpty, "the older paste did not wake and replace the copy")
+    #expect(outcomes(fake).sorted() == ["cancelled", "copied"])
   }
 
   @Test("Copy refuses on a recording in flight at the press even if it ends before the task runs")

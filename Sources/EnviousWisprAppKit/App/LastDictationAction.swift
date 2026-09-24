@@ -42,8 +42,9 @@ final class LastDictationAction {
     /// The sampled application could not be brought back to the front, so no Cmd+V was posted.
     /// Posting anyway would paste into whatever app IS in front.
     case focusLost = "focus_lost"
-    /// The task running the paste was cancelled during one of its waits, so nothing was written.
-    /// Distinct from `keys_held`: nothing about the user's keys is known when this is reported.
+    /// The task running the paste was cancelled during one of its waits, or a newer Copy Last
+    /// superseded it before its write (#3135), so nothing was written. Distinct from `keys_held`:
+    /// nothing about the user's keys is known when this is reported.
     case cancelled
     /// The clipboard write did not take (read back and not found), so nothing was pasted or copied.
     case writeFailed = "write_failed"
@@ -95,6 +96,12 @@ final class LastDictationAction {
   /// copy cannot wake afterwards and overwrite the clipboard a newer one wrote (or is pasting from).
   private var pendingCopy: Task<Void, Never>?
 
+  /// Copy presses so far (#3135). A Paste notes the count at its press and refuses (`cancelled`)
+  /// if a Copy was pressed since, immediately before its write: a paste still waiting must not wake
+  /// after a newer Copy and replace the clipboard that Copy set. A newer Paste does not stop an
+  /// older one; two Paste presses paste twice, as before (#3106).
+  private var copyPresses = 0
+
   init(environment: Environment) {
     self.environment = environment
   }
@@ -115,12 +122,15 @@ final class LastDictationAction {
     let target = chordTarget
     chordTarget = nil
     let rowID = environment.lastPasteable()?.id
-    return Task { await paste(rowID: rowID, target: target, source: .chord) }
+    let copiesAtPress = copyPresses
+    return Task {
+      await paste(rowID: rowID, target: target, source: .chord, copiesAtPress: copiesAtPress)
+    }
   }
 
   /// The menu item was chosen. `rowID` and `target` were sampled when the menu opened.
   func pasteFromMenu(rowID: UUID?, target: NSRunningApplication?) async {
-    await paste(rowID: rowID, target: target, source: .menu)
+    await paste(rowID: rowID, target: target, source: .menu, copiesAtPress: copyPresses)
   }
 
   /// The Copy Last chord was pressed. The recording check and the row are taken now, on the press;
@@ -129,6 +139,7 @@ final class LastDictationAction {
   func copyFromChord() -> Task<Void, Never> {
     let recordingAtPress = environment.isDictationActive()
     let rowID = environment.lastPasteable()?.id
+    copyPresses += 1
     pendingCopy?.cancel()
     let task = Task {
       finish(.copy, .chord, await copy(rowID: rowID, recordingAtPress: recordingAtPress))
@@ -158,13 +169,17 @@ final class LastDictationAction {
 
   // MARK: Paste
 
-  private func paste(rowID: UUID?, target: NSRunningApplication?, source: Source) async {
-    finish(.paste, source, await pasteOutcome(rowID: rowID, target: target, source: source))
+  private func paste(
+    rowID: UUID?, target: NSRunningApplication?, source: Source, copiesAtPress: Int
+  ) async {
+    finish(
+      .paste, source,
+      await pasteOutcome(rowID: rowID, target: target, source: source, copiesAtPress: copiesAtPress))
   }
 
-  private func pasteOutcome(rowID: UUID?, target: NSRunningApplication?, source: Source) async
-    -> Outcome
-  {
+  private func pasteOutcome(
+    rowID: UUID?, target: NSRunningApplication?, source: Source, copiesAtPress: Int
+  ) async -> Outcome {
     // Checked before anything is resolved: a recording in flight owns the clipboard's next write.
     guard !environment.isDictationActive() else { return .recording }
     // Before Accessibility: with nothing to paste, the truthful answer is that, not a permission.
@@ -214,8 +229,10 @@ final class LastDictationAction {
     // #3106). No await separates this read from the write, so it is the state the paste meets.
     guard !environment.modifiersHeld() else { return .keysHeld }
 
-    // No await between this and the write: an older Copy still waiting must not wake afterwards and
-    // replace the text this paste is about to put on the clipboard.
+    // No await between these and the write. A Copy pressed since this paste's press set the
+    // clipboard the user now wants; and an older Copy still waiting must not wake afterwards and
+    // replace the text this paste is about to put there.
+    guard copyPresses == copiesAtPress else { return .cancelled }
     pendingCopy?.cancel()
     switch environment.manualPaste(text, environment.restoreClipboard()) {
     case .dispatched: return .dispatched
