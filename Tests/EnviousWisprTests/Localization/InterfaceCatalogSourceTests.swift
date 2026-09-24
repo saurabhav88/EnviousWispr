@@ -1,9 +1,8 @@
 import Foundation
 import Testing
 
-/// #3142: the interface String Catalog as committed. A unit-test process's
-/// `Bundle.main` is the test host, not the app, so the shipped lookup is proven
-/// on built products; this suite freezes the SOURCE the build compiles.
+/// #3142: the interface String Catalog, as committed and as compiled into the app
+/// the same build produces beside this test bundle.
 ///
 /// No language beyond English ships until it is complete: a `de` value in this
 /// file makes the main bundle declare German, and macOS would then show a
@@ -43,19 +42,21 @@ struct InterfaceCatalogSourceTests {
     #expect(languages.contains("en"))
   }
 
-  /// The unit-test process cannot see the shipped app bundle, so a catalog dropped from the app
-  /// target would still pass every lookup test through the English `defaultValue`. The build
-  /// declaration is the checkable proxy; built products are inspected in the PR evidence.
-  @Test("The catalog is declared as an app-target resource")
-  func catalogIsAppTargetResource() throws {
-    let project = try String(contentsOf: Self.repoRoot.appendingPathComponent("Project.swift"), encoding: .utf8)
-    // An ACTIVE array element: the whole trimmed line is the quoted path, so a commented-out
-    // entry (`// "…",`) or a mention inside prose does not count.
-    let entry = "\"\(Self.catalogPath)\","
-    let active = project.split(separator: "\n").filter {
-      $0.trimmingCharacters(in: .whitespaces) == entry
+  /// The unit-test process's `Bundle.main` is not the app, but the same build places the app
+  /// beside the test bundle. Reading the COMPILED table there proves the catalog ships; a
+  /// catalog dropped from the app target (deleted, commented out, excluded) leaves no table.
+  @Test("The built app ships the compiled English table with the three entries")
+  func builtAppShipsCompiledTable() throws {
+    let products = Bundle(for: BuildProductsMarker.self).bundleURL.deletingLastPathComponent()
+    let table = products.appendingPathComponent("EnviousWispr.app/Contents/Resources/en.lproj/Localizable.strings")
+    let data = try #require(
+      FileManager.default.contents(atPath: table.path),
+      "no compiled catalog at \(table.path)")
+    let compiled = try #require(
+      try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
+    for (key, english) in Self.expectedEnglish {
+      #expect(compiled[key] == english, "\(key) in the shipped table")
     }
-    #expect(active.count == 1, "Project.swift must list the catalog exactly once as a live resource entry")
   }
 
   private static func strings() throws -> [String: Any] {
@@ -85,3 +86,5 @@ struct InterfaceCatalogSourceTests {
     return directory
   }
 }
+
+private final class BuildProductsMarker {}
