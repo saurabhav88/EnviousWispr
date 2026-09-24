@@ -168,22 +168,34 @@ final class JudgeFake: CorrectionJudging, @unchecked Sendable {
 
   var capabilities: CorrectionJudgeCapabilities {
     get async {
-      lock.withLock { _capabilitiesRequests += 1 }
+      // The count and the parked continuation land under one lock, so a test
+      // that saw the count can always release the hold. Counting first let a
+      // release() arrive before the gate was stored and do nothing.
       if holdCapabilities {
         await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-          lock.withLock { gate = c }
+          lock.withLock {
+            _capabilitiesRequests += 1
+            gate = c
+          }
         }
+      } else {
+        lock.withLock { _capabilitiesRequests += 1 }
       }
       return CorrectionJudgeCapabilities(canRunOnThisMac: true, executionIdentity: ["arm": "fake"])
     }
   }
 
   func judge(_ request: CorrectionJudgeRequest) async -> CorrectionJudgeOutcome {
-    lock.withLock { _requests.append(request) }
+    // Same pairing as `capabilities`: a visible request is always releasable.
     if holdAnswers {
       await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-        lock.withLock { gate = c }
+        lock.withLock {
+          _requests.append(request)
+          gate = c
+        }
       }
+    } else {
+      lock.withLock { _requests.append(request) }
     }
     if let bypass { return .bypass(bypass) }
     let answer = self.answer

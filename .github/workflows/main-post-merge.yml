@@ -421,11 +421,13 @@ jobs:
       needs.classify.outputs.needs_build == 'true' &&
       (github.event_name != 'schedule' || needs.schedule-guard.outputs.should_run == 'yes')
     runs-on: macos-26
-    # 2026-09-16, with coverage: 22-29 min when it finished, and 11 of the last
-    # 30 runs hit this cap (#2950, #2963). The coverage recompile was 11m01s of
-    # that; without it the same run is expected under 20 min. The cap stays at
-    # 30 until the first ten receipts say otherwise (#3013).
-    timeout-minutes: 30
+    # Receipts since #3013 took coverage out (nine runs, 2026-09-23 to 24):
+    # six finished in 20-28 min and three hit the old 30 min cap. A cap hit
+    # repeats itself: this job's cache is saved only by a successful push run,
+    # so the runs after it restore an older cache (build-for-testing 12 min,
+    # not 8) and hit the cap again (0bf0ce15, push and schedule). 45 matches
+    # release-validation.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout PR head
