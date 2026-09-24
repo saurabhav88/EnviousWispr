@@ -37,4 +37,82 @@ struct PasteLandingPolicyTests {
       }
     }
   }
+
+  // MARK: mayRetain (#3106 PR B): permission, separate from the evidence
+
+  /// Routes that wrote the board and posted a paste; the others never retain.
+  static let keyRoutes: [PasteTier] = [.cgEvent, .appleScript, .menuPaste]
+  static let otherRoutes: [PasteTier] = [.axDirect, .clipboardOnly]
+
+  static func allLandings() -> [PasteArrivalLanding] {
+    var all: [PasteArrivalLanding] = [.absent, .noTarget]
+    all += PasteArrivalLanding.Found.allCases.map { .found($0) }
+    all += PasteArrivalLanding.CannotRead.allCases.map { .cannotRead($0) }
+    all += PasteArrivalLanding.Inconclusive.allCases.map { .inconclusive($0) }
+    return all
+  }
+
+  @Test("A key route retains exactly the misses; Tier 1 and clipboard-only never do")
+  func retainsOnlyMissesOnKeyRoutes() {
+    let landings = Self.allLandings()
+    #expect(landings.count == 2 + 1 + 5 + 17)
+    var retained = 0
+    for landing in landings {
+      for appClass in AppClass.allCases {
+        let miss =
+          (landing == .absent && Self.eligibleAbsent.contains(appClass))
+          || (landing == .noTarget && Self.eligibleNoTarget.contains(appClass))
+        for tier in Self.keyRoutes {
+          let got = PasteLandingPolicy.mayRetain(
+            landing, bundleID: "com.example.app", appClass: appClass, tier: tier, excluded: [])
+          #expect(got == miss, "\(landing.observed) in \(appClass.rawValue) via \(tier.rawValue)")
+          if got { retained += 1 }
+        }
+        for tier in Self.otherRoutes {
+          #expect(
+            PasteLandingPolicy.mayRetain(
+              landing, bundleID: "com.example.app", appClass: appClass, tier: tier, excluded: [])
+              == false,
+            "\(landing.observed) in \(appClass.rawValue) via \(tier.rawValue)")
+        }
+      }
+    }
+    // 3 absent classes + 2 no_target classes, on 3 key routes.
+    #expect(retained == (3 + 2) * 3)
+  }
+
+  @Test("An excluded app, or one excluded route in it, does not retain; other routes still do")
+  func exclusionsNarrowPermission() {
+    let app = "com.example.terminal"
+    let wholeApp: Set<PasteLandingPolicy.Exclusion> = [.init(bundleID: app)]
+    for tier in Self.keyRoutes {
+      #expect(
+        PasteLandingPolicy.mayRetain(
+          .absent, bundleID: app, appClass: .native, tier: tier, excluded: wholeApp) == false)
+      #expect(
+        PasteLandingPolicy.mayRetain(
+          .absent, bundleID: "com.example.other", appClass: .native, tier: tier, excluded: wholeApp))
+    }
+    let oneRoute: Set<PasteLandingPolicy.Exclusion> = [.init(bundleID: app, tier: .menuPaste)]
+    #expect(
+      PasteLandingPolicy.mayRetain(
+        .absent, bundleID: app, appClass: .native, tier: .menuPaste, excluded: oneRoute) == false)
+    #expect(
+      PasteLandingPolicy.mayRetain(
+        .absent, bundleID: app, appClass: .native, tier: .cgEvent, excluded: oneRoute))
+  }
+
+  @Test("An app with no bundle identifier cannot be checked against exclusions, so it does not retain")
+  func unnamedAppDoesNotRetain() {
+    #expect(
+      PasteLandingPolicy.mayRetain(
+        .absent, bundleID: nil, appClass: .native, tier: .cgEvent, excluded: []) == false)
+  }
+
+  /// Drift Guard in a Product Outcome suite on purpose: the shipped table starts empty (founder
+  /// 2026-09-23). An entry must arrive with its gate evidence, and this is where that is noticed.
+  @Test("The shipped exclusion table is empty until a gate fails")
+  func shippedExclusionsStartEmpty() {
+    #expect(PasteLandingPolicy.excludedRoutes.isEmpty)
+  }
 }

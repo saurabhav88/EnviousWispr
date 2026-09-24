@@ -15,6 +15,12 @@ import EnviousWisprServices
 /// clipboard comes back at the same wall-clock moment it always did. What
 /// changes is that the dictation no longer waits for it.
 ///
+/// **A checked cleanup (#3106 PR B) holds the slot longer.** It keeps the same
+/// 200 ms minimum, then waits for the paste's landing decision (300 ms after
+/// dispatch plus a final read) before restoring or keeping the dictation. The
+/// "same wall-clock moment" above holds for an unchecked cleanup; a checked one
+/// restores at the later of 200 ms and the decision.
+///
 /// **DO NOT REPLACE THIS WITH "DETECT WHEN THE APP HAS READ IT". It was built,
 /// measured, and refused.** The obvious improvement is to stop waiting a fixed
 /// period and instead learn the moment the target app reads the pasteboard —
@@ -88,6 +94,9 @@ public enum ClipboardCleanup {
     /// Replace our contextual payload with the legacy one, so a manual ⌘V pastes
     /// what the user expects. Only ever pending when clipboard restore is OFF,
     /// because `mustRewriteClipboardToLegacy` requires `!willRestoreUserClipboard`.
+    /// Since #3106 PR B it is also pending for a checked paste whose payload was
+    /// already legacy, so the one task can wait for the landing decision; its
+    /// rewrite is then a no-op.
     case legacyRewrite(String)
 
     var label: String {
@@ -117,7 +126,8 @@ public enum ClipboardCleanup {
   // KNOWN LIMIT, raised by review three times and adjudicated three times, so
   // the reasoning is here rather than in a review thread nobody will find.
   //
-  // If the process exits inside the 200 ms window, this task is destroyed and
+  // If the process exits inside the cleanup window (200 ms, or through the
+  // landing decision for a checked cleanup), this task is destroyed and
   // the user's clipboard keeps our dictated payload instead of their own.
   //
   // THAT LOSS IS NOT NEW. There is no `applicationShouldTerminate` in this app
@@ -160,6 +170,10 @@ public enum ClipboardCleanup {
     await pending?.task.value
   }
 
+  /// The pending cleanup's task, so a test that supersedes or cancels it can still await it and
+  /// prove what it did NOT do once it resumes (#3106 PR B).
+  static func pendingTaskForTests() -> Task<Void, Never>? { pending?.task }
+
   /// Drops any pending cleanup between cases. Cancels first, so an abandoned
   /// task cannot fire against the next case's board.
   static func resetPendingForTests() {
@@ -188,8 +202,9 @@ public enum ClipboardCleanup {
   /// Read by the update coordinator, which already refuses to install an update
   /// mid-dictation and now also refuses while cleanup is pending: a Sparkle
   /// relaunch inside the window would take the process down before the user's
-  /// clipboard came back. Declining to *start* an install for 200 ms is a
-  /// strictly smaller refusal than the one already shipping.
+  /// clipboard came back. Declining to *start* an install for 200 ms (through the
+  /// ~300 ms landing decision for a checked cleanup) is a strictly smaller
+  /// refusal than the one already shipping.
   ///
   /// **Includes an active takeover since #2465.** A Sparkle relaunch during one takes the process
   /// down while the user's clipboard is held in memory by a caller that has already written to the
@@ -497,14 +512,16 @@ public enum ClipboardCleanup {
     //
     // A fresh pending operation means a dictation just wrote the board and the target application is
     // still reading it — asynchronously, on its own schedule. That 200 ms window is the entire
-    // reason `clipboardRestoreDelayMs` exists. An earlier version CANCELLED that cleanup and granted
+    // reason `clipboardRestoreDelayMs` exists. A checked cleanup (#3106 PR B) holds the slot through
+    // its landing decision, so Quick Add refuses for that longer window too. An earlier version CANCELLED that cleanup and granted
     // the takeover, and the caller then posted a Copy that replaced the board content before the
     // target had read the paste we already sent it. That is the wrong-text failure, reached from the
     // other direction: not restoring too late, but overwriting too early.
     //
     // Heart and limbs again, and the limb yields again: Quick Add's fallback simply does not run
-    // during that window. The cost is a refusal in the 200 ms after a clipboard paste; the
-    // alternative is corrupting the paste itself. Found by cloud review on PR #2472.
+    // during that window. The cost is a refusal while cleanup remains pending: 200 ms for an
+    // unchecked paste, or through the landing decision for a checked paste; the alternative is
+    // corrupting the paste itself. Found by cloud review on PR #2472.
     //
     // A STALE pending operation is a different thing — its board has already moved on, so nothing is
     // mid-read and `intendedPayload` correctly snapshots the user's current clipboard.
@@ -595,16 +612,22 @@ public enum ClipboardCleanup {
 
   /// Hand the user's clipboard back after the target app has had time to read
   /// ours, without making the dictation wait for it.
+  ///
+  /// With a `landing` check (#3106 PR B), the same task also waits for the paste's landing decision
+  /// and keeps the dictation instead of restoring when the paste was a permitted miss.
   static func scheduleRestore(
     _ snapshot: ClipboardSnapshot,
     changeCountAfterPaste: Int,
     tier: PasteTier,
-    on board: NSPasteboard = .general
+    on board: NSPasteboard = .general,
+    landing: LandingCheck? = nil
   ) {
     schedule(
       operation: .restore(snapshot),
       changeCountAfterPaste: changeCountAfterPaste,
-      tier: tier
+      tier: tier,
+      board: board,
+      landing: landing
     ) {
       PasteService.restoreClipboard(
         snapshot, changeCountAfterPaste: changeCountAfterPaste, on: board)
@@ -616,16 +639,23 @@ public enum ClipboardCleanup {
   ///
   /// A separate operation from the restore on purpose: the wait is shared, the
   /// body is not. Collapsing them would swap one behaviour for the other.
+  ///
+  /// With a `landing` check (#3106 PR B, clipboard restore OFF), the rewrite still runs at today's
+  /// moment, and is skipped when the board already holds `legacyText`; the same task then waits for
+  /// the landing decision only to report a kept dictation.
   static func scheduleLegacyRewrite(
     legacyText: String,
     submittedChangeCount: Int,
     tier: PasteTier,
-    on board: NSPasteboard = .general
+    on board: NSPasteboard = .general,
+    landing: LandingCheck? = nil
   ) {
     schedule(
       operation: .legacyRewrite(legacyText),
       changeCountAfterPaste: submittedChangeCount,
-      tier: tier
+      tier: tier,
+      board: board,
+      landing: landing
     ) {
       // The same freshness question the restore asks, asked separately because
       // the POLICY ("should this be rewritten at all") was answered before the
@@ -638,6 +668,39 @@ public enum ClipboardCleanup {
       PasteService.copyToClipboard(legacyText, to: board)
       return true
     }
+  }
+
+  // MARK: - Keeping the dictation when its paste went nowhere (#3106 PR B)
+
+  /// What a checked cleanup did about a paste that was a permitted miss.
+  public enum LandingOutcome: Equatable, Sendable {
+    /// The board holds this take's legacy text, verified by reading it back. `changeCount` is the
+    /// board's count at that moment: the receipt a later reader compares against to know the board
+    /// still holds it.
+    case retained(changeCount: Int)
+    /// Someone else wrote the board before the decision (the user copied), so nothing was written.
+    case yielded
+  }
+
+  /// The arrival evidence a pending cleanup waits for, bound by the cascade for one paste.
+  struct LandingCheck {
+    /// The committed arrival session's landing decision. Nil is never a miss.
+    let decision: @MainActor () async -> PasteArrivalLanding?
+    /// `PasteLandingPolicy.mayRetain` for this paste's app, class and route.
+    let mayRetain: @MainActor (PasteArrivalLanding) -> Bool
+    /// What a manual ⌘V should paste: the legacy text, never a context-adjusted payload.
+    let legacyText: String
+    /// Called at most once, and only by the cleanup that still owns the slot.
+    let onOutcome: @MainActor (LandingOutcome) -> Void
+    /// The 200 ms minimum before the board may change. Injectable so a test releases it rather
+    /// than sleeping; it must THROW on cancellation, so a cancelled cleanup abandons.
+    var minimumWait: @MainActor () async throws -> Void = ClipboardCleanup.defaultMinimumWait
+  }
+
+  /// The production minimum wait: the same sleep an unchecked cleanup takes.
+  static func defaultMinimumWait() async throws {
+    try await Task.sleep(
+      for: .milliseconds(testDelayOverrideMs ?? TimingConstants.clipboardRestoreDelayMs))
   }
 
   // MARK: - Reusing the last dictation on request (#3106)
@@ -757,6 +820,8 @@ public enum ClipboardCleanup {
     operation: Operation,
     changeCountAfterPaste: Int,
     tier: PasteTier,
+    board: NSPasteboard? = nil,
+    landing: LandingCheck? = nil,
     body: @escaping @MainActor () -> Bool
   ) {
     let id = UUID()
@@ -766,13 +831,26 @@ public enum ClipboardCleanup {
       // `do/catch { return }`, NOT `try?`. A cancelled wait must ABANDON this
       // cleanup, never fall through and perform it early — see the type doc.
       do {
-        try await Task.sleep(
-          for: .milliseconds(testDelayOverrideMs ?? TimingConstants.clipboardRestoreDelayMs))
+        if let landing {
+          try await landing.minimumWait()
+        } else {
+          try await Task.sleep(
+            for: .milliseconds(testDelayOverrideMs ?? TimingConstants.clipboardRestoreDelayMs))
+        }
       } catch {
         return
       }
       // Superseded while we slept: their cleanup owns the board now.
       guard pending?.id == id else { return }
+
+      // #3106 PR B: a checked paste takes its own path, so a cleanup without a check runs exactly
+      // as it always has.
+      if let landing, let board {
+        await finishChecked(
+          id: id, operation: operation, changeCountAfterPaste: changeCountAfterPaste, tier: tier,
+          board: board, landing: landing, body: body)
+        return
+      }
 
       let applied = body()
 
@@ -799,6 +877,88 @@ public enum ClipboardCleanup {
       operation: operation,
       changeCountAfterPaste: changeCountAfterPaste,
       task: task)
+  }
+
+  /// The rest of a checked cleanup, after the 200 ms minimum (#3106 PR B).
+  ///
+  /// **The wait for the decision happens INSIDE the one pending task, never in a second one.** The
+  /// slot keeps its operation while it waits, so a delivery starting now inherits the user's
+  /// clipboard exactly as it would at 200 ms, and supersedes this task the same way.
+  ///
+  /// A decision published before this wake returns at once, so a miss decided while the main actor
+  /// was busy still keeps the dictation.
+  private static func finishChecked(
+    id: UUID,
+    operation: Operation,
+    changeCountAfterPaste: Int,
+    tier: PasteTier,
+    board: NSPasteboard,
+    landing: LandingCheck,
+    body: @MainActor () -> Bool
+  ) async {
+    var owned = changeCountAfterPaste
+    var applied = false
+    if case .legacyRewrite = operation {
+      // Restore OFF: today's rewrite runs at today's moment and does not wait for the decision. A
+      // board that already holds the legacy text needs no write.
+      if !boardHolds(landing.legacyText, board) {
+        applied = body()
+        if applied {
+          owned = board.changeCount
+          rebasePending(id, to: owned)
+        }
+      }
+    }
+
+    let decided = await landing.decision()
+    // Superseded or cancelled while waiting: a newer delivery owns the board and the slot, and this
+    // task may neither write nor report.
+    guard !Task.isCancelled, pending?.id == id else { return }
+
+    var label = operation.label
+    var outcome: LandingOutcome?
+    if let decided, landing.mayRetain(decided) {
+      outcome = keepDictation(landing.legacyText, owned: owned, on: board)
+    }
+    if let outcome {
+      label = outcome == .yielded ? "yield" : "keep_dictation"
+      applied = outcome != .yielded
+    } else if case .restore = operation {
+      applied = body()
+    }
+    finish(id)
+    if let outcome { landing.onOutcome(outcome) }
+    let loggedLabel = label
+    let loggedApplied = applied
+    Task {
+      await AppLogger.shared.log(
+        "Clipboard cleanup: op=\(loggedLabel), applied=\(loggedApplied), "
+          + "delay=\(TimingConstants.clipboardRestoreDelayMs)ms, tier=\(tier.rawValue), checked=true",
+        level: .info, category: "PipelineTiming"
+      )
+    }
+  }
+
+  /// Leave this take's legacy text on the board for a manual ⌘V, or yield to whoever wrote it.
+  ///
+  /// Nil when the board could not be made to hold the text: the caller then does today's cleanup and
+  /// reports nothing, because an unverified board is not a receipt.
+  private static func keepDictation(
+    _ legacyText: String, owned: Int, on board: NSPasteboard
+  ) -> LandingOutcome? {
+    guard board.changeCount == owned else { return .yielded }
+    if !boardHolds(legacyText, board) { PasteService.copyToClipboard(legacyText, to: board) }
+    guard boardHolds(legacyText, board) else { return nil }
+    return .retained(changeCount: board.changeCount)
+  }
+
+  /// This task wrote the board mid-wait: the slot's ownership count follows, so a delivery or a
+  /// manual request compares against the board as it now stands.
+  private static func rebasePending(_ id: UUID, to changeCount: Int) {
+    guard let current = pending, current.id == id else { return }
+    pending = Pending(
+      id: id, operation: current.operation, changeCountAfterPaste: changeCount,
+      task: current.task)
   }
 
   private static func finish(_ id: UUID) {

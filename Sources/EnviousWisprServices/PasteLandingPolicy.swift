@@ -30,4 +30,45 @@ package enum PasteLandingPolicy {
       return false
     }
   }
+
+  /// An app, and optionally one paste route in it, where a checked miss must NOT keep the dictation
+  /// on the clipboard (#3106 PR B). `tier == nil` excludes every route in that app.
+  package struct Exclusion: Hashable, Sendable {
+    package let bundleID: String
+    package let tier: PasteTier?
+
+    package init(bundleID: String, tier: PasteTier? = nil) {
+      self.bundleID = bundleID
+      self.tier = tier
+    }
+  }
+
+  /// Apps and routes that failed a PR B gate. Starts EMPTY (founder 2026-09-23: built on, narrowed only
+  /// by evidence); each entry added later carries its evidence line beside it. An exclusion changes
+  /// only permission: the arrival session still observes and reports the paste, late hits included.
+  package static let excludedRoutes: Set<Exclusion> = []
+
+  /// May this paste's miss keep the dictation on the clipboard and show the clipboard pill?
+  ///
+  /// Permission, separate from `isMiss` on purpose: `isMiss` also decides which results get the
+  /// late-hit shadow, so an exclusion placed there would stop collecting the very evidence that could
+  /// lift it. Only routes that put the dictation on the board and posted a paste can retain it:
+  /// Tier 1 never wrote the board, and clipboard-only already leaves the dictation there.
+  package static func mayRetain(
+    _ landing: PasteArrivalLanding,
+    bundleID: String?,
+    appClass: TelemetryService.LearnFromEditsTelemetry.AppClass,
+    tier: PasteTier,
+    excluded: Set<Exclusion> = excludedRoutes
+  ) -> Bool {
+    switch tier {
+    case .cgEvent, .appleScript, .menuPaste: break
+    case .axDirect, .clipboardOnly: return false
+    }
+    guard isMiss(landing, appClass: appClass) else { return false }
+    // An app we cannot name cannot be checked against the exclusions, so it does not retain.
+    guard let bundleID else { return false }
+    return !excluded.contains(Exclusion(bundleID: bundleID))
+      && !excluded.contains(Exclusion(bundleID: bundleID, tier: tier))
+  }
 }
