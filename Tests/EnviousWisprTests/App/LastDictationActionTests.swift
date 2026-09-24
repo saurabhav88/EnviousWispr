@@ -500,6 +500,19 @@ struct LastDictationActionTests {
     #expect(outcomes(fake).sorted() == ["cancelled", "copied"])
   }
 
+  @Test("A newer Copy cancels an older one that has not started, even with the clipboard free")
+  func newerCopyWinsOnAFreeBoard() async {
+    let fake = Fake()
+    let action = makeAction(fake)
+    let older = action.copyFromChord()  // not yet run
+    fake.row = (UUID(), "A newer dictation.")
+    let newer = action.copyFromChord()
+    await older.value
+    await newer.value
+    #expect(fake.copies == ["A newer dictation."], "the cancelled copy did not write")
+    #expect(outcomes(fake).sorted() == ["cancelled", "copied"])
+  }
+
   @Test("A Paste Last that writes cancels an older Copy still waiting", .timeLimit(.minutes(1)))
   func pasteCancelsWaitingCopy() async throws {
     let (a, _) = try Self.twoOtherApps()

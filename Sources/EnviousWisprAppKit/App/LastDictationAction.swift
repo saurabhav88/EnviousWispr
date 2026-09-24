@@ -274,6 +274,9 @@ final class LastDictationAction {
   /// otherwise. The write still claims the board itself, so a hold that returns after this wait is
   /// refused there exactly as before.
   private func waitForClipboard() async -> Outcome? {
+    // Before the free-board return: a task cancelled before it began (a newer Copy pressed first)
+    // must not write just because the board happens to be free; `waitUntil` is not reached then.
+    if Task.isCancelled { return .cancelled }
     guard environment.clipboardHeld() else { return nil }
     let started = environment.now()
     let result = await waitUntil(
