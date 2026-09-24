@@ -43,6 +43,15 @@ struct InterfaceCatalogSourceTests {
     #expect(languages.contains("en"))
   }
 
+  /// The unit-test process cannot see the shipped app bundle, so a catalog dropped from the app
+  /// target would still pass every lookup test through the English `defaultValue`. The build
+  /// declaration is the checkable proxy; built products are inspected in the PR evidence.
+  @Test("The catalog is declared as an app-target resource")
+  func catalogIsAppTargetResource() throws {
+    let project = try String(contentsOf: Self.repoRoot.appendingPathComponent("Project.swift"), encoding: .utf8)
+    #expect(project.contains("\"\(Self.catalogPath)\""), "Project.swift app resources no longer list the catalog")
+  }
+
   private static func strings() throws -> [String: Any] {
     let url = repoRoot.appendingPathComponent(catalogPath)
     let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
