@@ -910,19 +910,37 @@ public enum ClipboardCleanup {
       }
     }
 
-    let decided = await landing.decision()
+    // Bounded, although a committed session always decides (its deadline is scheduled at commit and
+    // a cancellation publishes): a decision that never came would hold the slot, and with it the
+    // user's clipboard and every manual request, forever. Timing out is "not a miss".
+    let decision = landing.decision
+    let decided: PasteArrivalLanding? =
+      await withDeadline(seconds: Self.landingDecisionBoundSeconds) { await decision() } ?? nil
     // Superseded or cancelled while waiting: a newer delivery owns the board and the slot, and this
     // task may neither write nor report.
     guard !Task.isCancelled, pending?.id == id else { return }
 
     var label = operation.label
     var outcome: LandingOutcome?
+    var keepWriteFailed = false
     if let decided, landing.mayRetain(decided) {
-      outcome = keepDictation(landing.legacyText, owned: owned, on: board)
+      switch keepDictation(landing.legacyText, owned: owned, on: board) {
+      case .kept(let kept): outcome = kept
+      case .writeFailed: keepWriteFailed = true
+      }
     }
     if let outcome {
       label = outcome == .yielded ? "yield" : "keep_dictation"
       applied = outcome != .yielded
+    } else if keepWriteFailed {
+      // Our own failed write moved the board, so today's restore (guarded by the count from before
+      // it) would refuse and leave the board empty. Hand the user's clipboard back against the
+      // board as it stands now; with restore off there is nothing held to hand back.
+      label = "keep_failed"
+      if case .restore(let snapshot) = operation {
+        applied = PasteService.restoreClipboard(
+          snapshot, changeCountAfterPaste: board.changeCount, on: board)
+      }
     } else if case .restore = operation {
       applied = body()
     }
@@ -939,17 +957,27 @@ public enum ClipboardCleanup {
     }
   }
 
+  private enum KeepResult {
+    case kept(LandingOutcome)
+    /// The board could not be made to hold the text, and our attempt may have changed it: the
+    /// caller restores against the board as it now stands and reports nothing, because an
+    /// unverified board is not a receipt.
+    case writeFailed
+  }
+
+  /// How long a checked cleanup waits for its landing decision before treating it as not a miss.
+  /// Far above any deadline (`PasteLandingPolicy.landingDeadlineMs`, at most 700 ms) plus a final
+  /// read; only a decision that never comes reaches it.
+  static let landingDecisionBoundSeconds = 3.0
+
   /// Leave this take's legacy text on the board for a manual ⌘V, or yield to whoever wrote it.
-  ///
-  /// Nil when the board could not be made to hold the text: the caller then does today's cleanup and
-  /// reports nothing, because an unverified board is not a receipt.
   private static func keepDictation(
     _ legacyText: String, owned: Int, on board: NSPasteboard
-  ) -> LandingOutcome? {
-    guard board.changeCount == owned else { return .yielded }
+  ) -> KeepResult {
+    guard board.changeCount == owned else { return .kept(.yielded) }
     if !boardHolds(legacyText, board) { PasteService.copyToClipboard(legacyText, to: board) }
-    guard boardHolds(legacyText, board) else { return nil }
-    return .retained(changeCount: board.changeCount)
+    guard boardHolds(legacyText, board) else { return .writeFailed }
+    return .kept(.retained(changeCount: board.changeCount))
   }
 
   /// This task wrote the board mid-wait: the slot's ownership count follows, so a delivery or a

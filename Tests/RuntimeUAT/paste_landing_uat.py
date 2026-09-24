@@ -311,6 +311,11 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
         # the field did not change. PR B (G5): that miss must KEEP the words and show the pill.
         u.check(f"{name}: observed is a miss (absent or no_target)",
                 observed in ("absent", "no_target"), f"{observed}/{reason}")
+        if name == "readonly":
+            # The miss must be REAL: the refusing field is still empty, read independently.
+            value = textbox_value()
+            u.check(f"{name}: the read-only box is still empty (read, not unreadable)",
+                    value == "", repr(value if value is None else value[:80]))
         verify_kept(name)
         return
     if restore_on:

@@ -36,6 +36,6 @@ Some apps built on web technology accept text input and then quietly drop it. En
 
 ### 5. You were told the text is on your clipboard
 
-If every delivery method fails, or EnviousWispr can see that a paste went nowhere (for example, no text box was selected), it leaves your words on the clipboard and shows **Copied. Press ⌘V to paste**. Your dictation is safe. Click into a text box and press Cmd+V to paste it yourself, then work through the checks above to get normal delivery back. Because your words stay on the clipboard, whatever you had copied before that dictation is replaced.
+If every delivery method fails, EnviousWispr leaves your words on the clipboard and shows **Copied. Press ⌘V to paste**. In most apps it does the same when it can see that a paste went nowhere (for example, no text box was selected). Your dictation is safe. Click into a text box and press Cmd+V to paste it yourself, then work through the checks above to get normal delivery back. Because your words stay on the clipboard, whatever you had copied before that dictation is replaced. If you are not sure what is on your clipboard, [First, get your words back](#first-get-your-words-back) always pastes your last dictation.
 
-EnviousWispr can only tell a paste went nowhere when the app shows enough about where your cursor is, so in some apps a missed paste still shows nothing. [First, get your words back](#first-get-your-words-back) works in those apps too.
+EnviousWispr can only tell a paste went nowhere when the app shows enough about where your cursor is, so in some apps a missed paste still shows nothing and your previous clipboard comes back as usual. Paste Last Dictation works there too.
