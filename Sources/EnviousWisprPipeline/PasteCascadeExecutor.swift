@@ -1507,9 +1507,16 @@ internal final class PasteCascadeExecutor {
       try? await Task.sleep(for: .milliseconds(TimingConstants.activationPollIntervalMs))
       appFront = NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
       if appFront {
-        refusal = PasteTargetWindowGate.refusal(
+        let latest = PasteTargetWindowGate.refusal(
           target: target, element: element, pid: pid, ax: landingAX, admit: stepBudget().admit)
-        if refusal == nil { break }
+        if latest == nil {
+          refusal = nil
+          break
+        }
+        // A persistent refusal reaches the deadline, and the last check then has no time left, so
+        // it reads `.budget`. Keep the reason an earlier check actually observed (Live UAT, a
+        // closed window logged `budget` instead of `window_unreadable_focus_mismatch`).
+        if latest != .budget || refusal == nil { refusal = latest }
       }
       if landingScheduler.nowMs - lastIssueMs >= 300, remainingMs() > 0 {
         issue()

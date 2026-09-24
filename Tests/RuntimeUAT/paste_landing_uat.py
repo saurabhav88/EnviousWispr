@@ -118,12 +118,23 @@ def close_run_pages():
     if not OPENED:
         return True
     tag = f"-{u.RUN_ID}.html"
+    # One tab per pass, restarting the scan: closing a window's last tab closes the window, which
+    # invalidates a loop still walking `windows` (#3121 opens run pages in their own windows).
     script = f'''
 tell application "Google Chrome"
-  repeat with w in windows
-    repeat with i from (count tabs of w) to 1 by -1
-      if URL of tab i of w contains "ew-uat-3106-landing-" and URL of tab i of w ends with "{tag}" then close tab i of w
+  repeat
+    set found to false
+    repeat with w in windows
+      repeat with t in tabs of w
+        if URL of t contains "ew-uat-3106-landing-" and URL of t ends with "{tag}" then
+          close t
+          set found to true
+          exit repeat
+        end if
+      end repeat
+      if found then exit repeat
     end repeat
+    if not found then exit repeat
   end repeat
   set n to 0
   repeat with w in windows
