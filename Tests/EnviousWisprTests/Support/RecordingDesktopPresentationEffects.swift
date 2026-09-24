@@ -44,6 +44,8 @@ final class RecordingDesktopPresentationEffects: ApplicationActivating, PanelPre
     case forceActivate(pid: pid_t)
     /// Putting the caret in a field, after the app is frontmost.
     case focus
+    /// Raising the field's own window (#3121), before `focus`.
+    case raiseWindow
   }
 
   private(set) var calls: [Call] = []
@@ -82,6 +84,15 @@ final class RecordingDesktopPresentationEffects: ApplicationActivating, PanelPre
   func focus(_ element: AXUIElement) -> Bool {
     calls.append(.focus)
     return focusSucceeds
+  }
+
+  /// `nil` by default: the window could not be read, which leaves `focus` to decide, the path
+  /// before #3121. A test sets `true` or `false` for a readable window.
+  var raiseWindowResult: Bool? = nil
+
+  func raiseWindow(of element: AXUIElement) -> Bool? {
+    calls.append(.raiseWindow)
+    return raiseWindowResult
   }
 
   func makeKeyAndOrderFront(_ panel: NSPanel) {

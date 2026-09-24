@@ -83,6 +83,14 @@ package protocol ApplicationActivating: AnyObject {
   /// caret back to wherever that app last left it, which after a cancel is
   /// frequently a different field — so this is not decoration.
   func focus(_ element: AXUIElement) -> Bool
+
+  /// Raise the window `element` lives in, within its app (#3121).
+  ///
+  /// Activating an app brings back ITS key window, which is the wrong one when the user moved to
+  /// another window of the same app before cancelling (two Chrome profiles are one process).
+  /// `nil`: the field's window could not be read, so there is nothing to raise; `true`: raised;
+  /// `false`: a readable window refused the raise.
+  func raiseWindow(of element: AXUIElement) -> Bool?
 }
 
 /// Give a panel the keyboard and bring it to the front.

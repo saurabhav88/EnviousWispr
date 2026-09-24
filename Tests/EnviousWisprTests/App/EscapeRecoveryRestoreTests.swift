@@ -217,6 +217,7 @@ struct EscapeRecoveryRestoreTests {
         fallbackCalls += 1
         return false
       },
+      raiseWindow: { _ in nil },
       // #2455 C3: was the live `PasteService.focusElement` default, so this case
       // moved a real caret on the developer's machine. Unreached here — both
       // activation routes fail above — and asserted as unreached below.
@@ -253,6 +254,7 @@ struct EscapeRecoveryRestoreTests {
         activationAttempted = true
         return false
       },
+      raiseWindow: { _ in nil },
       focusElement: { _ in
         focusAttempted = true
         return true
@@ -279,6 +281,7 @@ struct EscapeRecoveryRestoreTests {
         fallbackCalls += 1
         return true
       },
+      raiseWindow: { _ in nil },
       focusElement: {
         focusedElements.append($0)
         return false
@@ -289,6 +292,76 @@ struct EscapeRecoveryRestoreTests {
     #expect(
       retargeted == false,
       "a field that rejects focus must keep the recovery on the clipboard")
+  }
+
+  // MARK: The field's own window (#3121)
+
+  /// Two windows of one app (two Chrome profiles) are one process, so activating the app brings
+  /// back whichever window the user moved to. The live retarget raises the field's own window
+  /// between activation and field focus.
+  @MainActor
+  private func liveRetarget(raise: Bool?, element: AXUIElement?) -> (
+    Bool, [RecordingDesktopPresentationEffects.Call]
+  ) {
+    let effects = RecordingDesktopPresentationEffects()
+    effects.forceActivateSucceeds = true
+    effects.raiseWindowResult = raise
+    let app = NSRunningApplication.current
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: app, targetElement: element)
+    let result = EscapeRecoveryPasteAction.liveRetarget(application: effects)(payload)
+    return (result, effects.calls)
+  }
+
+  @Test("the field's window is raised after activation and before the field is focused")
+  @MainActor
+  func raisePrecedesFocus() {
+    let element = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
+    let (retargeted, calls) = liveRetarget(raise: true, element: element)
+    #expect(
+      calls == [
+        .forceActivate(pid: NSRunningApplication.current.processIdentifier), .raiseWindow, .focus,
+      ])
+    #expect(retargeted == true)
+  }
+
+  @Test("a readable window that refuses the raise is not focused and not pasted into")
+  @MainActor
+  func refusedRaiseStaysOnClipboard() {
+    let element = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
+    let (retargeted, calls) = liveRetarget(raise: false, element: element)
+    #expect(retargeted == false)
+    #expect(!calls.contains(.focus), "no caret move into a window that is not front")
+
+    // And the paste action turns that refusal into the clipboard-only finish, with no keystroke.
+    let effects = RecordingDesktopPresentationEffects()
+    effects.forceActivateSucceeds = true
+    effects.raiseWindowResult = false
+    let spy = Spy()
+    var dispatched = 0
+    EscapeRecoveryPasteAction.paste(
+      payload: CancelUndoPayload(
+        transcriptID: UUID(), targetApp: .current, targetElement: element),
+      restorable: { _ in ("kept", Date(), "take-1") },
+      copyToClipboard: { _ in },
+      dispatchPaste: { dispatched += 1 },
+      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
+      retarget: EscapeRecoveryPasteAction.liveRetarget(application: effects),
+      targetHasQuit: { _ in false })
+    #expect(spy.reports.first?.result == .clipboardOnly)
+    #expect(dispatched == 0)
+  }
+
+  @Test("an unreadable window leaves the field focus to decide, as before #3121")
+  @MainActor
+  func unreadableWindowKeepsFocusPath() {
+    let element = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
+    let (retargeted, calls) = liveRetarget(raise: nil, element: element)
+    #expect(calls.suffix(2) == [.raiseWindow, .focus])
+    #expect(retargeted == true)
+
+    let (noField, noFieldCalls) = liveRetarget(raise: false, element: nil)
+    #expect(noField == true, "no captured field: nothing to raise, the app-only retarget stands")
+    #expect(!noFieldCalls.contains(.raiseWindow))
   }
 
   // MARK: History's door
