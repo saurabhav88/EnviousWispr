@@ -607,6 +607,12 @@ def phase_other_window(close_target):
 
 # The executor's one local line for a window-gate refusal (#3121); DEBUG `app.log`.
 WINDOW_REFUSAL = re.compile(r"WINDOW_GATE refused stage=(\w+) reason=(\S+)")
+# The closed-window phase proves the WINDOW guard only through a window reason on Chrome;
+# `app_not_front` (another app took focus) would leave the same clipboard and prove nothing here.
+CLOSED_WINDOW_REFUSAL = re.compile(
+    r"WINDOW_GATE refused stage=\w+ reason=target_window_not_confirmed"
+    r"\((?:window_mismatch|window_unreadable_focus_mismatch|focused_window_unreadable)\)"
+    r"(?: ms=\d+)? bundle_id=com\.google\.Chrome\b")
 
 
 def verify_other_window(name, close_target, lines, cascades, done, restore_on, sentinel, target,
@@ -635,9 +641,10 @@ def verify_other_window(name, close_target, lines, cascades, done, restore_on, s
                                deadline=5.0), repr(u.clipboard_text()))
         return
     u.wait_for("the window refusal line",
-               lambda: WINDOW_REFUSAL.search(u.log_since(PHASE_BASE["offset"])), deadline=5.0)
-    refusals = WINDOW_REFUSAL.findall(u.log_since(PHASE_BASE["offset"]))
-    u.check(f"{name}: the key paste was refused for the window", len(refusals) >= 1, str(refusals))
+               lambda: CLOSED_WINDOW_REFUSAL.search(u.log_since(PHASE_BASE["offset"])), deadline=5.0)
+    u.check(f"{name}: the key paste was refused for Chrome's window, not for another app",
+            bool(CLOSED_WINDOW_REFUSAL.search(u.log_since(PHASE_BASE["offset"]))),
+            str(WINDOW_REFUSAL.findall(u.log_since(PHASE_BASE["offset"]))))
     u.check(f"{name}: no key paste into Chrome", chrome_tiers == ["clipboard_only"], str(cascades))
     board = u.clipboard_text() or ""
     u.check(f"{name}: the clipboard holds the dictation (5+ of 7 words)",
