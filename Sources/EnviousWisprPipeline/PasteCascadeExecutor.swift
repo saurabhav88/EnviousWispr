@@ -780,7 +780,21 @@ internal final class PasteCascadeExecutor {
       let tier2ActivationStart = CFAbsoluteTimeGetCurrent()
       logPasteTimingStart(
         step: "tier2_activate", startedAt: tier2ActivationStart, bundleId: bundleId)
-      let activation = await activate(app)
+      var activation = await activate(app)
+      #if DEBUG
+        // #3106 PR B gate G6 (Live UAT only): Tier 2b runs only after this activation times out,
+        // which cannot be staged by hand. With `EW_UAT_FORCE_TIER2B=1` in the launch environment the
+        // activation reads as timed out, so the REAL AppleScript paste runs against the real target.
+        // DEBUG-only, env-gated, logged on every use; Release compiles none of it.
+        if ProcessInfo.processInfo.environment["EW_UAT_FORCE_TIER2B"] == "1" {
+          activation = (activated: false, elapsed: activation.elapsed)
+          Task {
+            await AppLogger.shared.log(
+              "UAT seam: Tier 2 activation forced to time out (EW_UAT_FORCE_TIER2B)",
+              level: .info, category: "PasteTiming")
+          }
+        }
+      #endif
       let activated = activation.activated
       let elapsed = activation.elapsed
       logPasteTiming(

@@ -59,6 +59,10 @@ PAGES = {
     # Nothing focusable, and whatever had focus is blurred: the #2705 shape, a key paste into a
     # window with no text field.
     "nofocus": '<p>Nothing on this page takes text.</p><script>document.activeElement.blur()</script>',
+    # G6 (#3106 PR B): a focused text area that refuses the paste. It is a text role, so the cascade
+    # takes the key-paste tiers (not the menu), and the paste lands nowhere: a genuine miss.
+    "readonly": ('<textarea id="t" readonly autofocus rows="6" cols="70"></textarea>'
+                 '<script>document.getElementById("t").focus()</script>'),
 }
 
 
@@ -83,7 +87,7 @@ def open_page(name):
                       lambda: active_tab_url().endswith(os.path.basename(path)), deadline=10.0):
         raise u.Aborted(f"{name}: the page did not load in the active tab "
                         f"(active tab: {active_tab_url()!r})")
-    if name == "focused" and not u.wait_for(
+    if name in ("focused", "readonly") and not u.wait_for(
             "the page's text box focused", lambda: focused_role() == "AXTextArea", deadline=5.0):
         raise u.Aborted(f"focused: the text box is not focused (focused role {focused_role()!r})")
     return path
@@ -164,7 +168,8 @@ def address_bar_value():
     return found[0] if found else None
 
 
-EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea"}
+EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea", "readonly": "AXTextArea",
+                  "copy-during-wait": "AXWebArea"}
 
 
 class LiveTakeNotStopped(u.Aborted):
@@ -267,7 +272,10 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
     # The focused box must take cgevent, the tier this control exists to prove. With no text
     # field, the cascade routes a non-text focus to the Edit menu's Paste (tier 2c, measured
     # 2026-09-23: `menu_paste`), which the check observes too; any of the three proves the path.
-    wanted = ["cgevent"] if name == "focused" else None
+    # `EW_UAT_FORCE_TIER2B=1` in the APP's launch environment (G6) turns the key paste into the
+    # AppleScript tier; this run is told so by the same variable in its own environment.
+    key_tier = "applescript" if os.environ.get("EW_UAT_FORCE_TIER2B") == "1" else "cgevent"
+    wanted = [key_tier] if name in ("focused", "readonly") else None
     u.check(f"{name}: one paste into Chrome, by an observed key-paste tier",
             (chrome_tiers == wanted) if wanted else
             (len(chrome_tiers) == 1 and chrome_tiers[0] in ("cgevent", "applescript", "menu_paste")),
@@ -350,6 +358,44 @@ def verify_kept(name):
 PHASE_BASE = {"offset": 0}
 
 
+def phase_copy_during_wait():
+    """§8 (#3106 PR B): the user copies something between the paste and the landing decision. The
+    miss must YIELD: their copy stays on the clipboard, nothing is rewritten, no notice shows. A
+    watcher thread copies the moment the cascade logs its paste (the decision comes ~300 ms later)."""
+    import threading
+    name = "nofocus"
+    print("\n== copy during the wait: a miss while the user copies something")
+    quiet("copy staging", open_page, name)
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+    user_copy = f"ew-uat-user-copy-{u.RUN_ID}"
+    copied = {"at": None}
+
+    def copy_on_paste():
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if CASCADE.search(u.log_since(base)):
+                u.set_clipboard_text(user_copy)
+                copied["at"] = time.time()
+                return
+            time.sleep(0.01)
+    watcher = threading.Thread(target=copy_on_paste, daemon=True)
+    watcher.start()
+    lines, cascades = take("copy-during-wait", base)
+    watcher.join(timeout=5)
+    u.check("copy: the user's copy was made after the paste", copied["at"] is not None)
+    u.check("copy: one landing line, a miss",
+            len(lines) == 1 and lines[0][1] in ("absent", "no_target"), str(lines))
+    u.wait_for("the checked cleanup's line", lambda: KEPT.search(u.log_since(base)), deadline=10.0)
+    kept = KEPT.findall(u.log_since(base))
+    u.check("copy: the checked cleanup yielded to the user's copy",
+            [k[0] for k in kept] == ["yield"], str(kept))
+    u.check("copy: no notice was asked for", NOTICE.findall(u.log_since(base)) == [],
+            str(NOTICE.findall(u.log_since(base))))
+    u.check("copy: the user's copy is on the clipboard", u.clipboard_text() == user_copy,
+            repr(u.clipboard_text()))
+
+
 def phase_textedit():
     """The regression control: an ordinary dictation into TextEdit still lands exactly once, the
     previous clipboard comes back, and no clipboard-only notice is shown. No landing line is
@@ -385,7 +431,7 @@ def verify_textedit(base, delivered, restore_on, sentinel):
         u.check("textedit: no landing row on the ax_direct tier", lines == [], str(lines))
 
 
-PHASES = ["focused", "nofocus", "textedit"]
+PHASES = ["focused", "nofocus", "textedit", "readonly", "copy"]
 
 
 def main():
@@ -415,6 +461,8 @@ def main():
             # Metered inside each phase, around the stretches that play no speech.
             if name == "textedit":
                 phase_textedit()
+            elif name == "copy":
+                phase_copy_during_wait()
             else:
                 phase(name)
     except u.Aborted as e:
