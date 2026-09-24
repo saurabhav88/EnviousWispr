@@ -57,6 +57,8 @@ struct PillCatalogParityTests {
     case .escapeRecovery: return "escapeRecovery"
     case .correctionLearned: return "correctionLearned"
     case .correctionLearnedSaveError: return "correctionLearnedSaveError"
+    // #3106 PR B: minted by the reducer from the clipboard-fallback entry, never by the catalog.
+    case .retainedClipboardFallback: return "retainedClipboardFallback"
     }
   }
 

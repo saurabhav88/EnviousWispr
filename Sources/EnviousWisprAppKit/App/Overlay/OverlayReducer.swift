@@ -59,6 +59,9 @@ enum OverlayEvent: Equatable {
   /// #996 auto-learn: `Couldn’t save “<word>”`, a three-second notice with no
   /// button; a feature route, admitted like the pill.
   case correctionLearnedSaveError(LearnedCorrectionSaveError)
+  /// #3106 PR B: the late clipboard-fallback notice for a take whose paste went nowhere. Admitted
+  /// ONLY on an idle pipeline with an EMPTY slot; it never replaces anything.
+  case retainedClipboardFallback(takeID: String)
 }
 
 /// What the director should do to the single armed expiry.
@@ -273,6 +276,8 @@ struct OverlayReducer {
       return reduceCorrectionLearnedClose(pillID: pillID)
     case .correctionLearnedSaveError(let error):
       return reduceCorrectionLearnedSaveError(error)
+    case .retainedClipboardFallback(let takeID):
+      return reduceRetainedClipboardFallback(takeID: takeID)
     }
   }
 
@@ -784,6 +789,24 @@ struct OverlayReducer {
     return admit(definition, announcement: entry.announcement)
   }
 
+  /// #3106 PR B: the late clipboard notice. **Not `featureSlotIsAvailable`**: its `default: true`
+  /// would let this replace a notice or the Escape Recovery offer, and a notice about an older
+  /// paste must never displace anything. The copy, width, dwell and sentence are the catalog's
+  /// clipboard-fallback entry, unchanged; only the content case differs.
+  private mutating func reduceRetainedClipboardFallback(takeID: String) -> OverlayPlan {
+    guard state.pipelineIntent == .hidden, state.current == nil else { return .noChange }
+    let entry = PillCatalog.entry(for: .clipboardFallback, id: makeID())
+    guard let base = entry.definition, case .notice(let notice) = base.content else {
+      assertionFailure("the clipboard fallback resolved to no notice")
+      return .noChange
+    }
+    let definition = PillDefinition(
+      id: base.id, content: .retainedClipboardFallback(notice, takeID: takeID),
+      expiry: base.expiry, requestedWidth: base.requestedWidth,
+      reservesFixedHeight: base.reservesFixedHeight)
+    return admit(definition, announcement: entry.announcement)
+  }
+
   // **`announcement(forFeature:)` was DELETED with `OverlayRequest`** (#2292 C5c).
   // It existed to map a feature request onto the intent whose sentence it should
   // speak, and its own comment records what that duplication cost: `OverlayRequest`
@@ -945,7 +968,7 @@ struct OverlayReducer {
       break
     case .recording:
       effects.append(.recordingStateChanged(false))
-    case .notice, .bluetoothAwareness, .correctionLearnedSaveError:
+    case .notice, .bluetoothAwareness, .correctionLearnedSaveError, .retainedClipboardFallback:
       break
     case .correctionLearned(let shown):
       // #996 auto-learn: only an unanswered offer owes an end report; a result

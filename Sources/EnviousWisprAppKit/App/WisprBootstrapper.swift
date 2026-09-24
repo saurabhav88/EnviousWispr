@@ -514,6 +514,9 @@ package final class WisprBootstrapper {
     // + heart-path telemetry observer internally and wires kernel-state
     // observation post-construction (PR-4b.2).
     let makeRecoverySpoolStore = EscapeRecoveryWiring.makeSpoolStore
+    // #3106 PR B: the late clipboard notice. Created BEFORE either driver, because both report into
+    // it from their first dictation; connected to the overlay once `OverlayDirector` exists below.
+    let retainedPasteNotice = RetainedPasteNotice()
     let kernelDriver = KernelDictationDriverFactory.makeForParakeet(
       inputs: KernelDictationDriverFactory.ParakeetInputs(
         audioCapture: audioCapture,
@@ -532,7 +535,13 @@ package final class WisprBootstrapper {
         parakeetDelivery: modelDelivery.parakeetHandle,
         batchDecodeFaultController: batchDecodeFaultController,
         escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator),
-        transcriptionCheckpoint: transcriptionCheckpoint
+        transcriptionCheckpoint: transcriptionCheckpoint,
+        onTakeAccepted: { [retainedPasteNotice] takeID in
+          retainedPasteNotice.takeAccepted(takeID)
+        },
+        onRetained: { [retainedPasteNotice] takeID, changeCount in
+          retainedPasteNotice.retained(takeID: takeID, changeCount: changeCount)
+        }
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -587,7 +596,13 @@ package final class WisprBootstrapper {
         s1MiniRuntime: s1MiniRuntime,
         batchDecodeFaultController: batchDecodeFaultController,
         escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator),
-        transcriptionCheckpoint: transcriptionCheckpoint
+        transcriptionCheckpoint: transcriptionCheckpoint,
+        onTakeAccepted: { [retainedPasteNotice] takeID in
+          retainedPasteNotice.takeAccepted(takeID)
+        },
+        onRetained: { [retainedPasteNotice] takeID, changeCount in
+          retainedPasteNotice.retained(takeID: takeID, changeCount: changeCount)
+        }
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
@@ -748,6 +763,9 @@ package final class WisprBootstrapper {
     // Swift resolves an unqualified name to the innermost declaration in
     // scope, and the local shadows the property for the rest of `init`.
     self.recordingOverlay = recordingOverlay
+    // #3106 PR B: the late clipboard notice can present from here on. Held strongly by both
+    // drivers' callbacks; the director is held weakly by the notice.
+    retainedPasteNotice.connect(recordingOverlay)
 
     // #996 chunk 5h: composed here because every collaborator it needs already
     // exists (settings, the word list, the packs, the overlay director, the
