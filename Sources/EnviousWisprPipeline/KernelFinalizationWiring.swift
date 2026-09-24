@@ -89,6 +89,11 @@ final class KernelFinalizationOutcome {
   var emojiRestored: Int?
   var emojiRestoreIncomplete: Bool?
   var emojiLatencyMs: Double?
+  /// #3124: `.british` when this take was frozen as British, else nil; and the accepted swap
+  /// count from the chain's context (nil when no spelling pass ran). Written every take, so a
+  /// previous take's values cannot ride the reused `outcome`.
+  var englishSpelling: EnglishSpelling?
+  var spellingSwaps: Int?
   /// #1785 cursor-aware insertion. Four facts, and only four, because a
   /// wrong-case report arrives with no text attached and these are what make it
   /// answerable: was the feature even on, could the field be read, what did the
@@ -414,7 +419,10 @@ struct KernelFinalizationWiring {
       let evidence = LanguageEvidence(
         lockedLanguage: context.config?.lockedLanguageCode,
         engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
-        engineReportedLanguage: adapter.lastResult?.language)
+        engineReportedLanguage: adapter.lastResult?.language,
+        // #3124: frozen with the lock at session start; a context without a config is
+        // American, today's behaviour.
+        englishSpelling: context.config?.englishSpelling ?? .american)
       let start = CFAbsoluteTimeGetCurrent()
       // #145: ITN runs BEFORE polish so it doubles as the raw-fallback floor —
       // polish-rejected/disabled both deliver the post-ITN text.
@@ -480,6 +488,8 @@ struct KernelFinalizationWiring {
         outcome.emojiRestoreIncomplete = nil
         outcome.emojiLatencyMs = nil
       }
+      outcome.englishSpelling = ctx.englishSpelling == .british ? .british : nil
+      outcome.spellingSwaps = ctx.englishSpellingSwaps
       outcome.rawText = ctx.text
       outcome.polishedText = ctx.polishedText
       outcome.llmProvider = ctx.llmProvider
@@ -1345,6 +1355,9 @@ struct KernelFinalizationWiring {
       emojiRestored: outcome.emojiRan ? outcome.emojiRestored : nil,
       emojiRestoreIncomplete: outcome.emojiRan ? outcome.emojiRestoreIncomplete : nil,
       emojiLatencyMs: outcome.emojiRan ? outcome.emojiLatencyMs : nil,
+      // #3124: British preference and accepted swaps; both nil on every non-British take.
+      englishSpelling: outcome.englishSpelling,
+      spellingSwaps: outcome.englishSpelling == nil ? nil : outcome.spellingSwaps,
       // #1309 effective-path streaming telemetry — kernel-assembled from the
       // adapter's diagnostics (WhisperKit only; nil omitted). `streamingMode`
       // above stays the REQUESTED mode.

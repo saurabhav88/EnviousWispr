@@ -57,6 +57,9 @@ enum SettingsProjection {
     /// decides whether the card is welcome. On/off only, never a word.
     case learnFromEdits = "learn_from_edits"
     case languageMode = "language_mode"
+    /// #3124: the English spelling PREFERENCE (`american` / `british`), the adoption signal for
+    /// English (UK). A closed enum value, never a language code or any dictated text.
+    case englishSpelling = "english_spelling"
     case streamingASR = "streaming_asr"
     // #1988. Instrumented because adoption is the question this feature was built
     // to answer, and the answer decides whether the macOS 26 floor is worth
@@ -150,6 +153,7 @@ enum SettingsProjection {
     case .crashRecoveryEnabled: return [.crashRecovery]
     case .learnFromEdits: return [.learnFromEdits]
     case .languageMode: return [.languageMode]
+    case .englishSpelling: return [.englishSpelling]
     case .useStreamingASR: return [.streamingASR]
     case .livePreviewEnabled: return [.livePreview]
     case .livePreviewEngine: return [.livePreviewEngine]
@@ -236,6 +240,7 @@ enum SettingsProjection {
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
     case .learnFromEdits: return onOff(settings.learnFromEdits)
     case .languageMode: return languageModeLabel(settings.languageMode)
+    case .englishSpelling: return settings.englishSpelling.rawValue
     case .streamingASR: return onOff(settings.useStreamingASR)
     case .livePreview: return onOff(settings.livePreviewEnabled)
     case .livePreviewEngine: return settings.livePreviewEngine.rawValue

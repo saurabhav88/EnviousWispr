@@ -141,7 +141,7 @@ struct RecoverySpoolReplayerTests {
       llmProvider: "none",
       llmModel: "",
       polishPromptVersion: nil,
-      s1Control: nil)
+      s1Control: nil, englishSpelling: nil)
   }
 
   private struct Harness {

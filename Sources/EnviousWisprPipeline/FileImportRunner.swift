@@ -137,7 +137,9 @@ public final class FileImportRunner {
         // cleaned up as whatever the text identifier guessed from the ASR
         // output, and ASR output for a language the engine was not told about is
         // exactly the text least safe to guess from. Found by cloud review.
-        engineReportedLanguage: engineLanguage),
+        engineReportedLanguage: engineLanguage,
+        // #3124: frozen at Start with the lock; nil (never set) is American.
+        englishSpelling: settings.englishSpelling ?? .american),
       // No target app: an import is not being pasted anywhere, and a step that
       // adapts to the frontmost app would be adapting to whatever the user
       // happened to have open while the file decoded.
@@ -234,7 +236,9 @@ public final class FileImportRunner {
       fillerRemoval: fillerRemoval,
       emojiFormatter: emojiFormatter,
       inverseTextNormalization: itn,
+      englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: llmPolish,
+      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep())
   }
 }

@@ -55,7 +55,10 @@ enum FileImportSettingsFreeze {
       customWordsVersion: nil,
       llmProvider: settings.effectiveFileImportLLMProvider.rawValue,
       llmModel: settings.effectiveFileImportLLMModel,
-      s1Control: settings.s1Control)
+      s1Control: settings.s1Control,
+      // #3124: frozen at Start like the language; "Clean it again" re-snapshots.
+      englishSpelling: EnglishSpelling.effective(
+        languageMode: settings.languageMode, stored: settings.englishSpelling))
   }
 
   /// What the rest of the app must read INSTEAD of live settings once a run has

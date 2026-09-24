@@ -724,7 +724,7 @@ extension TextProcessingRunnerTests {
     let locked = try await runner.run(
       rawText: Self.germanSentence,
       evidence: LanguageEvidence(
-        lockedLanguage: "fr", engineDetectsLanguage: true, engineReportedLanguage: "es"),
+        lockedLanguage: "fr", engineDetectsLanguage: true, engineReportedLanguage: "es", englishSpelling: .american),
       targetAppName: nil, steps: [])
     #expect(locked.context.language == "fr")
     #expect(locked.context.languageSource == .locked)
@@ -734,7 +734,7 @@ extension TextProcessingRunnerTests {
     let engine = try await runner.run(
       rawText: Self.germanSentence,
       evidence: LanguageEvidence(
-        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "es"),
+        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "es", englishSpelling: .american),
       targetAppName: nil, steps: [])
     #expect(engine.context.language == "es")
     #expect(engine.context.languageSource == .engine)
@@ -820,7 +820,7 @@ extension TextProcessingRunnerTests {
     let result = try await deterministicRunner().run(
       rawText: spoken,
       evidence: LanguageEvidence(
-        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "en"),
+        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "en", englishSpelling: .american),
       targetAppName: nil, steps: steps)
     #expect(result.context.language == "en")
     #expect(result.context.languageSource == .engine)
@@ -834,7 +834,7 @@ extension TextProcessingRunnerTests {
     let control = try await Self.seamRunner { _ in nil }.run(
       rawText: spoken,
       evidence: LanguageEvidence(
-        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: nil),
+        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: nil, englishSpelling: .american),
       targetAppName: nil, steps: controlSteps)
     #expect(control.context.text == spoken)
     #expect(controlITN.lastRun?.skipReason == "lid_backend_nil")

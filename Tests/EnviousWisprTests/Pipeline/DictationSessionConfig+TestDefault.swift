@@ -30,7 +30,8 @@ extension DictationSessionConfig {
     // every existing suite keeps its behaviour until it opts in explicitly.
     escapeRecoveryEnabled: Bool = false,
     recoverySessionID: String? = nil,
-    s1Control: S1ControlSettings = .default
+    s1Control: S1ControlSettings = .default,
+    englishSpelling: EnglishSpelling = .american
   ) -> DictationSessionConfig {
     DictationSessionConfig(
       autoCopyToClipboard: autoCopyToClipboard,
@@ -44,6 +45,7 @@ extension DictationSessionConfig {
       vadSensitivity: vadSensitivity,
       vadEnergyGate: vadEnergyGate,
       languageMode: languageMode,
+      englishSpelling: englishSpelling,
       useStreamingASR: useStreamingASR,
       modelUnloadPolicy: modelUnloadPolicy,
       llmProvider: llmProvider,

@@ -53,6 +53,8 @@ public final class RecoveryTextProcessor {
   /// `applySettings` (the public API does not enforce the order) resolves from
   /// the text rather than trusting a phantom engine.
   private var recordedEngineDetectsLanguage = false
+  /// #3124: the spelling in force at record time; a spool from before English (UK) is American.
+  private var recordedEnglishSpelling: EnglishSpelling = .american
 
   public init(
     keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil,
@@ -80,7 +82,9 @@ public final class RecoveryTextProcessor {
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
+      englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: llmPolish,
+      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep())
     // #945 / #1446 / #1461: crash recovery is invisible to live-polish
     // telemetry. The runner and LLMPolishStep each own separate emitter sets,
@@ -152,6 +156,7 @@ public final class RecoveryTextProcessor {
       recordedLanguage = nil
     }
     recordedEngineDetectsLanguage = snapshot.backendSupportsLanguageDetection
+    recordedEnglishSpelling = snapshot.englishSpelling ?? .american
   }
 
   /// Assign the CURRENT custom-words vocabulary, best-effort (#1063 PR2). The
@@ -213,7 +218,8 @@ public final class RecoveryTextProcessor {
         evidence: LanguageEvidence(
           lockedLanguage: recordedLanguage,
           engineDetectsLanguage: recordedEngineDetectsLanguage,
-          engineReportedLanguage: nil),
+          engineReportedLanguage: nil,
+          englishSpelling: recordedEnglishSpelling),
         targetAppName: targetAppName,
         steps: steps.orderedChain)
       // #1948: a BLANK polish is not a polish. Live finalization has an empty-output

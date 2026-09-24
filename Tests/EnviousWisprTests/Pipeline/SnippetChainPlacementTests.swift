@@ -33,7 +33,9 @@ struct SnippetChainPlacementTests {
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
+      englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep())
   }
 
@@ -49,7 +51,9 @@ struct SnippetChainPlacementTests {
         "Filler Removal",
         "Emoji Formatter",
         "Inverse Text Normalization",
+        "English Spelling",
         "LLM Polish",
+        "English Spelling (after polish)",
         "Emoji Restore",
       ])
   }

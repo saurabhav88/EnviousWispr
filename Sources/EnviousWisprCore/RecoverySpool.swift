@@ -102,6 +102,12 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   /// as its sibling: it is the only compile-time force on `RecoveryCoordinator`
   /// to pass the record-time value.
   public let s1Control: S1ControlSettings?
+  /// #3124: the spelling IN FORCE at record time (`EnglishSpelling.effective`), so a recovered or
+  /// imported take replays under it. OPTIONAL for the same reason as its siblings: spools written
+  /// before this field exist, and a missing non-optional key would fail the whole decode. `nil`
+  /// means the spool predates English (UK), which is `.american`. The initializer parameter is not
+  /// defaulted, so every writer must pass the record-time value.
+  public let englishSpelling: EnglishSpelling?
 
   public init(
     backendType: ASRBackendType,
@@ -115,7 +121,8 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     llmProvider: String,
     llmModel: String,
     polishPromptVersion: String? = nil,
-    s1Control: S1ControlSettings?
+    s1Control: S1ControlSettings?,
+    englishSpelling: EnglishSpelling?
   ) {
     self.backendType = backendType
     self.backendSupportsLanguageDetection = backendSupportsLanguageDetection
@@ -129,6 +136,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.llmModel = llmModel
     self.polishPromptVersion = polishPromptVersion
     self.s1Control = s1Control
+    self.englishSpelling = englishSpelling
   }
 }
 

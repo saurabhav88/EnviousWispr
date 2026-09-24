@@ -16,8 +16,10 @@ internal struct TextProcessingRunResult {
 ///
 /// Does NOT own step instances. Steps are passed in by the pipeline, which retains
 /// ownership across the timeout await.
-/// The runner owns only the execution algorithm: ordering, timeout, cancellation,
-/// failure continuation (heart & limbs), and CORRECTION_DEBUG logging.
+/// The runner owns the execution algorithm: ordering, timeout, cancellation,
+/// failure continuation (heart & limbs), and CORRECTION_DEBUG logging. It also
+/// SEEDS the context once before any step runs: the resolved language (#2614) and
+/// the per-take spelling inputs (#3124), so every step reads one frozen answer.
 ///
 /// Phase G1+G2: error-surface dispatch reads `step.errorSurfacePolicy` instead
 /// of matching `step.name == "LLM Polish"`, and the log sink is injectable via
@@ -212,6 +214,10 @@ internal final class TextProcessingRunner {
     context.learnLanguage = resolution.learnLanguage
     context.targetAppName = targetAppName
     context.takeID = takeID
+    // #3124: seeded here, before the loop, so a spelling pass that times out cannot lose them
+    // (the runner keeps the INPUT context on failure) and both passes read one set.
+    context.englishSpelling = evidence.englishSpelling
+    context.spellingProtectedWords = Self.spellingProtectedWords(steps: steps)
     var polishError: String?
 
     let logger = self.logger
@@ -541,5 +547,27 @@ internal final class TextProcessingRunner {
       }
     }
     return TextProcessingRunResult(context: context, polishError: polishError)
+  }
+
+  /// #3124: the lowercased words the spelling steps must leave alone: the USER's own Custom Words
+  /// from the chain's `WordCorrectionStep` vocabulary, every canonical and every word inside a
+  /// multi-word one (a Custom Word "Kennedy Center" protects "center"). Built-in and pack terms are
+  /// excluded on purpose: they are app-authored American defaults ("recognizer", and "offense" in
+  /// the legal pack), and protecting them would override the user's British choice. Read whether
+  /// or not word correction is switched on: a Custom Word is the user's spelling either way. Empty
+  /// when the chain has no word-correction step.
+  static func spellingProtectedWords(steps: [any TextProcessingStep]) -> Set<String> {
+    guard let wordCorrection = steps.lazy.compactMap({ $0 as? WordCorrectionStep }).first else {
+      return []
+    }
+    var words: Set<String> = []
+    for term in wordCorrection.correctorVocabulary.terms where term.source == .user {
+      let canonical = term.canonical.lowercased()
+      words.insert(canonical)
+      for word in canonical.split(whereSeparator: { !($0.isLetter || $0 == "'" || $0 == "\u{2019}") }) {
+        words.insert(String(word).replacingOccurrences(of: "\u{2019}", with: "'"))
+      }
+    }
+    return words
   }
 }

@@ -330,7 +330,7 @@ final class PipelineSettingsSync {
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
     case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,
       .vadEnergyGate, .restoreClipboardAfterPaste, .smartInsertion, .languageMode,
-      .useStreamingASR:
+      .englishSpelling, .useStreamingASR:
       break  // Frozen per recording; see `DictationSessionConfig`.
     case .whisperKitLanguage:
       break  // Deprecated — legacy migration only (SettingsManager:460-484).

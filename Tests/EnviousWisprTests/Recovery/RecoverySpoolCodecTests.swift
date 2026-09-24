@@ -30,7 +30,9 @@ struct RecoverySpoolCodecTests {
       polishPromptVersion: "v38",
       // A NON-default value, so the round-trip rows below prove the field
       // survives rather than that a default was re-minted on the way back.
-      s1Control: S1ControlSettings(styling: .formal, structure: .prose, context: .email))
+      s1Control: S1ControlSettings(styling: .formal, structure: .prose, context: .email),
+      // #3124: non-default for the same reason.
+      englishSpelling: .british)
   }
 
   @Test("an audio frame round-trips bit-exact under AES-GCM")
@@ -231,7 +233,40 @@ struct RecoverySpoolCodecTests {
       llmProvider: snapshot().llmProvider,
       llmModel: snapshot().llmModel,
       polishPromptVersion: snapshot().polishPromptVersion,
-      s1Control: nil)
+      s1Control: nil,
+      englishSpelling: snapshot().englishSpelling)
+    #expect(decoded == expected)
+  }
+
+  /// #3124: a spool written before English (UK) has no `englishSpelling` key. It must decode with
+  /// the field nil (replayed as American) and every other field intact, so recovery keeps its
+  /// engine, language and polish fidelity.
+  @Test("a spool written before #3124 decodes with the spelling absent")
+  func legacySpoolWithoutEnglishSpellingStillDecodes() throws {
+    let current = try JSONEncoder().encode(snapshot())
+    var fields = try #require(
+      try JSONSerialization.jsonObject(with: current) as? [String: Any])
+    #expect(fields["englishSpelling"] as? String == "british", "a NEW snapshot must carry the key")
+    fields.removeValue(forKey: "englishSpelling")
+    let legacy = try JSONSerialization.data(withJSONObject: fields)
+    #expect(String(decoding: legacy, as: UTF8.self).contains("englishSpelling") == false)
+
+    let decoded = try JSONDecoder().decode(RecordingSettingsSnapshot.self, from: legacy)
+    #expect(decoded.englishSpelling == nil)
+    let expected = RecordingSettingsSnapshot(
+      backendType: snapshot().backendType,
+      backendSupportsLanguageDetection: snapshot().backendSupportsLanguageDetection,
+      languageMode: snapshot().languageMode,
+      wordCorrectionEnabled: snapshot().wordCorrectionEnabled,
+      fillerRemovalEnabled: snapshot().fillerRemovalEnabled,
+      emojiFormatterEnabled: snapshot().emojiFormatterEnabled,
+      spokenPunctuationEnabled: snapshot().spokenPunctuationEnabled,
+      customWordsVersion: snapshot().customWordsVersion,
+      llmProvider: snapshot().llmProvider,
+      llmModel: snapshot().llmModel,
+      polishPromptVersion: snapshot().polishPromptVersion,
+      s1Control: snapshot().s1Control,
+      englishSpelling: nil)
     #expect(decoded == expected)
   }
 

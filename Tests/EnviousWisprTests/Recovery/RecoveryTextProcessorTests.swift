@@ -17,7 +17,8 @@ struct RecoveryTextProcessorTests {
     fillerRemoval: Bool, provider: String = "none",
     backendType: ASRBackendType = .parakeet, lidCapable: Bool = false,
     languageMode: LanguageMode = .auto,
-    s1Control: S1ControlSettings? = nil
+    s1Control: S1ControlSettings? = nil,
+    englishSpelling: EnglishSpelling? = nil
   ) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
       backendType: backendType,
@@ -31,7 +32,8 @@ struct RecoveryTextProcessorTests {
       llmProvider: provider,
       llmModel: "none",
       polishPromptVersion: nil,
-      s1Control: s1Control)
+      s1Control: s1Control,
+      englishSpelling: englishSpelling)
   }
 
   /// #2649: a recovered take polishes under the tone the user had picked WHEN
@@ -67,6 +69,24 @@ struct RecoveryTextProcessorTests {
     #expect(outcome.text == "the code is 203")
     #expect(outcome.polishedText == nil)  // provider .none ⇒ no polish
     #expect(outcome.polishError == nil)
+  }
+
+  /// #3124: a recovered take replays under the spelling in force when it was recorded, and a spool
+  /// from before English (UK) replays American.
+  @Test("a British recording recovers British; a legacy spool recovers American")
+  func englishSpellingReplays() async {
+    let british = RecoveryTextProcessor(keychainManager: KeychainManager())
+    british.applySettings(
+      snapshot(fillerRemoval: false, languageMode: .locked("en"), englishSpelling: .british))
+    let britishOutcome = await british.process(rawText: "the color of the center")
+    #expect(britishOutcome.text == "the colour of the centre")
+    #expect(britishOutcome.polishedText == nil)  // provider .none: polish bypassed
+
+    let legacy = RecoveryTextProcessor(keychainManager: KeychainManager())
+    legacy.applySettings(
+      snapshot(fillerRemoval: false, languageMode: .locked("en"), englishSpelling: nil))
+    let legacyOutcome = await legacy.process(rawText: "the color of the center")
+    #expect(legacyOutcome.text == "the color of the center")
   }
 
   @Test("disabling filler removal in the snapshot leaves the text untouched")

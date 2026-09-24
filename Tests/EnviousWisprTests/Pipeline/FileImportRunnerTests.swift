@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprLLM
 import Testing
 
@@ -18,7 +19,9 @@ struct FileImportRunnerTests {
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
+      englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep())
   }
 
@@ -57,6 +60,28 @@ struct FileImportRunnerTests {
         ObjectIdentifier(type(of: $0)) == ObjectIdentifier(type(of: $1))
       },
       "the import chain is not the ordinary chain's order with the snippet step removed")
+  }
+
+  /// #3124: an imported part is spelled under the choice frozen at Start, British or American.
+  @Test("a part imported under English (UK) comes back British; American stays American")
+  func importedPartFollowsFrozenSpelling() async throws {
+    func snapshot(_ spelling: EnglishSpelling?) -> RecordingSettingsSnapshot {
+      RecordingSettingsSnapshot(
+        backendType: .parakeet, backendSupportsLanguageDetection: false,
+        languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
+        emojiFormatterEnabled: false, spokenPunctuationEnabled: false, llmProvider: "none",
+        llmModel: "none", s1Control: nil, englishSpelling: spelling)
+    }
+    let british = FileImportRunner(keychainManager: KeychainManager())
+    british.freeze(settings: snapshot(.british), vocabulary: nil)
+    let britishPart = try await british.process(part: "the color of the center")
+    #expect(britishPart.displayText == "the colour of the centre")
+    #expect(britishPart.polishedText == nil)  // provider none: polish bypassed
+
+    let american = FileImportRunner(keychainManager: KeychainManager())
+    american.freeze(settings: snapshot(.american), vocabulary: nil)
+    #expect(try await american.process(part: "the color of the center").displayText
+      == "the color of the center")
   }
 
   /// A part cannot run before the import's configuration is frozen. This is a programming error rather

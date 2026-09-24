@@ -57,6 +57,8 @@ public final class SettingsManager {
     case debugLogLevel
     case whisperKitLanguage
     case languageMode
+    /// #3124: the English spelling preference; frozen per recording with `languageMode`.
+    case englishSpelling
     case selectedInputDeviceUID
     case preferredInputDeviceIDOverride
     /// #2664: per-device "Microphone socket" choice, keyed by device UID.
@@ -113,7 +115,7 @@ public final class SettingsManager {
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
     "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
-    "whisperKitLanguage", "languageMode",
+    "whisperKitLanguage", "languageMode", "englishSpelling",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "inputChannelByDeviceUID",
     "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
     "warmEnginePolicy", "appearancePreference",
@@ -942,6 +944,17 @@ public final class SettingsManager {
     }
   }
 
+  /// #3124: which spelling English dictation is delivered in. A PREFERENCE: it is in force only
+  /// while `languageMode` is locked to English (`EnglishSpelling.effective`), so choosing another
+  /// language never has to clear it and choosing English (UK) again restores it. Persisted as its
+  /// raw value; absent or unknown loads as `.american`.
+  public var englishSpelling: EnglishSpelling {
+    didSet {
+      defaults.set(englishSpelling.rawValue, forKey: "englishSpelling")
+      onChange?(.englishSpelling)
+    }
+  }
+
   public var selectedInputDeviceUID: String {
     didSet {
       defaults.set(selectedInputDeviceUID, forKey: "selectedInputDeviceUID")
@@ -1280,6 +1293,9 @@ public final class SettingsManager {
       return migrated
     }()
     languageMode = resolvedLanguageMode
+    englishSpelling =
+      EnglishSpelling(rawValue: defaults.string(forKey: "englishSpelling") ?? "")
+      ?? SettingsDefaultValues.englishSpelling
     selectedInputDeviceUID =
       defaults.string(forKey: "selectedInputDeviceUID")
       ?? SettingsDefaultValues.selectedInputDeviceUID

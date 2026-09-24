@@ -11,24 +11,34 @@ package struct LanguageEvidence: Sendable {
   package let lockedLanguage: String?
   package let engineDetectsLanguage: Bool
   package let engineReportedLanguage: String?
+  /// #3124: the spelling in force for this take, frozen with the lock by the caller
+  /// (`EnglishSpelling.effective`). Not language evidence in the resolver's sense: the runner
+  /// seeds it into the context unchanged, and the spelling steps read it from there.
+  package let englishSpelling: EnglishSpelling
 
   package init(
-    lockedLanguage: String?, engineDetectsLanguage: Bool, engineReportedLanguage: String?
+    lockedLanguage: String?, engineDetectsLanguage: Bool, engineReportedLanguage: String?,
+    englishSpelling: EnglishSpelling
   ) {
     self.lockedLanguage = lockedLanguage
     self.engineDetectsLanguage = engineDetectsLanguage
     self.engineReportedLanguage = engineReportedLanguage
+    self.englishSpelling = englishSpelling
   }
 
   /// The user locked a language: nothing else is consulted.
-  package static func locked(_ language: String) -> LanguageEvidence {
+  package static func locked(
+    _ language: String, englishSpelling: EnglishSpelling = .american
+  ) -> LanguageEvidence {
     LanguageEvidence(
-      lockedLanguage: language, engineDetectsLanguage: false, engineReportedLanguage: nil)
+      lockedLanguage: language, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      englishSpelling: englishSpelling)
   }
 
   /// Automatic on an engine that does not detect: the text alone decides.
   package static let none = LanguageEvidence(
-    lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil)
+    lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+    englishSpelling: .american)
 }
 
 /// Decides what language a finished dictation is in, for consumers that must not

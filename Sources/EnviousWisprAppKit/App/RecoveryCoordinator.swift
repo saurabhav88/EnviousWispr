@@ -322,7 +322,10 @@ final class RecoveryCoordinator {
       spokenPunctuationEnabled: settings.spokenPunctuationEnabled,
       llmProvider: settings.llmProvider.rawValue,
       llmModel: resolvedModel,
-      s1Control: settings.s1Control)
+      s1Control: settings.s1Control,
+      // #3124: the value in force for this take, replayed on recovery.
+      englishSpelling: EnglishSpelling.effective(
+        languageMode: settings.languageMode, stored: settings.englishSpelling))
 
     // Constructing the store prepares the spool directory before the helper
     // opens the file at this path. Cheap local FS (not securityd IPC).

@@ -74,6 +74,35 @@ struct DictationSessionConfigFactoryTests {
     #expect(next.smartInsertion == false, "the next recording observes the new value")
   }
 
+  /// #3124: the factory freezes the EFFECTIVE spelling. British needs an English lock; the same
+  /// stored preference under another language is American; a change after `make` belongs to the
+  /// next recording.
+  @Test("English spelling is frozen as the effective value at recording start")
+  func englishSpellingFrozenAsEffectiveValue() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.languageMode = .locked("en")
+    harness.settings.englishSpelling = .british
+    let make = {
+      DictationSessionConfigFactory.make(
+        asrManager: harness.asrManager,
+        kernelDriver: harness.kernelDriver,
+        whisperKitKernelDriver: harness.whisperKitKernelDriver,
+        settings: harness.settings,
+        triggerSource: .pttHotkey)
+    }
+    let british = make()
+    #expect(british.englishSpelling == .british)
+    #expect(british.lockedLanguageCode == "en", "the engine still receives plain English")
+
+    harness.settings.languageMode = .locked("de")
+    let german = make()
+    #expect(german.englishSpelling == .american, "a British preference under German is not in force")
+    #expect(british.englishSpelling == .british, "the in-flight config must not follow the setting")
+
+    harness.settings.languageMode = .auto
+    #expect(make().englishSpelling == .american, "Auto never applies British spelling")
+  }
+
   /// #2087. Same shape as the smart-insertion freeze above, applied to a setting
   /// whose value is more visible to the user: it decides whether the cancel
   /// shortcut destroys a dictation or keeps it.

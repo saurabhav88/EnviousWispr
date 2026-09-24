@@ -163,6 +163,12 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var emojiRestored: Int?
   public var emojiRestoreIncomplete: Bool?
   public var emojiLatencyMs: Double?
+  /// #3124 English (UK): `englishSpelling` is `.british` on a take frozen as British and nil
+  /// otherwise (additive optional Codable; nil on every older record). `spellingSwaps` is the
+  /// swaps the spelling passes made that the chain ACCEPTED; nil when no pass ran. Neither proves
+  /// the delivered text is British. Counts only (`telemetry-privacy-boundary`).
+  public var englishSpelling: EnglishSpelling?
+  public var spellingSwaps: Int?
   /// #1309 effective-path streaming telemetry (WhisperKit only; nil for
   /// Parakeet and pre-#1309 transcripts on disk — additive optional Codable,
   /// back-compatible). `streamingMode` above is the REQUESTED mode (kernel
@@ -248,6 +254,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     emojiRestored: Int? = nil,
     emojiRestoreIncomplete: Bool? = nil,
     emojiLatencyMs: Double? = nil,
+    englishSpelling: EnglishSpelling? = nil,
+    spellingSwaps: Int? = nil,
     streamingEffective: Bool? = nil,
     streamingDegradeReason: String? = nil,
     streamingFinalPath: String? = nil,
@@ -312,6 +320,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.emojiRestored = emojiRestored
     self.emojiRestoreIncomplete = emojiRestoreIncomplete
     self.emojiLatencyMs = emojiLatencyMs
+    self.englishSpelling = englishSpelling
+    self.spellingSwaps = spellingSwaps
     self.streamingEffective = streamingEffective
     self.streamingDegradeReason = streamingDegradeReason
     self.streamingFinalPath = streamingFinalPath
