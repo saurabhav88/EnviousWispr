@@ -109,10 +109,18 @@ struct PasteLandingPolicyTests {
         .absent, bundleID: nil, appClass: .native, tier: .cgEvent, excluded: []) == false)
   }
 
-  /// Drift Guard in a Product Outcome suite on purpose: the shipped table starts empty (founder
-  /// 2026-09-23). An entry must arrive with its gate evidence, and this is where that is noticed.
-  @Test("The shipped exclusion table is empty until a gate fails")
-  func shippedExclusionsStartEmpty() {
-    #expect(PasteLandingPolicy.excludedRoutes.isEmpty)
+  /// Drift Guard in a Product Outcome suite on purpose: the shipped table holds only apps that
+  /// failed a PR B gate, each with its evidence line in the policy. A new entry is noticed here.
+  @Test("The shipped exclusion table is exactly the apps that failed a gate")
+  func shippedExclusionsAreTheFailedGates() {
+    #expect(
+      PasteLandingPolicy.excludedRoutes == [
+        .init(bundleID: "com.microsoft.VSCode"), .init(bundleID: "com.microsoft.Excel"),
+      ])
+    for tier in Self.keyRoutes {
+      #expect(PasteLandingPolicy.routeMayRetain(bundleID: "com.microsoft.VSCode", tier: tier) == false)
+      #expect(PasteLandingPolicy.routeMayRetain(bundleID: "com.microsoft.Excel", tier: tier) == false)
+      #expect(PasteLandingPolicy.routeMayRetain(bundleID: "com.google.Chrome", tier: tier))
+    }
   }
 }

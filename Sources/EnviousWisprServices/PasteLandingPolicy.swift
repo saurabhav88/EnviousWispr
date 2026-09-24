@@ -46,7 +46,16 @@ package enum PasteLandingPolicy {
   /// Apps and routes that failed a PR B gate. Starts EMPTY (founder 2026-09-23: built on, narrowed only
   /// by evidence); each entry added later carries its evidence line beside it. An exclusion changes
   /// only permission: the arrival session still observes and reports the paste, late hits included.
-  package static let excludedRoutes: Set<Exclusion> = []
+  package static let excludedRoutes: Set<Exclusion> = [
+    // G3, #3106 PR B #996 app UAT 2026-09-23: the dictation landed in the editor (read back by
+    // the harness) while the arrival session saw `absent` (`late_check=censored`); VS Code's editor
+    // does not expose the pasted text to the reader in time. A false miss would replace the user's
+    // clipboard, so no route retains here.
+    Exclusion(bundleID: "com.microsoft.VSCode"),
+    // Same run: `menu_paste` into a cell read `absent`, and neither the harness nor #996 could read
+    // the cell back, so the miss is unconfirmed; a cell paste can land outside the element watched.
+    Exclusion(bundleID: "com.microsoft.Excel"),
+  ]
 
   /// May this paste's miss keep the dictation on the clipboard and show the clipboard pill?
   ///
