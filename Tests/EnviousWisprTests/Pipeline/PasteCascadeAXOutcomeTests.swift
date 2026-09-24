@@ -73,14 +73,16 @@ struct PasteCascadeTier1DeclineReasonTests {
   @Test("A Chromium address bar declines Tier 1 with its own reason, never `nil`")
   func chromiumOmniboxDeclinesWithItsOwnReason() {
     let reason = tier1DeclineReason(
-      axTrusted: true, classification: .textField, isChromiumOmnibox: true)
+      axTrusted: true, classification: .textField, isChromiumOmnibox: true,
+      isGeckoDestination: false)
     #expect(reason == .chromiumOmniboxNavigationSeam)
   }
 
   @Test("An ordinary text field — Chromium or not — still runs Tier 1")
   func ordinaryTextFieldRunsTier1() {
     let reason = tier1DeclineReason(
-      axTrusted: true, classification: .textField, isChromiumOmnibox: false)
+      axTrusted: true, classification: .textField, isChromiumOmnibox: false,
+      isGeckoDestination: false)
     #expect(reason == nil)
   }
 
@@ -90,17 +92,59 @@ struct PasteCascadeTier1DeclineReasonTests {
     // computed truthfully (it requires an AX read) — the untrusted branch
     // must win regardless of what is passed for it.
     let reason = tier1DeclineReason(
-      axTrusted: false, classification: .textField, isChromiumOmnibox: true)
+      axTrusted: false, classification: .textField, isChromiumOmnibox: true,
+      isGeckoDestination: false)
     #expect(reason == .accessibilityDenied)
+  }
+
+  @Test("A Gecko browser's text field declines Tier 1 with its own reason (#2652)")
+  func geckoDeclinesTier1() {
+    #expect(
+      tier1DeclineReason(
+        axTrusted: true, classification: .textField, isChromiumOmnibox: false,
+        isGeckoDestination: true) == .geckoDirectWriteUnconfirmable)
+    // Accessibility denied, missing focus and non-text focus keep their own reasons.
+    #expect(
+      tier1DeclineReason(
+        axTrusted: false, classification: .textField, isChromiumOmnibox: false,
+        isGeckoDestination: true) == .accessibilityDenied)
+    #expect(
+      tier1DeclineReason(
+        axTrusted: true, classification: .missing, isChromiumOmnibox: false,
+        isGeckoDestination: true) == .focusMissing)
+    #expect(
+      tier1DeclineReason(
+        axTrusted: true, classification: .nonText, isChromiumOmnibox: false,
+        isGeckoDestination: true) == .focusNonText)
+  }
+
+  @Test("Exactly the four verified Gecko bundle IDs skip the direct write; nothing else does")
+  func geckoBundleIDsAreExact() {
+    let gecko = [
+      "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition", "org.mozilla.nightly",
+      "app.zen-browser.zen",
+    ]
+    for id in gecko { #expect(PasteDeliveryPolicy.skipsDirectWrite(bundleID: id), "\(id)") }
+    #expect(PasteDeliveryPolicy.directWriteSkippedBundleIDs.count == gecko.count)
+    let others: [String?] = [
+      nil, "", "com.apple.Safari", "com.google.Chrome", "com.brave.Browser",
+      "com.microsoft.edgemac", "com.apple.TextEdit", "org.mozilla.firefox.helper",
+      "ORG.MOZILLA.FIREFOX", "org.mozilla", "org.mozilla.librewolf",
+    ]
+    for id in others {
+      #expect(!PasteDeliveryPolicy.skipsDirectWrite(bundleID: id), "\(String(describing: id))")
+    }
   }
 
   @Test("A Chromium address bar still yields the ordinary reason for .missing and .nonText")
   func nonTextFieldClassificationsUnaffectedByChromiumFlag() {
     #expect(
-      tier1DeclineReason(axTrusted: true, classification: .missing, isChromiumOmnibox: true)
+      tier1DeclineReason(axTrusted: true, classification: .missing, isChromiumOmnibox: true,
+      isGeckoDestination: false)
         == .focusMissing)
     #expect(
-      tier1DeclineReason(axTrusted: true, classification: .nonText, isChromiumOmnibox: true)
+      tier1DeclineReason(axTrusted: true, classification: .nonText, isChromiumOmnibox: true,
+      isGeckoDestination: false)
         == .focusNonText)
   }
 }

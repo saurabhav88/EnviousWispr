@@ -451,6 +451,13 @@ public enum PasteService {
     /// and is deliberately not routed here: `addressBarFamily(of:)` returns
     /// `nil` for it.
     case chromiumOmniboxNavigationSeam = "not_attempted_chromium_omnibox_navigation_seam"
+    /// A Gecko browser (Firefox and its forks), decided by the CASCADE before Tier 1 runs
+    /// (#2652). There the direct write LANDS but the immediate read-back still reports no
+    /// change, so the verification permits Tier 2 and the dictation arrives twice: measured
+    /// 5/5 in a Firefox 156 page textarea on 2026-09-24, and 12 of 14 Zen / 7 of 13 Firefox
+    /// deliveries in `paste.copies_observed`. With this decline, Tier 2's Cmd+V alone delivered
+    /// once in every valid live trial (Firefox 5/5, Developer Edition 5/5, Nightly 6/6).
+    case geckoDirectWriteUnconfirmable = "not_attempted_gecko_direct_write_unconfirmable"
   }
 
   /// What a Tier 1 attempt produced, including the evidence behind it.
