@@ -442,9 +442,79 @@ internal final class PasteCascadeExecutor {
   /// costs one line there and buys a grep that cannot miss a future one.
   private let policy: PasteDeliveryPolicy
 
-  internal init(pasteboard: NSPasteboard, policy: PasteDeliveryPolicy) {
+  /// #3106 PR B: told once, with the take and the board's receipt, when a checked cleanup kept a
+  /// missed paste's dictation on the board. AppKit decides whether a pill may still show.
+  /// `reportShown` must be called exactly once, with the overlay's own verdict: it completes the
+  /// take's `paste.landing_retained` row.
+  private let onRetained: RetainedHandler?
+
+  typealias RetainedHandler = @MainActor (
+    _ takeID: String, _ retainedChangeCount: Int, _ reportShown: @escaping @MainActor (Bool) -> Void
+  ) -> Void
+
+  internal init(
+    pasteboard: NSPasteboard, policy: PasteDeliveryPolicy,
+    onRetained: RetainedHandler? = nil
+  ) {
     self.pasteboard = pasteboard
     self.policy = policy
+    self.onRetained = onRetained
+  }
+
+  /// #3106 PR B: the landing check a COMMITTED key paste hands its one clipboard cleanup, or nil
+  /// when there is none to wait for: no committed session, or a route that could never keep a miss
+  /// (Tier 1, clipboard-only, an excluded app). Nil leaves the cleanup exactly as it was.
+  ///
+  /// Route, app and take come from the session's own context, set when it was prepared for this
+  /// tier, and the take id is the one the caller snapshotted before delivery began.
+  /// Lets exactly one caller through: a take's `paste.landing_retained` row is completed once.
+  @MainActor
+  private final class ReportOnce {
+    private var done = false
+    func claim() -> Bool {
+      guard !done else { return false }
+      done = true
+      return true
+    }
+  }
+
+  func landingCheck(
+    for capture: PasteArrivalCapture?, request: PasteDeliveryRequest
+  ) -> ClipboardCleanup.LandingCheck? {
+    guard let capture else { return nil }
+    let tier = capture.context.tier
+    let bundleID = capture.context.bundleID
+    guard PasteLandingPolicy.routeMayRetain(bundleID: bundleID, tier: tier) else { return nil }
+    let takeID = request.takeID
+    let onRetained = self.onRetained
+    return ClipboardCleanup.LandingCheck(
+      decision: { await capture.landingDecision() },
+      // The class is read when the decision is in, not now: a host whose manual-accessibility
+      // answer was unknown at prepare can learn it during observation, and the session's own
+      // `isMiss` judges the same decision with the class as it then stands.
+      mayRetain: { landing in
+        PasteLandingPolicy.mayRetain(
+          landing, bundleID: bundleID, appClass: capture.appClass, tier: tier)
+      },
+      legacyText: request.legacyText,
+      onOutcome: { outcome in
+        // The ONE owner of `paste.landing_retained`: one row per checked miss, completed once.
+        let tierLabel = tier.rawValue
+        let classLabel = capture.appClass.rawValue
+        let once = ReportOnce()
+        let report: @MainActor (Bool) -> Void = { shown in
+          guard once.claim() else { return }
+          TelemetryService.shared.pasteLandingRetained(
+            takeID: takeID, tier: tierLabel, appClass: classLabel,
+            outcome: outcome == .yielded ? "yielded" : "retained", pillShown: shown)
+        }
+        guard case .retained(let changeCount) = outcome, let takeID, let onRetained else {
+          report(false)
+          return
+        }
+        onRetained(takeID, changeCount, report)
+      },
+      onDecisionTimeout: { capture.cancel() })
   }
 
   #if DEBUG
@@ -711,7 +781,21 @@ internal final class PasteCascadeExecutor {
       let tier2ActivationStart = CFAbsoluteTimeGetCurrent()
       logPasteTimingStart(
         step: "tier2_activate", startedAt: tier2ActivationStart, bundleId: bundleId)
-      let activation = await activate(app)
+      var activation = await activate(app)
+      #if DEBUG
+        // #3106 PR B gate G6 (Live UAT only): Tier 2b runs only after this activation times out,
+        // which cannot be staged by hand. With `EW_UAT_FORCE_TIER2B=1` in the launch environment the
+        // activation reads as timed out, so the REAL AppleScript paste runs against the real target.
+        // DEBUG-only, env-gated, logged on every use; Release compiles none of it.
+        if ProcessInfo.processInfo.environment["EW_UAT_FORCE_TIER2B"] == "1" {
+          activation = (activated: false, elapsed: activation.elapsed)
+          Task {
+            await AppLogger.shared.log(
+              "UAT seam: Tier 2 activation forced to time out (EW_UAT_FORCE_TIER2B)",
+              level: .info, category: "PasteTiming")
+          }
+        }
+      #endif
       let activated = activation.activated
       let elapsed = activation.elapsed
       logPasteTiming(
@@ -803,7 +887,8 @@ internal final class PasteCascadeExecutor {
             // Scheduled, not awaited (#2197). The delay and the guard are
             // unchanged; the dictation just stops queueing behind them.
             ClipboardCleanup.scheduleRestore(
-              snapshot, changeCountAfterPaste: dispatchResult.changeCount, tier: tier)
+              snapshot, changeCountAfterPaste: dispatchResult.changeCount, tier: tier,
+              landing: tier == .cgEvent ? landingCheck(for: arrivalCapture, request: request) : nil)
           }
         }
       } else {
@@ -897,7 +982,9 @@ internal final class PasteCascadeExecutor {
         }
         if let snapshot {
           ClipboardCleanup.scheduleRestore(
-            snapshot, changeCountAfterPaste: changeCount, tier: tier)
+            snapshot, changeCountAfterPaste: changeCount, tier: tier,
+            landing: tier == .appleScript
+              ? landingCheck(for: arrivalCapture, request: request) : nil)
         }
       }
     }
@@ -977,7 +1064,8 @@ internal final class PasteCascadeExecutor {
               // Restore the user's prior clipboard after the paste lands.
               if let snapshot {
                 ClipboardCleanup.scheduleRestore(
-                  snapshot, changeCountAfterPaste: changeCount, tier: tier)
+                  snapshot, changeCountAfterPaste: changeCount, tier: tier,
+                  landing: landingCheck(for: arrivalCapture, request: request))
               }
             } else {
               // Enabled but AXPress failed. Leave the payload on the clipboard
@@ -1046,6 +1134,19 @@ internal final class PasteCascadeExecutor {
           )
         }
       }
+    } else if !request.restoreClipboardAfterPaste,
+      let submitted = submittedClipboardChangeCount,
+      let landing = landingCheck(for: committedArrivalCapture, request: request)
+    {
+      // #3106 PR B, clipboard restore OFF: a committed key paste on a route that could keep a miss
+      // gets ONE owned cleanup, even with an already-legacy payload, so the same task can wait for
+      // the landing decision. It still performs today's legacy rewrite at today's moment (skipped
+      // when the board already holds the legacy text) and only then waits; see
+      // `ClipboardCleanup.scheduleLegacyRewrite`. Every other case falls to the branch below
+      // unchanged.
+      ClipboardCleanup.scheduleLegacyRewrite(
+        legacyText: request.legacyText, submittedChangeCount: submitted, tier: tier,
+        landing: landing)
     } else if mustRewriteClipboardToLegacy(
       submitted: submittedKind,
       routeWroteClipboard: tier != .axDirect,

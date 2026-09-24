@@ -59,6 +59,10 @@ PAGES = {
     # Nothing focusable, and whatever had focus is blurred: the #2705 shape, a key paste into a
     # window with no text field.
     "nofocus": '<p>Nothing on this page takes text.</p><script>document.activeElement.blur()</script>',
+    # G6 (#3106 PR B): a focused text area that refuses the paste. It is a text role, so the cascade
+    # takes the key-paste tiers (not the menu), and the paste lands nowhere: a genuine miss.
+    "readonly": ('<textarea id="t" readonly autofocus rows="6" cols="70"></textarea>'
+                 '<script>document.getElementById("t").focus()</script>'),
 }
 
 
@@ -83,7 +87,7 @@ def open_page(name):
                       lambda: active_tab_url().endswith(os.path.basename(path)), deadline=10.0):
         raise u.Aborted(f"{name}: the page did not load in the active tab "
                         f"(active tab: {active_tab_url()!r})")
-    if name == "focused" and not u.wait_for(
+    if name in ("focused", "readonly") and not u.wait_for(
             "the page's text box focused", lambda: focused_role() == "AXTextArea", deadline=5.0):
         raise u.Aborted(f"focused: the text box is not focused (focused role {focused_role()!r})")
     return path
@@ -164,7 +168,8 @@ def address_bar_value():
     return found[0] if found else None
 
 
-EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea"}
+EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea", "readonly": "AXTextArea",
+                  "copy-during-wait": "AXWebArea", "new-take": "AXWebArea"}
 
 
 class LiveTakeNotStopped(u.Aborted):
@@ -176,7 +181,7 @@ class LiveTakeNotStopped(u.Aborted):
 TAKE_STUCK = {"stuck": False}
 
 
-def take(label, base, bundle=CHROME, route=None):
+def take(label, base, bundle=CHROME, route=None, expected_takes=1):
     """One silent push-to-talk take into whatever `bundle` (Chrome unless given) has focused.
     Returns every landing line and paste-cascade line written since `base`.
 
@@ -207,7 +212,8 @@ def take(label, base, bundle=CHROME, route=None):
         time.sleep(2.0)  # settle: a second, unrequested take would start inside this window (#3107)
         virtual, transports = take_was_virtual(base)
         starts = u.log_since(base).count("Recording started")
-        u.check(f"{label}: exactly one take", starts == 1, f"{starts} takes started")
+        u.check(f"{label}: exactly {expected_takes} take(s)", starts == expected_takes,
+                f"{starts} takes started")
         u.check(f"{label}: the take captured through the virtual device", virtual, str(transports))
     finally:
         try:
@@ -257,6 +263,7 @@ def phase(name):
     sentinel = f"ew-uat-sentinel-landing-{name}"
     u.set_clipboard_text(sentinel)
     base = u.log_size()
+    PHASE_BASE["offset"] = base
     lines, cascades = take(name, base)  # not metered: speech plays into BlackHole
     quiet(f"{name} checks", verify, name, lines, cascades, bar_before, restore_on, sentinel)
 
@@ -266,7 +273,10 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
     # The focused box must take cgevent, the tier this control exists to prove. With no text
     # field, the cascade routes a non-text focus to the Edit menu's Paste (tier 2c, measured
     # 2026-09-23: `menu_paste`), which the check observes too; any of the three proves the path.
-    wanted = ["cgevent"] if name == "focused" else None
+    # `EW_UAT_FORCE_TIER2B=1` in the APP's launch environment (G6) turns the key paste into the
+    # AppleScript tier; this run is told so by the same variable in its own environment.
+    key_tier = "applescript" if os.environ.get("EW_UAT_FORCE_TIER2B") == "1" else "cgevent"
+    wanted = [key_tier] if name in ("focused", "readonly") else None
     u.check(f"{name}: one paste into Chrome, by an observed key-paste tier",
             (chrome_tiers == wanted) if wanted else
             (len(chrome_tiers) == 1 and chrome_tiers[0] in ("cgevent", "applescript", "menu_paste")),
@@ -299,9 +309,16 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
     else:
         # Chrome reports the page's web area as focused here (measured 2026-09-23: AXWebArea,
         # value ''), so `absent` is as true an answer as `no_target`: the paste went nowhere and
-        # the field did not change. Only `found` would be a false observation. PR A only
-        # observes, so the previous clipboard still comes back below.
-        u.check(f"{name}: observed is never found", observed != "found", f"{observed}/{reason}")
+        # the field did not change. PR B (G5): that miss must KEEP the words and show the pill.
+        u.check(f"{name}: observed is a miss (absent or no_target)",
+                observed in ("absent", "no_target"), f"{observed}/{reason}")
+        if name == "readonly":
+            # The miss must be REAL: the refusing field is still empty, read independently.
+            value = textbox_value()
+            u.check(f"{name}: the read-only box is still empty (read, not unreadable)",
+                    value == "", repr(value if value is None else value[:80]))
+        verify_kept(name)
+        return
     if restore_on:
         u.check(f"{name}: the previous clipboard is back (restore on)",
                 u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,
@@ -310,6 +327,117 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
         u.skip(f"{name}: clipboard restore", "the founder's restore setting is off")
     u.check(f"{name}: the tier is not clipboard_only (the only tier that shows the notice)",
             "clipboard_only" not in [t for t, _ in cascades], str(cascades))
+
+
+# PR B: the cleanup's verdict and the notice's, both DEBUG `app.log` lines without text.
+KEPT = re.compile(r"Clipboard cleanup: op=(keep_dictation|yield|restore|legacy_rewrite), "
+                  r"applied=(\w+), delay=\d+ms, tier=(\w+), checked=true")
+NOTICE = re.compile(r"RETAINED_NOTICE take=(\S+) shown=(\w+) why=(\w+)")
+
+
+def verify_kept(name):
+    """G5: the words stay on the clipboard, the existing pill shows, and a manual ⌘V into a text
+    box pastes them once. Reads the log from this phase's take on (`PHASE_BASE`)."""
+    log = lambda: u.log_since(PHASE_BASE["offset"])  # noqa: E731
+    u.wait_for("the checked cleanup's line", lambda: KEPT.search(log()), deadline=10.0)
+    kept = KEPT.findall(log())
+    u.check(f"{name}: the checked cleanup kept the dictation",
+            [k[0] for k in kept] == ["keep_dictation"], str(kept))
+    u.wait_for("the notice's line", lambda: NOTICE.search(log()), deadline=5.0)
+    notices = NOTICE.findall(log())
+    u.check(f"{name}: the \"Copied. Press ⌘V to paste\" notice was shown, once",
+            len(notices) == 1 and notices[0][1] == "true", str(notices))
+    board = u.clipboard_text() or ""
+    u.check(f"{name}: the clipboard holds the dictation (5+ of 7 words)",
+            u.sentence_overlap(board) >= 5, repr(board[:80]))
+    # The user's recovery: click into a text box, press ⌘V.
+    quiet(f"{name} recovery staging", open_page, "focused")
+    import simulate_input
+    simulate_input.press_key("v", cmd=True)
+    landed = u.wait_for("the recovered paste", lambda: u.sentence_overlap(textbox_value() or "") >= 5,
+                        deadline=5.0)
+    value = textbox_value() or ""
+    u.check(f"{name}: ⌘V pastes the kept words into the box, once",
+            landed and value.lower().count(SENTENCE.split()[0].lower()) == 1, repr(value[:80]))
+
+
+PHASE_BASE = {"offset": 0}
+
+
+def phase_new_take_after_miss():
+    """§8 (#3106 PR B): a new dictation starts between a missed paste and its notice. The old
+    notice must not show; the words stay on the clipboard (the cleanup already kept them). A
+    watcher presses the push-to-talk key the moment the cascade logs the first paste, and holds it
+    silently (the route is still BlackHole), so the second take has no speech and pastes nothing."""
+    import threading
+    import simulate_input
+    name = "nofocus"
+    print("\n== new take after a miss: a second dictation starts before the notice")
+    quiet("newtake staging", open_page, name)
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+    started = {"at": None}
+
+    def second_take_on_paste():
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if CASCADE.search(u.log_since(base)):
+                started["at"] = time.time()
+                simulate_input.hold_modifier(61, 1.2)  # right Option: the configured push-to-talk
+                return
+            time.sleep(0.005)
+    watcher = threading.Thread(target=second_take_on_paste, daemon=True)
+    watcher.start()
+    lines, cascades = take("new-take", base, expected_takes=2)
+    watcher.join(timeout=10)
+    u.check("newtake: the second take started right after the paste", started["at"] is not None)
+    u.check("newtake: the first paste was a miss",
+            len(lines) >= 1 and lines[0][1] in ("absent", "no_target"), str(lines))
+    u.wait_for("the notice verdict", lambda: NOTICE.search(u.log_since(base)), deadline=10.0)
+    notices = NOTICE.findall(u.log_since(base))
+    u.check("newtake: the old take's notice was not shown",
+            len(notices) == 1 and notices[0][1] == "false", str(notices))
+    kept = KEPT.findall(u.log_since(base))
+    u.check("newtake: the words were still kept on the clipboard",
+            "keep_dictation" in [k[0] for k in kept], str(kept))
+
+
+def phase_copy_during_wait():
+    """§8 (#3106 PR B): the user copies something between the paste and the landing decision. The
+    miss must YIELD: their copy stays on the clipboard, nothing is rewritten, no notice shows. A
+    watcher thread copies the moment the cascade logs its paste (the decision comes ~300 ms later)."""
+    import threading
+    name = "nofocus"
+    print("\n== copy during the wait: a miss while the user copies something")
+    quiet("copy staging", open_page, name)
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+    user_copy = f"ew-uat-user-copy-{u.RUN_ID}"
+    copied = {"at": None}
+
+    def copy_on_paste():
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if CASCADE.search(u.log_since(base)):
+                u.set_clipboard_text(user_copy)
+                copied["at"] = time.time()
+                return
+            time.sleep(0.01)
+    watcher = threading.Thread(target=copy_on_paste, daemon=True)
+    watcher.start()
+    lines, cascades = take("copy-during-wait", base)
+    watcher.join(timeout=5)
+    u.check("copy: the user's copy was made after the paste", copied["at"] is not None)
+    u.check("copy: one landing line, a miss",
+            len(lines) == 1 and lines[0][1] in ("absent", "no_target"), str(lines))
+    u.wait_for("the checked cleanup's line", lambda: KEPT.search(u.log_since(base)), deadline=10.0)
+    kept = KEPT.findall(u.log_since(base))
+    u.check("copy: the checked cleanup yielded to the user's copy",
+            [k[0] for k in kept] == ["yield"], str(kept))
+    u.check("copy: no notice was asked for", NOTICE.findall(u.log_since(base)) == [],
+            str(NOTICE.findall(u.log_since(base))))
+    u.check("copy: the user's copy is on the clipboard", u.clipboard_text() == user_copy,
+            repr(u.clipboard_text()))
 
 
 def phase_textedit():
@@ -347,7 +475,7 @@ def verify_textedit(base, delivered, restore_on, sentinel):
         u.check("textedit: no landing row on the ax_direct tier", lines == [], str(lines))
 
 
-PHASES = ["focused", "nofocus", "textedit"]
+PHASES = ["focused", "nofocus", "textedit", "readonly", "copy", "newtake"]
 
 
 def main():
@@ -377,6 +505,10 @@ def main():
             # Metered inside each phase, around the stretches that play no speech.
             if name == "textedit":
                 phase_textedit()
+            elif name == "copy":
+                phase_copy_during_wait()
+            elif name == "newtake":
+                phase_new_take_after_miss()
             else:
                 phase(name)
     except u.Aborted as e:

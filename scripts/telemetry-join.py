@@ -135,6 +135,9 @@ TAKE_KEYED_EVENTS = (
     # delivery snapshotted before its awaits. A row without the key is a coverage gap, never
     # re-keyed. Rows below telemetry_policy_version 5 carry the step-1 vocabulary.
     "paste.landing_observed",
+    # #3106 PR B. At most one row per take whose checked miss kept the dictation (or yielded to
+    # the user's copy), keyed by the same snapshotted take id; pill_shown is the overlay's verdict.
+    "paste.landing_retained",
     "recording.cap_warning_shown",
 )
 

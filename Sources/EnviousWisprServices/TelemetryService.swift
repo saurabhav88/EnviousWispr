@@ -992,6 +992,34 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("paste.landing_observed", properties: props)
   }
 
+  /// A checked miss kept the dictation on the clipboard, or yielded to the user's own copy (#3106
+  /// PR B). At most one row per take, never sampled.
+  ///
+  /// `outcome`: `retained` (the board holds the take's text, verified) or `yielded` (the user or
+  /// another writer took the board first; nothing was written). `pill_shown` is the overlay's own
+  /// verdict for the "Copied. Press ⌘V to paste" notice, `false` for `yielded`. Shape only: no text,
+  /// bundle id or window. Owner: `PasteCascadeExecutor.landingCheck`. Reader: the #3106 release
+  /// review (the app PostHog events fact in the analytics operations knowledge).
+  public func pasteLandingRetained(
+    takeID: String?, tier: String, appClass: String, outcome: String, pillShown: Bool
+  ) {
+    var props: [String: Any] = [
+      "tier": tier, "app_class": appClass, "outcome": outcome, "pill_shown": pillShown,
+    ]
+    if let takeID { props["take_id"] = takeID }
+    #if DEBUG
+      testRawPropertiesHook?("paste.landing_retained", props)
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "paste.landing_retained",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("paste.landing_retained", properties: props)
+  }
+
   /// Quick Add ended (#2381). Shape only; the same privacy boundary as `quick_add.opened`.
   ///
   /// `candidate_rank` is the POSITION the user accepted, which is what says whether the ranking is

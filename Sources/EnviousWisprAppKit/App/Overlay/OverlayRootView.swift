@@ -140,6 +140,10 @@ struct OverlayRootView: View {
     case .notice(let notice):
       notices(notice, on: presentation)
 
+    case .retainedClipboardFallback(let notice, _):
+      // #3106 PR B: the same notice, through the same view, as a clipboard-only delivery.
+      notices(notice, on: presentation)
+
     case .languageChip(let payload):
       LanguageChipView(
         payload: payload,

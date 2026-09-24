@@ -169,7 +169,8 @@ extension PasteArrivalCapture {
 // MARK: - The arrival session (#3106 PR A)
 
 /// What an arrival session concluded about one key paste: at the first NEW occurrence of the
-/// submitted text, or at `PastedRegionTiming.landingDeadlineMs` after dispatch. Evidence, not
+/// submitted text, or at `PasteLandingPolicy.landingDeadlineMs(bundleID:)` after dispatch (300 ms
+/// unless the app is measured slower). Evidence, not
 /// policy: `PasteLandingPolicy` decides which results are misses.
 package enum PasteArrivalLanding: Sendable, Equatable {
   /// More occurrences of the text than before the write.
@@ -561,7 +562,9 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     // No Accessibility call here: `commit` runs on the delivery path, before the clipboard restore
     // is scheduled. The manual-accessibility opt-in happens at the first read instead.
     let generation = self.generation
-    deadline = scheduler.schedule(afterMs: PastedRegionTiming.landingDeadlineMs) { [weak self] in
+    deadline = scheduler.schedule(
+      afterMs: PasteLandingPolicy.landingDeadlineMs(bundleID: context.bundleID)
+    ) { [weak self] in
       guard let self, generation == self.generation else { return }
       self.decideAtDeadline()
     }

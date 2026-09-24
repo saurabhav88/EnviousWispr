@@ -456,6 +456,10 @@ enum OverlayContent: Equatable, Sendable {
   case correctionLearned(LearnedCorrectionPillModel)
   /// #996 auto-learn: `Couldn’t save “<canonical>”`, a notice with no button.
   case correctionLearnedSaveError(LearnedCorrectionSaveError)
+  /// #3106 PR B: the "Copied. Press ⌘V to paste" notice, raised LATE for a take whose paste went
+  /// nowhere and whose words the clipboard cleanup kept. The notice itself is the catalog's
+  /// clipboard-fallback model; the case is distinct only so it can ask its owner before rendering.
+  case retainedClipboardFallback(NoticeModel, takeID: String)
 
   /// Whether the director must ask the owner `isStillWanted` immediately before
   /// this content reaches the screen (#996 chunk 5f, review round 2). Only the
@@ -463,8 +467,12 @@ enum OverlayContent: Equatable, Sendable {
   /// withdraw it while a deferred first render is in flight. A RESULT is the
   /// outcome of a decision already made; it follows the reducer's same-id
   /// morph contract and must render regardless.
+  ///
+  /// #3106 PR B: the late clipboard notice too. It arrives about 0.3 s after the paste, and by the
+  /// deferred first render a newer take or the user's own copy can make it untrue.
   var reChecksOwnerBeforeRender: Bool {
     if case .correctionLearned(let model) = self, case .learned = model.phase { return true }
+    if case .retainedClipboardFallback = self { return true }
     return false
   }
 }

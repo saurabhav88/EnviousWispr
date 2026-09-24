@@ -1213,6 +1213,16 @@ final class OverlayDirector {
   /// retained relay's resolution — all in one place, so the queued path
   /// (`commitLatestFirstRender`) and the immediate path (`render`, once the
   /// gate is ready) run identically once a root view exists.
+  /// #3106 PR B: the owner's pre-render question for `presentation`, or nil when there is none to
+  /// ask: no binding, a binding for another presentation, or a binding without a predicate. For
+  /// content that requires the re-check, nil means REFUSE (`finishRender`), never render on trust.
+  static func ownerRecheck(
+    for presentation: PresentationID, bindingID: PresentationID?, predicate: (() -> Bool)?
+  ) -> (() -> Bool)? {
+    guard let bindingID, bindingID == presentation, let predicate else { return nil }
+    return predicate
+  }
+
   @discardableResult
   private func finishRender(
     _ presentation: PillDefinition, root: NSView, relays: [PresentationRelay],
@@ -1237,10 +1247,26 @@ final class OverlayDirector {
     // either moved, this render is stale and owes its callers only `false`,
     // without a rollback that would undo the newer occupant. A refused offer is
     // rolled back only while it still owns the slot.
-    if presentation.content.reChecksOwnerBeforeRender,
-      let binding = activeBinding, binding.id == presentation.id,
-      let isStillWanted = binding.isStillWanted
-    {
+    //
+    // #3106 PR B: FAIL CLOSED. Content that asks for the re-check and arrives without a matching
+    // binding or predicate is refused exactly like a withdrawn offer, never rendered on trust: a
+    // wiring slip must cost a pill, not show one that may be untrue.
+    if presentation.content.reChecksOwnerBeforeRender {
+      guard
+        let isStillWanted = Self.ownerRecheck(
+          for: presentation.id, bindingID: activeBinding?.id,
+          predicate: activeBinding?.isStillWanted)
+      else {
+        // Rolled back only while it still owns the slot: a newer occupant must survive the refusal
+        // of an older request.
+        if reducer.state.current?.id == presentation.id,
+          model.state.presentation?.id == presentation.id
+        {
+          rollBackRefusedPresentation()
+        }
+        relays.forEach { $0.resolve(false) }
+        return .completed
+      }
       let revisionBefore = reducer.state.slotRevision
       let wanted = isStillWanted()
       let moved =
@@ -1663,6 +1689,14 @@ extension OverlayDirector: OverlayPresenting {
 
     case .correctionLearnedSaveError(let error):
       handle(.correctionLearnedSaveError(error), binding: .none, relay: relay)
+
+    case .retainedClipboardFallback(let takeID, let isStillWanted):
+      // #3106 PR B: no buttons, so nothing to deliver; the binding exists to carry the
+      // pre-render question.
+      handle(
+        .retainedClipboardFallback(takeID: takeID),
+        binding: .install(deliver: { _ in }, onExpire: nil, isStillWanted: isStillWanted),
+        relay: relay)
     }
 
     // **A refused request returns nil, not the incumbent's receipt.** The slot

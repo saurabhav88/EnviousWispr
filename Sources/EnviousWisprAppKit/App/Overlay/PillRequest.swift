@@ -197,6 +197,11 @@ enum PillRequest {
   )
   /// #996 auto-learn: `Couldn’t save “<canonical>”`, three seconds, no button.
   case correctionLearnedSaveError(LearnedCorrectionSaveError)
+  /// #3106 PR B: the clipboard-fallback notice for `takeID`, whose paste went nowhere and whose
+  /// words the cleanup kept. Admitted only on an idle, EMPTY slot. `isStillWanted` is read
+  /// immediately before a deferred first render: false (a newer take, or the user copied) rolls
+  /// it back unrendered and unannounced.
+  case retainedClipboardFallback(takeID: String, isStillWanted: () -> Bool)
 }
 
 // MARK: - What a caller gets back, and what it may change afterwards

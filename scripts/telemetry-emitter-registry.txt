@@ -55,6 +55,7 @@ dictation.completed	ungraded	ungraded	-	pre-#2987
 dictation.invoked	ungraded	ungraded	-	pre-#2987
 dictation.last_reused	per_user_action	keep	analytics-operations.md FACT: app-posthog-events ("Last dictation reuse" insight: weekly users with a dispatched or copied outcome over users with a dictation.completed, read at the first release review, #3106)	#3106
 paste.landing_observed	per_take	sampled	analytics-operations.md FACT: app-posthog-events ("Paste landing" insight, floored at telemetry_policy_version 5: miss rate (absent + no_target) by tier and app_class with sampled early found rows weighted, late-hit rate from late_check_status/late_found_ms, read before PR B's default-on decision and at each release after)	#3106
+paste.landing_retained	per_take	keep	analytics-operations.md FACT: app-posthog-events (#3106 release review: retained over trustworthy observed misses from paste.landing_observed, a lower bound since excluded apps stay in that denominator; pill_shown rate among retained; yielded rate)	#3106
 dictation.started	ungraded	ungraded	-	pre-#2987
 dictation.terminal	ungraded	ungraded	-	pre-#2987
 eg1.*	ungraded	ungraded	-	pre-#2987
