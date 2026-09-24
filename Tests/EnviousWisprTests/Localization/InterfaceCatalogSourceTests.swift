@@ -49,7 +49,13 @@ struct InterfaceCatalogSourceTests {
   @Test("The catalog is declared as an app-target resource")
   func catalogIsAppTargetResource() throws {
     let project = try String(contentsOf: Self.repoRoot.appendingPathComponent("Project.swift"), encoding: .utf8)
-    #expect(project.contains("\"\(Self.catalogPath)\""), "Project.swift app resources no longer list the catalog")
+    // An ACTIVE array element: the whole trimmed line is the quoted path, so a commented-out
+    // entry (`// "…",`) or a mention inside prose does not count.
+    let entry = "\"\(Self.catalogPath)\","
+    let active = project.split(separator: "\n").filter {
+      $0.trimmingCharacters(in: .whitespaces) == entry
+    }
+    #expect(active.count == 1, "Project.swift must list the catalog exactly once as a live resource entry")
   }
 
   private static func strings() throws -> [String: Any] {
