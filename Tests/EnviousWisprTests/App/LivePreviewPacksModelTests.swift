@@ -369,15 +369,18 @@ struct LivePreviewPacksModelTests {
     let source = LivePreviewNoAutoDownloadTests.codeOnly(
       try String(contentsOf: url, encoding: .utf8))
 
+    // #3124: keyed on the PREVIEW language (`previewMode`), which is the dictation lock except
+    // under English (UK), where it is "en-GB". A key on the bare lock would not reload when the
+    // user switches between the two Englishes, which both lock "en".
     #expect(
-      source.contains(".task(id: settings.languageMode)"),
+      source.contains(".task(id: previewMode)"),
       """
-      the load must be keyed on the language: a plain .task runs once per appearance, so a chip \
-      or sheet that locks a language while this page is open leaves the summary and the "In use" \
-      badge naming different languages
+      the load must be keyed on the preview language: a plain .task runs once per appearance, so a \
+      chip or sheet that locks a language while this page is open leaves the summary and the "In \
+      use" badge naming different languages
       """)
 
-    guard let start = source.range(of: ".task(id: settings.languageMode) {") else {
+    guard let start = source.range(of: ".task(id: previewMode) {") else {
       Issue.record(".task not found; the page's load path moved")
       return
     }

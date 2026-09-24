@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// American to British spelling for the English (UK) dictation choice (#3124).
@@ -52,6 +53,47 @@ public struct BritishSpellingConverter: Sendable {
 
   init(table: [String: String]) {
     self.table = table
+  }
+
+  /// The bundled table, loaded once per process and shared by every consumer (the dictation
+  /// chain and the live preview), or the error that stopped it loading. The one place the table
+  /// is read in production, so there is one load and one failure to report.
+  public static let shared: Shared = {
+    do {
+      return .loaded(try load())
+    } catch {
+      return .failed(String(describing: error))
+    }
+  }()
+
+  /// The outcome of the one production load: the converter, or why it failed.
+  public enum Shared: Sendable {
+    case loaded(BritishSpellingConverter)
+    case failed(String)
+
+    /// The converter, or nil when the table failed to load.
+    public var converter: BritishSpellingConverter? {
+      if case .loaded(let converter) = self { return converter }
+      return nil
+    }
+  }
+
+  /// The lowercased words a British conversion must leave alone: the USER's own Custom Words from
+  /// `vocabulary`, every canonical and every word inside a multi-word one (a Custom Word "Kennedy
+  /// Center" protects "center"). Built-in and pack terms are excluded on purpose: they are
+  /// app-authored American defaults ("recognizer", and "offense" in the legal pack), and protecting
+  /// them would override the user's British choice. The one rule for the dictation chain and the
+  /// live preview.
+  public static func protectedWords(fromUserWordsIn vocabulary: CorrectorVocabulary) -> Set<String> {
+    var words: Set<String> = []
+    for term in vocabulary.terms where term.source == .user {
+      let canonical = term.canonical.lowercased()
+      words.insert(canonical)
+      for word in canonical.split(whereSeparator: { !($0.isLetter || $0 == "'" || $0 == "\u{2019}") }) {
+        words.insert(String(word).replacingOccurrences(of: "\u{2019}", with: "'"))
+      }
+    }
+    return words
   }
 
   /// Loads the bundled table. Throws on a missing, unreadable or empty table; the caller decides

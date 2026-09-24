@@ -189,15 +189,23 @@ struct LivePreviewSettingsView: View {
   /// nil means "we do not currently know", which every consumer already handles:
   /// the card refuses, the panel hides, the badge marks nothing in use.
   private var currentActive: LivePreviewPacksModel.ActiveLanguage? {
-    guard let mode = packs.resolvedMode, mode == settings.languageMode else { return nil }
+    guard let mode = packs.resolvedMode, mode == previewMode else { return nil }
     return packs.active
+  }
+
+  /// #3124: the language the preview itself resolves against, "en-GB" under English (UK)
+  /// (`LivePreviewInstaller.previewLanguageMode`). The packs card must describe the pack the
+  /// preview will actually use, so it resolves this, never the bare dictation lock.
+  private var previewMode: LanguageMode {
+    LivePreviewInstaller.previewLanguageMode(
+      languageMode: settings.languageMode, stored: settings.englishSpelling)
   }
 
   /// True when the resolved value exists but describes a language the user has
   /// since moved away from — the state the card reports rather than hides.
   private var activeDescribesAnotherLanguage: Bool {
     guard let mode = packs.resolvedMode else { return false }
-    return mode != settings.languageMode
+    return mode != previewMode
   }
 
   private var showsApplePacks: Bool {
@@ -227,14 +235,17 @@ struct LivePreviewSettingsView: View {
     // Keyed on the VALUE rather than wired to those call sites, so a writer
     // added later is covered without knowing this page exists.
     // `swiftui-view-patterns.md` RULE: swiftui-task-id-cancellation.
-    .task(id: settings.languageMode) {
+    .task(id: previewMode) {
       guard isAppleSupported else { return }
       // Re-read on EVERY appearance. The model outlives this page, so without
       // this a returning user would see the snapshot from whenever they last
       // opened it — past a download that finished meanwhile, past a macOS purge
       // of a staged asset. The catalogue exists precisely because this state is
       // not ours to cache.
-      packs.useMode { settings.languageMode }
+      packs.useMode {
+        LivePreviewInstaller.previewLanguageMode(
+          languageMode: settings.languageMode, stored: settings.englishSpelling)
+      }
       await packs.load()
     }
     .sheet(isPresented: $showLanguageSheet) {

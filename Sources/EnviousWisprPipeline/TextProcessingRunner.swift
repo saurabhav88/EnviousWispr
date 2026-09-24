@@ -549,25 +549,16 @@ internal final class TextProcessingRunner {
     return TextProcessingRunResult(context: context, polishError: polishError)
   }
 
-  /// #3124: the lowercased words the spelling steps must leave alone: the USER's own Custom Words
-  /// from the chain's `WordCorrectionStep` vocabulary, every canonical and every word inside a
-  /// multi-word one (a Custom Word "Kennedy Center" protects "center"). Built-in and pack terms are
-  /// excluded on purpose: they are app-authored American defaults ("recognizer", and "offense" in
-  /// the legal pack), and protecting them would override the user's British choice. Read whether
-  /// or not word correction is switched on: a Custom Word is the user's spelling either way. Empty
-  /// when the chain has no word-correction step.
+  /// #3124: the words the spelling steps must leave alone, from the chain's own
+  /// `WordCorrectionStep` vocabulary under the one shared rule
+  /// (`BritishSpellingConverter.protectedWords(fromUserWordsIn:)`). Read whether or not word
+  /// correction is switched on: a Custom Word is the user's spelling either way. Empty when the
+  /// chain has no word-correction step.
   static func spellingProtectedWords(steps: [any TextProcessingStep]) -> Set<String> {
     guard let wordCorrection = steps.lazy.compactMap({ $0 as? WordCorrectionStep }).first else {
       return []
     }
-    var words: Set<String> = []
-    for term in wordCorrection.correctorVocabulary.terms where term.source == .user {
-      let canonical = term.canonical.lowercased()
-      words.insert(canonical)
-      for word in canonical.split(whereSeparator: { !($0.isLetter || $0 == "'" || $0 == "\u{2019}") }) {
-        words.insert(String(word).replacingOccurrences(of: "\u{2019}", with: "'"))
-      }
-    }
-    return words
+    return BritishSpellingConverter.protectedWords(
+      fromUserWordsIn: wordCorrection.correctorVocabulary)
   }
 }

@@ -103,11 +103,12 @@ final class EnglishSpellingStep: TextProcessingStep {
   /// Loaded once per process and shared by every production step (live, file import, recovery).
   /// A failure is reported to Sentry once, here, and every step built afterwards is disabled.
   static let sharedConverter: BritishSpellingConverter? = {
-    do {
-      return try BritishSpellingConverter.load()
-    } catch {
+    switch BritishSpellingConverter.shared {
+    case .loaded(let converter):
+      return converter
+    case .failed(let reason):
       logger.error(
-        "British spelling table failed to load; English (UK) delivers American spelling: \(String(describing: error), privacy: .public)"
+        "British spelling table failed to load; English (UK) delivers American spelling: \(reason, privacy: .public)"
       )
       SentryBreadcrumb.captureError(
         EnglishSpellingTableLoadFailure.unavailable,
