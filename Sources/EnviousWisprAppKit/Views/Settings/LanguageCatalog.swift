@@ -57,6 +57,13 @@ enum LanguageCatalog {
     }
   }
 
+  /// How the Transcription page names the current lock: "Deutsch (German)", or the one name when
+  /// both are the same ("English", "English (UK)"), rather than repeating it in brackets.
+  static func lockDisplayName(for entry: Entry) -> String {
+    entry.nativeName == entry.englishName
+      ? entry.englishName : "\(entry.nativeName) (\(entry.englishName))"
+  }
+
   /// The row that names a lock: the English row matching the spelling for "en", the language row
   /// for any other code. Used wherever the app shows the current or a recent lock.
   static func entry(forLockedCode code: String, spelling: EnglishSpelling) -> Entry {

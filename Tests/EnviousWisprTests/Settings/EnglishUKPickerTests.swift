@@ -122,6 +122,13 @@ struct EnglishUKPickerTests {
     #expect(LanguageCatalog.pickerSubtitle(for: Self.german) == "German · de")
   }
 
+  @Test("the Transcription page names a lock once when both names match")
+  func lockDisplayName() {
+    #expect(LanguageCatalog.lockDisplayName(for: LanguageCatalog.englishUK) == "English (UK)")
+    #expect(LanguageCatalog.lockDisplayName(for: Self.english) == "English")
+    #expect(LanguageCatalog.lockDisplayName(for: Self.german) == "Deutsch (German)")
+  }
+
   @Test("a lock is named by the English actually chosen: recents and the Transcription page")
   func lockNaming() {
     #expect(

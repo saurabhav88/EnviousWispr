@@ -185,7 +185,7 @@ struct SpeechEngineSettingsView: View {
                   Text("Language")
                     .font(.stHelper)
                     .foregroundStyle(.stTextSecondary)
-                  Text("\(entry.nativeName) (\(entry.englishName))")
+                  Text(LanguageCatalog.lockDisplayName(for: entry))
                     .settingsRowLabel()
                   // #1678: a lock can outlive the engine that could honour it.
                   // Someone locked to Japanese on the multilingual engine who
