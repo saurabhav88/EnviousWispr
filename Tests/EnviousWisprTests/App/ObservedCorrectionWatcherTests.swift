@@ -545,7 +545,7 @@ struct ObservedCorrectionWatcherTests {
   @Test("a half-typed fix that only deletes letters never reaches the judge and is counted (#3105)")
   func deletionOnlyEditIsWithheldAndCounted() async {
     let watcher = makeWatcher()
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "One more try, maybe if I do fewer words.", pastedAtMs: 0))
     ]
     watcher.pasteCompleted(paste("One more try, maybe if I do fewer words."))
