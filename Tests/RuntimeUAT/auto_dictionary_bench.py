@@ -122,7 +122,9 @@ def take(doc, arm, idx, sentence, expect):
     lfe.clear_field(doc)
     return {"arm": arm, "idx": idx, "sentence": sentence, "trigger": idx % len(SENTENCES) in TRIGGER_IDX,
             "total_ms": round(float(total.group(1)) * 1000), "asr_ms": round(float(total.group(2)) * 1000),
-            "polish_ms": round(float(total.group(3)) * 1000), "paste_ms": round(float(total.group(4)) * 1000),
+            # The kernel's TOTAL line calls this span "polish", but it is every text step
+            # (the learned-word check included); EG-1 polish alone is steps_ms["LLM Polish"].
+            "text_steps_ms": round(float(total.group(3)) * 1000), "paste_ms": round(float(total.group(4)) * 1000),
             "steps_ms": steps, "check": check.group(0) if check else None,
             "check_ms": int(check.group(5)) if check else None, "delivered": text}
 
@@ -140,7 +142,7 @@ def summarize(rows):
             "auto_dictionary_sentences": stat([r["total_ms"] for r in warm if r["trigger"]]),
             "plain_sentences": stat([r["total_ms"] for r in warm if not r["trigger"]]),
             "asr": stat([r["asr_ms"] for r in warm]),
-            "polish": stat([r["polish_ms"] for r in warm]),
+            "text_steps": stat([r["text_steps_ms"] for r in warm]),
             "paste": stat([r["paste_ms"] for r in warm]),
             "checker": stat([r["check_ms"] for r in warm if r["check_ms"] is not None]),
             "cold_total_ms": next((r["total_ms"] for r in rows if r["arm"] == arm and r.get("cold")), None),
@@ -199,7 +201,7 @@ def main():
                 for i, (sentence, expect) in enumerate(SENTENCES):
                     r = take(doc, arm, rnd * len(SENTENCES) + i, sentence, expect)
                     rows.append(r)
-                    print(f"  {arm} {r['idx']:02d} total={r['total_ms']} asr={r['asr_ms']} polish={r['polish_ms']} "
+                    print(f"  {arm} {r['idx']:02d} total={r['total_ms']} asr={r['asr_ms']} text={r['text_steps_ms']} "
                           f"check={r['check_ms']} {'[AD]' if r['trigger'] else ''}", flush=True)
     finally:
         if doc is not None:
