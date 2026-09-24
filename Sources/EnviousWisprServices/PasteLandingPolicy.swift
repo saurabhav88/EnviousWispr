@@ -61,11 +61,20 @@ package enum PasteLandingPolicy {
     tier: PasteTier,
     excluded: Set<Exclusion> = excludedRoutes
   ) -> Bool {
+    routeMayRetain(bundleID: bundleID, tier: tier, excluded: excluded)
+      && isMiss(landing, appClass: appClass)
+  }
+
+  /// The route half of `mayRetain`, answerable before the landing decision: whether this app and
+  /// route could keep a miss at all. The cleanup waits for a decision only when this is true, so an
+  /// excluded route, Tier 1 and clipboard-only keep today's cleanup timing exactly.
+  package static func routeMayRetain(
+    bundleID: String?, tier: PasteTier, excluded: Set<Exclusion> = excludedRoutes
+  ) -> Bool {
     switch tier {
     case .cgEvent, .appleScript, .menuPaste: break
     case .axDirect, .clipboardOnly: return false
     }
-    guard isMiss(landing, appClass: appClass) else { return false }
     // An app we cannot name cannot be checked against the exclusions, so it does not retain.
     guard let bundleID else { return false }
     return !excluded.contains(Exclusion(bundleID: bundleID))

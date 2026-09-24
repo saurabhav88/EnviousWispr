@@ -171,6 +171,16 @@ public enum KernelDictationDriverFactory {
     /// the real `TranscriptionCheckpointStore`.
     package let transcriptionCheckpoint: @MainActor (TranscriptionCheckpointEvent) -> Void
 
+    /// #3106 PR B: told the take id of every accepted session, right after the lifecycle sink
+    /// accepts it, so AppKit knows which take is the latest. Defaulted to a no-op for test
+    /// construction sites; the composition root wires the real one.
+    package let onTakeAccepted: @MainActor (String) -> Void
+
+    /// #3106 PR B: told once when a checked clipboard cleanup kept a missed paste's dictation on
+    /// the board, with that take and the board's change count at that moment. Defaulted like
+    /// `onTakeAccepted`.
+    package let onRetained: @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void
+
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
     /// because `captureErrorSink`'s default is a main-actor-isolated value;
@@ -195,7 +205,11 @@ public enum KernelDictationDriverFactory {
       parakeetDelivery: ParakeetDeliveryHandle? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
       escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
-      transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
+      transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
+      onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
+      onRetained: @escaping @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void = {
+        _, _ in
+      }
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -215,6 +229,8 @@ public enum KernelDictationDriverFactory {
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
       self.transcriptionCheckpoint = transcriptionCheckpoint
+      self.onTakeAccepted = onTakeAccepted
+      self.onRetained = onRetained
     }
   }
 
@@ -273,6 +289,16 @@ public enum KernelDictationDriverFactory {
     /// the real `TranscriptionCheckpointStore`.
     package let transcriptionCheckpoint: @MainActor (TranscriptionCheckpointEvent) -> Void
 
+    /// #3106 PR B: told the take id of every accepted session, right after the lifecycle sink
+    /// accepts it, so AppKit knows which take is the latest. Defaulted to a no-op for test
+    /// construction sites; the composition root wires the real one.
+    package let onTakeAccepted: @MainActor (String) -> Void
+
+    /// #3106 PR B: told once when a checked clipboard cleanup kept a missed paste's dictation on
+    /// the board, with that take and the board's change count at that moment. Defaulted like
+    /// `onTakeAccepted`.
+    package let onRetained: @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void
+
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
     /// production caller in Rung 5 must explicitly pass the `LanguageDetector`
@@ -300,7 +326,11 @@ public enum KernelDictationDriverFactory {
       s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
       escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
-      transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
+      transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
+      onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
+      onRetained: @escaping @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void = {
+        _, _ in
+      }
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -321,6 +351,8 @@ public enum KernelDictationDriverFactory {
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
       self.transcriptionCheckpoint = transcriptionCheckpoint
+      self.onTakeAccepted = onTakeAccepted
+      self.onRetained = onRetained
     }
   }
 
@@ -410,7 +442,9 @@ public enum KernelDictationDriverFactory {
       s1MiniRuntime: inputs.s1MiniRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
       escapeRecovery: inputs.escapeRecovery,
-      transcriptionCheckpoint: inputs.transcriptionCheckpoint)
+      transcriptionCheckpoint: inputs.transcriptionCheckpoint,
+      onTakeAccepted: inputs.onTakeAccepted,
+      onRetained: inputs.onRetained)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -460,7 +494,9 @@ public enum KernelDictationDriverFactory {
       s1MiniRuntime: inputs.s1MiniRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
       escapeRecovery: inputs.escapeRecovery,
-      transcriptionCheckpoint: inputs.transcriptionCheckpoint)
+      transcriptionCheckpoint: inputs.transcriptionCheckpoint,
+      onTakeAccepted: inputs.onTakeAccepted,
+      onRetained: inputs.onRetained)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -485,7 +521,11 @@ public enum KernelDictationDriverFactory {
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
     escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
-    transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
+    transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
+    onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
+    onRetained: @escaping @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void = {
+      _, _ in
+    }
   ) -> KernelDictationDriver {
     // #1803: prepare the English word oracle off the heart path. Its one-time
     // setup measures 105.6 ms cold — language resolution plus a tag-scheme
@@ -606,7 +646,7 @@ public enum KernelDictationDriverFactory {
         // could attribute this delivery's copies to the NEXT dictation.
         let takeIDAtDelivery = telemetryState.takeID
         let result = await PasteCascadeExecutor(
-          pasteboard: .general, policy: Self.pasteDeliveryPolicy
+          pasteboard: .general, policy: Self.pasteDeliveryPolicy, onRetained: onRetained
         ).deliver(request)
         // Scheduled AFTER delivery has returned and its latency is finalised, so the
         // observation's own work cannot land inside a delivery metric. It reports and returns
@@ -812,6 +852,8 @@ public enum KernelDictationDriverFactory {
     // denominator. One identity, no second callback.
     telemetryRelay.sessionAccepted = { [lifecycleSink] takeID in
       lifecycleSink.acceptSession(takeID: takeID)
+      // #3106 PR B: after the sink, so the take AppKit learns is the one telemetry now names.
+      onTakeAccepted(takeID)
     }
     telemetryRelay.sessionTerminal = { [lifecycleSink] snapshot in
       lifecycleSink.emitTerminal(snapshot)
