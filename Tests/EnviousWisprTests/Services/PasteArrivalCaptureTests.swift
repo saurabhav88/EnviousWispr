@@ -92,6 +92,23 @@ struct PasteArrivalCaptureTests {
 
   // MARK: Positives
 
+  @Test("Ghostty's miss waits for its own 700 ms deadline; another app's is decided at 300 ms")
+  func slowRevealAppWaitsLonger() throws {
+    let ghostty = try prepare(bundle: "com.mitchellh.ghostty")
+    ghostty.commit()
+    scheduler.advance(ms: 300)
+    #expect(ghostty.landing == nil, "not decided at the default deadline")
+    scheduler.advance(ms: 400)
+    #expect(ghostty.landing == .absent)
+    ghostty.cancel()
+
+    let textEdit = try prepare()
+    textEdit.commit()
+    scheduler.advance(ms: 300)
+    #expect(textEdit.landing == .absent)
+    textEdit.cancel()
+  }
+
   @Test(
     "a value notification wakes a read that finds the new occurrence at once; one report, all torn down"
   )

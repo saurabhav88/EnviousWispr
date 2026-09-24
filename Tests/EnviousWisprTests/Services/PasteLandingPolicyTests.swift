@@ -123,4 +123,14 @@ struct PasteLandingPolicyTests {
       #expect(PasteLandingPolicy.routeMayRetain(bundleID: "com.google.Chrome", tier: tier))
     }
   }
+
+  @Test("Ghostty's miss is decided at 700 ms; every other app, and an unnamed one, at 300 ms")
+  func perAppDeadlines() {
+    #expect(PasteLandingPolicy.landingDeadlineMs(bundleID: "com.mitchellh.ghostty") == 700)
+    #expect(PasteLandingPolicy.landingDeadlineMs(bundleID: "com.google.Chrome") == 300)
+    #expect(PasteLandingPolicy.landingDeadlineMs(bundleID: nil) == 300)
+    for (_, ms) in PasteLandingPolicy.slowRevealDeadlinesMs {
+      #expect(ms < PastedRegionTiming.arrivalShadowMs, "the late-hit shadow must outlast every deadline")
+    }
+  }
 }

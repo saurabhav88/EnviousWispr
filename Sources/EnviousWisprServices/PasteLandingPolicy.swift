@@ -31,6 +31,22 @@ package enum PasteLandingPolicy {
     }
   }
 
+  /// Apps measured to reveal pasted text to the reader later than the default deadline, with their
+  /// own deadline. Only the MISS decision waits longer: a new occurrence still resolves at first
+  /// sight. The late-hit shadow (`PastedRegionTiming.arrivalShadowMs`) must stay longer than each.
+  package static let slowRevealDeadlinesMs: [String: Int] = [
+    // Ghostty exposes the whole terminal as one text area and updates it after drawing: 15 real
+    // dictations (plain shell and Claude Code) first seen at 385-464 ms, median 440, as late hits
+    // after a 300 ms `absent` (#3106 PR B, 2026-09-23/24). 700 ms is about 50% over the slowest.
+    // Founder 2026-09-24.
+    "com.mitchellh.ghostty": 700
+  ]
+
+  /// When the arrival session decides a miss for this app.
+  package static func landingDeadlineMs(bundleID: String?) -> Int {
+    bundleID.flatMap { slowRevealDeadlinesMs[$0] } ?? PastedRegionTiming.landingDeadlineMs
+  }
+
   /// An app, and optionally one paste route in it, where a checked miss must NOT keep the dictation
   /// on the clipboard (#3106 PR B). `tier == nil` excludes every route in that app.
   package struct Exclusion: Hashable, Sendable {
