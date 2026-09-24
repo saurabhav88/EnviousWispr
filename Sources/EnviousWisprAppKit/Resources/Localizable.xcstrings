@@ -1,0 +1,42 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "menu.setupRequired.continue" : {
+      "comment" : "Menu bar item shown at the top of the menu while first-run setup is unfinished. Opens setup.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setup Required: Continue Setup…"
+          }
+        }
+      }
+    },
+    "notification.update.ready.body" : {
+      "comment" : "Body of the macOS notification when an app update has downloaded. %@ is the version number, for example 2.6.0.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %@ is ready. Click to install."
+          }
+        }
+      }
+    },
+    "settings.aiPolish.enable.title" : {
+      "comment" : "Settings > AI Polish: title of the switch that turns AI polish on or off.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable AI Polish"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

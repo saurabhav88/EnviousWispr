@@ -345,7 +345,13 @@ struct AIPolishSettingsView: View {
             )
           ) {
             VStack(alignment: .leading, spacing: 3) {
-              Text("Enable AI Polish")
+              Text(
+                LocalizedStringResource(
+                  "settings.aiPolish.enable.title",
+                  defaultValue: "Enable AI Polish",
+                  bundle: AppKitLocalization.bundle
+                )
+              )
                 .settingsRowTitle()
               Text("Automatically fix grammar, punctuation, and formatting.")
                 .settingsReadingCopy()
