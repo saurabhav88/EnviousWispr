@@ -456,7 +456,7 @@ public enum PasteService {
     /// change, so the verification permits Tier 2 and the dictation arrives twice: measured
     /// 5/5 in a Firefox 156 page textarea on 2026-09-24, and 12 of 14 Zen / 7 of 13 Firefox
     /// deliveries in `paste.copies_observed`. With this decline, Tier 2's Cmd+V alone delivered
-    /// once in every valid live trial (Firefox 5/5, Developer Edition 5/5, Nightly 6/6).
+    /// once in every valid live trial (Firefox 5/5, Zen 5/5, Developer Edition 5/5, Nightly 6/6).
     case geckoDirectWriteUnconfirmable = "not_attempted_gecko_direct_write_unconfirmable"
   }
 
