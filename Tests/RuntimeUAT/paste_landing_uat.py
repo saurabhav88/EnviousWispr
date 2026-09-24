@@ -700,7 +700,10 @@ def phase_reuse_right_after():
             reuses == [("paste", "chord", "dispatched")], str(reuses))
     # The reuse must have MET a held board; one that arrived after the cleanup released it would
     # pass on the old code too. The app logs the wait only when it found the board held.
-    waited = re.findall(r"last dictation reuse: waited for the clipboard ms=(\d+)", u.log_since(base))
+    wait_line = r"last dictation reuse: waited for the clipboard ms=(\d+)"
+    # Written by its own logging task, so it may land after the outcome line: waited for, not read.
+    u.wait_for("the reuse's wait line", lambda: re.search(wait_line, u.log_since(base)), deadline=5.0)
+    waited = re.findall(wait_line, u.log_since(base))
     u.check(f"{name}: Paste Last met the clipboard still held, and waited", len(waited) == 1,
             str(waited))
     kept = KEPT.findall(u.log_since(base))
