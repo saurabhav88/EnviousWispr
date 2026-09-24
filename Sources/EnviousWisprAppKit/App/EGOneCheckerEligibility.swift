@@ -69,7 +69,17 @@ final class EGOneCheckerEligibility {
     guard let adapter = delivery.egOneCheckerRegistration,
       let contract = adapter.manifest.checkerContract
     else { return .init(absence: .adapterDeliveryFailed) }
-    let adapterAdmitted = await delivery.controller.isAdmitted(adapter)
+    #if DEBUG
+      // The UAT adapter door (`LearnedWordCheckEGOneDoor`, which also sets the
+      // threshold) boots the server with a local adapter delivery never
+      // admitted. Treat it as admitted so the rest of this owner (language,
+      // endpoint, the server's own adapter report, threshold) still decides.
+      let doorAdapter = debugThreshold != nil
+      let adapterAdmitted = doorAdapter ? true : await delivery.controller.isAdmitted(adapter)
+    #else
+      let doorAdapter = false
+      let adapterAdmitted = await delivery.controller.isAdmitted(adapter)
+    #endif
     let deliveryState = await delivery.controller.state(of: adapter.manifest.identity)
     // Keep endpoint and failure reads after admission; neither may certify a
     // path on disk as an admitted adapter.
@@ -86,7 +96,8 @@ final class EGOneCheckerEligibility {
       language: language, endpoint: endpoint, serverReason: serverReason,
       debugThreshold: debugThreshold)
     if let checker = answer.checker {
-      return .init(checker: checker, identity: adapter.manifest.identity.revision)
+      return .init(
+        checker: checker, identity: doorAdapter ? "uat_adapter" : adapter.manifest.identity.revision)
     }
     return answer
   }
