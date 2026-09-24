@@ -239,7 +239,7 @@ struct PasteTargetWindowGateWiringTests {
     let (calls, _) = try Self.parse()
     let node = try Self.only(dispatch, in: calls)
     #expect(Self.onElseOf("activation.windowRefusal", node), "\(dispatch) activation check")
-    #expect(Self.onElseOf("gate.refusal", node), "\(dispatch) dispatch-time gate")
+    #expect(Self.onElseOf("dispatchRefusal", node), "\(dispatch) dispatch-time gate")
     #expect(Self.gate(before: node, in: calls) != nil)
   }
 
@@ -257,7 +257,7 @@ struct PasteTargetWindowGateWiringTests {
         $0.callee == "tiersAttempted.append" && $0.node.arguments.trimmedDescription == tier
       }
       try #require(appends.count == 1, "\(tier): \(appends.count)")
-      #expect(Self.onElseOf("gate.refusal", appends[0].node), "\(tier)")
+      #expect(Self.onElseOf("dispatchRefusal", appends[0].node), "\(tier)")
     }
   }
 
@@ -277,6 +277,24 @@ struct PasteTargetWindowGateWiringTests {
     }
   }
 
+  @Test("Tier 2 and 2b read the front app again after the omnibox re-check")
+  func frontAppReadLast() throws {
+    let (calls, _) = try Self.parse()
+    let omnibox = calls.found.filter {
+      $0.callee == "PasteService.freshFocusedElement"
+        && $0.node.arguments.trimmedDescription.contains("remainingGateSeconds")
+    }
+    let frontReads = calls.found.filter { $0.callee == "Self.appFrontRefusal" }
+    for dispatch in ["PasteService.pasteToActiveApp", "PasteService.pasteViaAppleScript"] {
+      let node = try Self.only(dispatch, in: calls)
+      let lastOmnibox = try #require(
+        omnibox.filter { $0.node.position < node.position }.map(\.node.position).max())
+      #expect(
+        frontReads.contains { $0.node.position > lastOmnibox && $0.node.position < node.position },
+        "\(dispatch)")
+    }
+  }
+
   @Test("Tier 2b writes the clipboard only after its gate")
   func appleScriptWritesAfterGate() throws {
     let (calls, _) = try Self.parse()
@@ -288,7 +306,7 @@ struct PasteTargetWindowGateWiringTests {
         && $0.node.position > gate && $0.node.position < dispatch.position
     }
     #expect(writes.count == 2)
-    #expect(writes.allSatisfy { Self.onElseOf("gate.refusal", $0.node) })
+    #expect(writes.allSatisfy { Self.onElseOf("dispatchRefusal", $0.node) })
   }
 }
 

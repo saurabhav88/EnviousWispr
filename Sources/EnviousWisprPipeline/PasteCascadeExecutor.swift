@@ -948,7 +948,10 @@ internal final class PasteCascadeExecutor {
           } else {
             true
           }
-        if let windowRefusal = gate.refusal {
+        // The omnibox read above can also take time: the front app is read once more, last.
+        let dispatchRefusal =
+          gate.refusal ?? Self.appFrontRefusal(landingAX.frontmostPID(), app)
+        if let windowRefusal = dispatchRefusal {
           // #3121: same shape as the omnibox refusal below: `.cgEvent` is NOT recorded as
           // attempted, because `pasteToActiveApp` is never called.
           let reason = "target_window_not_confirmed(\(windowRefusal))"
@@ -1067,7 +1070,9 @@ internal final class PasteCascadeExecutor {
           } else {
             true
           }
-        if let windowRefusal = gate.refusal {
+        let dispatchRefusal =
+          gate.refusal ?? Self.appFrontRefusal(landingAX.frontmostPID(), app)
+        if let windowRefusal = dispatchRefusal {
           // #3121: nothing was written and `.appleScript` is not recorded as attempted.
           let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["applescript"] = reason
@@ -1214,7 +1219,9 @@ internal final class PasteCascadeExecutor {
             let gate = dispatchGate(
               app: app, target: activation.target, element: request.targetElement,
               tier1BoundTheTarget: false)
-            if let windowRefusal = gate.refusal {
+            // `dispatchGate` read the front app last; no AX step follows it before AXPress.
+            let dispatchRefusal = gate.refusal
+            if let windowRefusal = dispatchRefusal {
               // The payload stays on the clipboard, as on the `.disabled` arm; Tier 3 follows.
               let reason = "target_window_not_confirmed(\(windowRefusal))"
               tierFailures["menu_paste"] = reason
@@ -1561,11 +1568,22 @@ internal final class PasteCascadeExecutor {
   ) -> (refusal: String?, budget: PasteLandingPrepareBudget) {
     let budget = PasteLandingPrepareBudget(scheduler: landingScheduler, ax: landingAX)
     defer { restoreCapturedTimeout(element, tier1BoundTheTarget: tier1BoundTheTarget) }
-    guard landingAX.frontmostPID() == app.processIdentifier else { return ("app_not_front", budget) }
+    if let notFront = Self.appFrontRefusal(landingAX.frontmostPID(), app) {
+      return (notFront, budget)
+    }
     let refusal = PasteTargetWindowGate.refusal(
       target: target, element: element, pid: app.processIdentifier, ax: landingAX,
       admit: budget.admit)
-    return (refusal?.rawValue, budget)
+    // The window read can take the whole budget; the user can switch apps meanwhile, and the
+    // target app still reports its own focused window. Re-read the front app last.
+    if let refusal { return (refusal.rawValue, budget) }
+    return (Self.appFrontRefusal(landingAX.frontmostPID(), app), budget)
+  }
+
+  /// `app_not_front` unless `frontmost` is `app`. A local read (`NSWorkspace`), no AX call, so it can
+  /// follow the omnibox re-check without breaking "the omnibox read is the last AX step".
+  static func appFrontRefusal(_ frontmost: pid_t?, _ app: NSRunningApplication) -> String? {
+    frontmost == app.processIdentifier ? nil : "app_not_front"
   }
 
   /// Seconds left in a dispatch gate's budget for the omnibox re-check; zero or less means the
