@@ -395,8 +395,10 @@ struct LanguageLockSheet: View {
       .prefix(maxRecents)
       .compactMap { pair -> LanguageCatalog.Entry? in
         guard LanguageTypes.isSupported(pair.key) else { return nil }
-        // #3124: a recent "en" is shown as the English the user has chosen.
-        return LanguageCatalog.entry(forLockedCode: pair.key, spelling: settings.englishSpelling)
+        // #3124: a recent "en" is shown as the English the user has chosen, and only as a row
+        // this sheet is allowed to offer.
+        return LanguageLockOptions.recentRow(
+          code: pair.key, stored: settings.englishSpelling, offersEnglishUK: offersEnglishUK)
       }
 
     recents = Array(sorted)

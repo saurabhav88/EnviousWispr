@@ -191,6 +191,17 @@ enum LanguageLockOptions {
     }
   }
 
+  /// The row a RECENT language code is shown as: the English the user has chosen for "en" (#3124),
+  /// except where `offersEnglishUK` is false, where a recent "en" is plain English, so the Recent
+  /// section can never offer the British row the main list hides.
+  static func recentRow(
+    code: String, stored: EnglishSpelling, offersEnglishUK: Bool
+  ) -> LanguageCatalog.Entry {
+    offersEnglishUK
+      ? LanguageCatalog.entry(forLockedCode: code, spelling: stored)
+      : LanguageCatalog.entry(for: code)
+  }
+
   /// What choosing `entry` sets, or Auto for nil: the lock and the stored spelling. A row with a
   /// spelling (the two English rows) sets it; any other row leaves the stored preference alone, so
   /// choosing English (UK) again later restores it.

@@ -93,6 +93,24 @@ struct EnglishUKPickerTests {
     #expect(previewRows(.universal, []).contains("en-gb"), "the universal engine has no packs")
   }
 
+  @Test("a recent English follows the same rule: never the British row where the list hides it")
+  func recentsFollowThePackRule() {
+    let ukOffered = LanguageLockOptions.previewOffersEnglishUK(
+      previewEngine: .apple, installedPackTags: ["en-US"])
+    #expect(ukOffered == false)
+    #expect(
+      LanguageLockOptions.recentRow(code: "en", stored: .british, offersEnglishUK: ukOffered)
+        == Self.english,
+      "with only en-US, a recent English is plain English")
+    #expect(
+      LanguageLockOptions.recentRow(code: "en", stored: .british, offersEnglishUK: true)
+        == LanguageCatalog.englishUK,
+      "where UK is offered, a recent English is the chosen English")
+    #expect(
+      LanguageLockOptions.recentRow(code: "de", stored: .british, offersEnglishUK: false)
+        == Self.german)
+  }
+
   @Test("the two English rows say which spelling they give; other rows keep name and code")
   func subtitles() {
     #expect(
