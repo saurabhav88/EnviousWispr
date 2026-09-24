@@ -28,6 +28,9 @@ struct LastDictationActionTests {
     var history: [UUID: String] = [:]
     /// How many polls report the clipboard still held by a cleanup; `Int.max` means never released.
     var clipboardHeldPolls = 0
+    /// Whether a sleep really suspends (yields the main actor), so another action can run inside a
+    /// wait. Off by default: most tests want a wait to run to its end in one go.
+    var yieldOnSleep = false
     var deleted = false
     var dictationActive = false
     var axTrusted = true
@@ -118,6 +121,7 @@ struct LastDictationActionTests {
           fake.sleeps += 1
           fake.clock += duration + fake.lag
           fake.duringWait?()
+          if fake.yieldOnSleep { await Task.yield() }
         },
         now: { fake.clock }))
   }
@@ -452,18 +456,41 @@ struct LastDictationActionTests {
     #expect(fake.copies.count == 1, "no second write")
   }
 
-  @Test("A newer Copy press cancels an older one still waiting, so the older cannot overwrite it")
+  @Test("A newer Copy pressed WHILE an older one waits cancels it, so the older cannot overwrite it")
   func newerCopyWins() async {
     let fake = Fake()
     fake.clipboardHeldPolls = 20
     let action = makeAction(fake)
-    let older = action.copyFromChord()
-    fake.row = (UUID(), "A newer dictation.")
-    let newer = action.copyFromChord()
-    await older.value
-    await newer.value
+    var newer: Task<Void, Never>?
+    // Pressed during the older copy's first sleep, so the older is already inside its wait.
+    fake.duringWait = {
+      guard newer == nil else { return }
+      fake.row = (UUID(), "A newer dictation.")
+      newer = action.copyFromChord()
+    }
+    await action.copyFromChord().value
+    await newer?.value
+    #expect(newer != nil)
     #expect(fake.copies == ["A newer dictation."], "only the latest press writes")
     #expect(outcomes(fake).sorted() == ["cancelled", "copied"])
+  }
+
+  @Test("A Paste Last that writes cancels an older Copy still waiting")
+  func pasteCancelsWaitingCopy() async throws {
+    let (a, _) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = a
+    fake.clipboardHeldPolls = Int.max
+    fake.yieldOnSleep = true
+    let action = makeAction(fake)
+    let copying = action.copyFromChord()  // waits: the clipboard stays held
+    while fake.sleeps == 0 { await Task.yield() }  // the copy is inside its wait
+    fake.clipboardHeldPolls = 0  // released; the paste goes straight through
+    await action.pasteFromMenu(rowID: fake.row?.id, target: a)
+    await copying.value
+    #expect(fake.pastes.count == 1)
+    #expect(fake.copies.isEmpty, "the older copy did not wake and overwrite the pasted text")
+    #expect(outcomes(fake).sorted() == ["cancelled", "dispatched"])
   }
 
   @Test("Copy refuses on a recording in flight at the press even if it ends before the task runs")

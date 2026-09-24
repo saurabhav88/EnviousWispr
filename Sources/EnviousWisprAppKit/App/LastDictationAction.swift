@@ -90,8 +90,9 @@ final class LastDictationAction {
   /// fires on the release; consumed by that release.
   private var chordTarget: NSRunningApplication?
 
-  /// The Copy Last still waiting for the clipboard, if any (#3135). A newer Copy press cancels it:
-  /// the latest press wins, so an older copy cannot wake after a newer one and overwrite it.
+  /// The Copy Last still waiting for the clipboard, if any (#3135). Any newer reuse cancels it, a
+  /// Copy at its press and a Paste immediately before its write: the latest action wins, so an older
+  /// copy cannot wake afterwards and overwrite the clipboard a newer one wrote (or is pasting from).
   private var pendingCopy: Task<Void, Never>?
 
   init(environment: Environment) {
@@ -213,6 +214,9 @@ final class LastDictationAction {
     // #3106). No await separates this read from the write, so it is the state the paste meets.
     guard !environment.modifiersHeld() else { return .keysHeld }
 
+    // No await between this and the write: an older Copy still waiting must not wake afterwards and
+    // replace the text this paste is about to put on the clipboard.
+    pendingCopy?.cancel()
     switch environment.manualPaste(text, environment.restoreClipboard()) {
     case .dispatched: return .dispatched
     case .dispatchFailed: return .dispatchFailed
