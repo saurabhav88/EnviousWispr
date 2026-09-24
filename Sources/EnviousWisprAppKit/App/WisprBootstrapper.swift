@@ -1441,7 +1441,7 @@ package final class WisprBootstrapper {
           transcriptCoordinator?.lastPasteableDictation()
         },
         pasteLastDictation: { rowID, target in
-          Task { await lastDictationAction.pasteFromMenu(rowID: rowID, target: target) }
+          lastDictationAction.pasteFromMenu(rowID: rowID, target: target)
         }
       )
     )

@@ -128,9 +128,15 @@ final class LastDictationAction {
     }
   }
 
-  /// The menu item was chosen. `rowID` and `target` were sampled when the menu opened.
-  func pasteFromMenu(rowID: UUID?, target: NSRunningApplication?) async {
-    await paste(rowID: rowID, target: target, source: .menu, copiesAtPress: copyPresses)
+  /// The menu item was chosen. `rowID` and `target` were sampled when the menu opened. SYNCHRONOUS
+  /// on the menu's turn, like the chord's release, so the Copy count is taken at the choice, not
+  /// when the task first runs (#3135). The returned task lets a caller (a test) wait for it.
+  @discardableResult
+  func pasteFromMenu(rowID: UUID?, target: NSRunningApplication?) -> Task<Void, Never> {
+    let copiesAtPress = copyPresses
+    return Task {
+      await paste(rowID: rowID, target: target, source: .menu, copiesAtPress: copiesAtPress)
+    }
   }
 
   /// The Copy Last chord was pressed. The recording check and the row are taken now, on the press;
