@@ -178,7 +178,9 @@ struct SpeechEngineSettingsView: View {
             BrandedRow(showDivider: false) {
               HStack(spacing: 11) {
                 SettingsRowIcon(systemName: "character.bubble")
-                let entry = LanguageCatalog.entry(for: code)
+                // #3124: names English (UK) when British spelling is chosen.
+                let entry = LanguageCatalog.entry(
+                  forLockedCode: code, spelling: settings.englishSpelling)
                 VStack(alignment: .leading, spacing: 2) {
                   Text("Language")
                     .font(.stHelper)

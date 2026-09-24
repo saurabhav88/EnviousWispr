@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Display metadata for the languages accepted by the Whisper path.
@@ -11,9 +12,57 @@ import Foundation
 /// their own language spelled correctly, in their own script.
 enum LanguageCatalog {
   struct Entry: Sendable, Equatable {
+    /// The row's identity. For a language row, its ISO code; for a spelling variant row
+    /// (`englishUK`), a code of its own that no engine ever receives.
     let code: String
     let nativeName: String
     let englishName: String
+    /// #3124: the code the dictation engine is locked to when this row is chosen. Equal to `code`
+    /// for every language row; "en" for English (UK), because the engines only speak "en".
+    let lockCode: String
+    /// #3124: the English spelling this row selects, or nil for a non-English row.
+    let spelling: EnglishSpelling?
+
+    init(
+      code: String, nativeName: String, englishName: String, lockCode: String? = nil,
+      spelling: EnglishSpelling? = nil
+    ) {
+      self.code = code
+      self.nativeName = nativeName
+      self.englishName = englishName
+      self.lockCode = lockCode ?? code
+      self.spelling = spelling
+    }
+  }
+
+  /// #3124: the picker row for British spelling. NOT in `all`, which is the catalogue of languages
+  /// the engines accept: this row selects a spelling of one of them.
+  static let englishUK = Entry(
+    code: "en-gb", nativeName: "English (UK)", englishName: "English (UK)", lockCode: "en",
+    spelling: .british)
+
+  /// Every row the dictation-language picker can offer: the languages, with English (UK) directly
+  /// after English so the two spellings sit together.
+  static let pickerEntries: [Entry] = sortedByEnglishName.flatMap { entry in
+    entry.code == "en" ? [entry, englishUK] : [entry]
+  }
+
+  /// The picker's second line for a row. The two English rows say what they DO, since both lock
+  /// the engine to "en"; every other row keeps its name and code.
+  static func pickerSubtitle(for entry: Entry) -> String {
+    switch entry.spelling {
+    case .british: return "British spelling: colour, organise, centre"
+    case .american: return "American spelling: color, organize, center"
+    case nil: return "\(entry.englishName) · \(entry.code)"
+    }
+  }
+
+  /// The row that names a lock: the English row matching the spelling for "en", the language row
+  /// for any other code. Used wherever the app shows the current or a recent lock.
+  static func entry(forLockedCode code: String, spelling: EnglishSpelling) -> Entry {
+    let language = entry(for: code)
+    guard language.spelling != nil else { return language }
+    return spelling == .british ? englishUK : language
   }
 
   /// Lookup a display entry by ISO code. Returns a safe fallback entry using
@@ -53,7 +102,7 @@ enum LanguageCatalog {
     Entry(code: "da", nativeName: "Dansk", englishName: "Danish"),
     Entry(code: "de", nativeName: "Deutsch", englishName: "German"),
     Entry(code: "el", nativeName: "Ελληνικά", englishName: "Greek"),
-    Entry(code: "en", nativeName: "English", englishName: "English"),
+    Entry(code: "en", nativeName: "English", englishName: "English", spelling: .american),
     Entry(code: "es", nativeName: "Español", englishName: "Spanish"),
     Entry(code: "et", nativeName: "Eesti", englishName: "Estonian"),
     Entry(code: "eu", nativeName: "Euskara", englishName: "Basque"),
