@@ -812,14 +812,29 @@ public enum ClipboardCleanup {
   /// either. A STALE pending operation is cancelled: its board has already moved on, and left armed
   /// it would fire on top of this write.
   private static func claimBoardForManualWrite(_ board: NSPasteboard) -> Bool {
-    guard activeTakeover == nil else { return false }
+    guard !isBoardHeldForManualWrite(board) else { return false }
     if let current = pending {
-      guard board.changeCount != current.changeCountAfterPaste else { return false }
       pending = nil
       current.task.cancel()
     }
     return true
   }
+
+  /// Whether `manualPaste` / `manualCopy` would refuse with `.clipboardBusy` right now (#3135): a
+  /// Quick Add takeover is active, or a pending cleanup still owns the board it wrote. The one
+  /// predicate `claimBoardForManualWrite` refuses on, so a caller waiting on it waits for exactly
+  /// that. A stale pending (the board has moved on) is not a hold; the claim cancels it.
+  public static func isBoardHeldForManualWrite(_ board: NSPasteboard) -> Bool {
+    if activeTakeover != nil { return true }
+    if let current = pending, board.changeCount == current.changeCountAfterPaste { return true }
+    return false
+  }
+
+  /// How long Paste / Copy Last may wait for a held board to be released (#3135): the checked
+  /// cleanup's own decision bound plus a margin. A failure bound; a healthy cleanup releases the
+  /// board within the landing decision (300 ms, Ghostty 700 ms).
+  public static let manualWriteWaitBound: Duration = .milliseconds(
+    Int(landingDecisionBoundSeconds * 1000) + 500)
 
   // MARK: - Private
 

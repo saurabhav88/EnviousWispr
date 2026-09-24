@@ -63,6 +63,9 @@ final class LastDictationAction {
     var activate: @MainActor (NSRunningApplication) -> Bool
     var modifiersHeld: @MainActor () -> Bool
     var restoreClipboard: @MainActor () -> Bool
+    /// Whether the clipboard is still held by the last dictation's cleanup or a Quick Add takeover,
+    /// so a reuse write now would be refused (#3135). `ClipboardCleanup.isBoardHeldForManualWrite`.
+    var clipboardHeld: @MainActor () -> Bool
     /// `ClipboardCleanup.manualPaste` on the general board with the real Cmd+V, in production.
     var manualPaste:
       @MainActor (_ text: String, _ restore: Bool) -> ClipboardCleanup.ManualClipboardResult
@@ -115,17 +118,24 @@ final class LastDictationAction {
     await paste(rowID: rowID, target: target, source: .menu)
   }
 
-  /// The Copy Last chord was pressed.
-  func copyFromChord() {
-    finish(.copy, .chord, copy())
+  /// The Copy Last chord was pressed. The recording check and the row are taken now, on the press;
+  /// the copy itself may wait for the clipboard (#3135), so it runs in the returned task.
+  @discardableResult
+  func copyFromChord() -> Task<Void, Never> {
+    let recordingAtPress = environment.isDictationActive()
+    let rowID = environment.lastPasteable()?.id
+    return Task { finish(.copy, .chord, await copy(rowID: rowID, recordingAtPress: recordingAtPress)) }
   }
 
   // MARK: Copy
 
-  private func copy() -> Outcome {
+  private func copy(rowID: UUID?, recordingAtPress: Bool) async -> Outcome {
+    guard !recordingAtPress else { return .recording }
+    guard let rowID, environment.textForReuse(rowID) != nil else { return .noDictation }
+    if let refusal = await waitForClipboard() { return refusal }
+    // Every await is followed by the re-checks: the row is read again by id, never from the press.
     guard !environment.isDictationActive() else { return .recording }
-    guard let row = environment.lastPasteable(), let text = environment.textForReuse(row.id)
-    else { return .noDictation }
+    guard let text = environment.textForReuse(rowID) else { return .noDictation }
     switch environment.manualCopy(text) {
     case .copied: return .copied
     case .clipboardBusy: return .clipboardBusy
@@ -164,6 +174,10 @@ final class LastDictationAction {
     case .expired: return .keysHeld
     case .cancelled: return .cancelled
     }
+
+    // Before focus is moved: a paste pressed right after a dictation meets that dictation's cleanup
+    // still holding the clipboard, and a write now would be refused (#3135).
+    if let refusal = await waitForClipboard() { return refusal }
 
     // Re-checked BEFORE focus is moved: a recording may have started, the target quit or the row
     // been deleted while we waited, and activating an app for a paste that will not happen is a
@@ -215,6 +229,19 @@ final class LastDictationAction {
   private func refuseAccessibility(_ source: Source) -> Outcome {
     if source == .menu { environment.openPermissions() }
     return .axDenied
+  }
+
+  /// Waits, bounded, for the clipboard to be released (#3135). Nil when it is free; the refusal
+  /// otherwise. The write still claims the board itself, so a hold that returns after this wait is
+  /// refused there exactly as before.
+  private func waitForClipboard() async -> Outcome? {
+    switch await waitUntil(
+      within: ClipboardCleanup.manualWriteWaitBound, { !self.environment.clipboardHeld() })
+    {
+    case .met: return nil
+    case .expired: return .clipboardBusy
+    case .cancelled: return .cancelled
+    }
   }
 
   private func isFrontmost(_ application: NSRunningApplication) -> Bool {
@@ -286,6 +313,7 @@ extension LastDictationAction {
             .isEmpty
         },
         restoreClipboard: { [weak settings] in settings?.restoreClipboardAfterPaste ?? true },
+        clipboardHeld: { ClipboardCleanup.isBoardHeldForManualWrite(.general) },
         manualPaste: { text, restore in
           ClipboardCleanup.manualPaste(
             text: text, restore: restore, on: .general,
