@@ -40,4 +40,21 @@ struct PostProcessingResourceBundleRuntimeTests {
     #expect(formatter.format("thumbs up emoji") == "👍")
     #expect(formatter.format("happy birthday Emma red heart emoji") == "happy birthday Emma ❤️")
   }
+
+  /// #3124: the English (UK) spelling table ships in the same bundle. A missing table silently
+  /// disables British spelling for every UK user, so the shipped lookup is asserted directly.
+  @Test("Bundle.module resolves the British spelling table and the converter loads it")
+  func bundleModuleResolvesBritishSpellingTable() throws {
+    let tableURL = try #require(
+      BritishSpellingConverter.bundledTableURLForDiagnostics,
+      "Bundle.module did not resolve british-spelling.json"
+    )
+    #expect(tableURL.lastPathComponent == "british-spelling.json")
+    #expect(
+      tableURL.path.hasPrefix(EmojiFormatter.moduleBundleURLForDiagnostics.standardizedFileURL.path),
+      "Table resolved outside the module bundle: \(tableURL.path)"
+    )
+    let converter = try BritishSpellingConverter.load()
+    #expect(converter.convert("the color of the center").text == "the colour of the centre")
+  }
 }

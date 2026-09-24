@@ -87,6 +87,11 @@ COMPONENTS=(
   # all MIT/Apache-2.0), so the vendored file carries the CC-BY-4.0 text and
   # the required source/citation attribution, not just a bare license file.
   "Speaker diarization models (bundled CoreML, converted by FluidInference)|1ed7a662|CC-BY-4.0|repo:Sources/EnviousWispr/Resources/speaker-models-LICENSE.txt|https://huggingface.co/FluidInference/speaker-diarization-coreml|"
+  # #3124: the bundled American-to-British spelling table (british-spelling.json) is
+  # generated from VarCon by scripts/generate-british-spelling.py. Not a SwiftPM dep, a
+  # committed data asset; VarCon's copyright and permission notices are vendored verbatim
+  # beside the table.
+  "VarCon (American/British spelling data, bundled as british-spelling.json)|2020.12.07|Permissive (Atkinson and Titze permission notices; Ispell BSD-style licence)|repo:Sources/EnviousWisprPostProcessing/Resources/varcon-LICENSE.txt|http://wordlist.aspell.net/|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---
