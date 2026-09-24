@@ -692,6 +692,8 @@ public enum ClipboardCleanup {
     let legacyText: String
     /// Called at most once, and only by the cleanup that still owns the slot.
     let onOutcome: @MainActor (LandingOutcome) -> Void
+    /// Ends the arrival session when its decision did not come within the bound.
+    var onDecisionTimeout: @MainActor () -> Void = {}
     /// The 200 ms minimum before the board may change. Injectable so a test releases it rather
     /// than sleeping; it must THROW on cancellation, so a cancelled cleanup abandons.
     var minimumWait: @MainActor () async throws -> Void = ClipboardCleanup.defaultMinimumWait
@@ -914,8 +916,11 @@ public enum ClipboardCleanup {
     // a cancellation publishes): a decision that never came would hold the slot, and with it the
     // user's clipboard and every manual request, forever. Timing out is "not a miss".
     let decision = landing.decision
-    let decided: PasteArrivalLanding? =
-      await withDeadline(seconds: Self.landingDecisionBoundSeconds) { await decision() } ?? nil
+    let bounded: PasteArrivalLanding?? =
+      await withDeadline(seconds: Self.landingDecisionBoundSeconds) { await decision() }
+    // Timed out: end the session too, so an abandoned one neither keeps reading nor keeps a waiter.
+    if bounded == nil { landing.onDecisionTimeout() }
+    let decided: PasteArrivalLanding? = bounded ?? nil
     // Superseded or cancelled while waiting: a newer delivery owns the board and the slot, and this
     // task may neither write nor report.
     guard !Task.isCancelled, pending?.id == id else { return }

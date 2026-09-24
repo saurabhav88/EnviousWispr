@@ -513,7 +513,8 @@ internal final class PasteCascadeExecutor {
           return
         }
         onRetained(takeID, changeCount, report)
-      })
+      },
+      onDecisionTimeout: { capture.cancel() })
   }
 
   #if DEBUG
