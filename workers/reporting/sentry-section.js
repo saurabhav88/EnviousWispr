@@ -79,6 +79,8 @@ export const ERROR_CATEGORIES = Object.freeze({
   polish_provider_failed: { group: DEGRADED, deliveryProven: true, emitted: true, label: "polish provider failed" },
   output_classifier_load_failed: { group: DEGRADED, deliveryProven: true, emitted: true, label: "polish safety check could not load" },
   emoji_restore_incomplete: { group: DEGRADED, deliveryProven: true, emitted: true, label: "emoji restoration incomplete" },
+  // #3124: the text is still delivered, in American spelling, when the British table fails to load.
+  english_spelling_table_load_failed: { group: DEGRADED, deliveryProven: true, emitted: true, label: "British spelling table could not load" },
   inverse_normalization_timeout: { group: DEGRADED, deliveryProven: true, emitted: true, label: "number and date formatting timed out" },
   legacy_key_cleanup_failed: { group: DEGRADED, deliveryProven: true, emitted: true, label: "old key cleanup failed" },
 

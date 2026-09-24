@@ -215,19 +215,22 @@ struct LanguageLockOptionsTests {
   /// return-to-Auto direction is the one that did not exist before.
   @Test("Every language-mode transition reports the right telemetry")
   func lockTelemetryCoversBothDirections() {
-    let firstLock = LanguageLockOptions.lockTelemetry(from: .auto, to: .locked("de"))
+    let firstLock = LanguageLockOptions.lockTelemetry(
+      from: .auto, fromSpelling: .american, to: .locked("de"), toSpelling: .american)
     #expect(firstLock.fromLang == "auto")
     #expect(firstLock.toLang == "de")
     #expect(
       firstLock.reason == "first_time",
       "leaving Auto for the first lock is a first_time, not a preference change")
 
-    let changedMind = LanguageLockOptions.lockTelemetry(from: .locked("de"), to: .locked("fr"))
+    let changedMind = LanguageLockOptions.lockTelemetry(
+      from: .locked("de"), fromSpelling: .american, to: .locked("fr"), toSpelling: .american)
     #expect(changedMind.fromLang == "de")
     #expect(changedMind.toLang == "fr")
     #expect(changedMind.reason == "preference", "swapping one lock for another is a preference")
 
-    let backToAuto = LanguageLockOptions.lockTelemetry(from: .locked("de"), to: .auto)
+    let backToAuto = LanguageLockOptions.lockTelemetry(
+      from: .locked("de"), fromSpelling: .american, to: .auto, toSpelling: .american)
     #expect(backToAuto.fromLang == "de")
     #expect(
       backToAuto.toLang == "auto",
@@ -237,7 +240,8 @@ struct LanguageLockOptionsTests {
       "returning to Auto is a change of mind and must never be reported as a first lock")
 
     // Degenerate but reachable: the Auto row is tappable while already on Auto.
-    let noChange = LanguageLockOptions.lockTelemetry(from: .auto, to: .auto)
+    let noChange = LanguageLockOptions.lockTelemetry(
+      from: .auto, fromSpelling: .american, to: .auto, toSpelling: .american)
     #expect(noChange.fromLang == "auto")
     #expect(noChange.toLang == "auto")
     #expect(
@@ -256,7 +260,8 @@ struct LanguageLockOptionsTests {
     ]
     for (from, to) in transitions {
       #expect(
-        LanguageLockOptions.lockTelemetry(from: from, to: to).reason != "after_bad_detect",
+        LanguageLockOptions.lockTelemetry(
+      from: from, fromSpelling: .american, to: to, toSpelling: .american).reason != "after_bad_detect",
         "the sheet must not emit the chip CTA's reason for \(from) -> \(to)")
     }
   }

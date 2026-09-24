@@ -227,7 +227,9 @@ struct Issue1358EmptyRecoveryTests {
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
+      englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep())
   }
 

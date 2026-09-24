@@ -108,6 +108,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private let readSamples: LivePreviewSampleReader
   private let isPreviewOn: () -> Bool
   private let languageMode: () -> LanguageMode
+  /// #3124: the English spelling IN FORCE (`EnglishSpelling.effective`), read with the route and
+  /// the language when a recording starts. American by default, so a construction that does not
+  /// care keeps today's display.
+  private let englishSpelling: () -> EnglishSpelling
 
   /// Which engine can serve a given language, and why not when it cannot.
   ///
@@ -158,6 +162,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// "built, and there is something to correct" from "built nothing because the
   /// vocabulary is empty", which are different states with the same build count.
   package var hasCorrectorLookupsForTesting: Bool { correctorLookups != nil }
+
+  #if DEBUG
+    /// #3124 test seam: fired with each text the pill is given, AFTER `display` is set, so a test
+    /// waits on the subject's own signal instead of polling. DEBUG only; nil in every build that
+    /// ships.
+    var onDisplayTextForTesting: (@MainActor (String) -> Void)?
+  #endif
 
   private var sessionTask: Task<Void, Never>?
 
@@ -228,6 +239,11 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private struct RecordingSnapshot {
     let route: LivePreviewEngineRoute
     let enabled: Bool
+    /// #3124: the preview language and spelling frozen WITH the route, so a setting changed while
+    /// the session is still resolving applies to the next recording, and a new language can never
+    /// be paired with the old spelling.
+    let languageMode: LanguageMode
+    let englishSpelling: EnglishSpelling
   }
   private var recordingSnapshot: RecordingSnapshot?
 
@@ -270,11 +286,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     readSamples: @escaping LivePreviewSampleReader,
     isPreviewOn: @escaping () -> Bool,
     languageMode: @escaping () -> LanguageMode,
+    englishSpelling: @escaping () -> EnglishSpelling = { .american },
     selectedRoute: @escaping () -> LivePreviewEngineRoute
   ) {
     self.readSamples = readSamples
     self.isPreviewOn = isPreviewOn
     self.languageMode = languageMode
+    self.englishSpelling = englishSpelling
     self.selectedRoute = selectedRoute
   }
 
@@ -364,7 +382,9 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       // the NEXT recording decides afresh and a user who removes a model mid-take
       // is not suppressed beyond that take.
       guard !isRemovingModel else {
-        recordingSnapshot = RecordingSnapshot(route: selectedRoute(), enabled: false)
+        recordingSnapshot = RecordingSnapshot(
+          route: selectedRoute(), enabled: false, languageMode: languageMode(),
+          englishSpelling: englishSpelling())
         display = .off
         return
       }
@@ -373,7 +393,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       // reads this and never the live setting.
       let route = selectedRoute()
       recordingSnapshot = RecordingSnapshot(
-        route: route, enabled: route.isSupportedOnThisSystem() && isPreviewOn())
+        route: route, enabled: route.isSupportedOnThisSystem() && isPreviewOn(),
+        languageMode: languageMode(), englishSpelling: englishSpelling())
 
       guard recordingSnapshot?.enabled == true else {
         display = .off
@@ -469,8 +490,9 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // pill was sized for is the engine that must answer. A nil snapshot means the
     // recording ended while this task was being scheduled — resolving anything
     // then would be work for a recording nobody is having.
-    guard let route = recordingSnapshot?.route else { return }
-    let resolution = await route.resolve(languageMode())
+    guard let snapshot = recordingSnapshot else { return }
+    let route = snapshot.route
+    let resolution = await route.resolve(snapshot.languageMode)
     guard isCurrent(generation) else { return }
 
     guard case .ready(let candidate) = resolution else {
@@ -540,11 +562,30 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // ran", so a permanently-zero counter made the two indistinguishable — the exact
     // question it existed to answer.
     let shownChars = ShownCharsBox()
-    let publish: @Sendable (String) -> Void = { [weak self] text in
+    // #3124: British spelling on screen, for THIS recording's frozen choice, with the same Custom
+    // Words protection as the dictation chain. Converted before the main-actor hop, so the 20 Hz
+    // pill read stays a plain property read. Display only: the delivered text comes from the
+    // chain, never from here. A table that failed to load shows the text as heard.
+    let britishConverter =
+      snapshot.englishSpelling == .british ? BritishSpellingConverter.shared.converter : nil
+    let protectedWords =
+      britishConverter == nil
+      ? [] : BritishSpellingConverter.protectedWords(fromUserWordsIn: correctorVocabulary)
+    let publish: @Sendable (String) -> Void = { [weak self] heard in
+      // Re-bounded after conversion: British forms are longer ("colour", "travelled"), so text
+      // the recognizer capped can grow past the cap again (same reason the preview corrector
+      // re-applies it).
+      let text =
+        britishConverter.map {
+          LivePreviewTextBound.apply($0.convert(heard, protectedWords: protectedWords).text)
+        } ?? heard
       Task { @MainActor in
         guard let self, self.isRunning, self.sessionGeneration == generation else { return }
         shownChars.record(text.count)
         self.display = .text(text)
+        #if DEBUG
+          self.onDisplayTextForTesting?(text)
+        #endif
       }
     }
 

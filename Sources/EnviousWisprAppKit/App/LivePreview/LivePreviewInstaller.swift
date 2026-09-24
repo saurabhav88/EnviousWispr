@@ -38,6 +38,17 @@ enum LivePreviewInstaller {
   /// registers every consumer in one non-reversible order, and a second
   /// registration path would be a second source of truth for when the preview
   /// learns a user's vocabulary.
+  /// #3124: the language setting the live preview resolves against. English (UK) in force becomes
+  /// `.locked("en-GB")`, so Apple's preview uses its British model (which writes "colour" itself)
+  /// exactly as Auto already does on a UK Mac; every other setting passes through unchanged. Never
+  /// persisted and never handed to dictation, whose engines only accept "en".
+  nonisolated static func previewLanguageMode(
+    languageMode: LanguageMode, stored: EnglishSpelling
+  ) -> LanguageMode {
+    EnglishSpelling.effective(languageMode: languageMode, stored: stored) == .british
+      ? .locked("en-GB") : languageMode
+  }
+
   static func install(
     capture: any AudioCaptureInterface,
     settings: SettingsManager,
@@ -78,7 +89,14 @@ enum LivePreviewInstaller {
       // interface itself: see `LivePreviewSampleReader`.
       readSamples: { index in await capture.getSamplesSnapshot(fromIndex: index) },
       isPreviewOn: { settings.livePreviewEnabled },
-      languageMode: { settings.languageMode },
+      // #3124: the PREVIEW's language, which asks Apple for its British model when English (UK)
+      // is in force. Preview only: dictation keeps receiving `settings.languageMode`.
+      languageMode: {
+        previewLanguageMode(languageMode: settings.languageMode, stored: settings.englishSpelling)
+      },
+      englishSpelling: {
+        EnglishSpelling.effective(languageMode: settings.languageMode, stored: settings.englishSpelling)
+      },
       selectedRoute: selectedRoute
     )
     // Geometry reads the COORDINATOR's frozen answer, not a second live

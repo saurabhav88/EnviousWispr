@@ -499,6 +499,10 @@ public enum SentryBreadcrumb {
     /// — every dropped glyph is re-inserted — so this fires only on a regression.
     /// The user still got the polished text plus whatever was restored.
     case emojiRestoreIncomplete = "emoji_restore_incomplete"
+    /// #3124: the bundled American-to-British spelling table failed to load, so English (UK)
+    /// dictation is delivered in American spelling for the rest of the process. A packaging
+    /// defect that removes the feature for every UK user; captured once per process, no text.
+    case englishSpellingTableLoadFailed = "english_spelling_table_load_failed"
     /// #1175 (Telemetry Bible Phase 6): a hotkey registration failed — Carbon
     /// `RegisterEventHotKey` returned non-`noErr`, or an `NSEvent` modifier
     /// monitor installed `nil`. The affected hotkey will not fire. Rare and

@@ -353,6 +353,8 @@ public final class TelemetryService {
       emojiRestored: m?.emojiRestored,
       emojiRestoreIncomplete: m?.emojiRestoreIncomplete,
       emojiLatencyMs: m?.emojiLatencyMs,
+      englishSpelling: m?.englishSpelling?.rawValue,
+      spellingSwaps: m?.spellingSwaps,
       recordingSeconds: recordingSeconds,
       stopReason: stopReason,
       historySaveStatus: historySaveStatus,
@@ -1703,6 +1705,7 @@ public final class TelemetryService {
     cleanupLanguageBucket: String? = nil,
     emojiInInput: Int? = nil, emojiDropped: Int? = nil, emojiRestored: Int? = nil,
     emojiRestoreIncomplete: Bool? = nil, emojiLatencyMs: Double? = nil,
+    englishSpelling: String? = nil, spellingSwaps: Int? = nil,
     recordingSeconds: Double? = nil, stopReason: String? = nil,
     historySaveStatus: String? = nil, historySaveErrorClass: String? = nil,
     selectedTransport: String? = nil, effectiveTransport: String? = nil,
@@ -1801,6 +1804,10 @@ public final class TelemetryService {
     if let er = emojiRestored { props["emoji_restored"] = er }
     if let inc = emojiRestoreIncomplete { props["emoji_restore_incomplete"] = inc }
     if let elat = emojiLatencyMs { props["emoji_latency_ms"] = elat }  // #2980: Double
+    // #3124: present only on a British take. `spelling_swaps` counts accepted swaps and is absent
+    // when no spelling pass ran; neither proves the delivered text is British.
+    if let spelling = englishSpelling { props["english_spelling"] = spelling }
+    if let swaps = spellingSwaps { props["spelling_swaps"] = swaps }
     // #1167: degraded-save dimension. `succeeded` | `failed`; on failure a
     // normalized class (`full_disk`/`permission_denied`/`read_only`/`unknown`).
     // The top-line success metric is "completed AND history_save_status != failed".

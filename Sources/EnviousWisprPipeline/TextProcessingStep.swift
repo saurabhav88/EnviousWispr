@@ -131,6 +131,23 @@ public struct TextProcessingContext: Sendable {
   /// it, and a stored one would be a live token pointing at nothing.
   public var protectedExpansions: [SnippetExpansionRecord] = []
 
+  /// #3124: the spelling in force for this take, seeded by `TextProcessingRunner` from the
+  /// caller's `LanguageEvidence`. `.american` for a context built directly (tests, future callers):
+  /// the spelling steps then do nothing.
+  public var englishSpelling: EnglishSpelling = .american
+
+  /// #3124: lowercased Custom Words the spelling steps must never respell: each single-word
+  /// canonical and every word of a multi-word one. Seeded ONCE by `TextProcessingRunner` before any
+  /// step runs, so both spelling passes read one set even if the vocabulary changes mid-take, and
+  /// a pass that times out cannot take the set with it.
+  public var spellingProtectedWords: Set<String> = []
+
+  /// #3124: swaps made by the spelling passes the runner ACCEPTED, summed. `nil` means no pass ran
+  /// on this take (not British, not English, table missing, or timed out); `0` means a pass ran
+  /// and found nothing to change. Carried in the context so a discarded pass takes its count with
+  /// it. Neither value proves the delivered text is British.
+  public var englishSpellingSwaps: Int?
+
   public init(text: String, language: String?) {
     self.text = text
     self.language = language

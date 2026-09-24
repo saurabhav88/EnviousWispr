@@ -65,6 +65,27 @@ package enum WhisperPreviewEngineResolver {
   /// here.
   package static let isSupportedOnThisSystem = true
 
+  /// The language Whisper decodes, and the commitment the prepared engine is keyed on. Auto
+  /// decodes with detection (nil). A regional lock decodes its language subtag, since Whisper's
+  /// tokens carry no region; a bare lock is passed through as it was before #3124. The commitment
+  /// keeps the full code, so "en" and "en-GB" (English (UK),
+  /// #3124) are different prepared engines and a switch between them rebuilds.
+  package static func decodeLanguage(for mode: LanguageMode) -> (
+    language: String?, commitment: String
+  ) {
+    switch mode {
+    case .auto: return (nil, "")
+    case .locked(let code):
+      // Strip a REGION only ("en-GB" -> "en"). A bare code passes through untouched: the shared
+      // normaliser folds distinct Whisper languages (yue -> zh, nn -> no), which would silently
+      // switch a Cantonese or Nynorsk lock to another language.
+      guard let separator = code.firstIndex(where: { $0 == "-" || $0 == "_" }) else {
+        return (code, code)
+      }
+      return (String(code[..<separator]).lowercased(), code)
+    }
+  }
+
   package static func resolve(
     _ mode: LanguageMode, environment: Environment
   ) async -> LivePreviewEngineResolution {
@@ -93,16 +114,15 @@ package enum WhisperPreviewEngineResolver {
     // Handing engines a pre-resolved language would bake one engine's limitation
     // into the feature — which is why the resolver takes the SETTING, not a
     // language.
-    let language: String?
-    switch mode {
-    case .auto: language = nil
-    case .locked(let code): language = code
-    }
+    //
+    // #3124: a regional lock ("en-GB" for English (UK)) decodes as its bare language, because
+    // Whisper's language tokens carry no region; the KEY keeps the full code below, so switching
+    // between the two Englishes rebuilds the prepared engine.
+    let (language, commitment) = decodeLanguage(for: mode)
 
     // The key carries ARTIFACT identity as well as language commitment. A
     // revision or digest change must invalidate a prepared engine; without it a
     // user could keep previewing with weights we no longer ship.
-    let commitment = language ?? ""
     let key = LivePreviewEngineKey(
       engine: "\(WhisperPreviewRecognizer.engineID)#\(environment.artifactIdentity)",
       commitment: commitment)

@@ -80,6 +80,9 @@ public struct DictationSessionConfig: Sendable {
   /// Single source of truth for language selection. Pipelines derive
   /// `TranscriptionOptions` from this at session start.
   public let languageMode: LanguageMode
+  /// #3124: the spelling IN FORCE for this take (`EnglishSpelling.effective`), frozen with the
+  /// language so a picker change mid-recording applies to the next take.
+  public let englishSpelling: EnglishSpelling
   /// Parakeet-only. Committed at start — there is no mid-record reconfiguration path
   /// in the dictation kernel.
   public let useStreamingASR: Bool
@@ -162,6 +165,7 @@ public struct DictationSessionConfig: Sendable {
     vadSensitivity: Float,
     vadEnergyGate: Bool,
     languageMode: LanguageMode,
+    englishSpelling: EnglishSpelling,
     useStreamingASR: Bool,
     modelUnloadPolicy: ModelUnloadPolicy,
     llmProvider: LLMProvider,
@@ -185,6 +189,7 @@ public struct DictationSessionConfig: Sendable {
     self.vadSensitivity = vadSensitivity
     self.vadEnergyGate = vadEnergyGate
     self.languageMode = languageMode
+    self.englishSpelling = englishSpelling
     self.useStreamingASR = useStreamingASR
     self.modelUnloadPolicy = modelUnloadPolicy
     self.llmProvider = llmProvider

@@ -40,7 +40,9 @@ struct EscapeRecoverySpoolReleaseTests {
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
+      englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep())
     let adapter = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())
     let kernel = RecordingSessionKernel(

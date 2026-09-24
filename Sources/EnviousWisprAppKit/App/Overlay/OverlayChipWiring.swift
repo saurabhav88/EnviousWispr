@@ -36,16 +36,17 @@ enum OverlayChipWiring {
     { [weak settings] lang in
       guard let settings else { return }
       let priorMode = settings.languageMode
-      let fromLang: String
-      switch priorMode {
-      case .auto: fromLang = "auto"
-      case .locked(let prev): fromLang = prev
-      }
-      settings.languageMode = .locked(lang)
+      let nextMode = LanguageMode.locked(lang)
+      // #3124: the stored spelling is untouched, so a chip lock to "en" restores the English the
+      // user last chose (English (UK) reports "en-GB"), as the Auto toggle does. One vocabulary
+      // with the sheet: `LanguageLockOptions.telemetryCode`.
+      let fromLang = LanguageLockOptions.telemetryCode(priorMode, stored: settings.englishSpelling)
+      let toLang = LanguageLockOptions.telemetryCode(nextMode, stored: settings.englishSpelling)
+      settings.languageMode = nextMode
       // PR4 Codex code-diff r6 [P2]: chip-driven locks emit the same
       // language.manual_lock_used event as Settings-driven locks.
       TelemetryService.shared.trackManualLockUsed(
-        fromLang: fromLang, toLang: lang, reason: "after_bad_detect")
+        fromLang: fromLang, toLang: toLang, reason: "after_bad_detect")
     }
   }
 }

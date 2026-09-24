@@ -16,8 +16,10 @@ internal struct TextProcessingRunResult {
 ///
 /// Does NOT own step instances. Steps are passed in by the pipeline, which retains
 /// ownership across the timeout await.
-/// The runner owns only the execution algorithm: ordering, timeout, cancellation,
-/// failure continuation (heart & limbs), and CORRECTION_DEBUG logging.
+/// The runner owns the execution algorithm: ordering, timeout, cancellation,
+/// failure continuation (heart & limbs), and CORRECTION_DEBUG logging. It also
+/// SEEDS the context once before any step runs: the resolved language (#2614) and
+/// the per-take spelling inputs (#3124), so every step reads one frozen answer.
 ///
 /// Phase G1+G2: error-surface dispatch reads `step.errorSurfacePolicy` instead
 /// of matching `step.name == "LLM Polish"`, and the log sink is injectable via
@@ -212,6 +214,10 @@ internal final class TextProcessingRunner {
     context.learnLanguage = resolution.learnLanguage
     context.targetAppName = targetAppName
     context.takeID = takeID
+    // #3124: seeded here, before the loop, so a spelling pass that times out cannot lose them
+    // (the runner keeps the INPUT context on failure) and both passes read one set.
+    context.englishSpelling = evidence.englishSpelling
+    context.spellingProtectedWords = Self.spellingProtectedWords(steps: steps)
     var polishError: String?
 
     let logger = self.logger
@@ -541,5 +547,18 @@ internal final class TextProcessingRunner {
       }
     }
     return TextProcessingRunResult(context: context, polishError: polishError)
+  }
+
+  /// #3124: the words the spelling steps must leave alone, from the chain's own
+  /// `WordCorrectionStep` vocabulary under the one shared rule
+  /// (`BritishSpellingConverter.protectedWords(fromUserWordsIn:)`). Read whether or not word
+  /// correction is switched on: a Custom Word is the user's spelling either way. Empty when the
+  /// chain has no word-correction step.
+  static func spellingProtectedWords(steps: [any TextProcessingStep]) -> Set<String> {
+    guard let wordCorrection = steps.lazy.compactMap({ $0 as? WordCorrectionStep }).first else {
+      return []
+    }
+    return BritishSpellingConverter.protectedWords(
+      fromUserWordsIn: wordCorrection.correctorVocabulary)
   }
 }

@@ -1,5 +1,6 @@
 import EnviousWisprASR
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 /// The single owner of "which language codes may this backend be locked to".
@@ -123,29 +124,118 @@ enum LanguageLockOptions {
   /// the return TO Auto, which is a user changing their mind rather than a first
   /// encounter.
   static func lockTelemetry(
-    from previous: LanguageMode, to next: LanguageMode
+    from previous: LanguageMode, fromSpelling: EnglishSpelling,
+    to next: LanguageMode, toSpelling: EnglishSpelling
   ) -> (fromLang: String, toLang: String, reason: String) {
-    let fromLang: String
-    var leavingAuto = false
-    switch previous {
-    case .auto:
-      fromLang = "auto"
-      leavingAuto = true
-    case .locked(let prior):
-      fromLang = prior
-    }
-
-    let toLang: String
-    switch next {
-    case .auto: toLang = "auto"
-    case .locked(let code): toLang = code
-    }
+    let leavingAuto: Bool
+    if case .auto = previous { leavingAuto = true } else { leavingAuto = false }
 
     // A return to Auto is never a first lock, whatever the previous mode was.
     var isFirstLock = leavingAuto
     if case .auto = next { isFirstLock = false }
 
-    return (fromLang, toLang, isFirstLock ? "first_time" : "preference")
+    return (
+      telemetryCode(previous, stored: fromSpelling), telemetryCode(next, stored: toSpelling),
+      isFirstLock ? "first_time" : "preference"
+    )
+  }
+
+  /// The language value a lock event reports: "auto", the locked code, or "en-GB" when British
+  /// spelling is IN FORCE (#3124). English (US) and English (UK) both lock the engine to "en", so
+  /// without this a switch between them would report "en" to "en" and be invisible in the data.
+  static func telemetryCode(_ mode: LanguageMode, stored: EnglishSpelling) -> String {
+    switch mode {
+    case .auto: return "auto"
+    case .locked(let code):
+      return EnglishSpelling.effective(languageMode: mode, stored: stored) == .british
+        ? "en-GB" : code
+    }
+  }
+
+  // MARK: - English (UK) picker rows (#3124)
+
+  /// The picker's rows for an engine and a search. Filtered on `lockCode`, the code the engine
+  /// receives, BEFORE the search, so a search can never surface a row the active engine cannot
+  /// honour, and English (UK) is offered exactly where English is. `lockableCodes == nil` means
+  /// no restriction. Search matches the English name, native name or row code, case-insensitive.
+  ///
+  /// `offersEnglishUK` is false only where the list must name what can run RIGHT NOW and the
+  /// British variant cannot: the Live Preview page on Apple's engine without the en-GB pack
+  /// (`previewOffersEnglishUK`).
+  static func pickerRows(
+    lockableCodes: Set<String>?, query: String, offersEnglishUK: Bool
+  ) -> [LanguageCatalog.Entry] {
+    let offered = LanguageCatalog.pickerEntries.filter {
+      (lockableCodes?.contains($0.lockCode) ?? true)
+        && (offersEnglishUK || $0 != LanguageCatalog.englishUK)
+    }
+    let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !needle.isEmpty else { return offered }
+    return offered.filter { entry in
+      entry.englishName.lowercased().contains(needle)
+        || entry.nativeName.lowercased().contains(needle)
+        || entry.code.lowercased().contains(needle)
+    }
+  }
+
+  /// Whether the LIVE PREVIEW page's picker may offer English (UK). Apple's preview needs the exact
+  /// en-GB pack for a British lock (`ApplePreviewRecognizer.satisfyingTag`: a region-bearing code
+  /// requires that installed tag), so with only another English installed the row would lock a
+  /// preview that then refuses to run. The universal engine has no packs, so it always may.
+  static func previewOffersEnglishUK(
+    previewEngine: LivePreviewEngineChoice, installedPackTags: [String]
+  ) -> Bool {
+    guard previewEngine == .apple else { return true }
+    return installedPackTags.contains {
+      $0.replacingOccurrences(of: "_", with: "-").lowercased() == "en-gb"
+    }
+  }
+
+  /// The row a RECENT language code is shown as: the English the user has chosen for "en" (#3124),
+  /// except where `offersEnglishUK` is false, where a recent "en" is plain English, so the Recent
+  /// section can never offer the British row the main list hides.
+  static func recentRow(
+    code: String, stored: EnglishSpelling, offersEnglishUK: Bool
+  ) -> LanguageCatalog.Entry {
+    offersEnglishUK
+      ? LanguageCatalog.entry(forLockedCode: code, spelling: stored)
+      : LanguageCatalog.entry(for: code)
+  }
+
+  /// What choosing `entry` sets, or Auto for nil: the lock and the stored spelling. A row with a
+  /// spelling (the two English rows) sets it; any other row leaves the stored preference alone, so
+  /// choosing English (UK) again later restores it.
+  static func selection(
+    for entry: LanguageCatalog.Entry?, stored: EnglishSpelling
+  ) -> (mode: LanguageMode, spelling: EnglishSpelling) {
+    guard let entry else { return (.auto, stored) }
+    return (.locked(entry.lockCode), entry.spelling ?? stored)
+  }
+
+  /// Whether `entry` is the row the current settings select. The two English rows share one lock
+  /// code, so they are told apart by the spelling IN FORCE.
+  static func isSelected(
+    _ entry: LanguageCatalog.Entry, mode: LanguageMode, stored: EnglishSpelling
+  ) -> Bool {
+    guard case .locked(let code) = mode, code == entry.lockCode else { return false }
+    guard let rowSpelling = entry.spelling else { return true }
+    return EnglishSpelling.effective(languageMode: mode, stored: stored) == rowSpelling
+  }
+
+  /// Applies a picker choice (nil = Auto) and returns the lock event to report. The telemetry is
+  /// read BEFORE the mutation, and the spelling is written BEFORE the lock, so the frozen value a
+  /// recording could read never pairs a new lock with an old spelling.
+  @MainActor
+  static func apply(
+    _ entry: LanguageCatalog.Entry?, to settings: SettingsManager
+  ) -> (fromLang: String, toLang: String, reason: String) {
+    let next = selection(for: entry, stored: settings.englishSpelling)
+    let event = lockTelemetry(
+      from: settings.languageMode, fromSpelling: settings.englishSpelling,
+      to: next.mode, toSpelling: next.spelling)
+    if settings.englishSpelling != next.spelling { settings.englishSpelling = next.spelling }
+    settings.languageMode = next.mode
+    return event
   }
 
   /// Codes the picker may offer for `backend`, or `nil` for "no restriction".

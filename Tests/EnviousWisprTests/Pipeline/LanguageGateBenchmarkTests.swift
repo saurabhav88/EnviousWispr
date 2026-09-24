@@ -100,7 +100,8 @@ struct LanguageGateBenchmarkTests {
       evidence: LanguageEvidence(
         lockedLanguage: nil,
         engineDetectsLanguage: row.engine == "whisperkit",
-        engineReportedLanguage: row.engine == "whisperkit" ? row.engine_language : nil),
+        engineReportedLanguage: row.engine == "whisperkit" ? row.engine_language : nil,
+        englishSpelling: .american),
       targetAppName: nil,
       steps: deterministicChain(engine: row.engine))
     return result.context

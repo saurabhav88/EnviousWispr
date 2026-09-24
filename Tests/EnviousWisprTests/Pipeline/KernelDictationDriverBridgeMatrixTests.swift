@@ -49,7 +49,9 @@ import Testing
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),
         inverseTextNormalization: InverseTextNormalizationStep(),
+        englishSpelling: EnglishSpellingStep(target: .text),
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+        englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
         emojiRestore: EmojiRestoreStep())
       let outcome = KernelFinalizationOutcome()
       let context = KernelSessionContext()

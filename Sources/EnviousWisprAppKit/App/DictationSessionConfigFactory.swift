@@ -63,6 +63,9 @@ enum DictationSessionConfigFactory {
       vadSensitivity: settings.vadSensitivity,
       vadEnergyGate: settings.vadEnergyGate,
       languageMode: settings.languageMode,
+      // #3124: the EFFECTIVE value, decided once here and frozen for the take.
+      englishSpelling: EnglishSpelling.effective(
+        languageMode: settings.languageMode, stored: settings.englishSpelling),
       useStreamingASR: settings.useStreamingASR,
       modelUnloadPolicy: settings.modelUnloadPolicy,
       llmProvider: settings.llmProvider,

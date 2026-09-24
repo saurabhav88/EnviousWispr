@@ -6,7 +6,8 @@ import SwiftUI
 ///
 /// Surfaces the engine's supported languages with a search field and an
 /// optional "Recent" section driven by the persisted `SessionLanguageMemory`
-/// usage cache. Tapping a language row sets `languageMode = .locked(code)`; the
+/// usage cache. Tapping a row sets `languageMode = .locked(lockCode)` (and, for the two
+/// English rows, the English spelling first, #3124); the
 /// Auto row above them sets `.auto`, so the sheet can both set and clear a lock.
 /// Either way it dismisses. The sheet is a settings detail, never an interrupt: nothing
 /// here blocks dictation.
@@ -33,9 +34,16 @@ struct LanguageLockSheet: View {
   /// the moment it becomes true.
   let contextSubtitle: String?
 
-  init(lockableCodes: Set<String>? = nil, contextSubtitle: String? = nil) {
+  /// #3124: false only when the caller's list must name what runs RIGHT NOW and English (UK)
+  /// cannot (`LanguageLockOptions.previewOffersEnglishUK`). The Transcription page passes nothing.
+  let offersEnglishUK: Bool
+
+  init(
+    lockableCodes: Set<String>? = nil, contextSubtitle: String? = nil, offersEnglishUK: Bool = true
+  ) {
     self.lockableCodes = lockableCodes
     self.contextSubtitle = contextSubtitle
+    self.offersEnglishUK = offersEnglishUK
   }
 
   @State private var searchText: String = ""
@@ -304,7 +312,8 @@ struct LanguageLockSheet: View {
       // `@ViewBuilder` function cannot hold.
       LanguageLockRow(
         entry: entry,
-        isSelected: isCurrentLock(entry.code)
+        isSelected: LanguageLockOptions.isSelected(
+          entry, mode: settings.languageMode, stored: settings.englishSpelling)
       ) {
         select(entry)
       }
@@ -319,53 +328,36 @@ struct LanguageLockSheet: View {
 
   // MARK: - Filtering
 
-  /// The engine's offerable languages. Applied BEFORE the search filter so a
-  /// search can never surface a language the active engine cannot honour.
-  private var lockableLanguages: [LanguageCatalog.Entry] {
-    guard let lockableCodes else { return LanguageCatalog.sortedByEnglishName }
-    return LanguageCatalog.sortedByEnglishName.filter { lockableCodes.contains($0.code) }
-  }
-
+  /// The rows to show: `LanguageLockOptions.pickerRows`, the one owner of which rows the engine
+  /// can honour and which match the search.
   private var filteredLanguages: [LanguageCatalog.Entry] {
-    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    guard !query.isEmpty else { return lockableLanguages }
-    return lockableLanguages.filter { entry in
-      entry.englishName.lowercased().contains(query)
-        || entry.nativeName.lowercased().contains(query)
-        || entry.code.lowercased().contains(query)
-    }
+    LanguageLockOptions.pickerRows(
+      lockableCodes: lockableCodes, query: searchText, offersEnglishUK: offersEnglishUK)
   }
 
   // MARK: - Actions
 
   private func select(_ entry: LanguageCatalog.Entry) {
-    apply(.locked(entry.code))
+    apply(entry)
   }
 
   /// The way back out of a lock. Same path as `select(_:)` so the two can never
   /// report differently.
   private func selectAuto() {
-    apply(.auto)
+    apply(nil)
   }
 
-  /// Reads the telemetry decision BEFORE mutating settings, because both fields
-  /// describe a transition and the prior value is gone afterwards.
-  private func apply(_ next: LanguageMode) {
-    let event = LanguageLockOptions.lockTelemetry(from: settings.languageMode, to: next)
-    settings.languageMode = next
+  /// One owner for the write order and the telemetry decision
+  /// (`LanguageLockOptions.apply`): the event is read before any mutation, and
+  /// the spelling is written before the lock (#3124). nil is Auto.
+  private func apply(_ entry: LanguageCatalog.Entry?) {
+    let event = LanguageLockOptions.apply(entry, to: settings)
     TelemetryService.shared.trackManualLockUsed(
       fromLang: event.fromLang,
       toLang: event.toLang,
       reason: event.reason
     )
     dismiss()
-  }
-
-  private func isCurrentLock(_ code: String) -> Bool {
-    if case .locked(let current) = settings.languageMode {
-      return current == code
-    }
-    return false
   }
 
   // MARK: - Recents
@@ -403,7 +395,10 @@ struct LanguageLockSheet: View {
       .prefix(maxRecents)
       .compactMap { pair -> LanguageCatalog.Entry? in
         guard LanguageTypes.isSupported(pair.key) else { return nil }
-        return LanguageCatalog.entry(for: pair.key)
+        // #3124: a recent "en" is shown as the English the user has chosen, and only as a row
+        // this sheet is allowed to offer.
+        return LanguageLockOptions.recentRow(
+          code: pair.key, stored: settings.englishSpelling, offersEnglishUK: offersEnglishUK)
       }
 
     recents = Array(sorted)
@@ -427,7 +422,7 @@ private struct LanguageLockRow: View {
       HStack(spacing: 10) {
         VStack(alignment: .leading, spacing: 2) {
           Text(entry.nativeName).settingsRowLabel()
-          Text("\(entry.englishName) · \(entry.code)")
+          Text(LanguageCatalog.pickerSubtitle(for: entry))
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
         }
@@ -449,7 +444,11 @@ private struct LanguageLockRow: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("\(entry.englishName), native \(entry.nativeName)")
+    // #3124: the two English rows differ only by spelling, so VoiceOver says which.
+    .accessibilityLabel(
+      entry.spelling == nil
+        ? "\(entry.englishName), native \(entry.nativeName)"
+        : "\(entry.englishName), \(LanguageCatalog.pickerSubtitle(for: entry))")
     .accessibilityValue(isSelected ? "selected" : "")
   }
 }

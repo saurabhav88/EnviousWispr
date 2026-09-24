@@ -189,6 +189,40 @@ import os
     #expect(metrics.itnFloorDelivered == false)
   }
 
+  /// #3124: a British take is delivered British through the real wiring, and its facts reach the
+  /// saved transcript's metrics (and from there `dictation.completed`); an American take carries
+  /// neither field.
+  @Test("English (UK): delivered British, and the preference and swaps reach the metrics")
+  func englishSpellingReachesMetrics() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(
+      autoPasteToActiveApp: true, languageMode: .locked("en"), englishSpelling: .british)
+    let wiring = makeWiring(outcome: outcome, context: context, save: { _, _ in })
+
+    let result = try await wiring.processText("the color of the center") {}
+    #expect(result == "the colour of the centre")
+    try await wiring.store(result, UUID(), .ordinary)
+    _ = await wiring.deliver(result, .ordinary)
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.englishSpelling == .british)
+    #expect(metrics.spellingSwaps == 2)
+
+    let american = KernelFinalizationOutcome()
+    let americanContext = KernelSessionContext()
+    americanContext.config = .testDefault(
+      autoPasteToActiveApp: true, languageMode: .locked("en"), englishSpelling: .american)
+    let americanWiring = makeWiring(
+      outcome: american, context: americanContext, save: { _, _ in })
+    let americanResult = try await americanWiring.processText("the color of the center") {}
+    #expect(americanResult == "the color of the center")
+    try await americanWiring.store(americanResult, UUID(), .ordinary)
+    _ = await americanWiring.deliver(americanResult, .ordinary)
+    let americanMetrics = try #require(american.transcript?.metrics)
+    #expect(americanMetrics.englishSpelling == nil)
+    #expect(americanMetrics.spellingSwaps == nil)
+  }
+
   @Test("chain order: filler removal runs BEFORE ITN")
   func itnRunsAfterFillerRemoval() async throws {
     let steps = makeSteps()
@@ -1863,7 +1897,9 @@ import os
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
+      englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: polish ?? LLMPolishStep(keychainManager: KeychainManager()),
+      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep())
   }
 

@@ -93,7 +93,11 @@ struct LimbSteps {
   let fillerRemoval: FillerRemovalStep
   let emojiFormatter: EmojiFormatterStep
   let inverseTextNormalization: InverseTextNormalizationStep
+  /// #3124: American to British spelling on the deterministic text (the no-polish floor).
+  let englishSpelling: EnglishSpellingStep
   let llmPolish: LLMPolishStep
+  /// #3124: the same conversion on the polish output, so polish cannot revert it.
+  let englishSpellingAfterPolish: EnglishSpellingStep
   let emojiRestore: EmojiRestoreStep
 
   /// The post-ASR chain, in order, and the ONLY place that order is written (#628).
@@ -108,6 +112,9 @@ struct LimbSteps {
   /// the raw ASR surface before the fuzzy corrector can alter one of its words. `llmPolish` sits
   /// after `inverseTextNormalization` so ITN doubles as the raw-fallback floor (#145), and
   /// `emojiRestore` sits after polish because it repairs what polish dropped (#761).
+  /// `englishSpelling` follows ITN so the floor is British (#3124);
+  /// `englishSpellingAfterPolish` follows polish so a model cannot revert it, and precedes
+  /// `emojiRestore` so the restorer aligns two British texts.
   ///
   /// The chain is NOT the last thing that touches the text: `SnippetFinalizer` runs after the
   /// runner in both paths, and `CursorInsertionRepair` runs after that on the live path.
@@ -115,7 +122,8 @@ struct LimbSteps {
   var orderedChain: [any TextProcessingStep] {
     [
       snippetExpansion, wordCorrection, fillerRemoval, emojiFormatter,
-      inverseTextNormalization, llmPolish, emojiRestore,
+      inverseTextNormalization, englishSpelling, llmPolish, englishSpellingAfterPolish,
+      emojiRestore,
     ]
   }
 
