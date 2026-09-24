@@ -338,12 +338,93 @@ internal func tier1DeclineReason(
 
 /// Executes the tiered paste cascade: AX direct -> CGEvent Cmd+V -> AppleScript -> clipboard.
 ///
+/// #3121: the window the captured field lives in, resolved once per delivery.
+///
+/// A key paste goes to the target app's focused WINDOW. When the user moved to another window of
+/// the same app before stopping (two Chrome profiles are one process), activating the app keeps
+/// that other window front and the paste goes there or nowhere. Knowing the field's own window
+/// lets the cascade raise it and refuse a key paste that would land elsewhere.
+enum PasteTargetWindow {
+  /// No field was captured. Nothing to compare: every key tier behaves as before #3121.
+  case none
+  /// The captured field's `AXWindow`.
+  case window(AXUIElement)
+  /// A field was captured but its window could not be read (closed, stale, refused, or over
+  /// budget). Only a fresh focused-element match may then let a key paste run.
+  case unreadable
+}
+
+/// #3121: whether a key paste would reach the captured field's window. Pure over the injected
+/// Accessibility seam so every branch is testable with scripted answers.
+@MainActor
+enum PasteTargetWindowGate {
+  /// Why the gate refused. The raw value is the reason string logged and sent as
+  /// `paste.tier_failures` (`target_window_not_front(<reason>)`).
+  enum Refusal: String, Equatable, Sendable {
+    /// The app's focused window is another window and the captured field is not the focus.
+    case windowMismatch = "window_mismatch"
+    /// The captured field's window is unreadable and the field is not the focus.
+    case windowUnreadableFocusMismatch = "window_unreadable_focus_mismatch"
+    /// The budget refused a read, so the gate could not tell. Fails closed.
+    case budget = "budget"
+  }
+
+  /// Reads `element`'s window once, through `admit` (which installs the call's bound).
+  static func resolve(
+    element: AXUIElement?, ax: any PastedRegionAXOperations, admit: (AXUIElement) -> Bool
+  ) -> PasteTargetWindow {
+    guard let element else { return .none }
+    guard admit(element), case .window(let window) = ax.window(of: element) else {
+      return .unreadable
+    }
+    return .window(window)
+  }
+
+  /// Nil when the key paste would reach the captured field's window; the refusal otherwise.
+  ///
+  /// `.window`: the app's focused window must be that window, OR the app's focused element must
+  /// be the captured field itself (a sheet or popup can own window focus while the field keeps
+  /// keyboard focus). `.unreadable`: only the focused-element match. `.none`: always nil.
+  /// Comparison is `CFEqual`, the identity test `PasteArrivalCapture.targetWindow` uses.
+  static func refusal(
+    target: PasteTargetWindow, element: AXUIElement?, pid: pid_t,
+    ax: any PastedRegionAXOperations, admit: (AXUIElement) -> Bool
+  ) -> Refusal? {
+    let mismatch: Refusal
+    switch target {
+    case .none:
+      return nil
+    case .window(let window):
+      let application = ax.applicationElement(pid: pid)
+      guard admit(application) else { return .budget }
+      if case .window(let focusedWindow) = ax.focusedWindow(of: application),
+        CFEqual(focusedWindow, window)
+      {
+        return nil
+      }
+      mismatch = .windowMismatch
+    case .unreadable:
+      mismatch = .windowUnreadableFocusMismatch
+    }
+    guard let element else { return mismatch }
+    let application = ax.applicationElement(pid: pid)
+    guard admit(application) else { return .budget }
+    if case .element(let focused) = ax.focusedElement(ofApplication: application),
+      CFEqual(focused, element)
+    {
+      return nil
+    }
+    return mismatch
+  }
+}
+
 /// Thin orchestrator over PasteService static methods. Both pipelines call this
 /// instead of owning their own paste logic. The cascade is OS-integration code
 /// that must exist in exactly one place to prevent drift.
 @MainActor
 internal final class PasteCascadeExecutor {
-  /// #3106: the live seams an arrival session reads and schedules through. Every system-paste
+  /// #3106: the live seams an arrival session reads and schedules through; #3121's window gate
+  /// (`activate`, `dispatchGate`) reads through the same two. Every system-paste
   /// tier is inert on an isolated test pasteboard (`systemPasteCanReachOurText`), so no test run
   /// reaches them; the placement is guarded by `PasteCascadeLandingContractTests`.
   private let landingAX: any PastedRegionAXOperations = LivePastedRegionAXOperations()
@@ -564,6 +645,8 @@ internal final class PasteCascadeExecutor {
     // #3106: the one arrival session that committed, if any. Every tier below is gated on
     // `tier == .clipboardOnly`, so once one commits no later tier runs: at most one per delivery.
     var committedArrivalCapture: PasteArrivalCapture? = nil
+    // #3121: the captured field's window, resolved by the first key tier's activation and reused.
+    var targetWindow: PasteTargetWindow? = nil
 
     // Three-way classification of the focused element (PR #220 design intent,
     // restored for Chromium/Electron contenteditable inputs — see #277).
@@ -781,14 +864,21 @@ internal final class PasteCascadeExecutor {
       let tier2ActivationStart = CFAbsoluteTimeGetCurrent()
       logPasteTimingStart(
         step: "tier2_activate", startedAt: tier2ActivationStart, bundleId: bundleId)
-      var activation = await activate(app)
+      let tier1BoundTheTarget =
+        policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect)
+      var activation = await activate(
+        app, element: request.targetElement, target: targetWindow,
+        tier1BoundTheTarget: tier1BoundTheTarget)
+      targetWindow = activation.target
       #if DEBUG
         // #3106 PR B gate G6 (Live UAT only): Tier 2b runs only after this activation times out,
         // which cannot be staged by hand. With `EW_UAT_FORCE_TIER2B=1` in the launch environment the
         // activation reads as timed out, so the REAL AppleScript paste runs against the real target.
         // DEBUG-only, env-gated, logged on every use; Release compiles none of it.
         if ProcessInfo.processInfo.environment["EW_UAT_FORCE_TIER2B"] == "1" {
-          activation = (activated: false, elapsed: activation.elapsed)
+          activation = Activation(
+            activated: false, target: activation.target, windowRefusal: nil,
+            elapsed: activation.elapsed)
           Task {
             await AppLogger.shared.log(
               "UAT seam: Tier 2 activation forced to time out (EW_UAT_FORCE_TIER2B)",
@@ -801,9 +891,18 @@ internal final class PasteCascadeExecutor {
       logPasteTiming(
         step: "tier2_activate", startedAt: tier2ActivationStart,
         elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2ActivationStart) * 1000,
-        outcome: activated ? "activated" : "not_activated", bundleId: bundleId)
+        outcome: activation.windowRefusal != nil
+          ? "window_not_front" : activated ? "activated" : "not_activated",
+        bundleId: bundleId)
 
-      if activated {
+      if let windowRefusal = activation.windowRefusal {
+        // #3121: the app came front but the captured field's window did not. A Cmd+V now, or
+        // Tier 2b's AppleScript paste, would go to the window that IS front. Neither runs;
+        // Tier 3 keeps the words on the clipboard and shows the Copied notice.
+        let reason = "target_window_not_front(\(windowRefusal.rawValue)) ms=\(elapsed)"
+        tierFailures["activation"] = reason
+        emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
+      } else if activated {
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
         let payload = PasteService.payloadAtCommitBoundary(
@@ -819,8 +918,14 @@ internal final class PasteCascadeExecutor {
         // Cancelled by the branch-local defer on every exit but a dispatched Cmd+V.
         let arrivalCapture = prepareArrivalCapture(
           tier: .cgEvent, app: app, payloadText: payload.text, request: request,
-          tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
+          tier1BoundTheTarget: tier1BoundTheTarget)
         defer { arrivalCapture?.cancelUnlessCommitted() }
+        // #3121 R2-1: app front AND the captured field's window (or the field itself) front, read
+        // after every AX step above. The omnibox re-check below stays the LAST AX step and spends
+        // what is left of this gate's budget.
+        let gate = dispatchGate(
+          app: app, target: activation.target, element: request.targetElement,
+          tier1BoundTheTarget: tier1BoundTheTarget)
         // Cloud review rounds 2 and 4 (PR #2451): both activation AND
         // `payloadAtCommitBoundary`'s own AX re-reads above can move focus off
         // the omnibox before the CGEvent fires. Checking after activation but
@@ -829,12 +934,22 @@ internal final class PasteCascadeExecutor {
         // this branch makes and immediately before the dispatch, so there is
         // no remaining AX-touching step between the check and the write.
         let chromiumOmniboxStillFocused: Bool =
-          if isChromiumOmnibox, let element = request.targetElement {
-            PasteService.freshFocusedElement(matching: element) != nil
+          if gate.refusal != nil {
+            true  // not consulted: the window refusal below already stops the dispatch
+          } else if isChromiumOmnibox, let element = request.targetElement {
+            remainingGateSeconds(gate.budget) > 0
+              && PasteService.freshFocusedElement(
+                matching: element, messagingTimeout: remainingGateSeconds(gate.budget)) != nil
           } else {
             true
           }
-        if !chromiumOmniboxStillFocused {
+        if let windowRefusal = gate.refusal {
+          // #3121: same shape as the omnibox refusal below: `.cgEvent` is NOT recorded as
+          // attempted, because `pasteToActiveApp` is never called.
+          let reason = "target_window_not_front(\(windowRefusal))"
+          tierFailures["cgevent"] = reason
+          emitTierFailureBreadcrumb(stage: "cgevent", reason: reason, bundleId: bundleId)
+        } else if !chromiumOmniboxStillFocused {
           // Refuse the blind paste rather than guess where it lands — the same
           // "not confident enough to act automatically" floor PR #220 already
           // uses for a non-text focus: fall through to clipboard-only below.
@@ -899,9 +1014,13 @@ internal final class PasteCascadeExecutor {
         emitTierFailureBreadcrumb(
           stage: "activation", reason: "timeout_ms=\(elapsed)", bundleId: bundleId
         )
-        // Tier 2b: AppleScript Edit > Paste
-        _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-        app.activate()
+        // Tier 2b: AppleScript Edit > Paste. Reached only when the APP never came front; an app
+        // that came front with the wrong window stopped above (#3121).
+        // Its own deadline: the usual 0.5 s, shared by the raise and the activation (R3-1).
+        let tier2bStartMs = landingScheduler.nowMs
+        raiseAndActivate(app, target: activation.target) {
+          PasteLandingPrepareBudget.defaultMs - (self.landingScheduler.nowMs - tier2bStartMs)
+        }
         // Not a clipboard delay — this waits for the activation to settle before
         // the payload is chosen. It shared `clipboardRestoreDelayMs` by accident
         // of history; #2197 gave it its own name so an edit to one cannot
@@ -915,31 +1034,17 @@ internal final class PasteCascadeExecutor {
           candidateDeletesDictatedText: request.candidateDeletesDictatedText,
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
-        // Same ordering as Tier 2: snapshot after the re-check, before the write.
-        // #2465: the restore-OFF arm still WRITES the board, so an in-flight Quick Add takeover has
-        // to learn it lost — `snapshotForDelivery` is the only thing that used to say so, and it
-        // does not run on this arm.
-        let snapshot: ClipboardSnapshot? =
-          request.restoreClipboardAfterPaste
-          ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-          : {
-            ClipboardCleanup.deliveryClaimsBoard()
-            return nil
-          }()
-        submittedKind = payload.kind
-        copiesSubmittedLengths.append(payload.text.utf16.count)
-        #if DEBUG
-          submissionLedger.append(submissionToken(tier: .appleScript, text: payload.text))
-        #endif
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(
-          payload.text, to: self.pasteboard)
-        submittedClipboardChangeCount = changeCount
-        // #3106: prepared after the clipboard write and BEFORE the omnibox re-check below,
-        // which stays the last AX-touching step before `pasteViaAppleScript`.
+        // #3106: prepared BEFORE the checks below, which stay the last AX-touching steps before
+        // `pasteViaAppleScript`. #3121 R2-2: also before the clipboard write, so a refusal writes
+        // nothing; the session's deadline starts only at `commit`.
         let arrivalCapture = prepareArrivalCapture(
           tier: .appleScript, app: app, payloadText: payload.text, request: request,
-          tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
+          tier1BoundTheTarget: tier1BoundTheTarget)
         defer { arrivalCapture?.cancelUnlessCommitted() }
+        // #3121 R2-1: the settle above is not proof the app, or the field's window, came front.
+        let gate = dispatchGate(
+          app: app, target: activation.target, element: request.targetElement,
+          tier1BoundTheTarget: tier1BoundTheTarget)
         // #2297 cloud review round 3: Tier 2b never consulted the omnibox-focus
         // decision at all — the force-activate and settle sleep above can move
         // focus exactly as `activate(app)` does for Tier 2, and a blind
@@ -947,12 +1052,21 @@ internal final class PasteCascadeExecutor {
         // property as Tier 2's Cmd+V. Same gate, same latest-possible-moment
         // placement, reusing the primitive already proven for Tier 2.
         let chromiumOmniboxStillFocusedForAppleScript: Bool =
-          if isChromiumOmnibox, let element = request.targetElement {
-            PasteService.freshFocusedElement(matching: element) != nil
+          if gate.refusal != nil {
+            true  // not consulted: the window refusal below already stops the paste
+          } else if isChromiumOmnibox, let element = request.targetElement {
+            remainingGateSeconds(gate.budget) > 0
+              && PasteService.freshFocusedElement(
+                matching: element, messagingTimeout: remainingGateSeconds(gate.budget)) != nil
           } else {
             true
           }
-        if !chromiumOmniboxStillFocusedForAppleScript {
+        if let windowRefusal = gate.refusal {
+          // #3121: nothing was written and `.appleScript` is not recorded as attempted.
+          let reason = "target_window_not_front(\(windowRefusal))"
+          tierFailures["applescript"] = reason
+          emitTierFailureBreadcrumb(stage: "applescript", reason: reason, bundleId: bundleId)
+        } else if !chromiumOmniboxStillFocusedForAppleScript {
           // Cloud review round 5 (same shape, Tier 2b): `.appleScript` must NOT
           // be recorded as attempted here — `pasteViaAppleScript` is never
           // called, so a clipboard-only outcome would otherwise falsely claim
@@ -962,6 +1076,25 @@ internal final class PasteCascadeExecutor {
             stage: "applescript", reason: "chromium_omnibox_lost_focus_during_activation",
             bundleId: bundleId)
         } else {
+          // Same ordering as Tier 2: snapshot after the re-checks, immediately before the write.
+          // #2465: the restore-OFF arm still WRITES the board, so an in-flight Quick Add takeover
+          // has to learn it lost — `snapshotForDelivery` is the only thing that used to say so,
+          // and it does not run on this arm.
+          let snapshot: ClipboardSnapshot? =
+            request.restoreClipboardAfterPaste
+            ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
+            : {
+              ClipboardCleanup.deliveryClaimsBoard()
+              return nil
+            }()
+          submittedKind = payload.kind
+          copiesSubmittedLengths.append(payload.text.utf16.count)
+          #if DEBUG
+            submissionLedger.append(submissionToken(tier: .appleScript, text: payload.text))
+          #endif
+          let changeCount = PasteService.copyToClipboardReturningChangeCount(
+            payload.text, to: self.pasteboard)
+          submittedClipboardChangeCount = changeCount
           tiersAttempted.append(.appleScript)
           let tier2bStart = CFAbsoluteTimeGetCurrent()
           logPasteTimingStart(
@@ -979,12 +1112,12 @@ internal final class PasteCascadeExecutor {
             tierFailures["applescript"] = "refused"
             emitTierFailureBreadcrumb(stage: "applescript", reason: "refused", bundleId: bundleId)
           }
-        }
-        if let snapshot {
-          ClipboardCleanup.scheduleRestore(
-            snapshot, changeCountAfterPaste: changeCount, tier: tier,
-            landing: tier == .appleScript
-              ? landingCheck(for: arrivalCapture, request: request) : nil)
+          if let snapshot {
+            ClipboardCleanup.scheduleRestore(
+              snapshot, changeCountAfterPaste: changeCount, tier: tier,
+              landing: tier == .appleScript
+                ? landingCheck(for: arrivalCapture, request: request) : nil)
+          }
         }
       }
     }
@@ -1007,12 +1140,24 @@ internal final class PasteCascadeExecutor {
       let tier2cActivationStart = CFAbsoluteTimeGetCurrent()
       logPasteTimingStart(
         step: "tier2c_activate", startedAt: tier2cActivationStart, bundleId: bundleId)
-      let activation = await activate(app)
+      // Tier 1 runs only on `.textField` and this branch requires `.nonText`, so Tier 1 never
+      // bound this target's timeout here.
+      let activation = await activate(
+        app, element: request.targetElement, target: targetWindow, tier1BoundTheTarget: false)
+      targetWindow = activation.target
       logPasteTiming(
         step: "tier2c_activate", startedAt: tier2cActivationStart,
         elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2cActivationStart) * 1000,
-        outcome: activation.activated ? "activated" : "not_activated", bundleId: bundleId)
-      if activation.activated {
+        outcome: activation.windowRefusal != nil
+          ? "window_not_front" : activation.activated ? "activated" : "not_activated",
+        bundleId: bundleId)
+      if let windowRefusal = activation.windowRefusal {
+        // #3121: the app came front with another of its windows. Its Edit > Paste would paste
+        // there, so the probe does not run; Tier 3 follows.
+        let reason = "target_window_not_front(\(windowRefusal.rawValue)) ms=\(activation.elapsed)"
+        tierFailures["activation"] = reason
+        emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
+      } else if activation.activated {
         // Put our text on the clipboard BEFORE probing enabled-state: apps grey
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
         // #2465: the restore-OFF arm still WRITES the board, so an in-flight Quick Add takeover has
@@ -1051,28 +1196,40 @@ internal final class PasteCascadeExecutor {
           case .enabled:
             // Scenario B: a real paste target. Enabled item found.
             menuProbe = .targetEnabled
-            tiersAttempted.append(.menuPaste)
             // #3106: prepared once the enabled item is known, immediately before AXPress.
             let arrivalCapture = prepareArrivalCapture(
               tier: .menuPaste, app: app, payloadText: payload.text, request: request,
           tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
             defer { arrivalCapture?.cancelUnlessCommitted() }
-            if PasteService.pressMenuItem(menuItem) {
-              tier = .menuPaste
-              arrivalCapture?.commit()
-              committedArrivalCapture = arrivalCapture
-              // Restore the user's prior clipboard after the paste lands.
-              if let snapshot {
-                ClipboardCleanup.scheduleRestore(
-                  snapshot, changeCountAfterPaste: changeCount, tier: tier,
-                  landing: landingCheck(for: arrivalCapture, request: request))
-              }
+            // #3121 R2-1/R2-4: the menu probe's AX reads above can move focus; this is the last
+            // AX step before AXPress, and `.menuPaste` counts as attempted only once it passes.
+            let gate = dispatchGate(
+              app: app, target: activation.target, element: request.targetElement,
+              tier1BoundTheTarget: false)
+            if let windowRefusal = gate.refusal {
+              // The payload stays on the clipboard, as on the `.disabled` arm; Tier 3 follows.
+              let reason = "target_window_not_front(\(windowRefusal))"
+              tierFailures["menu_paste"] = reason
+              emitTierFailureBreadcrumb(stage: "menu_paste", reason: reason, bundleId: bundleId)
             } else {
-              // Enabled but AXPress failed. Leave the payload on the clipboard
-              // (do NOT restore) so the user's manual Cmd+V still works.
-              tierFailures["menu_paste"] = "press_failed"
-              emitTierFailureBreadcrumb(
-                stage: "menu_paste", reason: "press_failed", bundleId: bundleId)
+              tiersAttempted.append(.menuPaste)
+              if PasteService.pressMenuItem(menuItem) {
+                tier = .menuPaste
+                arrivalCapture?.commit()
+                committedArrivalCapture = arrivalCapture
+                // Restore the user's prior clipboard after the paste lands.
+                if let snapshot {
+                  ClipboardCleanup.scheduleRestore(
+                    snapshot, changeCountAfterPaste: changeCount, tier: tier,
+                    landing: landingCheck(for: arrivalCapture, request: request))
+                }
+              } else {
+                // Enabled but AXPress failed. Leave the payload on the clipboard
+                // (do NOT restore) so the user's manual Cmd+V still works.
+                tierFailures["menu_paste"] = "press_failed"
+                emitTierFailureBreadcrumb(
+                  stage: "menu_paste", reason: "press_failed", bundleId: bundleId)
+              }
             }
           case .disabled:
             // Scenario A: item found but disabled. Leave the payload on the
@@ -1297,31 +1454,117 @@ internal final class PasteCascadeExecutor {
     }
   }
 
-  /// Activate `app` and poll until it is frontmost or the activation timeout
-  /// elapses. Re-issues activation every ~300ms. Returns whether the app became
-  /// frontmost and how long we waited. Shared by Tier 2 (Cmd+V) and Tier 2c
-  /// (menu paste).
-  private func activate(_ app: NSRunningApplication) async -> (activated: Bool, elapsed: Int) {
-    let pollInterval = TimingConstants.activationPollIntervalMs
-    let timeout = TimingConstants.activationTimeoutMs
+  /// What one activation achieved (#3121).
+  private struct Activation {
+    /// The app came frontmost.
+    let activated: Bool
+    /// The captured field's window, resolved once inside this activation's deadline.
+    let target: PasteTargetWindow
+    /// Set only when the app came front but the window check still refused at the deadline.
+    let windowRefusal: PasteTargetWindowGate.Refusal?
+    /// Wall-clock milliseconds, Accessibility time included.
+    let elapsed: Int
+  }
 
-    _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-    app.activate()
-    var elapsed = 0
-    while elapsed < timeout {
-      try? await Task.sleep(for: .milliseconds(pollInterval))
-      elapsed += pollInterval
-      if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
-        break
+  /// Activate `app`, raise the captured field's window (#3121), and poll until the app is
+  /// frontmost AND `PasteTargetWindowGate` passes, or the activation deadline elapses. Re-issues
+  /// the raise and the activation every ~300ms. Shared by Tier 2 (Cmd+V) and Tier 2c (menu paste).
+  ///
+  /// The deadline is wall-clock and includes Accessibility time: every AX call gets at most what
+  /// remains of it, capped at the usual 0.5 s, and is skipped when nothing remains. `target` is
+  /// passed when an earlier tier already resolved it, so a delivery reads the window once.
+  private func activate(
+    _ app: NSRunningApplication, element: AXUIElement?, target known: PasteTargetWindow?,
+    tier1BoundTheTarget: Bool
+  ) async -> Activation {
+    let timeoutMs = TimingConstants.activationTimeoutMs
+    let startMs = landingScheduler.nowMs
+    let pid = app.processIdentifier
+    func remainingMs() -> Int { timeoutMs - (landingScheduler.nowMs - startMs) }
+    func stepBudget() -> PasteLandingPrepareBudget {
+      PasteLandingPrepareBudget(
+        totalMs: min(PasteLandingPrepareBudget.defaultMs, max(0, remainingMs())),
+        scheduler: landingScheduler, ax: landingAX)
+    }
+    defer { restoreCapturedTimeout(element, tier1BoundTheTarget: tier1BoundTheTarget) }
+    let target =
+      known ?? PasteTargetWindowGate.resolve(element: element, ax: landingAX, admit: stepBudget().admit)
+    func issue() { raiseAndActivate(app, target: target, remainingMs: remainingMs) }
+    issue()
+    var lastIssueMs = landingScheduler.nowMs
+    var appFront = false
+    var refusal: PasteTargetWindowGate.Refusal? = nil
+    while remainingMs() > 0 {
+      try? await Task.sleep(for: .milliseconds(TimingConstants.activationPollIntervalMs))
+      appFront = NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+      if appFront {
+        refusal = PasteTargetWindowGate.refusal(
+          target: target, element: element, pid: pid, ax: landingAX, admit: stepBudget().admit)
+        if refusal == nil { break }
       }
-      if elapsed % 300 < pollInterval {
-        _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-        app.activate()
+      if landingScheduler.nowMs - lastIssueMs >= 300, remainingMs() > 0 {
+        issue()
+        lastIssueMs = landingScheduler.nowMs
       }
     }
-    let activated =
-      NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-    return (activated, elapsed)
+    return Activation(
+      activated: appFront, target: target, windowRefusal: appFront ? refusal : nil,
+      elapsed: landingScheduler.nowMs - startMs)
+  }
+
+  /// One activation attempt (#3121): raise the captured field's window, then bring the app
+  /// frontmost. Both AX calls spend `remainingMs()` of the caller's deadline, capped at 0.5 s, and
+  /// are skipped when nothing remains (R3-1). `app.activate()` is not an AX call and always runs.
+  private func raiseAndActivate(
+    _ app: NSRunningApplication, target: PasteTargetWindow, remainingMs: () -> Int
+  ) {
+    if case .window(let window) = target, let seconds = Self.activationCallSeconds(remainingMs()) {
+      let budget = PasteLandingPrepareBudget(
+        totalMs: Int(seconds * 1000), scheduler: landingScheduler, ax: landingAX)
+      PasteService.raiseWindow(window, admit: budget.admit)
+    }
+    if let seconds = Self.activationCallSeconds(remainingMs()) {
+      _ = PasteService.forceActivateApp(pid: app.processIdentifier, messagingTimeout: seconds)
+    }
+    app.activate()
+  }
+
+  /// The bound for one activation AX call given what remains of its deadline: at most the usual
+  /// 0.5 s, nil when nothing remains (the call is skipped).
+  static func activationCallSeconds(_ remainingMs: Int) -> Double? {
+    remainingMs > 0
+      ? Double(min(PasteLandingPrepareBudget.defaultMs, remainingMs)) / 1000 : nil
+  }
+
+  /// The last check before a key paste is dispatched (#3121 R2-1): the target app is frontmost AND
+  /// `PasteTargetWindowGate` passes. Its own cumulative 0.5 s budget, which the Chromium omnibox
+  /// re-check that follows it shares (`remainingGateSeconds`). Nil means dispatch may proceed.
+  private func dispatchGate(
+    app: NSRunningApplication, target: PasteTargetWindow, element: AXUIElement?,
+    tier1BoundTheTarget: Bool
+  ) -> (refusal: String?, budget: PasteLandingPrepareBudget) {
+    let budget = PasteLandingPrepareBudget(scheduler: landingScheduler, ax: landingAX)
+    defer { restoreCapturedTimeout(element, tier1BoundTheTarget: tier1BoundTheTarget) }
+    guard landingAX.frontmostPID() == app.processIdentifier else { return ("app_not_front", budget) }
+    let refusal = PasteTargetWindowGate.refusal(
+      target: target, element: element, pid: app.processIdentifier, ax: landingAX,
+      admit: budget.admit)
+    return (refusal?.rawValue, budget)
+  }
+
+  /// Seconds left in a dispatch gate's budget for the omnibox re-check; zero or less means the
+  /// re-check must not run (a zero messaging timeout installs the unbounded system default).
+  private func remainingGateSeconds(_ budget: PasteLandingPrepareBudget) -> Double {
+    Double(PasteLandingPrepareBudget.defaultMs - budget.elapsedMs) / 1000
+  }
+
+  /// Puts back the captured field's messaging timeout after a window read bounded it, to the value
+  /// `prepareArrivalCapture` restores: Tier 1's 0.5 s when Tier 1 bound it, otherwise `0`, the
+  /// global default the handle had.
+  private func restoreCapturedTimeout(_ element: AXUIElement?, tier1BoundTheTarget: Bool) {
+    guard let element else { return }
+    _ = landingAX.setMessagingTimeout(
+      element, seconds: tier1BoundTheTarget ? PasteService.axMessagingTimeoutSeconds : 0)
   }
 
   /// Fires Sentry captureError for non-delivered outcomes. Owned by the cascade

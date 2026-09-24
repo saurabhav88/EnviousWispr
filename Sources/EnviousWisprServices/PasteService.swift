@@ -2370,11 +2370,20 @@ public enum PasteService {
   /// on every call and is never the captured Tier 1 focused element, so
   /// bounding it cannot affect Tier 1's write/verify sequence (see
   /// docs/feature-requests/issue-2705-2026-09-07-paste-delivery-refactor.md).
+  ///
   public static func forceActivateApp(pid: pid_t) -> Bool {
-    guard AXIsProcessTrusted() else { return false }
+    forceActivateApp(pid: pid, messagingTimeout: axMessagingTimeoutSeconds)
+  }
+
+  /// `forceActivateApp(pid:)` with the one AX write bounded by `messagingTimeout` (#3121): the
+  /// paste cascade's activation passes what remains of its own deadline, so that deadline
+  /// includes this call. Zero or less skips the call, because a zero timeout would install the
+  /// unbounded system default.
+  package static func forceActivateApp(pid: pid_t, messagingTimeout: Double) -> Bool {
+    guard AXIsProcessTrusted(), messagingTimeout > 0 else { return false }
     let axApp = AXUIElementCreateApplication(pid)
     guard
-      AXUIElementSetMessagingTimeout(axApp, Float(axMessagingTimeoutSeconds)) == .success
+      AXUIElementSetMessagingTimeout(axApp, Float(messagingTimeout)) == .success
     else { return false }
     let result = AXUIElementSetAttributeValue(
       axApp,
@@ -2404,6 +2413,28 @@ public enum PasteService {
       kAXFocusedAttribute as CFString,
       true as CFTypeRef
     ) == .success
+  }
+
+  /// Bring one specific window of another app to the front of that app (#3121).
+  ///
+  /// Activating an app brings back ITS key window, which is the wrong one when the user moved to
+  /// another window of the same app (two Chrome profiles are one process). `AXRaise` orders the
+  /// window front and `AXMain` makes it the app's main window; measured on Chrome 153, the app's
+  /// `AXFocusedWindow` becomes that window within about 60 ms.
+  ///
+  /// `admit` is asked before EACH call with the handle it messages and must install that call's
+  /// bound, the same contract as `PasteLandingPrepareBudget.admit(_:)`; a refusal stops. Returns
+  /// whether both calls ran and succeeded. Success is not proof the window came front: a caller
+  /// that must know reads the app's focused window afterwards.
+  @discardableResult
+  public static func raiseWindow(_ window: AXUIElement, admit: (AXUIElement) -> Bool) -> Bool {
+    guard AXIsProcessTrusted(), admit(window) else { return false }
+    let raised = AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success
+    guard admit(window) else { return false }
+    let madeMain =
+      AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+      == .success
+    return raised && madeMain
   }
 
   // MARK: - Private
