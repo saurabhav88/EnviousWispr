@@ -10,8 +10,9 @@ import Foundation
 ///
 /// A token is left alone, and the reason is the user-visible failure it prevents, when it is:
 /// - Title-case in mid-sentence: a name ("Kennedy Center", "Labor Day"). Respelling a name changes
-///   a fact. A Title-case word at the start of a sentence IS converted, so a name that opens a
-///   sentence ("Color Street is...") converts too; nothing in the text tells the two apart.
+///   a fact. A Title-case word at the start of a sentence or a list item IS converted, so a name
+///   that opens one ("Color Street is...", "- Color Street") converts too; nothing in the text
+///   tells the two apart.
 /// - ALL-CAPS or mixed case ("COLOR", "iColor"): an acronym, a shout or an identifier.
 /// - Touching a digit, a letter outside ASCII, or `_ @ / \ # $ = < >`, or joined to a word by `.`
 ///   or `:` with no space ("color.js", "self.color", "https://center.io"): code, a path or an
@@ -239,7 +240,9 @@ public struct BritishSpellingConverter: Sendable {
     return false
   }
 
-  /// Start of text, or only spaces and opening quotes/brackets back to `.`, `!`, `?` or a newline.
+  /// Start of text, or only spaces and opening quotes/brackets back to `.`, `!`, `?` or a newline,
+  /// or back to a list marker that opens its line (`- `, `* `, `+ `, `• `, `# `, `1) `): a list item
+  /// or heading starts a sentence, and polish writes lists with a capital on the first word.
   private static func isSentenceStart(_ start: Int, chars: [Character]) -> Bool {
     var cursor = start - 1
     while cursor >= 0, chars[cursor] == " " || chars[cursor] == "\t" || isOpening(chars[cursor]) {
@@ -247,15 +250,35 @@ public struct BritishSpellingConverter: Sendable {
     }
     guard cursor >= 0 else { return true }
     let character = chars[cursor]
-    return character == "." || character == "!" || character == "?" || character.isNewline
+    if character == "." || character == "!" || character == "?" || character.isNewline {
+      return true
+    }
+    return isLineOpeningListMarker(endingAt: cursor, chars: chars)
   }
 
-  /// Marks every character inside every occurrence of a protected span, overlapping occurrences
-  /// included. Spans are indexed by their first character, so each position is compared only with
-  /// the spans that could start there; the worst case is text length times total span length.
-  /// Spans are the take's snippet sentinels (a handful, short, distinct), so that bound is small in
-  /// practice; a general multi-pattern matcher would add machinery for inputs we never pass.
-  /// Works on the same `Character` array the scan uses, so positions agree by construction.
+  /// True when `chars[end]` is a list or heading marker that is the first thing on its line:
+  /// a single `-`, `*`, `+` or `•`, a run of `#`, or digits followed by `)`, with only spaces or
+  /// tabs before it on the line.
+  private static func isLineOpeningListMarker(endingAt end: Int, chars: [Character]) -> Bool {
+    var markerStart = end
+    switch chars[end] {
+    case "-", "*", "+", "\u{2022}":
+      break
+    case "#":
+      while markerStart > 0, chars[markerStart - 1] == "#" { markerStart -= 1 }
+    case ")":
+      var digit = end - 1
+      while digit >= 0, chars[digit].isASCII, chars[digit].isNumber { digit -= 1 }
+      guard digit < end - 1 else { return false }
+      markerStart = digit + 1
+    default:
+      return false
+    }
+    var cursor = markerStart - 1
+    while cursor >= 0, chars[cursor] == " " || chars[cursor] == "\t" { cursor -= 1 }
+    return cursor < 0 || chars[cursor].isNewline
+  }
+
   private static func blockedMask(chars: [Character], spans: [String]) -> [Bool] {
     var blocked = [Bool](repeating: false, count: chars.count)
     var byFirst: [Character: [[Character]]] = [:]

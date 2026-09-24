@@ -107,6 +107,16 @@ struct BritishSpellingConverterTests {
     Case(
       input: "The neighbor’s favorite colors.", expected: "The neighbour’s favourite colours.",
       swaps: 3),
+    // List items and headings start a sentence (polish writes lists with a capital first word).
+    Case(
+      input: "Plan:\n- Color choices\n* Center the logo\n+ Favorite fonts\n\u{2022} Gray tones",
+      expected: "Plan:\n- Colour choices\n* Centre the logo\n+ Favourite fonts\n\u{2022} Grey tones",
+      swaps: 4),
+    Case(input: "1) Color first\n2. Center next", expected: "1) Colour first\n2. Centre next", swaps: 2),
+    Case(input: "## Color guide", expected: "## Colour guide", swaps: 1),
+    // A dash or bracket INSIDE a line is not a list marker: the name stays.
+    Case(input: "we met - Kennedy Center staff", expected: "we met - Kennedy Center staff", swaps: 0),
+    Case(input: "see (a) Color Street", expected: "see (a) Color Street", swaps: 0),
     // Case the converter must refuse.
     Case(input: "COLOR and CoLoR stay", expected: "COLOR and CoLoR stay", swaps: 0),
     // Code, paths, addresses, numbers.
