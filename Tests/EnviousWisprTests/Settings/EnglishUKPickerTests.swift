@@ -47,18 +47,20 @@ struct EnglishUKPickerTests {
   @Test("the sheet's own filter finds English (UK) by uk and gb")
   func ukRowSearchable() {
     for query in ["uk", "GB", "  English (UK) "] {
-      let rows = LanguageLockOptions.pickerRows(lockableCodes: nil, query: query)
+      let rows = LanguageLockOptions.pickerRows(lockableCodes: nil, query: query, offersEnglishUK: true)
       #expect(rows.contains(LanguageCatalog.englishUK), "search \(query) must find English (UK)")
     }
     #expect(
-      LanguageLockOptions.pickerRows(lockableCodes: nil, query: "german")
+      LanguageLockOptions.pickerRows(lockableCodes: nil, query: "german", offersEnglishUK: true)
         .contains(LanguageCatalog.englishUK) == false)
   }
 
   @Test("the sheet's own filter offers English (UK) exactly where English is")
   func ukOfferedWhereEnglishIs() throws {
-    func offered(_ codes: Set<String>?) -> Set<String> {
-      Set(LanguageLockOptions.pickerRows(lockableCodes: codes, query: "").map(\.code))
+    func offered(_ codes: Set<String>?, uk: Bool = true) -> Set<String> {
+      Set(
+        LanguageLockOptions.pickerRows(lockableCodes: codes, query: "", offersEnglishUK: uk)
+          .map(\.code))
     }
     #expect(offered(nil).isSuperset(of: ["en", "en-gb"]), "no restriction offers both")
     let parakeet = try #require(LanguageLockOptions.lockableCodes(for: .parakeet))
@@ -71,6 +73,24 @@ struct EnglishUKPickerTests {
     let britishPack = LanguageLockOptions.previewLockableCodes(
       backend: .whisperKit, previewEngine: .apple, installedPackTags: ["en-GB"])
     #expect(offered(britishPack).isSuperset(of: ["en", "en-gb"]))
+  }
+
+  @Test("the Live Preview picker offers English (UK) on Apple only with the en-GB pack installed")
+  func previewNeedsBritishPack() {
+    func previewRows(_ engine: LivePreviewEngineChoice, _ tags: [String]) -> Set<String> {
+      let codes = LanguageLockOptions.previewLockableCodes(
+        backend: .whisperKit, previewEngine: engine, installedPackTags: tags)
+      let uk = LanguageLockOptions.previewOffersEnglishUK(
+        previewEngine: engine, installedPackTags: tags)
+      return Set(
+        LanguageLockOptions.pickerRows(lockableCodes: codes, query: "", offersEnglishUK: uk)
+          .map(\.code))
+    }
+    let americanOnly = previewRows(.apple, ["en-US"])
+    #expect(americanOnly.contains("en"), "English itself runs on the American pack")
+    #expect(americanOnly.contains("en-gb") == false, "the British row needs the en-GB pack")
+    #expect(previewRows(.apple, ["en-US", "en_GB"]).contains("en-gb"))
+    #expect(previewRows(.universal, []).contains("en-gb"), "the universal engine has no packs")
   }
 
   @Test("the two English rows say which spelling they give; other rows keep name and code")

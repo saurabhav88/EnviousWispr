@@ -265,7 +265,10 @@ struct LivePreviewSettingsView: View {
         // "uses your Mac's language" is false about their own engine.
         contextSubtitle: settings.livePreviewEngine == .apple
           ? LivePreviewSettingsCopy.pickerAppleCaveat
-          : LivePreviewSettingsCopy.pickerUniversalCaveat)
+          : LivePreviewSettingsCopy.pickerUniversalCaveat,
+        // #3124: Apple's preview runs English (UK) only with the en-GB pack installed.
+        offersEnglishUK: LanguageLockOptions.previewOffersEnglishUK(
+          previewEngine: settings.livePreviewEngine, installedPackTags: installedPackTags))
     }
     .sheet(item: $catalogRequest) { request in
       // The retained model, never a copy: dismissing this sheet mid-install must not

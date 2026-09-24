@@ -34,9 +34,16 @@ struct LanguageLockSheet: View {
   /// the moment it becomes true.
   let contextSubtitle: String?
 
-  init(lockableCodes: Set<String>? = nil, contextSubtitle: String? = nil) {
+  /// #3124: false only when the caller's list must name what runs RIGHT NOW and English (UK)
+  /// cannot (`LanguageLockOptions.previewOffersEnglishUK`). The Transcription page passes nothing.
+  let offersEnglishUK: Bool
+
+  init(
+    lockableCodes: Set<String>? = nil, contextSubtitle: String? = nil, offersEnglishUK: Bool = true
+  ) {
     self.lockableCodes = lockableCodes
     self.contextSubtitle = contextSubtitle
+    self.offersEnglishUK = offersEnglishUK
   }
 
   @State private var searchText: String = ""
@@ -324,7 +331,8 @@ struct LanguageLockSheet: View {
   /// The rows to show: `LanguageLockOptions.pickerRows`, the one owner of which rows the engine
   /// can honour and which match the search.
   private var filteredLanguages: [LanguageCatalog.Entry] {
-    LanguageLockOptions.pickerRows(lockableCodes: lockableCodes, query: searchText)
+    LanguageLockOptions.pickerRows(
+      lockableCodes: lockableCodes, query: searchText, offersEnglishUK: offersEnglishUK)
   }
 
   // MARK: - Actions

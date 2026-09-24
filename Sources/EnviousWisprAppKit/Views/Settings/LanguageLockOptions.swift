@@ -158,9 +158,16 @@ enum LanguageLockOptions {
   /// receives, BEFORE the search, so a search can never surface a row the active engine cannot
   /// honour, and English (UK) is offered exactly where English is. `lockableCodes == nil` means
   /// no restriction. Search matches the English name, native name or row code, case-insensitive.
-  static func pickerRows(lockableCodes: Set<String>?, query: String) -> [LanguageCatalog.Entry] {
+  ///
+  /// `offersEnglishUK` is false only where the list must name what can run RIGHT NOW and the
+  /// British variant cannot: the Live Preview page on Apple's engine without the en-GB pack
+  /// (`previewOffersEnglishUK`).
+  static func pickerRows(
+    lockableCodes: Set<String>?, query: String, offersEnglishUK: Bool
+  ) -> [LanguageCatalog.Entry] {
     let offered = LanguageCatalog.pickerEntries.filter {
-      lockableCodes?.contains($0.lockCode) ?? true
+      (lockableCodes?.contains($0.lockCode) ?? true)
+        && (offersEnglishUK || $0 != LanguageCatalog.englishUK)
     }
     let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard !needle.isEmpty else { return offered }
@@ -168,6 +175,19 @@ enum LanguageLockOptions {
       entry.englishName.lowercased().contains(needle)
         || entry.nativeName.lowercased().contains(needle)
         || entry.code.lowercased().contains(needle)
+    }
+  }
+
+  /// Whether the LIVE PREVIEW page's picker may offer English (UK). Apple's preview needs the exact
+  /// en-GB pack for a British lock (`ApplePreviewRecognizer.satisfyingTag`: a region-bearing code
+  /// requires that installed tag), so with only another English installed the row would lock a
+  /// preview that then refuses to run. The universal engine has no packs, so it always may.
+  static func previewOffersEnglishUK(
+    previewEngine: LivePreviewEngineChoice, installedPackTags: [String]
+  ) -> Bool {
+    guard previewEngine == .apple else { return true }
+    return installedPackTags.contains {
+      $0.replacingOccurrences(of: "_", with: "-").lowercased() == "en-gb"
     }
   }
 
