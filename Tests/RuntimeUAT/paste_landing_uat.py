@@ -134,10 +134,11 @@ tell application "Google Chrome"
   return n
 end tell'''
     r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
-    for name in PAGES:
+    names = set(PAGES) | OPENED
+    for name in names:
         if os.path.exists(page_path(name)):
             os.remove(page_path(name))
-    left = [n for n in PAGES if os.path.exists(page_path(n))]
+    left = [n for n in names if os.path.exists(page_path(n))]
     return r.returncode == 0 and r.stdout.strip() == "0" and not left
 
 
@@ -186,7 +187,8 @@ class LiveTakeNotStopped(u.Aborted):
 TAKE_STUCK = {"stuck": False}
 
 
-def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landing=True):
+def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landing=True,
+         before_hold=None):
     """One silent push-to-talk take into whatever `bundle` (Chrome unless given) has focused.
     Returns every landing line and paste-cascade line written since `base`.
 
@@ -211,6 +213,8 @@ def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landin
             # Checked immediately before the hold: the paste goes wherever focus is NOW, and an
             # address bar focused here would make a no-focus phase pass on text that landed.
             raise u.Aborted(f"{label}: focus is {focused_role()!r}, not {EXPECTED_FOCUS[label]}")
+        if before_hold is not None:
+            before_hold()  # raises Aborted when the phase's own precondition no longer holds
         hold["entered"] = True
         w.record_tts(SENTENCE)
         hold["completed"] = True
@@ -485,27 +489,35 @@ def verify_textedit(base, delivered, restore_on, sentinel):
 
 
 # #3121: two windows of ONE Chrome (the shape of two profiles: one process), switched mid-take.
-TITLE = "ew landing {}"
+def window_title(phase_name, page):
+    """Unique per phase AND run, so one phase never reads or closes another phase's window."""
+    return f"ew landing {phase_name} {page} {u.RUN_ID}"
 
 
-def open_page_in_new_window(name):
-    """Write the page and open it in a NEW Chrome window, which becomes Chrome's front window."""
-    path = page_path(name)
+def open_page_in_new_window(phase_name, page):
+    """Write `page` and open it in a NEW Chrome window, which becomes Chrome's front window."""
+    key = f"{phase_name}-{page}"
+    path = page_path(key)
+    title = window_title(phase_name, page)
     with open(path, "w") as fh:
-        fh.write('<!doctype html><meta charset="utf-8"><title>' + TITLE.format(name)
+        fh.write('<!doctype html><meta charset="utf-8"><title>' + title
                  + '</title><body style="font:18px sans-serif;padding:24px">'
                  '<p>Window check (local page, nothing is sent anywhere).</p>'
-                 + PAGES[name] + '</body>')
-    OPENED.add(name)
+                 + PAGES[page] + '</body>')
+    OPENED.add(key)
     script = ('tell application "Google Chrome"\n  activate\n  make new window\n'
               f'  set URL of active tab of front window to "file://{path}"\nend tell')
     r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     if r.returncode != 0:
-        raise u.Aborted(f"{name}: could not open a new Chrome window: {r.stderr.strip()}")
-    if not u.wait_for(f"{name}: its window is front with the box focused",
-                      lambda: front_window_title().startswith(TITLE.format(name))
-                      and focused_role() == "AXTextArea", deadline=10.0):
-        raise u.Aborted(f"{name}: front window {front_window_title()!r}, focus {focused_role()!r}")
+        raise u.Aborted(f"{key}: could not open a new Chrome window: {r.stderr.strip()}")
+    require_window_ready(key, title, deadline=10.0)
+
+
+def require_window_ready(label, title, deadline=2.0):
+    if not u.wait_for(f"{label}: its window is front with the box focused",
+                      lambda: front_window_title().startswith(title)
+                      and focused_role() == "AXTextArea", deadline=deadline):
+        raise u.Aborted(f"{label}: front window {front_window_title()!r}, focus {focused_role()!r}")
 
 
 def chrome_windows():
@@ -521,8 +533,9 @@ def front_window_title():
     return str(get_attr(window, "AXTitle") or "") if window is not None else ""
 
 
-def window_box_value(name):
-    """The text box value in the window showing page `name`, front or not; None if not found."""
+def window_box_value(title):
+    """The text box value in the window titled `title`, front or not; None if not found or
+    unreadable."""
     from ui_helpers import get_attr
     found = []
 
@@ -530,13 +543,14 @@ def window_box_value(name):
         if element is None or depth > 30 or found:
             return
         if get_attr(element, "AXRole") == "AXTextArea":
-            found.append(str(get_attr(element, "AXValue") or ""))
+            value = get_attr(element, "AXValue")
+            found.append(None if value is None else str(value))  # unreadable is not empty
             return
         for child in get_attr(element, "AXChildren") or []:
             walk(child, depth + 1)
 
     for window in chrome_windows():
-        if str(get_attr(window, "AXTitle") or "").startswith(TITLE.format(name)):
+        if str(get_attr(window, "AXTitle") or "").startswith(title):
             walk(window)
             return found[0] if found else None
     return None
@@ -566,15 +580,15 @@ def phase_other_window(close_target):
     name = "closedwindow" if close_target else "otherwindow"
     print(f"\n== {name}: dictate in one Chrome window, "
           f"{'close it' if close_target else 'switch to another Chrome window'} before the take ends")
-    quiet(f"{name} staging B", open_page_in_new_window, "decoy")
-    quiet(f"{name} staging A", open_page_in_new_window, "focused")
+    quiet(f"{name} staging B", open_page_in_new_window, name, "decoy")
+    quiet(f"{name} staging A", open_page_in_new_window, name, "focused")
     restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")
     sentinel = f"ew-uat-sentinel-landing-{name}"
     u.set_clipboard_text(sentinel)
     base = u.log_size()
     PHASE_BASE["offset"] = base
-    target = TITLE.format("focused")
-    decoy = TITLE.format("decoy")
+    target = window_title(name, "focused")
+    decoy = window_title(name, "decoy")
     if close_target:
         action = (f'tell application "Google Chrome" to close '
                   f'(every window whose title starts with "{target}")')
@@ -583,28 +597,36 @@ def phase_other_window(close_target):
                   f'(first window whose title starts with "{decoy}") to 1')
     done = {}
     thread = switch_mid_take(base, action, done)
-    lines, cascades = take(name, base, expect_landing=not close_target)
+    # Re-checked immediately before the hold: the route switch can move focus after staging.
+    lines, cascades = take(name, base, expect_landing=not close_target,
+                           before_hold=lambda: require_window_ready(name, target))
     thread.join(timeout=5.0)
     quiet(f"{name} checks", verify_other_window, name, close_target, lines, cascades, done,
-          restore_on, sentinel)
+          restore_on, sentinel, target, decoy)
 
 
-def verify_other_window(name, close_target, lines, cascades, done, restore_on, sentinel):
+# The executor's one local line for a window-gate refusal (#3121); DEBUG `app.log`.
+WINDOW_REFUSAL = re.compile(r"WINDOW_GATE refused stage=(\w+) reason=(\S+)")
+
+
+def verify_other_window(name, close_target, lines, cascades, done, restore_on, sentinel, target,
+                        decoy):
     u.check(f"{name}: the mid-take {'close' if close_target else 'switch'} ran",
             done.get("rc") == 0, str(done))
     log = u.log_since(PHASE_BASE["offset"])
     chrome_tiers = [t for t, app in cascades if app.strip() == CHROME]
-    decoy_value = window_box_value("decoy")
+    decoy_value = window_box_value(decoy)
     u.check(f"{name}: nothing landed in the window switched to",
             decoy_value == "", repr(None if decoy_value is None else decoy_value[:80]))
     if not close_target:
-        value = window_box_value("focused") or ""
+        value = window_box_value(target) or ""
         u.check(f"{name}: the words landed in the dictation's own window (5+ of 7 words)",
                 u.sentence_overlap(value) >= 5, repr(value[:80]))
         u.check(f"{name}: that window is front again",
-                front_window_title().startswith(TITLE.format("focused")), front_window_title())
+                front_window_title().startswith(target), front_window_title())
         u.check(f"{name}: delivered by Cmd+V", chrome_tiers == ["cgevent"], str(cascades))
-        u.check(f"{name}: no window refusal", "target_window_not_confirmed" not in log)
+        u.check(f"{name}: no window refusal", not WINDOW_REFUSAL.search(log),
+                str(WINDOW_REFUSAL.findall(log)))
         u.check(f"{name}: the landing check saw the same window and the words arrive",
                 len(lines) == 1 and lines[0][7] == "same" and lines[0][1] == "found", str(lines))
         if restore_on:
@@ -612,9 +634,10 @@ def verify_other_window(name, close_target, lines, cascades, done, restore_on, s
                     u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,
                                deadline=5.0), repr(u.clipboard_text()))
         return
-    u.check(f"{name}: the key paste was refused for the window",
-            "target_window_not_confirmed" in log,
-            str(re.findall(r"target_window_not_confirmed\([a-z_]+\)", log)))
+    u.wait_for("the window refusal line",
+               lambda: WINDOW_REFUSAL.search(u.log_since(PHASE_BASE["offset"])), deadline=5.0)
+    refusals = WINDOW_REFUSAL.findall(u.log_since(PHASE_BASE["offset"]))
+    u.check(f"{name}: the key paste was refused for the window", len(refusals) >= 1, str(refusals))
     u.check(f"{name}: no key paste into Chrome", chrome_tiers == ["clipboard_only"], str(cascades))
     board = u.clipboard_text() or ""
     u.check(f"{name}: the clipboard holds the dictation (5+ of 7 words)",

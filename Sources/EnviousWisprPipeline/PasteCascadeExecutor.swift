@@ -906,6 +906,7 @@ internal final class PasteCascadeExecutor {
         let reason = "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(elapsed)"
         tierFailures["activation"] = reason
         emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
+        logWindowRefusal(stage: "activation", reason: reason, bundleId: bundleId)
       } else if activated {
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
@@ -953,6 +954,7 @@ internal final class PasteCascadeExecutor {
           let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["cgevent"] = reason
           emitTierFailureBreadcrumb(stage: "cgevent", reason: reason, bundleId: bundleId)
+          logWindowRefusal(stage: "cgevent", reason: reason, bundleId: bundleId)
         } else if !chromiumOmniboxStillFocused {
           // Refuse the blind paste rather than guess where it lands — the same
           // "not confident enough to act automatically" floor PR #220 already
@@ -1070,6 +1072,7 @@ internal final class PasteCascadeExecutor {
           let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["applescript"] = reason
           emitTierFailureBreadcrumb(stage: "applescript", reason: reason, bundleId: bundleId)
+          logWindowRefusal(stage: "applescript", reason: reason, bundleId: bundleId)
         } else if !chromiumOmniboxStillFocusedForAppleScript {
           // Cloud review round 5 (same shape, Tier 2b): `.appleScript` must NOT
           // be recorded as attempted here — `pasteViaAppleScript` is never
@@ -1161,6 +1164,7 @@ internal final class PasteCascadeExecutor {
         let reason = "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(activation.elapsed)"
         tierFailures["activation"] = reason
         emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
+        logWindowRefusal(stage: "activation", reason: reason, bundleId: bundleId)
       } else if activation.activated {
         // Put our text on the clipboard BEFORE probing enabled-state: apps grey
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
@@ -1215,6 +1219,7 @@ internal final class PasteCascadeExecutor {
               let reason = "target_window_not_confirmed(\(windowRefusal))"
               tierFailures["menu_paste"] = reason
               emitTierFailureBreadcrumb(stage: "menu_paste", reason: reason, bundleId: bundleId)
+              logWindowRefusal(stage: "menu_paste", reason: reason, bundleId: bundleId)
             } else {
               tiersAttempted.append(.menuPaste)
               if PasteService.pressMenuItem(menuItem) {
@@ -1758,6 +1763,17 @@ internal final class PasteCascadeExecutor {
   /// clipboard-only handled-error event carries the full `tier_failures` map;
   /// these breadcrumbs preserve the trail when the session reaches Sentry via
   /// an unrelated later error or crash.
+  /// #3121: the one local line for a key paste refused by the window gate, so a support read of
+  /// `app.log` (and the Live UAT) can see WHY a dictation went to the clipboard; the breadcrumb and
+  /// `paste.tier_failures` reach Sentry only.
+  private func logWindowRefusal(stage: String, reason: String, bundleId: String) {
+    Task.detached {
+      await AppLogger.shared.log(
+        "WINDOW_GATE refused stage=\(stage) reason=\(reason) bundle_id=\(bundleId)",
+        level: .info, category: "PasteCascade")
+    }
+  }
+
   private func emitTierFailureBreadcrumb(stage: String, reason: String, bundleId: String) {
     SentryBreadcrumb.add(
       stage: "paste",
