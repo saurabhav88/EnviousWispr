@@ -503,6 +503,11 @@ let project = Project(
       // avoid double-bundling the same files into Bundle.module.
       resources: [
         "Sources/EnviousWispr/Resources/AppIcon.icns",
+        // #3142: the interface String Catalog rides the APP target so every
+        // SwiftUI `Text("literal")` and bundle-less `String(localized:)` in the
+        // static-framework modules resolves it through Bundle.main, their
+        // default lookup bundle (measured 2026-09-24).
+        "Sources/EnviousWispr/Resources/Localizable.xcstrings",
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage"),
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer"),
         // #1386: the bundled WhisperKit tokenizer (Apache-2.0, pinned to a

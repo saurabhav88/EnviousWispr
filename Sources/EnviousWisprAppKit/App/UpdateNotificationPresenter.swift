@@ -53,11 +53,22 @@ final class UpdateNotificationPresenter: NSObject, UpdateNotifying {
     }
   }
 
+  /// #3142: the notification body, from the app's String Catalog (Bundle.main).
+  /// Internal so `UpdateNotificationCopyTests` exercises the exact expression
+  /// `deliver` uses; `bundle` exists only so a test can inject a localized table.
+  /// No em/en-dashes in user-facing copy (brand rule).
+  static func body(displayVersion: String, bundle: Bundle = .main) -> String {
+    String(
+      localized: "notification.update.ready.body",
+      defaultValue: "Version \(displayVersion) is ready. Click to install.",
+      bundle: bundle
+    )
+  }
+
   private func deliver(displayVersion: String) {
     let content = UNMutableNotificationContent()
     content.title = AppConstants.appName
-    // No em/en-dashes in user-facing copy (brand rule).
-    content.body = "Version \(displayVersion) is ready. Click to install."
+    content.body = Self.body(displayVersion: displayVersion)
     content.sound = nil
     content.categoryIdentifier = Self.categoryIdentifier
 

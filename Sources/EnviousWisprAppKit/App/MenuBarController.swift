@@ -305,7 +305,10 @@ final class MenuBarController: NSObject {
     // Onboarding abort item — shown at the very top when setup is incomplete.
     if !state.onboardingComplete {
       let setupItem = NSMenuItem(
-        title: "Setup Required: Continue Setup…",
+        title: String(
+          localized: "menu.setupRequired.continue",
+          defaultValue: "Setup Required: Continue Setup…"
+        ),
         action: #selector(continueOnboardingAction),
         keyEquivalent: ""
       )
