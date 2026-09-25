@@ -16,6 +16,14 @@ struct InterfaceCatalogSourceTests {
     "settings.aiPolish.enable.title": "Enable AI Polish",
     "menu.setupRequired.continue": "Setup Required: Continue Setup…",
     "notification.update.ready.body": "Version %@ is ready. Click to install.",
+    // #3153: Send Feedback.
+    "menu.sendFeedback": "Send Feedback…",
+    "feedback.message.placeholder": "What happened, or what would you like to see?",
+    "feedback.message.label": "Feedback message",
+    "feedback.email.placeholder": "Email (optional)",
+    "feedback.send": "Send",
+    "feedback.sent": "Sent",
+    "feedback.unavailable": "Couldn't send. Email hello@enviouslabs.co",
   ]
 
   @Test("Semantic keys carry today's exact English")
@@ -45,7 +53,7 @@ struct InterfaceCatalogSourceTests {
   /// The unit-test process's `Bundle.main` is not the app, but the same build places the app
   /// beside the test bundle. Reading the COMPILED table there proves the catalog ships; a
   /// catalog dropped from the app target (deleted, commented out, excluded) leaves no table.
-  @Test("The built app ships the compiled English table with the three entries")
+  @Test("The built app ships the compiled English table with every expected entry")
   func builtAppShipsCompiledTable() throws {
     let products = Bundle(for: BuildProductsMarker.self).bundleURL.deletingLastPathComponent()
     // The product name is per configuration: Debug and Release build `EnviousWispr.app`, Dev

@@ -529,6 +529,16 @@ final class MenuBarController: NSObject {
       menu.addItem(updateItem)
     }
 
+    // #3153: always shown, so someone whose setup or updater is broken can still reach us.
+    let feedbackItem = NSMenuItem(
+      title: String(localized: "menu.sendFeedback", defaultValue: "Send Feedback…"),
+      action: #selector(sendFeedbackAction),
+      keyEquivalent: "")
+    feedbackItem.image = NSImage(
+      systemSymbolName: "bubble.left.and.text.bubble.right", accessibilityDescription: "Feedback")
+    feedbackItem.target = self
+    menu.addItem(feedbackItem)
+
     menu.addItem(.separator())
 
     // Quit
@@ -653,6 +663,10 @@ final class MenuBarController: NSObject {
     actions.openTranscribeFile()
   }
 
+  @objc private func sendFeedbackAction() {
+    actions.openFeedback()
+  }
+
   /// #1047: set the window-appearance preference from the Appearance submenu.
   /// The `didSet` persists it and the bootstrapper applies it to `NSApp`.
   @objc private func setAppearanceAction(_ sender: NSMenuItem) {
@@ -773,6 +787,8 @@ struct MenuBarActions: Sendable {
   /// Open the unified window on the Transcribe a File page (#2772).
   let openTranscribeFile: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
+  /// Open the unified window on the Send Feedback page (#3153).
+  let openFeedback: @MainActor () -> Void
   let toggleRecording: @MainActor () async -> Void
   let quit: @MainActor () -> Void
   /// The newest reusable dictation, for the Paste Last row (#3106). A snapshot for rendering.

@@ -136,6 +136,7 @@ struct MenuBarControllerTests {
         "",  // separator
         "Settings...",
         "Appearance",  // #1047 submenu parent
+        "Send Feedback…",  // #3153, shown with or without an updater
         "",  // separator
         "Quit \(AppConstants.appName)",
       ],
@@ -147,7 +148,7 @@ struct MenuBarControllerTests {
     // Separators are separators.
     #expect(menu.items[2].isSeparatorItem)
     #expect(menu.items[7].isSeparatorItem)
-    #expect(menu.items[10].isSeparatorItem)
+    #expect(menu.items[11].isSeparatorItem)
     // Settings carries the comma key-equivalent; Quit carries "q".
     #expect(item(menu, "Settings...")?.keyEquivalent == ",")
     #expect(item(menu, "Quit \(AppConstants.appName)")?.keyEquivalent == "q")
@@ -631,6 +632,11 @@ struct MenuBarControllerTests {
     #expect(updateItem?.target as AnyObject? !== controller)
     #expect(
       updateItem?.action == #selector(SparkleUpdateController.openUpdateCheckFromMenu(_:)))
+    // #3153: Send Feedback sits directly below it and targets the controller.
+    let titles = menu.items.map(\.title)
+    let updateIndex = titles.firstIndex(of: "Check for Updates…")
+    #expect(updateIndex.map { titles[$0 + 1] } == "Send Feedback…")
+    #expect(item(menu, "Send Feedback…")?.target as AnyObject? === controller)
   }
 
   @Test(
@@ -703,8 +709,15 @@ struct MenuBarControllerTests {
     perform(item(menu, "Transcribe a File..."))
     #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile"])
 
+    // #3153: opens the window on the Send Feedback page.
+    perform(item(menu, "Send Feedback…"))
+    #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile", "openFeedback"])
+
     perform(item(menu, "Quit \(AppConstants.appName)"))
-    #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile", "quit"])
+    #expect(
+      spy.fired == [
+        "continueOnboarding", "openSettings", "openTranscribeFile", "openFeedback", "quit",
+      ])
 
     // toggleRecording dispatches through an async Task — yield so it runs.
     perform(item(menu, "Start Recording"))
@@ -828,6 +841,7 @@ struct MenuBarControllerTests {
         openSettings: { spy.fired.append("openSettings") },
         openTranscribeFile: { spy.fired.append("openTranscribeFile") },
         openPermissions: { spy.fired.append("openPermissions") },
+        openFeedback: { spy.fired.append("openFeedback") },
         toggleRecording: { spy.fired.append("toggleRecording") },
         quit: { spy.fired.append("quit") },
         lastDictation: { spy.lastDictation },

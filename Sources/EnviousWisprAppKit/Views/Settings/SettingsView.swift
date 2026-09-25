@@ -222,6 +222,8 @@ struct UnifiedWindowView: View {
       page(.clipboard) { ClipboardSettingsView() }
     case .permissions:
       page(.permissions) { PermissionsSettingsView() }
+    case .sendFeedback:
+      page(.sendFeedback) { SendFeedbackView() }
     case .checkForUpdates:
       // Issue #958: D1 action row never selects this case (no `.tag`), but the
       // exhaustive switch requires an arm.
