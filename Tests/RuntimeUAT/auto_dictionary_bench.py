@@ -16,8 +16,9 @@ TWO ARMS, same sentences, same order:
   off: Auto Dictionary checker not installed (today's product, learned words inert)
   on:  the EG-1 checker installed through the Debug door (`EW_LEARNED_CHECK_EG1_ADAPTER`)
 Each arm: relaunch, one warm-up take (reported separately as COLD, not in the medians), then
-`rounds` passes over the sentences. Six of twelve sentences carry a sound-alike of a learned word (the checker is asked), one of them a
-three-sentence take; the rest, including a second three-sentence take, carry none.
+`rounds` passes over the sentences. Six of twelve sentences carry a misspelling the dictionary has
+already learned for a word (the checker is asked; aliases only since founder 2026-09-25, #3105), one
+of them a three-sentence take; the rest, including a second three-sentence take, carry none.
 
 WHAT IT TOUCHES AND PUTS BACK. The same shared-data rules as the learn-from-edits drill
 (code-uat.md RULE: uat-writes-reach-the-founders-REAL-data): `custom-words.json` byte for byte,
@@ -42,11 +43,15 @@ import learn_from_edits_uat as lfe  # noqa: E402  (shared helpers: audio route, 
 ADAPTER_KEY = "EW_LEARNED_CHECK_EG1_ADAPTER"
 THRESHOLD_KEY = "EW_LEARNED_CHECK_EG1_THRESHOLD"
 
-# A realistic learned dictionary: words the app learned from edits (born-learned).
-LEARNED = ["Tuist", "Qwen", "PostHog", "Kotlin", "Supabase", "Ollama", "Vercel", "Kaggle"]
+# A realistic learned dictionary: words the app learned from edits (born-learned), each with the
+# misspellings a user's earlier fixes taught it. The checker is asked only where one reappears.
+LEARNED = {
+    "Tuist": ["twist", "Twoist"], "Qwen": ["Quen", "Kwen"], "PostHog": ["post hog"], "Kotlin": ["cotton"],
+    "Supabase": ["super base"], "Ollama": ["a llama"], "Vercel": ["versel"], "Kaggle": ["gaggle"],
+}
 
-# (sentence, expected token in the output). First five carry a learned word's sound-alike or the
-# word itself as Parakeet tends to write it; last five carry none.
+# (sentence, expected token in the output). First five carry a learned word as Parakeet tends to
+# write it (a learned misspelling); last five carry none.
 SENTENCES = [
     ("The day Tuist regenerated my whole Xcode project it saved an hour", "project"),
     ("Ask Qwen to summarize the meeting notes before lunch", "meeting"),
@@ -64,7 +69,7 @@ SENTENCES = [
     ("I spent the whole afternoon on the budget spreadsheet. Then I walked the dog around the park twice. "
      "Tomorrow I want to finish the slides before the team review", "budget"),
 ]
-# Sentences that carry a learned word's sound-alike (the checker is asked about them).
+# Sentences whose Parakeet text is expected to carry a learned misspelling (the checker is asked).
 TRIGGER_IDX = {0, 1, 2, 3, 4, 10}
 
 TOTAL_RE = re.compile(r"Pipeline timing TOTAL: ([\d.]+)s \(ASR=([\d.]+)s, polish=([\d.]+)s, paste=([\d.]+)s\)")
@@ -88,9 +93,10 @@ def learned_dictionary(snapshot):
     base = lfe.empty_words_like(snapshot)
     parsed = dict(base["parsed"])
     parsed["words"] = [
-        {"id": f"00000000-0000-4000-8000-0000000001{i:02d}", "canonical": w, "aliases": [], "category": "general",
-         "source": "user", "isEnabled": True, "learnedAliases": [], "learnedAt": 780000000 + i}
-        for i, w in enumerate(LEARNED)]
+        {"id": f"00000000-0000-4000-8000-0000000001{i:02d}", "canonical": w, "aliases": list(misspellings),
+         "category": "general", "source": "user", "isEnabled": True, "learnedAliases": list(misspellings),
+         "learnedAt": 780000000 + i}
+        for i, (w, misspellings) in enumerate(LEARNED.items())]
     raw = json.dumps(parsed).encode("utf-8")
     return {"exists": True, "bytes": raw, "mode": 0o600, "sha256": hashlib.sha256(raw).hexdigest(), "parsed": parsed}
 
