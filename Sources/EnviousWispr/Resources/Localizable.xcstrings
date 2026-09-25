@@ -567,6 +567,17 @@
     "Your dictations and transcripts will appear here." : {},
     "Your first dictation" : {},
     "Your snippets could not be read" : {},
+    "feedback.email.invalid" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Enter a valid email address"
+          }
+        }
+      }
+    },
     "feedback.email.placeholder" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -596,6 +607,17 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "What happened, or what would you like to see?"
+          }
+        }
+      }
+    },
+    "feedback.message.tooLong" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Maximum 4,000 characters"
           }
         }
       }

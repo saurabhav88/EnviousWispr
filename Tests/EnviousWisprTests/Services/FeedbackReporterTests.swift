@@ -30,9 +30,10 @@ struct FeedbackReporterTests {
 
   @Test("A long message keeps every character; only surrounding whitespace is trimmed")
   func longMessageIntact() {
-    let body = (0..<39).map { "Line \($0): the paste landed twice in Slack, then once." }
-      .joined(separator: "\n")
-    #expect(body.count > 1500)
+    let body = String(
+      (0..<78).map { "Line \($0): the paste landed twice in Slack, then once." }
+        .joined(separator: "\n").prefix(3900))
+    #expect(body.count == 3900)
     #expect(FeedbackDraft(message: "\n  " + body + "  \n", email: "")?.message == body)
   }
 

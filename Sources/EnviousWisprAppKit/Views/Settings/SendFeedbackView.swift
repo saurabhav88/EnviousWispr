@@ -58,8 +58,12 @@ struct SendFeedbackView: View {
           .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
           .allowsHitTesting(false)
       )
+      .overlay(alignment: .topTrailing) {
+        if issue == .messageTooLong { warning(Self.tooLongText).padding(8) }
+      }
       .accessibilityLabel(
         String(localized: "feedback.message.label", defaultValue: "Feedback message"))
+      .accessibilityHint(Text(verbatim: issue == .messageTooLong ? Self.tooLongText : ""))
   }
 
   private var emailField: some View {
@@ -74,6 +78,26 @@ struct SendFeedbackView: View {
         .strokeBorder(Color.stError, lineWidth: issue == .invalidEmail ? 1.5 : 0)
         .allowsHitTesting(false)
     )
+    .overlay(alignment: .trailing) {
+      if issue == .invalidEmail { warning(Self.invalidEmailText).padding(.trailing, 10) }
+    }
+    .accessibilityHint(Text(verbatim: issue == .invalidEmail ? Self.invalidEmailText : ""))
+  }
+
+  private static var invalidEmailText: String {
+    String(localized: "feedback.email.invalid", defaultValue: "Enter a valid email address")
+  }
+
+  private static var tooLongText: String {
+    String(localized: "feedback.message.tooLong", defaultValue: "Maximum 4,000 characters")
+  }
+
+  /// The reason Send is disabled, as a symbol with a tooltip, so it is not carried by color alone.
+  private func warning(_ reason: String) -> some View {
+    Image(systemName: "exclamationmark.circle.fill")
+      .foregroundStyle(Color.stError)
+      .help(Text(verbatim: reason))
+      .accessibilityHidden(true)
   }
 
   private var sendRow: some View {

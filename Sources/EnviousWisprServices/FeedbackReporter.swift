@@ -5,8 +5,8 @@ import Sentry
 ///
 /// `init?` is the only way to get one, so a draft that exists is always sendable.
 public struct FeedbackDraft: Equatable, Sendable {
-  /// Longest message accepted. Generous for a pasted log or a long description; the Live UAT
-  /// reads a 3,900-character report back from Sentry intact.
+  /// Longest message accepted. Generous for a pasted log or a long description; Live UAT must
+  /// read a 3,900-character report back from Sentry intact.
   public static let maxMessageLength = 4000
 
   public let message: String
