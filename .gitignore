@@ -183,6 +183,9 @@ scripts/lib/*
 !scripts/lib/xcode-test-run.sh
 !scripts/lib/ci-phase.sh
 !scripts/lib/mic-in-use.swift
+# #3142: the single writer of the interface String Catalog, and its self-test.
+!scripts/lib/l10n-catalog-sync.sh
+!scripts/lib/l10n-catalog-sync-test.sh
 # #3013: the hardware battery for a physical Mac and its launchd job.
 !scripts/nightly-local-battery.sh
 !scripts/launchd/
