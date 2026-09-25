@@ -72,6 +72,16 @@ let projectSettings = Settings.settings(
   ]
 )
 
+// #3142: the compiler extracts every localizable literal into `.stringsdata` so
+// `scripts/lib/l10n-catalog-sync.sh` can keep the app's String Catalog equal to
+// the code. Set on the targets whose code SHIPS (the first-party libraries and
+// the app), never project-wide or on the command line: test bundles and
+// EnviousWisprAppKitTestSupport must not feed test-only strings into the catalog.
+let stringExtractionSettings: SettingsDictionary = [
+  "SWIFT_EMIT_LOC_STRINGS": "YES",
+  "LOCALIZATION_PREFERS_STRING_CATALOGS": "YES",
+]
+
 // Per-target settings = the common base + per-config optimization + per-config
 // identity overrides (bundle id / Sparkle feed). Debug carries the `.dev`
 // identity (isolates TCC/Keychain and blanks the update feed); Release carries
@@ -79,12 +89,13 @@ let projectSettings = Settings.settings(
 // `$(PRODUCT_BUNDLE_IDENTIFIER)` and `$(SU_FEED_URL)` so these reach the signed
 // products. (#913 PR2)
 func targetSettings(
+  baseExtra: SettingsDictionary = [:],
   debugExtra: SettingsDictionary = [:],
   devExtra: SettingsDictionary = [:],
   releaseExtra: SettingsDictionary = [:]
 ) -> Settings {
   Settings.settings(
-    base: commonSettings,
+    base: commonSettings.merging(baseExtra) { _, new in new },
     configurations: [
       .debug(
         name: "Debug",
@@ -170,6 +181,7 @@ let testTargetSettings = targetSettings(
 // signing + the `EnviousWispr Local` product name. Release carries production
 // identity (signing handled at archive/export time in PR5/PR6, NOT here). (#913)
 let appSettings = targetSettings(
+  baseExtra: stringExtractionSettings,
   debugExtra: [
     "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app.dev",
     "SU_FEED_URL": "",
@@ -209,7 +221,8 @@ let appSettings = targetSettings(
 func firstPartyLibrary(
   _ name: String,
   dependencies: [TargetDependency],
-  hasResources: Bool = false
+  hasResources: Bool = false,
+  shipsInApp: Bool = true
 ) -> Target {
   .target(
     name: name,
@@ -226,7 +239,7 @@ func firstPartyLibrary(
     sources: [.glob("Sources/\(name)/**", excluding: ["Sources/\(name)/Resources/**"])],
     resources: hasResources ? ["Sources/\(name)/Resources/**"] : [],
     dependencies: dependencies,
-    settings: projectSettings
+    settings: shipsInApp ? targetSettings(baseExtra: stringExtractionSettings) : projectSettings
   )
 }
 
@@ -449,7 +462,8 @@ let project = Project(
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
         .package(product: "Sparkle"),
-      ]),
+      ],
+      shipsInApp: false),
 
     firstPartyLibrary(
       "EnviousWisprDesktopEffects",
