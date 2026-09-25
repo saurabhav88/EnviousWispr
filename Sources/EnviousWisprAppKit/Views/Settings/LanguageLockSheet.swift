@@ -228,7 +228,14 @@ struct LanguageLockSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Auto-detect language")
-        .accessibilityValue(isAuto ? "selected" : "")
+        .accessibilityValue(
+          isAuto
+            ? String(
+              localized: "selected",
+              comment:
+                "VoiceOver: a chosen segmented option; here, the Auto-detect row of the dictation language picker."
+            )
+            : "")
       }
       .background(Color.stSectionBg)
       .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))

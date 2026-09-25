@@ -60,8 +60,18 @@ struct AppearanceSettingsView: View {
       ) {
         BrandedSegmentedPicker(
           options: [
-            ("Top", "arrow.up.to.line", OverlayPillPosition.top),
-            ("Bottom", "arrow.down.to.line", OverlayPillPosition.bottom),
+            (
+              String(
+                localized: "Top",
+                comment: "Appearance settings, pill position: the top of the screen."),
+              "arrow.up.to.line", OverlayPillPosition.top
+            ),
+            (
+              String(
+                localized: "Bottom",
+                comment: "Appearance settings, pill position: the bottom of the screen."),
+              "arrow.down.to.line", OverlayPillPosition.bottom
+            ),
           ],
           selection: $settings.overlayPillPosition
         )
@@ -78,8 +88,7 @@ struct AppearanceSettingsView: View {
           VStack(alignment: .leading, spacing: 2) {
             Text("Show app in Dock").settingsRowLabel()
             Text(
-              "When off, the Dock icon appears only while an EnviousWispr window is open. "
-                + "The menu bar icon always stays."
+              "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."
             )
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
@@ -160,7 +169,7 @@ private struct AppearanceCard: View {
     .animation(.easeInOut(duration: 0.15), value: isSelected)
     .accessibilityElement(children: .combine)
     .accessibilityLabel(title)
-    .accessibilityValue(isSelected ? "Selected" : "")
+    .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 
@@ -174,9 +183,12 @@ private struct AppearanceCard: View {
 
   private var title: String {
     switch preference {
-    case .system: return "System"
-    case .light: return "Light"
-    case .dark: return "Dark"
+    case .system:
+      return String(
+        localized: "System", comment: "Appearance settings: theme option that follows macOS.")
+    case .light:
+      return String(localized: "Light", comment: "Appearance settings: light theme option.")
+    case .dark: return String(localized: "Dark", comment: "Appearance settings: dark theme option.")
     }
   }
 }

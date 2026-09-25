@@ -27,12 +27,17 @@ struct KeybindsSettingsView: View {
     SettingsContentView {
       // ── Transcribe keybind ───────────────────────────────────────────
       VStack(alignment: .leading, spacing: 10) {
-        eyebrow("Transcribe Keybind")
+        eyebrow(
+          LocalizedStringResource(
+            "Transcribe Keybind", comment: "Keybinds settings: section heading, shown in capitals.")
+        )
 
         VStack(alignment: .leading, spacing: 16) {
           // Step 1 — recording mode as two selectable cards.
           VStack(alignment: .leading, spacing: 12) {
-            stepLabel("1. Choose recording mode")
+            stepLabel(
+              LocalizedStringResource(
+                "1. Choose recording mode", comment: "Keybinds settings: step 1 title."))
 
             LazyVGrid(
               columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
@@ -40,7 +45,9 @@ struct KeybindsSettingsView: View {
             ) {
               RecordingModeCard(
                 icon: "hand.tap.fill",
-                title: "Push to Talk",
+                title: LocalizedStringResource(
+                  "Push to Talk",
+                  comment: "Keybinds settings: recording mode card; hold the key to record."),
                 description: "Hold the keybind to record. Release to stop.",
                 isSelected: settings.isPushToTalk
               ) {
@@ -48,7 +55,11 @@ struct KeybindsSettingsView: View {
               }
               RecordingModeCard(
                 icon: "arrow.triangle.2.circlepath",
-                title: "Toggle",
+                title: LocalizedStringResource(
+                  "Toggle",
+                  comment:
+                    "Keybinds settings: recording mode card; press once to start and again to stop."
+                ),
                 description: "Press once to start recording. Press again to stop.",
                 isSelected: !settings.isPushToTalk
               ) {
@@ -69,12 +80,15 @@ struct KeybindsSettingsView: View {
 
           // Step 2 — the record key as a big edit button.
           ProminentHotkeyRow(
-            title: "2. Recording keybind",
+            title: LocalizedStringResource(
+              "2. Recording keybind", comment: "Keybinds settings: step 2 title."),
             description: "This keybind starts and stops recording.",
             keyCode: $settings.toggleKeyCode,
             modifiers: $settings.toggleModifiers,
             role: .record,
-            accessibilityLabel: "Recording keybind",
+            accessibilityLabel: LocalizedStringResource(
+              "Recording keybind",
+              comment: "Keybinds settings: VoiceOver name of the recording keybind control."),
             onBindingAccepted: { code, _ in
               // The claim is owned by SettingsManager, not by this view: onboarding
               // has a separate completion handler and would otherwise show the same
@@ -110,11 +124,14 @@ struct KeybindsSettingsView: View {
 
       // ── Cancel recording ─────────────────────────────────────────────
       VStack(alignment: .leading, spacing: 10) {
-        eyebrow("Cancel Recording")
+        eyebrow(
+          LocalizedStringResource(
+            "Cancel Recording", comment: "Keybinds settings: section heading, shown in capitals."))
 
         VStack(alignment: .leading, spacing: 14) {
           ProminentHotkeyRow(
-            title: "Cancel keybind",
+            title: LocalizedStringResource(
+              "Cancel keybind", comment: "Keybinds settings: the keybind that cancels a recording."),
             // Conditional, because with Escape Recovery on the old sentence is
             // simply false — and a settings screen describing the opposite of
             // what the app does is worse than one saying nothing.
@@ -124,12 +141,12 @@ struct KeybindsSettingsView: View {
             // wrong for the only reader who can see both at once: someone
             // flipping it while a recording runs.
             description:
-              "Press to cancel the current recording. Escape Recovery below applies "
-              + "from the next recording you start.",
+              "Press to cancel the current recording. Escape Recovery below applies from the next recording you start.",
             keyCode: $settings.cancelKeyCode,
             modifiers: $settings.cancelModifiers,
             role: .cancel,
-            accessibilityLabel: "Cancel keybind"
+            accessibilityLabel: LocalizedStringResource(
+              "Cancel keybind", comment: "Keybinds settings: the keybind that cancels a recording.")
           )
 
           Divider().opacity(0.6)
@@ -181,11 +198,17 @@ struct KeybindsSettingsView: View {
 
       // ── Quick Add (#2381) ────────────────────────────────────────────
       VStack(alignment: .leading, spacing: 10) {
-        eyebrow("Add a Word")
+        eyebrow(
+          LocalizedStringResource(
+            "Add a Word",
+            comment:
+              "Keybinds settings: section heading for the add-a-word keybind, shown in capitals."))
 
         VStack(alignment: .leading, spacing: 14) {
           ProminentHotkeyRow(
-            title: "Add-a-word keybind",
+            title: LocalizedStringResource(
+              "Add-a-word keybind",
+              comment: "Keybinds settings: the keybind that adds a selected word to Your Words."),
             // Says what the user DOES and what they get, in that order, and names
             // the one place it will not work rather than letting them discover it.
             // Terminals are out of scope because a highlight drawn by a terminal
@@ -193,12 +216,13 @@ struct KeybindsSettingsView: View {
             // about the terminal, not a limitation we chose, and one a user who
             // dictates into a terminal will otherwise hit and assume is a bug.
             description:
-              "Select a misheard word anywhere, then press this to add it to Your Words. "
-              + "Terminal windows do not share their selection, so it will not work there.",
+              "Select a misheard word anywhere, then press this to add it to Your Words. Terminal windows do not share their selection, so it will not work there.",
             keyCode: $settings.quickAddKeyCode,
             modifiers: $settings.quickAddModifiers,
             role: .quickAdd,
-            accessibilityLabel: "Add-a-word keybind"
+            accessibilityLabel: LocalizedStringResource(
+              "Add-a-word keybind",
+              comment: "Keybinds settings: the keybind that adds a selected word to Your Words.")
           )
         }
         .padding(18)
@@ -208,25 +232,38 @@ struct KeybindsSettingsView: View {
 
       // ── Reuse the last dictation (#3106) ─────────────────────────────
       VStack(alignment: .leading, spacing: 10) {
-        eyebrow("Last Dictation")
+        eyebrow(
+          LocalizedStringResource(
+            "Last Dictation",
+            comment:
+              "Keybinds settings: section heading for reusing the last dictation, shown in capitals."
+          ))
 
         VStack(alignment: .leading, spacing: 14) {
           ProminentHotkeyRow(
-            title: "Paste last dictation",
+            title: LocalizedStringResource(
+              "Paste last dictation",
+              comment: "Keybinds settings: the keybind that pastes the last dictation again."),
             description: "Paste the last thing you dictated",
             keyCode: $settings.pasteLastKeyCode,
             modifiers: $settings.pasteLastModifiers,
             role: .pasteLast,
-            accessibilityLabel: "Paste last dictation keybind"
+            accessibilityLabel: LocalizedStringResource(
+              "Paste last dictation keybind",
+              comment: "Keybinds settings: VoiceOver name of that keybind control.")
           )
           Divider().overlay(Color.stDivider)
           ProminentHotkeyRow(
-            title: "Copy last dictation",
+            title: LocalizedStringResource(
+              "Copy last dictation",
+              comment: "Keybinds settings: the keybind that copies the last dictation."),
             description: "Copy the last thing you dictated",
             keyCode: $settings.copyLastKeyCode,
             modifiers: $settings.copyLastModifiers,
             role: .copyLast,
-            accessibilityLabel: "Copy last dictation keybind"
+            accessibilityLabel: LocalizedStringResource(
+              "Copy last dictation keybind",
+              comment: "Keybinds settings: VoiceOver name of that keybind control.")
           )
         }
         .padding(18)
@@ -240,8 +277,8 @@ struct KeybindsSettingsView: View {
 
   /// The purple uppercase section eyebrow that sits above a card. Matches
   /// `BrandedSection`'s header treatment so this page reads with the rest.
-  private func eyebrow(_ text: String) -> some View {
-    Text(text.uppercased())
+  private func eyebrow(_ text: LocalizedStringResource) -> some View {
+    Text(String(localized: text).uppercased())
       .font(.stSectionHeader)
       .tracking(0.6)
       .foregroundStyle(.stAccent)
@@ -249,7 +286,7 @@ struct KeybindsSettingsView: View {
   }
 
   /// A numbered step title inside the transcribe card.
-  private func stepLabel(_ text: String) -> some View {
+  private func stepLabel(_ text: LocalizedStringResource) -> some View {
     Text(text)
       .font(.stRowTitle)
       .foregroundStyle(.stTextPrimary)
@@ -280,8 +317,9 @@ private struct SettingsCardSurface: ViewModifier {
 /// Mirrors the transcription-engine cards so the two selectors read as a family.
 private struct RecordingModeCard: View {
   let icon: String
-  let title: String
-  let description: String
+  /// Typed so the callers' literals are extracted into the catalog (#3142).
+  let title: LocalizedStringResource
+  let description: LocalizedStringResource
   let isSelected: Bool
   let onSelect: () -> Void
 
@@ -339,8 +377,8 @@ private struct RecordingModeCard: View {
     .buttonStyle(.plain)
     .animation(.easeInOut(duration: 0.15), value: isSelected)
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(title)
-    .accessibilityValue(isSelected ? "Selected" : "")
+    .accessibilityLabel(Text(title))
+    .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 }
@@ -351,8 +389,9 @@ private struct RecordingModeCard: View {
 /// description on the left, a big edit button on the right that shows the current
 /// key with a "Click to change" affordance.
 private struct ProminentHotkeyRow: View {
-  let title: String
-  let description: String
+  /// Typed so the callers' literals are extracted into the catalog (#3142).
+  let title: LocalizedStringResource
+  let description: LocalizedStringResource
   @Binding var keyCode: UInt16
   @Binding var modifiers: NSEvent.ModifierFlags
   /// Which shortcut this row edits. **The row derives its Reset default from this rather than being
@@ -367,7 +406,7 @@ private struct ProminentHotkeyRow: View {
   /// SITES, where it applies to one row, reads as ordinary, and drifts alone. One here would apply
   /// to every row at once, which is the difference between a quiet wrong default and an obvious one.
   let role: ShortcutRole
-  let accessibilityLabel: String
+  let accessibilityLabel: LocalizedStringResource
 
   @Environment(SettingsManager.self) private var settings
 
@@ -378,11 +417,7 @@ private struct ProminentHotkeyRow: View {
   static func notActiveMessage(taker: ShortcutRole, bindings: ShortcutBindings) -> String {
     guard case .keyboard(let keyCode, let modifiers) = bindings[taker] else { return "" }
     let keys = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
-    let who = HotkeyRecorderView.title(of: taker)
-    if taker == .cancel {
-      return "Works only when you are not recording: \(who) (\(keys)) uses these keys while you record."
-    }
-    return "Not active: \(who) (\(keys)) uses these keys. Choose another."
+    return KeybindConflictCopy.notActive(taker: taker, keys: keys)
   }
 
   private var defaultKeyCode: UInt16 { role.defaultKeyCode }
@@ -416,7 +451,7 @@ private struct ProminentHotkeyRow: View {
         modifiers: $modifiers,
         defaultKeyCode: defaultKeyCode,
         defaultModifiers: defaultModifiers,
-        label: accessibilityLabel,
+        label: String(localized: accessibilityLabel),
         style: .prominent,
         onBindingAccepted: { code, mods in onBindingAccepted?(code, mods) },
         // Asked against every other row's CURRENT binding, read at the moment of the capture.
@@ -482,5 +517,42 @@ struct GlobeGuidancePopover: View {
     .frame(width: 340)
     .accessibilityElement(children: .contain)
     .accessibilityLabel(GlobeKeyCopy.accessibilityLabel)
+  }
+}
+
+/// The warning under a keybind whose keys another keybind has taken (#3142).
+///
+/// One whole sentence per keybind rather than a role phrase spliced into a frame, because the
+/// phrase's grammar changes with the sentence around it in other languages. `keys` is the key
+/// combination, such as Right ⌘.
+enum KeybindConflictCopy {
+  static func notActive(taker: ShortcutRole, keys: String) -> String {
+    switch taker {
+    case .cancel:
+      return String(
+        localized:
+          "Works only when you are not recording: the cancel keybind (\(keys)) uses these keys while you record.",
+        comment: "Keybinds settings: a conflict warning. %@ is a key combination, such as Right ⌘.")
+    case .record:
+      return String(
+        localized: "Not active: the recording keybind (\(keys)) uses these keys. Choose another.",
+        comment: "Keybinds settings: a conflict warning. %@ is a key combination, such as Right ⌘.")
+    case .quickAdd:
+      return String(
+        localized: "Not active: the add-a-word keybind (\(keys)) uses these keys. Choose another.",
+        comment: "Keybinds settings: a conflict warning. %@ is a key combination, such as Right ⌘.")
+    case .pasteLast:
+      return String(
+        localized: "Not active: Paste last dictation (\(keys)) uses these keys. Choose another.",
+        comment:
+          "Keybinds settings: a conflict warning. Paste last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
+      )
+    case .copyLast:
+      return String(
+        localized: "Not active: Copy last dictation (\(keys)) uses these keys. Choose another.",
+        comment:
+          "Keybinds settings: a conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
+      )
+    }
   }
 }

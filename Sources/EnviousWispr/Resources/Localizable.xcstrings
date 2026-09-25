@@ -110,6 +110,7 @@
       }
     },
     "%@. %@" : {
+      "comment" : "Appearance settings, recording pill picker, VoiceOver: a design card. The first %@ is the design's name, the second one sentence about it.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -118,6 +119,9 @@
           }
         }
       }
+    },
+    "%@. Change it under Keybinds." : {
+      "comment" : "Dictionary settings, Quick Add teaching card: the current shortcut. %@ is a key combination. Keybinds is a settings page name."
     },
     "%@. Undo available." : {
       "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced."
@@ -150,8 +154,23 @@
     "%lld%%" : {},
     "%lld." : {},
     "(%@)" : {},
+    "1. Choose recording mode" : {
+      "comment" : "Keybinds settings: step 1 title."
+    },
+    "10 sec" : {
+      "comment" : "Microphone settings: readiness option, 10 seconds."
+    },
+    "2. Recording keybind" : {
+      "comment" : "Keybinds settings: step 2 title."
+    },
     "25 European languages" : {
       "comment" : "Speech engine settings, engine card: how many languages it covers."
+    },
+    "30 sec" : {
+      "comment" : "Microphone settings: readiness option, 30 seconds."
+    },
+    "60 sec" : {
+      "comment" : "Microphone settings: readiness option, 60 seconds."
     },
     "60-minute limit reached. Transcribing..." : {
       "comment" : "Pill when a recording hit the 60-minute cap and is now being transcribed."
@@ -178,7 +197,9 @@
       "comment" : "Appearance settings: description of the Level Rail recording pill style."
     },
     "AI POLISH · OPTIONAL" : {},
-    "AI Polish" : {},
+    "AI Polish" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "AI Polished" : {
       "comment" : "History detail chip: AI polish rewrote this text."
     },
@@ -215,6 +236,9 @@
       "comment" : "Setup notice title on Macs older than macOS 26."
     },
     "ALL LANGUAGES" : {},
+    "APP" : {
+      "comment" : "Settings sidebar: group heading, in capitals."
+    },
     "AVAILABLE ON THIS MAC" : {},
     "About 1 in 24 dictations lost its final words with this on, compared with the same recording transcribed after stopping." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy."
@@ -222,6 +246,12 @@
     "About 2 GB download. Runs entirely on your Mac." : {},
     "Accessibility" : {
       "comment" : "Setup permissions: title of the macOS Accessibility permission row."
+    },
+    "Accessibility access granted" : {
+      "comment" : "Permissions settings: status when granted."
+    },
+    "Accessibility access required for paste" : {
+      "comment" : "Permissions settings: status when missing; pasting text needs Accessibility access."
     },
     "Accessibility permission needed for auto-paste" : {
       "comment" : "VoiceOver announcement from the recording overlay: macOS Accessibility permission is needed to paste."
@@ -243,11 +273,17 @@
     },
     "Add %@" : {},
     "Add Custom Word" : {},
+    "Add a Word" : {
+      "comment" : "Keybinds settings: section heading for the add-a-word keybind, shown in capitals."
+    },
     "Add a mishearing (e.g. clawed)" : {},
     "Add snippet" : {},
     "Add the names of people you know to your word list, so dictation spells them right." : {},
     "Add word" : {},
     "Add your first snippet" : {},
+    "Add-a-word keybind" : {
+      "comment" : "Keybinds settings: the keybind that adds a selected word to Your Words."
+    },
     "Added “%@” to Dictionary" : {
       "comment" : "Pill after a correction taught the app a new word. %@ is that word."
     },
@@ -282,8 +318,12 @@
       "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
     },
     "After installing, come back and click refresh." : {},
+    "After rebuilding the app you may need to re-grant this permission." : {},
     "After your mic has been idle, wait 1 to 2 seconds before speaking." : {
       "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
+    },
+    "Air Glint" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
     "Albanian" : {
       "comment" : "A language name (dictation language picker)."
@@ -306,6 +346,9 @@
     "Already recording." : {
       "comment" : "Pill: a dictation is already in progress."
     },
+    "Always" : {
+      "comment" : "Microphone settings: readiness option; the microphone stays ready."
+    },
     "Always keeps the microphone engine active. The macOS microphone indicator may stay visible and power use may increase." : {},
     "Always replace, even when the original might be right" : {},
     "American spelling: color, organize, center" : {
@@ -322,6 +365,9 @@
     },
     "Anything saved lands in History" : {
       "comment" : "Pill subtitle during recovery. History is the app's list of past dictations."
+    },
+    "Appearance" : {
+      "comment" : "Settings sidebar: a page name."
     },
     "Apple GPU" : {
       "comment" : "Speech engine settings, engine card: the chip it runs on, the graphics processor."
@@ -397,6 +443,9 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Back" : {},
+    "Barely-there tick." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Bashkir" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -430,6 +479,9 @@
     },
     "Both" : {
       "comment" : "Transcript speaker label when two people spoke in a turn the app could not separate."
+    },
+    "Bottom" : {
+      "comment" : "Appearance settings, pill position: the bottom of the screen."
     },
     "Breton" : {
       "comment" : "A language name (dictation language picker)."
@@ -474,6 +526,12 @@
     "Cancel" : {
       "comment" : "Live Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download."
     },
+    "Cancel Recording" : {
+      "comment" : "Keybinds settings: section heading, shown in capitals."
+    },
+    "Cancel keybind" : {
+      "comment" : "Keybinds settings: the keybind that cancels a recording."
+    },
     "Cancelling…" : {},
     "Cantonese" : {
       "comment" : "A language name (dictation language picker)."
@@ -500,8 +558,17 @@
       }
     },
     "Change your AI model, keybind, and more in Settings." : {},
+    "Changes made during a cleanup apply to the next file." : {
+      "comment" : "Transcribe a File: notice that a change made during a cleanup takes effect on the next file."
+    },
+    "Changes made during a recording apply to the next recording." : {
+      "comment" : "Settings: notice that a change made while recording takes effect next time."
+    },
     "Check Apple Intelligence availability" : {},
     "Check again" : {},
+    "Check for Updates" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Check for new contacts each time EnviousWispr starts. Off by default." : {},
     "Checked on %@" : {
       "comment" : "AI Polish, Ollama model list: when the hosted list was last verified. %@ is a date."
@@ -520,15 +587,33 @@
     "Chinese" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Choose \"Do Nothing\"" : {
+      "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 3. Quote the option exactly as macOS labels it in this language."
+    },
     "Choose a file" : {},
     "Choose a file you exported from EnviousWispr, or a plain text list of words." : {},
+    "Choose and save" : {
+      "comment" : "Dictionary settings, Quick Add teaching card: step 3 title."
+    },
     "Choose the %@ you exported, a CSV with a trigger column and a text column, or a plain list. Your keyword stays as it is." : {},
+    "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary." : {
+      "comment" : "Dictionary settings, Quick Add teaching card: step 3."
+    },
+    "Choose your input source and readiness behavior." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "Claude API Key" : {
       "comment" : "AI Polish: label and VoiceOver name of the API key field."
     },
     "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs finish in one to two seconds. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends your text to Anthropic under your API account." : {},
     "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept." : {
       "comment" : "AI Polish: what a cloud provider receives, shown under its API key field."
+    },
+    "Clean up and rewrite your dictation with AI." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
+    "Clean, airy glint." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
     },
     "Cleaned" : {},
     "Cleanup" : {},
@@ -538,17 +623,28 @@
     },
     "Clear Logs" : {},
     "Clear search" : {},
+    "Click the \"Press 🌐 key to\" menu" : {
+      "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 2. Quote the menu exactly as macOS labels it in this language."
+    },
+    "Click the EnviousWispr icon, then choose the item that starts with “Add”" : {
+      "comment" : "Dictionary settings, Quick Add teaching card: how to reach it from the menu bar. Add is the first word of the menu item; use the same word as that menu item in this language, with this language's quotation marks."
+    },
     "Click the box first" : {
       "comment" : "Practice screen headline. The words went to the clipboard."
     },
     "Click to change" : {},
-    "Clipboard" : {},
+    "Clipboard" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Close" : {
       "comment" : "Dictation language picker: VoiceOver name of the close button.\nLive Preview settings: catalog close label."
     },
     "Close %@ pack" : {},
     "Cloud" : {
       "comment" : "AI Polish provider list: group heading."
+    },
+    "Cloud Pop" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
     "Comparing words" : {},
     "Configure Live Preview" : {},
@@ -559,7 +655,9 @@
     "Context" : {
       "comment" : "AI Polish, S1-mini writing-style card: the context setting's name."
     },
-    "Continue" : {},
+    "Continue" : {
+      "comment" : "Microphone settings, media during dictation: option that leaves other audio playing."
+    },
     "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)" : {},
     "Convert spoken punctuation" : {
       "comment" : "Speech engine settings, spoken punctuation: the toggle's name."
@@ -578,6 +676,13 @@
     "Copy everything" : {
       "comment" : "Export button: copy the whole transcript."
     },
+    "Copy last dictation" : {
+      "comment" : "Keybinds settings: the keybind that copies the last dictation."
+    },
+    "Copy last dictation keybind" : {
+      "comment" : "Keybinds settings: VoiceOver name of that keybind control."
+    },
+    "Copy the last thing you dictated" : {},
     "Copy to clipboard" : {},
     "Could not download the model from models.enviouslabs.co. Check your connection. On a managed network, ask IT to allow this domain." : {
       "comment" : "AI Polish, local model card: why the model download failed. Keep models.enviouslabs.co exactly; it is a web address."
@@ -615,11 +720,17 @@
     "Croatian" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Currently unavailable — set one under Keybinds." : {
+      "comment" : "Dictionary settings, Quick Add teaching card: no shortcut is active. Keybinds is a settings page name."
+    },
     "Czech" : {
       "comment" : "A language name (dictation language picker)."
     },
     "Danish" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "Dark" : {
+      "comment" : "Appearance settings: dark theme option."
     },
     "Debug Mode" : {},
     "Default" : {},
@@ -714,7 +825,9 @@
     "Dictations" : {
       "comment" : "History filter: rows made by dictating with the keyboard shortcut."
     },
-    "Dictionary" : {},
+    "Dictionary" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Dictionary section" : {},
     "Discard" : {
       "comment" : "Button to discard pending work, including a recovering recording or an uncommitted word or snippet import."
@@ -836,6 +949,9 @@
     "Downloading… %lld%%" : {
       "comment" : "AI Polish, Ollama model list: download progress. %lld is a whole-number percentage."
     },
+    "Dust Mote" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
     "Dutch" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -864,6 +980,9 @@
     },
     "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment." : {
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; a hosted model's name could not be confirmed."
+    },
+    "EnviousWispr is GPLv3 open source. The license and third-party notices." : {
+      "comment" : "Settings: the one-line description under a page title."
     },
     "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead." : {
       "comment" : "Practice screen when Accessibility permission is off. Keep the line break."
@@ -976,6 +1095,12 @@
     "Free & Private" : {
       "comment" : "Welcome screen feature title."
     },
+    "Free up the Globe key" : {
+      "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): title."
+    },
+    "Free up the Globe key. Setup tip." : {
+      "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): VoiceOver name of the tip."
+    },
     "French" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1030,7 +1155,7 @@
       "comment" : "AI Polish: label and VoiceOver name of the API key field."
     },
     "Got it" : {
-      "comment" : "Button that closes the Bluetooth tip card."
+      "comment" : "Button that closes the Bluetooth tip card.\nGlobe key tip (a popover after choosing the Globe key as the keybind): button that closes the tip."
     },
     "Grant" : {
       "comment" : "Button to grant a requested macOS permission, including microphone or Accessibility."
@@ -1057,16 +1182,32 @@
     "Hebrew" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "High" : {
+      "comment" : "Settings slider: label at the high end."
+    },
+    "Highlight a word" : {
+      "comment" : "Dictionary settings, Quick Add teaching card: step 1 title."
+    },
     "Hindi" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "History" : {
+      "comment" : "Settings sidebar: a page name."
     },
     "Hold %@ and say something.\nLet go when you are done." : {
       "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
     },
+    "Hold the keybind to record. Release to stop." : {},
     "Hold to dictate. Release to transcribe." : {},
     "How OpenAI model availability works by usage tier" : {},
     "How it should be written" : {},
     "How long to wait after you stop speaking before ending the recording." : {},
+    "How the app looks, and the pill you see while dictating." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
+    "How your dictation reaches the clipboard and the app you're in." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "Hungarian" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1085,11 +1226,22 @@
     "Import" : {},
     "Import from Contacts" : {},
     "Imported from %@" : {},
-    "Importing in progress" : {},
+    "Importing in progress" : {
+      "comment" : "Settings sidebar: file import is running."
+    },
     "Importing your words" : {},
+    "Improve recognition with your words and vocabulary." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "In a hurry? Skip ahead" : {},
     "Indonesian" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "Input %lld" : {
+      "comment" : "Microphone settings, input socket (for a device with several inputs): one input of the device. %lld is its number."
+    },
+    "Input device" : {
+      "comment" : "Microphone settings: row title."
     },
     "Install Ollama" : {
       "comment" : "AI Polish, Ollama setup: the current step."
@@ -1136,6 +1288,9 @@
     },
     "Keep editing" : {},
     "Keep in sync on launch" : {},
+    "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words." : {
+      "comment" : "Microphone settings: explains microphone readiness."
+    },
     "Keep this recording permanently instead of letting it be deleted" : {},
     "Kept" : {
       "comment" : "History row badge: a cancelled dictation the user chose to keep permanently."
@@ -1163,6 +1318,12 @@
       "comment" : "AI Polish provider status chip."
     },
     "Keybind: %@" : {},
+    "Keybinds" : {
+      "comment" : "Settings sidebar: a page name."
+    },
+    "Keyboard shortcut" : {
+      "comment" : "Dictionary settings, Quick Add teaching card: label of the shortcut callout."
+    },
     "Keyword" : {},
     "Khmer" : {
       "comment" : "A language name (dictation language picker)."
@@ -1180,6 +1341,9 @@
     },
     "Lao" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "Last Dictation" : {
+      "comment" : "Keybinds settings: section heading for reusing the last dictation, shown in capitals."
     },
     "Latin" : {
       "comment" : "A language name (dictation language picker)."
@@ -1200,6 +1364,9 @@
       "comment" : "Appearance settings: name of the recording pill style with a voice level meter."
     },
     "License information isn't available in this build." : {},
+    "Light" : {
+      "comment" : "Appearance settings: light theme option."
+    },
     "Lingala" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1229,7 +1396,7 @@
       "comment" : "AI Polish provider status chip."
     },
     "Live Preview" : {
-      "comment" : "Live Preview settings: section header."
+      "comment" : "Live Preview settings: section header.\nSettings sidebar: a page name."
     },
     "Loaded" : {
       "comment" : "Main window sidebar: the speech model is in memory."
@@ -1256,6 +1423,24 @@
     "Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained." : {},
     "Looking for apps on this Mac." : {},
     "Loose" : {},
+    "Low" : {
+      "comment" : "Settings slider: label at the low end."
+    },
+    "Low Nod" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
+    "Low, warm, unhurried." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
+    "Lower" : {
+      "comment" : "Microphone settings, media during dictation: option that turns other audio down."
+    },
+    "Lower is not available on your current speakers or headphones." : {
+      "comment" : "Microphone settings, media during dictation: the Lower option cannot work on this output device."
+    },
+    "Lowers what plays through your current speakers or headphones to about half while you dictate, then puts it back. If you change the volume during a take, your new level stays." : {
+      "comment" : "Microphone settings, media during dictation: what the Lower option does. A take is one dictation."
+    },
     "Luxembourgish" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1293,9 +1478,24 @@
     "Measured on 28 test recordings and a replay of 500 real dictations, comparing both settings on the same audio." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel footnote."
     },
+    "Media during dictation" : {
+      "comment" : "Microphone settings, media during dictation: row title for what happens to music and other audio."
+    },
     "Memory" : {},
+    "Menu bar" : {
+      "comment" : "Dictionary settings, Quick Add teaching card: label of the menu bar callout."
+    },
+    "Mic is on" : {
+      "comment" : "Microphone settings, input socket (for a device with several inputs): label before the choice of input, as in Mic is on Input 2."
+    },
     "Microphone" : {
-      "comment" : "Setup permissions: title of the microphone permission row."
+      "comment" : "Settings sidebar: a page name.\nSetup permissions: title of the microphone permission row."
+    },
+    "Microphone access denied" : {
+      "comment" : "Permissions settings: status when denied."
+    },
+    "Microphone access granted" : {
+      "comment" : "Permissions settings: status when granted."
     },
     "Microphone access is off." : {
       "comment" : "Pill: macOS microphone permission is off for the app."
@@ -1311,6 +1511,9 @@
     },
     "Microphone disconnected. Words may be missing." : {
       "comment" : "Pill: the microphone was unplugged; words at the start and end may be missing."
+    },
+    "Microphone readiness" : {
+      "comment" : "Microphone settings: row title."
     },
     "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default)." : {
       "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings. 'Microphone readiness' is the name of a setting."
@@ -1343,6 +1546,21 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Move EnviousWispr" : {},
+    "Music and other audio keep playing as they are." : {
+      "comment" : "Microphone settings, media during dictation: what the Continue option does."
+    },
+    "Mute" : {
+      "comment" : "Microphone settings, media during dictation: option that silences other audio."
+    },
+    "Mute is not available on your current speakers or headphones." : {
+      "comment" : "Microphone settings, media during dictation: the Mute option cannot work on this output device."
+    },
+    "Muted Confirm" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
+    "Muted, compact tap." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Native Speed" : {
       "comment" : "Welcome screen feature title."
     },
@@ -1405,6 +1623,18 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Not Now" : {},
+    "Not active: Copy last dictation (%@) uses these keys. Choose another." : {
+      "comment" : "Keybinds settings: a conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
+    },
+    "Not active: Paste last dictation (%@) uses these keys. Choose another." : {
+      "comment" : "Keybinds settings: a conflict warning. Paste last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
+    },
+    "Not active: the add-a-word keybind (%@) uses these keys. Choose another." : {
+      "comment" : "Keybinds settings: a conflict warning. %@ is a key combination, such as Right ⌘."
+    },
+    "Not active: the recording keybind (%@) uses these keys. Choose another." : {
+      "comment" : "Keybinds settings: a conflict warning. %@ is a key combination, such as Right ⌘."
+    },
     "Not available with your API key" : {},
     "Not checked" : {
       "comment" : "AI Polish provider status chip."
@@ -1452,11 +1682,14 @@
     },
     "OK" : {},
     "OSLog" : {},
+    "OUTPUT" : {
+      "comment" : "Settings sidebar: group heading, in capitals."
+    },
     "Occitan" : {
       "comment" : "A language name (dictation language picker)."
     },
     "Off" : {
-      "comment" : "AI Polish provider status chip: AI Polish is off.\nLive Preview settings: status off label.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches."
+      "comment" : "AI Polish provider status chip: AI Polish is off.\nLive Preview settings: status off label.\nMicrophone settings: readiness option; the microphone is released at once.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches.\nVoiceOver: the value of a switch that is off."
     },
     "Offline-Ready" : {
       "comment" : "Welcome screen feature title: works without internet."
@@ -1473,7 +1706,9 @@
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; two names came back for a hosted model."
     },
     "Ollama runs AI models on your Mac. No API keys, completely free." : {},
-    "On" : {},
+    "On" : {
+      "comment" : "VoiceOver: the value of a switch that is on."
+    },
     "On dictations under a minute, both settings finish at about the same moment. The difference is smaller than you can feel. It only pulls ahead on recordings of roughly five minutes or longer." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: speed."
     },
@@ -1482,6 +1717,9 @@
     },
     "On this Mac" : {
       "comment" : "AI Polish provider list: group heading.\nLive Preview language list: heading for languages already installed."
+    },
+    "On this Mac only Music and Spotify can be paused. macOS may ask for permission the first time; a take that needs permission is not paused." : {
+      "comment" : "Microphone settings, media during dictation: note under Pause when only some players can be paused. Music and Spotify are app names."
     },
     "On this engine, transcribing as you go is about as accurate as waiting until you stop. It can still occasionally drop a final word or two, which we are working on." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy."
@@ -1515,7 +1753,18 @@
     "Open Settings" : {
       "comment" : "Pill button: opens the macOS microphone privacy settings."
     },
-    "Open System Settings" : {},
+    "Open Source Licenses" : {
+      "comment" : "Settings sidebar: a page name."
+    },
+    "Open System Settings" : {
+      "comment" : "Permissions settings: button that opens macOS System Settings."
+    },
+    "Open System Settings, then Keyboard" : {
+      "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 1. Use the names macOS shows in this language for System Settings and Keyboard."
+    },
+    "Open the EnviousWispr menu and choose the Add item." : {
+      "comment" : "Dictionary settings, Quick Add teaching card: step 2 when no keybind is set. Add is the first word of the menu item; use the same word as that menu item in this language."
+    },
     "OpenAI API Key" : {
       "comment" : "AI Polish: label and VoiceOver name of the API key field."
     },
@@ -1534,6 +1783,9 @@
       "comment" : "AI Polish provider list: description under a provider name. EG-1, our own model."
     },
     "POWER USER?" : {},
+    "PROCESS" : {
+      "comment" : "Settings sidebar: group heading, in capitals."
+    },
     "Pack on" : {},
     "Packs" : {},
     "Page %lld of %lld" : {
@@ -1546,6 +1798,9 @@
         }
       }
     },
+    "Paper Tap" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
     "Pashto" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1553,9 +1808,19 @@
       "comment" : "History detail button: pastes this row's text into the currently active app."
     },
     "Paste into active app" : {},
+    "Paste last dictation" : {
+      "comment" : "Keybinds settings: the keybind that pastes the last dictation again."
+    },
+    "Paste last dictation keybind" : {
+      "comment" : "Keybinds settings: VoiceOver name of that keybind control."
+    },
+    "Paste the last thing you dictated" : {},
     "Paste unavailable — Accessibility permission required" : {},
     "Paste your snippets, then check the count before you continue." : {},
     "Paste your words, one per line or separated by commas." : {},
+    "Pause" : {
+      "comment" : "Microphone settings, media during dictation: option that pauses what is playing."
+    },
     "Pause duration" : {
       "comment" : "Speech engine settings, Auto-Stop: slider for how long a silence ends the recording."
     },
@@ -1568,7 +1833,13 @@
     "Paused while Faster Transcription is on" : {
       "comment" : "Live Preview settings: paused for faster transcription."
     },
+    "Pauses whatever is playing (music, a video, a podcast), then resumes it when you stop. If you switch to something else during a take, what we paused stays paused." : {
+      "comment" : "Microphone settings, media during dictation: what the Pause option does. A take is one dictation."
+    },
     "Performance" : {},
+    "Permissions" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Persian" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1586,6 +1857,9 @@
     "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job." : {},
     "Pill Position" : {},
     "Pipeline Benchmark Results" : {},
+    "Play a short sound when recording starts and stops." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "Play recording sounds" : {},
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
     "Polish" : {
@@ -1633,9 +1907,14 @@
       "comment" : "Speech engine settings, WhisperKit model: download status line."
     },
     "Press " : {},
+    "Press %@, or open the EnviousWispr menu and choose the Add item." : {
+      "comment" : "Dictionary settings, Quick Add teaching card: step 2. %@ is a key combination. Add is the first word of the menu item; use the same word as that menu item in this language."
+    },
     "Press keys..." : {},
     "Press keys…" : {},
+    "Press once to start recording. Press again to stop." : {},
     "Press the record button to start dictating." : {},
+    "Press to cancel the current recording. Escape Recovery below applies from the next recording you start." : {},
     "Press your keybind and start talking." : {},
     "Preview" : {},
     "Preview %@" : {},
@@ -1657,8 +1936,14 @@
     "Punjabi" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Push to Talk" : {
+      "comment" : "Keybinds settings: recording mode card; hold the key to record."
+    },
     "Quick Add" : {},
     "RECENT" : {},
+    "RECORD" : {
+      "comment" : "Settings sidebar: group heading, in capitals."
+    },
     "Re-check Ollama status" : {},
     "Re-check model status" : {},
     "Re-runs the onboarding flow without wiping app state. Disabled during recording." : {},
@@ -1682,7 +1967,9 @@
       "comment" : "Pill title when the speech engine finished loading."
     },
     "Ready-made word lists for a field. Turn one on and EnviousWispr starts fixing the words it already knows that field gets wrong." : {},
-    "Recommended" : {},
+    "Recommended" : {
+      "comment" : "VoiceOver: the recommended AI Polish provider, not chosen."
+    },
     "Recommended for cleanup" : {},
     "Record" : {},
     "Recording" : {
@@ -1703,6 +1990,9 @@
     },
     "Recording interrupted. Words may be missing." : {
       "comment" : "Pill: recording was interrupted; words may be missing."
+    },
+    "Recording keybind" : {
+      "comment" : "Keybinds settings: VoiceOver name of the recording keybind control."
     },
     "Recording started" : {
       "comment" : "VoiceOver announcement from the recording overlay: recording began."
@@ -1729,6 +2019,9 @@
       "comment" : "Pill title while a recording interrupted by a crash is recovered."
     },
     "Refresh available models" : {},
+    "Remembered for %@." : {
+      "comment" : "Microphone settings, input socket (for a device with several inputs): the choice is saved per device. %@ is the device's name."
+    },
     "Remove" : {
       "comment" : "Live Preview settings, Universal engine card: button. It deletes the downloaded engine."
     },
@@ -1742,6 +2035,9 @@
     "Rename speaker" : {},
     "Repeated or invented words" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel table: a measured quantity."
+    },
+    "Request Access" : {
+      "comment" : "Permissions settings: button that asks macOS for microphone access."
     },
     "Required to paste your dictation" : {},
     "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed." : {},
@@ -1763,6 +2059,12 @@
     "Romanian" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Round Pebble" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
+    "Rounded, no edge." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Run ASR Benchmark" : {},
     "Run Pipeline Benchmark" : {},
     "Running" : {
@@ -1778,8 +2080,17 @@
       "comment" : "A language name (dictation language picker)."
     },
     "SELECTED FILE" : {},
+    "SYSTEM" : {
+      "comment" : "Settings sidebar: group heading, in capitals."
+    },
+    "Same pitch both ways, plain." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Sanskrit" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "Satin Shift" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
     "Save" : {
       "comment" : "AI Polish: button that saves the API key."
@@ -1810,6 +2121,9 @@
     "Say this" : {
       "comment" : "Speech engine settings, spoken punctuation: help table column: the words the user says."
     },
+    "Say your keyword, then a snippet. The saved text lands for you." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "Say your keyword, then the words you saved a snippet under, and that snippet is pasted." : {},
     "Search %@ words" : {},
     "Search by name or code" : {
@@ -1821,11 +2135,25 @@
     "Search snippets" : {},
     "See all" : {},
     "See all words in the %@ pack" : {},
+    "See your words on screen while you are still speaking." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "Select" : {},
     "Select All" : {},
+    "Select a misheard word anywhere, then press this to add it to Your Words. Terminal windows do not share their selection, so it will not work there." : {},
     "Select an item from the sidebar to view it." : {},
-    "Selected" : {},
-    "Selected%@" : {},
+    "Select the word you want to fix in an email, chat, or document." : {
+      "comment" : "Dictionary settings, Quick Add teaching card: step 1."
+    },
+    "Select which microphone to use for recording. \"Auto\" follows the input device selected in macOS. If that device turns out not to be a real microphone, recording uses an available microphone instead." : {
+      "comment" : "Microphone settings: explains the input device choice. Auto is the name of the first option."
+    },
+    "Selected" : {
+      "comment" : "VoiceOver: the value spoken for the chosen card or option."
+    },
+    "Selected, recommended" : {
+      "comment" : "VoiceOver: an AI Polish provider that is chosen and is the recommended one."
+    },
     "Selected: %@" : {},
     "Selects %@ for AI polish" : {},
     "Semi-casual" : {
@@ -1837,6 +2165,9 @@
     "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text." : {
       "comment" : "AI Polish, S1-mini writing-style card: explains the tone options."
     },
+    "Send Feedback" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Sends transcribed text, never audio" : {
       "comment" : "AI Polish: privacy line under the selected provider."
     },
@@ -1844,6 +2175,9 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Set how this word is recognized in what you dictate." : {},
+    "Set the keybinds that start, stop, and cancel dictation." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "Setting up speech model" : {
       "comment" : "Setup checklist step."
     },
@@ -1880,6 +2214,9 @@
     },
     "Shows the %@ Dictionary tab" : {},
     "Shows the reminder popover once per launch. This guide always stays." : {},
+    "Silences your current speakers or headphones while you dictate, including calls and spoken feedback, then puts the volume back. If you change the volume during a take, your new level stays." : {
+      "comment" : "Microphone settings, media during dictation: what the Mute option does. A take is one dictation."
+    },
     "Sindhi" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1895,11 +2232,29 @@
     "Slovenian" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Slow fade, like a breath." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Smart insertion" : {},
+    "Smooth two-tone shift." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Snippet" : {},
+    "Snippets" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Snippets to import" : {},
     "Snippets you already have are left exactly as they are." : {},
     "Snippets you already saved in another dictation app, found on this Mac." : {},
+    "Soft Hush" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
+    "Soft filtered air, no tone." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
+    "Soft paper-like tap." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Somali" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1911,7 +2266,9 @@
     "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere." : {
       "comment" : "Practice screen when the dictation failed on our side. Keep the line break."
     },
-    "Sounds" : {},
+    "Sounds" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Spanish" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1942,7 +2299,9 @@
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
     "Status:" : {},
-    "Status: %@" : {},
+    "Status: %@" : {
+      "comment" : "VoiceOver: a provider's status chip. %@ is the status, such as Live."
+    },
     "Step %lld of 6" : {},
     "Still working: checking download source…" : {
       "comment" : "Setup: shown when preparing the download takes more than 10 seconds."
@@ -1975,6 +2334,9 @@
     },
     "Switch it on and this bar will show whether anything else is needed." : {
       "comment" : "Live Preview settings: status off detail."
+    },
+    "System" : {
+      "comment" : "Appearance settings: theme option that follows macOS."
     },
     "TRY AGAIN" : {},
     "Tagalog" : {
@@ -2040,6 +2402,12 @@
     "The fast engine can't lock to this language, so it's detecting automatically. Choose one of its 25 European languages, or switch to the multilingual engine." : {
       "comment" : "Speech engine settings: the locked language is not one the fast engine supports."
     },
+    "The latest improvements and fixes in this release." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
+    "The microphone and accessibility access EnviousWispr needs." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "The model could not be removed. Please try again." : {},
     "The model did not answer a test request. Use the refresh button to try again." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
@@ -2064,6 +2432,9 @@
     },
     "The privacy-first dictation app built for macOS." : {},
     "The speech engine did not finish waking up." : {},
+    "The speech engine that turns your voice into text." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below." : {},
     "These let EnviousWispr listen and paste for you." : {},
     "These words are not saved to History. Copy or save them before you leave, or press Clean it again to retry." : {
@@ -2094,6 +2465,7 @@
     "This engine transcribes differently from the Fast engine, so its behaviour and the advice here are not the same." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel footnote."
     },
+    "This keybind starts and stops recording." : {},
     "This may take a moment on first run while the model loads." : {},
     "This may take a moment on first run." : {},
     "This model did not pass any of our cleanup tests." : {},
@@ -2132,6 +2504,9 @@
       "comment" : "Practice screen headline. Before the first try."
     },
     "Times" : {},
+    "Tiny filtered-air pop." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Tip: %@" : {},
     "To hear your voice for transcription." : {
       "comment" : "Setup permissions: why the microphone is needed."
@@ -2139,14 +2514,25 @@
     "To paste your transcribed text into any app." : {
       "comment" : "Setup permissions: why Accessibility is needed."
     },
+    "Toggle" : {
+      "comment" : "Keybinds settings: recording mode card; press once to start and again to stop."
+    },
     "Tokens are shared between the model's setup instructions, your dictation, and its answer." : {},
     "Tone" : {
       "comment" : "AI Polish, S1-mini writing-style card: the tone setting's name."
     },
+    "Top" : {
+      "comment" : "Appearance settings, pill position: the top of the screen."
+    },
     "Training patience module..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
-    "Transcribe a File" : {},
+    "Transcribe Keybind" : {
+      "comment" : "Keybinds settings: section heading, shown in capitals."
+    },
+    "Transcribe a File" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Transcribe time" : {
       "comment" : "Speech engine settings, engine card: a row label in the card's spec table."
     },
@@ -2171,6 +2557,9 @@
     "Transcript" : {
       "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it."
     },
+    "Transcription" : {
+      "comment" : "Settings sidebar: a page name."
+    },
     "Transcription Complete" : {},
     "Transcription Engine" : {
       "comment" : "Speech engine settings: section heading."
@@ -2181,6 +2570,9 @@
     },
     "Transcripts" : {
       "comment" : "History filter: rows made with Transcribe a File."
+    },
+    "Trigger Quick Add" : {
+      "comment" : "Dictionary settings, Quick Add teaching card: step 2 title."
     },
     "Try Again" : {
       "comment" : "Live Preview settings, Universal engine card: button. It retries a failed download.\nSettings > AI Polish, local model row: button after a failed download.\nSpeech engine settings, speech model download: button after a failure."
@@ -2202,6 +2594,9 @@
     "Turkmen" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Turn a recording you already have into clean text." : {
+      "comment" : "Settings: the one-line description under a page title."
+    },
     "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
       "comment" : "Setup notice when Apple Intelligence is off in System Settings."
     },
@@ -2210,11 +2605,17 @@
     },
     "Turn on Accessibility" : {},
     "Turn on the microphone" : {},
+    "Two close tones, gentle warmth." : {
+      "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
     "Ukrainian" : {
       "comment" : "A language name (dictation language picker)."
     },
     "Unavailable" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Unavailable while a removed model finishes clearing." : {
+      "comment" : "Appearance settings, recording pill picker: why a design is briefly unavailable."
     },
     "Undo" : {
       "comment" : "Button on the pill shown after a word is added to the dictionary. Removes it again.\nPill button after Escape: brings the cancelled dictation back."
@@ -2283,6 +2684,9 @@
     "Uses your selected Ollama model, local or hosted" : {
       "comment" : "AI Polish: privacy line under the selected provider."
     },
+    "Using %@" : {
+      "comment" : "Microphone settings: the microphone in use with Auto. %@ is its name."
+    },
     "Using a Bluetooth microphone?" : {
       "comment" : "Heading of the Bluetooth guide in Microphone settings."
     },
@@ -2301,6 +2705,12 @@
       "comment" : "AI Polish provider status chip."
     },
     "Validating…" : {},
+    "Velvet Hush" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
+    "Velvet Tap" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
     "Verifying" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -2348,6 +2758,10 @@
     "What we recommend" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading."
     },
+    "What's New" : {
+      "comment" : "Settings sidebar: a page name."
+    },
+    "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays." : {},
     "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose." : {},
     "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about %lld minutes." : {},
     "When to use it. Pick %@ if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about %lld minutes." : {
@@ -2363,6 +2777,9 @@
     "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better. Handles dictations up to about 8 minutes." : {},
     "When you use your cancel keybind, Escape by default, EnviousWispr keeps the dictation instead of discarding it. It finishes transcribing and polishing, then offers to paste it. Another recording cannot start until that finishes, the same as after any dictation. AI polish runs as usual, which uses your own API key when configured. The audio is deleted once the text is saved; the text stays in History for 24 hours unless you Keep it. The Cancel button still discards immediately." : {},
     "Which words to show" : {},
+    "Whisper Tick" : {
+      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
     "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup." : {},
     "Why this happens" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading."
@@ -2409,6 +2826,9 @@
     "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download." : {
       "comment" : "Live Preview settings, preview engine: universal description. 217 MB is a download size."
     },
+    "Works only when you are not recording: the cancel keybind (%@) uses these keys while you record." : {
+      "comment" : "Keybinds settings: a conflict warning. %@ is a key combination, such as Right ⌘."
+    },
     "Works without internet." : {
       "comment" : "Welcome screen feature line under Offline-Ready."
     },
@@ -2438,11 +2858,17 @@
     "Your API key" : {
       "comment" : "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
     },
+    "Your Globe key is set as your dictation keybind either way. This only stops macOS doing its own thing at the same time." : {
+      "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): closing reassurance."
+    },
     "Your Voice, Instantly Captured." : {},
     "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview." : {
       "comment" : "Live Preview settings: status paused detail."
     },
     "Your dictations and transcripts will appear here." : {},
+    "Your engine cannot show words on this Mac." : {
+      "comment" : "Appearance settings, recording pill picker: why the word-showing pill designs are unavailable."
+    },
     "Your first dictation" : {},
     "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
       "comment" : "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break."
@@ -2452,6 +2878,9 @@
     },
     "Your own setup" : {
       "comment" : "AI Polish provider list: group heading."
+    },
+    "Your past dictations, searchable and ready to reuse." : {
+      "comment" : "Settings: the one-line description under a page title."
     },
     "Your recording indicator appears while you hold the key." : {
       "comment" : "Practice screen footnote under the text box."
@@ -2607,6 +3036,9 @@
       }
     },
     "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually." : {},
+    "macOS may already use the Globe key to switch keyboard languages, open the emoji picker, or start its own dictation. If that happens while you dictate, you can turn it off:" : {
+      "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): explains why macOS may also react to the Globe key."
+    },
     "menu.sendFeedback" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -2651,7 +3083,7 @@
     },
     "or drag and drop here" : {},
     "selected" : {
-      "comment" : "Dictation language picker, VoiceOver: the chosen row."
+      "comment" : "Dictation language picker, VoiceOver: the chosen row.\nVoiceOver: a chosen segmented option.\nVoiceOver: a chosen segmented option; here, the Auto-detect row of the dictation language picker."
     },
     "settings.aiPolish.enable.title" : {
       "comment" : "Settings > AI Polish: title of the switch that turns AI polish on or off.",

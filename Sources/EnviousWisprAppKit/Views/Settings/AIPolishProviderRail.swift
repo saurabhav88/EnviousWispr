@@ -621,6 +621,22 @@ struct ProviderRailRow: View {
     SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
   }
 
+  /// Whole values chosen by state, never "Selected" glued to ", recommended" (#3142).
+  private var selectionValue: String {
+    switch (isSelected, entry.recommended) {
+    case (true, true):
+      return String(
+        localized: "Selected, recommended",
+        comment: "VoiceOver: an AI Polish provider that is chosen and is the recommended one.")
+    case (true, false): return SettingsCopy.selectedValue
+    case (false, true):
+      return String(
+        localized: "Recommended",
+        comment: "VoiceOver: the recommended AI Polish provider, not chosen.")
+    case (false, false): return ""
+    }
+  }
+
   var body: some View {
     Button(action: onSelect) {
       HStack(spacing: 12) {
@@ -689,11 +705,7 @@ struct ProviderRailRow: View {
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel("\(entry.name), \(entry.group.accessibilityPhrase)")
-    .accessibilityValue(
-      isSelected
-        ? "Selected\(entry.recommended ? ", recommended" : "")"
-        : (entry.recommended ? "Recommended" : "")
-    )
+    .accessibilityValue(selectionValue)
     .accessibilityHint("Selects \(entry.name) for AI polish")
     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     .accessibilityAction { onSelect() }

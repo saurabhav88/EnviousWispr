@@ -202,41 +202,137 @@ private struct RecordingSoundPairingCard: View {
     .settingsHoverCard(cornerRadius: SettingsLayout.sectionRadius, isSelected: isSelected)
     .animation(.easeInOut(duration: 0.15), value: isSelected)
     .accessibilityLabel(displayName(for: pairing))
-    .accessibilityValue(isSelected ? "Selected" : "")
+    .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 }
 
 private func displayName(for pairing: RecordingSoundPairing) -> String {
   switch pairing {
-  case .dustMote: return "Dust Mote"
-  case .velvetHush: return "Velvet Hush"
-  case .mutedConfirm: return "Muted Confirm"
-  case .whisperTick: return "Whisper Tick"
-  case .roundPebble: return "Round Pebble"
-  case .paperTap: return "Paper Tap"
-  case .softHush: return "Soft Hush"
-  case .lowNod: return "Low Nod"
-  case .cloudPop: return "Cloud Pop"
-  case .velvetTap: return "Velvet Tap"
-  case .satinShift: return "Satin Shift"
-  case .airGlint: return "Air Glint"
+  case .dustMote:
+    return String(
+      localized: "Dust Mote",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .velvetHush:
+    return String(
+      localized: "Velvet Hush",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .mutedConfirm:
+    return String(
+      localized: "Muted Confirm",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .whisperTick:
+    return String(
+      localized: "Whisper Tick",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .roundPebble:
+    return String(
+      localized: "Round Pebble",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .paperTap:
+    return String(
+      localized: "Paper Tap",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .softHush:
+    return String(
+      localized: "Soft Hush",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .lowNod:
+    return String(
+      localized: "Low Nod",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .cloudPop:
+    return String(
+      localized: "Cloud Pop",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .velvetTap:
+    return String(
+      localized: "Velvet Tap",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .satinShift:
+    return String(
+      localized: "Satin Shift",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
+  case .airGlint:
+    return String(
+      localized: "Air Glint",
+      comment:
+        "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    )
   }
 }
 
 private func description(for pairing: RecordingSoundPairing) -> String {
   switch pairing {
-  case .dustMote: return "Soft filtered air, no tone."
-  case .velvetHush: return "Two close tones, gentle warmth."
-  case .mutedConfirm: return "Same pitch both ways, plain."
-  case .whisperTick: return "Barely-there tick."
-  case .roundPebble: return "Rounded, no edge."
-  case .paperTap: return "Soft paper-like tap."
-  case .softHush: return "Slow fade, like a breath."
-  case .lowNod: return "Low, warm, unhurried."
-  case .cloudPop: return "Tiny filtered-air pop."
-  case .velvetTap: return "Muted, compact tap."
-  case .satinShift: return "Smooth two-tone shift."
-  case .airGlint: return "Clean, airy glint."
+  case .dustMote:
+    return String(
+      localized: "Soft filtered air, no tone.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .velvetHush:
+    return String(
+      localized: "Two close tones, gentle warmth.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .mutedConfirm:
+    return String(
+      localized: "Same pitch both ways, plain.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .whisperTick:
+    return String(
+      localized: "Barely-there tick.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .roundPebble:
+    return String(
+      localized: "Rounded, no edge.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .paperTap:
+    return String(
+      localized: "Soft paper-like tap.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .softHush:
+    return String(
+      localized: "Slow fade, like a breath.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .lowNod:
+    return String(
+      localized: "Low, warm, unhurried.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .cloudPop:
+    return String(
+      localized: "Tiny filtered-air pop.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .velvetTap:
+    return String(
+      localized: "Muted, compact tap.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .satinShift:
+    return String(
+      localized: "Smooth two-tone shift.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
+  case .airGlint:
+    return String(
+      localized: "Clean, airy glint.",
+      comment: "Sounds settings: describes how a recording sound sounds.")
   }
 }
