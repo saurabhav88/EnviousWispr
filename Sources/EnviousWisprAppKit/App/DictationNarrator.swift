@@ -199,9 +199,9 @@ enum DictationNarrator {
         localized: "Polish failed. Using raw text.",
         comment: "Pill: AI polish failed, so the unpolished text was pasted.")
     case .historySaveFailed(let reason):
-      return String(
-        localized: "Couldn't save to history: \(reason)",
-        comment: "Pill: the dictation could not be saved to History. %@ is the reason.")
+      // #3142: `reason` is already the whole translated sentence
+      // (`HistorySaveErrorClass.userMessage`), so the pill shows it as is.
+      return reason
     // #2087. States the OUTCOME the user has to act on — the words are gone —
     // rather than the mechanism, which is a crash-recovery file they never
     // heard of. No dash characters, per the content rules.

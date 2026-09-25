@@ -93,7 +93,11 @@ final class MenuBarController: NSObject {
     let state = currentViewState()
     iconAnimator.transition(to: Self.iconState(state))
     // #1019: non-color accessibility affordance for the gold-wave cue.
-    statusItem?.button?.setAccessibilityValue(state.updateAvailable ? "Update available" : nil)
+    statusItem?.button?.setAccessibilityValue(
+      state.updateAvailable
+        ? String(
+          localized: "Update available",
+          comment: "Menu bar menu, VoiceOver: the menu bar icon when an update is waiting.") : nil)
   }
 
   /// Pure icon-state mapping. Logic byte-identical to the pre-PR-B.3
@@ -175,19 +179,19 @@ final class MenuBarController: NSObject {
   ) -> (title: String, enabled: Bool) {
     switch state {
     case .nothingSelected:
-      return ("Add Selected Word", fallbackEnabled)
+      return (Self.addSelectedWordTitle, fallbackEnabled)
     case .blocked:
       // **Enabled, and that is the point.** A refused read is not an empty selection: the user has
       // selected something and we could not read it, usually because Accessibility is off. A greyed
       // row tells them nothing, so this one opens the panel, which exists to state the reason. The
       // door that is meant to be the reliable one must not fail silently.
-      return ("Add Selected Word", true)
+      return (Self.addSelectedWordTitle, true)
     case .ready(let selection):
       // **A `.ready` carrying only whitespace is the empty case wearing the wrong label.** The
       // reader trims, so this is not a state it can produce — but the type permits it, and a row
       // reading `Add “”` that opens a panel on nothing is worse than an inert one.
       guard !selection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return ("Add Selected Word", false)
+        return (Self.addSelectedWordTitle, false)
       }
       return (Self.readyTitle(selection), true)
     }
@@ -206,7 +210,23 @@ final class MenuBarController: NSObject {
   private static func readyTitle(_ selection: String) -> String {
     let shown = HeardWordDisplay.bounded(
       selection, characters: Self.quickAddTitleCharacters, scalars: Self.quickAddTitleScalars)
-    return "Add \u{201C}\(shown)\u{201D}"
+    return String(
+      localized: "menu.quickAdd.addSelection", defaultValue: "Add \u{201C}\(shown)\u{201D}",
+      comment:
+        "Menu bar menu: adds the selected word to Your Words. %@ is the selected text; use this language's quotation marks."
+    )
+  }
+
+  static var pasteLastTitle: String {
+    String(
+      localized: "Paste Last Dictation",
+      comment: "Menu bar menu: pastes the last dictation into the app in front.")
+  }
+
+  static var addSelectedWordTitle: String {
+    String(
+      localized: "Add Selected Word",
+      comment: "Menu bar menu: adds the word selected in any app to Your Words.")
   }
 
   /// The Quick Add chord as READABLE TEXT, or nil when there is nothing sensible to show.
@@ -252,10 +272,13 @@ final class MenuBarController: NSObject {
     guard ShortcutMatcher.ownsItsBinding(role, in: bindings) else { return nil }
     guard case .keyboard(let keyCode, let modifiers) = bindings[role] else { return nil }
 
-    let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
     // `nameForKeyCode` falls back to `Key <n>` for anything it does not know, which teaches nothing
-    // and looks like a bug. Say nothing instead.
-    guard !formatted.isEmpty, !formatted.contains("Key ") else { return nil }
+    // and looks like a bug. Say nothing instead. Decided on the typed lookup, not on that text
+    // (#3142). A modifier-only chord never takes the fallback.
+    let isModifierOnly = ModifierKeyCodes.isModifierOnly(keyCode) && modifiers.isEmpty
+    guard isModifierOnly || KeySymbols.knownName(for: keyCode) != nil else { return nil }
+    let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
+    guard !formatted.isEmpty else { return nil }
     return formatted
   }
 
@@ -315,8 +338,12 @@ final class MenuBarController: NSObject {
         keyEquivalent: ""
       )
       setupItem.image = NSImage(
-        systemSymbolName: "exclamationmark.circle.fill", accessibilityDescription: "Setup required")
+        systemSymbolName: "exclamationmark.circle.fill",
+        accessibilityDescription: String(
+          localized: "Setup required",
+          comment: "Menu bar menu, VoiceOver: the icon beside Continue Setup."))
       setupItem.target = self
+      setupItem.identifier = MenuBarItemID.continueSetup
       menu.addItem(setupItem)
       menu.addItem(.separator())
     }
@@ -327,16 +354,32 @@ final class MenuBarController: NSObject {
     // gate.
     if state.updateAvailable {
       let installTitle: String = {
-        guard state.installEnabled else { return "Update ready: finish dictating to install" }
-        if let v = state.updateDisplayVersion, !v.isEmpty { return "Update ready: Install v\(v)" }
-        return "Update ready: Install"
+        guard state.installEnabled else {
+          return String(
+            localized: "Update ready: finish dictating to install",
+            comment: "Menu bar menu: an update waits until dictation ends.")
+        }
+        if let v = state.updateDisplayVersion, !v.isEmpty {
+          return String(
+            localized: "Update ready: Install v\(v)",
+            comment:
+              "Menu bar menu: installs the waiting update. %@ is the version number, such as 2.6.0."
+          )
+        }
+        return String(
+          localized: "Update ready: Install", comment: "Menu bar menu: installs the waiting update."
+        )
       }()
       let updateItem = NSMenuItem(
         title: installTitle, action: #selector(installUpdateAction), keyEquivalent: "")
       updateItem.image = NSImage(
-        systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: "Install update")
+        systemSymbolName: "arrow.down.circle.fill",
+        accessibilityDescription: String(
+          localized: "Install update",
+          comment: "Menu bar menu, VoiceOver: the icon beside the update item."))
       updateItem.target = self
       updateItem.isEnabled = state.installEnabled
+      updateItem.identifier = MenuBarItemID.installUpdate
       menu.addItem(updateItem)
       menu.addItem(.separator())
     }
@@ -349,7 +392,10 @@ final class MenuBarController: NSObject {
 
     // Version
     let versionItem = NSMenuItem(
-      title: "Version: \(AppConstants.appVersion)", action: nil, keyEquivalent: "")
+      title: String(
+        localized: "Version: \(AppConstants.appVersion)",
+        comment: "Menu bar menu: the app version. %@ is the version number."),
+      action: nil, keyEquivalent: "")
     versionItem.isEnabled = false
     menu.addItem(versionItem)
 
@@ -357,14 +403,24 @@ final class MenuBarController: NSObject {
 
     // Record / Stop
     let isRecording = state.pipelineState == .recording
-    let recordTitle = isRecording ? "Stop Recording" : "Start Recording"
+    let recordTitle =
+      isRecording
+      ? String(
+        localized: "Stop Recording", comment: "Menu bar menu: stops the dictation in progress.")
+      : String(localized: "Start Recording", comment: "Menu bar menu: starts a dictation.")
     let recordSymbol = isRecording ? "stop.circle" : "mic.fill"
-    let recordDescription = isRecording ? "Stop" : "Record"
+    let recordDescription =
+      isRecording
+      ? String(
+        localized: "Stop", comment: "Menu bar menu, VoiceOver: the icon beside Stop Recording.")
+      : String(
+        localized: "Record", comment: "Menu bar menu, VoiceOver: the icon beside Start Recording.")
     let recordItem = NSMenuItem(
       title: recordTitle, action: #selector(toggleRecordingAction), keyEquivalent: "")
     recordItem.image = NSImage(
       systemSymbolName: recordSymbol, accessibilityDescription: recordDescription)
     recordItem.target = self
+    recordItem.identifier = MenuBarItemID.record
     recordItem.isEnabled = !(state.pipelineState.isActive && !isRecording)
     menu.addItem(recordItem)
 
@@ -383,8 +439,12 @@ final class MenuBarController: NSObject {
     // chord nobody chose. Found by a test asserting the item carries no chord at all.
     quickAddItem.keyEquivalentModifierMask = []
     quickAddItem.image = NSImage(
-      systemSymbolName: "text.badge.plus", accessibilityDescription: "Add selected word")
+      systemSymbolName: "text.badge.plus",
+      accessibilityDescription: String(
+        localized: "Add selected word",
+        comment: "Menu bar menu, VoiceOver: the icon beside Add Selected Word."))
     quickAddItem.target = self
+    quickAddItem.identifier = MenuBarItemID.quickAdd
     quickAddItem.isEnabled = quickAdd.enabled
     // **The selection rides on the ITEM, which is AppKit's own place for it.** A field on the
     // controller would be one value shared by every render, and could drift from the title sitting
@@ -405,19 +465,28 @@ final class MenuBarController: NSObject {
     // app they are in right now. Always present; disabled when nothing may be reused. Its chord
     // rides in the title as text, never as a key equivalent, for the reason `shortcutLabel` gives.
     let pasteLastItem = NSMenuItem(
-      title: Self.quickAddTitle(base: "Paste Last Dictation", shortcut: state.pasteLastShortcut),
+      title: Self.quickAddTitle(base: Self.pasteLastTitle, shortcut: state.pasteLastShortcut),
       action: #selector(pasteLastDictationAction), keyEquivalent: "")
     pasteLastItem.keyEquivalentModifierMask = []
     pasteLastItem.image = NSImage(
-      systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Paste last dictation")
+      systemSymbolName: "doc.on.clipboard",
+      accessibilityDescription: String(
+        localized: "Paste last dictation",
+        comment: "Menu bar menu, VoiceOver: the icon beside Paste Last Dictation."))
     pasteLastItem.target = self
+    pasteLastItem.identifier = MenuBarItemID.pasteLast
     pasteLastItem.isEnabled = state.lastDictation != nil
     // The row id and the target ride on the ITEM, sampled when the menu opened, for the same
     // reasons Quick Add's selection does. The TEXT does not: the action re-reads the row by id.
     pasteLastItem.representedObject = state.lastDictation
     if let lastDictation = state.lastDictation {
       // VoiceOver may skip the disabled preview row below, so the item itself carries it.
-      pasteLastItem.setAccessibilityLabel("Paste Last Dictation: \(lastDictation.preview)")
+      pasteLastItem.setAccessibilityLabel(
+        String(
+          localized: "Paste Last Dictation: \(lastDictation.preview)",
+          comment:
+            "Menu bar menu, VoiceOver: Paste Last Dictation with its text. %@ is the start of the last dictation."
+        ))
     }
     menu.addItem(pasteLastItem)
     if let lastDictation = state.lastDictation {
@@ -432,21 +501,37 @@ final class MenuBarController: NSObject {
     // Sits with the other two ways to get words in (#2811, founder 2026-09-12), above the
     // divider, not with the Settings group below it.
     let transcribeFileItem = NSMenuItem(
-      title: "Transcribe a File...", action: #selector(openTranscribeFileAction), keyEquivalent: "")
+      title: String(
+        localized: "Transcribe a File...", comment: "Menu bar menu: opens Transcribe a File."),
+      action: #selector(openTranscribeFileAction), keyEquivalent: "")
     transcribeFileItem.image = NSImage(
-      systemSymbolName: "doc.badge.plus", accessibilityDescription: "Transcribe a File")
+      systemSymbolName: "doc.badge.plus",
+      accessibilityDescription: String(
+        localized: "Transcribe a File",
+        comment: "Menu bar menu, VoiceOver: the icon beside Transcribe a File."))
     transcribeFileItem.target = self
+    transcribeFileItem.identifier = MenuBarItemID.transcribeFile
     menu.addItem(transcribeFileItem)
 
     // Auto-stop on silence indicator
     if state.vadAutoStop {
       let autoStopTitle =
         isRecording
-        ? "Auto-stop: Active (\(String(format: "%.1fs", state.vadSilenceTimeout)) silence)"
-        : "Auto-stop on silence: On"
+        ? String(
+          localized:
+            "Auto-stop: Active (\(String(format: "%.1fs", state.vadSilenceTimeout)) silence)",
+          comment:
+            "Menu bar menu: auto-stop is watching this recording. %@ is the silence length, such as 1.5s."
+        )
+        : String(
+          localized: "Auto-stop on silence: On",
+          comment: "Menu bar menu: auto-stop on silence is switched on.")
       let autoStopItem = NSMenuItem(title: autoStopTitle, action: nil, keyEquivalent: "")
       autoStopItem.image = NSImage(
-        systemSymbolName: "waveform.badge.minus", accessibilityDescription: "Auto-stop on silence")
+        systemSymbolName: "waveform.badge.minus",
+        accessibilityDescription: String(
+          localized: "Auto-stop on silence",
+          comment: "Menu bar menu, VoiceOver: the icon beside the auto-stop line."))
       autoStopItem.isEnabled = false
       menu.addItem(autoStopItem)
     }
@@ -454,14 +539,19 @@ final class MenuBarController: NSObject {
     // Accessibility warning — shown only when paste is unavailable and not dismissed.
     if state.showAccessibilityWarning {
       let warningItem = NSMenuItem(
-        title: "Paste disabled — Accessibility required",
+        title: String(
+          localized: "Paste disabled — Accessibility required",
+          comment: "Menu bar menu: paste needs the Accessibility permission."),
         action: #selector(openPermissionsAction),
         keyEquivalent: ""
       )
       warningItem.image = NSImage(
         systemSymbolName: "exclamationmark.shield.fill",
-        accessibilityDescription: "Accessibility required")
+        accessibilityDescription: String(
+          localized: "Accessibility required",
+          comment: "Menu bar menu, VoiceOver: the icon beside the Accessibility warning."))
       warningItem.target = self
+      warningItem.identifier = MenuBarItemID.accessibilityWarning
       menu.addItem(warningItem)
     }
 
@@ -470,14 +560,19 @@ final class MenuBarController: NSObject {
     // at all rather than a clipboard-only fallback).
     if state.showMicrophoneWarning {
       let micWarningItem = NSMenuItem(
-        title: "Dictation disabled — Microphone access required",
+        title: String(
+          localized: "Dictation disabled — Microphone access required",
+          comment: "Menu bar menu: dictation needs the microphone permission."),
         action: #selector(openPermissionsAction),
         keyEquivalent: ""
       )
       micWarningItem.image = NSImage(
         systemSymbolName: "exclamationmark.shield.fill",
-        accessibilityDescription: "Microphone access required")
+        accessibilityDescription: String(
+          localized: "Microphone access required",
+          comment: "Menu bar menu, VoiceOver: the icon beside the microphone warning."))
       micWarningItem.target = self
+      micWarningItem.identifier = MenuBarItemID.microphoneWarning
       menu.addItem(micWarningItem)
     }
 
@@ -485,24 +580,40 @@ final class MenuBarController: NSObject {
 
     // Settings (opens unified window to Speech Engine tab)
     let settingsItem = NSMenuItem(
-      title: "Settings...", action: #selector(openSettingsAction), keyEquivalent: ",")
+      title: String(localized: "Settings...", comment: "Menu bar menu: opens Settings."),
+      action: #selector(openSettingsAction),
+      keyEquivalent: ",")
     settingsItem.image = NSImage(
-      systemSymbolName: "gearshape", accessibilityDescription: "Settings")
+      systemSymbolName: "gearshape",
+      accessibilityDescription: String(
+        localized: "Settings", comment: "Menu bar menu, VoiceOver: the icon beside Settings."))
     settingsItem.target = self
+    settingsItem.identifier = MenuBarItemID.settings
     menu.addItem(settingsItem)
 
     // Appearance submenu (System / Light / Dark) — checkmark on the current
     // preference. Mirrors the Settings → Appearance picker (#1047).
-    let appearanceItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+    let appearanceItem = NSMenuItem(
+      title: String(
+        localized: "Appearance", comment: "Menu bar menu: the submenu for light or dark appearance."
+      ), action: nil, keyEquivalent: "")
     appearanceItem.image = NSImage(
-      systemSymbolName: "circle.lefthalf.filled", accessibilityDescription: "Appearance")
+      systemSymbolName: "circle.lefthalf.filled",
+      accessibilityDescription: String(
+        localized: "Appearance", comment: "Menu bar menu, VoiceOver: the icon beside Appearance."))
     let appearanceSubmenu = NSMenu()
     for option in AppearancePreference.allCases {
       let title =
         switch option {
-        case .system: "System"
-        case .light: "Light"
-        case .dark: "Dark"
+        case .system:
+          String(
+            localized: "System",
+            comment: "Menu bar menu: Appearance submenu: follow the system appearance.")
+        case .light:
+          String(
+            localized: "Light", comment: "Menu bar menu: Appearance submenu: light appearance.")
+        case .dark:
+          String(localized: "Dark", comment: "Menu bar menu: Appearance submenu: dark appearance.")
         }
       let item = NSMenuItem(
         title: title, action: #selector(setAppearanceAction(_:)), keyEquivalent: "")
@@ -512,6 +623,7 @@ final class MenuBarController: NSObject {
       appearanceSubmenu.addItem(item)
     }
     appearanceItem.submenu = appearanceSubmenu
+    appearanceItem.identifier = MenuBarItemID.appearance
     menu.addItem(appearanceItem)
 
     // Check for Updates — targets SparkleUpdateController so it can tag the
@@ -520,12 +632,17 @@ final class MenuBarController: NSObject {
     // preserves that wiring verbatim.
     if state.hasUpdater {
       let updateItem = NSMenuItem(
-        title: "Check for Updates…",
+        title: String(
+          localized: "Check for Updates…", comment: "Menu bar menu: checks for a new version."),
         action: #selector(SparkleUpdateController.openUpdateCheckFromMenu(_:)),
         keyEquivalent: "")
       updateItem.image = NSImage(
-        systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Update")
+        systemSymbolName: "arrow.triangle.2.circlepath",
+        accessibilityDescription: String(
+          localized: "menu.checkForUpdates.icon", defaultValue: "Update",
+          comment: "Menu bar menu, VoiceOver: the icon beside Check for Updates."))
       updateItem.target = sparkleUpdateController
+      updateItem.identifier = MenuBarItemID.checkForUpdates
       menu.addItem(updateItem)
     }
 
@@ -533,9 +650,16 @@ final class MenuBarController: NSObject {
 
     // Quit
     let quitItem = NSMenuItem(
-      title: "Quit \(AppConstants.appName)", action: #selector(quitAction), keyEquivalent: "q")
-    quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
+      title: String(
+        localized: "Quit \(AppConstants.appName)",
+        comment: "Menu bar menu: quits the app. %@ is the app name, EnviousWispr."),
+      action: #selector(quitAction), keyEquivalent: "q")
+    quitItem.image = NSImage(
+      systemSymbolName: "power",
+      accessibilityDescription: String(
+        localized: "Quit", comment: "Menu bar menu, VoiceOver: the icon beside Quit."))
     quitItem.target = self
+    quitItem.identifier = MenuBarItemID.quit
     menu.addItem(quitItem)
   }
 

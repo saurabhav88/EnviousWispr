@@ -122,7 +122,7 @@ public struct LLMModelDiscovery: Sendable {
     case .ollama:
       candidates = try await fetchOllamaModels()
     case .appleIntelligence:
-      return appleIntelligenceModelInfo()
+      return Self.appleIntelligenceModelInfo()
     case .egOne:
       // #1271: fixed first-party model — nothing to discover; the settings
       // row renders manifest identity from `EGOneRuntime`, not from here.
@@ -176,7 +176,7 @@ public struct LLMModelDiscovery: Sendable {
   private func fetchGeminiModels(apiKey: String) async throws -> [(id: String, displayName: String)]
   {
     guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models") else {
-      throw LLMError.requestFailed("Invalid URL")
+      throw ModelDiscoveryFailure.invalidURL
     }
     var request = URLRequest(url: url)
     request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
@@ -184,7 +184,7 @@ public struct LLMModelDiscovery: Sendable {
 
     let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
     guard let httpResponse = response as? HTTPURLResponse else {
-      throw LLMError.requestFailed("Invalid response")
+      throw ModelDiscoveryFailure.invalidResponse
     }
 
     if httpResponse.statusCode == 403 {
@@ -195,7 +195,7 @@ public struct LLMModelDiscovery: Sendable {
       if body.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
     }
     guard httpResponse.statusCode == 200 else {
-      throw LLMError.requestFailed("HTTP \(httpResponse.statusCode)")
+      throw ModelDiscoveryFailure.httpStatus(httpResponse.statusCode)
     }
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -254,7 +254,7 @@ public struct LLMModelDiscovery: Sendable {
   private func fetchOpenAIModels(apiKey: String) async throws -> [(id: String, displayName: String)]
   {
     guard let url = URL(string: "https://api.openai.com/v1/models") else {
-      throw LLMError.requestFailed("Invalid URL")
+      throw ModelDiscoveryFailure.invalidURL
     }
     var request = URLRequest(url: url)
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -262,12 +262,12 @@ public struct LLMModelDiscovery: Sendable {
 
     let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
     guard let httpResponse = response as? HTTPURLResponse else {
-      throw LLMError.requestFailed("Invalid response")
+      throw ModelDiscoveryFailure.invalidResponse
     }
 
     if httpResponse.statusCode == 401 { throw LLMError.invalidAPIKey }
     guard httpResponse.statusCode == 200 else {
-      throw LLMError.requestFailed("HTTP \(httpResponse.statusCode)")
+      throw ModelDiscoveryFailure.httpStatus(httpResponse.statusCode)
     }
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -370,7 +370,7 @@ public struct LLMModelDiscovery: Sendable {
         urlString += "&after_id=\(afterID)"
       }
       guard let url = URL(string: urlString) else {
-        throw LLMError.requestFailed("Invalid URL")
+        throw ModelDiscoveryFailure.invalidURL
       }
       var request = URLRequest(url: url)
       request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
@@ -379,12 +379,12 @@ public struct LLMModelDiscovery: Sendable {
 
       let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
       guard let httpResponse = response as? HTTPURLResponse else {
-        throw LLMError.requestFailed("Invalid response")
+        throw ModelDiscoveryFailure.invalidResponse
       }
 
       if httpResponse.statusCode == 401 { throw LLMError.invalidAPIKey }
       guard httpResponse.statusCode == 200 else {
-        throw LLMError.requestFailed("HTTP \(httpResponse.statusCode)")
+        throw ModelDiscoveryFailure.httpStatus(httpResponse.statusCode)
       }
 
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -405,7 +405,7 @@ public struct LLMModelDiscovery: Sendable {
       case .stop:
         return allModels
       case .malformedCursor:
-        throw LLMError.requestFailed("Claude model pagination returned a malformed cursor")
+        throw ModelDiscoveryFailure.malformedPagination
       case .continue(let nextAfterID):
         seenCursors.insert(nextAfterID)
         afterID = nextAfterID
@@ -454,7 +454,7 @@ public struct LLMModelDiscovery: Sendable {
 
   private func fetchOllamaModels() async throws -> [DiscoveryCandidate] {
     guard let url = URL(string: "http://localhost:11434/api/tags") else {
-      throw LLMError.requestFailed("Invalid Ollama URL")
+      throw ModelDiscoveryFailure.invalidOllamaURL
     }
     var request = URLRequest(url: url)
     request.timeoutInterval = 5
@@ -482,64 +482,60 @@ public struct LLMModelDiscovery: Sendable {
         .networkConnectionLost, .notConnectedToInternet:
         throw LLMError.providerUnavailable
       default:
-        throw LLMError.requestFailed("Network error: \(urlError.localizedDescription)")
+        throw ModelDiscoveryFailure.network(urlError.localizedDescription)
       }
     }
   }
 
   // MARK: - Apple Intelligence
 
-  private func appleIntelligenceModelInfo() -> [LLMModelInfo] {
+  /// The Apple Intelligence row, from a local availability check (#3142: also re-run on every
+  /// cache load, so a stale cached row never shows an old status or an old language). The
+  /// English `displayName` stays as data; the picker shows `localizedDisplayName`.
+  public static func appleIntelligenceModelInfo() -> [LLMModelInfo] {
     #if canImport(FoundationModels)
       if #available(macOS 26.0, *) {
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
-          return [
-            LLMModelInfo(
-              id: "apple-intelligence",
-              displayName: "Apple Intelligence (On-Device)",
-              provider: .appleIntelligence,
-              isAvailable: true,
-              // Apple Intelligence runs on this Mac by definition. Stated
-              // rather than defaulted: `LLMModelInfo.init` requires the
-              // parameter, so omitting it here is a compile error.
-              isRemote: false
-            )
-          ]
+          return [appleIntelligenceRow(.onDevice, isAvailable: true)]
         case .unavailable(let reason):
-          let suffix: String
+          let status: AppleIntelligenceModelStatus
           switch reason {
-          case .deviceNotEligible:
-            suffix = "Device Not Supported"
-          case .appleIntelligenceNotEnabled:
-            suffix = "Not Enabled in Settings"
-          case .modelNotReady:
-            suffix = "Model Not Ready"
-          @unknown default:
-            suffix = "Unavailable"
+          case .deviceNotEligible: status = .deviceNotSupported
+          case .appleIntelligenceNotEnabled: status = .notEnabled
+          case .modelNotReady: status = .modelNotReady
+          @unknown default: status = .unavailable
           }
-          return [
-            LLMModelInfo(
-              id: "apple-intelligence",
-              displayName: "Apple Intelligence (\(suffix))",
-              provider: .appleIntelligence,
-              isAvailable: false,
-              isRemote: false
-            )
-          ]
+          return [appleIntelligenceRow(status, isAvailable: false)]
         }
       }
     #endif
-    return [
-      LLMModelInfo(
-        id: "apple-intelligence",
-        displayName: "Apple Intelligence (Requires macOS 26+)",
-        provider: .appleIntelligence,
-        isAvailable: false,
-        isRemote: false
-      )
-    ]
+    return [appleIntelligenceRow(.requiresMacOS26, isAvailable: false)]
+  }
+
+  /// One Apple Intelligence row. `displayName` is the English label, as before (#3142);
+  /// `isRemote` is false because Apple Intelligence runs on this Mac by definition, stated
+  /// rather than defaulted (`LLMModelInfo.init` requires it).
+  static func appleIntelligenceRow(_ status: AppleIntelligenceModelStatus, isAvailable: Bool)
+    -> LLMModelInfo
+  {
+    LLMModelInfo(
+      id: "apple-intelligence", displayName: englishAppleIntelligenceLabel(status),
+      provider: .appleIntelligence, isAvailable: isAvailable, isRemote: false,
+      appleIntelligenceStatus: status)
+  }
+
+  /// The English label each status had before the catalog, kept as the row's data.
+  static func englishAppleIntelligenceLabel(_ status: AppleIntelligenceModelStatus) -> String {
+    switch status {
+    case .onDevice: return "Apple Intelligence (On-Device)"
+    case .deviceNotSupported: return "Apple Intelligence (Device Not Supported)"
+    case .notEnabled: return "Apple Intelligence (Not Enabled in Settings)"
+    case .modelNotReady: return "Apple Intelligence (Model Not Ready)"
+    case .unavailable: return "Apple Intelligence (Unavailable)"
+    case .requiresMacOS26: return "Apple Intelligence (Requires macOS 26+)"
+    }
   }
 
   // MARK: - Shared Helpers
@@ -599,6 +595,70 @@ extension Array {
     guard size > 0 else { return [self] }
     return stride(from: 0, to: count, by: size).map {
       Array(self[$0..<Swift.min($0 + size, count)])
+    }
+  }
+}
+
+/// A model-discovery failure the app itself describes (#3142), as opposed to text from the
+/// provider or the system. Only the Settings key check shows it.
+///
+/// `errorDescription` is the fixed English diagnostic, the exact sentence the key check showed
+/// before the catalog; `displayMessage` is the same sentence in the app's language. A carried
+/// system network description passes through unchanged and may follow the system's language.
+public enum ModelDiscoveryFailure: LocalizedError, Sendable, Equatable {
+  case invalidURL
+  case invalidResponse
+  case httpStatus(Int)
+  case malformedPagination
+  case invalidOllamaURL
+  case network(String)
+
+  public var errorDescription: String? {
+    switch self {
+    case .invalidURL: return "LLM request failed: Invalid URL"
+    case .invalidResponse: return "LLM request failed: Invalid response"
+    case .httpStatus(let code): return "LLM request failed: HTTP \(code)"
+    case .malformedPagination:
+      return "LLM request failed: Claude model pagination returned a malformed cursor"
+    case .invalidOllamaURL: return "LLM request failed: Invalid Ollama URL"
+    case .network(let detail): return "LLM request failed: Network error: \(detail)"
+    }
+  }
+
+  public var displayMessage: String {
+    switch self {
+    case .invalidURL:
+      return String(
+        localized: "LLM request failed: Invalid URL",
+        comment: "AI Polish settings, checking the API key: the app built an invalid address.")
+    case .invalidResponse:
+      return String(
+        localized: "LLM request failed: Invalid response",
+        comment: "AI Polish settings, checking the API key: the provider's reply was not usable.")
+    case .httpStatus(let code):
+      return String(
+        localized: "LLM request failed: HTTP \(String(code))",
+        comment:
+          "AI Polish settings, checking the API key: the provider answered with an error. %@ is an HTTP status code, such as 500."
+      )
+    case .malformedPagination:
+      return String(
+        localized: "LLM request failed: Claude model pagination returned a malformed cursor",
+        comment:
+          "AI Polish settings, checking the API key: Claude's model list came back broken. Claude is a product name; keep it."
+      )
+    case .invalidOllamaURL:
+      return String(
+        localized: "LLM request failed: Invalid Ollama URL",
+        comment:
+          "AI Polish settings, checking the API key: the address of Ollama is invalid. Ollama is a product name; keep it."
+      )
+    case .network(let detail):
+      return String(
+        localized: "LLM request failed: Network error: \(detail)",
+        comment:
+          "AI Polish settings, checking the API key: a network error. %@ is the system's description of it; keep it as is."
+      )
     }
   }
 }

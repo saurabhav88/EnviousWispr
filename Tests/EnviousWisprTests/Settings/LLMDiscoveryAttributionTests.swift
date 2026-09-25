@@ -219,4 +219,26 @@ struct LLMDiscoveryCachePruneTests {
 
     #expect(c.discoveredModels.map(\.id) == ["whisper-audio-tts:latest"])
   }
+
+  /// #3142: a cache written by an older build can hold an Apple Intelligence row whose status or
+  /// language is stale. Loading the cache recomputes the row from the local availability check.
+  @Test("an Apple Intelligence cache load replaces a stale cached row with a fresh one")
+  func appleIntelligenceCacheLoadIsFresh() throws {
+    let defaults = UserDefaults(
+      suiteName: "ew.tests.discovery-attribution.ai.\(UUID().uuidString)")!
+    let stale = LLMModelInfo(
+      id: "apple-intelligence", displayName: "Stale label from an old cache",
+      provider: .appleIntelligence, isAvailable: true, isRemote: false)
+    defaults.set(try JSONEncoder().encode([stale]), forKey: "cachedModels_appleIntelligence")
+    let c = LLMModelDiscoveryCoordinator(
+      keychainManager: KeychainManager(), cacheDefaults: defaults)
+
+    let settings = SettingsManager(
+      defaults: UserDefaults(suiteName: "ew.tests.discovery-attribution.ai.settings.\(UUID().uuidString)")!)
+    c.loadCachedModels(for: .appleIntelligence, settings: settings, surface: .dictation)
+
+    #expect(c.discoveredModels.count == 1)
+    #expect(c.discoveredModels.first?.appleIntelligenceStatus != nil)
+    #expect(c.discoveredModels.first?.displayName != "Stale label from an old cache")
+  }
 }

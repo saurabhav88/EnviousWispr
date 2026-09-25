@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UserNotifications
 
 @testable import EnviousWisprAppKit
 
@@ -28,6 +29,17 @@ struct UpdateNotificationCopyTests {
     try PropertyListSerialization.data(fromPropertyList: table, format: .xml, options: 0)
       .write(to: lproj.appendingPathComponent("Localizable.strings"))
     let fixture = try #require(Bundle(path: lproj.path))
-    #expect(UpdateNotificationPresenter.body(displayVersion: "2.6.0", bundle: fixture) == "Fixture 2.6.0 ready")
+    #expect(
+      UpdateNotificationPresenter.body(displayVersion: "2.6.0", bundle: fixture)
+        == "Fixture 2.6.0 ready")
+  }
+
+  /// The category registers this stable identifier; response handling routes both body and action taps.
+  @Test("The Install button keeps its English title and its identifier")
+  func installAction() {
+    let action = UpdateNotificationPresenter.makeInstallAction()
+    #expect(action.title == "Install")
+    #expect(action.identifier == "com.enviouswispr.updateReady.install")
+    #expect(action.options.contains(.foreground))
   }
 }

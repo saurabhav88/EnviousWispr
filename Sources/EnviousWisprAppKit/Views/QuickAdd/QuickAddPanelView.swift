@@ -9,8 +9,15 @@ import SwiftUI
 /// 2026-08-24 design review can be asserted without rendering anything. Every separator here is a
 /// MIDDLE DOT, never a dash.
 enum QuickAddPanelCopy {
-  static let searchPlaceholder = "Search your words"
-  static let createNewWord = "Create a new word"
+  static var searchPlaceholder: String {
+    String(
+      localized: "Search your words", comment: "Quick Add panel: the search field's placeholder.")
+  }
+  static var createNewWord: String {
+    String(
+      localized: "Create a new word",
+      comment: "Quick Add panel: the row that creates a word by hand.")
+  }
 
   /// The compose stage's one instruction, and the only place the panel names what it is about to
   /// create.
@@ -20,12 +27,28 @@ enum QuickAddPanelCopy {
   /// should this have been". With no selection there is nothing to correct — Create is then the
   /// panel's ONLY working control — and a header quoting an empty string would read as a bug.
   static func composeHeader(heard: String) -> String {
-    heard.isEmpty ? "New word" : "Correct spelling for \"\(heard)\""
+    heard.isEmpty
+      ? String(
+        localized: "New word",
+        comment:
+          "Quick Add panel: heading above the field for typing a new word, with no selected text."
+      )
+      : String(
+        localized: "Correct spelling for \"\(heard)\"",
+        comment:
+          "Quick Add panel: the heading above the field for typing a word. %@ is the misheard text; use this language's quotation marks."
+      )
   }
 
   /// What the compose field says when empty. Names the thing to type, never the action.
   static func composePlaceholder(heard: String) -> String {
-    heard.isEmpty ? "The word to add" : "The correct spelling"
+    heard.isEmpty
+      ? String(
+        localized: "The word to add",
+        comment: "Quick Add panel: the placeholder in the field for typing a word.")
+      : String(
+        localized: "The correct spelling",
+        comment: "Quick Add panel: the placeholder in the field for typing a word.")
   }
 
   /// The confirmation shown for a beat after Return (#2391 §1).
@@ -39,7 +62,11 @@ enum QuickAddPanelCopy {
   /// so the user learned more from failing than from succeeding, on a feature whose whole promise is
   /// that succeeding is invisible.
   static func savedNotice(spelling: String, word: String) -> String {
-    "\"\(spelling)\" added to \(word)"
+    String(
+      localized: "\"\(spelling)\" added to \(word)",
+      comment:
+        "Quick Add panel: confirmation after adding a spelling. The first %@ is the misheard text, the second the word; use this language's quotation marks."
+    )
   }
 
   /// The word already carries this spelling, so there is nothing to add (#2391 §3).
@@ -47,13 +74,19 @@ enum QuickAddPanelCopy {
   /// Names the WORD first, because that is the fact the user does not have: they know what they
   /// selected and are asking who owns it.
   static func nothingToAddNotice(spelling: String, word: String) -> String {
-    "\(word) already knows \"\(spelling)\""
+    String(
+      localized: "\(word) already knows \"\(spelling)\"",
+      comment:
+        "Quick Add panel: the word already has that spelling. The first %@ is the word, the second the misheard text; use this language's quotation marks."
+    )
   }
 
   /// A word authored by hand with no spelling to attach, which is the state Create exists for: the
   /// panel opened without a readable selection, so there is no mishearing to name.
   static func createdNotice(word: String) -> String {
-    "\(word) added to your words"
+    String(
+      localized: "\(word) added to your words",
+      comment: "Quick Add panel: confirmation after creating a word. %@ is the word.")
   }
 
   /// The user authored a word by hand that was already in the library, with no spelling to attach.
@@ -63,10 +96,12 @@ enum QuickAddPanelCopy {
   /// copy told the user to choose the word from a list that cannot exist there. Nothing is wrong
   /// in this state: they asked for the word to be in their words, and it is.
   static func alreadyInWordsNotice(word: String) -> String {
-    "\(word) is already in your words"
+    String(
+      localized: "\(word) is already in your words",
+      comment: "Quick Add panel: the word already exists. %@ is the word.")
   }
 
-  /// The one place a `Notice` becomes English.
+  /// The one place a `Notice` becomes localized display text.
   ///
   /// **Exhaustive over `Kind` on purpose.** The model carries the FACTS — which thing happened, to
   /// which word, with which spelling — and never a sentence, so a new outcome cannot ship borrowing
@@ -85,13 +120,23 @@ enum QuickAddPanelCopy {
   /// why. The message comes from the words authority itself rather than being reworded here: it is
   /// the same sentence the editor shows for the same refusal, and a second wording would be a
   /// second set of rules for the user to reconcile.
-  static func writeFailure(_ message: String) -> String { "Not saved. \(message)" }
+  static func writeFailure(_ message: String) -> String {
+    String(
+      localized: "quickAdd.writeFailure",
+      defaultValue: "Not saved. \(message)",
+      comment:
+        "Quick Add panel: a save was refused. %@ is the reason, one or more sentences, already translated."
+    )
+  }
 
   /// The edit sheet saved and the word is not in the library afterwards. Rare, and deliberately not
   /// specific: the reasons `CustomWordsManager.add` can return silently are not distinguishable from
   /// the caller, so naming one would be a guess presented as a fact.
-  static let newWordNotSaved =
-    "That word could not be saved. Check it does not already exist in your words."
+  static var newWordNotSaved: String {
+    String(
+      localized: "That word could not be saved. Check it does not already exist in your words.",
+      comment: "Quick Add panel: a new word could not be saved.")
+  }
 
   /// The row's word was in the library when the panel was ranked and is not there now, because the
   /// panel stays open and the user deleted it in Settings in between.
@@ -100,14 +145,21 @@ enum QuickAddPanelCopy {
   /// through: `accept` returns it, the wiring hands it to `noteWriteFailure`, and the view renders
   /// that prefix. So it does not repeat "was not added" — reusing a refusal path means inheriting
   /// its sentence, and a copy written as though it stood alone reads as a stutter once rendered.
-  static let wordNoLongerExists =
-    "That word is no longer in your words. Create it as a new word instead."
+  static var wordNoLongerExists: String {
+    String(
+      localized: "That word is no longer in your words. Create it as a new word instead.",
+      comment: "Quick Add panel: follows 'Not saved.': the chosen word was deleted meanwhile.")
+  }
 
   /// The canonical already existed, so the library kept what it had and the spelling was not added.
   /// Names the surviving word, because the way forward is to pick it from the list.
   static func newWordAlreadyExists(canonical: String) -> String {
-    "\"\(canonical)\" already exists and was left as it is. Choose it from the list instead to "
-      + "add this spelling."
+    String(
+      localized:
+        "\"\(canonical)\" already exists and was left as it is. Choose it from the list instead to add this spelling.",
+      comment:
+        "Quick Add panel: the word already existed. %@ is the word; use this language's quotation marks."
+    )
   }
 
   /// The one line above the list, which is the sentence every row completes.
@@ -136,11 +188,36 @@ enum QuickAddPanelCopy {
     // tall as the selection is long. Shared with the menu row, which solved this first (#2476).
     let word = HeardWordDisplay.bounded(heard)
     return switch state {
-    case .confident: "Add \"\(word)\" to"
-    case .lowConfidence: "No close match for \"\(word)\" · pick one or keep typing"
-    case .alreadySaved: "Already knows \"\(word)\" · nothing to add"
-    case .searching: "Add \"\(word)\" to"
-    case .noMatches: "No match for \"\(word)\""
+    case .confident:
+      String(
+        localized: "Add \"\(word)\" to",
+        comment:
+          "Quick Add panel: line above the list. %@ is the bounded misheard text; use this language's quotation marks."
+      )
+    case .lowConfidence:
+      String(
+        localized: "No close match for \"\(word)\" · pick one or keep typing",
+        comment:
+          "Quick Add panel: the line above the list, which each row completes. %@ is the misheard text; use this language's quotation marks. The middle dot separates two parts; keep it."
+      )
+    case .alreadySaved:
+      String(
+        localized: "Already knows \"\(word)\" · nothing to add",
+        comment:
+          "Quick Add panel: the line above the list, which each row completes. %@ is the misheard text; use this language's quotation marks. The middle dot separates two parts; keep it."
+      )
+    case .searching:
+      String(
+        localized: "Add \"\(word)\" to",
+        comment:
+          "Quick Add panel: line above the list. %@ is the bounded misheard text; use this language's quotation marks."
+      )
+    case .noMatches:
+      String(
+        localized: "No match for \"\(word)\"",
+        comment:
+          "Quick Add panel: line above the list. %@ is the bounded misheard text; use this language's quotation marks."
+      )
     }
   }
 
@@ -167,7 +244,12 @@ enum QuickAddPanelCopy {
 
   /// The right-hand meta on a row. A count, not a sentence.
   static func spellingCount(_ count: Int) -> String {
-    "\(count) \(count == 1 ? "spelling" : "spellings")"
+    count == 1
+      ? String(
+        localized: "1 spelling", comment: "Quick Add panel: a row's count of misheard forms, one.")
+      : String(
+        localized: "\(String(count)) spellings",
+        comment: "Quick Add panel: a row's count of misheard forms. %@ is the count, never 1.")
   }
 
   /// The meta on a row that already carries the heard spelling, in place of the count.
@@ -178,7 +260,12 @@ enum QuickAddPanelCopy {
   /// every row said "add as a new spelling", the user pressed Return, and the panel closed having
   /// done nothing and said nothing. Reachable on the first thing anyone tries: a word corrected once
   /// scores 1.00 and lands here.
-  static let alreadyHasThisSpelling = "already has this"
+  static var alreadyHasThisSpelling: String {
+    String(
+      localized: "already has this",
+      comment:
+        "Quick Add panel: a row's note: the word already has the misheard spelling. Lowercase.")
+  }
 
   /// The keyboard legend along the bottom.
   ///
@@ -186,15 +273,42 @@ enum QuickAddPanelCopy {
   /// whose whole value is keyboard speed can have. Its CONTENTS are derived rather than fixed: if
   /// Return does nothing in this state, Return is not listed, so the legend can never promise a key
   /// that will not answer.
-  static let legendAccept = "add spelling"
-  static let legendMove = "move"
-  static let legendClose = "close"
+  static var legendAccept: String {
+    String(
+      localized: "add spelling",
+      comment:
+        "Quick Add panel: keyboard legend beside the Return key: adds the spelling. Lowercase, very short."
+    )
+  }
+  static var legendMove: String {
+    String(
+      localized: "move",
+      comment: "Quick Add panel: keyboard legend beside the arrow keys. Lowercase, very short.")
+  }
+  static var legendClose: String {
+    String(
+      localized: "close",
+      comment:
+        "Quick Add panel: keyboard legend beside esc: closes the panel. Lowercase, very short.")
+  }
 
   /// The compose stage's two caps. `back` and not `close`, because Escape means something different
   /// there — the legend is the contract made visible, and a legend that says `close` over a field
   /// whose Escape returns to the list is the panel promising a key it will not answer.
-  static let legendCreate = "create"
-  static let legendBack = "back"
+  static var legendCreate: String {
+    String(
+      localized: "create",
+      comment:
+        "Quick Add panel: keyboard legend beside the Return key: creates the word. Lowercase, very short."
+    )
+  }
+  static var legendBack: String {
+    String(
+      localized: "back",
+      comment:
+        "Quick Add panel: keyboard legend beside esc: goes back to the list. Lowercase, very short."
+    )
+  }
 
   /// The one line shown instead of a ranking when we could not read a selection.
   ///
@@ -210,26 +324,38 @@ enum QuickAddPanelCopy {
   static func refusalMessage(_ refusal: SelectionReader.Refusal) -> String {
     switch refusal {
     case .accessibilityNotTrusted:
-      "EnviousWispr needs Accessibility permission to read your selection. Turn it on in System "
-        + "Settings, then try again."
+      String(
+        localized:
+          "EnviousWispr needs Accessibility permission to read your selection. Turn it on in System Settings, then try again.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .noFrontmostApplication:
-      "No app was in front, so there was nothing to read."
+      String(
+        localized: "No app was in front, so there was nothing to read.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .noFocusedElement:
-      "That app did not tell us where the cursor is. Click into the text and try again."
+      String(
+        localized:
+          "That app did not tell us where the cursor is. Click into the text and try again.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .ownApplication:
       // **Says only what was checked.** Nothing here reads a selection, so this may not describe
       // one — an earlier wording said "That selection is inside EnviousWispr", which is a confident
       // sentence about a selection the code never looked at, and is false for a caret sitting in an
       // empty field of ours. Names no fault and states the one thing that fixes it.
-      "EnviousWispr is in front, so there is nothing of yours to read. Select the word in the app "
-        + "you are writing in, then try again."
+      String(
+        localized:
+          "EnviousWispr is in front, so there is nothing of yours to read. Select the word in the app you are writing in, then try again.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .selectionUnsupported:
       // **Rewritten for #2465, and the old sentence was made FALSE by that change rather than by
       // drift.** It read "That app does not share its selection with other apps", which was a claim
       // about the APP. After the clipboard fallback it is a claim about one mechanism, and the app
       // may well have handed the word over through the other one. What is left that is still true
       // is that we did not get it.
-      "We could not get what you highlighted in that app. You can still add the word by hand below."
+      String(
+        localized:
+          "We could not get what you highlighted in that app. You can still add the word by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .selectionUnavailable:
       // **Rewritten for #2465. The old sentence named TERMINALS as the app class that does this**,
       // and a terminal selection is exactly what this change now reads. Naming an app class as the
@@ -238,16 +364,25 @@ enum QuickAddPanelCopy {
       // **Says nothing about how many attempts were made, and that is deliberate.** Both reading
       // doors reach this member and they do not reach it the same way, so any sentence counting
       // attempts is wrong at one of them. The user's next move is identical either way.
-      "That app reported a selection it would not hand over. You can still add the word by hand "
-        + "below."
+      String(
+        localized:
+          "That app reported a selection it would not hand over. You can still add the word by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .unreadable:
-      "Your selection could not be read. You can still add the word by hand below."
+      String(
+        localized: "Your selection could not be read. You can still add the word by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .selectionTooLong:
-      "That selection is too long to be a word. Select just the word and try again."
+      String(
+        localized: "That selection is too long to be a word. Select just the word and try again.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .wordsUnavailable:
       // The plan's exact wording (§3, "Refresh before ranking"). Capital W on Words because that is
       // what the feature is called in Settings, and a user reading this has to find it there.
-      "Your Words could not be refreshed, so there is nothing to match against yet. Try again."
+      String(
+        localized:
+          "Your Words could not be refreshed, so there is nothing to match against yet. Try again.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .nothingSelected:
       // The likeliest refusal of the eight, and the only one where NOTHING went wrong. It used to
       // borrow `selectionUnavailable`'s sentence, which names terminals and blames the frontmost
@@ -256,7 +391,10 @@ enum QuickAddPanelCopy {
       // No route named ("press the shortcut again"), because BOTH doors reach here: the hotkey with
       // nothing highlighted, and the Services menu handed whitespace. A sentence naming one of them
       // is wrong half the time it is shown.
-      "Nothing was selected. Highlight the word you want and try again, or add it by hand below."
+      String(
+        localized:
+          "Nothing was selected. Highlight the word you want and try again, or add it by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
 
     // MARK: The clipboard fallback's six (#2465)
     //
@@ -267,38 +405,53 @@ enum QuickAddPanelCopy {
     case .secureInputActive:
       // Names the machine's state rather than the app's, because that is what is true: secure input
       // is process-wide and no app chose it on the user's behalf.
-      "macOS is protecting what you are typing right now, so nothing could be read from that app. "
-        + "You can still add the word by hand below."
+      String(
+        localized:
+          "macOS is protecting what you are typing right now, so nothing could be read from that app. You can still add the word by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .modifiersHeld:
       // The one retryable member of the six, and the only one where the user's own hand is the
       // cause. Says so without blaming, and names the exact motion that fixes it.
-      "Your shortcut keys were still held down. Let go of them, then press the shortcut again."
+      String(
+        localized:
+          "Your shortcut keys were still held down. Let go of them, then press the shortcut again.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .copyRefused:
-      "That app did not answer when we asked it for the highlighted word. You can still add the "
-        + "word by hand below."
+      String(
+        localized:
+          "That app did not answer when we asked it for the highlighted word. You can still add the word by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .eventPostingNotTrusted:
       // **A different grant from the one `accessibilityNotTrusted` names, and the copy has to keep
       // them apart.** Someone whose Accessibility permission is already on and who is told to turn
       // on Accessibility has been sent to look at a switch that is not the problem, so this one
       // names the CAPABILITY that is missing and asks them to check rather than to enable.
-      "macOS has not allowed EnviousWispr to send keystrokes, so it could not ask that app for "
-        + "your selection. Check Accessibility in System Settings, then try again."
+      String(
+        localized:
+          "macOS has not allowed EnviousWispr to send keystrokes, so it could not ask that app for your selection. Check Accessibility in System Settings, then try again.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .clipboardTooLarge:
       // Reassurance is load-bearing here rather than decorative: the one thing a user would worry
       // about on reading this is what happened to the large thing on their clipboard.
-      "Your clipboard is too large to be kept safe while reading that app, so it was left alone. "
-        + "You can still add the word by hand below."
+      String(
+        localized:
+          "Your clipboard is too large to be kept safe while reading that app, so it was left alone. You can still add the word by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .copyFallbackDisabled:
       // **Names no cause, because there are two and the sentence must be true for both**: the user
       // turned the setting off, or the app is one of the remote-desktop clients where sending a
       // Copy would reach somebody else's machine.
-      "Reading this app's selection through the clipboard is turned off. You can still add the "
-        + "word by hand below."
+      String(
+        localized:
+          "Reading this app's selection through the clipboard is turned off. You can still add the word by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     case .targetApplicationGone:
       // Reachable mostly from the menu, which can sit open while the app behind it quits. Names the
       // state without accusing anything, and the fix is the user's ordinary next action anyway.
-      "The app you were in has closed, so there was nothing left to read. You can still add the "
-        + "word by hand below."
+      String(
+        localized:
+          "The app you were in has closed, so there was nothing left to read. You can still add the word by hand below.",
+        comment: "Quick Add panel: why the selected text could not be read.")
     }
   }
 }
@@ -370,7 +523,8 @@ struct QuickAddPanelView: View {
         .font(.stSectionHeader)
         .tracking(0.5)
         .foregroundStyle(
-          headerState == .lowConfidence || headerState == .noMatches ? .stTextTertiary : .stAccent)
+          headerState == .lowConfidence || headerState == .noMatches ? .stTextTertiary : .stAccent
+        )
         .padding(.horizontal, 16)
         .padding(.top, 14)
         .padding(.bottom, 6)
@@ -636,7 +790,12 @@ struct QuickAddPanelView: View {
       candidate.alreadyHasHeardSpelling
       ? QuickAddPanelCopy.alreadyHasThisSpelling
       : QuickAddPanelCopy.spellingCount(candidate.word.aliases.count)
-    return "\(candidate.word.canonical), \(meta)"
+    return String(
+      localized: "quickAdd.candidate.accessibility",
+      defaultValue: "\(candidate.word.canonical), \(meta)",
+      comment:
+        "Quick Add panel, VoiceOver: a row. The first %@ is the word, the second its note, such as 2 spellings."
+    )
   }
 
   /// The keyboard contract, made visible.

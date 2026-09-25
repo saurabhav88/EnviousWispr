@@ -1550,7 +1550,11 @@ public final class HotkeyService {
   /// Human-readable description of the current hotkey.
   public var hotkeyDescription: String {
     let formatted = KeySymbols.formatHotkey(keyCode: toggleKeyCode, modifiers: toggleModifiers)
-    return recordingMode == .pushToTalk ? "Hold \(formatted)" : formatted
+    return recordingMode == .pushToTalk
+      ? String(
+        localized: "Hold \(formatted)",
+        comment: "Main window: the push-to-talk keybind. %@ is the key or chord, such as Right ⌥.")
+      : formatted
   }
 
 }

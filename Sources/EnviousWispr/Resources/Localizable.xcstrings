@@ -4,6 +4,20 @@
     "" : {},
     " to cancel without changing your keybind." : {},
     "\"%@\"" : {},
+    "\"%@\" added to %@" : {
+      "comment" : "Quick Add panel: confirmation after adding a spelling. The first %@ is the misheard text, the second the word; use this language's quotation marks.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "\"%1$@\" added to %2$@"
+          }
+        }
+      }
+    },
+    "\"%@\" already exists and was left as it is. Choose it from the list instead to add this spelling." : {
+      "comment" : "Quick Add panel: the word already existed. %@ is the word; use this language's quotation marks."
+    },
     "%@ (%@)" : {
       "comment" : "Speech engine settings: the locked language, as in \"Deutsch (German)\". The first %@ is its name in its own language, the second its name in the interface language.",
       "localizations" : {
@@ -47,6 +61,20 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ V%2$@"
+          }
+        }
+      }
+    },
+    "%@ added to your words" : {
+      "comment" : "Quick Add panel: confirmation after creating a word. %@ is the word."
+    },
+    "%@ already knows \"%@\"" : {
+      "comment" : "Quick Add panel: the word already has that spelling. The first %@ is the word, the second the misheard text; use this language's quotation marks.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ already knows \"%2$@\""
           }
         }
       }
@@ -110,6 +138,9 @@
           }
         }
       }
+    },
+    "%@ is already in your words" : {
+      "comment" : "Quick Add panel: the word already exists. %@ is the word."
     },
     "%@ is warming up after a restart" : {
       "comment" : "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name."
@@ -202,11 +233,36 @@
     "%@ snippets found." : {
       "comment" : "Snippets, paste count. %@ is the number of snippets, never 1."
     },
+    "%@ spellings" : {
+      "comment" : "Quick Add panel: a row's count of misheard forms. %@ is the count, never 1."
+    },
+    "%@ word removed · %@ changed" : {
+      "comment" : "Transcribe a File, cleanup changes: the legend above the text. The first %@ is 1 (words removed), the second the number of words changed. Keep the middle dot.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ word removed · %2$@ changed"
+          }
+        }
+      }
+    },
     "%@ words" : {
       "comment" : "Transcribe a File, Done step: chip. %@ is the transcript's word count, never 1.\nYour Words: list heading, shown in capitals. %@ is the number of words, never 1."
     },
     "%@ words ready to review." : {
       "comment" : "Your Words, import words: %@ is the number of words found in the pasted text, never 1."
+    },
+    "%@ words removed · %@ changed" : {
+      "comment" : "Transcribe a File, cleanup changes: the legend above the text. The first %@ is the number of words removed (never 1), the second the number changed. Keep the middle dot.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ words removed · %2$@ changed"
+          }
+        }
+      }
     },
     "%@ you already have" : {
       "comment" : "Snippets, import review summary: one phrase of a list. %@ is how many the user already has (1 or more)."
@@ -376,6 +432,9 @@
     "1 snippet found." : {
       "comment" : "Snippets, paste count: one snippet, nothing skipped."
     },
+    "1 spelling" : {
+      "comment" : "Quick Add panel: a row's count of misheard forms, one."
+    },
     "1 word" : {
       "comment" : "Your Words: list heading, shown in capitals."
     },
@@ -415,6 +474,12 @@
     "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {},
     "A dictation is running. Try again when it finishes." : {
       "comment" : "Transcribe a File: why the file was refused."
+    },
+    "A different app is already in that Applications spot." : {
+      "comment" : "Move to Applications result, another app has the name: the heading."
+    },
+    "A file is being transcribed. Try again when it finishes." : {
+      "comment" : "Settings > Diagnostics, speed test: refused because Transcribe a File is using the engine."
     },
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
     "A language download is in progress. This updates when it finishes." : {
@@ -468,7 +533,93 @@
     "AI cleanup is paused. Your upgrade to the new %@ stopped part-way." : {
       "comment" : "Settings > AI Polish, local model row: an upgrade stopped. %@ is the model name; the version is unknown."
     },
+    "AI cleanup skipped: %@ did not answer in time. Your original text was pasted unchanged." : {
+      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+    },
+    "AI cleanup skipped: no %@ API key set yet. Add one in Settings." : {
+      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI cleanup skipped: no polish model is selected. Pick one in Settings." : {
+      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used."
+    },
+    "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+    },
+    "AI cleanup skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+    },
+    "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings." : {
+      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used."
+    },
     "AI polish engine" : {},
+    "AI polish failed: %@" : {
+      "comment" : "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system."
+    },
+    "AI polish failed: %@ blocked this text. Your original was pasted unchanged." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ denied access. Check your provider billing, API access, region, or selected model." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is. EnviousWispr is the app name; keep it."
+    },
+    "AI polish failed: %@ hit a rate or quota limit. Wait a moment, or check your %@ billing if it keeps happening." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. Both placeholders are the AI provider's name, such as Gemini; keep them as is.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "AI polish failed: %1$@ hit a rate or quota limit. Wait a moment, or check your %2$@ billing if it keeps happening."
+          }
+        }
+      }
+    },
+    "AI polish failed: %@ is having problems right now. Try again shortly." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ rejected the request. Pick another model in Settings." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ rejected your API key. Check or replace it in Settings." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ returned no cleanup text. Try again." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: Ollama isn't reachable. Start Ollama and try again." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: Ollama isn't signed in. Run ollama signin in Terminal, then try again." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. Keep the command ollama signin as is."
+    },
+    "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: couldn't reach %@. Check your internet connection, VPN, or proxy." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: that Ollama model isn't downloaded yet. Pull it in Ollama or pick another in Settings." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: that Ollama model requires a subscription. Pick another model or check your Ollama plan." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: the selected %@ model isn't available. Pick another in Settings." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: too many requests to %@ right now. It should work again in a moment." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: your %@ account is out of credits. Check your provider billing." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
     "AI polish needs macOS 26" : {
       "comment" : "Setup notice title on Macs older than macOS 26."
     },
@@ -500,6 +651,9 @@
       "comment" : "VoiceOver announcement from the recording overlay: macOS Accessibility permission is needed to paste."
     },
     "Accessibility permission required for paste" : {},
+    "Accessibility required" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside the Accessibility warning."
+    },
     "Accuracy" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading."
     },
@@ -513,9 +667,14 @@
     "Activated" : {
       "comment" : "Live Preview settings: status active label."
     },
-    "Activates recording. Then press the key combination you want." : {},
+    "Activates recording. Then press the key combination you want." : {
+      "comment" : "VoiceOver hint on a keybind field."
+    },
     "Add" : {
       "comment" : "AI Polish, Ollama model list: button that adds a hosted model; nothing downloads."
+    },
+    "Add \"%@\" to" : {
+      "comment" : "Quick Add panel: line above the list. %@ is the bounded misheard text; use this language's quotation marks."
     },
     "Add %@ names" : {
       "comment" : "Your Words, import from Contacts: button. %@ is the number of names, never 1."
@@ -536,6 +695,9 @@
       "comment" : "Your Words, import words: confirm button for one word."
     },
     "Add Custom Word" : {},
+    "Add Selected Word" : {
+      "comment" : "Menu bar menu: adds the word selected in any app to Your Words."
+    },
     "Add a Word" : {
       "comment" : "Keybinds settings: section heading for the add-a-word keybind, shown in capitals."
     },
@@ -545,6 +707,9 @@
     },
     "Add nothing" : {
       "comment" : "Snippets, import snippets: confirm button when no snippet is chosen.\nYour Words, import words: confirm button when no word is chosen."
+    },
+    "Add selected word" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Add Selected Word."
     },
     "Add snippet" : {},
     "Add the names of people you know to your word list, so dictation spells them right." : {},
@@ -656,6 +821,9 @@
     "Almost there... pinky promise" : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Already knows \"%@\" · nothing to add" : {
+      "comment" : "Quick Add panel: the line above the list, which each row completes. %@ is the misheard text; use this language's quotation marks. The middle dot separates two parts; keep it."
+    },
     "Already listed above." : {
       "comment" : "Snippets, import review: a row's note when the same trigger appears twice."
     },
@@ -664,6 +832,21 @@
     },
     "Already transcribed. Only the cleanup runs again." : {
       "comment" : "Transcribe a File, Review step: the note beside Clean it again."
+    },
+    "Already used by Copy last dictation. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved. Copy last dictation is the name of a keybind."
+    },
+    "Already used by Paste last dictation. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved. Paste last dictation is the name of a keybind."
+    },
+    "Already used by the add-a-word keybind. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
+    },
+    "Already used by the cancel keybind. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
+    },
+    "Already used by the recording keybind. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
     },
     "Always" : {
       "comment" : "Microphone settings: readiness option; the microphone stays ready."
@@ -682,6 +865,9 @@
     "Another app is using Ollama's port (11434). Close it and try again." : {
       "comment" : "AI Polish, Ollama setup: error. 11434 is a network port number."
     },
+    "Another copy of EnviousWispr is already open." : {
+      "comment" : "Move to Applications result, the copy in Applications is running: the heading. EnviousWispr is the app name; keep it."
+    },
     "Another copy of EnviousWispr is editing snippets right now. Try that again." : {
       "comment" : "Snippets: error when another copy of the app holds the file."
     },
@@ -698,10 +884,28 @@
       "comment" : "Pill subtitle during recovery. History is the app's list of past dictations."
     },
     "Appearance" : {
-      "comment" : "Settings sidebar: a page name."
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Appearance.\nMenu bar menu: the submenu for light or dark appearance.\nSettings sidebar: a page name."
     },
     "Apple GPU" : {
       "comment" : "Speech engine settings, engine card: the chip it runs on, the graphics processor."
+    },
+    "Apple Intelligence (Device Not Supported)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: this Mac can't run it. Apple Intelligence is a product name; keep it."
+    },
+    "Apple Intelligence (Model Not Ready)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: the model is still downloading. Apple Intelligence is a product name; keep it."
+    },
+    "Apple Intelligence (Not Enabled in Settings)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: turned off in System Settings. Apple Intelligence is a product name; keep it."
+    },
+    "Apple Intelligence (On-Device)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: usable, runs on this Mac. Apple Intelligence is a product name; keep it."
+    },
+    "Apple Intelligence (Requires macOS 26+)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: needs a newer macOS. Apple Intelligence and macOS are product names; keep them."
+    },
+    "Apple Intelligence (Unavailable)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: unavailable for another reason. Apple Intelligence is a product name; keep it."
     },
     "Apple Intelligence availability could not be determined." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
@@ -722,6 +926,9 @@
     },
     "Apple Intelligence model access works but generation failed. Try again later." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "Apple Intelligence not available on this system." : {
+      "comment" : "AI Polish settings, checking the API key: this Mac can't use Apple Intelligence."
     },
     "Apple Intelligence requires macOS 26 or later." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
@@ -787,8 +994,17 @@
     "Auto-paste needs Accessibility" : {
       "comment" : "Pill: macOS Accessibility permission is needed to paste."
     },
+    "Auto-stop on silence" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside the auto-stop line."
+    },
     "Auto-stop on silence is unavailable right now" : {
       "comment" : "Banner inside the recording panel: stopping automatically on silence is not available."
+    },
+    "Auto-stop on silence: On" : {
+      "comment" : "Menu bar menu: auto-stop on silence is switched on."
+    },
+    "Auto-stop: Active (%@ silence)" : {
+      "comment" : "Menu bar menu: auto-stop is watching this recording. %@ is the silence length, such as 1.5s."
     },
     "Automatic" : {
       "comment" : "Live Preview settings: language any language. Shown as the language when the preview follows automatic detection."
@@ -961,6 +1177,9 @@
     "Check for Updates" : {
       "comment" : "Settings sidebar: a page name."
     },
+    "Check for Updates…" : {
+      "comment" : "Menu bar menu: checks for a new version."
+    },
     "Check for new contacts each time EnviousWispr starts. Off by default." : {},
     "Checked on %@" : {
       "comment" : "AI Polish, Ollama model list: when the hosted list was last verified. %@ is a date."
@@ -1000,16 +1219,42 @@
     "Choose a file" : {
       "comment" : "Transcribe a File, Upload step: the button drawn inside the drop zone."
     },
-    "Choose a file you exported from EnviousWispr, or a plain text list of words." : {},
+    "Choose a file to import" : {
+      "comment" : "Your Words import: the title of the file picker."
+    },
+    "Choose a file you exported from EnviousWispr, or a plain text list of words." : {
+      "comment" : "Your Words import: which files can be imported, shown in the import sheet and the file picker. EnviousWispr is the app name; keep it."
+    },
+    "Choose a snippets file" : {
+      "comment" : "Snippets import: the title of the file picker."
+    },
     "Choose and save" : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 3 title."
     },
     "Choose the %@ you exported, a CSV with a trigger column and a text column, or a plain list. Your keyword stays as it is." : {},
+    "Choose the %@ you exported, a CSV, or a plain list." : {
+      "comment" : "Snippets import: the line inside the file picker. %@ is the export file's name, such as EnviousWispr Snippets.json; keep it as is."
+    },
     "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary." : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 3."
     },
     "Choose your input source and readiness behavior." : {
       "comment" : "Settings: the one-line description under a page title."
+    },
+    "Clashes with Copy last dictation: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved. Copy last dictation is the name of a keybind."
+    },
+    "Clashes with Paste last dictation: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved. Paste last dictation is the name of a keybind."
+    },
+    "Clashes with the add-a-word keybind: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
+    },
+    "Clashes with the cancel keybind: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
+    },
+    "Clashes with the recording keybind: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
     },
     "Claude API Key" : {
       "comment" : "AI Polish: label and VoiceOver name of the API key field."
@@ -1061,7 +1306,9 @@
     "Click the box first" : {
       "comment" : "Practice screen headline. The words went to the clipboard."
     },
-    "Click to change" : {},
+    "Click to change" : {
+      "comment" : "Keybind field: the line under the keys, inviting a click to record new ones."
+    },
     "Clipboard" : {
       "comment" : "Settings sidebar: a page name."
     },
@@ -1131,6 +1378,9 @@
     },
     "Copy the last thing you dictated" : {},
     "Copy to clipboard" : {},
+    "Correct spelling for \"%@\"" : {
+      "comment" : "Quick Add panel: the heading above the field for typing a word. %@ is the misheard text; use this language's quotation marks."
+    },
     "Could not download the model from models.enviouslabs.co. Check your connection. On a managed network, ask IT to allow this domain." : {
       "comment" : "AI Polish, local model card: why the model download failed. Keep models.enviouslabs.co exactly; it is a web address."
     },
@@ -1186,8 +1436,17 @@
     "Couldn't save this pack change. Nothing was changed. Try again." : {
       "comment" : "Your Words, vocabulary packs: turning a pack or word on or off could not be saved."
     },
-    "Couldn't save to history: %@" : {
-      "comment" : "Pill: the dictation could not be saved to History. %@ is the reason."
+    "Couldn't save to history: a storage error" : {
+      "comment" : "Pill: the dictation could not be saved to History. Any other storage failure."
+    },
+    "Couldn't save to history: disk is full" : {
+      "comment" : "Pill: the dictation could not be saved to History. The disk is full."
+    },
+    "Couldn't save to history: permission denied" : {
+      "comment" : "Pill: the dictation could not be saved to History. The app was not allowed to write the file."
+    },
+    "Couldn't save to history: the volume is read-only" : {
+      "comment" : "Pill: the dictation could not be saved to History. The disk can't be written to."
     },
     "Couldn't save, try again" : {
       "comment" : "Your Words, import from Contacts: an error: the names could not be saved."
@@ -1207,6 +1466,9 @@
     "Counting…" : {
       "comment" : "Snippets, import snippets: paste count, while counting.\nYour Words, import words: pasted text is being counted."
     },
+    "Create a new word" : {
+      "comment" : "Quick Add panel: the row that creates a word by hand."
+    },
     "Croatian" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1220,7 +1482,7 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Dark" : {
-      "comment" : "Appearance settings: dark theme option."
+      "comment" : "Appearance settings: dark theme option.\nMenu bar menu: Appearance submenu: dark appearance."
     },
     "Debug (all events)" : {
       "comment" : "Diagnostics settings, debug mode: a log level in the Log Level picker."
@@ -1290,6 +1552,9 @@
     },
     "Dictation cancelled. Press Undo to get it back, or find it in History." : {
       "comment" : "VoiceOver announcement from the recording overlay: the user pressed Escape. Undo is a button; History is the app's list of past dictations."
+    },
+    "Dictation disabled — Microphone access required" : {
+      "comment" : "Menu bar menu: dictation needs the microphone permission."
     },
     "Dictation itself works normally. Only the on-screen preview is unavailable." : {
       "comment" : "Live Preview settings: status needs mac os26 detail no alternative."
@@ -1459,6 +1724,9 @@
     "Downloading… %lld%%" : {
       "comment" : "AI Polish, Ollama model list: download progress. %lld is a whole-number percentage."
     },
+    "Drag EnviousWispr to your Applications folder in Finder. EnviousWispr keeps working in the meantime." : {
+      "comment" : "Move to Applications result, any other failure: the explanation. EnviousWispr is the app name; keep it."
+    },
     "Dust Mote" : {
       "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
@@ -1500,6 +1768,18 @@
     "EnviousWispr is GPLv3 open source. The license and third-party notices." : {
       "comment" : "Settings: the one-line description under a page title."
     },
+    "EnviousWispr is in front, so there is nothing of yours to read. Select the word in the app you are writing in, then try again." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
+    "EnviousWispr is now in your Applications folder." : {
+      "comment" : "Move to Applications result, the app was copied but did not reopen: the heading. EnviousWispr is the app name; keep it."
+    },
+    "EnviousWispr is running from a temporary location, so it cannot receive updates. EnviousWispr can fix this and reopen automatically." : {
+      "comment" : "Move to Applications prompt: why the app should move. EnviousWispr is the app name; keep it."
+    },
+    "EnviousWispr needs Accessibility permission to read your selection. Turn it on in System Settings, then try again." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
     "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead." : {
       "comment" : "Practice screen when Accessibility permission is off. Keep the line break."
     },
@@ -1536,8 +1816,28 @@
     "Export didn't finish" : {
       "comment" : "Your Words, export: alert title after a failure."
     },
-    "Export your words" : {},
+    "Export your words" : {
+      "comment" : "Your Words export: the button on the Your Words page, and the save dialog's title."
+    },
+    "Exported files may contain personal names and other private words. Usage history is not included." : {
+      "comment" : "Your Words export: the privacy note inside the save dialog, under the count."
+    },
+    "Exporting %@ snippets and your keyword." : {
+      "comment" : "Snippets export: the line inside the save dialog. %@ is the number of snippets, never 1."
+    },
+    "Exporting %@ words of your own. Vocabulary packs aren't included." : {
+      "comment" : "Your Words export: the line inside the save dialog. %@ is the number of words, never 1."
+    },
+    "Exporting 1 snippet and your keyword." : {
+      "comment" : "Snippets export: the line inside the save dialog, one snippet."
+    },
+    "Exporting 1 word of your own. Vocabulary packs aren't included." : {
+      "comment" : "Your Words export: the line inside the save dialog, one word."
+    },
     "FINISH SETUP" : {},
+    "Failed to load test audio: %@" : {
+      "comment" : "Settings > Diagnostics, speed test: the test recording could not be read. %@ is the system's description of the error."
+    },
     "Failed: A duplicate key is already saved. Clear it and try again." : {
       "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
     },
@@ -1614,10 +1914,16 @@
     "Finish setting this one up, or pick another." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked."
     },
+    "Finish setting up EnviousWispr" : {
+      "comment" : "Move to Applications prompt: the heading. EnviousWispr is the app name; keep it."
+    },
     "Finish upgrade" : {
       "comment" : "Settings > AI Polish, local model row: button."
     },
     "Finish your current dictation first, then try again." : {},
+    "Finished importing your words." : {
+      "comment" : "Pill: the background import of Your Words finished."
+    },
     "Finishing a take. Please wait." : {
       "comment" : "Pill: a previous recording is being recovered, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
     },
@@ -1761,6 +2067,9 @@
     "History" : {
       "comment" : "Settings sidebar: a page name."
     },
+    "Hold %@" : {
+      "comment" : "Main window: the push-to-talk keybind. %@ is the key or chord, such as Right ⌥."
+    },
     "Hold %@ and say something.\nLet go when you are done." : {
       "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
     },
@@ -1809,6 +2118,9 @@
       "comment" : "Settings sidebar: file import is running."
     },
     "Importing your words" : {},
+    "Importing your words now. Check progress on the Dictionary page." : {
+      "comment" : "Pill: an import of Your Words started and continues in the background."
+    },
     "Improve recognition with your words and vocabulary." : {
       "comment" : "Settings: the one-line description under a page title."
     },
@@ -1831,6 +2143,9 @@
     "Install new languages" : {
       "comment" : "Live Preview settings: packs install row title."
     },
+    "Install update" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside the update item."
+    },
     "Installed" : {},
     "Installing 'um' and 'uh' filters..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
@@ -1841,10 +2156,16 @@
     "Installing model... %@" : {
       "comment" : "Setup progress: %@ is the name of the speech model being installed."
     },
+    "Installing to your Applications folder. EnviousWispr will reopen automatically." : {
+      "comment" : "Move to Applications: shown while the app is being moved. EnviousWispr is the app name; keep it."
+    },
     "Interrupted" : {},
     "Interrupted recording" : {},
     "Interruption: %@" : {
       "comment" : "VoiceOver announcement from the recording overlay: %@ is the interruption sentence shown on the pill."
+    },
+    "Invalid API key" : {
+      "comment" : "AI Polish settings, checking the API key: the provider rejected the key."
     },
     "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
     "It stays on your Mac, is discarded when the recording ends, and never changes a character of what gets pasted." : {
@@ -1922,6 +2243,30 @@
     "LLM Deactivated" : {
       "comment" : "Sidebar and menu: no AI polish provider is chosen."
     },
+    "LLM request failed: %@" : {
+      "comment" : "AI Polish settings: checking the API key failed. %@ is technical detail from the provider or the system, such as HTTP 500; keep it as is."
+    },
+    "LLM request failed: Claude model pagination returned a malformed cursor" : {
+      "comment" : "AI Polish settings, checking the API key: Claude's model list came back broken. Claude is a product name; keep it."
+    },
+    "LLM request failed: HTTP %@" : {
+      "comment" : "AI Polish settings, checking the API key: the provider answered with an error. %@ is an HTTP status code, such as 500."
+    },
+    "LLM request failed: Invalid Ollama URL" : {
+      "comment" : "AI Polish settings, checking the API key: the address of Ollama is invalid. Ollama is a product name; keep it."
+    },
+    "LLM request failed: Invalid URL" : {
+      "comment" : "AI Polish settings, checking the API key: the app built an invalid address."
+    },
+    "LLM request failed: Invalid response" : {
+      "comment" : "AI Polish settings, checking the API key: the provider's reply was not usable."
+    },
+    "LLM request failed: Network error: %@" : {
+      "comment" : "AI Polish settings, checking the API key: a network error. %@ is the system's description of it; keep it as is."
+    },
+    "LLM returned an empty response." : {
+      "comment" : "AI polish error: the model returned no text. Shown after 'AI polish failed:'."
+    },
     "Language" : {},
     "Language suggestions" : {},
     "Languages" : {
@@ -1969,7 +2314,7 @@
     },
     "License information isn't available in this build." : {},
     "Light" : {
-      "comment" : "Appearance settings: light theme option."
+      "comment" : "Appearance settings: light theme option.\nMenu bar menu: Appearance submenu: light appearance."
     },
     "Lingala" : {
       "comment" : "A language name (dictation language picker)."
@@ -2020,6 +2365,9 @@
     },
     "Loading model…" : {
       "comment" : "Toolbar status badge while the speech model loads. One ellipsis character."
+    },
+    "Loading test audio..." : {
+      "comment" : "Settings > Diagnostics, speed test: progress."
     },
     "Loading the correction model" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
@@ -2131,6 +2479,9 @@
     "Microphone access needed" : {
       "comment" : "Pill title when macOS microphone permission is off."
     },
+    "Microphone access required" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside the microphone warning."
+    },
     "Microphone disconnected." : {
       "comment" : "Pill: the microphone was unplugged during recording. The audio so far was saved."
     },
@@ -2179,7 +2530,12 @@
     "Mongolian" : {
       "comment" : "A language name (dictation language picker)."
     },
-    "Move EnviousWispr" : {},
+    "Move EnviousWispr" : {
+      "comment" : "Move to Applications prompt: the main button. EnviousWispr is the app name; keep it."
+    },
+    "Moving EnviousWispr" : {
+      "comment" : "Move to Applications: the heading while the app is being moved. EnviousWispr is the app name; keep it."
+    },
     "Moving Macs, or bringing your snippets back? Pick the %@ you exported, a CSV, or a plain list. Snippets you already have are left as they are." : {
       "comment" : "Snippets, import snippets: method card. %@ is the exported file's name; keep it as is."
     },
@@ -2239,6 +2595,9 @@
     "New transcription" : {
       "comment" : "Transcribe a File, Done step: button that clears this transcript and starts over."
     },
+    "New word" : {
+      "comment" : "Quick Add panel: heading above the field for typing a new word, with no selected text."
+    },
     "New words come across with the alternate spellings you set up in the other app." : {},
     "Next page" : {},
     "No AI polish" : {
@@ -2247,9 +2606,15 @@
     "No AI polish applied" : {
       "comment" : "Transcribe a File, Done step: chip: the cleanup engine ran but cleaned nothing."
     },
+    "No API key found" : {
+      "comment" : "AI Polish settings, checking the API key: no key is saved for this provider."
+    },
     "No Ollama Cloud models are available right now." : {},
     "No account required. Anonymous analytics only." : {
       "comment" : "Welcome screen feature line under Free & Private."
+    },
+    "No app was in front, so there was nothing to read." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
     },
     "No audio captured" : {},
     "No auto-learned words in this category." : {
@@ -2261,12 +2626,18 @@
     "No cleanup" : {
       "comment" : "Transcribe a File, Polish step: the line under an engine's name.\nTranscribe a File, Review step: no cleanup engine was chosen."
     },
+    "No close match for \"%@\" · pick one or keep typing" : {
+      "comment" : "Quick Add panel: the line above the list, which each row completes. %@ is the misheard text; use this language's quotation marks. The middle dot separates two parts; keep it."
+    },
     "No dictations yet" : {},
     "No internet connection. Please connect to the internet and try again." : {
       "comment" : "Setup error: no internet during the speech model download."
     },
     "No language matches your search." : {
       "comment" : "Live Preview settings: packs no search match."
+    },
+    "No match for \"%@\"" : {
+      "comment" : "Quick Add panel: line above the list. %@ is the bounded misheard text; use this language's quotation marks."
     },
     "No matches for \"%@\"." : {
       "comment" : "Your Words: empty search result. %@ is what the user typed; use this language's quotation marks."
@@ -2321,7 +2692,9 @@
     "Norwegian Nynorsk" : {
       "comment" : "A language name (dictation language picker)."
     },
-    "Not Now" : {},
+    "Not Now" : {
+      "comment" : "Move to Applications prompt: declines for now; it asks again later."
+    },
     "Not active: Copy last dictation (%@) uses these keys. Choose another." : {
       "comment" : "Keybinds settings: a conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
     },
@@ -2359,6 +2732,9 @@
     "Not enough free space to install the speech model. Free up about 1 GB and try again." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
     },
+    "Not enough space to move EnviousWispr." : {
+      "comment" : "Move to Applications result, the disk is full: the heading. EnviousWispr is the app name; keep it."
+    },
     "Not fully polished" : {},
     "Not installed" : {
       "comment" : "AI Polish provider status chip."
@@ -2378,7 +2754,6 @@
     "Not running. Use the refresh button to try again." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
-    "Not saved. %@" : {},
     "Not selected" : {
       "comment" : "VoiceOver: the value of an option that is not chosen."
     },
@@ -2408,8 +2783,20 @@
     "Nothing to review." : {
       "comment" : "Snippets, import review summary: nothing in the source.\nYour Words, import review: the file had no words."
     },
+    "Nothing was changed. EnviousWispr is still working. You can move it yourself in Finder anytime." : {
+      "comment" : "Move to Applications result, another app has the name: the explanation. EnviousWispr is the app name; keep it."
+    },
+    "Nothing was changed. Free up some space, then reopen EnviousWispr to try again." : {
+      "comment" : "Move to Applications result, the disk is full: the explanation. EnviousWispr is the app name; keep it."
+    },
+    "Nothing was changed. Quit the other copy, then reopen EnviousWispr to finish moving it." : {
+      "comment" : "Move to Applications result, the copy in Applications is running: the explanation. EnviousWispr is the app name; keep it."
+    },
     "Nothing was exported" : {
       "comment" : "Your Words, export: alert title when there was nothing to export; not a failure."
+    },
+    "Nothing was selected. Highlight the word you want and try again, or add it by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
     },
     "Nothing you dictate leaves this Mac" : {
       "comment" : "AI Polish: privacy line under the selected provider."
@@ -2417,7 +2804,9 @@
     "Numbers, dates, your saved words and filler removal run either way." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue: what runs even without a cleanup engine."
     },
-    "OK" : {},
+    "OK" : {
+      "comment" : "Button that closes a message."
+    },
     "OSLog" : {},
     "OUTPUT" : {
       "comment" : "Settings sidebar: group heading, in capitals."
@@ -2435,6 +2824,9 @@
     "Ollama Cloud models have not been loaded yet." : {},
     "Ollama is a free tool you install once. Models on your Mac need no API key and no per-use cost, and they keep your dictation on your Mac. Ollama also offers hosted models, which run on Ollama's servers. Those are listed separately below and are never selected for you. A hosted model needs you signed in to Ollama, and some of them need a paid Ollama plan." : {},
     "Ollama is installed but isn't running yet." : {},
+    "Ollama is not running. Start it with: ollama serve" : {
+      "comment" : "AI Polish settings, checking the API key: Ollama is not running. Keep the command ollama serve as is."
+    },
     "Ollama listed this model but did not return a name EnviousWispr can add. Try again after updating Ollama." : {
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; no usable name came back for a hosted model."
     },
@@ -2565,15 +2957,24 @@
     "Paste" : {
       "comment" : "History detail button: pastes this row's text into the currently active app."
     },
+    "Paste Last Dictation" : {
+      "comment" : "Menu bar menu: pastes the last dictation into the app in front."
+    },
+    "Paste Last Dictation: %@" : {
+      "comment" : "Menu bar menu, VoiceOver: Paste Last Dictation with its text. %@ is the start of the last dictation."
+    },
     "Paste a list from anywhere: plain lines, CSV, or exported JSON." : {
       "comment" : "Snippets, import snippets: method card."
     },
     "Paste a list of words from anywhere." : {
       "comment" : "Your Words, import words: method card description."
     },
+    "Paste disabled — Accessibility required" : {
+      "comment" : "Menu bar menu: paste needs the Accessibility permission."
+    },
     "Paste into active app" : {},
     "Paste last dictation" : {
-      "comment" : "Keybinds settings: the keybind that pastes the last dictation again."
+      "comment" : "Keybinds settings: the keybind that pastes the last dictation again.\nMenu bar menu, VoiceOver: the icon beside Paste Last Dictation."
     },
     "Paste last dictation keybind" : {
       "comment" : "Keybinds settings: VoiceOver name of that keybind control."
@@ -2630,6 +3031,9 @@
     "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job." : {},
     "Pill Position" : {},
     "Pipeline Benchmark Results" : {},
+    "Pipeline benchmark complete" : {
+      "comment" : "Settings > Diagnostics, speed test: the full-pipeline test finished."
+    },
     "Play a short sound when recording starts and stops." : {
       "comment" : "Settings: the one-line description under a page title."
     },
@@ -2689,7 +3093,9 @@
     "Press Save key to finish, or pick another." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked. Save key is a button."
     },
-    "Press keys..." : {},
+    "Press keys..." : {
+      "comment" : "Keybind field: shown while it waits for the user to press the keys."
+    },
     "Press keys…" : {},
     "Press once to start recording. Press again to stop." : {},
     "Press the record button to start dictating." : {},
@@ -2724,6 +3130,12 @@
     "Quick Add" : {
       "comment" : "Your Words: a tab in the side rail, the feature that adds a selected word from any app."
     },
+    "Quit" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Quit."
+    },
+    "Quit %@" : {
+      "comment" : "Menu bar menu: quits the app. %@ is the app name, EnviousWispr."
+    },
     "RECENT" : {},
     "RECORD" : {
       "comment" : "Settings sidebar: group heading, in capitals."
@@ -2743,6 +3155,9 @@
     "Reading %@" : {},
     "Reading Well" : {
       "comment" : "Appearance settings: name of the recording pill style that shows your words as you speak."
+    },
+    "Reading this app's selection through the clipboard is turned off. You can still add the word by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
     },
     "Reading which languages are on this Mac." : {
       "comment" : "Live Preview settings: status checking detail."
@@ -2779,7 +3194,9 @@
       "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nTranscribe a File: badge on the recommended engine.\nVoiceOver: the recommended AI Polish provider, not chosen."
     },
     "Recommended for cleanup" : {},
-    "Record" : {},
+    "Record" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Start Recording."
+    },
     "Recording" : {
       "comment" : "Toolbar badge and sidebar status while recording."
     },
@@ -2856,9 +3273,13 @@
     "Required to paste your dictation" : {},
     "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed." : {},
     "Reset" : {},
-    "Reset keybind to default" : {},
+    "Reset keybind to default" : {
+      "comment" : "Keybind field, VoiceOver: puts this keybind back to its original keys."
+    },
     "Reset to allow the app to suggest locking a detected language again." : {},
-    "Reset to default" : {},
+    "Reset to default" : {
+      "comment" : "Keybind field: puts this keybind back to its original keys."
+    },
     "Restart Onboarding…" : {},
     "Restore" : {},
     "Restore clipboard after paste" : {},
@@ -2892,6 +3313,12 @@
     "Run Pipeline Benchmark" : {},
     "Running" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Running batch ASR..." : {
+      "comment" : "Settings > Diagnostics, speed test: progress. ASR means speech recognition."
+    },
+    "Running streaming ASR..." : {
+      "comment" : "Settings > Diagnostics, speed test: progress. ASR means speech recognition."
     },
     "Runs on" : {
       "comment" : "Speech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table."
@@ -2971,6 +3398,9 @@
     "Search history" : {},
     "Search languages" : {},
     "Search snippets" : {},
+    "Search your words" : {
+      "comment" : "Quick Add panel: the search field's placeholder."
+    },
     "Sections cleaned" : {
       "comment" : "Transcribe a File, Working page: a live count's label."
     },
@@ -3034,10 +3464,22 @@
     "Setting your keybind" : {
       "comment" : "Setup checklist step."
     },
+    "Settings" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Settings."
+    },
+    "Settings..." : {
+      "comment" : "Menu bar menu: opens Settings."
+    },
+    "Setup" : {
+      "comment" : "Title of the first-run setup window."
+    },
     "Setup didn't finish. Try again, and if it keeps happening, restart the app." : {
       "comment" : "Setup error: the speech model setup made no progress."
     },
     "Setup paused. Start it again whenever you're ready." : {},
+    "Setup required" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Continue Setup."
+    },
     "Share cleaned…" : {
       "comment" : "Export button: share the cleaned text (Marked Up view)."
     },
@@ -3055,7 +3497,9 @@
       "comment" : "Microphone settings: switch that turns the Bluetooth tip card on or off."
     },
     "Show app in Dock" : {},
-    "Show in Finder" : {},
+    "Show in Finder" : {
+      "comment" : "Move to Applications result: opens Finder at the moved app."
+    },
     "Show words while I speak" : {
       "comment" : "Live Preview settings: toggle label."
     },
@@ -3159,6 +3603,9 @@
     "Start Ollama" : {
       "comment" : "AI Polish, Ollama setup: the current step."
     },
+    "Start Recording" : {
+      "comment" : "Menu bar menu: starts a dictation."
+    },
     "Start recording" : {},
     "Start transcription" : {
       "comment" : "Transcribe a File, Review step: button that starts the run."
@@ -3181,7 +3628,10 @@
       "comment" : "Setup: shown when preparing the download takes more than 10 seconds."
     },
     "Stop" : {
-      "comment" : "Transcribe a File, Done step: button that stops the speaker labelling still running."
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Stop Recording.\nTranscribe a File, Done step: button that stops the speaker labelling still running."
+    },
+    "Stop Recording" : {
+      "comment" : "Menu bar menu: stops the dictation in progress."
     },
     "Stop recording" : {},
     "Stop recording on silence" : {},
@@ -3215,7 +3665,7 @@
       "comment" : "Live Preview settings: status off detail."
     },
     "System" : {
-      "comment" : "Appearance settings: theme option that follows macOS."
+      "comment" : "Appearance settings: theme option that follows macOS.\nMenu bar menu: Appearance submenu: follow the system appearance."
     },
     "TRY AGAIN" : {},
     "Tagalog" : {
@@ -3241,6 +3691,9 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Test that %@ is live" : {},
+    "Testing %llds audio..." : {
+      "comment" : "Settings > Diagnostics, speed test: progress. %lld is a length in seconds, such as 15."
+    },
     "Text copied to clipboard" : {
       "comment" : "VoiceOver announcement from the recording overlay: the text was copied instead of pasted."
     },
@@ -3249,6 +3702,15 @@
     },
     "That CSV has a quoting problem on line %@. Nothing was imported." : {
       "comment" : "Snippets, import: error. %@ is the line number in the file."
+    },
+    "That app did not answer when we asked it for the highlighted word. You can still add the word by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
+    "That app did not tell us where the cursor is. Click into the text and try again." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
+    "That app reported a selection it would not hand over. You can still add the word by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
     },
     "That contains a trigger EnviousWispr can't use (%@). Nothing was imported." : {
       "comment" : "Snippets, import: error. %@ is the trigger, already quoted."
@@ -3327,6 +3789,9 @@
     "That is EnviousWispr's own snippets file. Pick somewhere else — saving over it would erase your snippets." : {
       "comment" : "Snippets, export: refusal when the chosen file is the app's own snippet store."
     },
+    "That is a standard Mac shortcut. Choose another." : {
+      "comment" : "Keybind field: the keys chosen are a standard Mac shortcut, so they were not saved."
+    },
     "That is it. You are set." : {
       "comment" : "Practice screen headline. The first dictation worked."
     },
@@ -3336,8 +3801,17 @@
     "That model runs on this Mac, so nothing leaves it." : {
       "comment" : "Transcribe a File, Polish step: where the chosen Ollama model runs."
     },
+    "That selection is too long to be a word. Select just the word and try again." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
     "That transcription engine isn't downloaded yet. Get it in Transcription settings." : {
       "comment" : "Transcribe a File: why the file was refused."
+    },
+    "That word could not be saved. Check it does not already exist in your words." : {
+      "comment" : "Quick Add panel: a new word could not be saved."
+    },
+    "That word is no longer in your words. Create it as a new word instead." : {
+      "comment" : "Quick Add panel: follows 'Not saved.': the chosen word was deleted meanwhile."
     },
     "That word is no longer where it was. Nothing was changed." : {
       "comment" : "Your Words: error. A built-in word could not be restored."
@@ -3358,8 +3832,14 @@
     "The Universal engine is being prepared." : {
       "comment" : "Live Preview settings: status getting ready detail. Universal is the name of the other preview engine."
     },
+    "The app you were in has closed, so there was nothing left to read. You can still add the word by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
     "The cleanup engine didn't start. Your words are here. Clean it again to retry." : {
       "comment" : "Transcribe a File: why the file was refused. Clean it again is a button."
+    },
+    "The correct spelling" : {
+      "comment" : "Quick Add panel: the placeholder in the field for typing a word."
     },
     "The correct word" : {
       "comment" : "Edit word sheet: section label for the word as it should be written."
@@ -3409,6 +3889,12 @@
     "The downloaded correction model is not the one this version was tested with" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
     },
+    "The engine finished loading but was not ready to use." : {
+      "comment" : "Settings > Diagnostics, speed test: why loading the speech engine failed."
+    },
+    "The engine is busy. Try again in a moment." : {
+      "comment" : "Settings > Diagnostics, speed test: refused because the speech engine is in use."
+    },
     "The export did not finish. %@" : {
       "comment" : "Snippets, export: error. %@ is the system's reason, already in the user's language."
     },
@@ -3442,6 +3928,9 @@
     },
     "The on-device model is not ready — it may still be downloading. Try again later." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider." : {
+      "comment" : "AI polish error: Apple Intelligence's on-device model can't be used yet. Shown after 'AI polish failed:'."
     },
     "The preview detects your language as you speak." : {
       "comment" : "Live Preview settings: universal auto."
@@ -3487,6 +3976,9 @@
     },
     "The transcription engine didn't start. Try again." : {
       "comment" : "Transcribe a File: why the file was refused."
+    },
+    "The word to add" : {
+      "comment" : "Quick Add panel: the placeholder in the field for typing a word."
     },
     "There are no snippets to export yet." : {
       "comment" : "Snippets, export: notice when the list is empty."
@@ -3626,7 +4118,10 @@
       "comment" : "Keybinds settings: section heading, shown in capitals."
     },
     "Transcribe a File" : {
-      "comment" : "Settings sidebar: a page name."
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Transcribe a File.\nSettings sidebar: a page name."
+    },
+    "Transcribe a File..." : {
+      "comment" : "Menu bar menu: opens Transcribe a File."
     },
     "Transcribe time" : {
       "comment" : "Speech engine settings, engine card: a row label in the card's spec table."
@@ -3754,10 +4249,21 @@
     "Unreliable" : {
       "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
     },
-    "Update available" : {},
+    "Update available" : {
+      "comment" : "Menu bar menu, VoiceOver: the menu bar icon when an update is waiting."
+    },
     "Update available, version %@" : {},
     "Update paused" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Update ready: Install" : {
+      "comment" : "Menu bar menu: installs the waiting update."
+    },
+    "Update ready: Install v%@" : {
+      "comment" : "Menu bar menu: installs the waiting update. %@ is the version number, such as 2.6.0."
+    },
+    "Update ready: finish dictating to install" : {
+      "comment" : "Menu bar menu: an update waits until dictation ends."
     },
     "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it." : {
       "comment" : "Setup notice on Macs older than macOS 26."
@@ -3846,6 +4352,9 @@
       "comment" : "Speech engine settings, WhisperKit model: download status line."
     },
     "Version %@ is ready. Click to restart." : {},
+    "Version: %@" : {
+      "comment" : "Menu bar menu: the app version. %@ is the version number."
+    },
     "Vietnamese" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -3867,6 +4376,12 @@
     "We could not check your saved key on this Mac." : {},
     "We could not check your saved key. Try again, or pick another." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked."
+    },
+    "We could not get what you highlighted in that app. You can still add the word by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
+    "We couldn't move EnviousWispr automatically." : {
+      "comment" : "Move to Applications result, any other failure: the heading. EnviousWispr is the app name; keep it."
     },
     "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold %@ again." : {
       "comment" : "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
@@ -4024,6 +4539,9 @@
     "You already have this, as another spelling of %@." : {
       "comment" : "Your Words, import review: a row's note. %@ is the existing word."
     },
+    "You can quit this copy and use the one in Applications." : {
+      "comment" : "Move to Applications result, the app was copied but did not reopen: the explanation."
+    },
     "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
       "comment" : "Setup: shown when the speech engine did not finish warming up."
     },
@@ -4053,6 +4571,9 @@
     "Your Words" : {
       "comment" : "Your Words: a tab in the side rail."
     },
+    "Your Words could not be refreshed, so there is nothing to match against yet. Try again." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
     "Your audio and text both stay on this Mac." : {
       "comment" : "Transcribe a File: the footer's privacy sentence: nothing leaves the Mac."
     },
@@ -4073,6 +4594,9 @@
     },
     "Your audio stayed on this Mac. Only the text went to %@." : {
       "comment" : "Transcribe a File: the footer's privacy sentence, after the run. %@ is where the text went, such as Ollama."
+    },
+    "Your clipboard is too large to be kept safe while reading that app, so it was left alone. You can still add the word by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
     },
     "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview." : {
       "comment" : "Live Preview settings: status paused detail."
@@ -4136,8 +4660,14 @@
     "Your saved words file was damaged and moved aside for recovery. No edit or import was applied." : {
       "comment" : "Your Words: error. The saved list was damaged."
     },
+    "Your selection could not be read. You can still add the word by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
     "Your shortcut is set" : {
       "comment" : "Setup warm-up checklist item."
+    },
+    "Your shortcut keys were still held down. Let go of them, then press the shortcut again." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
     },
     "Your snippets" : {},
     "Your snippets changed while you were reviewing. Nothing was imported. Here is the updated list." : {
@@ -4198,11 +4728,50 @@
     "about a minute left" : {
       "comment" : "Transcribe a File, Working step: time left, in lowercase."
     },
+    "add spelling" : {
+      "comment" : "Quick Add panel: keyboard legend beside the Return key: adds the spelling. Lowercase, very short."
+    },
+    "already has this" : {
+      "comment" : "Quick Add panel: a row's note: the word already has the misheard spelling. Lowercase."
+    },
+    "back" : {
+      "comment" : "Quick Add panel: keyboard legend beside esc: goes back to the list. Lowercase, very short."
+    },
+    "benchmark.failure.modelLoad" : {
+      "comment" : "Settings > Diagnostics, speed test: loading the speech engine failed. %@ is the reason, one sentence, already translated or from the system.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Model load failed: %@"
+          }
+        }
+      }
+    },
+    "benchmark.progress.loadingModel" : {
+      "comment" : "Settings > Diagnostics, speed test: loading the speech engine before the test.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Loading model..."
+          }
+        }
+      }
+    },
     "by Superwhisper" : {
       "comment" : "AI Polish provider list: description under a provider name. Required licence credit; keep Superwhisper as written."
     },
+    "close" : {
+      "comment" : "Quick Add panel: keyboard legend beside esc: closes the panel. Lowercase, very short."
+    },
     "cloud" : {
       "comment" : "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
+    },
+    "create" : {
+      "comment" : "Quick Add panel: keyboard legend beside the Return key: creates the word. Lowercase, very short."
     },
     "done" : {
       "comment" : "VoiceOver, Transcribe a File: a Working row is finished."
@@ -4328,6 +4897,30 @@
         }
       }
     },
+    "fileExport.prompt" : {
+      "comment" : "Save dialog: the button that writes the export file.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Export"
+          }
+        }
+      }
+    },
+    "fileImport.prompt" : {
+      "comment" : "File picker: the button that imports the chosen file.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Import"
+          }
+        }
+      }
+    },
     "from your Mac" : {
       "comment" : "Live Preview settings: language provenance from mac. A caption under the language: where it came from."
     },
@@ -4382,6 +4975,282 @@
     "in progress, %@" : {
       "comment" : "VoiceOver, Transcribe a File: a Working row with no progress bar. %@ is the time spent, such as 36 s."
     },
+    "keyName.command" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Command key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⌘ Command"
+          }
+        }
+      }
+    },
+    "keyName.control" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Control key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⌃ Control"
+          }
+        }
+      }
+    },
+    "keyName.delete" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Delete (backspace) key, not the action.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete"
+          }
+        }
+      }
+    },
+    "keyName.end" : {
+      "comment" : "Keyboard key name shown in keybind labels. The End key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "End"
+          }
+        }
+      }
+    },
+    "keyName.escape" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Escape key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Escape"
+          }
+        }
+      }
+    },
+    "keyName.globe" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Globe key, also labelled Fn; keep the emoji and Fn.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "🌐 Globe (Fn)"
+          }
+        }
+      }
+    },
+    "keyName.globe.spoken" : {
+      "comment" : "VoiceOver name of the Globe (Fn) key; no symbols.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Globe or Function key"
+          }
+        }
+      }
+    },
+    "keyName.leftCommand" : {
+      "comment" : "Keyboard key name shown in keybind labels. The left Command key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Left ⌘"
+          }
+        }
+      }
+    },
+    "keyName.leftControl" : {
+      "comment" : "Keyboard key name shown in keybind labels. The left Control key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Left ⌃"
+          }
+        }
+      }
+    },
+    "keyName.leftOption" : {
+      "comment" : "Keyboard key name shown in keybind labels. The left Option key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Left ⌥"
+          }
+        }
+      }
+    },
+    "keyName.leftShift" : {
+      "comment" : "Keyboard key name shown in keybind labels. The left Shift key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Left ⇧"
+          }
+        }
+      }
+    },
+    "keyName.option" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Option key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⌥ Option"
+          }
+        }
+      }
+    },
+    "keyName.pageDown" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Page Down key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Page Down"
+          }
+        }
+      }
+    },
+    "keyName.return" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Return (Enter) key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Return"
+          }
+        }
+      }
+    },
+    "keyName.rightCommand" : {
+      "comment" : "Keyboard key name shown in keybind labels. The right Command key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Right ⌘"
+          }
+        }
+      }
+    },
+    "keyName.rightControl" : {
+      "comment" : "Keyboard key name shown in keybind labels. The right Control key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Right ⌃"
+          }
+        }
+      }
+    },
+    "keyName.rightOption" : {
+      "comment" : "Keyboard key name shown in keybind labels. The right Option key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Right ⌥"
+          }
+        }
+      }
+    },
+    "keyName.rightShift" : {
+      "comment" : "Keyboard key name shown in keybind labels. The right Shift key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Right ⇧"
+          }
+        }
+      }
+    },
+    "keyName.shift" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Shift key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⇧ Shift"
+          }
+        }
+      }
+    },
+    "keyName.space" : {
+      "comment" : "Keyboard key name shown in keybind labels. The space bar.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Space"
+          }
+        }
+      }
+    },
+    "keyName.tab" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Tab key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Tab"
+          }
+        }
+      }
+    },
+    "keyName.unknown" : {
+      "comment" : "Last-resort keyboard key name. %@ is the numeric key code.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Key %@"
+          }
+        }
+      }
+    },
+    "keybind.refusal.accessibility" : {
+      "comment" : "Keybind field, VoiceOver: a refusal. %@ is the reason, one sentence, already translated.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not saved. %@"
+          }
+        }
+      }
+    },
     "language.picker.spellingAccessibility" : {
       "comment" : "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses.",
       "extractionState" : "extracted_with_value",
@@ -4422,8 +5291,38 @@
       }
     },
     "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually." : {},
+    "macOS has not allowed EnviousWispr to send keystrokes, so it could not ask that app for your selection. Check Accessibility in System Settings, then try again." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
+    "macOS is protecting what you are typing right now, so nothing could be read from that app. You can still add the word by hand below." : {
+      "comment" : "Quick Add panel: why the selected text could not be read."
+    },
     "macOS may already use the Globe key to switch keyboard languages, open the emoji picker, or start its own dictation. If that happens while you dictate, you can turn it off:" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): explains why macOS may also react to the Globe key."
+    },
+    "menu.checkForUpdates.icon" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Check for Updates.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Update"
+          }
+        }
+      }
+    },
+    "menu.quickAdd.addSelection" : {
+      "comment" : "Menu bar menu: adds the selected word to Your Words. %@ is the selected text; use this language's quotation marks.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add “%@”"
+          }
+        }
+      }
     },
     "menu.setupRequired.continue" : {
       "comment" : "Menu bar item shown at the top of the menu while first-run setup is unfinished. Opens setup.",
@@ -4440,6 +5339,9 @@
     "mono" : {
       "comment" : "Transcribe a File: a file's audio has one channel."
     },
+    "move" : {
+      "comment" : "Quick Add panel: keyboard legend beside the arrow keys. Lowercase, very short."
+    },
     "my email address" : {},
     "no apps yet" : {
       "comment" : "Import: ends the sentence EnviousWispr can read …; used only when no app is supported. Lowercase."
@@ -4449,6 +5351,18 @@
     },
     "not started" : {
       "comment" : "VoiceOver, Transcribe a File: a Working row has not started."
+    },
+    "notification.update.install" : {
+      "comment" : "Update notification: the button that installs the new version.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install"
+          }
+        }
+      }
     },
     "notification.update.ready.body" : {
       "comment" : "Body of the macOS notification when an app update has downloaded. %@ is the version number, for example 2.6.0.",
@@ -4474,6 +5388,30 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Continue"
+          }
+        }
+      }
+    },
+    "quickAdd.candidate.accessibility" : {
+      "comment" : "Quick Add panel, VoiceOver: a row. The first %@ is the word, the second its note, such as 2 spellings.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "quickAdd.writeFailure" : {
+      "comment" : "Quick Add panel: a save was refused. %@ is the reason, one or more sentences, already translated.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not saved. %@"
           }
         }
       }
@@ -4539,6 +5477,18 @@
       "comment" : "Appearance settings, recording pill picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence."
     },
     "then your snippet, and it expands." : {},
+    "transcribeFile.save.defaultName" : {
+      "comment" : "Transcribe a File: the suggested file name when saving a transcript of an unnamed recording.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Transcript"
+          }
+        }
+      }
+    },
     "transcribeFile.step.polish" : {
       "comment" : "Transcribe a File: a step name in the step bar. Polish means the AI cleanup of the text (to polish it), never the Polish language.",
       "extractionState" : "extracted_with_value",

@@ -380,8 +380,8 @@ struct OllamaReadinessGateTests {
       result.polishError
         == "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish.")
     // The completion planner must read this as a skip, not a hard failure —
-    // the "Polish failed" overlay is keyed off this exact predicate.
-    #expect(PolishFailureReason.isSkipNotice(result.polishError ?? "") == true)
+    // the "Polish failed" overlay is keyed off the notice's typed tone (#3142).
+    #expect(result.polishNotice?.leadIn == .skipped)
     #expect(result.context.polishedText == nil)
     #expect(result.context.llmProvider == nil)
     #expect(result.context.text == Self.longTranscript)
@@ -400,7 +400,7 @@ struct OllamaReadinessGateTests {
         == "AI cleanup skipped: the selected Ollama model isn't installed. "
         + "Download it or pick another in Settings → AI Polish."
     )
-    #expect(PolishFailureReason.isSkipNotice(result.polishError ?? "") == true)
+    #expect(result.polishNotice?.leadIn == .skipped)
     #expect(result.context.polishedText == nil)
     #expect(spy.count == 0)
   }
@@ -422,7 +422,7 @@ struct OllamaReadinessGateTests {
     // Skip tone, not failure tone: the completion planner keys the "Polish
     // failed. Using raw text." overlay off this exact predicate, and declining
     // to choose a model for the user is not a breakage to apologise for.
-    #expect(PolishFailureReason.isSkipNotice(result.polishError ?? "") == true)
+    #expect(result.polishNotice?.leadIn == .skipped)
     // "while still pasting the raw output" — the heart is untouched. The
     // deterministic text is what reaches the user, unpolished and complete.
     #expect(result.context.text == Self.longTranscript)

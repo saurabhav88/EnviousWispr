@@ -36,7 +36,7 @@ enum PipelineStateChangeDispatch {
     handler.handle(
       to: newState,
       pipelineOverlayIntent: driver.overlayIntent,
-      lastPolishError: driver.lastPolishError,
+      lastPolishNotice: driver.lastPolishNotice,
       currentTranscript: driver.currentTranscript,
       historySaved: driver.lastHistorySaved,
       historySaveReason: driver.lastHistorySaveReason,

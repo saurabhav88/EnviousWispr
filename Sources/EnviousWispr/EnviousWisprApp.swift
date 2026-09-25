@@ -44,7 +44,7 @@ struct EnviousWisprApp: App {
     .windowToolbarStyle(.unifiedCompact)
 
     // Onboarding window — non-resizable, centered, auto-opens on first launch.
-    Window(application.onboardingWindowTitle, id: "onboarding") {
+    Window(application.onboardingWindowTitle, id: application.onboardingWindowID) {
       application.onboardingWindowContent()
     }
     .windowResizability(.contentSize)

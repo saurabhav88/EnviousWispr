@@ -769,9 +769,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         // `frameworkUnavailable` cases so the live dictation path SURFACES it
         // (informative "downloading / restricted" message) instead of silently
         // degrading to raw text the way pre-26 / switched-off do.
-        throw LLMError.modelNotReady(
-          "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
-        )
+        throw LLMError.modelNotReady(.downloadingOrRestricted)
       @unknown default:
         throw LLMError.frameworkUnavailable(
           "Apple Intelligence is unavailable on this device."

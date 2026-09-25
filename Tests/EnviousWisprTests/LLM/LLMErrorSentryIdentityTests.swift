@@ -30,7 +30,7 @@ struct LLMErrorSentryIdentityTests {
     (.requestFailed("x"), 0),
     (.modelNotFound("x"), 1),
     (.frameworkUnavailable("x"), 2),
-    (.modelNotReady("x"), 3),
+    (.modelNotReady(.downloadingOrRestricted), 3),
     (.unsupportedInputLanguage("de"), 4),
     (.outputLanguageDrift(expected: "de", actual: "en"), 5),
     (.egOneSkipped(.crashed), 6),

@@ -202,4 +202,21 @@ struct WordsCopyTests {
     #expect(
       SmartImportSupportedAppsCopy.sentence(joining: ["A", "B", "C", "D"]) == "A, B, C, and D")
   }
+
+  @Test("the import picker and export dialog keep their English")
+  @MainActor
+  func filePanels() {
+    #expect(CustomWordsImportFilePanel.titleText == "Choose a file to import")
+    #expect(CustomWordsImportFilePanel.promptText == "Import")
+    #expect(
+      CustomWordsImportFilePanel.messageText
+        == "Choose a file you exported from EnviousWispr, or a plain text list of words.")
+    #expect(CustomWordsExportPanel.titleText == "Export your words")
+    #expect(CustomWordsExportPanel.promptText == "Export")
+    #expect(
+      CustomWordsExportPanel.messageText(exportableCount: 1000)
+        == "Exporting 1000 words of your own. Vocabulary packs aren't included.\n\n"
+        + "Exported files may contain personal names and other private words. Usage history is not included."
+    )
+  }
 }

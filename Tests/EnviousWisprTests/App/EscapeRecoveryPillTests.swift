@@ -55,7 +55,7 @@ struct EscapeRecoveryPillTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: Transcript(text: "held"),
       historySaved: true,
       historySaveReason: nil,
@@ -63,7 +63,7 @@ struct EscapeRecoveryPillTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: Transcript(text: "held again"),
       historySaved: true,
       historySaveReason: nil,
@@ -252,7 +252,7 @@ struct EscapeRecoveryPillTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: Transcript(text: "an ordinary dictation"),
       historySaved: true,
       historySaveReason: nil)

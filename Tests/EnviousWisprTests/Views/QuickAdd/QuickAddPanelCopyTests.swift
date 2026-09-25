@@ -1,3 +1,5 @@
+import EnviousWisprCore
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -27,6 +29,9 @@ struct QuickAddPanelCopyTests {
     // "1 spellings" is the kind of thing users screenshot.
     #expect(QuickAddPanelCopy.spellingCount(1) == "1 spelling")
     #expect(QuickAddPanelCopy.spellingCount(0) == "0 spellings")
+    #expect(QuickAddPanelCopy.spellingCount(2) == "2 spellings")
+    // #3142: the count passes as text, so English never gains a thousands separator.
+    #expect(QuickAddPanelCopy.spellingCount(1_000) == "1000 spellings")
   }
 
   @Test("The group header names the selected word and states the verb once")
@@ -477,5 +482,19 @@ struct QuickAddPanelCopyTests {
         !text.lowercased().contains(pointsAtTheList),
         "says \(pointsAtTheList), which names a control this state does not have")
     }
+  }
+
+  /// VoiceOver reads a row as the word and then its note, from the same two strings the row shows.
+  @Test("A row is spoken as the word, then its note")
+  func rowAccessibilityLabel() {
+    let counted = QuickAddRanker.Candidate(
+      word: CustomWord(canonical: "Codex", aliases: ["codecs", "kodex"]),
+      score: 0.9, alreadyHasHeardSpelling: false)
+    #expect(QuickAddPanelView.accessibilityLabel(for: counted) == "Codex, 2 spellings")
+
+    let owned = QuickAddRanker.Candidate(
+      word: CustomWord(canonical: "Codex", aliases: ["codecs"]),
+      score: 0.9, alreadyHasHeardSpelling: true)
+    #expect(QuickAddPanelView.accessibilityLabel(for: owned) == "Codex, already has this")
   }
 }

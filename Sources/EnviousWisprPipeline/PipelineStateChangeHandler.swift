@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import Foundation
 
 /// Executes the side-effect plan produced by `PipelineStateChangePlanner`.
@@ -105,7 +106,7 @@ public final class PipelineStateChangeHandler {
   public func handle(
     to newState: any PipelineStateProtocol,
     pipelineOverlayIntent: OverlayIntent,
-    lastPolishError: String?,
+    lastPolishNotice: PolishNotice?,
     currentTranscript: Transcript?,
     historySaved: Bool,
     historySaveReason: String?,
@@ -126,7 +127,7 @@ public final class PipelineStateChangeHandler {
       isClipboardFallback: currentTranscript?.metrics?.pasteTier == "clipboard_only"
         || currentTranscript?.metrics?.pasteTier == "clipboard_only_ax_denied",
       isAccessibilityToast: currentTranscript?.metrics?.pasteTier == "clipboard_only_ax_denied",
-      lastPolishError: lastPolishError,
+      lastPolishNotice: lastPolishNotice,
       hasCurrentTranscript: currentTranscript != nil,
       historySaved: historySaved,
       historySaveReason: historySaveReason,

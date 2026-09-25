@@ -203,4 +203,91 @@ struct AIPolishCopyTests {
     #expect(OllamaCatalogPresentation.progressLabel(for: hosted, percent: 42) == "Adding…")
     #expect(OllamaSetupService.formatFileSize(0) == "Unknown")
   }
+
+  /// #3142: the two cases converted in Chunk 7 have translated display copy with the same
+  /// English, while the description logs read stays fixed English.
+  @Test("Model errors converted for screens keep their English, and diagnostics do not move")
+  func llmErrorDisplayCopy() {
+    #expect(LLMError.emptyResponse.localizedDisplayMessage == "LLM returned an empty response.")
+    #expect(
+      LLMError.requestFailed("HTTP 500").localizedDisplayMessage
+        == "LLM request failed: HTTP 500")
+    #expect(LLMError.emptyResponse.errorDescription == "LLM returned an empty response.")
+    #expect(LLMError.requestFailed("HTTP 500").errorDescription == "LLM request failed: HTTP 500")
+    // The other cases here have no proven screen path for their descriptions.
+    #expect(LLMError.invalidAPIKey.localizedDisplayMessage == nil)
+    #expect(LLMError.rateLimited.localizedDisplayMessage == nil)
+    // #3142: the on-device model's reason is typed, translated on screen, English in logs.
+    #expect(
+      LLMError.modelNotReady(.downloadingOrRestricted).localizedDisplayMessage
+        == "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
+    )
+    #expect(
+      LLMError.modelNotReady(.downloadingOrRestricted).errorDescription
+        == "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
+    )
+  }
+
+  @Test("The key check shows a model error's display copy, and any other error's description")
+  @MainActor
+  func keyCheckFailureMessage() {
+    #expect(
+      LLMModelDiscoveryCoordinator.validationFailureMessage(
+        for: LLMError.requestFailed("Network error: offline"))
+        == "LLM request failed: Network error: offline")
+    let other = NSError(
+      domain: "Test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Something else."])
+    #expect(LLMModelDiscoveryCoordinator.validationFailureMessage(for: other) == "Something else.")
+  }
+
+  /// #3142: failures the app describes itself during model discovery. The diagnostic is the
+  /// exact English the key check showed before; the screen reads the translated sentence.
+  @Test("discovery failures keep their English, and the key check shows them")
+  @MainActor
+  func discoveryFailures() {
+    let english: [(ModelDiscoveryFailure, String)] = [
+      (.invalidURL, "LLM request failed: Invalid URL"),
+      (.invalidResponse, "LLM request failed: Invalid response"),
+      (.httpStatus(500), "LLM request failed: HTTP 500"),
+      (.httpStatus(1000), "LLM request failed: HTTP 1000"),
+      (
+        .malformedPagination,
+        "LLM request failed: Claude model pagination returned a malformed cursor"
+      ),
+      (.invalidOllamaURL, "LLM request failed: Invalid Ollama URL"),
+      (
+        .network("The Internet connection appears to be offline."),
+        "LLM request failed: Network error: The Internet connection appears to be offline."
+      ),
+    ]
+    for (failure, text) in english {
+      #expect(failure.errorDescription == text, "\(failure)")
+      #expect(failure.displayMessage == text, "\(failure)")
+      #expect(LLMModelDiscoveryCoordinator.validationFailureMessage(for: failure) == text)
+    }
+  }
+
+  /// The Apple Intelligence row is recomputed from a local check with its typed status, and its
+  /// stored name keeps the English it always had.
+  @Test("the Apple Intelligence row carries its status and its English name")
+  func appleIntelligenceRow() {
+    let rows = LLMModelDiscovery.appleIntelligenceModelInfo()
+    #expect(rows.count == 1)
+    let row = rows[0]
+    #expect(row.id == "apple-intelligence")
+    let status = row.appleIntelligenceStatus
+    #expect(status != nil)
+    if let status {
+      #expect(row.displayName == LLMModelDiscovery.englishAppleIntelligenceLabel(status))
+      #expect(row.localizedDisplayName == status.displayName)
+      #expect(row.isAvailable == (status == .onDevice))
+    }
+    // Every status's stored English name equals its catalog default, so the data and the label
+    // cannot drift apart for the statuses this Mac does not produce.
+    for status in AppleIntelligenceModelStatus.allCases {
+      let candidate = LLMModelDiscovery.appleIntelligenceRow(
+        status, isAvailable: status == .onDevice)
+      #expect(candidate.displayName == status.displayName, "\(status)")
+    }
+  }
 }

@@ -88,7 +88,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       handler.handle(
         to: PipelineState.complete,
         pipelineOverlayIntent: .hidden,
-        lastPolishError: nil,
+        lastPolishNotice: nil,
         currentTranscript: Transcript(text: "hello", backendType: .parakeet),
         historySaved: true,
         historySaveReason: nil,
@@ -108,7 +108,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: Transcript(text: "hello", backendType: .parakeet),
       historySaved: true,
       historySaveReason: nil,
@@ -194,7 +194,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       handler.handle(
         to: PipelineState.complete,
         pipelineOverlayIntent: .hidden,
-        lastPolishError: nil,
+        lastPolishNotice: nil,
         currentTranscript: Transcript(text: "hello", backendType: .parakeet),
         historySaved: true,
         historySaveReason: nil)
@@ -216,7 +216,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       handler.handle(
         to: PipelineState.error(.deviceRemoved),
         pipelineOverlayIntent: .error(reason: .deviceRemoved),
-        lastPolishError: nil,
+        lastPolishNotice: nil,
         currentTranscript: nil,
         historySaved: true,
         historySaveReason: nil)
@@ -238,7 +238,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       handler.handle(
         to: PipelineState.error(.deviceRemoved),
         pipelineOverlayIntent: .error(reason: .deviceRemoved),
-        lastPolishError: nil,
+        lastPolishNotice: nil,
         currentTranscript: nil,
         historySaved: true,
         historySaveReason: nil)

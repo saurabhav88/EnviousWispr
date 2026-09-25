@@ -153,7 +153,7 @@ final class LLMModelDiscoveryCoordinator {
       guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
         // Missing-key guard: no validation actually ran, so NO
         // `api_key.validation_completed` event (#1173).
-        keyValidationState = .invalid("No API key found")
+        keyValidationState = .invalid(Self.noKeyMessage)
         return
       }
       apiKey = key
@@ -184,22 +184,57 @@ final class LLMModelDiscoveryCoordinator {
       guard discoveryGeneration == generation else { return }
       keyValidationState = .invalid(
         provider == .ollama
-          ? "Ollama is not running. Start it with: ollama serve"
-          : "Apple Intelligence not available on this system."
+          ? Self.ollamaNotRunningMessage
+          : Self.appleIntelligenceUnavailableMessage
       )
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "provider_unavailable", source: source)
     } catch let error as LLMError where error == .invalidAPIKey {
       guard discoveryGeneration == generation else { return }
-      keyValidationState = .invalid("Invalid API key")
+      keyValidationState = .invalid(Self.invalidKeyMessage)
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "invalid", source: source)
     } catch {
       guard discoveryGeneration == generation else { return }
-      keyValidationState = .invalid(error.localizedDescription)
+      keyValidationState = .invalid(Self.validationFailureMessage(for: error))
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "error", source: source)
     }
+  }
+
+  /// #3142: the key check's own sentences, apart from the flow so a test can pin the English.
+  static var noKeyMessage: String {
+    String(
+      localized: "No API key found",
+      comment: "AI Polish settings, checking the API key: no key is saved for this provider.")
+  }
+
+  static var ollamaNotRunningMessage: String {
+    String(
+      localized: "Ollama is not running. Start it with: ollama serve",
+      comment:
+        "AI Polish settings, checking the API key: Ollama is not running. Keep the command ollama serve as is."
+    )
+  }
+
+  static var appleIntelligenceUnavailableMessage: String {
+    String(
+      localized: "Apple Intelligence not available on this system.",
+      comment: "AI Polish settings, checking the API key: this Mac can't use Apple Intelligence.")
+  }
+
+  static var invalidKeyMessage: String {
+    String(
+      localized: "Invalid API key",
+      comment: "AI Polish settings, checking the API key: the provider rejected the key.")
+  }
+
+  /// #3142: what the key check shows for an error it has no specific wording for. A discovery
+  /// failure the app describes itself, then an LLMError's translated display message when it has
+  /// one; otherwise the error's own description.
+  nonisolated static func validationFailureMessage(for error: any Error) -> String {
+    if let failure = error as? ModelDiscoveryFailure { return failure.displayMessage }
+    return (error as? LLMError)?.localizedDisplayMessage ?? error.localizedDescription
   }
 
   /// #1173: emit `api_key.validation_completed` for a terminal validation result.
@@ -238,6 +273,13 @@ final class LLMModelDiscoveryCoordinator {
     // a DIFFERENT provider's models and verdict through `stateProvider`'s `didSet`.
     invalidateInFlightDiscovery()
     stateProvider = provider
+    // #3142: Apple Intelligence's row comes from a local availability check, never the cache.
+    // Discovery stopped caching it, but a cache written by an older build can still hold a row
+    // whose status or language is stale; recomputing answers both, and parses no text.
+    if provider == .appleIntelligence {
+      discoveredModels = LLMModelDiscovery.appleIntelligenceModelInfo()
+      return
+    }
     let key = "cachedModels_\(provider.rawValue)"
     guard let data = cacheDefaults.data(forKey: key),
       let models = try? JSONDecoder().decode([LLMModelInfo].self, from: data)

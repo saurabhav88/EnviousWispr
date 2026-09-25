@@ -135,7 +135,7 @@ enum PipelineStateChangePlanner {
     pipelineOverlayIntent: OverlayIntent,
     isClipboardFallback: Bool,
     isAccessibilityToast: Bool,
-    lastPolishError: String?,
+    lastPolishNotice: PolishNotice?,
     hasCurrentTranscript: Bool,
     historySaved: Bool,
     historySaveReason: String?,
@@ -164,7 +164,7 @@ enum PipelineStateChangePlanner {
         resolvedOverlayIntent = .accessibilityToast
       } else if isClipboardFallback {
         resolvedOverlayIntent = .clipboardFallback
-      } else if let polishError = lastPolishError {
+      } else if let polishNotice = lastPolishNotice {
         resolvedOverlayIntent = pipelineOverlayIntent
         // #945: a "skipped" notice (no key yet, too long, timed out) is not a
         // hard failure — the in-window banner shows the actionable
@@ -172,6 +172,8 @@ enum PipelineStateChangePlanner {
         // "Polish failed. Using raw text." overlay would contradict it, so
         // suppress it for skips. Real failures (and the unchanged Apple
         // Intelligence / legacy strings) still schedule the warning.
+        // #3142: decided by the notice's typed tone, never by its text, which
+        // is translated and need not start with the translated lead-in.
         // #1167: a history-save failure takes the single post-completion
         // warning slot (its pill is scheduled in Step 2), so suppress the
         // polish-failed pill when both fired this session.
@@ -180,7 +182,7 @@ enum PipelineStateChangePlanner {
         // formatting notice) — scheduled below, outside this branch.
         // #1408: so does a mid-recording disconnect, for the same reason.
         if !historySaveFailed, !interrupted, !salvagedLead,
-          !PolishFailureReason.isSkipNotice(polishError)
+          polishNotice.leadIn != .skipped
         {
           effects.append(.schedulePolishFailedWarning)
         }

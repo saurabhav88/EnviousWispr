@@ -1,3 +1,5 @@
+import EnviousWisprASR
+import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -72,5 +74,30 @@ struct LowerModuleCopyEnglishTests {
   @Test("the Polish step, now its own key, still reads Polish in English")
   func polishStep() {
     #expect(FileImportCoordinator.Step.polish.title == "Polish")
+  }
+
+  /// #3142 chunk 8b: the Settings key check, the Diagnostics speed test and its engine error.
+  @Test("key check, speed test and engine-not-ready copy keep their English")
+  @MainActor
+  func keyCheckAndBenchmark() {
+    #expect(LLMModelDiscoveryCoordinator.noKeyMessage == "No API key found")
+    #expect(
+      LLMModelDiscoveryCoordinator.ollamaNotRunningMessage
+        == "Ollama is not running. Start it with: ollama serve")
+    #expect(
+      LLMModelDiscoveryCoordinator.appleIntelligenceUnavailableMessage
+        == "Apple Intelligence not available on this system.")
+    #expect(LLMModelDiscoveryCoordinator.invalidKeyMessage == "Invalid API key")
+
+    let notReady = ASREngineNotReadyAfterLoadError()
+    #expect(notReady.displayMessage == "The engine finished loading but was not ready to use.")
+    #expect(notReady.errorDescription == "The engine finished loading but was not ready to use.")
+    #expect(
+      BenchmarkSuite.modelLoadFailure(notReady)
+        == "Model load failed: The engine finished loading but was not ready to use.")
+    let other = NSError(
+      domain: "Test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Disk gone."])
+    #expect(BenchmarkSuite.modelLoadFailure(other) == "Model load failed: Disk gone.")
+    #expect(BenchmarkSuite.pipelineComplete == "Pipeline benchmark complete")
   }
 }

@@ -109,6 +109,38 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
   /// Brand accent (#7c3aed) — the primary action's fill.
   private static let accent = Color(red: 124.0 / 255, green: 58.0 / 255, blue: 237.0 / 255)
   private static let moveResponse = NSApplication.ModalResponse(rawValue: 1001)
+
+  /// The prompt's and the progress card's copy (#3142). Internal so tests pin the English.
+  static var promptTitle: String {
+    String(
+      localized: "Finish setting up EnviousWispr",
+      comment: "Move to Applications prompt: the heading. EnviousWispr is the app name; keep it.")
+  }
+
+  static var promptMessage: String {
+    String(
+      localized:
+        "EnviousWispr is running from a temporary location, so it cannot receive updates. EnviousWispr can fix this and reopen automatically.",
+      comment:
+        "Move to Applications prompt: why the app should move. EnviousWispr is the app name; keep it."
+    )
+  }
+
+  static var progressTitle: String {
+    String(
+      localized: "Moving EnviousWispr",
+      comment:
+        "Move to Applications: the heading while the app is being moved. EnviousWispr is the app name; keep it."
+    )
+  }
+
+  static var progressMessage: String {
+    String(
+      localized: "Installing to your Applications folder. EnviousWispr will reopen automatically.",
+      comment:
+        "Move to Applications: shown while the app is being moved. EnviousWispr is the app name; keep it."
+    )
+  }
   private static let notNowResponse = NSApplication.ModalResponse(rawValue: 1002)
 
   /// Builds a chromeless, self-sizing, centered card panel around a SwiftUI view.
@@ -133,26 +165,31 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
 
   public func present() async -> RelocationChoice {
     let card = RelocationCard(
-      title: "Finish setting up EnviousWispr",
-      message:
-        "EnviousWispr is running from a temporary location, so it cannot receive updates. "
-        + "EnviousWispr can fix this and reopen automatically."
+      title: Self.promptTitle,
+      message: Self.promptMessage
     ) {
       VStack(spacing: 10) {
         Button {
           NSApp.stopModal(withCode: Self.moveResponse)
         } label: {
-          Text("Move EnviousWispr")
-            .font(.system(size: 17, weight: .semibold))
-            .frame(maxWidth: .infinity).padding(.vertical, 4)
+          Text(
+            "Move EnviousWispr",
+            comment:
+              "Move to Applications prompt: the main button. EnviousWispr is the app name; keep it."
+          )
+          .font(.system(size: 17, weight: .semibold))
+          .frame(maxWidth: .infinity).padding(.vertical, 4)
         }
         .buttonStyle(.borderedProminent).controlSize(.large).tint(Self.accent)
         Button {
           NSApp.stopModal(withCode: Self.notNowResponse)
         } label: {
-          Text("Not Now")
-            .font(.system(size: 17, weight: .medium))
-            .frame(maxWidth: .infinity).padding(.vertical, 4)
+          Text(
+            "Not Now",
+            comment: "Move to Applications prompt: declines for now; it asks again later."
+          )
+          .font(.system(size: 17, weight: .medium))
+          .frame(maxWidth: .infinity).padding(.vertical, 4)
         }
         .buttonStyle(.bordered).controlSize(.large)
       }
@@ -167,8 +204,8 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
 
   public func showProgress() {
     let card = RelocationCard(
-      title: "Moving EnviousWispr",
-      message: "Installing to your Applications folder. EnviousWispr will reopen automatically.",
+      title: Self.progressTitle,
+      message: Self.progressMessage,
       showsSpinner: true
     ) { EmptyView() }
     let panel = makeCardPanel(card)
@@ -198,15 +235,18 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
             NSWorkspace.shared.activateFileViewerSelecting([revealURL])
             NSApp.stopModal()
           } label: {
-            Text("Show in Finder")
-              .font(.system(size: 17, weight: .semibold))
-              .frame(maxWidth: .infinity).padding(.vertical, 4)
+            Text(
+              "Show in Finder",
+              comment: "Move to Applications result: opens Finder at the moved app."
+            )
+            .font(.system(size: 17, weight: .semibold))
+            .frame(maxWidth: .infinity).padding(.vertical, 4)
           }
           .buttonStyle(.borderedProminent).controlSize(.large).tint(Self.accent)
           Button {
             NSApp.stopModal()
           } label: {
-            Text("OK")
+            Text("OK", comment: "Button that closes a message.")
               .font(.system(size: 17, weight: .medium))
               .frame(maxWidth: .infinity).padding(.vertical, 4)
           }
@@ -215,7 +255,7 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
           Button {
             NSApp.stopModal()
           } label: {
-            Text("OK")
+            Text("OK", comment: "Button that closes a message.")
               .font(.system(size: 17, weight: .semibold))
               .frame(maxWidth: .infinity).padding(.vertical, 4)
           }
@@ -239,26 +279,62 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
     // Message B: a verified copy IS at the destination; only handoff failed.
     if case .installedNotConfirmed = presentation {
       return (
-        "EnviousWispr is now in your Applications folder.",
-        "You can quit this copy and use the one in Applications."
+        String(
+          localized: "EnviousWispr is now in your Applications folder.",
+          comment:
+            "Move to Applications result, the app was copied but did not reopen: the heading. EnviousWispr is the app name; keep it."
+        ),
+        String(
+          localized:
+            "You can quit this copy and use the one in Applications.",
+          comment:
+            "Move to Applications result, the app was copied but did not reopen: the explanation."
+        )
       )
     }
     // Message A, with the three surviving precondition overrides.
     switch presentation.failure {
     case .diskFull:
       return (
-        "Not enough space to move EnviousWispr.",
-        "Nothing was changed. Free up some space, then reopen EnviousWispr to try again."
+        String(
+          localized: "Not enough space to move EnviousWispr.",
+          comment:
+            "Move to Applications result, the disk is full: the heading. EnviousWispr is the app name; keep it."
+        ),
+        String(
+          localized:
+            "Nothing was changed. Free up some space, then reopen EnviousWispr to try again.",
+          comment:
+            "Move to Applications result, the disk is full: the explanation. EnviousWispr is the app name; keep it."
+        )
       )
     case .destinationRunning:
       return (
-        "Another copy of EnviousWispr is already open.",
-        "Nothing was changed. Quit the other copy, then reopen EnviousWispr to finish moving it."
+        String(
+          localized: "Another copy of EnviousWispr is already open.",
+          comment:
+            "Move to Applications result, the copy in Applications is running: the heading. EnviousWispr is the app name; keep it."
+        ),
+        String(
+          localized:
+            "Nothing was changed. Quit the other copy, then reopen EnviousWispr to finish moving it.",
+          comment:
+            "Move to Applications result, the copy in Applications is running: the explanation. EnviousWispr is the app name; keep it."
+        )
       )
     case .destinationConflict:
       return (
-        "A different app is already in that Applications spot.",
-        "Nothing was changed. EnviousWispr is still working. You can move it yourself in Finder anytime."
+        String(
+          localized: "A different app is already in that Applications spot.",
+          comment:
+            "Move to Applications result, another app has the name: the heading."
+        ),
+        String(
+          localized:
+            "Nothing was changed. EnviousWispr is still working. You can move it yourself in Finder anytime.",
+          comment:
+            "Move to Applications result, another app has the name: the explanation. EnviousWispr is the app name; keep it."
+        )
       )
     // Generic Message A. Deliberately does NOT promise a manual drag always
     // works: this arm also covers a full disk and a non-writable Applications
@@ -269,8 +345,17 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
       .ackUnhealthyOther, .ackPathMismatch, .ackVersionMismatch, .ackMalformed, .ackTimeout,
       .relaunchRejected, .unknown:
       return (
-        "We couldn't move EnviousWispr automatically.",
-        "Drag EnviousWispr to your Applications folder in Finder. EnviousWispr keeps working in the meantime."
+        String(
+          localized: "We couldn't move EnviousWispr automatically.",
+          comment:
+            "Move to Applications result, any other failure: the heading. EnviousWispr is the app name; keep it."
+        ),
+        String(
+          localized:
+            "Drag EnviousWispr to your Applications folder in Finder. EnviousWispr keeps working in the meantime.",
+          comment:
+            "Move to Applications result, any other failure: the explanation. EnviousWispr is the app name; keep it."
+        )
       )
     }
   }

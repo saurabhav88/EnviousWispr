@@ -97,8 +97,14 @@ enum SnippetsExportAction {
   /// case: `run` returns before opening a panel when there is nothing to write.
   static func summary(count: Int) -> String {
     count == 1
-      ? "Exporting 1 snippet and your keyword."
-      : "Exporting \(count) snippets and your keyword."
+      ? String(
+        localized: "Exporting 1 snippet and your keyword.",
+        comment: "Snippets export: the line inside the save dialog, one snippet.")
+      : String(
+        localized: "Exporting \(String(count)) snippets and your keyword.",
+        comment:
+          "Snippets export: the line inside the save dialog. %@ is the number of snippets, never 1."
+      )
   }
 
   /// One sentence per outcome, for the screen. `.cancelled` and `.written` say nothing — a

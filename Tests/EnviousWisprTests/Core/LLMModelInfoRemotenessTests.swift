@@ -115,4 +115,41 @@ struct LLMModelInfoRemotenessTests {
     let json = try #require(String(data: data, encoding: .utf8))
     #expect(json.contains("isRemote"))
   }
+
+  // MARK: - #3142: Apple Intelligence status
+
+  /// A row cached before the status existed still decodes, and reads as a model name.
+  @Test("a row without an Apple Intelligence status decodes, and its label is its name")
+  func legacyRowWithoutStatusDecodes() throws {
+    let legacy = encoded(
+      #"{"id":"apple-intelligence","displayName":"Apple Intelligence (On-Device)","provider":"appleIntelligence","isAvailable":true,"isRemote":false}"#
+    )
+    let row = try JSONDecoder().decode(LLMModelInfo.self, from: legacy)
+    #expect(row.appleIntelligenceStatus == nil)
+    #expect(row.localizedDisplayName == "Apple Intelligence (On-Device)")
+  }
+
+  @Test("the status round-trips and every status has its English label")
+  func statusRoundTripsAndLabels() throws {
+    let english: [AppleIntelligenceModelStatus: String] = [
+      .onDevice: "Apple Intelligence (On-Device)",
+      .deviceNotSupported: "Apple Intelligence (Device Not Supported)",
+      .notEnabled: "Apple Intelligence (Not Enabled in Settings)",
+      .modelNotReady: "Apple Intelligence (Model Not Ready)",
+      .unavailable: "Apple Intelligence (Unavailable)",
+      .requiresMacOS26: "Apple Intelligence (Requires macOS 26+)",
+    ]
+    #expect(Set(english.keys) == Set(AppleIntelligenceModelStatus.allCases))
+    for status in AppleIntelligenceModelStatus.allCases {
+      #expect(status.displayName == english[status], "\(status)")
+      let row = LLMModelInfo(
+        id: "apple-intelligence", displayName: "stored", provider: .appleIntelligence,
+        isAvailable: false, isRemote: false, appleIntelligenceStatus: status)
+      let decoded = try JSONDecoder().decode(
+        LLMModelInfo.self, from: try JSONEncoder().encode(row))
+      #expect(decoded.appleIntelligenceStatus == status)
+      #expect(decoded.localizedDisplayName == english[status])
+      #expect(decoded.displayName == "stored", "the stored name is data and is not rewritten")
+    }
+  }
 }

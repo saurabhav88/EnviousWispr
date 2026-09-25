@@ -163,6 +163,36 @@ extension String {
   }
 }
 
+/// Why the on-device Apple Intelligence model cannot be used right now (#1080, #3142).
+///
+/// One case today, the only one the connector produces. The English sentence stays fixed for
+/// logs (`diagnosticDescription`, read through `LLMError.errorDescription`); the screen reads
+/// `displayMessage`, which is translated.
+public enum ModelNotReadyReason: Sendable, Equatable {
+  /// Still downloading, or restricted by the organization.
+  case downloadingOrRestricted
+
+  public var diagnosticDescription: String {
+    switch self {
+    case .downloadingOrRestricted:
+      return
+        "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
+    }
+  }
+
+  public var displayMessage: String {
+    switch self {
+    case .downloadingOrRestricted:
+      return String(
+        localized:
+          "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider.",
+        comment:
+          "AI polish error: Apple Intelligence's on-device model can't be used yet. Shown after 'AI polish failed:'."
+      )
+    }
+  }
+}
+
 /// Errors that can occur during LLM operations.
 public enum LLMError: LocalizedError, Sendable, Equatable {
   case invalidAPIKey
@@ -179,8 +209,9 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   /// ineligible hardware, not compiled in). `modelNotReady` is TRANSIENT and may
   /// resolve on its own, so the live dictation path keeps surfacing it (the user
   /// learns why polish is temporarily unavailable) instead of silently degrading
-  /// to raw text the way the permanent cases do. (#1080)
-  case modelNotReady(String)
+  /// to raw text the way the permanent cases do. (#1080) The reason is typed (#3142) so the
+  /// screen shows it translated while logs keep the fixed English.
+  case modelNotReady(ModelNotReadyReason)
   /// Input language is not supported by the selected provider. Distinct from
   /// `frameworkUnavailable` (global provider state): this fires per-request
   /// when a specific detected language is outside the provider's supported
@@ -235,7 +266,7 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     case .frameworkUnavailable(let reason):
       return reason
     case .modelNotReady(let reason):
-      return reason
+      return reason.diagnosticDescription
     case .unsupportedInputLanguage(let code):
       return
         "Apple Intelligence does not support the input language '\(code)' for on-device polishing."
@@ -260,6 +291,31 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     }
   }
 
+  /// The sentence a screen shows for this error, in the app's language (#3142), or nil when the
+  /// error has no translated display copy. `errorDescription` stays fixed English because logs
+  /// read it (TextProcessingRunner's failure reason, for one). `.emptyResponse` reaches the Apple Intelligence polish
+  /// notice and `.requestFailed` the Settings key check (its detail is provider or system text
+  /// and passes through as is).
+  /// `.modelNotReady` reaches the Apple Intelligence notice too, through its typed reason.
+  public var localizedDisplayMessage: String? {
+    switch self {
+    case .emptyResponse:
+      return String(
+        localized: "LLM returned an empty response.",
+        comment: "AI polish error: the model returned no text. Shown after 'AI polish failed:'.")
+    case .requestFailed(let detail):
+      return String(
+        localized: "LLM request failed: \(detail)",
+        comment:
+          "AI Polish settings: checking the API key failed. %@ is technical detail from the provider or the system, such as HTTP 500; keep it as is."
+      )
+    case .modelNotReady(let reason):
+      return reason.displayMessage
+    default:
+      return nil
+    }
+  }
+
   public static func == (lhs: LLMError, rhs: LLMError) -> Bool {
     switch (lhs, rhs) {
     case (.invalidAPIKey, .invalidAPIKey),
@@ -270,8 +326,9 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     case (.requestFailed(let a), .requestFailed(let b)),
       (.modelNotFound(let a), .modelNotFound(let b)),
       (.frameworkUnavailable(let a), .frameworkUnavailable(let b)),
-      (.modelNotReady(let a), .modelNotReady(let b)),
       (.unsupportedInputLanguage(let a), .unsupportedInputLanguage(let b)):
+      return a == b
+    case (.modelNotReady(let a), .modelNotReady(let b)):
       return a == b
     case (.outputLanguageDrift(let le, let la), .outputLanguageDrift(let re, let ra)):
       return le == re && la == ra

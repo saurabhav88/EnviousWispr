@@ -70,12 +70,14 @@ final class BenchmarkSuite {
   /// Ensure model is loaded, returning false (and updating progress) if loading fails.
   private func ensureModelLoaded(using activeEngine: ActiveEngineOperation) async -> Bool {
     guard !(await activeEngine.isLoaded()) else { return true }
-    progress = "Loading model..."
+    progress = String(
+      localized: "benchmark.progress.loadingModel", defaultValue: "Loading model...",
+      comment: "Settings > Diagnostics, speed test: loading the speech engine before the test.")
     do {
       try await activeEngine.load()
       return true
     } catch {
-      let message = "Model load failed: \(error.localizedDescription)"
+      let message = Self.modelLoadFailure(error)
       progress = message
       lastFailure = message
       return false
@@ -101,8 +103,15 @@ final class BenchmarkSuite {
     case .refused(let holder):
       lastFailure =
         holder == .fileImport
-        ? "A file is being transcribed. Try again when it finishes."
-        : "The engine is busy. Try again in a moment."
+        ? String(
+          localized: "A file is being transcribed. Try again when it finishes.",
+          comment:
+            "Settings > Diagnostics, speed test: refused because Transcribe a File is using the engine."
+        )
+        : String(
+          localized: "The engine is busy. Try again in a moment.",
+          comment:
+            "Settings > Diagnostics, speed test: refused because the speech engine is in use.")
       return
     }
     defer { engineLease.release(token) }
@@ -131,7 +140,11 @@ final class BenchmarkSuite {
       let durations: [TimeInterval] = [5, 15, 30]
 
       for duration in durations {
-        progress = "Testing \(Int(duration))s audio..."
+        progress = String(
+          localized: "Testing \(Int(duration))s audio...",
+          comment:
+            "Settings > Diagnostics, speed test: progress. %lld is a length in seconds, such as 15."
+        )
         let samples = generateTestAudio(duration: duration)
 
         let start = CFAbsoluteTimeGetCurrent()
@@ -202,12 +215,18 @@ final class BenchmarkSuite {
         .deletingLastPathComponent()  // build/
       let jfkURL = projectRoot.appendingPathComponent("Tests/Resources/jfk.wav")
       if FileManager.default.fileExists(atPath: jfkURL.path) {
-        progress = "Loading test audio..."
+        progress = String(
+          localized: "Loading test audio...",
+          comment: "Settings > Diagnostics, speed test: progress.")
         do {
           testSamples = try loadAudioFile(url: jfkURL)
           testAudioDuration = Double(testSamples.count) / AudioConstants.sampleRate
         } catch {
-          progress = "Failed to load test audio: \(error.localizedDescription)"
+          progress = String(
+            localized: "Failed to load test audio: \(error.localizedDescription)",
+            comment:
+              "Settings > Diagnostics, speed test: the test recording could not be read. %@ is the system's description of the error."
+          )
           loadFailed = true
           return
         }
@@ -217,7 +236,9 @@ final class BenchmarkSuite {
       }
 
       // Step 1: Batch ASR
-      progress = "Running batch ASR..."
+      progress = String(
+        localized: "Running batch ASR...",
+        comment: "Settings > Diagnostics, speed test: progress. ASR means speech recognition.")
       let batchStart = CFAbsoluteTimeGetCurrent()
       let batchResult = try? await activeEngine.transcribe(testSamples, .default)
       batchTime = CFAbsoluteTimeGetCurrent() - batchStart
@@ -242,7 +263,9 @@ final class BenchmarkSuite {
 
     let supportsStreaming = await asrManager.activeBackendSupportsStreaming
     if supportsStreaming {
-      progress = "Running streaming ASR..."
+      progress = String(
+        localized: "Running streaming ASR...",
+        comment: "Settings > Diagnostics, speed test: progress. ASR means speech recognition.")
       // #1707 Phase 3 (§3.2, row 27) / #1741 Chunk 5: hold a mutation claim
       // for the whole start/feed/finalize sequence below. Releasing the
       // claim is NOT simply "on completion or abort" — `finalizeStreaming()`
@@ -322,7 +345,7 @@ final class BenchmarkSuite {
         }
       }
       if case .refused = streamingOutcome {
-        progress = "Pipeline benchmark complete"
+        progress = Self.pipelineComplete
         isRunning = false
         pipelineResult = PipelineBenchmarkResult(
           batchASRTime: batchTime, streamingFinalizeTime: nil, werDelta: nil,
@@ -338,8 +361,26 @@ final class BenchmarkSuite {
       audioDuration: testAudioDuration
     )
 
-    progress = "Pipeline benchmark complete"
+    progress = Self.pipelineComplete
     isRunning = false
+  }
+
+  /// #3142: the failure line after a model load fails. The engine's own not-ready error has
+  /// translated display copy; any other error keeps its description.
+  static func modelLoadFailure(_ error: any Error) -> String {
+    let detail =
+      (error as? ASREngineNotReadyAfterLoadError)?.displayMessage ?? error.localizedDescription
+    return String(
+      localized: "benchmark.failure.modelLoad", defaultValue: "Model load failed: \(detail)",
+      comment:
+        "Settings > Diagnostics, speed test: loading the speech engine failed. %@ is the reason, one sentence, already translated or from the system."
+    )
+  }
+
+  static var pipelineComplete: String {
+    String(
+      localized: "Pipeline benchmark complete",
+      comment: "Settings > Diagnostics, speed test: the full-pipeline test finished.")
   }
 
   // MARK: - Audio Helpers

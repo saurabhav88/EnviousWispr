@@ -145,7 +145,8 @@ import Testing
         == "Parakeet isn't downloaded yet. Open Settings to download it.")
     #expect(DictationNarrator.copy(for: .polishFailed) == "Polish failed. Using raw text.")
     #expect(
-      DictationNarrator.copy(for: .historySaveFailed(reason: "disk is full"))
+      DictationNarrator.copy(
+        for: .historySaveFailed(reason: HistorySaveErrorClass.fullDisk.userMessage))
         == "Couldn't save to history: disk is full")
     #expect(
       DictationNarrator.copy(for: .salvagedBeginning)

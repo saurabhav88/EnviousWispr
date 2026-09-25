@@ -473,8 +473,11 @@ struct HotkeyRecorderView: View {
       // Use onTapGesture on a plain view to avoid Button stealing key events
       HStack(spacing: 4) {
         if isRecording {
-          Text("Press keys...")
-            .foregroundStyle(colors.placeholder)
+          Text(
+            "Press keys...",
+            comment: "Keybind field: shown while it waits for the user to press the keys."
+          )
+          .foregroundStyle(colors.placeholder)
         } else {
           Text(KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
             .foregroundStyle(colors.fieldText)
@@ -505,8 +508,15 @@ struct HotkeyRecorderView: View {
             .foregroundStyle(colors.resetIcon)
         }
         .buttonStyle(.plain)
-        .help("Reset to default")
-        .accessibilityLabel("Reset keybind to default")
+        .help(
+          Text(
+            "Reset to default",
+            comment: "Keybind field: puts this keybind back to its original keys.")
+        )
+        .accessibilityLabel(
+          Text(
+            "Reset keybind to default",
+            comment: "Keybind field, VoiceOver: puts this keybind back to its original keys."))
       }
     }
   }
@@ -523,16 +533,23 @@ struct HotkeyRecorderView: View {
         Spacer(minLength: 0)
         VStack(spacing: 2) {
           if isRecording {
-            Text("Press keys...")
-              .font(.system(size: 17, weight: .semibold))
-              .foregroundStyle(.stAccent)
+            Text(
+              "Press keys...",
+              comment: "Keybind field: shown while it waits for the user to press the keys."
+            )
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(.stAccent)
           } else {
             Text(KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
               .font(.system(size: 17, weight: .semibold))
               .foregroundStyle(.stTextPrimary)
-            Text("Click to change")
-              .font(.stHelper)
-              .foregroundStyle(.stTextTertiary)
+            Text(
+              "Click to change",
+              comment:
+                "Keybind field: the line under the keys, inviting a click to record new ones."
+            )
+            .font(.stHelper)
+            .foregroundStyle(.stTextTertiary)
           }
         }
         Spacer(minLength: 0)
@@ -555,15 +572,22 @@ struct HotkeyRecorderView: View {
           .foregroundStyle(.red)
           .multilineTextAlignment(.trailing)
           .fixedSize(horizontal: false, vertical: true)
-          .accessibilityLabel("Not saved. \(Self.message(for: refusal))")
+          .accessibilityLabel(Self.spokenRefusal(for: refusal))
       }
 
       if !isDefault {
-        Button("Reset to default", action: resetToDefault)
-          .buttonStyle(.plain)
-          .font(.stHelper)
-          .foregroundStyle(.stAccent)
-          .accessibilityLabel("Reset keybind to default")
+        Button(action: resetToDefault) {
+          Text(
+            "Reset to default",
+            comment: "Keybind field: puts this keybind back to its original keys.")
+        }
+        .buttonStyle(.plain)
+        .font(.stHelper)
+        .foregroundStyle(.stAccent)
+        .accessibilityLabel(
+          Text(
+            "Reset keybind to default",
+            comment: "Keybind field, VoiceOver: puts this keybind back to its original keys."))
       }
     }
   }
@@ -669,26 +693,102 @@ struct HotkeyRecorderView: View {
     refusal = applyDefault()
   }
 
-  /// The sentence under the field. Names the other shortcut by the title its own row shows.
+  /// The sentence under the field, naming the other keybind (#3142).
+  ///
+  /// One whole sentence per keybind and refusal rather than a keybind name spliced into a frame,
+  /// because the name's grammar changes with the sentence around it in other languages. Same shape
+  /// as `KeybindConflictCopy`.
   static func message(for refusal: ShortcutRefusal) -> String {
     switch refusal {
     case .systemShortcut:
-      return "That is a standard Mac shortcut. Choose another."
+      return String(
+        localized: "That is a standard Mac shortcut. Choose another.",
+        comment:
+          "Keybind field: the keys chosen are a standard Mac shortcut, so they were not saved.")
     case .sameAs(let role):
-      return "Already used by \(title(of: role)). Choose another."
+      return alreadyUsed(by: role)
     case .modifierConflict(let role):
-      return "Clashes with \(title(of: role)): one needs a key the other uses on its own."
+      return clashes(with: role)
     }
   }
 
-  /// A role as its Keybinds row names it. A switch, so a new role must be given a name here.
-  static func title(of role: ShortcutRole) -> String {
+  /// What VoiceOver says for a refusal: the visible sentence, prefixed so it is heard as a failure.
+  static func spokenRefusal(for refusal: ShortcutRefusal) -> String {
+    String(
+      localized: "keybind.refusal.accessibility",
+      defaultValue: "Not saved. \(message(for: refusal))",
+      comment:
+        "Keybind field, VoiceOver: a refusal. %@ is the reason, one sentence, already translated.")
+  }
+
+  private static func alreadyUsed(by role: ShortcutRole) -> String {
     switch role {
-    case .record: return "the recording keybind"
-    case .cancel: return "the cancel keybind"
-    case .quickAdd: return "the add-a-word keybind"
-    case .pasteLast: return "Paste last dictation"
-    case .copyLast: return "Copy last dictation"
+    case .record:
+      return String(
+        localized: "Already used by the recording keybind. Choose another.",
+        comment:
+          "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
+      )
+    case .cancel:
+      return String(
+        localized: "Already used by the cancel keybind. Choose another.",
+        comment:
+          "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
+      )
+    case .quickAdd:
+      return String(
+        localized: "Already used by the add-a-word keybind. Choose another.",
+        comment:
+          "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
+      )
+    case .pasteLast:
+      return String(
+        localized: "Already used by Paste last dictation. Choose another.",
+        comment:
+          "Keybind field: the keys chosen already belong to another keybind, so they were not saved. Paste last dictation is the name of a keybind."
+      )
+    case .copyLast:
+      return String(
+        localized: "Already used by Copy last dictation. Choose another.",
+        comment:
+          "Keybind field: the keys chosen already belong to another keybind, so they were not saved. Copy last dictation is the name of a keybind."
+      )
+    }
+  }
+
+  private static func clashes(with role: ShortcutRole) -> String {
+    switch role {
+    case .record:
+      return String(
+        localized: "Clashes with the recording keybind: one needs a key the other uses on its own.",
+        comment:
+          "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
+      )
+    case .cancel:
+      return String(
+        localized: "Clashes with the cancel keybind: one needs a key the other uses on its own.",
+        comment:
+          "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
+      )
+    case .quickAdd:
+      return String(
+        localized:
+          "Clashes with the add-a-word keybind: one needs a key the other uses on its own.",
+        comment:
+          "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
+      )
+    case .pasteLast:
+      return String(
+        localized: "Clashes with Paste last dictation: one needs a key the other uses on its own.",
+        comment:
+          "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved. Paste last dictation is the name of a keybind."
+      )
+    case .copyLast:
+      return String(
+        localized: "Clashes with Copy last dictation: one needs a key the other uses on its own.",
+        comment:
+          "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved. Copy last dictation is the name of a keybind."
+      )
     }
   }
 }
@@ -734,9 +834,17 @@ private struct KeyCaptureBehavior: ViewModifier {
       .accessibilityAddTraits(.isButton)
       .accessibilityLabel(label)
       .accessibilityValue(
-        isRecording ? "Recording, press a key combination" : valueDescription
+        isRecording
+          ? String(
+            localized: "Recording, press a key combination",
+            comment: "VoiceOver value of the keybind field while it waits for a key combination.")
+          : valueDescription
       )
-      .accessibilityHint("Activates recording. Then press the key combination you want.")
+      .accessibilityHint(
+        Text(
+          "Activates recording. Then press the key combination you want.",
+          comment: "VoiceOver hint on a keybind field.")
+      )
       .accessibilityAction { onToggle() }
   }
 }

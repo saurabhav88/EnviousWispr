@@ -28,7 +28,15 @@ public enum AppConstants {
   /// Tolerated forward clock skew before a pending stamp is treated as corrupt
   /// rather than fresh (#2087).
   public static let pendingClockSkewTolerance: TimeInterval = 60
-  public static let onboardingWindowTitle = "Setup"
+  /// The Setup window's title, translated. Never compared: the window is found by
+  /// `onboardingWindowID` (#3142).
+  public static var onboardingWindowTitle: String {
+    String(localized: "Setup", comment: "Title of the first-run setup window.")
+  }
+  /// The onboarding scene's id. SwiftUI sets it as the window's `identifier` (measured
+  /// 2026-09-25, `Window(_:id:)` on macOS 27), so the window is found by it, never by its
+  /// title, which becomes translatable (#3142).
+  public static let onboardingWindowID = "onboarding"
 
   /// The directory EnviousWispr writes into. Sole owner: `StorageRoot`.
   ///

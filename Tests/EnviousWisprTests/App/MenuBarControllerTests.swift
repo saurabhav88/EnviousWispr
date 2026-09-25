@@ -149,8 +149,8 @@ struct MenuBarControllerTests {
     #expect(menu.items[7].isSeparatorItem)
     #expect(menu.items[10].isSeparatorItem)
     // Settings carries the comma key-equivalent; Quit carries "q".
-    #expect(item(menu, "Settings...")?.keyEquivalent == ",")
-    #expect(item(menu, "Quit \(AppConstants.appName)")?.keyEquivalent == "q")
+    #expect(item(menu, id: MenuBarItemID.settings)?.keyEquivalent == ",")
+    #expect(item(menu, id: MenuBarItemID.quit)?.keyEquivalent == "q")
     // Every actionable item targets the controller. Submenu parents (e.g.
     // Appearance) are excluded: AppKit assigns them a system `submenuAction:`
     // whose target is the submenu itself; their children's targeting is covered
@@ -171,22 +171,16 @@ struct MenuBarControllerTests {
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, appearancePreference: current))
 
-    let appearance = item(menu, "Appearance")
+    let appearance = item(menu, id: MenuBarItemID.appearance)
     #expect(appearance != nil, "Appearance item missing")
     let submenu = appearance?.submenu
     #expect(submenu?.items.map(\.title) == ["System", "Light", "Dark"])
 
     // Exactly the current preference is checked; the other two are off.
-    let expectedOn: String = {
-      switch current {
-      case .system: return "System"
-      case .light: return "Light"
-      case .dark: return "Dark"
-      }
-    }()
     for sub in submenu?.items ?? [] {
       #expect(
-        sub.state == (sub.title == expectedOn ? .on : .off),
+        sub.state
+          == ((sub.representedObject as? String) == current.rawValue ? .on : .off),
         "\(sub.title) checkmark wrong for current=\(current)")
       #expect(sub.representedObject as? String != nil, "\(sub.title) must carry its rawValue")
       #expect(sub.target as AnyObject? === controller, "\(sub.title) should target the controller")
@@ -224,20 +218,22 @@ struct MenuBarControllerTests {
     let empty = NSMenu()
     controller.renderMenu(
       into: empty, state: fixture(pipelineState: .idle, quickAddFallbackEnabled: false))
-    let inert = itemPrefixed(empty, "Add Selected Word")
+    let inert = item(empty, id: MenuBarItemID.quickAdd)
+    #expect(inert?.title.hasPrefix("Add Selected Word") == true)
     #expect(inert?.isEnabled == false, "with no fallback to run, an empty read IS the answer")
 
     let offered = NSMenu()
     controller.renderMenu(
       into: offered, state: fixture(pipelineState: .idle, quickAddFallbackEnabled: true))
     #expect(
-      itemPrefixed(offered, "Add Selected Word")?.isEnabled == true,
+      item(offered, id: MenuBarItemID.quickAdd)?.isEnabled == true,
       "and where it can run, the menu cannot know, so the click is what finds out")
 
     let ready = NSMenu()
     controller.renderMenu(
       into: ready, state: fixture(pipelineState: .idle, quickAdd: .ready("clawwed")))
-    let live = itemPrefixed(ready, "Add \u{201C}clawwed\u{201D}")
+    let live = item(ready, id: MenuBarItemID.quickAdd)
+    #expect(live?.title.hasPrefix("Add \u{201C}clawwed\u{201D}") == true)
     #expect(live?.isEnabled == true)
     #expect(live?.target as AnyObject? === controller)
     // **No key equivalent at all.** A global hotkey is a physical key code; a key equivalent is a
@@ -260,14 +256,16 @@ struct MenuBarControllerTests {
     let menu = NSMenu()
     controller.renderMenu(into: menu, state: fixture(pipelineState: .idle))
 
-    let quickAddIndex = menu.items.firstIndex { $0.title.hasPrefix("Add Selected Word") }
-    let pasteIndex = menu.items.firstIndex { $0.title.hasPrefix("Paste Last Dictation") }
+    let quickAddIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.quickAdd }
+    let pasteIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.pasteLast }
     #expect(quickAddIndex != nil && pasteIndex == quickAddIndex.map { $0 + 1 })
     let paste = pasteIndex.map { menu.items[$0] }
+    #expect(paste?.title == "Paste Last Dictation")
     #expect(paste?.isEnabled == false, "History has nothing to reuse")
     #expect(paste?.keyEquivalent == "" && paste?.keyEquivalentModifierMask == [])
     if let pasteIndex, menu.items.indices.contains(pasteIndex + 1) {
-      #expect(menu.items[pasteIndex + 1].indentationLevel == 0, "no preview row without a dictation")
+      #expect(
+        menu.items[pasteIndex + 1].indentationLevel == 0, "no preview row without a dictation")
     }
   }
 
@@ -286,7 +284,7 @@ struct MenuBarControllerTests {
     controller.renderMenu(into: menu, state: state)
 
     let pasteIndex = try #require(
-      menu.items.firstIndex { $0.title.hasPrefix("Paste Last Dictation") })
+      menu.items.firstIndex { $0.identifier == MenuBarItemID.pasteLast })
     let paste = menu.items[pasteIndex]
     #expect(paste.title == "Paste Last Dictation  \u{2303}\u{2318} V")
     #expect(paste.isEnabled)
@@ -302,7 +300,8 @@ struct MenuBarControllerTests {
     #expect(LastDictationMenuState.preview(of: "one\ntwo") == "one")
     #expect(LastDictationMenuState.preview(of: "one\r\ntwo") == "one")
     #expect(
-      LastDictationMenuState.preview(of: "\n\nopens with a newline\nsecond") == "opens with a newline",
+      LastDictationMenuState.preview(of: "\n\nopens with a newline\nsecond")
+        == "opens with a newline",
       "a leading blank line previews the words, not an empty row")
     let exactly30 = String(repeating: "a", count: 30)
     #expect(LastDictationMenuState.preview(of: exactly30) == exactly30)
@@ -321,7 +320,7 @@ struct MenuBarControllerTests {
     state.lastDictation = LastDictationMenuState(rowID: rowID, preview: "hello", target: target)
     controller.renderMenu(into: menu, state: state)
 
-    perform(itemPrefixed(menu, "Paste Last Dictation"))
+    perform(item(menu, id: MenuBarItemID.pasteLast))
     #expect(
       spy.fired == ["pasteLastDictation:\(rowID.uuidString):\(target.processIdentifier)"])
   }
@@ -347,8 +346,9 @@ struct MenuBarControllerTests {
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, quickAdd: .ready("clawwed\nmachine")))
 
-    let row = itemPrefixed(menu, "Add \u{201C}clawwed machine\u{201D}")
-    #expect(row != nil, "the TITLE is collapsed")
+    let row = item(menu, id: MenuBarItemID.quickAdd)
+    #expect(
+      row?.title.hasPrefix("Add \u{201C}clawwed machine\u{201D}") == true, "the TITLE is collapsed")
     perform(row)
     #expect(
       spy.fired == ["addSelectedWord:clawwed\nmachine", "addSelectedWord:pid:501"],
@@ -366,7 +366,7 @@ struct MenuBarControllerTests {
       state: fixture(
         pipelineState: .idle, quickAdd: .ready("clawwed"), quickAddShortcut: "\u{2318}\u{21E7} J"))
 
-    let row = itemPrefixed(menu, "Add \u{201C}clawwed\u{201D}")
+    let row = item(menu, id: MenuBarItemID.quickAdd)
     #expect(row?.title == "Add \u{201C}clawwed\u{201D}  \u{2318}\u{21E7} J")
     #expect(row?.keyEquivalent == "", "never a key equivalent, whatever the binding")
   }
@@ -381,7 +381,9 @@ struct MenuBarControllerTests {
       into: menu,
       state: fixture(pipelineState: .idle, quickAdd: .ready("clawwed"), quickAddShortcut: nil))
 
-    #expect(item(menu, "Add \u{201C}clawwed\u{201D}") != nil, "the title carries no trailing hint")
+    #expect(
+      item(menu, id: MenuBarItemID.quickAdd)?.title == "Add \u{201C}clawwed\u{201D}",
+      "the title carries no trailing hint")
   }
 
   /// Every case is paired with its opposite, or a function that returned nil for everything would
@@ -403,6 +405,9 @@ struct MenuBarControllerTests {
   func onlyKnownChordsAreAdvertised() {
     #expect(Self.label(13, [.control, .option]) == "\u{2303}\u{2325} W")
     #expect(Self.label(999, [.command]) == nil)
+    // A modifier-only chord is named by its own table and is still advertised (#3142: the check
+    // is the typed key lookup, not the text of the `Key <n>` fallback).
+    #expect(Self.label(61, []) == "Right \u{2325}")
   }
 
   /// **A chord another role owns must not be advertised here, and this is worse than a dead hint.**
@@ -482,7 +487,9 @@ struct MenuBarControllerTests {
 
   /// #3106: the ownership rule now asks EVERY higher role in both prefix directions. Two cases the
   /// old rule advertised and the new one withholds, each with its paired accepted case.
-  @Test("A bare Quick Add an armed Cancel chord needs, and an Fn chord a bare Globe Record takes, are not advertised")
+  @Test(
+    "A bare Quick Add an armed Cancel chord needs, and an Fn chord a bare Globe Record takes, are not advertised"
+  )
   func newlyRefusedPrefixCases() {
     // Bare Left Command Quick Add; Cancel is Command-Period. During a recording the Command press on
     // the way to cancelling would open the Quick Add panel. Old answer: advertised.
@@ -551,10 +558,10 @@ struct MenuBarControllerTests {
     let menu = NSMenu()
     controller.renderMenu(into: menu, state: fixture(pipelineState: .recording))
 
-    #expect(item(menu, "Stop Recording") != nil)
-    #expect(item(menu, "Start Recording") == nil)
+    let record = item(menu, id: MenuBarItemID.record)
+    #expect(record?.title == "Stop Recording")
     // Record item is enabled while recording (so the user can stop).
-    #expect(item(menu, "Stop Recording")?.isEnabled == true)
+    #expect(record?.isEnabled == true)
   }
 
   @Test("renderMenu: record item disabled mid-pipeline (transcribing)")
@@ -563,7 +570,9 @@ struct MenuBarControllerTests {
     let menu = NSMenu()
     controller.renderMenu(into: menu, state: fixture(pipelineState: .transcribing))
     // isActive && !isRecording → record item disabled.
-    #expect(item(menu, "Start Recording")?.isEnabled == false)
+    let record = item(menu, id: MenuBarItemID.record)
+    #expect(record?.title == "Start Recording")
+    #expect(record?.isEnabled == false)
   }
 
   @Test("renderMenu (c): onboarding incomplete → Setup Required item on top")
@@ -585,8 +594,8 @@ struct MenuBarControllerTests {
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, showAccessibilityWarning: true))
 
-    let warning = item(menu, "Paste disabled — Accessibility required")
-    #expect(warning != nil)
+    let warning = item(menu, id: MenuBarItemID.accessibilityWarning)
+    #expect(warning?.title == "Paste disabled — Accessibility required")
     #expect(warning?.target as AnyObject? === controller)
   }
 
@@ -598,8 +607,8 @@ struct MenuBarControllerTests {
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, showMicrophoneWarning: true))
 
-    let warning = item(menu, "Dictation disabled — Microphone access required")
-    #expect(warning != nil)
+    let warning = item(menu, id: MenuBarItemID.microphoneWarning)
+    #expect(warning?.title == "Dictation disabled — Microphone access required")
     #expect(warning?.target as AnyObject? === controller)
   }
 
@@ -613,8 +622,8 @@ struct MenuBarControllerTests {
       state: fixture(
         pipelineState: .idle, showAccessibilityWarning: true, showMicrophoneWarning: true))
 
-    #expect(item(menu, "Paste disabled — Accessibility required") != nil)
-    #expect(item(menu, "Dictation disabled — Microphone access required") != nil)
+    #expect(item(menu, id: MenuBarItemID.accessibilityWarning) != nil)
+    #expect(item(menu, id: MenuBarItemID.microphoneWarning) != nil)
   }
 
   @Test("renderMenu (e): hasUpdater → Check for Updates targets SparkleUpdateController")
@@ -623,7 +632,8 @@ struct MenuBarControllerTests {
     let menu = NSMenu()
     controller.renderMenu(into: menu, state: fixture(pipelineState: .idle, hasUpdater: true))
 
-    let updateItem = item(menu, "Check for Updates…")
+    let updateItem = item(menu, id: MenuBarItemID.checkForUpdates)
+    #expect(updateItem?.title == "Check for Updates…")
     #expect(updateItem != nil, "hasUpdater=true must render the Check for Updates item")
     // PR-B.1 wiring preserved: the item targets the Sparkle controller, NOT
     // the MenuBarController.
@@ -644,8 +654,10 @@ struct MenuBarControllerTests {
         pipelineState: .idle, updateAvailable: true, updateDisplayVersion: "2.1.4",
         installEnabled: true))
 
-    let installItem = item(menu, "Update ready: Install v2.1.4")
-    #expect(installItem != nil, "Enabled update item must show the version")
+    let installItem = item(menu, id: MenuBarItemID.installUpdate)
+    #expect(
+      installItem?.title == "Update ready: Install v2.1.4",
+      "Enabled update item must show the version")
     #expect(installItem?.isEnabled == true)
     #expect(installItem?.target as AnyObject? === controller)
   }
@@ -660,9 +672,10 @@ struct MenuBarControllerTests {
         pipelineState: .recording, updateAvailable: true, updateDisplayVersion: "2.1.4",
         installEnabled: false))
 
-    #expect(item(menu, "Update ready: Install v2.1.4") == nil)
-    let blocked = item(menu, "Update ready: finish dictating to install")
-    #expect(blocked != nil, "Disabled item must explain why install is blocked")
+    let blocked = item(menu, id: MenuBarItemID.installUpdate)
+    #expect(
+      blocked?.title == "Update ready: finish dictating to install",
+      "Disabled item must explain why install is blocked")
     #expect(blocked?.isEnabled == false)
   }
 
@@ -671,7 +684,7 @@ struct MenuBarControllerTests {
     let controller = makeController()
     let menu = NSMenu()
     controller.renderMenu(into: menu, state: fixture(pipelineState: .idle))
-    #expect(item(menu, "Update ready: Install") == nil)
+    #expect(item(menu, id: MenuBarItemID.installUpdate) == nil)
     #expect(menu.items.allSatisfy { !$0.title.hasPrefix("Update ready") })
   }
 
@@ -693,21 +706,21 @@ struct MenuBarControllerTests {
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, onboardingComplete: false))
 
-    perform(item(menu, "Setup Required: Continue Setup…"))
+    perform(item(menu, id: MenuBarItemID.continueSetup))
     #expect(spy.fired == ["continueOnboarding"])
 
-    perform(item(menu, "Settings..."))
+    perform(item(menu, id: MenuBarItemID.settings))
     #expect(spy.fired == ["continueOnboarding", "openSettings"])
 
     // #2772: the drop-down entry opens the window on the Transcribe a File page.
-    perform(item(menu, "Transcribe a File..."))
+    perform(item(menu, id: MenuBarItemID.transcribeFile))
     #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile"])
 
-    perform(item(menu, "Quit \(AppConstants.appName)"))
+    perform(item(menu, id: MenuBarItemID.quit))
     #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile", "quit"])
 
     // toggleRecording dispatches through an async Task — yield so it runs.
-    perform(item(menu, "Start Recording"))
+    perform(item(menu, id: MenuBarItemID.record))
     await Task.yield()
     await Task.yield()
     #expect(spy.fired.contains("toggleRecording"))
@@ -720,7 +733,7 @@ struct MenuBarControllerTests {
     let menu = NSMenu()
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, showAccessibilityWarning: true))
-    perform(item(menu, "Paste disabled — Accessibility required"))
+    perform(item(menu, id: MenuBarItemID.accessibilityWarning))
     #expect(spy.fired == ["openPermissions"])
   }
 
@@ -732,8 +745,37 @@ struct MenuBarControllerTests {
     let menu = NSMenu()
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, showMicrophoneWarning: true))
-    perform(item(menu, "Dictation disabled — Microphone access required"))
+    perform(item(menu, id: MenuBarItemID.microphoneWarning))
     #expect(spy.fired == ["openPermissions"])
+  }
+
+  @Test("every actionable item carries its stable identifier, and the titles keep their English")
+  func identifiersAndEnglishTitles() {
+    let controller = makeController(spy: ActionSpy())
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle, onboardingComplete: false, showAccessibilityWarning: true,
+        showMicrophoneWarning: true))
+    let expected: [(NSUserInterfaceItemIdentifier, String)] = [
+      (MenuBarItemID.continueSetup, "Setup Required: Continue Setup…"),
+      (MenuBarItemID.record, "Start Recording"),
+      (MenuBarItemID.transcribeFile, "Transcribe a File..."),
+      (MenuBarItemID.accessibilityWarning, "Paste disabled — Accessibility required"),
+      (MenuBarItemID.microphoneWarning, "Dictation disabled — Microphone access required"),
+      (MenuBarItemID.settings, "Settings..."),
+      (MenuBarItemID.appearance, "Appearance"),
+      (MenuBarItemID.quit, "Quit \(AppConstants.appName)"),
+    ]
+    for (id, title) in expected {
+      #expect(item(menu, id: id)?.title == title, "\(id.rawValue)")
+    }
+    #expect(
+      item(menu, id: MenuBarItemID.pasteLast)?.title.hasPrefix("Paste Last Dictation") == true)
+    #expect(item(menu, id: MenuBarItemID.quickAdd)?.title.hasPrefix("Add Selected Word") == true)
+    let appearance = item(menu, id: MenuBarItemID.appearance)?.submenu?.items.map(\.title)
+    #expect(appearance == ["System", "Light", "Dark"])
   }
 
   // MARK: - Fixtures
@@ -845,13 +887,10 @@ struct MenuBarControllerTests {
     menu.items.first { $0.title == title }
   }
 
-  /// Find by what the item SAYS IT DOES, ignoring the shortcut hint appended to its title.
-  ///
-  /// The Quick Add row carries its chord as trailing text rather than as a key equivalent (#2412),
-  /// so an exact-title lookup finds nothing the moment a binding changes — which is a property of
-  /// the test, not of the menu.
-  private func itemPrefixed(_ menu: NSMenu, _ prefix: String) -> NSMenuItem? {
-    menu.items.first { $0.title.hasPrefix(prefix) }
+  /// Find by identity, for tests that ACT on an item (#3142: titles are translatable). Title
+  /// lookups stay where a test checks what the item says.
+  private func item(_ menu: NSMenu, id: NSUserInterfaceItemIdentifier) -> NSMenuItem? {
+    menu.items.first { $0.identifier == id }
   }
 
   private func perform(_ menuItem: NSMenuItem?) {

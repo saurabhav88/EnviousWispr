@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprCore
 
 /// PR-B.2 of #763 — unit tests for `AppWindowCoordinator`.
 ///
@@ -180,5 +181,48 @@ struct AppWindowCoordinatorTests {
       windowStates: [(matchesIdentity: false, isVisible: true, isMiniaturized: false)]
     )
     #expect(!present, "a titled-but-differently-named window (Sparkle's dialog) must not count")
+  }
+
+  @Test("the Setup window is found by its scene id, whatever its title says (#3142)")
+  @MainActor
+  func onboardingWindowMatchesByIdentifierNotTitle() {
+    let translated = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    translated.identifier = NSUserInterfaceItemIdentifier(AppConstants.onboardingWindowID)
+    translated.title = "Einrichtung"
+    #expect(OnboardingWindowIdentity.matches(translated))
+
+    // SwiftUI's numbered form for the same scene matches too.
+    let numbered = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    numbered.identifier = NSUserInterfaceItemIdentifier("onboarding-AppWindow-1")
+    #expect(OnboardingWindowIdentity.matches(numbered))
+
+    // A different scene whose id merely starts with the same letters never matches.
+    let prefixed = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    prefixed.identifier = NSUserInterfaceItemIdentifier("onboardingTips")
+    #expect(!OnboardingWindowIdentity.matches(prefixed))
+
+    // Only a number may follow the scene's AppWindow prefix.
+    for raw in ["onboarding-AppWindow-help", "onboarding-AppWindow-"] {
+      let other = NSWindow(
+        contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+      other.identifier = NSUserInterfaceItemIdentifier(raw)
+      #expect(!OnboardingWindowIdentity.matches(other), "\(raw)")
+    }
+
+    // Another scene's window never matches, even titled like Setup.
+    let lookalike = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    lookalike.identifier = NSUserInterfaceItemIdentifier("main")
+    lookalike.title = AppConstants.onboardingWindowTitle
+    #expect(!OnboardingWindowIdentity.matches(lookalike))
+
+    // A window with no identifier never matches, whatever its title says.
+    let untagged = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    untagged.title = AppConstants.onboardingWindowTitle
+    #expect(!OnboardingWindowIdentity.matches(untagged))
   }
 }

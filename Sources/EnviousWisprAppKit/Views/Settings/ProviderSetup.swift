@@ -1061,14 +1061,14 @@ struct ProviderSetupSection: View {
     if !groups.recommended.isEmpty {
       Section("Recommended for cleanup") {
         ForEach(groups.recommended) { model in
-          Text(model.displayName).tag(model.id)
+          Text(model.localizedDisplayName).tag(model.id)
         }
       }
     }
     if !groups.other.isEmpty {
       Section("Other available models") {
         ForEach(groups.other) { model in
-          Text(model.displayName).tag(model.id)
+          Text(model.localizedDisplayName).tag(model.id)
         }
       }
     }
@@ -1091,7 +1091,7 @@ struct ProviderSetupSection: View {
               OllamaModelPickerPresentation.freeVerifiedGroupTitle, checkedAt: tiers.checkedAt)
           ) {
             ForEach(tiers.free) { model in
-              Text(model.displayName).tag(model.id)
+              Text(model.localizedDisplayName).tag(model.id)
             }
           }
         }
@@ -1101,7 +1101,7 @@ struct ProviderSetupSection: View {
               OllamaModelPickerPresentation.mayNeedPaidGroupTitle, checkedAt: tiers.checkedAt)
           ) {
             ForEach(tiers.mayNeedPaid) { model in
-              Text(model.displayName).tag(model.id)
+              Text(model.localizedDisplayName).tag(model.id)
             }
           }
         }
@@ -1110,7 +1110,7 @@ struct ProviderSetupSection: View {
         // claim. Same degradation as the Manage Models list.
         Section(OllamaModelPickerPresentation.hostedGroupTitle) {
           ForEach(groups.hosted) { model in
-            Text(model.displayName).tag(model.id)
+            Text(model.localizedDisplayName).tag(model.id)
           }
         }
       }
@@ -1121,7 +1121,7 @@ struct ProviderSetupSection: View {
         ForEach(locked) { model in
           HStack {
             Image(systemName: "lock.fill").font(.caption2)
-            Text(model.displayName)
+            Text(model.localizedDisplayName)
           }
           .tag(model.id)
           .selectionDisabled(true)

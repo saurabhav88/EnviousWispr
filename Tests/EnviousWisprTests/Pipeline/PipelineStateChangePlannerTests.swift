@@ -36,7 +36,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: true,
       isAccessibilityToast: false,
-      lastPolishError: "polish failed for some reason",
+      lastPolishNotice: PolishNotice(leadIn: .failed, text: "polish failed for some reason"),
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -56,7 +56,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: true,
       isAccessibilityToast: true,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -72,7 +72,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: true,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -88,7 +88,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: true,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -104,7 +104,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.recordingIntent,
       isClipboardFallback: true,
       isAccessibilityToast: true,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -120,7 +120,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: "openai 429 rate-limited",
+      lastPolishNotice: PolishNotice(leadIn: .failed, text: "openai 429 rate-limited"),
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -142,13 +142,13 @@ struct PipelineStateChangePlannerTests {
   func completeSkippedPolishSuppressesWarning() {
     // A real skip reason's composed notice ("AI cleanup skipped: no OpenAI API
     // key set yet. ...") must NOT schedule the hard-failure overlay.
-    let skipNotice = PolishFailureReason.apiKeyMissing.composedMessage(provider: .openAI)
+    let skipNotice = PolishFailureReason.apiKeyMissing.notice(provider: .openAI)
     let plan = PipelineStateChangePlanner.plan(
       to: PipelineState.complete,
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: skipNotice,
+      lastPolishNotice: skipNotice,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -165,18 +165,45 @@ struct PipelineStateChangePlannerTests {
     // A real hard-failure reason's composed notice ("AI polish failed: your
     // OpenAI account is out of credits. ...") must still schedule the overlay —
     // the skip detector must not over-match the "AI polish failed:" lead-in.
-    let failNotice = PolishFailureReason.outOfCredits.composedMessage(provider: .openAI)
+    let failNotice = PolishFailureReason.outOfCredits.notice(provider: .openAI)
     let plan = PipelineStateChangePlanner.plan(
       to: PipelineState.complete,
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: failNotice,
+      lastPolishNotice: failNotice,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
     )
     #expect(plan.effects.contains(.schedulePolishFailedWarning))
+  }
+
+  /// #3142: the notice's text is translated, and a translated sentence need not start with the
+  /// translated lead-in. The warning follows the typed tone alone: a skip whose text does not
+  /// start with the English lead-in stays quiet, and a failure whose text happens to start with
+  /// the English skip lead-in still warns.
+  @Test(
+    "complete + polish notice -> the warning follows the typed tone, never the text (#3142)",
+    arguments: [
+      (
+        PolishNotice(leadIn: .skipped, text: "KI-Bereinigung übersprungen: kein API-Schlüssel."),
+        false
+      ),
+      (PolishNotice(leadIn: .failed, text: "AI cleanup skipped: this text says skip."), true),
+    ])
+  func completePolishWarningFollowsTypedTone(notice: PolishNotice, warns: Bool) {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishNotice: notice,
+      hasCurrentTranscript: true,
+      historySaved: true,
+      historySaveReason: nil
+    )
+    #expect(plan.effects.contains(.schedulePolishFailedWarning) == warns)
   }
 
   @Test("complete + success (no fallback, no polish error) -> no warning, telemetry fires")
@@ -186,7 +213,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -211,7 +238,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil
@@ -233,7 +260,7 @@ struct PipelineStateChangePlannerTests {
         pipelineOverlayIntent: Self.recordingIntent,
         isClipboardFallback: false,
         isAccessibilityToast: false,
-        lastPolishError: nil,
+        lastPolishNotice: nil,
         hasCurrentTranscript: false,
         historySaved: true,
         historySaveReason: nil
@@ -275,7 +302,7 @@ struct PipelineStateChangePlannerTests {
         pipelineOverlayIntent: intent,
         isClipboardFallback: false,
         isAccessibilityToast: false,
-        lastPolishError: nil,
+        lastPolishNotice: nil,
         hasCurrentTranscript: false,
         historySaved: true,
         historySaveReason: nil
@@ -301,7 +328,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .error(reason: .deviceRemoved),
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil
@@ -336,7 +363,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .advisory(reason: .zeroSignal),
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil
@@ -353,7 +380,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .advisory(reason: .noTransport),
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil
@@ -375,7 +402,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .advisory(reason: .vadGateNoSpeech),
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil
@@ -396,7 +423,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .hidden,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -418,7 +445,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .hidden,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: "fail",
+      lastPolishNotice: PolishNotice(leadIn: .failed, text: "fail"),
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -439,7 +466,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .hidden,
       isClipboardFallback: true,
       isAccessibilityToast: false,
-      lastPolishError: "fail",
+      lastPolishNotice: PolishNotice(leadIn: .failed, text: "fail"),
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -459,7 +486,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .recording(audioLevel: 0),
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil
@@ -478,7 +505,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: .error(reason: .modelWedged),
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil
@@ -500,7 +527,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: false,
       historySaveReason: "disk is full"
@@ -520,7 +547,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: "openai 429 rate-limited",
+      lastPolishNotice: PolishNotice(leadIn: .failed, text: "openai 429 rate-limited"),
       hasCurrentTranscript: true,
       historySaved: false,
       historySaveReason: "permission denied"
@@ -536,7 +563,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil
@@ -554,7 +581,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil,
@@ -571,7 +598,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: "Polish failed",
+      lastPolishNotice: PolishNotice(leadIn: .failed, text: "Polish failed"),
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil,
@@ -588,7 +615,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: false,
       historySaveReason: "disk is full",
@@ -605,7 +632,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil,
@@ -641,7 +668,8 @@ struct PipelineStateChangePlannerTests {
           pipelineOverlayIntent: Self.hiddenIntent,
           isClipboardFallback: false,
           isAccessibilityToast: false,
-          lastPolishError: polishFailed ? "polish failed for some reason" : nil,
+          lastPolishNotice: polishFailed
+            ? PolishNotice(leadIn: .failed, text: "polish failed for some reason") : nil,
           hasCurrentTranscript: true,
           historySaved: !historySaveFailed,
           historySaveReason: historySaveFailed ? "disk full" : nil,
@@ -696,7 +724,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: true,
       historySaveReason: nil,
@@ -719,7 +747,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: true,
       historySaved: false,
       historySaveReason: "disk full",
@@ -739,7 +767,7 @@ struct PipelineStateChangePlannerTests {
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
       isAccessibilityToast: false,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       hasCurrentTranscript: false,
       historySaved: true,
       historySaveReason: nil,
