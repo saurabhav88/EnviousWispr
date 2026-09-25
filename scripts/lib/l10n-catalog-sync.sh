@@ -20,12 +20,14 @@
 # Inputs are an EXPLICIT production-target list, never a directory sweep: the same
 # derived-data tree also holds third-party and test-target `.stringsdata`, and a test
 # string in the shipped catalog would be a translation nobody needs. A production
-# target with no `.stringsdata`, or a first-party target the list does not know,
+# target with no `.stringsdata`, or a project target the lists do not know (any
+# name: third-party packages build under their own `<Package>.build` directories),
 # stops the run.
 #
 # `xcstringstool sync` resets manual entries to extracted/new (measured). The three
-# Phase 1 semantic keys are manual on purpose; each is restored from the committed
-# catalog only after its extracted English default is verified against the entry.
+# Phase 1 semantic keys are manual on purpose (curated translator comments): each
+# keeps its committed object, with its English taken from the code's single
+# extracted default, so changing that default is ordinary drift, not a refusal.
 #
 # Toolchain: catalog serialization can change between Xcode builds, so the script
 # refuses to run under any build but the pinned one (CI pins the same build in
@@ -36,7 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 exec python3 - "$REPO_ROOT" "$@" <<'PY'
-import argparse, json, os, pathlib, shutil, subprocess, sys, tempfile
+import argparse, copy, json, pathlib, subprocess, sys, tempfile
 
 REPO = pathlib.Path(sys.argv[1])
 PINNED_XCODE_BUILD = "17F113"  # Xcode 26.6; keep equal to .github/actions/xcode-ci-setup/action.yml
@@ -60,12 +62,12 @@ NON_PRODUCTION = {
 GENERATED_RESOURCE_TARGETS = {
     "EnviousWispr_EnviousWisprAppKit", "EnviousWispr_EnviousWisprPostProcessing",
 }
-# Phase 1 semantic keys: kept manual (translator comments, extraction state) after
-# their extracted English default is verified.
+# Phase 1 semantic keys: kept manual (curated translator comments). Their English
+# lives in the code only; InterfaceCatalogSourceTests pins it.
 MANUAL_KEYS = {
-    "settings.aiPolish.enable.title": "Enable AI Polish",
-    "menu.setupRequired.continue": "Setup Required: Continue Setup…",
-    "notification.update.ready.body": "Version %@ is ready. Click to install.",
+    "settings.aiPolish.enable.title",
+    "menu.setupRequired.continue",
+    "notification.update.ready.body",
 }
 CATALOG = REPO / "Sources/EnviousWispr/Resources/Localizable.xcstrings"
 
@@ -89,10 +91,9 @@ def collect_inputs(derived, configuration):
     if not base.is_dir():
         raise Refused(f"no build intermediates at {base}")
     present = {p.name[: -len(".build")] for p in base.glob("*.build") if p.is_dir()}
-    first_party = {t for t in present if t.startswith("EnviousWispr")}
-    unknown = sorted(first_party - set(PRODUCTION_TARGETS) - NON_PRODUCTION - GENERATED_RESOURCE_TARGETS)
+    unknown = sorted(present - set(PRODUCTION_TARGETS) - NON_PRODUCTION - GENERATED_RESOURCE_TARGETS)
     if unknown:
-        raise Refused(f"first-party targets the production list does not know: {unknown}")
+        raise Refused(f"project targets the target lists do not know: {unknown}")
     files, missing = [], []
     for target in PRODUCTION_TARGETS:
         # Xcode writes ExtractedAppShortcutsMetadata.stringsdata into every target even with
@@ -159,16 +160,17 @@ def sync(committed_path, files, work):
             merged["localizations"] = dict(entry.get("localizations", {})) | others
         synced["strings"][key] = merged
     extracted = extracted_defaults(files)
-    for key, expected in MANUAL_KEYS.items():
+    for key in sorted(MANUAL_KEYS):
         if key not in extracted:
             raise Refused(f"manual key {key!r} is not extracted from any production source")
-        if extracted[key] != {expected}:
-            raise Refused(f"manual key {key!r}: extracted default {sorted(map(str, extracted[key]))} != {expected!r}")
-        if key not in committed["strings"]:
-            raise Refused(f"manual key {key!r} missing from the committed catalog")
-        if english(committed["strings"][key]) != expected:
-            raise Refused(f"manual key {key!r}: committed English != {expected!r}")
-        synced["strings"][key] = committed["strings"][key]
+        defaults = extracted[key]
+        if len(defaults) != 1 or None in defaults:
+            raise Refused(f"manual key {key!r} needs exactly one English default in code, found {sorted(map(str, defaults))}")
+        if key not in committed["strings"] or english(committed["strings"][key]) is None:
+            raise Refused(f"manual key {key!r} has no English entry in the committed catalog")
+        entry = copy.deepcopy(committed["strings"][key])
+        entry["localizations"]["en"]["stringUnit"]["value"] = next(iter(defaults))
+        synced["strings"][key] = entry
     # English-only phase: a key no longer in code is removed, not kept as stale.
     synced["strings"] = {k: v for k, v in synced["strings"].items() if v.get("extractionState") != "stale"}
     return committed, synced

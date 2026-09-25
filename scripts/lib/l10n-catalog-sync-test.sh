@@ -159,10 +159,18 @@ with tempfile.TemporaryDirectory() as tmp:
     expect("stale key is drift", code, out, 1, "removed: 'a label that will be deleted'")
 case("missing manual key refuses", 2, "is not extracted", drop_manual="menu.setupRequired.continue")
 manual_override_key[0] = "settings.aiPolish.enable.title"
-case("changed manual default refuses", 2, "extracted default", manual_override="Enable AI Polishing")
+# A copy change to a semantic key is ordinary drift, and --update writes the code's
+# English while keeping the curated object (its comment).
+case("changed manual default is drift", 1, "changed: 'settings.aiPolish.enable.title'", manual_override="Enable AI Polishing")
+case("update writes a changed manual default, keeps its comment", 0, "updated", mode="--update", manual_override="Enable AI Polishing",
+     verify=lambda s: None if (s["settings.aiPolish.enable.title"]["localizations"]["en"]["stringUnit"]["value"] == "Enable AI Polishing"
+                               and s["settings.aiPolish.enable.title"]["comment"] == "fixture manual"
+                               and s["settings.aiPolish.enable.title"]["extractionState"] == "manual")
+     else f"manual entry is {s['settings.aiPolish.enable.title']!r}")
 manual_override_key[0] = None
 case("missing production input refuses", 2, "no .stringsdata", drop_target="EnviousWisprPipeline")
-case("unknown first-party target refuses", 2, "does not know", extra_target="EnviousWisprNewModule")
+case("unknown first-party target refuses", 2, "do not know", extra_target="EnviousWisprNewModule")
+case("unknown target without the prefix refuses", 2, "do not know", extra_target="WisprNewModule")
 case("wrong Xcode build refuses", 2, "is not the pinned", fake_xcode_build="00X000")
 case("metadata-only target refuses", 2, "no .stringsdata", metadata_only_target="EnviousWisprStorage")
 case("missing catalog refuses", 2, "REFUSED", remove_catalog=True)
