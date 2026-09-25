@@ -187,6 +187,16 @@ struct OnboardingSetupCopyProjectionTests {
     #expect(
       OnboardingV2ViewModel.friendlyError(error(NSPOSIXErrorDomain, Int(ENOSPC)))
         == "Not enough disk space. Please free up space and try again.")
+    let wrapped = NSError(
+      domain: "FluidAudio.DownloadError", code: 7,
+      userInfo: [
+        NSLocalizedDescriptionKey: "Der Download ist fehlgeschlagen.",
+        NSUnderlyingErrorKey: error(NSURLErrorDomain, URLError.notConnectedToInternet.rawValue),
+      ])
+    #expect(
+      OnboardingV2ViewModel.friendlyError(wrapped)
+        == "No internet connection. Please connect to the internet and try again.",
+      "a wrapped download error is recognised by the type it wraps")
     #expect(
       OnboardingV2ViewModel.friendlyError(error("Other", 1))
         == "Download failed: Ein Fehler ist aufgetreten.")

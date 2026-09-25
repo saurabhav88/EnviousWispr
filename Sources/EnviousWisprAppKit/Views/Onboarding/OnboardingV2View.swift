@@ -854,26 +854,35 @@ final class OnboardingV2ViewModel {
     // The error's TYPE decides first; each typed case is one whose English
     // description the word match already classified the same way, so English
     // behavior is unchanged. The word matches stay for wrapped errors.
-    let urlCode = (error as? URLError)?.code
-    let nsError = error as NSError
-    let outOfSpace =
-      (nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileWriteOutOfSpaceError)
-      || (nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOSPC))
+    // The error and the errors it wraps (`NSUnderlyingErrorKey`), so a download failure
+    // wrapped by a higher layer is still recognised by type. Bounded against cycles.
+    var chain: [NSError] = []
+    var next: NSError? = error as NSError
+    while let current = next, chain.count < 4 {
+      chain.append(current)
+      next = current.userInfo[NSUnderlyingErrorKey] as? NSError
+    }
+    let urlCodes = Set(
+      chain.compactMap { $0.domain == NSURLErrorDomain ? URLError.Code(rawValue: $0.code) : nil })
+    let outOfSpace = chain.contains {
+      ($0.domain == NSCocoaErrorDomain && $0.code == NSFileWriteOutOfSpaceError)
+        || ($0.domain == NSPOSIXErrorDomain && $0.code == Int(ENOSPC))
+    }
     let desc = error.localizedDescription.lowercased()
 
-    if urlCode == .timedOut || desc.contains("timed out") || desc.contains("timeout") {
+    if urlCodes.contains(.timedOut) || desc.contains("timed out") || desc.contains("timeout") {
       return String(
         localized: "The download timed out. Please check your internet connection and try again.",
         comment: "Setup error: the speech model download timed out.")
     }
-    if urlCode == .notConnectedToInternet || urlCode == .networkConnectionLost
+    if urlCodes.contains(.notConnectedToInternet) || urlCodes.contains(.networkConnectionLost)
       || desc.contains("not connected") || desc.contains("network") || desc.contains("offline")
     {
       return String(
         localized: "No internet connection. Please connect to the internet and try again.",
         comment: "Setup error: no internet during the speech model download.")
     }
-    if urlCode == .cannotConnectToHost || desc.contains("could not connect")
+    if urlCodes.contains(.cannotConnectToHost) || desc.contains("could not connect")
       || desc.contains("cannot connect")
     {
       return String(
