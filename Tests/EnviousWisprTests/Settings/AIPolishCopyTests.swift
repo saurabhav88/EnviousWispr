@@ -203,4 +203,33 @@ struct AIPolishCopyTests {
     #expect(OllamaCatalogPresentation.progressLabel(for: hosted, percent: 42) == "Adding…")
     #expect(OllamaSetupService.formatFileSize(0) == "Unknown")
   }
+
+  /// #3142: the two cases converted in Chunk 7 have translated display copy with the same
+  /// English, while the description logs read stays fixed English.
+  @Test("Model errors converted for screens keep their English, and diagnostics do not move")
+  func llmErrorDisplayCopy() {
+    #expect(LLMError.emptyResponse.localizedDisplayMessage == "LLM returned an empty response.")
+    #expect(
+      LLMError.requestFailed("HTTP 500").localizedDisplayMessage
+        == "LLM request failed: HTTP 500")
+    #expect(LLMError.emptyResponse.errorDescription == "LLM returned an empty response.")
+    #expect(LLMError.requestFailed("HTTP 500").errorDescription == "LLM request failed: HTTP 500")
+    // modelNotReady reaches the AFM notice but is deferred to Chunk 8;
+    // the other cases here have no proven screen path for their descriptions.
+    #expect(LLMError.invalidAPIKey.localizedDisplayMessage == nil)
+    #expect(LLMError.rateLimited.localizedDisplayMessage == nil)
+    #expect(LLMError.modelNotReady("x").localizedDisplayMessage == nil)
+  }
+
+  @Test("The key check shows a model error's display copy, and any other error's description")
+  @MainActor
+  func keyCheckFailureMessage() {
+    #expect(
+      LLMModelDiscoveryCoordinator.validationFailureMessage(
+        for: LLMError.requestFailed("Network error: offline"))
+        == "LLM request failed: Network error: offline")
+    let other = NSError(
+      domain: "Test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Something else."])
+    #expect(LLMModelDiscoveryCoordinator.validationFailureMessage(for: other) == "Something else.")
+  }
 }

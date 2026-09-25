@@ -509,6 +509,9 @@
       "comment" : "Settings > AI Polish, local model row: an upgrade stopped. %@ is the model name; the version is unknown."
     },
     "AI polish engine" : {},
+    "AI polish failed: %@" : {
+      "comment" : "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system."
+    },
     "AI polish needs macOS 26" : {
       "comment" : "Setup notice title on Macs older than macOS 26."
     },
@@ -2092,6 +2095,12 @@
     },
     "LLM Deactivated" : {
       "comment" : "Sidebar and menu: no AI polish provider is chosen."
+    },
+    "LLM request failed: %@" : {
+      "comment" : "AI Polish settings: checking the API key failed. %@ is technical detail from the provider or the system, such as HTTP 500; keep it as is."
+    },
+    "LLM returned an empty response." : {
+      "comment" : "AI polish error: the model returned no text. Shown after 'AI polish failed:'."
     },
     "Language" : {},
     "Language suggestions" : {},

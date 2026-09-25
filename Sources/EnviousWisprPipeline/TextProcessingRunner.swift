@@ -469,7 +469,7 @@ internal final class TextProcessingRunner {
             // The view now renders `polishError` verbatim, so the runner owns the
             // "AI polish failed:" prefix here. AFM generation failures are
             // captured at the polish step, so no Sentry capture fires here.
-            polishError = "AI polish failed: " + error.localizedDescription
+            polishError = Self.appleIntelligenceFailureNotice(for: error)
             // #1446: the durable count MUST still cover this arm. An AFM success
             // emits `llm.polish_completed`, so omitting its failures would leave
             // `llm.polish_failed` unable to partition live polish outcomes and
@@ -552,6 +552,19 @@ internal final class TextProcessingRunner {
       }
     }
     return TextProcessingRunResult(context: context, polishError: polishError)
+  }
+
+  /// #3142: the Apple Intelligence failure notice, one localized frame around the error's own
+  /// sentence. The detail is the error's translated display message when it has one; other
+  /// errors keep their existing description. The log's `reason` is built separately from
+  /// `localizedDescription` and is unchanged by this.
+  nonisolated static func appleIntelligenceFailureNotice(for error: any Error) -> String {
+    let detail = (error as? LLMError)?.localizedDisplayMessage ?? error.localizedDescription
+    return String(
+      localized: "AI polish failed: \(detail)",
+      comment:
+        "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system."
+    )
   }
 
   /// #3124: the words the spelling steps must leave alone, from the chain's own

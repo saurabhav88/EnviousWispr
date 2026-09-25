@@ -260,6 +260,30 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     }
   }
 
+  /// The sentence a screen shows for this error, in the app's language (#3142), or nil when the
+  /// error has no translated display copy. `errorDescription` stays fixed English because logs
+  /// read it (TextProcessingRunner's failure reason, for one). `.emptyResponse` reaches the Apple Intelligence polish
+  /// notice and `.requestFailed` the Settings key check (its detail is provider or system text
+  /// and passes through as is).
+  /// Chunk 7 localizes `.emptyResponse` and `.requestFailed`. `.modelNotReady` also reaches
+  /// the Apple Intelligence notice, but its authored reason is a known Chunk 8 gap.
+  public var localizedDisplayMessage: String? {
+    switch self {
+    case .emptyResponse:
+      return String(
+        localized: "LLM returned an empty response.",
+        comment: "AI polish error: the model returned no text. Shown after 'AI polish failed:'.")
+    case .requestFailed(let detail):
+      return String(
+        localized: "LLM request failed: \(detail)",
+        comment:
+          "AI Polish settings: checking the API key failed. %@ is technical detail from the provider or the system, such as HTTP 500; keep it as is."
+      )
+    default:
+      return nil
+    }
+  }
+
   public static func == (lhs: LLMError, rhs: LLMError) -> Bool {
     switch (lhs, rhs) {
     case (.invalidAPIKey, .invalidAPIKey),

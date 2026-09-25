@@ -488,9 +488,7 @@ struct TextProcessingRunnerCaptureTests {
     let result = try await runner.run(
       rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
-    #expect(
-      result.polishError == "AI polish failed: "
-        + LLMError.requestFailed("boom").localizedDescription)
+    #expect(result.polishError == "AI polish failed: LLM request failed: boom")
     // The alerting capture for on-device polish is owned by the polish step
     // (`captureAFMPolishError`), never by the runner.
     #expect(spy.calls.isEmpty)
@@ -853,5 +851,24 @@ struct TextProcessingRunnerCaptureTests {
       observedTakeID = context.takeID
       return context
     }
+  }
+
+  // MARK: - #3142: the Apple Intelligence notice
+
+  /// One frame around the error's sentence. A translated display message is used when the error
+  /// has one; any other error keeps its description, and the log's reason is untouched.
+  @Test("The Apple Intelligence notice keeps its English for selected error kinds")
+  func appleIntelligenceNoticeEnglish() {
+    #expect(
+      TextProcessingRunner.appleIntelligenceFailureNotice(for: LLMError.emptyResponse)
+        == "AI polish failed: LLM returned an empty response.")
+    #expect(
+      TextProcessingRunner.appleIntelligenceFailureNotice(for: LLMError.requestFailed("boom"))
+        == "AI polish failed: LLM request failed: boom")
+    // No display copy yet (#3142 known gap): the connector's own English sentence passes through.
+    #expect(
+      TextProcessingRunner.appleIntelligenceFailureNotice(
+        for: LLMError.modelNotReady("The on-device model is not ready."))
+        == "AI polish failed: The on-device model is not ready.")
   }
 }

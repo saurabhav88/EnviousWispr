@@ -196,10 +196,16 @@ final class LLMModelDiscoveryCoordinator {
       emitValidationCompleted(provider: provider, result: "invalid", source: source)
     } catch {
       guard discoveryGeneration == generation else { return }
-      keyValidationState = .invalid(error.localizedDescription)
+      keyValidationState = .invalid(Self.validationFailureMessage(for: error))
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "error", source: source)
     }
+  }
+
+  /// #3142: what the key check shows for an error it has no specific wording for. An LLMError's
+  /// translated display message when it has one; otherwise the error's own description.
+  nonisolated static func validationFailureMessage(for error: any Error) -> String {
+    (error as? LLMError)?.localizedDisplayMessage ?? error.localizedDescription
   }
 
   /// #1173: emit `api_key.validation_completed` for a terminal validation result.
