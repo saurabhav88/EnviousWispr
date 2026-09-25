@@ -16,6 +16,16 @@ struct InterfaceCatalogSourceTests {
     "settings.aiPolish.enable.title": "Enable AI Polish",
     "menu.setupRequired.continue": "Setup Required: Continue Setup…",
     "notification.update.ready.body": "Version %@ is ready. Click to install.",
+    // #3153: Send Feedback.
+    "menu.sendFeedback": "Send Feedback…",
+    "feedback.message.placeholder": "What happened, or what would you like to see?",
+    "feedback.message.label": "Feedback message",
+    "feedback.email.placeholder": "Email (optional)",
+    "feedback.send": "Send",
+    "feedback.sent": "Sent",
+    "feedback.unavailable": "Couldn't send. Email hello@enviouslabs.co",
+    "feedback.email.invalid": "Enter a valid email address",
+    "feedback.message.tooLong": "Maximum 4,000 characters",
   ]
 
   @Test("Semantic keys carry today's exact English")
@@ -45,7 +55,7 @@ struct InterfaceCatalogSourceTests {
   /// The unit-test process's `Bundle.main` is not the app, but the same build places the app
   /// beside the test bundle. Reading the COMPILED table there proves the catalog ships; a
   /// catalog dropped from the app target (deleted, commented out, excluded) leaves no table.
-  @Test("The built app ships the compiled English table with the three entries")
+  @Test("The built app ships the compiled English table with every translated entry")
   func builtAppShipsCompiledTable() throws {
     let products = Bundle(for: BuildProductsMarker.self).bundleURL.deletingLastPathComponent()
     // The product name is per configuration: Debug and Release build `EnviousWispr.app`, Dev
@@ -61,7 +71,16 @@ struct InterfaceCatalogSourceTests {
       "no compiled catalog at \(table.path)")
     let compiled = try #require(
       try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
-    for (key, english) in Self.expectedEnglish {
+    // Only entries in state `translated` are compiled into the English table. A key the
+    // compiler extracted (state `new`, #3157's sync) is absent from it and resolves to the
+    // `defaultValue` written beside it in the code, which is the same English (#3153, measured:
+    // the Debug table held exactly the three `translated` entries).
+    let strings = try Self.strings()
+    let shipped = Self.expectedEnglish.filter { key, _ in
+      Self.state(of: strings[key] as? [String: Any], language: "en") == "translated"
+    }
+    #expect(!shipped.isEmpty, "no translated entries to check; the filter read nothing")
+    for (key, english) in shipped {
       #expect(compiled[key] == english, "\(key) in the shipped table")
     }
   }
@@ -72,6 +91,12 @@ struct InterfaceCatalogSourceTests {
     let root = try #require(object as? [String: Any])
     #expect(root["sourceLanguage"] as? String == "en")
     return try #require(root["strings"] as? [String: Any])
+  }
+
+  private static func state(of entry: [String: Any]?, language: String) -> String? {
+    let localizations = entry?["localizations"] as? [String: Any]
+    let unit = (localizations?[language] as? [String: Any])?["stringUnit"] as? [String: Any]
+    return unit?["state"] as? String
   }
 
   private static func value(of entry: [String: Any], language: String) -> String? {

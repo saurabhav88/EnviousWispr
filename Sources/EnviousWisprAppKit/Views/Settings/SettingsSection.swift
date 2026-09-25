@@ -52,6 +52,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case snippets
   case clipboard
   case permissions
+  case sendFeedback
   case checkForUpdates
   case openSourceLicenses
   #if DEBUG
@@ -76,6 +77,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .snippets: return "Snippets"
     case .clipboard: return "Clipboard"
     case .permissions: return "Permissions"
+    case .sendFeedback: return "Send Feedback"
     case .checkForUpdates: return "Check for Updates"
     case .openSourceLicenses: return "Open Source Licenses"
     #if DEBUG
@@ -100,6 +102,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .snippets: return "curlybraces"
     case .clipboard: return "clipboard"
     case .permissions: return "lock.shield"
+    case .sendFeedback: return "bubble.left.and.text.bubble.right"
     case .checkForUpdates: return "arrow.triangle.2.circlepath"
     case .openSourceLicenses: return "doc.text.magnifyingglass"
     #if DEBUG
@@ -133,6 +136,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
       return "Say your keyword, then a snippet. The saved text lands for you."
     case .clipboard: return "How your dictation reaches the clipboard and the app you're in."
     case .permissions: return "The microphone and accessibility access EnviousWispr needs."
+    // #3153: the founder asked for the form and nothing else, so no orientation line.
+    case .sendFeedback: return ""
     case .checkForUpdates: return ""
     case .openSourceLicenses:
       return "EnviousWispr is GPLv3 open source. The license and third-party notices."
@@ -149,7 +154,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
       return .record
     case .aiPolish, .wordCorrection, .snippets: return .process
     case .clipboard: return .output
-    case .permissions, .checkForUpdates, .openSourceLicenses: return .system
+    case .permissions, .sendFeedback, .checkForUpdates, .openSourceLicenses: return .system
     #if DEBUG
       case .diagnostics: return .system
     #endif

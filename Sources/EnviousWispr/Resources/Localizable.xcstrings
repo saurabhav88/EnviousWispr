@@ -567,7 +567,106 @@
     "Your dictations and transcripts will appear here." : {},
     "Your first dictation" : {},
     "Your snippets could not be read" : {},
+    "feedback.email.invalid" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Enter a valid email address"
+          }
+        }
+      }
+    },
+    "feedback.email.placeholder" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Email (optional)"
+          }
+        }
+      }
+    },
+    "feedback.message.label" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Feedback message"
+          }
+        }
+      }
+    },
+    "feedback.message.placeholder" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "What happened, or what would you like to see?"
+          }
+        }
+      }
+    },
+    "feedback.message.tooLong" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Maximum 4,000 characters"
+          }
+        }
+      }
+    },
+    "feedback.send" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Send"
+          }
+        }
+      }
+    },
+    "feedback.sent" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sent"
+          }
+        }
+      }
+    },
+    "feedback.unavailable" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Couldn't send. Email hello@enviouslabs.co"
+          }
+        }
+      }
+    },
     "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually." : {},
+    "menu.sendFeedback" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Send Feedback…"
+          }
+        }
+      }
+    },
     "menu.setupRequired.continue" : {
       "comment" : "Menu bar item shown at the top of the menu while first-run setup is unfinished. Opens setup.",
       "extractionState" : "manual",
