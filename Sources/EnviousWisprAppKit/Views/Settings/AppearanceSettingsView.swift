@@ -22,6 +22,30 @@ import SwiftUI
 /// rests on its title. This is the accepted trade, not an oversight.
 struct AppearanceSettingsView: View {
   @Environment(SettingsManager.self) private var settings
+  /// Optional so a view harness can render the page without the dictation pipeline; the app
+  /// always supplies it.
+  @Environment(LiveRecordingState.self) private var liveRecordingState: LiveRecordingState?
+  @Environment(FileImportCoordinator.self) private var fileImportCoordinator: FileImportCoordinator?
+  /// "" is "System default".
+  @State private var language = AppLanguagePreference.live.choice ?? ""
+  /// The language this process launched with; macOS fixes it at launch.
+  private static let launchLanguage = Bundle.main.preferredLocalizations.first ?? "en"
+  /// A relaunch now would lose work in flight (`AppRelauncher.workInFlight` says which).
+  private var isBusy: Bool {
+    AppRelauncher.workInFlight(
+      dictationActive: liveRecordingState?.isDictationActive ?? false,
+      fileImport: fileImportCoordinator)
+  }
+
+  /// Whether the picker's selection resolves to a different language than the one on screen.
+  /// Computed from the selection itself (not the saved value, which `onChange` writes after this
+  /// view updates), and the selection starts from the saved value, so the offer also survives
+  /// leaving and reopening this page.
+  private var needsRelaunch: Bool {
+    AppLanguagePreference.live.language(
+      forChoice: language.isEmpty ? nil : language,
+      systemPreferences: AppLanguagePreference.systemPreferences) != Self.launchLanguage
+  }
 
   /// 270, not the 210 this grid used while the cards were vertical (#2435). A
   /// selected `System` row is 108 of thumbnail, 22 of icon, its title, an 18
@@ -96,6 +120,50 @@ struct AppearanceSettingsView: View {
           }
         }
         .toggleStyle(BrandedToggleStyle())
+      }
+
+      // #3142 Phase 5B (founder request, 2026-09-25): the interface language, for this app
+      // only. The list is what the bundle ships, each named in its own language; macOS applies
+      // the choice at launch, hence the relaunch, which waits while work is in flight (`isBusy`).
+      BrandedPanel(icon: "globe", header: "Language") {
+        VStack(alignment: .leading, spacing: 10) {
+          Picker("Language", selection: $language) {
+            Text(
+              "System default",
+              comment: "Appearance settings, Language: follow the language macOS uses.")
+            .tag("")
+            ForEach(AppLanguagePreference.live.languages, id: \.self) { code in
+              Text(verbatim: AppLanguagePreference.name(of: code)).tag(code)
+            }
+          }
+          .labelsHidden()
+          .tint(.stAccent)
+          .controlSize(.large)
+          .frame(maxWidth: 220, alignment: .leading)
+          .onChange(of: language) { _, code in
+            AppLanguagePreference.live.choose(code.isEmpty ? nil : code)
+          }
+
+          if needsRelaunch {
+            HStack(spacing: 12) {
+              Text(
+                "EnviousWispr uses the new language after it relaunches.",
+                comment: "Appearance settings, Language: shown after the language is changed.")
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+              Button {
+                guard !isBusy else { return }
+                AppRelauncher.relaunchWhenSafe { isBusy }
+              } label: {
+                Text(
+                  "Relaunch to apply",
+                  comment: "Appearance settings, Language: button that quits and reopens the app.")
+              }
+              .disabled(isBusy)
+            }
+          }
+        }
       }
     }
   }

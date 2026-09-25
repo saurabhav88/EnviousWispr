@@ -6365,6 +6365,17 @@
         }
       }
     },
+    "EnviousWispr uses the new language after it relaunches." : {
+      "comment" : "Appearance settings, Language: shown after the language is changed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr verwendet die neue Sprache nach einem Neustart."
+          }
+        }
+      }
+    },
     "EnviousWispr words file" : {
       "comment" : "Your Words: the name of an exported words file.",
       "localizations" : {
@@ -12561,6 +12572,17 @@
         }
       }
     },
+    "Relaunch to apply" : {
+      "comment" : "Appearance settings, Language: button that quits and reopens the app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Übernehmen neu starten"
+          }
+        }
+      }
+    },
     "Remembered for %@." : {
       "comment" : "Microphone settings, input socket (for a device with several inputs): the choice is saved per device. %@ is the device's name.",
       "localizations" : {
@@ -14545,6 +14567,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "System"
+          }
+        }
+      }
+    },
+    "System default" : {
+      "comment" : "Appearance settings, Language: follow the language macOS uses.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemstandard"
           }
         }
       }
