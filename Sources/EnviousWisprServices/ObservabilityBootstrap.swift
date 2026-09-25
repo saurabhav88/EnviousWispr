@@ -128,34 +128,48 @@ public enum ObservabilityBootstrap {
     }
 
     // Set stable tags that rarely change — available on every event including fatal crashes
+    let isSynthetic = ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1"
+    let joinKey = canonicalAnonymousPostHogID(PostHogSDK.shared.getDistinctId())
     SentrySDK.configureScope { scope in
-      scope.setTag(value: environment == "development" ? "debug" : "release", key: "app.build_type")
-      // Mark deliberate fault-injection launches so the Sentry-triage routine can
-      // exclude crash-tests deterministically (#1218) instead of by a prose note.
-      // Forward-only: absence means "not known-synthetic", never "known-real".
-      // HOST-SCOPE BY DESIGN: the ASR XPC helper is a launchd `serviceName`
-      // service (its own NSXPCConnection) that does NOT inherit this env var, and
-      // the fault kinds (force_xpc_kill / force_cancel) are host-initiated and
-      // captured host-side — so helper events are never fault-injection signals
-      // to tag. A genuine helper crash stays
-      // untagged and visible (the gate's create-dev-fatal branch), which is correct.
-      if ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1" {
-        scope.setTag(value: "true", key: "synthetic")
-      }
-      // #1846: the cross-vendor join key. PostHog is initialized first
-      // (`initialize()` above) and its setup is synchronous, so the stored
-      // anonymous ID is readable here. Sentry adopts PostHog's ID rather than
-      // the reverse because Sentry's own `user.id` is `SentryInstallation`'s
-      // machine-wide `~/Library/Caches/INSTALLATION` UUID — shared across
-      // unsandboxed Sentry apps and purgeable — while PostHog's lives in
-      // bundle-scoped Application Support. Additive tag, never `user.id`:
-      // replacing that would double-count one person across the changeover and
-      // disturb the sentry-triage worker's userCount severity thresholds.
-      // A scope tag set here is present on every later event including fatal
-      // crashes, and a replayed crash carries its own launch's value.
-      if let joinKey = canonicalAnonymousPostHogID(PostHogSDK.shared.getDistinctId()) {
-        scope.setTag(value: joinKey, key: "analytics.distinct_id")
-      }
+      writeStableTags(
+        environment: environment, isSynthetic: isSynthetic, joinKey: joinKey, to: scope)
+    }
+  }
+
+  /// The launch-stable global tags, each value through `SentryEventSanitizer.redactString` like
+  /// every other global-scope write (#3153; the reason is on `SentryBreadcrumb`'s global-scope
+  /// section). All three are fixed vocabularies or the canonical UUID, which pass unchanged.
+  static func writeStableTags(
+    environment: String, isSynthetic: Bool, joinKey: String?, to scope: Scope
+  ) {
+    scope.setTag(
+      value: SentryEventSanitizer.redactString(environment == "development" ? "debug" : "release"),
+      key: "app.build_type")
+    // Mark deliberate fault-injection launches so the Sentry-triage routine can
+    // exclude crash-tests deterministically (#1218) instead of by a prose note.
+    // Forward-only: absence means "not known-synthetic", never "known-real".
+    // HOST-SCOPE BY DESIGN: the ASR XPC helper is a launchd `serviceName`
+    // service (its own NSXPCConnection) that does NOT inherit this env var, and
+    // the fault kinds (force_xpc_kill / force_cancel) are host-initiated and
+    // captured host-side — so helper events are never fault-injection signals
+    // to tag. A genuine helper crash stays
+    // untagged and visible (the gate's create-dev-fatal branch), which is correct.
+    if isSynthetic {
+      scope.setTag(value: SentryEventSanitizer.redactString("true"), key: "synthetic")
+    }
+    // #1846: the cross-vendor join key. PostHog is initialized first
+    // (`initialize()` above) and its setup is synchronous, so the stored
+    // anonymous ID is readable here. Sentry adopts PostHog's ID rather than
+    // the reverse because Sentry's own `user.id` is `SentryInstallation`'s
+    // machine-wide `~/Library/Caches/INSTALLATION` UUID — shared across
+    // unsandboxed Sentry apps and purgeable — while PostHog's lives in
+    // bundle-scoped Application Support. Additive tag, never `user.id`:
+    // replacing that would double-count one person across the changeover and
+    // disturb the sentry-triage worker's userCount severity thresholds.
+    // A scope tag set here is present on every later event including fatal
+    // crashes, and a replayed crash carries its own launch's value.
+    if let joinKey {
+      scope.setTag(value: SentryEventSanitizer.redactString(joinKey), key: "analytics.distinct_id")
     }
   }
 

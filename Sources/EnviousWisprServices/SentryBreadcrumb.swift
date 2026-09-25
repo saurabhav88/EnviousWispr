@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprObservabilityCore
 import Foundation
 import Sentry
 
@@ -60,20 +61,37 @@ public enum SentryBreadcrumb {
   }
 
   // MARK: - Persistent Global Scope (crash-relevant state)
+  //
+  // Every value written to the GLOBAL scope passes `SentryEventSanitizer` here, at write time
+  // (#3153). `beforeSend` filters error events, but Sentry skips it for user feedback
+  // (`SentryClient.m`, `eventIsNotUserFeedback`), and a feedback report carries the global
+  // scope. Filtering at the write sites is the only point both paths share. The sanitizer is
+  // idempotent, so an error event's final payload is unchanged by the second pass, except a
+  // content-shaped breadcrumb stage, which the send-time pass never filtered.
+  // Each `configureScope` closure calls a `write*` function so tests exercise the exact
+  // production write against a fresh `Scope` without starting the SDK.
 
   /// Update the active ASR backend tag. Called when user switches backend or at pipeline start.
   public static func updateASRBackend(_ backend: String) {
     SentrySDK.configureScope { scope in
-      scope.setTag(value: backend, key: "asr.backend")
+      Self.writeASRBackend(backend, to: scope)
     }
+  }
+
+  nonisolated static func writeASRBackend(_ backend: String, to scope: Scope) {
+    scope.setTag(value: SentryEventSanitizer.redactString(backend), key: "asr.backend")
   }
 
   /// Update the audio route tag. Called when capture route is resolved or changes.
   /// Values are low-cardinality: built_in_mic, hal_device_input, audio_engine, failed, unknown.
   public static func updateAudioRoute(_ route: String) {
     SentrySDK.configureScope { scope in
-      scope.setTag(value: route, key: "audio.route")
+      Self.writeAudioRoute(route, to: scope)
     }
+  }
+
+  nonisolated static func writeAudioRoute(_ route: String, to scope: Scope) {
+    scope.setTag(value: SentryEventSanitizer.redactString(route), key: "audio.route")
   }
 
   /// Set or REMOVE the per-dictation take key on the global scope (#1846).
@@ -88,11 +106,15 @@ public enum SentryBreadcrumb {
   /// from "this release predates the key".
   public static func updateTakeID(_ takeID: String?) {
     SentrySDK.configureScope { scope in
-      if let takeID {
-        scope.setTag(value: takeID, key: "dictation.take_id")
-      } else {
-        scope.removeTag(key: "dictation.take_id")
-      }
+      Self.writeTakeID(takeID, to: scope)
+    }
+  }
+
+  nonisolated static func writeTakeID(_ takeID: String?, to scope: Scope) {
+    if let takeID {
+      scope.setTag(value: SentryEventSanitizer.redactString(takeID), key: "dictation.take_id")
+    } else {
+      scope.removeTag(key: "dictation.take_id")
     }
   }
 
@@ -107,17 +129,26 @@ public enum SentryBreadcrumb {
     isStreaming: Bool? = nil
   ) {
     SentrySDK.configureScope { scope in
-      scope.setTag(value: active ? "true" : "false", key: "recording.active")
-      if active, let backend {
-        scope.setContext(
-          value: [
-            "backend": backend,
-            "start_time": ISO8601DateFormatter().string(from: Date()),
-            "is_streaming": isStreaming ?? false,
-          ], key: "recording_state")
-      } else {
-        scope.removeContext(key: "recording_state")
-      }
+      Self.writeRecordingState(
+        active: active, backend: backend, isStreaming: isStreaming, startTime: Date(), to: scope)
+    }
+  }
+
+  nonisolated static func writeRecordingState(
+    active: Bool, backend: String?, isStreaming: Bool?, startTime: Date, to scope: Scope
+  ) {
+    scope.setTag(
+      value: SentryEventSanitizer.redactString(active ? "true" : "false"),
+      key: "recording.active")
+    if active, let backend {
+      scope.setContext(
+        value: SentryEventSanitizer.redactDict([
+          "backend": backend,
+          "start_time": ISO8601DateFormatter().string(from: startTime),
+          "is_streaming": isStreaming ?? false,
+        ]), key: "recording_state")
+    } else {
+      scope.removeContext(key: "recording_state")
     }
   }
 
@@ -135,15 +166,25 @@ public enum SentryBreadcrumb {
     level: SentryLevel = .info,
     data: [String: Any]? = nil
   ) {
-    // Test spy hook — invoked synchronously before SDK dispatch. Production sets nil.
+    // Test spy hook — invoked synchronously before SDK dispatch, with the RAW arguments.
+    // Production sets nil.
     Self.breadcrumbDelegate?(stage, message, level, data)
-    let crumb = Breadcrumb(level: level, category: "pipeline.\(stage)")
-    crumb.message = message
+    SentrySDK.addBreadcrumb(makeBreadcrumb(stage: stage, message: message, level: level, data: data))
+  }
+
+  /// The breadcrumb `add` hands to the global scope, filtered (#3153). The category's stage is
+  /// filtered too: the send-time sanitizer never looked at `category`.
+  nonisolated static func makeBreadcrumb(
+    stage: String, message: String, level: SentryLevel, data: [String: Any]?
+  ) -> Breadcrumb {
+    let crumb = Breadcrumb(
+      level: level, category: "pipeline.\(SentryEventSanitizer.redactString(stage))")
+    crumb.message = SentryEventSanitizer.redactString(message)
     crumb.type = "default"
     if let data {
-      crumb.data = data
+      crumb.data = SentryEventSanitizer.redactDict(data)
     }
-    SentrySDK.addBreadcrumb(crumb)
+    return crumb
   }
 
   // MARK: - Handled Errors
@@ -351,9 +392,14 @@ public enum SentryBreadcrumb {
       stage: "ai_diagnostics", message: "AI availability check completed",
       data: report.sentryContext)
 
+    let context = report.sentryContext
     SentrySDK.configureScope { scope in
-      scope.setContext(value: report.sentryContext, key: "apple_intelligence")
+      Self.writeAIDiagnostics(context, to: scope)
     }
+  }
+
+  nonisolated static func writeAIDiagnostics(_ context: [String: Any], to scope: Scope) {
+    scope.setContext(value: SentryEventSanitizer.redactDict(context), key: "apple_intelligence")
   }
 
   /// Report an AI failure that the user actually hit during dictation.
