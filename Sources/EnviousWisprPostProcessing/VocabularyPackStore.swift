@@ -22,23 +22,48 @@ public enum VocabularyPackID: String, CaseIterable, Sendable, Codable, Identifia
 
   public var id: String { rawValue }
 
+  /// Shown on screen only; `rawValue` is the identity (#3142).
   public var displayName: String {
     switch self {
-    case .tech: return "Tech"
-    case .medical: return "Medical"
-    case .legal: return "Legal"
-    case .brands: return "Brands"
-    case .names: return "Names"
+    case .tech:
+      return String(
+        localized: "Tech", comment: "Your Words, vocabulary packs: a pack's name. Technology terms."
+      )
+    case .medical:
+      return String(localized: "Medical", comment: "Your Words, vocabulary packs: a pack's name.")
+    case .legal:
+      return String(localized: "Legal", comment: "Your Words, vocabulary packs: a pack's name.")
+    case .brands:
+      return String(localized: "Brands", comment: "Your Words, vocabulary packs: a pack's name.")
+    case .names:
+      return String(
+        localized: "Names",
+        comment: "Your Words, vocabulary packs: a pack's name. People's first names and surnames.")
     }
   }
 
   public var blurb: String {
     switch self {
-    case .tech: return "Programming, cloud, and developer tools."
-    case .medical: return "Medications, conditions, and clinical terms."
-    case .legal: return "Litigation, contract, and court terminology."
-    case .brands: return "Company, product, and app names."
-    case .names: return "Common first names and surnames."
+    case .tech:
+      return String(
+        localized: "Programming, cloud, and developer tools.",
+        comment: "Your Words, vocabulary packs: the line under a pack's name.")
+    case .medical:
+      return String(
+        localized: "Medications, conditions, and clinical terms.",
+        comment: "Your Words, vocabulary packs: the line under a pack's name.")
+    case .legal:
+      return String(
+        localized: "Litigation, contract, and court terminology.",
+        comment: "Your Words, vocabulary packs: the line under a pack's name.")
+    case .brands:
+      return String(
+        localized: "Company, product, and app names.",
+        comment: "Your Words, vocabulary packs: the line under a pack's name.")
+    case .names:
+      return String(
+        localized: "Common first names and surnames.",
+        comment: "Your Words, vocabulary packs: the line under a pack's name.")
     }
   }
 }

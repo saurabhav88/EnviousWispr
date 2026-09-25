@@ -703,10 +703,28 @@
     "Apple GPU" : {
       "comment" : "Speech engine settings, engine card: the chip it runs on, the graphics processor."
     },
+    "Apple Intelligence availability could not be determined." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
     "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {},
     "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {},
+    "Apple Intelligence is available and ready to use." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "Apple Intelligence is available but model initialization failed." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
     "Apple Intelligence is turned off" : {
       "comment" : "Setup notice title when Apple Intelligence is off in System Settings."
+    },
+    "Apple Intelligence model access works but generation failed. Try again later." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "Apple Intelligence requires macOS 26 or later." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
     },
     "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation." : {},
     "Apple Neural Engine" : {
@@ -842,6 +860,9 @@
     },
     "Brand" : {
       "comment" : "Your Words: a word category, a brand or product name."
+    },
+    "Brands" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name."
     },
     "Breton" : {
       "comment" : "A language name (dictation language picker)."
@@ -1057,6 +1078,12 @@
     "Cloud based" : {
       "comment" : "Transcribe a File, Polish step: the line under an engine's name."
     },
+    "Common first names and surnames." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
+    "Company, product, and app names." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
     "Comparing against your existing snippets." : {
       "comment" : "Snippets, import snippets: working."
     },
@@ -1194,6 +1221,9 @@
     },
     "Dark" : {
       "comment" : "Appearance settings: dark theme option."
+    },
+    "Debug (all events)" : {
+      "comment" : "Diagnostics settings, debug mode: a log level in the Log Level picker."
     },
     "Debug Mode" : {},
     "Default" : {},
@@ -1786,6 +1816,9 @@
     "Indonesian" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Info (default)" : {
+      "comment" : "Diagnostics settings, debug mode: a log level in the Log Level picker."
+    },
     "Input %lld" : {
       "comment" : "Microphone settings, input socket (for a device with several inputs): one input of the device. %lld is its number."
     },
@@ -1924,6 +1957,9 @@
     "Leave this off. If you regularly dictate for five minutes or more in one go it may be worth the trade, and the risk of a lost ending is highest there too." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: recommendation."
     },
+    "Legal" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name."
+    },
     "Length" : {
       "comment" : "Transcribe a File, Working page: a row label in the file summary."
     },
@@ -1959,6 +1995,9 @@
     },
     "Lithuanian" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "Litigation, contract, and court terminology." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
     },
     "Live" : {
       "comment" : "AI Polish provider status chip."
@@ -2064,6 +2103,12 @@
     "Media during dictation" : {
       "comment" : "Microphone settings, media during dictation: row title for what happens to music and other audio."
     },
+    "Medical" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name."
+    },
+    "Medications, conditions, and clinical terms." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
     "Memory" : {},
     "Menu bar" : {
       "comment" : "Dictionary settings, Quick Add teaching card: label of the menu bar callout."
@@ -2105,6 +2150,9 @@
       "comment" : "Setup warm-up checklist item."
     },
     "Mishearings" : {},
+    "Mixed results" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+    },
     "Model" : {
       "comment" : "AI Polish: card title above the model picker.\nSpeech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table."
     },
@@ -2152,6 +2200,9 @@
     },
     "Muted, compact tap." : {
       "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
+    "Names" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name. People's first names and surnames."
     },
     "Native Speed" : {
       "comment" : "Welcome screen feature title."
@@ -2261,6 +2312,9 @@
     "No words yet. Add one with the button above." : {
       "comment" : "Your Words: empty word list."
     },
+    "None" : {
+      "comment" : "AI Polish: the choice of no cleanup engine, shown as its name."
+    },
     "Norwegian" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -2312,6 +2366,9 @@
     "Not ready" : {
       "comment" : "Transcribe a File, Polish step: the line under an engine's name."
     },
+    "Not recommended" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+    },
     "Not running" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -2324,6 +2381,9 @@
     "Not saved. %@" : {},
     "Not selected" : {
       "comment" : "VoiceOver: the value of an option that is not chosen."
+    },
+    "Not tested by us" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
     },
     "Not working" : {
       "comment" : "AI Polish provider status chip."
@@ -2474,6 +2534,9 @@
     "Our best model for cleanup and list-making. On an imported recording it removes about four times more filler than Apple Intelligence." : {
       "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. EG-1."
     },
+    "Our own model" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+    },
     "Our tuned model" : {
       "comment" : "AI Polish provider list: description under a provider name. EG-1, our own model."
     },
@@ -2573,7 +2636,7 @@
     "Play recording sounds" : {},
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
     "Polish" : {
-      "comment" : "A language name (dictation language picker).\nTranscribe a File, Working page: a row label in the file summary. The cleanup engine.\nTranscribe a File: a step name in the step bar."
+      "comment" : "A language name (dictation language picker)."
     },
     "Polish failed. Using raw text." : {
       "comment" : "Pill: AI polish failed, so the unpolished text was pasted."
@@ -2646,6 +2709,9 @@
     "Processing transcription" : {
       "comment" : "VoiceOver announcement from the recording overlay: speech is being turned into text."
     },
+    "Programming, cloud, and developer tools." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
     "Prose" : {
       "comment" : "AI Polish, S1-mini writing-style card: structure option: plain sentences."
     },
@@ -2710,7 +2776,7 @@
       "comment" : "Edit word sheet: section label for how strictly a spoken word must match."
     },
     "Recommended" : {
-      "comment" : "Transcribe a File: badge on the recommended engine.\nVoiceOver: the recommended AI Polish provider, not chosen."
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nTranscribe a File: badge on the recommended engine.\nVoiceOver: the recommended AI Polish provider, not chosen."
     },
     "Recommended for cleanup" : {},
     "Record" : {},
@@ -3171,6 +3237,9 @@
     "Teaching AI to listen politely..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Tech" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name. Technology terms."
+    },
     "Telugu" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -3374,6 +3443,9 @@
     "The model you picked runs on Ollama's servers, so the text is sent there." : {
       "comment" : "Transcribe a File, Polish step: where the chosen Ollama model runs."
     },
+    "The on-device model is not ready — it may still be downloading. Try again later." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
     "The preview detects your language as you speak." : {
       "comment" : "Live Preview settings: universal auto."
     },
@@ -3441,6 +3513,9 @@
     "This Mac" : {
       "comment" : "Transcribe a File, Review step: the cleanup runs on this Mac."
     },
+    "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later)." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
     "This Mac has 8 GB of memory. %@ may run slower here. Dictation always works, even when polish is unavailable." : {
       "comment" : "AI Polish, local model card: low-memory note. %@ is the model name, such as EG-1."
     },
@@ -3452,6 +3527,9 @@
     },
     "This build has no download source configured." : {
       "comment" : "AI Polish, local model card: why the model download failed."
+    },
+    "This build was compiled without Apple Intelligence support." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
     },
     "This can't be undone." : {},
     "This changes dictation too, not just the preview. On Automatic, dictation follows what you speak, but the preview must pick one language up front and uses your Mac's." : {
@@ -3676,6 +3754,9 @@
     "Unloaded" : {
       "comment" : "Main window sidebar: the speech model is not in memory."
     },
+    "Unreliable" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+    },
     "Update available" : {},
     "Update available, version %@" : {},
     "Update paused" : {
@@ -3753,6 +3834,9 @@
     },
     "Velvet Tap" : {
       "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
+    },
+    "Verbose" : {
+      "comment" : "Diagnostics settings, debug mode: a log level in the Log Level picker."
     },
     "Verifying" : {
       "comment" : "AI Polish provider status chip."
@@ -4436,6 +4520,30 @@
       "comment" : "Appearance settings, recording pill picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence."
     },
     "then your snippet, and it expands." : {},
+    "transcribeFile.step.polish" : {
+      "comment" : "Transcribe a File: a step name in the step bar. Polish means the AI cleanup of the text (to polish it), never the Polish language.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Polish"
+          }
+        }
+      }
+    },
+    "transcribeFile.summary.polish" : {
+      "comment" : "Transcribe a File, Working page: a row label in the file summary: the AI cleanup engine. Polish means cleanup, never the Polish language.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Polish"
+          }
+        }
+      }
+    },
     "under a minute" : {
       "comment" : "Transcribe a File: an estimate shown on its own, in lowercase."
     },

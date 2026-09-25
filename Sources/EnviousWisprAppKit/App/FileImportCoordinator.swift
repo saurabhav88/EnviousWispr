@@ -51,7 +51,10 @@ final class FileImportCoordinator {
           localized: "Transcription", comment: "Transcribe a File: a step name in the step bar.")
       case .polish:
         return String(
-          localized: "Polish", comment: "Transcribe a File: a step name in the step bar.")
+          localized: "transcribeFile.step.polish", defaultValue: "Polish",
+          comment:
+            "Transcribe a File: a step name in the step bar. Polish means the AI cleanup of the text (to polish it), never the Polish language."
+        )
       case .review:
         return String(
           localized: "Review", comment: "Transcribe a File: a step name in the step bar.")

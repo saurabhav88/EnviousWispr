@@ -164,9 +164,9 @@ struct TranscribeFileWorkingPage: View {
             ), model.summary.engine)
           row(
             String(
-              localized: "Polish",
+              localized: "transcribeFile.summary.polish", defaultValue: "Polish",
               comment:
-                "Transcribe a File, Working page: a row label in the file summary. The cleanup engine."
+                "Transcribe a File, Working page: a row label in the file summary: the AI cleanup engine. Polish means cleanup, never the Polish language."
             ), model.summary.polisher)
           row(
             String(

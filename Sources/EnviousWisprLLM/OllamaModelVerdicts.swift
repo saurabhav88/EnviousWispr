@@ -30,12 +30,42 @@ package enum OllamaModelVerdict: Sendable, CaseIterable {
 
   package var label: String {
     switch self {
-    case .recommended: return "Recommended"
-    case .mixed: return "Mixed results"
-    case .unreliable: return "Unreliable"
-    case .notRecommended: return "Not recommended"
-    case .notTested: return "Not tested by us"
-    case .firstParty: return "Our own model"
+    case .recommended:
+      return String(
+        localized: "Recommended",
+        comment:
+          "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+      )
+    case .mixed:
+      return String(
+        localized: "Mixed results",
+        comment:
+          "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+      )
+    case .unreliable:
+      return String(
+        localized: "Unreliable",
+        comment:
+          "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+      )
+    case .notRecommended:
+      return String(
+        localized: "Not recommended",
+        comment:
+          "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+      )
+    case .notTested:
+      return String(
+        localized: "Not tested by us",
+        comment:
+          "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+      )
+    case .firstParty:
+      return String(
+        localized: "Our own model",
+        comment:
+          "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+      )
     }
   }
 

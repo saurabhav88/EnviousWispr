@@ -50,7 +50,11 @@ extension LLMProvider {
     // identified. Every user-facing surface reads this one value; a raw model
     // id rendered anywhere instead would not satisfy it.
     case .s1Mini: return "S1-mini"
-    case .none: return "None"
+    // The only translated name here: the others are product and model names (#3142).
+    case .none:
+      return String(
+        localized: "None", comment: "AI Polish: the choice of no cleanup engine, shown as its name."
+      )
     }
   }
 

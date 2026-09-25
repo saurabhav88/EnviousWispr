@@ -7,9 +7,18 @@ public enum DebugLogLevel: String, CaseIterable, Codable, Sendable, Comparable {
 
   public var displayName: String {
     switch self {
-    case .info: return "Info (default)"
-    case .verbose: return "Verbose"
-    case .debug: return "Debug (all events)"
+    case .info:
+      return String(
+        localized: "Info (default)",
+        comment: "Diagnostics settings, debug mode: a log level in the Log Level picker.")
+    case .verbose:
+      return String(
+        localized: "Verbose",
+        comment: "Diagnostics settings, debug mode: a log level in the Log Level picker.")
+    case .debug:
+      return String(
+        localized: "Debug (all events)",
+        comment: "Diagnostics settings, debug mode: a log level in the Log Level picker.")
     }
   }
 
