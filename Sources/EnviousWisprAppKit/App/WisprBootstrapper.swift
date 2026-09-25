@@ -2084,6 +2084,7 @@ package final class WisprBootstrapper {
 
   package var mainWindowTitle: String { AppConstants.appName }
   package var onboardingWindowTitle: String { AppConstants.onboardingWindowTitle }
+  package var onboardingWindowID: String { AppConstants.onboardingWindowID }
 
   // MARK: - Root content
   // Homes are injected here, INSIDE the kit — the shell injects nothing, so no
@@ -2238,10 +2239,10 @@ private struct ActionWirer: View {
           // flag from the shared settings store.
           let source = settings.onboardingEverCompleted ? "diagnostics_restart" : "first_run"
           onboardingProgress.begin(source: source)
-          openWindow(id: "onboarding")
+          openWindow(id: AppConstants.onboardingWindowID)
         }
         appWindowCoordinator.dismissOnboardingAction = { [dismissWindow] in
-          dismissWindow(id: "onboarding")
+          dismissWindow(id: AppConstants.onboardingWindowID)
         }
         // PR-B.2 of #763: drain any queued onboarding-open request FIRST.
         let replayed = appWindowCoordinator.consumePendingOpenOnboarding()
@@ -2254,7 +2255,7 @@ private struct ActionWirer: View {
       .onChange(of: isOnboardingPresented) { _, newValue in
         if !newValue {
           // State-driven dismissal: binding flipped to false → close window.
-          dismissWindow(id: "onboarding")
+          dismissWindow(id: AppConstants.onboardingWindowID)
           appWindowCoordinator.refreshAfterOnboardingDismissal()
           menuBarController.updateIcon()
         }

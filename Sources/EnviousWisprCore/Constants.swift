@@ -29,6 +29,10 @@ public enum AppConstants {
   /// rather than fresh (#2087).
   public static let pendingClockSkewTolerance: TimeInterval = 60
   public static let onboardingWindowTitle = "Setup"
+  /// The onboarding scene's id. SwiftUI sets it as the window's `identifier` (measured
+  /// 2026-09-25, `Window(_:id:)` on macOS 27), so the window is found by it, never by its
+  /// title, which becomes translatable (#3142).
+  public static let onboardingWindowID = "onboarding"
 
   /// The directory EnviousWispr writes into. Sole owner: `StorageRoot`.
   ///

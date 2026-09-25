@@ -252,10 +252,13 @@ final class MenuBarController: NSObject {
     guard ShortcutMatcher.ownsItsBinding(role, in: bindings) else { return nil }
     guard case .keyboard(let keyCode, let modifiers) = bindings[role] else { return nil }
 
-    let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
     // `nameForKeyCode` falls back to `Key <n>` for anything it does not know, which teaches nothing
-    // and looks like a bug. Say nothing instead.
-    guard !formatted.isEmpty, !formatted.contains("Key ") else { return nil }
+    // and looks like a bug. Say nothing instead. Decided on the typed lookup, not on that text
+    // (#3142). A modifier-only chord never takes the fallback.
+    let isModifierOnly = ModifierKeyCodes.isModifierOnly(keyCode) && modifiers.isEmpty
+    guard isModifierOnly || KeySymbols.knownName(for: keyCode) != nil else { return nil }
+    let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
+    guard !formatted.isEmpty else { return nil }
     return formatted
   }
 

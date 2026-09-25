@@ -189,9 +189,9 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     window.styleMask.contains(.titled) && window.title == AppConstants.appName
   }
 
-  /// The onboarding scene's window. SwiftUI titles it with the scene name.
+  /// The onboarding scene's window. Owner: `OnboardingWindowIdentity`.
   private static func matchesOnboardingWindowIdentity(_ window: NSWindow) -> Bool {
-    window.title == AppConstants.onboardingWindowTitle
+    OnboardingWindowIdentity.matches(window)
   }
 
   private func isMainWindow(_ window: NSWindow) -> Bool {
@@ -320,13 +320,10 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     // before we search NSApp.windows.
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
-      // SwiftUI Window(id: "onboarding") sets the title to the scene name ("Setup").
-      // We capture by identity here so the close observer can match by reference,
-      // not by title — title matching would fail if the scene name ever changes.
+      // SwiftUI Window(id: "onboarding") sets that id as the window's identifier.
+      // We capture by identity here so the close observer can match by reference.
       if self.onboardingWindow == nil {
-        self.onboardingWindow = NSApp.windows.first {
-          $0.title == AppConstants.onboardingWindowTitle
-        }
+        self.onboardingWindow = NSApp.windows.first(where: Self.matchesOnboardingWindowIdentity)
       }
       // Ensure the window is visible — openWindow(id:) is a silent no-op when
       // reopening a single-instance Window scene that was previously dismissed.
@@ -348,11 +345,11 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
         guard let window = notification.object as? NSWindow else { return }
         MainActor.assumeIsolated {
           guard let self else { return }
-          // Match by captured identity; fall back to title if not yet captured.
+          // Match by captured identity; fall back to the scene identifier if not yet captured.
           let isOnboardingWindow =
             (self.onboardingWindow != nil)
             ? window === self.onboardingWindow
-            : window.title == AppConstants.onboardingWindowTitle
+            : Self.matchesOnboardingWindowIdentity(window)
           guard isOnboardingWindow else { return }
           self.onboardingWindow = nil
           // Only treat as abort if onboarding not yet completed.

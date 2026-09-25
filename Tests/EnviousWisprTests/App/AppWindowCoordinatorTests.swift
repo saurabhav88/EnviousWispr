@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprCore
 
 /// PR-B.2 of #763 — unit tests for `AppWindowCoordinator`.
 ///
@@ -180,5 +181,20 @@ struct AppWindowCoordinatorTests {
       windowStates: [(matchesIdentity: false, isVisible: true, isMiniaturized: false)]
     )
     #expect(!present, "a titled-but-differently-named window (Sparkle's dialog) must not count")
+  }
+
+  @Test("the Setup window is found by its scene id, whatever its title says (#3142)")
+  @MainActor
+  func onboardingWindowMatchesByIdentifierNotTitle() {
+    let translated = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    translated.identifier = NSUserInterfaceItemIdentifier(AppConstants.onboardingWindowID)
+    translated.title = "Einrichtung"
+    #expect(OnboardingWindowIdentity.matches(translated))
+
+    let lookalike = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    lookalike.title = "Setup"
+    #expect(!OnboardingWindowIdentity.matches(lookalike))
   }
 }

@@ -67,6 +67,12 @@ public enum KeySymbols {
 
   /// Convert key code to readable name
   public static func nameForKeyCode(_ keyCode: UInt16) -> String {
+    knownName(for: keyCode) ?? "Key \(keyCode)"
+  }
+
+  /// The key's name, or nil for a key code this table does not know. Callers decide on this,
+  /// never on the text of the fallback, which becomes translatable (#3142).
+  package static func knownName(for keyCode: UInt16) -> String? {
     switch keyCode {
     case 0: return "A"
     case 1: return "S"
@@ -141,7 +147,7 @@ public enum KeySymbols {
     case 124: return "→"
     case 125: return "↓"
     case 126: return "↑"
-    default: return "Key \(keyCode)"
+    default: return nil
     }
   }
 

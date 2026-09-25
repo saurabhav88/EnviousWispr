@@ -403,6 +403,9 @@ struct MenuBarControllerTests {
   func onlyKnownChordsAreAdvertised() {
     #expect(Self.label(13, [.control, .option]) == "\u{2303}\u{2325} W")
     #expect(Self.label(999, [.command]) == nil)
+    // A modifier-only chord is named by its own table and is still advertised (#3142: the check
+    // is the typed key lookup, not the text of the `Key <n>` fallback).
+    #expect(Self.label(61, []) == "Right \u{2325}")
   }
 
   /// **A chord another role owns must not be advertised here, and this is worse than a dead hint.**
