@@ -41,7 +41,7 @@ If you would rather run without it, EnviousWispr is open source under the GPLv3 
 
 ### Feedback you choose to send
 
-If you use Send Feedback, from the menu bar menu or the app window, we receive the message you write and, only if you add it, your email address so we can reply. It also carries the app and macOS version, basic details about your Mac, your locale and time zone, technical diagnostics such as the audio route, recording status and Apple Intelligence availability, and random IDs used by the app and Sentry. Your feedback is sent only after you press Send, and no recordings or History are attached. The privacy policy covers how long it is kept and how to have it deleted.
+If you use Send Feedback, the bug button next to Record in the app window, we receive the message you write and, only if you add it, your email address so we can reply. It also carries the app and macOS version, basic details about your Mac, your locale and time zone, technical diagnostics such as the audio route, recording status and Apple Intelligence availability, and random IDs used by the app and Sentry. Your feedback is sent only after you press Send, and no recordings or History are attached. The privacy policy covers how long it is kept and how to have it deleted.
 
 ### Where your text goes if you use cloud AI polish
 

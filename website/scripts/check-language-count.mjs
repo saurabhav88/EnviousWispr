@@ -39,7 +39,7 @@ const COUNT = '99+';
 const SITES = [
   ['README.md', 'WhisperKit (99+ languages, with automatic language detection)'],
   ['README.md', 'Broadest language coverage and automatic language detection | 99+ languages | ~1.6 GB'],
-  ['Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift', '("Languages", "99+ languages")'],
+  ['Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift', 'localized: "99+ languages",'],
   ['Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift', 'WhisperKit supports 99+ languages.'],
   ['Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift', 'title: "Dictate in 99+ languages"'],
   ['website/src/content/blog/live-transcription-that-keeps-up-with-you.md', 'the one that covers 99+ languages and the toughest audio'],

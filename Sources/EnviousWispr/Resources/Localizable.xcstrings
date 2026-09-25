@@ -3018,9 +3018,6 @@
     "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text." : {
       "comment" : "AI Polish, S1-mini writing-style card: explains the tone options."
     },
-    "Send Feedback" : {
-      "comment" : "Settings sidebar: a page name."
-    },
     "Sends transcribed text, never audio" : {
       "comment" : "AI Polish: privacy line under the selected provider."
     },
@@ -4276,13 +4273,46 @@
         }
       }
     },
-    "feedback.sent" : {
+    "feedback.sent.detail" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Sent"
+            "value" : "If you left your email, we'll reply there."
+          }
+        }
+      }
+    },
+    "feedback.sent.title" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Thanks, it's on its way"
+          }
+        }
+      }
+    },
+    "feedback.subtitle" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Found a bug or have an idea? We read every message."
+          }
+        }
+      }
+    },
+    "feedback.title" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Send feedback"
           }
         }
       }
@@ -4394,17 +4424,6 @@
     "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually." : {},
     "macOS may already use the Globe key to switch keyboard languages, open the emoji picker, or start its own dictation. If that happens while you dictate, you can turn it off:" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): explains why macOS may also react to the Globe key."
-    },
-    "menu.sendFeedback" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Send Feedback…"
-          }
-        }
-      }
     },
     "menu.setupRequired.continue" : {
       "comment" : "Menu bar item shown at the top of the menu while first-run setup is unfinished. Opens setup.",

@@ -82,3 +82,31 @@ public enum FeedbackReporter {
     return .queued
   }
 }
+
+/// The unsent feedback text, kept on this Mac so closing the popover, the window or the app does
+/// not lose it (founder, 2026-09-25). Cleared only once a report is handed to Sentry. Local
+/// storage of the user's own words is inside the privacy boundary: nothing here leaves the Mac.
+public struct FeedbackDraftStore: Sendable {
+  static let messageKey = "feedback.draft.message"
+  static let emailKey = "feedback.draft.email"
+
+  private let defaults: @Sendable () -> UserDefaults
+
+  public init() { self.defaults = { .standard } }
+
+  /// For tests: a store over an isolated suite.
+  init(defaults: @escaping @Sendable () -> UserDefaults) { self.defaults = defaults }
+
+  public var message: String { defaults().string(forKey: Self.messageKey) ?? "" }
+  public var email: String { defaults().string(forKey: Self.emailKey) ?? "" }
+
+  /// Saves both fields; an empty field removes its key rather than storing "".
+  public func save(message: String, email: String) {
+    let store = defaults()
+    for (key, value) in [(Self.messageKey, message), (Self.emailKey, email)] {
+      if value.isEmpty { store.removeObject(forKey: key) } else { store.set(value, forKey: key) }
+    }
+  }
+
+  public func clear() { save(message: "", email: "") }
+}

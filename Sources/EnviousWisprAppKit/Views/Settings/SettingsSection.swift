@@ -52,7 +52,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case snippets
   case clipboard
   case permissions
-  case sendFeedback
   case checkForUpdates
   case openSourceLicenses
   #if DEBUG
@@ -86,8 +85,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
       return String(localized: "Clipboard", comment: "Settings sidebar: a page name.")
     case .permissions:
       return String(localized: "Permissions", comment: "Settings sidebar: a page name.")
-    case .sendFeedback:
-      return String(localized: "Send Feedback", comment: "Settings sidebar: a page name.")
     case .checkForUpdates:
       return String(localized: "Check for Updates", comment: "Settings sidebar: a page name.")
     case .openSourceLicenses:
@@ -115,7 +112,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .snippets: return "curlybraces"
     case .clipboard: return "clipboard"
     case .permissions: return "lock.shield"
-    case .sendFeedback: return "bubble.left.and.text.bubble.right"
     case .checkForUpdates: return "arrow.triangle.2.circlepath"
     case .openSourceLicenses: return "doc.text.magnifyingglass"
     #if DEBUG
@@ -188,8 +184,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
       return String(
         localized: "The microphone and accessibility access EnviousWispr needs.",
         comment: "Settings: the one-line description under a page title.")
-    // #3153: the founder asked for the form and nothing else, so no orientation line.
-    case .sendFeedback: return ""
     case .checkForUpdates: return ""
     case .openSourceLicenses:
       return String(
@@ -211,7 +205,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
       return .record
     case .aiPolish, .wordCorrection, .snippets: return .process
     case .clipboard: return .output
-    case .permissions, .sendFeedback, .checkForUpdates, .openSourceLicenses: return .system
+    case .permissions, .checkForUpdates, .openSourceLicenses: return .system
     #if DEBUG
       case .diagnostics: return .system
     #endif

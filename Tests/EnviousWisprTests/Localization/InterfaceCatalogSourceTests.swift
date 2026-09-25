@@ -17,15 +17,17 @@ struct InterfaceCatalogSourceTests {
     "menu.setupRequired.continue": "Setup Required: Continue Setup…",
     "notification.update.ready.body": "Version %@ is ready. Click to install.",
     // #3153: Send Feedback.
-    "menu.sendFeedback": "Send Feedback…",
     "feedback.message.placeholder": "What happened, or what would you like to see?",
     "feedback.message.label": "Feedback message",
     "feedback.email.placeholder": "Email (optional, if you'd like a reply)",
     "feedback.send": "Send",
-    "feedback.sent": "Sent",
     "feedback.unavailable": "Couldn't send. Email hello@enviouslabs.co",
     "feedback.email.invalid": "Enter a valid email address",
     "feedback.message.tooLong": "Maximum 4,000 characters",
+    "feedback.title": "Send feedback",
+    "feedback.subtitle": "Found a bug or have an idea? We read every message.",
+    "feedback.sent.title": "Thanks, it's on its way",
+    "feedback.sent.detail": "If you left your email, we'll reply there.",
   ]
 
   @Test("Semantic keys carry today's exact English")
