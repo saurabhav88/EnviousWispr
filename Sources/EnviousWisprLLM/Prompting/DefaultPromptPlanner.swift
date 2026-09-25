@@ -63,6 +63,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
     case .localFixed: return LocalFixedPromptBuilder()
     case .egOneFixed: return EGOnePromptBuilder()
     case .egOneEnvelope: return EGOneEnvelopePromptBuilder()
+    case .egOneEnvelopeNamedLanguage: return EGOneNamedLanguagePromptBuilder()
     case .s1ControlLine: return S1ControlLinePromptBuilder()
     }
   }
@@ -122,9 +123,9 @@ public struct DefaultPromptPlanner: PromptPlanning {
       return egOneFamily
     case .s1Mini:
       // #2649: a fixed third-party training format. Unlike EG-1 this is NOT read
-      // from the manifest's `promptTemplateID`: the two EG-1 families exist
-      // because WE retrained the model and had to keep serving 1.1 users their
-      // 1.1 prompt. S1-mini's text is not ours to change, so a second family
+      // from the manifest's `promptTemplateID`: EG-1 retains separate 1.1, plain
+      // 1.2 and named-language 1.2 prompt contracts because WE own its training and
+      // prompt (#3111 changed the prompt id for the same 1.2 weights). S1-mini's text is not ours to change, so a second family
       // could only arise from upstream publishing a different format, which
       // would be a new artifact and a new manifest.
       return .s1ControlLine

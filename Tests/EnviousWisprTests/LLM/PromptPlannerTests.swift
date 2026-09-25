@@ -599,4 +599,63 @@ struct EGOneNamedLanguagePromptTests {
     #expect(Self.input("x", namedLanguage: nil).withPolishVocabulary(
       PolishVocabulary(terms: [], generation: 0)).namedLanguage == nil)
   }
+
+  @Test("Through the whole planner: a named Polish input survives the vocabulary copy and reaches the prompt")
+  func namedPolishThroughThePlanner() {
+    // `.whisperKit` with no detection is the path where the planner REBUILDS the input
+    // through `withPolishVocabulary`, so a dropped field would show up here and nowhere else.
+    let input = PromptBuildInput(
+      transcript: "daty płatności", provider: .egOne, modelID: "eg-1", appName: nil,
+      language: nil, polishVocabulary: PolishVocabulary(terms: [], generation: 3),
+      backend: .whisperKit, namedLanguage: "pl")
+    let plan = DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage).plan(input: input)
+    #expect(plan.family == .egOneEnvelopeNamedLanguage)
+    #expect(
+      plan.envelope.messages[0].content
+        == EGOneEnvelopePromptBuilder.systemPrompt
+        + " The transcript is in Polish; write the cleaned text in Polish.")
+  }
+
+  @Test(
+    "Through the whole planner: no name, English, or unmeasured renders the shipped 1.2 prompt",
+    arguments: [nil, "en", "fi"] as [String?])
+  func unnamedThroughThePlanner(code: String?) {
+    let input = PromptBuildInput(
+      transcript: "please send the invoice", provider: .egOne, modelID: "eg-1", appName: nil,
+      language: nil, polishVocabulary: PolishVocabulary(terms: [], generation: 0),
+      backend: .whisperKit, namedLanguage: code)
+    let plan = DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage).plan(input: input)
+    #expect(plan.envelope.messages[0].content == EGOneEnvelopePromptBuilder.systemPrompt)
+  }
+
+  @Test("The health probe's input renders exactly the 1.2 probe prompt under the new family")
+  func healthProbeInputIsUnchanged() {
+    // `EGOneServerManager.probeHealth` builds with `DefaultPromptPlanner.builder(for:)` and an
+    // input that never names a language, so switching the shipped family must not change
+    // what the probe sends. The ready-state probe needs a live server; this pins the exact
+    // builder call it makes instead.
+    let probe = PromptBuildInput(
+      transcript: "so um move the meeting to thursday no wait friday", provider: .egOne,
+      modelID: "eg-1", appName: nil, language: nil,
+      polishVocabulary: PolishVocabulary(terms: [], generation: 0))
+    let named = DefaultPromptPlanner.builder(for: .egOneEnvelopeNamedLanguage)
+      .build(input: probe, mode: .message)
+    let plain = DefaultPromptPlanner.builder(for: .egOneEnvelope).build(input: probe, mode: .message)
+    #expect(named.messages.map(\.content) == plain.messages.map(\.content))
+  }
+
+  @Test("The manifest registry maps the new id to the new family and keeps both older ids")
+  func registryMapsTheNewID() {
+    func manifest(_ id: String) -> EGOneManifest {
+      EGOneManifest(
+        modelName: "eg-1", version: "test", contextTokens: 16384,
+        promptTemplateID: id, minAppVersion: "2.3.0",
+        downloadURL: URL(string: "https://models.enviouslabs.co/eg1/x.gguf")!)
+    }
+    #expect(manifest("eg1-v2-named-language").promptFamily == .egOneEnvelopeNamedLanguage)
+    #expect(manifest("eg1-v2").promptFamily == .egOneEnvelope)
+    #expect(manifest("eg1-v1").promptFamily == .egOneFixed)
+    #expect(DefaultPromptPlanner.builder(for: .egOneEnvelopeNamedLanguage) is EGOneNamedLanguagePromptBuilder)
+  }
+
 }

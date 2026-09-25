@@ -14,7 +14,7 @@ struct EGOneManifestTests {
   /// the pairing cannot be updated by half.
   private static let shippedRevision = "eg1-1.2-c003"
   private static let expectedDisplayVersionForShippedRevision = "1.2"
-  private static let expectedPromptTemplateForShippedRevision = "eg1-v2"
+  private static let expectedPromptTemplateForShippedRevision = "eg1-v2-named-language"
 
   static func makeManifest(
     modelName: String = "eg-1",
@@ -169,10 +169,11 @@ struct EGOneManifestTests {
     // this line, or the reverse, fails here.
     #expect(manifest.resolvedDisplayVersion == Self.expectedDisplayVersionForShippedRevision)
     #expect(manifest.version == Self.shippedRevision)
-    // The prompt id is pinned for the same reason as the label: EG-1 1.2 was tuned on
-    // the `eg1-v2` text, and a revision bump that forgets this line would serve the new
-    // weights the previous prompt with nothing failing.
+    // Pin the bundled prompt id alongside the 1.2 revision. #3111 keeps the same
+    // weights but selects a separately measured prompt contract; changing either
+    // manifest value without updating this test must fail.
     #expect(manifest.promptTemplateID == Self.expectedPromptTemplateForShippedRevision)
-    #expect(manifest.promptFamily == .egOneEnvelope)
+    // #3111: the same 1.2 weights, served the named-language prompt.
+    #expect(manifest.promptFamily == .egOneEnvelopeNamedLanguage)
   }
 }
