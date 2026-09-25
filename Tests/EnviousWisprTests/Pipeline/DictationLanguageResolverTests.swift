@@ -561,3 +561,112 @@ struct DictationLanguageResolverLearnLanguageTests {
     #expect(none.learnLanguage == nil)
   }
 }
+
+/// #3111: `Resolution.textLanguage`, what the text alone says whichever rung answered.
+/// EG-1 names a language only when the text agrees with any lock or engine answer, because
+/// naming the wrong one translates the dictation INTO it. When this fails, a Polish user
+/// locked to Polish keeps getting English back, or a user locked to one language who
+/// dictates another gets translated into the lock.
+@Suite("DictationLanguageResolver textLanguage", .tags(.productOutcome))
+struct DictationLanguageResolverTextLanguageTests {
+
+  /// A recogniser seam that answers fixed and counts its calls, so "one call" and "no call"
+  /// are observed rather than inferred from timing.
+  final class CountingIdentify: @unchecked Sendable {
+    private(set) var calls = 0
+    let answer: (language: String, confidence: Double)?
+    init(_ answer: (language: String, confidence: Double)?) { self.answer = answer }
+    func callAsFunction(_ text: String) -> (language: String, confidence: Double)? {
+      calls += 1
+      return answer
+    }
+  }
+
+  @Test("A lock keeps its precedence and, when asked, the text's own answer is recorded beside it")
+  func lockedRungRecordsTextWhenAsked() {
+    let identify = CountingIdentify(("pl", 0.97))
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: "de", engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", identifyTextOnAllPaths: true, identify: identify.callAsFunction)
+    #expect(resolved.language == "de")
+    #expect(resolved.source == .locked)
+    #expect(resolved.learnLanguage == "de")
+    #expect(resolved.confidenceBucket == .none)
+    #expect(resolved.textLanguage == "pl")
+    #expect(identify.calls == 1)
+  }
+
+  @Test("A detecting engine keeps its precedence and, when asked, the text's own answer is recorded")
+  func engineRungRecordsTextWhenAsked() {
+    let identify = CountingIdentify(("pl", 0.95))
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "en",
+      text: "x", identifyTextOnAllPaths: true, identify: identify.callAsFunction)
+    #expect(resolved.language == "en")
+    #expect(resolved.source == .engine)
+    #expect(resolved.textLanguage == "pl")
+    #expect(identify.calls == 1)
+  }
+
+  @Test(
+    "Not asked: the lock and engine rungs never call the recogniser, the cursor repair's fast path",
+    arguments: [("de", false, nil), (nil, true, "fr")] as [(String?, Bool, String?)])
+  func fastPathDoesNotIdentify(lock: String?, detects: Bool, reported: String?) {
+    let identify = CountingIdentify(("pl", 0.99))
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: lock, engineDetectsLanguage: detects, engineReportedLanguage: reported,
+      text: "x", identify: identify.callAsFunction)
+    #expect(resolved.textLanguage == nil)
+    #expect(identify.calls == 0)
+  }
+
+  @Test("The text rung calls the recogniser once and records its answer, asked or not", arguments: [true, false])
+  func textRungIdentifiesOnce(asked: Bool) {
+    let identify = CountingIdentify(("pl", 0.93))
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", identifyTextOnAllPaths: asked, identify: identify.callAsFunction)
+    #expect(resolved.language == "pl")
+    #expect(resolved.source == .dictation)
+    #expect(resolved.textLanguage == "pl")
+    #expect(identify.calls == 1)
+  }
+
+  @Test(
+    "Under the floor, non-finite, or nothing: no text language on any rung",
+    arguments: [
+      ("pl", 0.899), ("pl", Double.nan), ("pl", Double.infinity), ("pl", -Double.infinity),
+    ] as [(String, Double)])
+  func unsureTextHasNoLanguage(language: String, confidence: Double) {
+    for lock in [nil, "de"] as [String?] {
+      let resolved = DictationLanguageResolver.resolve(
+        lockedLanguage: lock, engineDetectsLanguage: false, engineReportedLanguage: nil,
+        text: "x", identifyTextOnAllPaths: true,
+        identify: DictationLanguageResolverTests.fixed(language, confidence))
+      #expect(resolved.textLanguage == nil, "lock \(String(describing: lock)), \(confidence)")
+    }
+    let nothing = DictationLanguageResolver.resolve(
+      lockedLanguage: "de", engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", identifyTextOnAllPaths: true, identify: { _ in nil })
+    #expect(nothing.textLanguage == nil)
+  }
+
+  @Test("The document rung says nothing about the insertion's own language")
+  func documentRungHasNoTextLanguage() {
+    let document = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", surroundingText: "a much longer surrounding window", identifyTextOnAllPaths: true,
+      identify: { $0.count > 1 ? ("de", 0.95) : ("de", 0.6) })
+    #expect(document.source == .document)
+    #expect(document.textLanguage == nil)
+  }
+
+  @Test("The real recogniser reads the #3111 sentence as Polish at the floor")
+  func realRecogniserReadsTheReportedSentence() {
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: "pl", engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "Daty płatności są późniejsze niż daty zakupu, prawdopodobnie różnica w rejestracji transakcji.",
+      identifyTextOnAllPaths: true)
+    #expect(resolved.textLanguage == "pl")
+  }
+}

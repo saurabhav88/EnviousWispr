@@ -156,16 +156,29 @@ package enum DictationLanguageResolver {
     /// English, nothing about the insertion. Wispr Flow takes this language
     /// from the user's setting and its ASR, never from a confidence read.
     let learnLanguage: String?
+    /// #3111: what the dictation TEXT alone says, at `minConfidence`, whatever
+    /// rung answered `language`. A lock is intent and an engine answer can come
+    /// from one window, so EG-1 names a language only when the text agrees:
+    /// naming the wrong one translates INTO it (Polish labelled German came back
+    /// German on 31 of 40 sentences). Never used to change `language`, `source`,
+    /// `englishVeto` or `learnLanguage`.
+    ///
+    /// Nil means unsure OR not requested: the lock and engine rungs read the
+    /// text only when the caller passes `identifyTextOnAllPaths`, which the
+    /// pipeline runner does and the cursor-insertion repair, inside its 100 ms
+    /// deadline, does not.
+    let textLanguage: String?
 
     init(
       language: String?, learnLanguage: String?, source: Source, confidenceBucket: Bucket,
-      englishVeto: Bool = false
+      englishVeto: Bool = false, textLanguage: String? = nil
     ) {
       self.language = language
       self.learnLanguage = learnLanguage
       self.source = source
       self.confidenceBucket = confidenceBucket
       self.englishVeto = englishVeto
+      self.textLanguage = textLanguage
     }
   }
 
@@ -205,36 +218,54 @@ package enum DictationLanguageResolver {
   /// - Parameter identify: seam. Real recogniser output cannot reproducibly hit
   ///   0.899 / 0.900 / 0.901 across OS versions, so the boundary is tested
   ///   through this rather than by hunting for input that happens to land there.
+  /// - Parameter identifyTextOnAllPaths: #3111. Also read the text on the lock and
+  ///   engine rungs, for `Resolution.textLanguage` only; precedence is unchanged.
+  ///   Off by default so the cursor-insertion repair keeps its no-recogniser fast
+  ///   path inside its deadline; `TextProcessingRunner` turns it on.
   package static func resolve(
     lockedLanguage: String?,
     engineDetectsLanguage: Bool,
     engineReportedLanguage: String?,
     text: String,
     surroundingText: String = "",
+    identifyTextOnAllPaths: Bool = false,
     identify: (String) -> (language: String, confidence: Double)? = Self.identify
   ) -> Resolution {
-    if let lockedLanguage, !lockedLanguage.isEmpty {
-      return Resolution(
-        language: lockedLanguage, learnLanguage: lockedLanguage, source: .locked,
-        confidenceBucket: .none)
-    }
-    if engineDetectsLanguage, let engineReportedLanguage, !engineReportedLanguage.isEmpty {
-      return Resolution(
-        language: engineReportedLanguage, learnLanguage: engineReportedLanguage, source: .engine,
-        confidenceBucket: .none)
-    }
-
     // `isFinite` at every acceptance gate, not only in the bucket. Infinity
     // satisfies `>= minConfidence` while bucketing to `none`, which would resolve
     // a language while reporting no confidence — a contradiction the field could
     // never explain. Hypothetical from the real recogniser, reachable through the
     // seam, and silent if wrong, which is the shape worth guarding.
-    let fromDictation = identify(text).flatMap { $0.confidence.isFinite ? $0 : nil }
+    //
+    // #3111: one recogniser call per resolution, whichever rung answers. The lock
+    // and engine rungs make it only when asked to.
+    func identifyText() -> (language: String, confidence: Double)? {
+      identify(text).flatMap { $0.confidence.isFinite ? $0 : nil }
+    }
+    func confident(_ answer: (language: String, confidence: Double)?) -> String? {
+      guard let answer, answer.confidence >= minConfidence else { return nil }
+      return answer.language
+    }
+
+    if let lockedLanguage, !lockedLanguage.isEmpty {
+      return Resolution(
+        language: lockedLanguage, learnLanguage: lockedLanguage, source: .locked,
+        confidenceBucket: .none,
+        textLanguage: identifyTextOnAllPaths ? confident(identifyText()) : nil)
+    }
+    if engineDetectsLanguage, let engineReportedLanguage, !engineReportedLanguage.isEmpty {
+      return Resolution(
+        language: engineReportedLanguage, learnLanguage: engineReportedLanguage, source: .engine,
+        confidenceBucket: .none,
+        textLanguage: identifyTextOnAllPaths ? confident(identifyText()) : nil)
+    }
+
+    let fromDictation = identifyText()
     let dictationBucket = fromDictation.map { Resolution.Bucket($0.confidence) } ?? .none
     if let fromDictation, fromDictation.confidence >= minConfidence {
       return Resolution(
         language: fromDictation.language, learnLanguage: fromDictation.language, source: .dictation,
-        confidenceBucket: dictationBucket)
+        confidenceBucket: dictationBucket, textLanguage: fromDictation.language)
     }
 
     // The surrounding document may VETO, never authorise.
