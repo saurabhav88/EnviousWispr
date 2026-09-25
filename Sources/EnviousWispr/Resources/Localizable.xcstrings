@@ -453,6 +453,9 @@
     "A dictation is running. Try again when it finishes." : {
       "comment" : "Transcribe a File: why the file was refused."
     },
+    "A different app is already in that Applications spot." : {
+      "comment" : "Move to Applications result, another app has the name: the heading."
+    },
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
     "A language download is in progress. This updates when it finishes." : {
       "comment" : "Live Preview settings: status install in flight detail."
@@ -750,6 +753,9 @@
     },
     "Another app is using Ollama's port (11434). Close it and try again." : {
       "comment" : "AI Polish, Ollama setup: error. 11434 is a network port number."
+    },
+    "Another copy of EnviousWispr is already open." : {
+      "comment" : "Move to Applications result, the copy in Applications is running: the heading. EnviousWispr is the app name; keep it."
     },
     "Another copy of EnviousWispr is editing snippets right now. Try that again." : {
       "comment" : "Snippets: error when another copy of the app holds the file."
@@ -1566,6 +1572,9 @@
     "Downloading… %lld%%" : {
       "comment" : "AI Polish, Ollama model list: download progress. %lld is a whole-number percentage."
     },
+    "Drag EnviousWispr to your Applications folder in Finder. EnviousWispr keeps working in the meantime." : {
+      "comment" : "Move to Applications result, any other failure: the explanation. EnviousWispr is the app name; keep it."
+    },
     "Dust Mote" : {
       "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
@@ -1609,6 +1618,12 @@
     },
     "EnviousWispr is in front, so there is nothing of yours to read. Select the word in the app you are writing in, then try again." : {
       "comment" : "Quick Add panel: why the selected text could not be read."
+    },
+    "EnviousWispr is now in your Applications folder." : {
+      "comment" : "Move to Applications result, the app was copied but did not reopen: the heading. EnviousWispr is the app name; keep it."
+    },
+    "EnviousWispr is running from a temporary location, so it cannot receive updates. EnviousWispr can fix this and reopen automatically." : {
+      "comment" : "Move to Applications prompt: why the app should move. EnviousWispr is the app name; keep it."
     },
     "EnviousWispr needs Accessibility permission to read your selection. Turn it on in System Settings, then try again." : {
       "comment" : "Quick Add panel: why the selected text could not be read."
@@ -1729,6 +1744,9 @@
     },
     "Finish setting this one up, or pick another." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked."
+    },
+    "Finish setting up EnviousWispr" : {
+      "comment" : "Move to Applications prompt: the heading. EnviousWispr is the app name; keep it."
     },
     "Finish upgrade" : {
       "comment" : "Settings > AI Polish, local model row: button."
@@ -1962,6 +1980,9 @@
     },
     "Installing model... %@" : {
       "comment" : "Setup progress: %@ is the name of the speech model being installed."
+    },
+    "Installing to your Applications folder. EnviousWispr will reopen automatically." : {
+      "comment" : "Move to Applications: shown while the app is being moved. EnviousWispr is the app name; keep it."
     },
     "Interrupted" : {},
     "Interrupted recording" : {},
@@ -2304,7 +2325,12 @@
     "Mongolian" : {
       "comment" : "A language name (dictation language picker)."
     },
-    "Move EnviousWispr" : {},
+    "Move EnviousWispr" : {
+      "comment" : "Move to Applications prompt: the main button. EnviousWispr is the app name; keep it."
+    },
+    "Moving EnviousWispr" : {
+      "comment" : "Move to Applications: the heading while the app is being moved. EnviousWispr is the app name; keep it."
+    },
     "Moving Macs, or bringing your snippets back? Pick the %@ you exported, a CSV, or a plain list. Snippets you already have are left as they are." : {
       "comment" : "Snippets, import snippets: method card. %@ is the exported file's name; keep it as is."
     },
@@ -2458,7 +2484,9 @@
     "Norwegian Nynorsk" : {
       "comment" : "A language name (dictation language picker)."
     },
-    "Not Now" : {},
+    "Not Now" : {
+      "comment" : "Move to Applications prompt: declines for now; it asks again later."
+    },
     "Not active: Copy last dictation (%@) uses these keys. Choose another." : {
       "comment" : "Keybinds settings: a conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
     },
@@ -2495,6 +2523,9 @@
     },
     "Not enough free space to install the speech model. Free up about 1 GB and try again." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
+    },
+    "Not enough space to move EnviousWispr." : {
+      "comment" : "Move to Applications result, the disk is full: the heading. EnviousWispr is the app name; keep it."
     },
     "Not fully polished" : {},
     "Not installed" : {
@@ -2544,6 +2575,15 @@
     "Nothing to review." : {
       "comment" : "Snippets, import review summary: nothing in the source.\nYour Words, import review: the file had no words."
     },
+    "Nothing was changed. EnviousWispr is still working. You can move it yourself in Finder anytime." : {
+      "comment" : "Move to Applications result, another app has the name: the explanation. EnviousWispr is the app name; keep it."
+    },
+    "Nothing was changed. Free up some space, then reopen EnviousWispr to try again." : {
+      "comment" : "Move to Applications result, the disk is full: the explanation. EnviousWispr is the app name; keep it."
+    },
+    "Nothing was changed. Quit the other copy, then reopen EnviousWispr to finish moving it." : {
+      "comment" : "Move to Applications result, the copy in Applications is running: the explanation. EnviousWispr is the app name; keep it."
+    },
     "Nothing was exported" : {
       "comment" : "Your Words, export: alert title when there was nothing to export; not a failure."
     },
@@ -2556,7 +2596,9 @@
     "Numbers, dates, your saved words and filler removal run either way." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue: what runs even without a cleanup engine."
     },
-    "OK" : {},
+    "OK" : {
+      "comment" : "Button that closes a message."
+    },
     "OSLog" : {},
     "OUTPUT" : {
       "comment" : "Settings sidebar: group heading, in capitals."
@@ -3238,7 +3280,9 @@
       "comment" : "Microphone settings: switch that turns the Bluetooth tip card on or off."
     },
     "Show app in Dock" : {},
-    "Show in Finder" : {},
+    "Show in Finder" : {
+      "comment" : "Move to Applications result: opens Finder at the moved app."
+    },
     "Show words while I speak" : {
       "comment" : "Live Preview settings: toggle label."
     },
@@ -4107,6 +4151,9 @@
     "We could not get what you highlighted in that app. You can still add the word by hand below." : {
       "comment" : "Quick Add panel: why the selected text could not be read."
     },
+    "We couldn't move EnviousWispr automatically." : {
+      "comment" : "Move to Applications result, any other failure: the heading. EnviousWispr is the app name; keep it."
+    },
     "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold %@ again." : {
       "comment" : "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
     },
@@ -4262,6 +4309,9 @@
     },
     "You already have this, as another spelling of %@." : {
       "comment" : "Your Words, import review: a row's note. %@ is the existing word."
+    },
+    "You can quit this copy and use the one in Applications." : {
+      "comment" : "Move to Applications result, the app was copied but did not reopen: the explanation."
     },
     "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
       "comment" : "Setup: shown when the speech engine did not finish warming up."
@@ -5002,6 +5052,18 @@
     },
     "not started" : {
       "comment" : "VoiceOver, Transcribe a File: a Working row has not started."
+    },
+    "notification.update.install" : {
+      "comment" : "Update notification: the button that installs the new version.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install"
+          }
+        }
+      }
     },
     "notification.update.ready.body" : {
       "comment" : "Body of the macOS notification when an app update has downloaded. %@ is the version number, for example 2.6.0.",

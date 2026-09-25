@@ -223,7 +223,8 @@ struct ApplicationRelocationCoordinatorTests {
     #expect(h.telemetry.failedEvents.map(\.1) == ["stripFailedAtDestination"])
     #expect(h.telemetry.lastFailedInstallResolution == "existing_usable")
     // A placed-but-suspect copy must never be offered for opening.
-    if case .nothingMoved = h.presenter.presentations[0] {} else {
+    if case .nothingMoved = h.presenter.presentations[0] {
+    } else {
       Issue.record("a partially stripped destination must produce Message A")
     }
   }
@@ -240,7 +241,8 @@ struct ApplicationRelocationCoordinatorTests {
     await h.coordinator.pendingWork?.value
     #expect(h.telemetry.lastFailedInstallResolution == "installed")
     // Still Message A: a copy that may be unclean is never offered for opening.
-    if case .nothingMoved = h.presenter.presentations[0] {} else {
+    if case .nothingMoved = h.presenter.presentations[0] {
+    } else {
       Issue.record("a possibly-unclean placed copy must produce Message A")
     }
   }
@@ -514,7 +516,8 @@ struct ApplicationRelocationCoordinatorTests {
     #expect(h.telemetry.failedEvents.map(\.1) == ["ackUnhealthyTranslocated"])
     // The loop person A repeated four times: "open it from Applications" when
     // the Applications copy is itself still trapped. Must be Message A.
-    if case .nothingMoved = h.presenter.presentations[0] {} else {
+    if case .nothingMoved = h.presenter.presentations[0] {
+    } else {
       Issue.record("a still-translocated child must never produce Message B")
     }
   }
@@ -661,7 +664,8 @@ struct ApplicationRelocationCoordinatorTests {
   func existingUsableHandshakes() async {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
-      bundleURL: Self.translocatedURL, moverResult: .success(.existingUsable(dest, bundleVersion: "1.0")))
+      bundleURL: Self.translocatedURL,
+      moverResult: .success(.existingUsable(dest, bundleVersion: "1.0")))
     h.handshake.ackHealthy = true
     h.coordinator.evaluateAndOfferIfNeeded()
     await h.coordinator.pendingWork?.value
@@ -676,7 +680,8 @@ struct ApplicationRelocationCoordinatorTests {
   func existingRunningActivates() async {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
-      bundleURL: Self.translocatedURL, moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
+      bundleURL: Self.translocatedURL,
+      moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
     h.coordinator.evaluateAndOfferIfNeeded()
     await h.coordinator.pendingWork?.value
     #expect(h.relauncher.activatedURL == dest)  // brought the live copy to front
@@ -690,11 +695,62 @@ struct ApplicationRelocationCoordinatorTests {
   func existingRunningActivateFailure() async {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
-      bundleURL: Self.translocatedURL, moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
+      bundleURL: Self.translocatedURL,
+      moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
     h.relauncher.activateSuccess = false
     h.coordinator.evaluateAndOfferIfNeeded()
     await h.coordinator.pendingWork?.value
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["relaunchRejected"])
+  }
+
+  // MARK: - Copy (#3142)
+
+  /// The prompt and progress cards read exactly as they did before the catalog, typed out.
+  @Test("The prompt and progress cards keep their English")
+  func promptAndProgressCopy() {
+    #expect(CenteredRelocationPresenter.promptTitle == "Finish setting up EnviousWispr")
+    #expect(
+      CenteredRelocationPresenter.promptMessage
+        == "EnviousWispr is running from a temporary location, so it cannot receive updates. EnviousWispr can fix this and reopen automatically."
+    )
+    #expect(CenteredRelocationPresenter.progressTitle == "Moving EnviousWispr")
+    #expect(
+      CenteredRelocationPresenter.progressMessage
+        == "Installing to your Applications folder. EnviousWispr will reopen automatically.")
+  }
+
+  /// Every failure, in both families, reads exactly as before. The three precondition overrides
+  /// are typed out; every other failure must land on the generic Message A.
+  @Test("Every failure message keeps its English")
+  func failureCopyForEveryFailure() {
+    let generic = (
+      "We couldn't move EnviousWispr automatically.",
+      "Drag EnviousWispr to your Applications folder in Finder. EnviousWispr keeps working in the meantime."
+    )
+    let overrides: [RelocationFailure: (String, String)] = [
+      .diskFull: (
+        "Not enough space to move EnviousWispr.",
+        "Nothing was changed. Free up some space, then reopen EnviousWispr to try again."
+      ),
+      .destinationRunning: (
+        "Another copy of EnviousWispr is already open.",
+        "Nothing was changed. Quit the other copy, then reopen EnviousWispr to finish moving it."
+      ),
+      .destinationConflict: (
+        "A different app is already in that Applications spot.",
+        "Nothing was changed. EnviousWispr is still working. You can move it yourself in Finder anytime."
+      ),
+    ]
+    let destination = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
+    for failure in RelocationFailure.allCases {
+      let expected = overrides[failure] ?? generic
+      let a = CenteredRelocationPresenter.failureCopy(.nothingMoved(failure))
+      #expect(a.0 == expected.0 && a.1 == expected.1, "\(failure)")
+      let b = CenteredRelocationPresenter.failureCopy(
+        .installedNotConfirmed(failure, destination: destination))
+      #expect(b.0 == "EnviousWispr is now in your Applications folder.", "\(failure)")
+      #expect(b.1 == "You can quit this copy and use the one in Applications.", "\(failure)")
+    }
   }
 }

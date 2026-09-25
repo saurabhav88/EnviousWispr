@@ -65,6 +65,19 @@ final class UpdateNotificationPresenter: NSObject, UpdateNotifying {
     )
   }
 
+  /// The banner's Install button. Its title is translated (#3142); its identifier is not. Internal
+  /// so a test pins both without touching the notification center.
+  static func makeInstallAction() -> UNNotificationAction {
+    UNNotificationAction(
+      identifier: installActionIdentifier,
+      title: String(
+        localized: "notification.update.install",
+        defaultValue: "Install",
+        comment: "Update notification: the button that installs the new version."),
+      options: [.foreground]
+    )
+  }
+
   private func deliver(displayVersion: String) {
     let content = UNMutableNotificationContent()
     content.title = AppConstants.appName
@@ -92,11 +105,7 @@ final class UpdateNotificationPresenter: NSObject, UpdateNotifying {
   private func installDelegateIfNeeded(_ center: UNUserNotificationCenter) {
     guard !delegateInstalled else { return }
     delegateInstalled = true
-    let installAction = UNNotificationAction(
-      identifier: Self.installActionIdentifier,
-      title: "Install",
-      options: [.foreground]
-    )
+    let installAction = Self.makeInstallAction()
     let category = UNNotificationCategory(
       identifier: Self.categoryIdentifier,
       actions: [installAction],
