@@ -52,6 +52,9 @@ struct FeedbackForm: View {
   @State private var message = ""
   @State private var email = ""
   @State private var status: Status = .editing
+  /// The auto-close after "Thanks"; cancelled if the popover goes away first, so a quick reopen
+  /// is never closed by the previous send.
+  @State private var closeTask: Task<Void, Never>?
   @FocusState private var focus: Field?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   private let draftStore = FeedbackDraftStore()
@@ -78,6 +81,7 @@ struct FeedbackForm: View {
       email = draftStore.email
       focus = .message
     }
+    .onDisappear { closeTask?.cancel() }
     // Every keystroke is kept, so closing the popover, the window or the app loses nothing.
     .onChange(of: message) { _, _ in if status != .sent { draftStore.save(message: message, email: email) } }
     .onChange(of: email) { _, _ in if status != .sent { draftStore.save(message: message, email: email) } }
@@ -177,7 +181,6 @@ struct FeedbackForm: View {
       .textFieldStyle(.plain)
       .font(.stBody)
       .focused($focus, equals: .email)
-      .onSubmit(send)
       if issue == .invalidEmail { warning }
     }
     .padding(.horizontal, 12)
@@ -258,7 +261,7 @@ struct FeedbackForm: View {
         .background(Circle().fill(Color.stSuccess))
         .shadow(color: Color.stSuccess.opacity(0.35), radius: 8, y: 3)
         .accessibilityHidden(true)
-      Text(String(localized: "feedback.sent.title", defaultValue: "Thanks, it's on its way"))
+      Text(Self.sentTitle)
         .font(.stRowTitle)
         .foregroundStyle(.stTextPrimary)
       Text(
@@ -282,8 +285,9 @@ struct FeedbackForm: View {
     case .queued:
       draftStore.clear()
       status = .sent
-      Task { @MainActor in
-        try? await Task.sleep(for: .seconds(1.8))
+      AccessibilityNotification.Announcement(Self.sentTitle).post()
+      closeTask = Task { @MainActor in
+        guard (try? await Task.sleep(for: .seconds(1.8))) != nil else { return }
         onDone()
       }
     case .unavailable:
@@ -293,6 +297,10 @@ struct FeedbackForm: View {
   }
 
   // MARK: - Pieces
+
+  private static var sentTitle: String {
+    String(localized: "feedback.sent.title", defaultValue: "Thanks, it's on its way")
+  }
 
   private static var invalidEmailText: String {
     String(localized: "feedback.email.invalid", defaultValue: "Enter a valid email address")
