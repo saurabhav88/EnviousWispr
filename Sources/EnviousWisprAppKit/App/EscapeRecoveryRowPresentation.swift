@@ -31,7 +31,7 @@ enum EscapeRecoveryRowPresentation {
     comment: "History row badge: a cancelled dictation the user chose to keep permanently.")
   static let pasteLabel = String(
     localized: "Paste",
-    comment: "History row button: pastes a cancelled dictation back where it was dictated.")
+    comment: "History detail button: pastes this row's text into the currently active app.")
   static let keepLabel = String(
     localized: "Keep",
     comment: "History row button: keeps a cancelled dictation instead of deleting it in 24 hours.")

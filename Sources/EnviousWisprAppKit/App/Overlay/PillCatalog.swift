@@ -226,7 +226,9 @@ enum PillCatalog {
         action: NoticeAction(
           label: String(
             localized: "Grant",
-            comment: "Pill button: opens the macOS Accessibility permission so the app can paste."),
+            comment:
+              "Button to grant a requested macOS permission, including microphone or Accessibility."
+          ),
           action: .grantAccessibility))
 
     case .warning(let reason):
@@ -330,7 +332,9 @@ enum PillCatalog {
         action: NoticeAction(
           label: String(
             localized: "Discard",
-            comment: "Recovery pill button: throws away the recording being recovered."),
+            comment:
+              "Button to discard pending work, including a recovering recording or an uncommitted word or snippet import."
+          ),
           // The button's own spoken label, which the leaf used to spell as a bare
           // literal with no model field behind it. "Discard" alone is ambiguous
           // out of context; this says what is being discarded.

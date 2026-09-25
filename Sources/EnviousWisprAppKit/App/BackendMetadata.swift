@@ -44,7 +44,12 @@ final class BackendMetadata {
   /// (#2650): this arm was one of four sites spelling the same string.
   var polishLabel: String {
     switch settings.llmProvider {
-    case .none: String(localized: "Off", comment: "Main window sidebar: AI polish is turned off.")
+    case .none:
+      String(
+        localized: "Off",
+        comment:
+          "Short disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches."
+      )
     case .appleIntelligence: LLMProvider.appleIntelligence.displayName
     case .egOne: LLMProvider.egOne.displayName  // #1271: fixed name, like Apple Intelligence above
     // #2649 (cloud review): falling through to `llmLabel` rendered the model id

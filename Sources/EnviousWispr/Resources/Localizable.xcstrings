@@ -390,7 +390,7 @@
     "Dictionary" : {},
     "Dictionary section" : {},
     "Discard" : {
-      "comment" : "Recovery pill button: throws away the recording being recovered."
+      "comment" : "Button to discard pending work, including a recovering recording or an uncommitted word or snippet import."
     },
     "Discard recovering recording" : {
       "comment" : "VoiceOver label of the Discard button on the recovery pill."
@@ -530,7 +530,7 @@
       "comment" : "Button that closes the Bluetooth tip card."
     },
     "Grant" : {
-      "comment" : "Pill button: opens the macOS Accessibility permission so the app can paste."
+      "comment" : "Button to grant a requested macOS permission, including microphone or Accessibility."
     },
     "Granted" : {},
     "Hands-free" : {
@@ -726,7 +726,7 @@
     "Nothing here yet" : {},
     "OK" : {},
     "Off" : {
-      "comment" : "Main window sidebar: AI polish is turned off."
+      "comment" : "Short disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches."
     },
     "Offline-Ready" : {
       "comment" : "Welcome screen feature title: works without internet."
@@ -785,7 +785,7 @@
       }
     },
     "Paste" : {
-      "comment" : "History row button: pastes a cancelled dictation back where it was dictated."
+      "comment" : "History detail button: pastes this row's text into the currently active app."
     },
     "Paste into active app" : {},
     "Paste unavailable — Accessibility permission required" : {},
