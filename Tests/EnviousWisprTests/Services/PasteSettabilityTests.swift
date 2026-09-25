@@ -113,11 +113,12 @@ struct PasteDeclineReasonTests {
       (.noMutation, "no_mutation"),
       (.unverifiable, "unverifiable"),
       (.chromiumOmniboxNavigationSeam, "not_attempted_chromium_omnibox_navigation_seam"),
+      (.geckoDirectWriteUnconfirmable, "not_attempted_gecko_direct_write_unconfirmable"),
     ]
     for (reason, rawValue) in expected {
       #expect(reason.rawValue == rawValue, "raw value drifted for \(reason)")
     }
-    #expect(expected.count == 15)
+    #expect(expected.count == 16)
   }
 
   @Test("no two reasons share a raw value")
@@ -127,9 +128,9 @@ struct PasteDeclineReasonTests {
       .accessibilityDenied, .focusMissing, .focusNonText, .roleUnreadable, .roleNotText,
       .selectedTextNotSettable, .countUnreadableOrInvalid, .rangeUnreadable, .rangeInvalid,
       .beforeImageUnreadableOrIncomplete, .focusUnconfirmed, .setFailed, .noMutation, .unverifiable,
-      .chromiumOmniboxNavigationSeam,
+      .chromiumOmniboxNavigationSeam, .geckoDirectWriteUnconfirmable,
     ]
     #expect(Set(all.map(\.rawValue)).count == all.count)
-    #expect(all.count == 15)
+    #expect(all.count == 16)
   }
 }

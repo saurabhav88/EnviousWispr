@@ -10,8 +10,9 @@ import Foundation
 /// bake-off forces.
 ///
 /// **Everything except `.current` is DEBUG-only, and release is a literal V0.** No user
-/// ever runs a non-baseline policy; the release build's routing and its `app.log`
-/// format are byte-identical to what shipped before this type existed.
+/// ever runs a non-baseline writer variant. The one release routing rule here is
+/// `skipsDirectWrite(bundleID:)` (#2652, 2026-09-24): verified Gecko browsers skip Tier 1
+/// in every policy; every other destination routes exactly as before this type existed.
 ///
 /// **The initializer validates rather than trusts.** A test seam on a delivery guard is
 /// a bypass unless it is logged AND unforgeable, and the specific way this one could
@@ -28,7 +29,8 @@ package struct PasteDeliveryPolicy: Sendable, Equatable {
   /// compiled out entirely, so the release binary contains neither their behaviour nor
   /// their raw values for an artifact scan to find.
   package enum WriterPolicy: String, Sendable, Equatable {
-    /// Today's cascade, unchanged. The baseline every measurement is relative to.
+    /// Today's cascade. The baseline every measurement is relative to. It includes the one
+    /// shipping destination rule, `skipsDirectWrite(bundleID:)` (#2652), which every variant shares.
     case current
 
     #if DEBUG
@@ -84,6 +86,32 @@ package struct PasteDeliveryPolicy: Sendable, Equatable {
     self.writer = writer
     self.boundTier1MessagingTimeout = boundTier1MessagingTimeout
     self.id = id
+  }
+
+  /// Destinations whose Tier 1 direct write is skipped in EVERY policy, release included (#2652).
+  ///
+  /// The one shipping routing rule this type owns; the writer variants above remain the DEBUG
+  /// bake-off. Gecko browsers apply an accessibility value write but report the old value on the
+  /// immediate read-back, so Tier 1 says "no change", Tier 2 pastes again, and the dictation lands
+  /// twice (Firefox 156 page textarea 5/5, 2026-09-24; fleet: Zen 12/14, Firefox 7/13). Safari and
+  /// Chrome in the same probe delivered once and are deliberately NOT listed.
+  ///
+  /// Exact bundle IDs, each read from the installed app's Info.plist on 2026-09-24. Each listed ID
+  /// requires a live page-textarea receipt test (one dictation, landed once) before it ships. A fork not listed keeps today's routing: Floorp and
+  /// Waterfox (IDs not verified) and LibreWolf (`org.mozilla.librewolf`; its build is unsigned and
+  /// Gatekeeper refuses to launch it, so it could not be tested live).
+  package static let directWriteSkippedBundleIDs: Set<String> = [
+    "org.mozilla.firefox",
+    "org.mozilla.firefoxdeveloperedition",
+    "org.mozilla.nightly",
+    "app.zen-browser.zen",
+  ]
+
+  /// Whether Tier 1 is skipped for this destination (#2652). Exact match only: a helper process
+  /// or an unlisted fork is not Gecko here.
+  package static func skipsDirectWrite(bundleID: String?) -> Bool {
+    guard let bundleID else { return false }
+    return directWriteSkippedBundleIDs.contains(bundleID)
   }
 
   /// The shipped policy. The only one a release build can construct.

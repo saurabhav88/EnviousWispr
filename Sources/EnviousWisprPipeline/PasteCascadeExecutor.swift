@@ -326,11 +326,15 @@ extension PasteFocusClassification {
 /// AX read `isChromiumOmnibox` is computed from — is unit-testable without a
 /// real focused element (#2297).
 internal func tier1DeclineReason(
-  axTrusted: Bool, classification: PasteFocusClassification, isChromiumOmnibox: Bool
+  axTrusted: Bool, classification: PasteFocusClassification, isChromiumOmnibox: Bool,
+  isGeckoDestination: Bool
 ) -> PasteService.AXDeclineReason? {
   if !axTrusted { return .accessibilityDenied }
   switch classification {
-  case .textField: return isChromiumOmnibox ? .chromiumOmniboxNavigationSeam : nil
+  case .textField:
+    if isChromiumOmnibox { return .chromiumOmniboxNavigationSeam }
+    // #2652: Gecko's read-back lags its write, so Tier 1 cannot confirm and Tier 2 doubles it.
+    return isGeckoDestination ? .geckoDirectWriteUnconfirmable : nil
   case .missing: return .focusMissing
   case .nonText: return .focusNonText
   }
@@ -726,7 +730,8 @@ internal final class PasteCascadeExecutor {
     // are the majority of declines — a reason set covering only the write's own
     // exits would be nil for most of them (#1332).
     var axDeclineReason: PasteService.AXDeclineReason? = tier1DeclineReason(
-      axTrusted: axTrusted, classification: classification, isChromiumOmnibox: isChromiumOmnibox)
+      axTrusted: axTrusted, classification: classification, isChromiumOmnibox: isChromiumOmnibox,
+      isGeckoDestination: PasteDeliveryPolicy.skipsDirectWrite(bundleID: targetBundleID))
     var axSettability: PasteService.AXSettability?
     // Which payload was submitted by the route that last attempted a write.
     // Nil until one does. A later route may legitimately overwrite this: Tier 1
@@ -789,7 +794,8 @@ internal final class PasteCascadeExecutor {
       #endif
     }()
 
-    if classification == .textField, !isChromiumOmnibox, !skipTier1ForWebContent,
+    // Any pre-write decline (Chromium omnibox, Gecko) skips Tier 1; the DEBUG web gate is separate.
+    if classification == .textField, axDeclineReason == nil, !skipTier1ForWebContent,
       let element = request.targetElement
     {
       tiersAttempted.append(.axDirect)
