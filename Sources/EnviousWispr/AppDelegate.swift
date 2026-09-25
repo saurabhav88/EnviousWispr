@@ -42,9 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     application?.applicationDidFinishLaunching()
   }
 
-  /// #2480: Dock-icon click or a double-click on the running app.
+  /// #2480: Dock-icon click or a double-click on the running app. `flag` is not
+  /// forwarded: it counts our floating panels, not whether Settings is open.
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-    application?.applicationShouldHandleReopen(hasVisibleWindows: flag) ?? true
+    application?.applicationShouldHandleReopen() ?? true
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {

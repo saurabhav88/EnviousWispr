@@ -278,6 +278,22 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     return true
   }
 
+  /// #2480: Dock-icon reopen. Returns whether it handled the click. When our main or
+  /// onboarding window is already on screen, AppKit's default bringing it forward is
+  /// right; otherwise open the one the user needs (Setup until onboarding is done).
+  func reopenFromDock() -> Bool {
+    let ourWindowOnScreen = NSApp.windows.contains {
+      (Self.matchesMainWindowIdentity($0) || Self.matchesOnboardingWindowIdentity($0))
+        && $0.isVisible
+    }
+    guard !ourWindowOnScreen else { return false }
+    if !isOnboardingComplete() {
+      openOnboardingWindow()
+      return true
+    }
+    return showWindow()
+  }
+
   /// Open the onboarding window and begin monitoring for early close (abort flow).
   func openOnboardingWindow() {
     // (1) Eligibility — was `guard let appState` + `guard != .completed`.

@@ -73,7 +73,8 @@ import Testing
       installOnLaunch, tearDown, showWindow, openOnboardingWindow, \
       closeOnboardingWindow, consumePendingOpenOnboarding. #2480 added the Dock \
       policy it owns: beginLaunch, finishLaunch, refreshActivationPolicy, \
-      refreshAfterOnboardingDismissal, updateDialogWillShow, updateSessionDidEnd.
+      refreshAfterOnboardingDismissal, updateDialogWillShow, updateSessionDidEnd, \
+      reopenFromDock.
       """)
   }
 

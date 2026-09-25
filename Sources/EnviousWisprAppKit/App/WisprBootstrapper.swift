@@ -2040,16 +2040,12 @@ package final class WisprBootstrapper {
     #endif
   }
 
-  /// #2480: a Dock-icon click (or a double-click on the running app) with nothing
-  /// visible opens the window. Returns what AppKit's `applicationShouldHandleReopen`
-  /// expects: `false` when this handled it, `true` to let AppKit act.
-  package func applicationShouldHandleReopen(hasVisibleWindows: Bool) -> Bool {
-    guard !hasVisibleWindows else { return true }
-    if settings.onboardingState != .completed {
-      appWindowCoordinator.openOnboardingWindow()
-      return false
-    }
-    return !appWindowCoordinator.showWindow()
+  /// #2480: a Dock-icon click (or a double-click on the running app). Returns what
+  /// AppKit's `applicationShouldHandleReopen` expects: `false` when handled.
+  /// AppKit's own `hasVisibleWindows` is deliberately not consulted: it counts the
+  /// recording pill and the Quick Add panel, so it can be true with Settings closed.
+  package func applicationShouldHandleReopen() -> Bool {
+    !appWindowCoordinator.reopenFromDock()
   }
 
   package func applicationDidBecomeActive() {
