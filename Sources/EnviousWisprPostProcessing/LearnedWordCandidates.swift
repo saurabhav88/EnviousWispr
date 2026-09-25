@@ -35,9 +35,13 @@ public enum LearnedWordCandidates: Sendable {
     }
   }
 
+  /// One question per place a misspelling the user has actually fixed before appears
+  /// again (founder 2026-09-25: known aliases only). No sound-alike search: the checker
+  /// cannot hear the audio, so a correctly heard word that merely sounds like a learned
+  /// word ("Envious Labs" / "EnviousSales") must never be offered to it.
   public static func questions(
     for text: String, learned: [LearnedWord], maxSpots: Int = 16,
-    language: String? = nil, knownSpellings: [String] = []
+    knownSpellings: [String] = []
   ) -> [LearnedWordCheckQuestion] {
     guard text.isEmpty == false, learned.isEmpty == false else { return [] }
     var candidates = [Candidate]()
@@ -47,10 +51,9 @@ public enum LearnedWordCandidates: Sendable {
     // exactly as one of the user's words is final: no spot overlapping it is asked.
     let settled = settledRanges(in: text, knownSpellings: knownSpellings)
 
-    // One budget for every question the checker is asked, exact observed
-    // spellings first (the strongest prior), then sound matches (Codex PR-3
-    // review: a common alias repeated through a long dictation must not turn
-    // into hundreds of questions).
+    // One budget for every question the checker is asked (Codex PR-3 review: a
+    // common alias repeated through a long dictation must not turn into hundreds
+    // of questions).
     func add(_ range: Range<String.Index>, word: String) {
       guard candidates.count < maxSpots else { return }
       guard settled.allSatisfy({ !$0.overlaps(range) }) else { return }
@@ -59,7 +62,6 @@ public enum LearnedWordCandidates: Sendable {
       if seen.insert(key).inserted { candidates.append(Candidate(range: range, word: word)) }
     }
 
-    // An observed spelling is a direct prior even when the sound matcher misses it.
     for entry in learned {
       for observed in entry.observedMisspellings where observed.isEmpty == false {
         var searchStart = text.startIndex
@@ -72,11 +74,11 @@ public enum LearnedWordCandidates: Sendable {
             observed.lowercased().unicodeScalars)
           let startsAtBoundary =
             range.lowerBound == text.startIndex
-            || LearnedWordSpotFinder.isWordScalar(
+            || isWordScalar(
               text.unicodeScalars[text.unicodeScalars.index(before: range.lowerBound)]) == false
           let endsAtBoundary =
             range.upperBound == text.endIndex
-            || LearnedWordSpotFinder.isWordScalar(text.unicodeScalars[range.upperBound]) == false
+            || isWordScalar(text.unicodeScalars[range.upperBound]) == false
             || Self.isSentencePeriod(in: text, at: range.upperBound)
           if sameLettersIgnoringCase && startsAtBoundary && endsAtBoundary {
             add(range, word: entry.canonical)
@@ -84,18 +86,6 @@ public enum LearnedWordCandidates: Sendable {
           searchStart = text.unicodeScalars.index(after: range.lowerBound)
         }
       }
-    }
-
-    // Filter after the finder has selected its top spots. Rejected spots do not
-    // free finder slots for lower-ranked matches; exact observed spellings above
-    // remain questions even when their text is common English.
-    let finder = LearnedWordSpotFinder()
-    let words = LearnedWordSpotFinder.prepare(learned.map(\.canonical))
-    let isEnglish = language?.split(whereSeparator: { $0 == "-" || $0 == "_" })
-      .first?.lowercased() == "en"
-    for spot in finder.spots(in: text, words: words, maxSpots: maxSpots) {
-      if isEnglish && isAllCommonEnglishWords(spot.text) { continue }
-      add(spot.range, word: spot.word)
     }
 
     candidates.sort {
@@ -121,11 +111,12 @@ public enum LearnedWordCandidates: Sendable {
       {
         let startsAtBoundary =
           range.lowerBound == text.startIndex
-          || LearnedWordSpotFinder.isWordScalar(
+          || isWordScalar(
             text.unicodeScalars[text.unicodeScalars.index(before: range.lowerBound)]) == false
         let endsAtBoundary =
           range.upperBound == text.endIndex
-          || LearnedWordSpotFinder.isWordScalar(text.unicodeScalars[range.upperBound]) == false
+          || isWordScalar(text.unicodeScalars[range.upperBound]) == false
+          || Self.isSentencePeriod(in: text, at: range.upperBound)
         if startsAtBoundary && endsAtBoundary { ranges.append(range) }
         searchStart = text.unicodeScalars.index(after: range.lowerBound)
       }
@@ -133,27 +124,11 @@ public enum LearnedWordCandidates: Sendable {
     return ranges
   }
 
-  /// Match spots.py's re.findall(r"[a-z0-9']+", span.lower()). An empty
-  /// token list, digits, and non-ASCII words are not evidence of common English.
-  private static func isAllCommonEnglishWords(_ span: String) -> Bool {
-    var token = String()
-    var found = false
-    for scalar in span.lowercased().unicodeScalars {
-      if (97...122).contains(scalar.value) || (48...57).contains(scalar.value)
-        || scalar.value == 39
-      {
-        token.unicodeScalars.append(scalar)
-      } else if token.isEmpty == false {
-        found = true
-        if CommonEnglishSpotWords.words.contains(token) == false { return false }
-        token = ""
-      }
-    }
-    if token.isEmpty == false {
-      found = true
-      if CommonEnglishSpotWords.words.contains(token) == false { return false }
-    }
-    return found
+  /// A letter or digit in any script, an apostrophe, a period or a hyphen: the
+  /// characters that continue a word for boundary checks (`U.S.`, `co-op`, `don't`).
+  static func isWordScalar(_ scalar: Unicode.Scalar) -> Bool {
+    CharacterSet.alphanumerics.contains(scalar)
+      || scalar.value == 39 || scalar.value == 0x2019 || scalar.value == 46 || scalar.value == 45
   }
 
   private static func contextRange(
@@ -203,14 +178,14 @@ public enum LearnedWordCandidates: Sendable {
     let unsnapped = lower..<upper
     // Include whole edge words when a 200-character cut lands inside them.
     while lower > sentence.lowerBound, lower < spot.lowerBound,
-      LearnedWordSpotFinder.isWordScalar(scalars[lower]),
-      LearnedWordSpotFinder.isWordScalar(scalars[scalars.index(before: lower)])
+      isWordScalar(scalars[lower]),
+      isWordScalar(scalars[scalars.index(before: lower)])
     {
       lower = text.index(before: lower)
     }
     while upper < sentence.upperBound, upper > spot.upperBound,
-      LearnedWordSpotFinder.isWordScalar(scalars[upper]),
-      LearnedWordSpotFinder.isWordScalar(scalars[scalars.index(before: upper)])
+      isWordScalar(scalars[upper]),
+      isWordScalar(scalars[scalars.index(before: upper)])
     {
       upper = text.index(after: upper)
     }
