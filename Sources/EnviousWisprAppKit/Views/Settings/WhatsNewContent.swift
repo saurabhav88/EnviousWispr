@@ -80,7 +80,7 @@ enum WhatsNewContent {
       icon: "dock.rectangle",
       title: "A Dock icon, and a window that opens in front",
       description:
-        "EnviousWispr now shows in the Dock and in Command-Tab like any Mac app, and its window opens in front of what you were doing. The menu bar icon also starts next to the clock on a Mac where you never moved it. Prefer the menu bar alone? Switch off Show app in Dock in Settings, Appearance.",
+        "EnviousWispr now shows in the Dock and in Command-Tab like any Mac app, and its window opens in front of what you were doing. On a Mac where you never moved it, the menu bar icon also starts further right, closer to the system icons, where it is easier to find. Prefer the menu bar alone? Switch off Show app in Dock in Settings, Appearance.",
       version: "2.5.1"
     ),
 

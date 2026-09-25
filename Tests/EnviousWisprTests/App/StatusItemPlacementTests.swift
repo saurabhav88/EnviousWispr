@@ -3,7 +3,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 
-/// #2480: the menu bar icon starts next to the system icons on a Mac that never placed it, and a
+/// #2480: the menu bar icon starts toward the right end on a Mac that never placed it, and a
 /// position the user chose by Cmd-dragging is never moved.
 ///
 /// When this fails, the user sees the icon land far left and hidden again on a fresh install, or
@@ -21,7 +21,7 @@ struct StatusItemPlacementTests {
   /// read from the subject would pass if the subject spelled it wrong.
   private static let appKitKey = "NSStatusItem Preferred Position Item-0"
 
-  @Test("no saved position: seeds 40 points from the right edge")
+  @Test("no saved position: seeds position 40, which sorts toward the right end")
   func seedsWhenAbsent() {
     let defaults = Self.freshSuite()
     StatusItemPlacement.seedPreferredPositionIfAbsent(in: defaults)
