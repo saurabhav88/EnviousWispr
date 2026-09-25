@@ -9,11 +9,33 @@ import UniformTypeIdentifiers
 /// update and no chance of offering a file the app then refuses to read.
 @MainActor
 enum CustomWordsImportFilePanel {
+  /// The panel's text, apart from the panel so a test can pin the English (#3142).
+  static var titleText: String {
+    String(
+      localized: "Choose a file to import",
+      comment: "Your Words import: the title of the file picker.")
+  }
+
+  static var promptText: String {
+    String(
+      localized: "fileImport.prompt",
+      defaultValue: "Import",
+      comment: "File picker: the button that imports the chosen file.")
+  }
+
+  static var messageText: String {
+    String(
+      localized: "Choose a file you exported from EnviousWispr, or a plain text list of words.",
+      comment:
+        "Your Words import: which files can be imported, shown in the import sheet and the file picker. EnviousWispr is the app name; keep it."
+    )
+  }
+
   static func chooseFile(registry: ImportFileRegistry = .v1) -> URL? {
     let panel = NSOpenPanel()
-    panel.title = "Choose a file to import"
-    panel.prompt = "Import"
-    panel.message = "Choose a file you exported from EnviousWispr, or a plain text list of words."
+    panel.title = titleText
+    panel.prompt = promptText
+    panel.message = messageText
     panel.allowedContentTypes = registry.acceptedContentTypes
     panel.allowsMultipleSelection = false
     panel.canChooseDirectories = false

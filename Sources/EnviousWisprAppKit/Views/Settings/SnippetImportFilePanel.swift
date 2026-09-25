@@ -9,12 +9,34 @@ import UniformTypeIdentifiers
 /// files the import will read, so the panel can never offer a file the app then refuses.
 @MainActor
 enum SnippetImportFilePanel {
+  /// The panel's text, apart from the panel so a test can pin the English (#3142).
+  static var titleText: String {
+    String(
+      localized: "Choose a snippets file",
+      comment: "Snippets import: the title of the file picker.")
+  }
+
+  static var promptText: String {
+    String(
+      localized: "fileImport.prompt",
+      defaultValue: "Import",
+      comment: "File picker: the button that imports the chosen file.")
+  }
+
+  static var messageText: String {
+    String(
+      localized:
+        "Choose the \(SnippetsExportAction.defaultFilename) you exported, a CSV, or a plain list.",
+      comment:
+        "Snippets import: the line inside the file picker. %@ is the export file's name, such as EnviousWispr Snippets.json; keep it as is."
+    )
+  }
+
   static func chooseFile(registry: SnippetImportFileRegistry = .v1) -> URL? {
     let panel = NSOpenPanel()
-    panel.title = "Choose a snippets file"
-    panel.prompt = "Import"
-    panel.message =
-      "Choose the \(SnippetsExportAction.defaultFilename) you exported, a CSV, or a plain list."
+    panel.title = titleText
+    panel.prompt = promptText
+    panel.message = messageText
     panel.allowedContentTypes = registry.acceptedContentTypes
     panel.allowsMultipleSelection = false
     panel.canChooseDirectories = false

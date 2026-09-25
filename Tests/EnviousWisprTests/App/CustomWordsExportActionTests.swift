@@ -555,9 +555,19 @@ struct CustomWordsExportActionTests {
     #expect(
       CustomWordsExportPanel.exportSummary(exportableCount: 33)
         == "Exporting 33 words of your own. Vocabulary packs aren't included.")
-    // No zero case is asserted because none exists: `run` returns before opening
-    // a panel when the proposal is empty. That impossibility is proven by
-    // `emptyLibraryReportsNothingToExportAndNeverAsksForAFolder`, not by a
-    // branch in the summary.
+    // #3142: counts pass ungrouped, so a thousand reads as it did before the catalog.
+    #expect(
+      CustomWordsExportPanel.exportSummary(exportableCount: 1000)
+        == "Exporting 1000 words of your own. Vocabulary packs aren't included.")
+    #expect(
+      CustomWordsExportPanel.exportSummary(exportableCount: 2)
+        == "Exporting 2 words of your own. Vocabulary packs aren't included.")
+    #expect(
+      CustomWordsExportPanel.exportSummary(exportableCount: 0)
+        == "Exporting 0 words of your own. Vocabulary packs aren't included.")
+    // Zero never reaches a dialog: `run` returns before opening a panel when the
+    // proposal is empty, proven by
+    // `emptyLibraryReportsNothingToExportAndNeverAsksForAFolder`. It is pinned above
+    // only so the plural sentence's wording is fixed at every count.
   }
 }

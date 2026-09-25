@@ -119,4 +119,10 @@ struct TranscribeFileCopyTests {
       sectionsDone: 1_200, sectionsTotal: 1_500, words: nil)
     #expect(model.counts.first { $0.kind == .sections }?.value == "1200 of 1500")
   }
+
+  @Test("an unnamed recording is saved as Transcript")
+  @MainActor
+  func defaultSaveName() {
+    #expect(TranscribeFileExport.defaultName == "Transcript")
+  }
 }

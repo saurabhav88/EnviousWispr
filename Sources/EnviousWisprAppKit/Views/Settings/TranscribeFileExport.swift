@@ -150,6 +150,17 @@ enum TranscribeFileExport {
     case failed(any Error)
   }
 
+  /// The suggested file name when the recording has none (#3142). Its own key: History's
+  /// "Transcript" is a title as well as a file name, and one word can need two translations.
+  static var defaultName: String {
+    String(
+      localized: "transcribeFile.save.defaultName",
+      defaultValue: "Transcript",
+      comment:
+        "Transcribe a File: the suggested file name when saving a transcript of an unnamed recording."
+    )
+  }
+
   /// Runs the save panel, suggesting the recording's name without its extension. `text` is
   /// read only after the user confirms, as the view method read it (local review, #2938).
   @MainActor static func save(
@@ -158,7 +169,7 @@ enum TranscribeFileExport {
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.plainText]
     panel.nameFieldStringValue =
-      (suggestedName as NSString?)?.deletingPathExtension ?? "Transcript"
+      (suggestedName as NSString?)?.deletingPathExtension ?? defaultName
     guard panel.runModal() == .OK, let url = panel.url else { return nil }
     do {
       try text().write(to: url, atomically: true, encoding: .utf8)

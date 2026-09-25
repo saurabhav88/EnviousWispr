@@ -1087,11 +1087,22 @@
     "Choose a file" : {
       "comment" : "Transcribe a File, Upload step: the button drawn inside the drop zone."
     },
-    "Choose a file you exported from EnviousWispr, or a plain text list of words." : {},
+    "Choose a file to import" : {
+      "comment" : "Your Words import: the title of the file picker."
+    },
+    "Choose a file you exported from EnviousWispr, or a plain text list of words." : {
+      "comment" : "Your Words import: which files can be imported, shown in the import sheet and the file picker. EnviousWispr is the app name; keep it."
+    },
+    "Choose a snippets file" : {
+      "comment" : "Snippets import: the title of the file picker."
+    },
     "Choose and save" : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 3 title."
     },
     "Choose the %@ you exported, a CSV with a trigger column and a text column, or a plain list. Your keyword stays as it is." : {},
+    "Choose the %@ you exported, a CSV, or a plain list." : {
+      "comment" : "Snippets import: the line inside the file picker. %@ is the export file's name, such as EnviousWispr Snippets.json; keep it as is."
+    },
     "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary." : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 3."
     },
@@ -1664,7 +1675,24 @@
     "Export didn't finish" : {
       "comment" : "Your Words, export: alert title after a failure."
     },
-    "Export your words" : {},
+    "Export your words" : {
+      "comment" : "Your Words export: the button on the Your Words page, and the save dialog's title."
+    },
+    "Exported files may contain personal names and other private words. Usage history is not included." : {
+      "comment" : "Your Words export: the privacy note inside the save dialog, under the count."
+    },
+    "Exporting %@ snippets and your keyword." : {
+      "comment" : "Snippets export: the line inside the save dialog. %@ is the number of snippets, never 1."
+    },
+    "Exporting %@ words of your own. Vocabulary packs aren't included." : {
+      "comment" : "Your Words export: the line inside the save dialog. %@ is the number of words, never 1."
+    },
+    "Exporting 1 snippet and your keyword." : {
+      "comment" : "Snippets export: the line inside the save dialog, one snippet."
+    },
+    "Exporting 1 word of your own. Vocabulary packs aren't included." : {
+      "comment" : "Your Words export: the line inside the save dialog, one word."
+    },
     "FINISH SETUP" : {},
     "Failed: A duplicate key is already saved. Clear it and try again." : {
       "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
@@ -4611,6 +4639,30 @@
         }
       }
     },
+    "fileExport.prompt" : {
+      "comment" : "Save dialog: the button that writes the export file.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Export"
+          }
+        }
+      }
+    },
+    "fileImport.prompt" : {
+      "comment" : "File picker: the button that imports the chosen file.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Import"
+          }
+        }
+      }
+    },
     "from your Mac" : {
       "comment" : "Live Preview settings: language provenance from mac. A caption under the language: where it came from."
     },
@@ -5178,6 +5230,18 @@
       "comment" : "Appearance settings, recording pill picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence."
     },
     "then your snippet, and it expands." : {},
+    "transcribeFile.save.defaultName" : {
+      "comment" : "Transcribe a File: the suggested file name when saving a transcript of an unnamed recording.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Transcript"
+          }
+        }
+      }
+    },
     "transcribeFile.step.polish" : {
       "comment" : "Transcribe a File: a step name in the step bar. Polish means the AI cleanup of the text (to polish it), never the Polish language.",
       "extractionState" : "extracted_with_value",

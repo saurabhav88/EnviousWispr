@@ -42,8 +42,42 @@ enum CustomWordsExportPanel {
   /// here. That is enforced by the action, not defended by a branch here.
   static func exportSummary(exportableCount: Int) -> String {
     exportableCount == 1
-      ? "Exporting 1 word of your own. Vocabulary packs aren't included."
-      : "Exporting \(exportableCount) words of your own. Vocabulary packs aren't included."
+      ? String(
+        localized: "Exporting 1 word of your own. Vocabulary packs aren't included.",
+        comment: "Your Words export: the line inside the save dialog, one word.")
+      : String(
+        localized:
+          "Exporting \(String(exportableCount)) words of your own. Vocabulary packs aren't included.",
+        comment:
+          "Your Words export: the line inside the save dialog. %@ is the number of words, never 1.")
+  }
+
+  /// The panel's text, apart from the panel so a test can pin the English (#3142).
+  static var titleText: String {
+    String(
+      localized: "Export your words",
+      comment:
+        "Your Words export: the button on the Your Words page, and the save dialog's title.")
+  }
+
+  static var promptText: String {
+    String(
+      localized: "fileExport.prompt",
+      defaultValue: "Export",
+      comment: "Save dialog: the button that writes the export file.")
+  }
+
+  /// The dialog's whole message: the count, then the privacy note as its own paragraph. Two
+  /// complete paragraphs, so joining them splits no sentence.
+  static func messageText(exportableCount: Int) -> String {
+    exportSummary(exportableCount: exportableCount) + "\n\n" + privacyNote
+  }
+
+  static var privacyNote: String {
+    String(
+      localized:
+        "Exported files may contain personal names and other private words. Usage history is not included.",
+      comment: "Your Words export: the privacy note inside the save dialog, under the count.")
   }
 
   /// - Parameter exportableCount: the size of the proposed snapshot the file
@@ -52,8 +86,8 @@ enum CustomWordsExportPanel {
   ///   nothing is.
   static func chooseDestination(exportableCount: Int) -> URL? {
     let panel = NSSavePanel()
-    panel.title = "Export your words"
-    panel.prompt = "Export"
+    panel.title = titleText
+    panel.prompt = promptText
     panel.nameFieldStringValue = defaultFilename
     panel.allowedContentTypes = [.json]
     panel.canCreateDirectories = true
@@ -66,10 +100,7 @@ enum CustomWordsExportPanel {
       searchResults: FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask))
     // Said before the choice, not after: the file lands wherever the user
     // points it, including a synced folder, and it can contain real names.
-    panel.message =
-      exportSummary(exportableCount: exportableCount) + "\n\n"
-      + "Exported files may contain personal names and other private words. "
-      + "Usage history is not included."
+    panel.message = messageText(exportableCount: exportableCount)
 
     return panel.runModal() == .OK ? panel.url : nil
   }

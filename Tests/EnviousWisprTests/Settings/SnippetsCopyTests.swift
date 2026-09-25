@@ -92,4 +92,33 @@ struct SnippetsCopyTests {
       #expect(SnippetsView.countLabel(shown: n, total: 9, searching: true) == "\(n) of 9")
     }
   }
+
+  /// The save dialog's line counts snippets as a whole sentence per count, with the count
+  /// ungrouped so English reads exactly as before (#3142).
+  @Test("the export dialog's summary keeps its English", arguments: [0, 2, 1000])
+  @MainActor
+  func exportSummary(count: Int) {
+    #expect(
+      SnippetsExportAction.summary(count: count) == "Exporting \(count) snippets and your keyword.")
+  }
+
+  @Test("one snippet is singular")
+  @MainActor
+  func exportSummaryOne() {
+    #expect(SnippetsExportAction.summary(count: 1) == "Exporting 1 snippet and your keyword.")
+    #expect(
+      SnippetsExportAction.summary(count: 1000) == "Exporting 1000 snippets and your keyword.")
+  }
+
+  /// The import picker names the export file by its English name, which is a file, not copy.
+  @Test("the import picker keeps its English and the export file's name")
+  @MainActor
+  func importPicker() {
+    #expect(SnippetImportFilePanel.titleText == "Choose a snippets file")
+    #expect(SnippetImportFilePanel.promptText == "Import")
+    #expect(
+      SnippetImportFilePanel.messageText
+        == "Choose the EnviousWispr Snippets.json you exported, a CSV, or a plain list.")
+    #expect(SnippetsExportAction.defaultFilename == "EnviousWispr Snippets.json")
+  }
 }
