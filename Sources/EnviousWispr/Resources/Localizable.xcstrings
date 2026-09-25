@@ -553,7 +553,9 @@
     "Activated" : {
       "comment" : "Live Preview settings: status active label."
     },
-    "Activates recording. Then press the key combination you want." : {},
+    "Activates recording. Then press the key combination you want." : {
+      "comment" : "VoiceOver hint on a keybind field."
+    },
     "Add" : {
       "comment" : "AI Polish, Ollama model list: button that adds a hosted model; nothing downloads."
     },
@@ -716,6 +718,21 @@
     },
     "Already transcribed. Only the cleanup runs again." : {
       "comment" : "Transcribe a File, Review step: the note beside Clean it again."
+    },
+    "Already used by Copy last dictation. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved. Copy last dictation is the name of a keybind."
+    },
+    "Already used by Paste last dictation. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved. Paste last dictation is the name of a keybind."
+    },
+    "Already used by the add-a-word keybind. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
+    },
+    "Already used by the cancel keybind. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
+    },
+    "Already used by the recording keybind. Choose another." : {
+      "comment" : "Keybind field: the keys chosen already belong to another keybind, so they were not saved."
     },
     "Always" : {
       "comment" : "Microphone settings: readiness option; the microphone stays ready."
@@ -1075,6 +1092,21 @@
     "Choose your input source and readiness behavior." : {
       "comment" : "Settings: the one-line description under a page title."
     },
+    "Clashes with Copy last dictation: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved. Copy last dictation is the name of a keybind."
+    },
+    "Clashes with Paste last dictation: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved. Paste last dictation is the name of a keybind."
+    },
+    "Clashes with the add-a-word keybind: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
+    },
+    "Clashes with the cancel keybind: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
+    },
+    "Clashes with the recording keybind: one needs a key the other uses on its own." : {
+      "comment" : "Keybind field: the keys chosen overlap another keybind, which uses one of them alone, so they were not saved."
+    },
     "Claude API Key" : {
       "comment" : "AI Polish: label and VoiceOver name of the API key field."
     },
@@ -1125,7 +1157,9 @@
     "Click the box first" : {
       "comment" : "Practice screen headline. The words went to the clipboard."
     },
-    "Click to change" : {},
+    "Click to change" : {
+      "comment" : "Keybind field: the line under the keys, inviting a click to record new ones."
+    },
     "Clipboard" : {
       "comment" : "Settings sidebar: a page name."
     },
@@ -2481,7 +2515,6 @@
     "Not running. Use the refresh button to try again." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
-    "Not saved. %@" : {},
     "Not selected" : {
       "comment" : "VoiceOver: the value of an option that is not chosen."
     },
@@ -2804,7 +2837,9 @@
     "Press Save key to finish, or pick another." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked. Save key is a button."
     },
-    "Press keys..." : {},
+    "Press keys..." : {
+      "comment" : "Keybind field: shown while it waits for the user to press the keys."
+    },
     "Press keys…" : {},
     "Press once to start recording. Press again to stop." : {},
     "Press the record button to start dictating." : {},
@@ -2982,9 +3017,13 @@
     "Required to paste your dictation" : {},
     "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed." : {},
     "Reset" : {},
-    "Reset keybind to default" : {},
+    "Reset keybind to default" : {
+      "comment" : "Keybind field, VoiceOver: puts this keybind back to its original keys."
+    },
     "Reset to allow the app to suggest locking a detected language again." : {},
-    "Reset to default" : {},
+    "Reset to default" : {
+      "comment" : "Keybind field: puts this keybind back to its original keys."
+    },
     "Restart Onboarding…" : {},
     "Restore" : {},
     "Restore clipboard after paste" : {},
@@ -3485,6 +3524,9 @@
     },
     "That is EnviousWispr's own snippets file. Pick somewhere else — saving over it would erase your snippets." : {
       "comment" : "Snippets, export: refusal when the chosen file is the app's own snippet store."
+    },
+    "That is a standard Mac shortcut. Choose another." : {
+      "comment" : "Keybind field: the keys chosen are a standard Mac shortcut, so they were not saved."
     },
     "That is it. You are set." : {
       "comment" : "Practice screen headline. The first dictation worked."
@@ -4833,6 +4875,18 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Key %@"
+          }
+        }
+      }
+    },
+    "keybind.refusal.accessibility" : {
+      "comment" : "Keybind field, VoiceOver: a refusal. %@ is the reason, one sentence, already translated.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not saved. %@"
           }
         }
       }

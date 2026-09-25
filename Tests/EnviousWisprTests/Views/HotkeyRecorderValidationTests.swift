@@ -89,13 +89,49 @@ struct HotkeyRecorderValidationTests {
     #expect(box.keyCode == 9 && box.modifiers == [.control, .command])
   }
 
+  /// Every refusal is its own whole sentence (#3142), so each is pinned in full, typed out rather
+  /// than rebuilt from a name table the code no longer has.
   @Test("Every refusal has a sentence that names the other shortcut")
   func refusalMessages() {
-    #expect(HotkeyRecorderView.message(for: .systemShortcut).contains("standard Mac shortcut"))
+    #expect(
+      HotkeyRecorderView.message(for: .systemShortcut)
+        == "That is a standard Mac shortcut. Choose another.")
+    let sameAs: [ShortcutRole: String] = [
+      .record: "Already used by the recording keybind. Choose another.",
+      .cancel: "Already used by the cancel keybind. Choose another.",
+      .quickAdd: "Already used by the add-a-word keybind. Choose another.",
+      .pasteLast: "Already used by Paste last dictation. Choose another.",
+      .copyLast: "Already used by Copy last dictation. Choose another.",
+    ]
+    let clash: [ShortcutRole: String] = [
+      .record:
+        "Clashes with the recording keybind: one needs a key the other uses on its own.",
+      .cancel: "Clashes with the cancel keybind: one needs a key the other uses on its own.",
+      .quickAdd:
+        "Clashes with the add-a-word keybind: one needs a key the other uses on its own.",
+      .pasteLast:
+        "Clashes with Paste last dictation: one needs a key the other uses on its own.",
+      .copyLast: "Clashes with Copy last dictation: one needs a key the other uses on its own.",
+    ]
+    #expect(Set(sameAs.keys) == Set(ShortcutRole.allCases))
+    #expect(Set(clash.keys) == Set(ShortcutRole.allCases))
     for role in ShortcutRole.allCases {
-      let title = HotkeyRecorderView.title(of: role)
-      #expect(HotkeyRecorderView.message(for: .sameAs(role)).contains(title))
-      #expect(HotkeyRecorderView.message(for: .modifierConflict(role)).contains(title))
+      #expect(HotkeyRecorderView.message(for: .sameAs(role)) == sameAs[role], "\(role)")
+      #expect(HotkeyRecorderView.message(for: .modifierConflict(role)) == clash[role], "\(role)")
     }
+  }
+
+  @Test("VoiceOver hears a refusal as a failure, then the same sentence")
+  func spokenRefusal() {
+    #expect(
+      HotkeyRecorderView.spokenRefusal(for: .systemShortcut)
+        == "Not saved. That is a standard Mac shortcut. Choose another.")
+    #expect(
+      HotkeyRecorderView.spokenRefusal(for: .sameAs(.pasteLast))
+        == "Not saved. Already used by Paste last dictation. Choose another.")
+    #expect(
+      HotkeyRecorderView.spokenRefusal(for: .modifierConflict(.record))
+        == "Not saved. Clashes with the recording keybind: one needs a key the other uses on its own."
+    )
   }
 }

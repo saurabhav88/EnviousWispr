@@ -124,12 +124,19 @@ struct SettingsShellEnglishTests {
       ])
   }
 
-  /// The old warning spliced `HotkeyRecorderView.title(of:)` into a frame; each role now has its own
-  /// sentence. The oracle rebuilds the OLD composition, so the English must match it byte for byte.
+  /// The old warning spliced a keybind name into a frame; each role now has its own sentence. The
+  /// oracle rebuilds the OLD composition from the names that frame used, typed out here, so the
+  /// English must match it byte for byte.
   @Test("each keybind conflict warning is the sentence the old frame produced")
   func keybindConflicts() {
+    let names: [ShortcutRole: String] = [
+      .record: "the recording keybind", .cancel: "the cancel keybind",
+      .quickAdd: "the add-a-word keybind", .pasteLast: "Paste last dictation",
+      .copyLast: "Copy last dictation",
+    ]
+    #expect(Set(names.keys) == Set(ShortcutRole.allCases))
     for role in ShortcutRole.allCases {
-      let who = HotkeyRecorderView.title(of: role)
+      let who = names[role] ?? "missing"
       let expected =
         role == .cancel
         ? "Works only when you are not recording: \(who) (Right ⌘) uses these keys while you record."
