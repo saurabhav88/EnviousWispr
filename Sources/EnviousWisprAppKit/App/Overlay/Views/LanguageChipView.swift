@@ -63,11 +63,23 @@ struct LanguageChipView: View {
   }
 
   private var promptText: String {
-    switch payload.state {
+    Self.prompt(for: payload.state, languageName: payload.displayName)
+  }
+
+  /// #3142: the chip's sentence, localized whole. `languageName` arrives already in
+  /// the user's language (`Locale.current`), so it is inserted as written.
+  static func prompt(for state: LanguageChipDisplayState, languageName: String) -> String {
+    switch state {
     case .askToLock:
-      return "Detected \(payload.displayName). Lock it?"
+      return String(
+        localized: "Detected \(languageName). Lock it?",
+        comment:
+          "Chip after a dictation in a detected language. %@ is the language name. Lock keeps dictation in that language."
+      )
     case .educateAboutSettings:
-      return "Detected \(payload.displayName). This can be changed in Settings."
+      return String(
+        localized: "Detected \(languageName). This can be changed in Settings.",
+        comment: "Chip after a dictation in a detected language. %@ is the language name.")
     }
   }
 }

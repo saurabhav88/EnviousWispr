@@ -107,8 +107,17 @@
     },
     "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {},
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
+    "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown." : {
+      "comment" : "Appearance settings: description of the Capsule recording pill style."
+    },
     "A take is stuck. Restart the app." : {
       "comment" : "Pill: an earlier dictation is stuck and holds the speech engine. Must fit a small single-line pill (about 40 characters)."
+    },
+    "A wide panel that shows your words as you speak, growing a line at a time." : {
+      "comment" : "Appearance settings: description of the Reading Well recording pill style."
+    },
+    "A wider capsule with a live rainbow meter of your voice beside the timer." : {
+      "comment" : "Appearance settings: description of the Level Rail recording pill style."
     },
     "AI POLISH · OPTIONAL" : {},
     "AI Polish" : {},
@@ -222,6 +231,9 @@
     },
     "Cancel" : {},
     "Cancelling…" : {},
+    "Capsule" : {
+      "comment" : "Appearance settings: name of the original recording pill style."
+    },
     "Category" : {},
     "Change" : {},
     "Change dictation language: %@, %@" : {
@@ -314,6 +326,12 @@
     "Detected %@" : {
       "comment" : "VoiceOver announcement from the recording overlay: a language was detected. %@ is the language name."
     },
+    "Detected %@. Lock it?" : {
+      "comment" : "Chip after a dictation in a detected language. %@ is the language name. Lock keeps dictation in that language."
+    },
+    "Detected %@. This can be changed in Settings." : {
+      "comment" : "Chip after a dictation in a detected language. %@ is the language name."
+    },
     "Dictation" : {},
     "Dictation cancelled" : {
       "comment" : "Pill title after the user pressed Escape during a dictation."
@@ -328,7 +346,12 @@
     },
     "Dictionary" : {},
     "Dictionary section" : {},
-    "Discard" : {},
+    "Discard" : {
+      "comment" : "Recovery pill button: throws away the recording being recovered."
+    },
+    "Discard recovering recording" : {
+      "comment" : "VoiceOver label of the Discard button on the recovery pill."
+    },
     "Dismiss" : {},
     "Dismiss Bluetooth tips" : {
       "comment" : "VoiceOver label for the close (x) button of the Bluetooth tip card."
@@ -457,7 +480,9 @@
     "Got it" : {
       "comment" : "Button that closes the Bluetooth tip card."
     },
-    "Grant" : {},
+    "Grant" : {
+      "comment" : "Pill button: opens the macOS Accessibility permission so the app can paste."
+    },
     "Granted" : {},
     "Hold %@ and say something.\nLet go when you are done." : {
       "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
@@ -497,6 +522,9 @@
     },
     "Language" : {},
     "Language suggestions" : {},
+    "Level Rail" : {
+      "comment" : "Appearance settings: name of the recording pill style with a voice level meter."
+    },
     "License information isn't available in this build." : {},
     "List" : {},
     "Listening for input" : {
@@ -538,6 +566,9 @@
     },
     "Microphone access is off." : {
       "comment" : "Pill: macOS microphone permission is off for the app."
+    },
+    "Microphone access needed" : {
+      "comment" : "Pill title when macOS microphone permission is off."
     },
     "Microphone disconnected." : {
       "comment" : "Pill: the microphone was unplugged during recording. The audio so far was saved."
@@ -637,6 +668,9 @@
     },
     "Open Console.app" : {},
     "Open Log Directory" : {},
+    "Open Settings" : {
+      "comment" : "Pill button: opens the macOS microphone privacy settings."
+    },
     "Open System Settings" : {},
     "Opens Keybinds" : {},
     "Opens the Live Preview settings page" : {},
@@ -713,6 +747,9 @@
     "Read as" : {},
     "Read selections through the clipboard" : {},
     "Reading %@" : {},
+    "Reading Well" : {
+      "comment" : "Appearance settings: name of the recording pill style that shows your words as you speak."
+    },
     "Ready for import" : {},
     "Ready to Transcribe" : {},
     "Ready to Wispr!" : {},
@@ -947,6 +984,9 @@
     },
     "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
       "comment" : "Setup notice when Apple Intelligence is off in System Settings."
+    },
+    "Turn it on to start dictating." : {
+      "comment" : "Pill line under Microphone access needed."
     },
     "Turn on Accessibility" : {},
     "Turn on the microphone" : {},
