@@ -33,7 +33,8 @@ public struct FeedbackDraft: Equatable, Sendable {
     if trimmed.count > maxMessageLength { return .messageTooLong }
     let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
     if !trimmedEmail.isEmpty,
-      trimmedEmail.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#, options: .regularExpression) == nil
+      trimmedEmail.range(
+        of: #"^[^@\s]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$"#, options: .regularExpression) == nil
     {
       return .invalidEmail
     }

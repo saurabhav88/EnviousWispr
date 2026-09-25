@@ -4,7 +4,7 @@ import SwiftUI
 /// Settings > Send Feedback (#3153): a message box, an optional email field and Send.
 ///
 /// Deliberately nothing else on the page (founder, 2026-09-24): no disclaimer or explainer. What a
-/// report carries is described in the privacy policy. Reports go to Sentry through
+/// report carries belongs in the privacy policy (#3153's policy update). Reports go to Sentry through
 /// `FeedbackReporter`, which owns the validity rule (`FeedbackDraft`) and the send.
 struct SendFeedbackView: View {
   private enum Status: Equatable { case idle, sent, unavailable }

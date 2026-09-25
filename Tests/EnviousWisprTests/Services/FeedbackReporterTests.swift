@@ -44,6 +44,11 @@ struct FeedbackReporterTests {
     #expect(FeedbackDraft(message: "hi", email: " a@b.co ")?.email == "a@b.co")
     #expect(FeedbackDraft.issue(message: "hi", email: "a@b") == .invalidEmail)
     #expect(FeedbackDraft.issue(message: "hi", email: "a b@c.co") == .invalidEmail)
+    // A reply could never reach these (second-pass review): empty domain label, trailing comma.
+    #expect(FeedbackDraft.issue(message: "hi", email: "a@b..co") == .invalidEmail)
+    #expect(FeedbackDraft.issue(message: "hi", email: "a@b.co,") == .invalidEmail)
+    #expect(FeedbackDraft(message: "hi", email: "first.last+tag@mail.example-site.io")?.email
+      == "first.last+tag@mail.example-site.io")
     #expect(FeedbackDraft(message: "hi", email: "a@b") == nil)
   }
 
