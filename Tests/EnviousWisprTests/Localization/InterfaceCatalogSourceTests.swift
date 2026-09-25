@@ -48,7 +48,14 @@ struct InterfaceCatalogSourceTests {
   @Test("The built app ships the compiled English table with the three entries")
   func builtAppShipsCompiledTable() throws {
     let products = Bundle(for: BuildProductsMarker.self).bundleURL.deletingLastPathComponent()
-    let table = products.appendingPathComponent("EnviousWispr.app/Contents/Resources/en.lproj/Localizable.strings")
+    // The product name is per configuration: Debug and Release build `EnviousWispr.app`, Dev
+    // builds `EnviousWispr Local.app` (Project.swift Dev settings). Exactly one lives beside the
+    // test bundle; zero or both means the products directory is not what this test assumes.
+    let apps = ["EnviousWispr.app", "EnviousWispr Local.app"]
+      .map { products.appendingPathComponent($0) }
+      .filter { FileManager.default.fileExists(atPath: $0.path) }
+    let app = try #require(apps.count == 1 ? apps.first : nil, "app products beside the tests: \(apps.map(\.lastPathComponent))")
+    let table = app.appendingPathComponent("Contents/Resources/en.lproj/Localizable.strings")
     let data = try #require(
       FileManager.default.contents(atPath: table.path),
       "no compiled catalog at \(table.path)")
