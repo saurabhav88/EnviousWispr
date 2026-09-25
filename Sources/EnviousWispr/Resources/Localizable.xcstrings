@@ -365,6 +365,9 @@
     },
     "Download paused. Resume anytime." : {},
     "Download size: %@" : {},
+    "Download the preview model in Settings to see words appear." : {
+      "comment" : "On-screen preview status: the preview model is not downloaded. Settings is this app's settings window."
+    },
     "Downloading %@ (%@)" : {
       "localizations" : {
         "en" : {
@@ -473,6 +476,9 @@
     "Getting dictation ready…" : {
       "comment" : "Pill title while the speech engine loads after a restart."
     },
+    "Getting the preview ready..." : {
+      "comment" : "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods."
+    },
     "Getting the speech engine ready\nso your first go is instant." : {},
     "Go ahead. Let go of %@ when you are done." : {
       "comment" : "Practice screen while recording. %@ is the dictation shortcut, for example ⌥."
@@ -484,6 +490,9 @@
       "comment" : "Pill button: opens the macOS Accessibility permission so the app can paste."
     },
     "Granted" : {},
+    "Hands-free" : {
+      "comment" : "Preview panel header badge: hands-free dictation is active (it continues until pressed again)."
+    },
     "Hold %@ and say something.\nLet go when you are done." : {
       "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
     },
@@ -527,8 +536,14 @@
     },
     "License information isn't available in this build." : {},
     "List" : {},
+    "Listening" : {
+      "comment" : "Preview panel header: hold-to-talk dictation is active."
+    },
     "Listening for input" : {
       "comment" : "Label under the keybind field while it waits for a key combination."
+    },
+    "Listening..." : {
+      "comment" : "Recording pill while the preview has not heard words yet. Three ASCII periods."
     },
     "Listening…" : {
       "comment" : "Practice screen headline. Shown while the key is held."
@@ -659,6 +674,18 @@
     "On" : {},
     "On-Device" : {
       "comment" : "Welcome screen feature title: dictation runs on this Mac."
+    },
+    "On-screen preview does not support this language yet." : {
+      "comment" : "On-screen preview status: the dictation language is not supported by the preview."
+    },
+    "On-screen preview is not ready yet." : {
+      "comment" : "On-screen preview status: the preview could not start yet."
+    },
+    "On-screen preview needs macOS 26." : {
+      "comment" : "On-screen preview status: the Mac is older than macOS 26."
+    },
+    "On-screen preview pauses while Faster Transcription is on." : {
+      "comment" : "On-screen preview status. Faster Transcription is the name of a setting."
     },
     "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything." : {},
     "One moment, still working on that" : {},
@@ -940,6 +967,9 @@
     "This passage could not be cleaned up. These are the raw words." : {},
     "This usually takes a moment. Nothing else is needed from you." : {},
     "This version is not saved" : {},
+    "This version of EnviousWispr cannot run that preview engine." : {
+      "comment" : "On-screen preview status: this app build lacks the preview engine's files."
+    },
     "Those are your words, typed for you.\nIn any other app, click into a text box first." : {
       "comment" : "Practice screen, after the first dictation worked. Keep the line break."
     },
