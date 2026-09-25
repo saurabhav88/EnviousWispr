@@ -47,9 +47,9 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
     case .tooManySourceEntries(let app, let limit):
       return String(
         localized:
-          "\(app) has more than \(limit) dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything.",
+          "\(app) has more than \(String(limit)) dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything.",
         comment:
-          "Import from another dictation app: an error. %@ is that app's name, %lld the entry limit."
+          "Import from another dictation app: an error. the first %@ is that app's name, the second the entry limit."
       )
     }
   }

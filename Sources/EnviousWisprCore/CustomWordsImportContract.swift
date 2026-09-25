@@ -413,8 +413,8 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
     case .wordTooLong(let limit):
       return String(
         localized:
-          "That contains an entry longer than \(limit) characters, which is too long to be a word. Nothing was imported.",
-        comment: "Import: the words could not be imported. %lld is the character limit.")
+          "That contains an entry longer than \(String(limit)) characters, which is too long to be a word. Nothing was imported.",
+        comment: "Import: the words could not be imported. %@ is the character limit.")
     case .unusableAlias(let alias, let canonical):
       // Names the ALIAS, not the word that owns it. Reporting the canonical
       // quoted an innocent value and hid the one that has to be fixed (Codex

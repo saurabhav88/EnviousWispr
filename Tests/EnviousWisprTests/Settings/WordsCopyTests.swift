@@ -12,7 +12,9 @@ import Testing
 @Suite("Words and contacts copy", .tags(.productOutcome))
 struct WordsCopyTests {
 
-  private static let counts = [0, 1, 2, 7]
+  /// 1_234 and 25_000 pin the digits: the numbers are passed as text, so English never gains a
+  /// thousands separator the old spliced string did not have (#3142 G6).
+  private static let counts = [0, 1, 2, 7, 1_234, 25_000]
 
   @Test("bulk delete says one word or many words, whole")
   func bulkDelete() {
@@ -26,13 +28,13 @@ struct WordsCopyTests {
   @Test("the Contacts message matches the old frame for every count pair")
   func contactsMessage() {
     // The sheet shows these only when there is a new name (`hasNewNames`); 0 still reads as before.
-    for new in [0, 1, 2, 5] {
+    for new in [0, 1, 2, 5, 1_500] {
       let names = new == 1 ? "1 name" : "\(new) names"
       #expect(
         ContactsImportConfirm.addCountMessage(newCount: new, alreadyCount: 0)
           == "We'll add \(names) from your contacts.")
       #expect(ContactsImportConfirm.addButtonTitle(newCount: new) == "Add \(names)")
-      for already in [1, 2, 9] {
+      for already in [1, 2, 9, 2_000] {
         let verb = already == 1 ? "is" : "are"
         #expect(
           ContactsImportConfirm.addCountMessage(newCount: new, alreadyCount: already)
@@ -45,17 +47,17 @@ struct WordsCopyTests {
   func importReviewSummary() {
     #expect(
       CustomWordsImportReviewCopy.summary(newCount: 0, existingCount: 0) == "Nothing to review.")
-    for have in [1, 2] {
+    for have in [1, 2, 20_000] {
       #expect(
         CustomWordsImportReviewCopy.summary(newCount: 0, existingCount: have)
           == "You already have all \(have) of these.")
     }
-    for new in [1, 2] {
+    for new in [1, 2, 1_500] {
       let noun = new == 1 ? "word" : "words"
       #expect(
         CustomWordsImportReviewCopy.summary(newCount: new, existingCount: 0)
           == "\(new) new \(noun) found.")
-      for have in [1, 3] {
+      for have in [1, 3, 20_000] {
         #expect(
           CustomWordsImportReviewCopy.summary(newCount: new, existingCount: have)
             == "\(new) new \(noun) found. \(have) you already have.")
@@ -75,7 +77,7 @@ struct WordsCopyTests {
 
   @Test("a vocabulary pack's detail line matches the old frame")
   func packDetail() {
-    for n in [0, 1, 2] {
+    for n in [0, 1, 2, 1_234] {
       let count = "\(n) \(n == 1 ? "fix" : "fixes")"
       #expect(VocabPacksSection.rowDetail(termCount: n, examples: []) == count)
       #expect(
@@ -86,7 +88,7 @@ struct WordsCopyTests {
 
   @Test("the import result and skipped-spelling lines match the old frame")
   func importResult() {
-    for added in [0, 1, 2] {
+    for added in [0, 1, 2, 1_234] {
       let phrase = "Added \(added) \(added == 1 ? "word" : "words")."
       #expect(
         CustomWordsImportResultCopy.message(for: .completed(added: added, replaced: 0))
@@ -95,13 +97,13 @@ struct WordsCopyTests {
         CustomWordsImportResultCopy.message(for: .completed(added: added, replaced: 3))
           == "\(phrase) Replaced 3. Your words are ready to use.")
     }
-    for found in [0, 1, 2] {
+    for found in [0, 1, 2, 1_234] {
       #expect(
         CustomWordsImportResultCopy.message(for: .nothingCompatible(found: found))
           == "Found \(found) \(found == 1 ? "entry" : "entries"), but none were compatible. Nothing was changed."
       )
     }
-    for n in [0, 1, 2] {
+    for n in [0, 1, 2, 1_234] {
       #expect(
         CustomWordsImportResultCopy.droppedCollisionMessage(count: n)
           == "\(n) alternate \(n == 1 ? "spelling was" : "spellings were") skipped, because other words already use them."
@@ -112,7 +114,7 @@ struct WordsCopyTests {
   @Test("button, feedback and usage lines match the old frame")
   func buttonsAndUsage() {
     #expect(CustomWordsImportReviewCopy.confirmTitle(approvedCount: 0) == "Add nothing")
-    for n in [1, 2, 7] {
+    for n in [1, 2, 7, 1_234] {
       #expect(
         CustomWordsImportReviewCopy.confirmTitle(approvedCount: n)
           == (n == 1 ? "Add 1 word" : "Add \(n) words"))
@@ -123,7 +125,7 @@ struct WordsCopyTests {
     // Usage 0 shows only the category; any use keeps the old "used N times", 1 included.
     #expect(
       CustomTermsSection<EmptyView>.usageSubtitle(category: .person, frequencyUsed: 0) == "Person")
-    for n in [1, 2] {
+    for n in [1, 2, 1_234] {
       #expect(
         CustomTermsSection<EmptyView>.usageSubtitle(category: .person, frequencyUsed: n)
           == "Person · used \(n) times")
@@ -151,6 +153,37 @@ struct WordsCopyTests {
     #expect(
       CustomWordsImportReviewRow.collisionNote(for: two, namesByID: names)
         == "2 alternate spellings may not be added, because other words already use them.")
+  }
+
+  @Test("a saved-words error logs fixed English and shows the same English on screen")
+  func persistenceErrorDiagnostics() {
+    let old: [(CustomWordsPersistenceError, String)] = [
+      (
+        .unreadableExistingFile,
+        "Your saved words could not be read. Nothing was changed. Try again."
+      ),
+      (
+        .corruptedExistingFile,
+        "Your saved words file was damaged and moved aside for recovery. No edit or import was applied."
+      ),
+      (
+        .unusableValue,
+        "That word or spelling can't be saved. It may be too long, or contain characters that aren't part of a word."
+      ),
+      (
+        .libraryBusy,
+        "Your word list is being updated by another EnviousWispr window. Nothing was changed. Try again."
+      ),
+      (
+        .coordinationUnavailable,
+        "Your saved words could not be updated safely. Nothing was changed. Try again."
+      ),
+      (.noRestorableBuiltin, "That word is no longer where it was. Nothing was changed."),
+    ]
+    for (error, english) in old {
+      #expect(error.diagnosticDescription == english)
+      #expect(error.errorDescription == english)
+    }
   }
 
   @Test("a category's shown name is its old capitalized raw value")

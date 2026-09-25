@@ -32,18 +32,19 @@ enum CustomWordsImportResultCopy {
           comment: "Your Words, import result: one word added.")
       case (false, false):
         return String(
-          localized: "Added \(added) words. Your words are ready to use.",
-          comment: "Your Words, import result: %lld is the number of words added, never 1.")
+          localized: "Added \(String(added)) words. Your words are ready to use.",
+          comment: "Your Words, import result: %@ is the number of words added, never 1.")
       case (true, true):
         return String(
-          localized: "Added 1 word. Replaced \(replaced). Your words are ready to use.",
+          localized: "Added 1 word. Replaced \(String(replaced)). Your words are ready to use.",
           comment:
-            "Your Words, import result: one word added. %lld is the number of words replaced.")
+            "Your Words, import result: one word added. %@ is the number of words replaced.")
       case (false, true):
         return String(
-          localized: "Added \(added) words. Replaced \(replaced). Your words are ready to use.",
+          localized:
+            "Added \(String(added)) words. Replaced \(String(replaced)). Your words are ready to use.",
           comment:
-            "Your Words, import result: the first %lld is the number of words added (never 1), the second the number replaced."
+            "Your Words, import result: the first %@ is the number of words added (never 1), the second the number replaced."
         )
       }
     case .nothingFound:
@@ -58,9 +59,10 @@ enum CustomWordsImportResultCopy {
           localized: "Found 1 entry, but none were compatible. Nothing was changed.",
           comment: "Your Words, import result: one entry found, and it could not be imported.")
         : String(
-          localized: "Found \(found) entries, but none were compatible. Nothing was changed.",
+          localized:
+            "Found \(String(found)) entries, but none were compatible. Nothing was changed.",
           comment:
-            "Your Words, import result: %lld is the number of entries found, never 1; none could be imported."
+            "Your Words, import result: %@ is the number of entries found, never 1; none could be imported."
         )
     case .nothingApproved:
       return String(
@@ -78,9 +80,9 @@ enum CustomWordsImportResultCopy {
         comment: "Your Words, import result: one misheard form was not added.")
       : String(
         localized:
-          "\(count) alternate spellings were skipped, because other words already use them.",
+          "\(String(count)) alternate spellings were skipped, because other words already use them.",
         comment:
-          "Your Words, import result: %lld is the number of misheard forms not added, never 1.")
+          "Your Words, import result: %@ is the number of misheard forms not added, never 1.")
   }
 }
 
@@ -224,8 +226,8 @@ struct CustomWordsImportReviewRow: Identifiable, Sendable, Equatable {
         comment: "Your Words, import review: a row's note: one misheard form.")
       : String(
         localized:
-          "\(count) alternate spellings may not be added, because other words already use them.",
+          "\(String(count)) alternate spellings may not be added, because other words already use them.",
         comment:
-          "Your Words, import review: a row's note. %lld is the number of misheard forms, never 1.")
+          "Your Words, import review: a row's note. %@ is the number of misheard forms, never 1.")
   }
 }

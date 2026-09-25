@@ -12,13 +12,23 @@ package enum SnippetsTransferError: LocalizedError, Sendable, Equatable {
   package var errorDescription: String? {
     switch self {
     case .notAnEnviousWisprSnippetsFile:
-      return "That file isn't an EnviousWispr snippets file."
+      return String(
+        localized:
+          "That file isn't an EnviousWispr snippets file.",
+        comment:
+          "Snippets, import: error when the file is not a snippets export.")
     case .unsupportedVersion(let version):
-      return
-        "That file was exported by a newer version of EnviousWispr (format \(version)). "
-        + "Update the app, then try again."
+      return String(
+        localized:
+          "That file was exported by a newer version of EnviousWispr (format \(version)). Update the app, then try again.",
+        comment:
+          "Snippets, import: error. %lld is the file's format version number.")
     case .malformed:
-      return "That file is damaged and can't be read."
+      return String(
+        localized:
+          "That file is damaged and can't be read.",
+        comment:
+          "Snippets, import: error when the file is damaged.")
     }
   }
 }

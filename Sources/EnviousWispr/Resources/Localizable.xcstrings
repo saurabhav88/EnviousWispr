@@ -26,6 +26,17 @@
         }
       }
     },
+    "%@ MB of %@ MB" : {
+      "comment" : "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ MB of %2$@ MB"
+          }
+        }
+      }
+    },
     "%@ Nothing was exported." : {
       "comment" : "Your Words, export: refused: %@ is the reason the file could not be read back, one or more sentences."
     },
@@ -40,14 +51,48 @@
         }
       }
     },
+    "%@ alternate spellings may not be added, because other words already use them." : {
+      "comment" : "Your Words, import review: a row's note. %@ is the number of misheard forms, never 1."
+    },
+    "%@ alternate spellings were skipped, because other words already use them." : {
+      "comment" : "Your Words, import result: %@ is the number of misheard forms not added, never 1."
+    },
     "%@ by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {},
-    "%@ has more than %lld dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything." : {
-      "comment" : "Import from another dictation app: an error. %@ is that app's name, %lld the entry limit.",
+    "%@ entries were left out because EnviousWispr can't use them." : {
+      "comment" : "Snippets, import review: notice. %@ is the number of entries that could not be used, never 1."
+    },
+    "%@ fixes" : {
+      "comment" : "Your Words, vocabulary packs: under a pack. %@ is its number of fixes, never 1."
+    },
+    "%@ fixes · e.g. %@" : {
+      "comment" : "Your Words, vocabulary packs: under a pack. the first %@ is its number of fixes (never 1), the second example words separated by commas.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ has more than %2$lld dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything."
+            "value" : "%1$@ fixes · e.g. %2$@"
+          }
+        }
+      }
+    },
+    "%@ has more than %@ dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything." : {
+      "comment" : "Import from another dictation app: an error. the first %@ is that app's name, the second the entry limit.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has more than %2$@ dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything."
+          }
+        }
+      }
+    },
+    "%@ has more than %@ entries where it keeps snippets, counting ones that can't be snippets here. EnviousWispr stopped without importing anything." : {
+      "comment" : "Snippets, import from another app: error. The first %@ is the other app's name, the second a large limit (never 1).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has more than %2$@ entries where it keeps snippets, counting ones that can't be snippets here. EnviousWispr stopped without importing anything."
           }
         }
       }
@@ -61,6 +106,32 @@
     "%@ isn't downloaded yet. Open Settings to download it." : {
       "comment" : "Pill: the chosen speech engine is not downloaded. %@ is the engine's name."
     },
+    "%@ lines skipped because they have no trigger and text." : {
+      "comment" : "Snippets, import review: notice. %@ is the number of unreadable lines, never 1."
+    },
+    "%@ listed twice" : {
+      "comment" : "Snippets, import review summary: one phrase of a list. %@ is how many appear twice (1 or more)."
+    },
+    "%@ mishearings" : {
+      "comment" : "Edit word sheet: %@ is the number of alternate spellings, never 1."
+    },
+    "%@ new snippets" : {
+      "comment" : "Snippets, import review summary: one phrase of a list. %@ is the number of new snippets, never 1."
+    },
+    "%@ new words found." : {
+      "comment" : "Your Words, import review: %@ is the number of new words, never 1."
+    },
+    "%@ new words found. %@ you already have." : {
+      "comment" : "Your Words, import review: the first %@ is the number of new words (never 1), the second the number already in the list.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ new words found. %2$@ you already have."
+          }
+        }
+      }
+    },
     "%@ now recognizes %@" : {
       "comment" : "Your Words, VoiceOver: a word just learned. The first %@ is the word, the second the misheard forms it now fixes, separated by commas.",
       "localizations" : {
@@ -72,6 +143,46 @@
         }
       }
     },
+    "%@ of %@" : {
+      "comment" : "Snippets: count while searching. The first %@ is shown, the second the total.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "%@ snippets" : {
+      "comment" : "Snippets: count above the list. %@ is the number of snippets, never 1."
+    },
+    "%@ snippets found, %@ lines skipped." : {
+      "comment" : "Snippets, paste count. The first %@ is snippets, the second unreadable lines; neither is 1.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ snippets found, %2$@ lines skipped."
+          }
+        }
+      }
+    },
+    "%@ snippets found, 1 line skipped." : {
+      "comment" : "Snippets, paste count. %@ is the number of snippets, never 1; one unreadable line."
+    },
+    "%@ snippets found." : {
+      "comment" : "Snippets, paste count. %@ is the number of snippets, never 1."
+    },
+    "%@ words" : {
+      "comment" : "Your Words: list heading, shown in capitals. %@ is the number of words, never 1."
+    },
+    "%@ words ready to review." : {
+      "comment" : "Your Words, import words: %@ is the number of words found in the pasted text, never 1."
+    },
+    "%@ you already have" : {
+      "comment" : "Snippets, import review summary: one phrase of a list. %@ is how many the user already has (1 or more)."
+    },
     "%@ · %@" : {
       "localizations" : {
         "en" : {
@@ -82,13 +193,13 @@
         }
       }
     },
-    "%@ · used %lld times" : {
-      "comment" : "Your Words: under a word. %@ is its category, %lld how many times it was used (never 1).",
+    "%@ · used %@ times" : {
+      "comment" : "Your Words: under a word. the first %@ is its category, the second how many times it was used (never 1).",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ · used %2$lld times"
+            "value" : "%1$@ · used %2$@ times"
           }
         }
       }
@@ -167,55 +278,7 @@
       "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced."
     },
     "%lld" : {},
-    "%lld MB of %lld MB" : {
-      "comment" : "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld MB of %2$lld MB"
-          }
-        }
-      }
-    },
-    "%lld alternate spellings may not be added, because other words already use them." : {
-      "comment" : "Your Words, import review: a row's note. %lld is the number of misheard forms, never 1."
-    },
-    "%lld alternate spellings were skipped, because other words already use them." : {
-      "comment" : "Your Words, import result: %lld is the number of misheard forms not added, never 1."
-    },
-    "%lld fixes" : {
-      "comment" : "Your Words, vocabulary packs: under a pack. %lld is its number of fixes, never 1."
-    },
-    "%lld fixes · e.g. %@" : {
-      "comment" : "Your Words, vocabulary packs: under a pack. %lld is its number of fixes (never 1), %@ example words separated by commas.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld fixes · e.g. %2$@"
-          }
-        }
-      }
-    },
     "%lld imported" : {},
-    "%lld mishearings" : {
-      "comment" : "Edit word sheet: %lld is the number of alternate spellings, never 1."
-    },
-    "%lld new words found." : {
-      "comment" : "Your Words, import review: %lld is the number of new words, never 1."
-    },
-    "%lld new words found. %lld you already have." : {
-      "comment" : "Your Words, import review: the first %lld is the number of new words (never 1), the second the number already in the list.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld new words found. %2$lld you already have."
-          }
-        }
-      }
-    },
     "%lld of %lld processed" : {
       "localizations" : {
         "en" : {
@@ -227,12 +290,7 @@
       }
     },
     "%lld selected" : {},
-    "%lld words" : {
-      "comment" : "Your Words: list heading, shown in capitals. %lld is the number of words, never 1."
-    },
-    "%lld words ready to review." : {
-      "comment" : "Your Words, import words: %lld is the number of words found in the pasted text, never 1."
-    },
+    "%lld words" : {},
     "%lld%%" : {},
     "%lld." : {},
     "(%@)" : {},
@@ -242,20 +300,41 @@
     "1 alternate spelling was skipped, because other words already use them." : {
       "comment" : "Your Words, import result: one misheard form was not added."
     },
+    "1 entry was left out because EnviousWispr can't use it." : {
+      "comment" : "Snippets, import review: notice, one entry could not be used."
+    },
     "1 fix" : {
       "comment" : "Your Words, vocabulary packs: under a pack with one fix."
     },
     "1 fix · e.g. %@" : {
       "comment" : "Your Words, vocabulary packs: under a pack. %@ is example words from it, separated by commas."
     },
+    "1 line skipped because it has no trigger and text." : {
+      "comment" : "Snippets, import review: notice, one unreadable line."
+    },
     "1 mishearing" : {
       "comment" : "Edit word sheet: one alternate spelling."
+    },
+    "1 new snippet" : {
+      "comment" : "Snippets, import review summary: one phrase of a list, one new snippet."
     },
     "1 new word found." : {
       "comment" : "Your Words, import review: one new word."
     },
-    "1 new word found. %lld you already have." : {
-      "comment" : "Your Words, import review: one new word. %lld is the number already in the list."
+    "1 new word found. %@ you already have." : {
+      "comment" : "Your Words, import review: one new word. %@ is the number already in the list."
+    },
+    "1 snippet" : {
+      "comment" : "Snippets: count above the list, one snippet."
+    },
+    "1 snippet found, %@ lines skipped." : {
+      "comment" : "Snippets, paste count: one snippet. %@ is the number of unreadable lines, never 1."
+    },
+    "1 snippet found, 1 line skipped." : {
+      "comment" : "Snippets, paste count: one snippet, one unreadable line."
+    },
+    "1 snippet found." : {
+      "comment" : "Snippets, paste count: one snippet, nothing skipped."
     },
     "1 word" : {
       "comment" : "Your Words: list heading, shown in capitals."
@@ -383,15 +462,20 @@
     "Add" : {
       "comment" : "AI Polish, Ollama model list: button that adds a hosted model; nothing downloads."
     },
-    "Add %@" : {},
-    "Add %lld names" : {
-      "comment" : "Your Words, import from Contacts: button. %lld is the number of names, never 1."
+    "Add %@ names" : {
+      "comment" : "Your Words, import from Contacts: button. %@ is the number of names, never 1."
     },
-    "Add %lld words" : {
-      "comment" : "Your Words, import words: confirm button. %lld is the number of words, never 1."
+    "Add %@ snippets" : {
+      "comment" : "Snippets, import snippets: confirm button. %@ is the number of snippets, never 1."
+    },
+    "Add %@ words" : {
+      "comment" : "Your Words, import words: confirm button. %@ is the number of words, never 1."
     },
     "Add 1 name" : {
       "comment" : "Your Words, import from Contacts: button for one name."
+    },
+    "Add 1 snippet" : {
+      "comment" : "Snippets, import snippets: confirm button for one snippet."
     },
     "Add 1 word" : {
       "comment" : "Your Words, import words: confirm button for one word."
@@ -405,37 +489,46 @@
       "comment" : "Your Words: a tab in the side rail: the line under Quick Add. Keep it short, about 16 characters."
     },
     "Add nothing" : {
-      "comment" : "Your Words, import words: confirm button when no word is chosen."
+      "comment" : "Snippets, import snippets: confirm button when no snippet is chosen.\nYour Words, import words: confirm button when no word is chosen."
     },
     "Add snippet" : {},
     "Add the names of people you know to your word list, so dictation spells them right." : {},
+    "Add the text this snippet should paste. An empty snippet would delete the words you said." : {
+      "comment" : "Snippets, edit: error when the text to paste is empty."
+    },
     "Add word" : {},
     "Add your first snippet" : {},
     "Add-a-word keybind" : {
       "comment" : "Keybinds settings: the keybind that adds a selected word to Your Words."
     },
-    "Added %lld names" : {
-      "comment" : "Your Words, import from Contacts: result after adding names: %lld is the number of names, never 1."
+    "Added %@ names" : {
+      "comment" : "Your Words, import from Contacts: result after adding names: %@ is the number of names, never 1."
     },
-    "Added %lld words. Replaced %lld. Your words are ready to use." : {
-      "comment" : "Your Words, import result: the first %lld is the number of words added (never 1), the second the number replaced.",
+    "Added %@ snippets. Say your keyword, then the trigger, and it's pasted." : {
+      "comment" : "Snippets, import result. %@ is the number of snippets added, never 1."
+    },
+    "Added %@ words. Replaced %@. Your words are ready to use." : {
+      "comment" : "Your Words, import result: the first %@ is the number of words added (never 1), the second the number replaced.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Added %1$lld words. Replaced %2$lld. Your words are ready to use."
+            "value" : "Added %1$@ words. Replaced %2$@. Your words are ready to use."
           }
         }
       }
     },
-    "Added %lld words. Your words are ready to use." : {
-      "comment" : "Your Words, import result: %lld is the number of words added, never 1."
+    "Added %@ words. Your words are ready to use." : {
+      "comment" : "Your Words, import result: %@ is the number of words added, never 1."
     },
     "Added 1 name" : {
       "comment" : "Your Words, import from Contacts: result after adding names: one name added."
     },
-    "Added 1 word. Replaced %lld. Your words are ready to use." : {
-      "comment" : "Your Words, import result: one word added. %lld is the number of words replaced."
+    "Added 1 snippet. Say your keyword, then the trigger, and it's pasted." : {
+      "comment" : "Snippets, import result: one snippet added."
+    },
+    "Added 1 word. Replaced %@. Your words are ready to use." : {
+      "comment" : "Your Words, import result: one word added. %@ is the number of words replaced."
     },
     "Added 1 word. Your words are ready to use." : {
       "comment" : "Your Words, import result: one word added."
@@ -505,6 +598,9 @@
     "Almost there... pinky promise" : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Already listed above." : {
+      "comment" : "Snippets, import review: a row's note when the same trigger appears twice."
+    },
     "Already recording." : {
       "comment" : "Pill: a dictation is already in progress."
     },
@@ -521,6 +617,9 @@
     },
     "Another app is using Ollama's port (11434). Close it and try again." : {
       "comment" : "AI Polish, Ollama setup: error. 11434 is a network port number."
+    },
+    "Another copy of EnviousWispr is editing snippets right now. Try that again." : {
+      "comment" : "Snippets: error when another copy of the app holds the file."
     },
     "Any open model, local or hosted" : {
       "comment" : "AI Polish provider list: description under a provider name. Ollama."
@@ -662,6 +761,9 @@
       "comment" : "Your Words, import words: method card description."
     },
     "Bring your snippets in from anywhere. Nothing is added until you review it." : {},
+    "Bring your snippets over from another dictation app." : {
+      "comment" : "Snippets, import snippets: method card."
+    },
     "Bring your words in from anywhere. Nothing is added until you review it." : {},
     "British spelling: colour, organise, centre" : {
       "comment" : "Dictation language picker: under English (UK). Keep the three example words in British spelling; they show the result."
@@ -764,7 +866,7 @@
       "comment" : "Live Preview settings: packs loading."
     },
     "Checking your list" : {
-      "comment" : "Your Words, import words: sheet title, working."
+      "comment" : "Snippets, import snippets: sheet title while comparing with your snippets.\nYour Words, import words: sheet title, working."
     },
     "Chinese" : {
       "comment" : "A language name (dictation language picker)."
@@ -828,6 +930,9 @@
     "Cloud Pop" : {
       "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
+    "Comparing against your existing snippets." : {
+      "comment" : "Snippets, import snippets: working."
+    },
     "Comparing against your existing words." : {
       "comment" : "Your Words, import words: working."
     },
@@ -840,9 +945,7 @@
     "Context" : {
       "comment" : "AI Polish, S1-mini writing-style card: the context setting's name."
     },
-    "Continue" : {
-      "comment" : "Microphone settings, media during dictation: option that leaves other audio playing."
-    },
+    "Continue" : {},
     "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)" : {},
     "Convert spoken punctuation" : {
       "comment" : "Speech engine settings, spoken punctuation: the toggle's name."
@@ -879,6 +982,9 @@
     "Couldn't add the model. Check your internet connection and try again." : {
       "comment" : "AI Polish, Ollama setup: adding a hosted model failed."
     },
+    "Couldn't find any %@ snippets on this Mac." : {
+      "comment" : "Snippets, import from another app: error. %@ is the other app's name."
+    },
     "Couldn't find any %@ words on this Mac." : {
       "comment" : "Import from another dictation app: an error. %@ is that app's name."
     },
@@ -891,6 +997,17 @@
     "Couldn't prepare model. Click to retry." : {},
     "Couldn't reach the download server. Please check your internet connection and try again." : {
       "comment" : "Setup error: the speech model download server could not be reached."
+    },
+    "Couldn't read your %@ snippets, so nothing was imported. If %@ is running, quitting it and trying again can help." : {
+      "comment" : "Snippets, import from another app: error. Both %@ are the other app's name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Couldn't read your %1$@ snippets, so nothing was imported. If %2$@ is running, quitting it and trying again can help."
+          }
+        }
+      }
     },
     "Couldn't read your %@ words, so nothing was imported. If %@ is running, quitting it and trying again can help." : {
       "comment" : "Import from another dictation app: an error. %@ is that app's name; both %@ are the same name.",
@@ -926,7 +1043,7 @@
       "comment" : "Pill result when removing the just-added word failed."
     },
     "Counting…" : {
-      "comment" : "Your Words, import words: pasted text is being counted."
+      "comment" : "Snippets, import snippets: paste count, while counting.\nYour Words, import words: pasted text is being counted."
     },
     "Croatian" : {
       "comment" : "A language name (dictation language picker)."
@@ -953,11 +1070,11 @@
     },
     "Delete" : {},
     "Delete \"%@\"?" : {},
-    "Delete %lld words" : {
-      "comment" : "Your Words, delete selected words: button. %lld is the number of words, never 1."
+    "Delete %@ words" : {
+      "comment" : "Your Words, delete selected words: button. %@ is the number of words, never 1."
     },
-    "Delete %lld words?" : {
-      "comment" : "Your Words, delete selected words: sheet title. %lld is the number of words, never 1."
+    "Delete %@ words?" : {
+      "comment" : "Your Words, delete selected words: sheet title. %@ is the number of words, never 1."
     },
     "Delete 1 word" : {
       "comment" : "Your Words, delete selected words: button for one word."
@@ -1123,13 +1240,13 @@
     "Downloading model files..." : {
       "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, WhisperKit model: download status line."
     },
-    "Downloading model files... %lld MB of %lld MB (%lld%%)" : {
+    "Downloading model files... %@ MB of %@ MB (%@%%)" : {
       "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Downloading model files... %1$lld MB of %2$lld MB (%3$lld%%)"
+            "value" : "Downloading model files... %1$@ MB of %2$@ MB (%3$@%%)"
           }
         }
       }
@@ -1137,13 +1254,13 @@
     "Downloading speech model..." : {
       "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, speech model download: in progress."
     },
-    "Downloading speech model... %lld MB of %lld MB (%lld%%)" : {
+    "Downloading speech model... %@ MB of %@ MB (%@%%)" : {
       "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Downloading speech model... %1$lld MB of %2$lld MB (%3$lld%%)"
+            "value" : "Downloading speech model... %1$@ MB of %2$@ MB (%3$@%%)"
           }
         }
       }
@@ -1151,13 +1268,13 @@
     "Downloading the correction model" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the download has no size yet."
     },
-    "Downloading the correction model (%lld of %lld MB)" : {
+    "Downloading the correction model (%@ of %@ MB)" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: download progress. The first number is megabytes done, the second the total.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Downloading the correction model (%1$lld of %2$lld MB)"
+            "value" : "Downloading the correction model (%1$@ of %2$@ MB)"
           }
         }
       }
@@ -1197,6 +1314,12 @@
     },
     "English (UK)" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "EnviousWispr can't read %@ files yet. Try a file you exported from EnviousWispr, or a plain text list." : {
+      "comment" : "Your Words, import: error. %@ is the file's type, such as a file extension."
+    },
+    "EnviousWispr can't read %@ files yet. Try the EnviousWispr Snippets.json you exported, a CSV, or a plain list." : {
+      "comment" : "Snippets, import: error. %@ is the file's extension, already quoted. Keep the file name EnviousWispr Snippets.json as is."
     },
     "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment." : {
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; a hosted model's name could not be confirmed."
@@ -1281,6 +1404,9 @@
     "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy." : {
       "comment" : "Speech engine settings, Faster Transcription: note under the toggle when the language is Auto-detect."
     },
+    "Finding snippets" : {
+      "comment" : "Snippets, import snippets: sheet title while reading the source."
+    },
     "Finding spoken variants… %lld of %lld" : {
       "localizations" : {
         "en" : {
@@ -1321,8 +1447,14 @@
     "Formal" : {
       "comment" : "AI Polish, S1-mini writing-style card: tone option."
     },
-    "Found %lld entries, but none were compatible. Nothing was changed." : {
-      "comment" : "Your Words, import result: %lld is the number of entries found, never 1; none could be imported."
+    "Found %@ entries, but none could be imported. Nothing was changed." : {
+      "comment" : "Snippets, import result: %@ is the number of entries found, never 1; none could be imported."
+    },
+    "Found %@ entries, but none were compatible. Nothing was changed." : {
+      "comment" : "Your Words, import result: %@ is the number of entries found, never 1; none could be imported."
+    },
+    "Found 1 entry, but none could be imported. Nothing was changed." : {
+      "comment" : "Snippets, import result: one entry found, and it could not be imported."
     },
     "Found 1 entry, but none were compatible. Nothing was changed." : {
       "comment" : "Your Words, import result: one entry found, and it could not be imported."
@@ -1340,7 +1472,7 @@
       "comment" : "A language name (dictation language picker)."
     },
     "From another app" : {
-      "comment" : "Your Words, import words: method card title.\nYour Words, import words: sheet title, choosing another dictation app."
+      "comment" : "Snippets, import snippets: method card title.\nSnippets, import snippets: sheet title, choosing another dictation app.\nYour Words, import words: method card title.\nYour Words, import words: sheet title, choosing another dictation app."
     },
     "GET STARTED!" : {},
     "Galician" : {
@@ -1386,6 +1518,9 @@
       "comment" : "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods."
     },
     "Getting the speech engine ready\nso your first go is instant." : {},
+    "Give the snippet something to say. A trigger of only punctuation can never match." : {
+      "comment" : "Snippets, edit: error when the trigger is empty."
+    },
     "Go ahead. Let go of %@ when you are done." : {
       "comment" : "Practice screen while recording. %@ is the dictation shortcut, for example ⌥."
     },
@@ -1463,12 +1598,15 @@
     },
     "Import" : {},
     "Import complete" : {
-      "comment" : "Your Words, import words: sheet title, done."
+      "comment" : "Snippets, import snippets: sheet title, finished.\nYour Words, import words: sheet title, done."
     },
     "Import didn't finish" : {
-      "comment" : "Your Words, import words: sheet title, failed."
+      "comment" : "Snippets, import snippets: sheet title, the import failed.\nYour Words, import words: sheet title, failed."
     },
     "Import from Contacts" : {},
+    "Import snippets" : {
+      "comment" : "Snippets, import snippets: sheet title, the sheet's first step."
+    },
     "Import words" : {
       "comment" : "Your Words, import words: sheet title, the sheet's first step."
     },
@@ -1592,6 +1730,9 @@
     "Last Dictation" : {
       "comment" : "Keybinds settings: section heading for reusing the last dictation, shown in capitals."
     },
+    "Last copied" : {
+      "comment" : "Snippets, edit: button that inserts whatever was last copied into the snippet text."
+    },
     "Latin" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1682,6 +1823,9 @@
     "Log Level" : {},
     "Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained." : {},
     "Looking for apps on this Mac." : {},
+    "Looking for snippets to import." : {
+      "comment" : "Snippets, import snippets: working."
+    },
     "Looking for words to import." : {
       "comment" : "Your Words, import words: working."
     },
@@ -1812,6 +1956,9 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Move EnviousWispr" : {},
+    "Moving Macs, or bringing your snippets back? Pick the %@ you exported, a CSV, or a plain list. Snippets you already have are left as they are." : {
+      "comment" : "Snippets, import snippets: method card. %@ is the exported file's name; keep it as is."
+    },
     "Moving Macs, or bringing your words back? Pick the %@ you exported, or a plain list. Words you already have are left as they are." : {
       "comment" : "Your Words, import words: method card description. %@ is the export file's name; keep it as written."
     },
@@ -1885,7 +2032,13 @@
     "No models found" : {
       "comment" : "AI Polish model picker: Ollama has no models downloaded."
     },
+    "No snippets found. Each line needs a trigger and some text." : {
+      "comment" : "Snippets, import snippets: paste count, none found."
+    },
     "No snippets match “%@”" : {},
+    "No snippets were found, and nothing was changed." : {
+      "comment" : "Snippets, import result: the source had no snippets."
+    },
     "No snippets yet" : {},
     "No spoken variants" : {},
     "No suggestions available" : {},
@@ -1934,8 +2087,8 @@
     "Not downloaded yet." : {
       "comment" : "Live Preview settings, preview engine: not downloaded yet."
     },
-    "Not enough disk space (%lld MB free). EnviousWispr needs about 1 GB to download and install the speech model." : {
-      "comment" : "Setup error before the speech model download. %lld is the free space in megabytes."
+    "Not enough disk space (%@ MB free). EnviousWispr needs about 1 GB to download and install the speech model." : {
+      "comment" : "Setup error before the speech model download. %@ is the free space in megabytes."
     },
     "Not enough disk space. Please free up space and try again." : {
       "comment" : "Setup error: the disk filled up during the speech model download."
@@ -1970,21 +2123,21 @@
       "comment" : "AI Polish provider status chip."
     },
     "Nothing added" : {
-      "comment" : "Your Words, import words: sheet title, the user added none."
+      "comment" : "Snippets, import snippets: sheet title, the user skipped everything.\nYour Words, import words: sheet title, the user added none."
     },
     "Nothing compatible" : {
-      "comment" : "Your Words, import words: sheet title, no word could be imported."
+      "comment" : "Snippets, import snippets: sheet title, nothing could be imported.\nYour Words, import words: sheet title, no word could be imported."
     },
     "Nothing has run yet. You can still change everything." : {},
     "Nothing here yet" : {},
     "Nothing pasted yet." : {
-      "comment" : "Your Words, import words: the paste box is empty."
+      "comment" : "Snippets, import snippets: paste count, empty box.\nYour Words, import words: the paste box is empty."
     },
     "Nothing to import" : {
-      "comment" : "Your Words, import words: sheet title, the source had no words."
+      "comment" : "Snippets, import snippets: sheet title, the source had no snippets.\nYour Words, import words: sheet title, the source had no words."
     },
     "Nothing to review." : {
-      "comment" : "Your Words, import review: the file had no words."
+      "comment" : "Snippets, import review summary: nothing in the source.\nYour Words, import review: the file had no words."
     },
     "Nothing was exported" : {
       "comment" : "Your Words, export: alert title when there was nothing to export; not a failure."
@@ -2075,7 +2228,7 @@
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 1. Use the names macOS shows in this language for System Settings and Keyboard."
     },
     "Open a file" : {
-      "comment" : "Your Words, import words: method card title.\nYour Words, import words: sheet title, choosing a file."
+      "comment" : "Snippets, import snippets: method card title.\nSnippets, import snippets: sheet title, choosing a file.\nYour Words, import words: method card title.\nYour Words, import words: sheet title, choosing a file."
     },
     "Open the EnviousWispr menu and choose the Add item." : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 2 when no keybind is set. Add is the first word of the menu item; use the same word as that menu item in this language."
@@ -2122,6 +2275,9 @@
     "Paste" : {
       "comment" : "History detail button: pastes this row's text into the currently active app."
     },
+    "Paste a list from anywhere: plain lines, CSV, or exported JSON." : {
+      "comment" : "Snippets, import snippets: method card."
+    },
     "Paste a list of words from anywhere." : {
       "comment" : "Your Words, import words: method card description."
     },
@@ -2131,6 +2287,9 @@
     },
     "Paste last dictation keybind" : {
       "comment" : "Keybinds settings: VoiceOver name of that keybind control."
+    },
+    "Paste snippets" : {
+      "comment" : "Snippets, import snippets: method card title.\nSnippets, import snippets: sheet title, pasting a list."
     },
     "Paste the last thing you dictated" : {},
     "Paste unavailable — Accessibility permission required" : {},
@@ -2276,6 +2435,9 @@
     "Re-scan" : {},
     "Read as" : {},
     "Read selections through the clipboard" : {},
+    "Read your snippets from %@." : {
+      "comment" : "Snippets, import snippets: an app's card. %@ is the other dictation app's name."
+    },
     "Read your words from %@." : {
       "comment" : "Your Words, import words: another app's card. %@ is that app's name."
     },
@@ -2394,6 +2556,9 @@
     },
     "Retry" : {},
     "Retry preparing model" : {},
+    "Review" : {
+      "comment" : "Snippets, import snippets: sheet title, reviewing what will be added."
+    },
     "Review & Merge" : {
       "comment" : "Your Words, import words: sheet title, reviewing what will be added."
     },
@@ -2455,10 +2620,13 @@
     },
     "Saves and restores whatever was on your clipboard before pasting your dictation." : {},
     "Saving" : {
-      "comment" : "Your Words, import words: sheet title, working."
+      "comment" : "Snippets, import snippets: sheet title while saving.\nYour Words, import words: sheet title, working."
     },
     "Saving your approved changes." : {
       "comment" : "Your Words, import words: working."
+    },
+    "Saving your approved snippets." : {
+      "comment" : "Snippets, import snippets: working."
     },
     "Say" : {},
     "Say \"<phrase> emoji\" to get the glyph. Bare words never convert." : {},
@@ -2593,7 +2761,13 @@
     "Snippets" : {
       "comment" : "Settings sidebar: a page name."
     },
+    "Snippets could not be saved just now. Try that again." : {
+      "comment" : "Snippets: error when saving is briefly unavailable."
+    },
     "Snippets to import" : {},
+    "Snippets you already have are left as they are. TypeWhisper entries using supported date, time or clipboard fill-ins can be imported. Entries containing unsupported fill-ins are left out and counted." : {
+      "comment" : "Snippets, import from another app: note under the list. TypeWhisper is an app name; keep it."
+    },
     "Snippets you already have are left exactly as they are." : {},
     "Snippets you already saved in another dictation app, found on this Mac." : {},
     "Soft Hush" : {
@@ -2718,6 +2892,15 @@
     "Thai" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "That CSV has a quoting problem on line %@. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is the line number in the file."
+    },
+    "That contains a trigger EnviousWispr can't use (%@). Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is the trigger, already quoted."
+    },
+    "That contains a trigger longer than %@ characters, which is too long to say. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is the longest allowed trigger in characters (never 1)."
+    },
     "That contains a word EnviousWispr can't store (%@). Nothing was imported." : {
       "comment" : "Import: the words could not be imported. %@ is the word, already quoted."
     },
@@ -2732,8 +2915,14 @@
         }
       }
     },
-    "That contains an entry longer than %lld characters, which is too long to be a word. Nothing was imported." : {
-      "comment" : "Import: the words could not be imported. %lld is the character limit."
+    "That contains an entry longer than %@ characters, which is too long to be a word. Nothing was imported." : {
+      "comment" : "Import: the words could not be imported. %@ is the character limit."
+    },
+    "That could not be saved. %@" : {
+      "comment" : "Snippets: an error. %@ is the system's reason, already in the user's language."
+    },
+    "That couldn't be read." : {
+      "comment" : "Snippets, import: error when the source could not be read."
     },
     "That did not work" : {
       "comment" : "Practice screen headline. The dictation failed on our side."
@@ -2741,11 +2930,59 @@
     "That download did not finish. Check your connection and try again." : {
       "comment" : "Live Preview settings: pack install failed."
     },
+    "That file couldn't be read." : {
+      "comment" : "Your Words, import: error. The file could not be read."
+    },
+    "That file didn't come from EnviousWispr." : {
+      "comment" : "Your Words, import: error. The file is not a words export."
+    },
+    "That file has more than %@ words and alternate spellings combined, which is more than EnviousWispr can import at once." : {
+      "comment" : "Your Words, import: error. %@ is a large limit (never 1)."
+    },
+    "That file has more than %@ words, which is more than EnviousWispr can import at once. Try splitting it into smaller files." : {
+      "comment" : "Your Words, import: error. %@ is a large limit (never 1)."
+    },
+    "That file is damaged and can't be read." : {
+      "comment" : "Import: error when the file is damaged.\nSnippets, import: error when the file is damaged."
+    },
+    "That file is too big to be a word list. Check you picked the right one." : {
+      "comment" : "Your Words, import: error. The file is too large."
+    },
+    "That file isn't an EnviousWispr snippets file." : {
+      "comment" : "Snippets, import: error when the file is not a snippets export."
+    },
+    "That file was exported by a newer version of EnviousWispr (format %lld). Update the app, then try again." : {
+      "comment" : "Import: error. %lld is the file's format version number.\nSnippets, import: error. %lld is the file's format version number."
+    },
+    "That has more than %@ characters of snippet text in total, which is more than EnviousWispr can import at once. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is a large limit (never 1)."
+    },
+    "That has more than %@ snippets, which is more than EnviousWispr can import at once. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is a large limit (never 1)."
+    },
+    "That is EnviousWispr's own snippets file. Pick somewhere else — saving over it would erase your snippets." : {
+      "comment" : "Snippets, export: refusal when the chosen file is the app's own snippet store."
+    },
     "That is it. You are set." : {
       "comment" : "Practice screen headline. The first dictation worked."
     },
-    "That's more than %lld words. Paste a smaller batch." : {
-      "comment" : "Your Words, import words: the paste is too long. %lld is the limit."
+    "That is too big to be a snippet list. Check you picked the right one." : {
+      "comment" : "Snippets, import: error when the file is too large."
+    },
+    "That word is no longer where it was. Nothing was changed." : {
+      "comment" : "Your Words: error. A built-in word could not be restored."
+    },
+    "That word or spelling can't be saved. It may be too long, or contain characters that aren't part of a word." : {
+      "comment" : "Your Words: error. A word or misheard form could not be saved."
+    },
+    "That's EnviousWispr's own words file. Choose a different name or folder, so your saved words aren't replaced by the export." : {
+      "comment" : "Your Words, export: refusal when the chosen file is the app's own words file."
+    },
+    "That's more than %@ words, which is more than EnviousWispr can import at once. Try pasting a smaller batch." : {
+      "comment" : "Your Words, import words: error. %@ is a large limit (never 1)."
+    },
+    "That's more than %@ words. Paste a smaller batch." : {
+      "comment" : "Your Words, import words: the paste is too long. %@ is the limit."
     },
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {},
     "The Universal engine is being prepared." : {
@@ -2799,6 +3036,9 @@
     "The downloaded correction model is not the one this version was tested with" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
     },
+    "The export did not finish. %@" : {
+      "comment" : "Snippets, export: error. %@ is the system's reason, already in the user's language."
+    },
     "The fast engine can't lock to this language, so it's detecting automatically. Choose one of its 25 European languages, or switch to the multilingual engine." : {
       "comment" : "Speech engine settings: the locked language is not one the fast engine supports."
     },
@@ -2848,6 +3088,23 @@
     },
     "The test judge from the UAT door failed to load" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch. Developer builds only."
+    },
+    "The text for %@ contains characters EnviousWispr can't store. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is the snippet's trigger, already quoted."
+    },
+    "The text for %@ is longer than %@ characters. Nothing was imported." : {
+      "comment" : "Snippets, import: error. the first %@ is the snippet's trigger, already quoted; the second a large limit (never 1).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The text for %1$@ is longer than %2$@ characters. Nothing was imported."
+          }
+        }
+      }
+    },
+    "There are no snippets to export yet." : {
+      "comment" : "Snippets, export: notice when the list is empty."
     },
     "There are no words of your own to export yet. Vocabulary packs are not included." : {
       "comment" : "Your Words, export: only vocabulary packs exist."
@@ -2914,8 +3171,8 @@
     "This version of EnviousWispr is missing that engine's files. Updating the app should restore it." : {
       "comment" : "Live Preview settings: status build cannot run detail no alternative."
     },
-    "This will permanently delete all %lld items in History, including any hidden by a filter or search. This action cannot be undone." : {
-      "comment" : "Delete All confirmation in History. %lld is how many rows will be deleted, including hidden ones. Never 1."
+    "This will permanently delete all %@ items in History, including any hidden by a filter or search. This action cannot be undone." : {
+      "comment" : "Delete All confirmation in History. %@ is how many rows will be deleted, including hidden ones. Never 1."
     },
     "This will permanently delete the only item in History, even if a filter or search is hiding it. This action cannot be undone." : {
       "comment" : "Delete All confirmation in History when exactly one row exists (it may be hidden by a filter)."
@@ -2929,6 +3186,9 @@
     "Time for your first dictation!" : {
       "comment" : "Practice screen headline. Before the first try."
     },
+    "Time now" : {
+      "comment" : "Snippets, edit: button that inserts the current time into the snippet text."
+    },
     "Times" : {},
     "Tiny filtered-air pop." : {
       "comment" : "Sounds settings: describes how a recording sound sounds."
@@ -2939,6 +3199,9 @@
     },
     "To paste your transcribed text into any app." : {
       "comment" : "Setup permissions: why Accessibility is needed."
+    },
+    "Today's date" : {
+      "comment" : "Snippets, edit: button that inserts today's date into the snippet text."
     },
     "Toggle" : {
       "comment" : "Keybinds settings: recording mode card; press once to start and again to stop."
@@ -3174,28 +3437,28 @@
       "comment" : "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
     },
     "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {},
-    "We'll add %lld names from your contacts." : {
-      "comment" : "Your Words, import from Contacts: %lld is the number of new names, never 1."
+    "We'll add %@ names from your contacts." : {
+      "comment" : "Your Words, import from Contacts: %@ is the number of new names, never 1."
     },
-    "We'll add %lld names from your contacts. %lld are already in your list." : {
-      "comment" : "Your Words, import from Contacts: the first %lld is the number of new names, the second the number already in the word list; neither is 1.",
+    "We'll add %@ names from your contacts. %@ are already in your list." : {
+      "comment" : "Your Words, import from Contacts: the first %@ is the number of new names, the second the number already in the word list; neither is 1.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "We'll add %1$lld names from your contacts. %2$lld are already in your list."
+            "value" : "We'll add %1$@ names from your contacts. %2$@ are already in your list."
           }
         }
       }
     },
-    "We'll add %lld names from your contacts. 1 is already in your list." : {
-      "comment" : "Your Words, import from Contacts: %lld is the number of new names, never 1; one is already in the word list."
+    "We'll add %@ names from your contacts. 1 is already in your list." : {
+      "comment" : "Your Words, import from Contacts: %@ is the number of new names, never 1; one is already in the word list."
     },
     "We'll add 1 name from your contacts." : {
       "comment" : "Your Words, import from Contacts: one new name."
     },
-    "We'll add 1 name from your contacts. %lld are already in your list." : {
-      "comment" : "Your Words, import from Contacts: one new name. %lld is the number already in the word list, never 1."
+    "We'll add 1 name from your contacts. %@ are already in your list." : {
+      "comment" : "Your Words, import from Contacts: one new name. %@ is the number already in the word list, never 1."
     },
     "We'll add 1 name from your contacts. 1 is already in your list." : {
       "comment" : "Your Words, import from Contacts: one new name, and one already in the word list."
@@ -3305,8 +3568,11 @@
     "You already have %@." : {
       "comment" : "Your Words, import review: a row's note. %@ is the word."
     },
-    "You already have all %lld of these." : {
-      "comment" : "Your Words, import review: every word in the file is already in the list. %lld is how many."
+    "You already have a snippet for those words: “%@”. Change one of them." : {
+      "comment" : "Snippets, edit: error. %@ is the existing trigger; use this language's quotation marks."
+    },
+    "You already have all %@ of these." : {
+      "comment" : "Your Words, import review: every word in the file is already in the list. %@ is how many."
     },
     "You already have this, as another spelling of %@." : {
       "comment" : "Your Words, import review: a row's note. %@ is the existing word."
@@ -3321,8 +3587,11 @@
       "comment" : "Speech engine settings, spoken punctuation: help table column: what appears in the text."
     },
     "You have this" : {},
+    "You have this, as “%@”." : {
+      "comment" : "Snippets, import review: a row's note. %@ is the user's existing trigger; use this language's quotation marks."
+    },
     "You skipped everything, so nothing was changed." : {
-      "comment" : "Your Words, import result: the user added nothing."
+      "comment" : "Snippets, import result: the user skipped every row.\nYour Words, import result: the user added nothing."
     },
     "You're all set! Select a model above." : {},
     "You've entered snippets. This will discard them." : {},
@@ -3345,6 +3614,9 @@
       "comment" : "Appearance settings, recording pill picker: why the word-showing pill designs are unavailable."
     },
     "Your first dictation" : {},
+    "Your keyword has to be a single word. Pick one you would not say by accident." : {
+      "comment" : "Snippets: error when the keyword is more than one word."
+    },
     "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
       "comment" : "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break."
     },
@@ -3360,8 +3632,17 @@
     "Your recording indicator appears while you hold the key." : {
       "comment" : "Practice screen footnote under the text box."
     },
+    "Your saved snippets could not be read, so nothing was changed. They are still on disk. Restart EnviousWispr, and tell us if it keeps happening." : {
+      "comment" : "Snippets: error when the saved list could not be read."
+    },
+    "Your saved words could not be read. Nothing was changed. Try again." : {
+      "comment" : "Your Words: error. The saved list could not be read."
+    },
     "Your saved words could not be read. Nothing was imported. Try again." : {
       "comment" : "Import: applying the import failed: the saved list could not be read."
+    },
+    "Your saved words could not be updated safely. Nothing was changed. Try again." : {
+      "comment" : "Your Words: error. Saving is briefly unavailable."
     },
     "Your saved words couldn't be read this time, so there's nothing safe to export. Relaunch EnviousWispr and try again." : {
       "comment" : "Your Words, export: the saved list could not be read."
@@ -3372,10 +3653,19 @@
     "Your saved words file was damaged and moved aside for recovery. EnviousWispr started with an empty saved list." : {
       "comment" : "Your Words: the saved list was damaged and set aside."
     },
+    "Your saved words file was damaged and moved aside for recovery. No edit or import was applied." : {
+      "comment" : "Your Words: error. The saved list was damaged."
+    },
     "Your shortcut is set" : {
       "comment" : "Setup warm-up checklist item."
     },
     "Your snippets" : {},
+    "Your snippets changed while you were reviewing. Nothing was imported. Here is the updated list." : {
+      "comment" : "Snippets, import review: notice after the list changed during review."
+    },
+    "Your snippets changed while you were reviewing. Nothing was imported. Review the updated list and try again." : {
+      "comment" : "Snippets, import: error when the list changed during review."
+    },
     "Your snippets could not be read" : {},
     "Your voice never leaves your Mac." : {
       "comment" : "Welcome screen feature line under On-Device."
@@ -3388,6 +3678,9 @@
     },
     "Your word list changed, so nothing was exported. Try Export again." : {
       "comment" : "Your Words, export: the list changed during export; Export is the button's name."
+    },
+    "Your word list is being updated by another EnviousWispr window. Nothing was changed. Try again." : {
+      "comment" : "Your Words: error. Another window holds the list."
     },
     "Your words are too large to fit in one file EnviousWispr could read back. Nothing was exported." : {
       "comment" : "Your Words, export: refused: the word list is too large for one file."
@@ -3525,6 +3818,18 @@
         }
       }
     },
+    "import.snippets.addRow" : {
+      "comment" : "Snippets, import review, VoiceOver: the checkbox that adds a snippet. %@ is its trigger.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add %@"
+          }
+        }
+      }
+    },
     "import.words.addRow" : {
       "comment" : "Your Words, import review, VoiceOver: the checkbox that adds a word. %@ is the word.",
       "extractionState" : "extracted_with_value",
@@ -3626,6 +3931,18 @@
       "comment" : "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
     },
     "or drag and drop here" : {},
+    "otherAudio.option.continue" : {
+      "comment" : "Microphone settings, media during dictation: option that leaves other audio playing (keeps playing, not 'go on').",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Continue"
+          }
+        }
+      }
+    },
     "selected" : {
       "comment" : "Dictation language picker, VoiceOver: the chosen row.\nVoiceOver: a chosen segmented option.\nVoiceOver: a chosen segmented option; here, the Auto-detect row of the dictation language picker."
     },
@@ -3637,6 +3954,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enable AI Polish"
+          }
+        }
+      }
+    },
+    "snippetImport.summary.one" : {
+      "comment" : "Snippets, import review summary: a sentence of one phrase. %@ is the phrase.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%@."
+          }
+        }
+      }
+    },
+    "snippetImport.summary.three" : {
+      "comment" : "Snippets, import review summary: a sentence listing three phrases.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@."
+          }
+        }
+      }
+    },
+    "snippetImport.summary.two" : {
+      "comment" : "Snippets, import review summary: a sentence listing two phrases.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@."
           }
         }
       }

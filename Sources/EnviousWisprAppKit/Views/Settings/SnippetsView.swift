@@ -168,8 +168,22 @@ struct SnippetsView: View {
   private var countLabel: String {
     let shown = coordinator.filtered(by: query).count
     let total = coordinator.snippets.count
-    if !query.trimmingCharacters(in: .whitespaces).isEmpty { return "\(shown) of \(total)" }
-    return total == 1 ? "1 snippet" : "\(total) snippets"
+    return Self.countLabel(
+      shown: shown, total: total, searching: !query.trimmingCharacters(in: .whitespaces).isEmpty)
+  }
+
+  /// "N of M" while searching, else the whole count, by count (#3142).
+  static func countLabel(shown: Int, total: Int, searching: Bool) -> String {
+    if searching {
+      return String(
+        localized: "\(String(shown)) of \(String(total))",
+        comment: "Snippets: count while searching. The first %@ is shown, the second the total.")
+    }
+    return total == 1
+      ? String(localized: "1 snippet", comment: "Snippets: count above the list, one snippet.")
+      : String(
+        localized: "\(String(total)) snippets",
+        comment: "Snippets: count above the list. %@ is the number of snippets, never 1.")
   }
 
   private var searchField: some View {

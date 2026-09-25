@@ -27,9 +27,9 @@ struct BulkDeleteConfirmSheet: View {
         localized: "Delete 1 word?",
         comment: "Your Words, delete selected words: sheet title for one word.")
       : String(
-        localized: "Delete \(count) words?",
+        localized: "Delete \(String(count)) words?",
         comment:
-          "Your Words, delete selected words: sheet title. %lld is the number of words, never 1.")
+          "Your Words, delete selected words: sheet title. %@ is the number of words, never 1.")
   }
 
   static func deleteLabel(count: Int) -> String {
@@ -38,8 +38,8 @@ struct BulkDeleteConfirmSheet: View {
         localized: "Delete 1 word",
         comment: "Your Words, delete selected words: button for one word.")
       : String(
-        localized: "Delete \(count) words",
-        comment: "Your Words, delete selected words: button. %lld is the number of words, never 1.")
+        localized: "Delete \(String(count)) words",
+        comment: "Your Words, delete selected words: button. %@ is the number of words, never 1.")
   }
 
   var body: some View {

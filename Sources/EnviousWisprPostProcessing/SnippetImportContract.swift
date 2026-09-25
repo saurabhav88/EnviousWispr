@@ -176,31 +176,44 @@ package enum SnippetImportValidationError: LocalizedError, Sendable, Equatable {
   package var errorDescription: String? {
     switch self {
     case .tooManySnippets(let limit):
-      return
-        "That has more than \(limit) snippets, which is more than EnviousWispr can import "
-        + "at once. Nothing was imported."
+      return String(
+        localized:
+          "That has more than \(String(limit)) snippets, which is more than EnviousWispr can import at once. Nothing was imported.",
+        comment:
+          "Snippets, import: error. %@ is a large limit (never 1).")
     case .tooMuchText(let limit):
-      return
-        "That has more than \(limit) characters of snippet text in total, which is more than "
-        + "EnviousWispr can import at once. Nothing was imported."
+      return String(
+        localized:
+          "That has more than \(String(limit)) characters of snippet text in total, which is more than EnviousWispr can import at once. Nothing was imported.",
+        comment:
+          "Snippets, import: error. %@ is a large limit (never 1).")
     case .triggerTooLong(let limit):
-      return
-        "That contains a trigger longer than \(limit) characters, which is too long to say. "
-        + "Nothing was imported."
+      return String(
+        localized:
+          "That contains a trigger longer than \(String(limit)) characters, which is too long to say. Nothing was imported.",
+        comment:
+          "Snippets, import: error. %@ is the longest allowed trigger in characters (never 1).")
     case .expansionTooLong(let trigger, let limit):
-      return
-        "The text for \(CustomWordsImportValidationError.describe(trigger)) is longer than "
-        + "\(limit) characters. Nothing was imported."
+      return String(
+        localized:
+          "The text for \(CustomWordsImportValidationError.describe(trigger)) is longer than \(String(limit)) characters. Nothing was imported.",
+        comment:
+          "Snippets, import: error. the first %@ is the snippet's trigger, already quoted; the second a large limit (never 1)."
+      )
     case .unusableTrigger(let trigger):
       // Sanitised before display: the very character rejected for rendering deceptively
       // must not be rendered into the message explaining its rejection.
-      return
-        "That contains a trigger EnviousWispr can't use "
-        + "(\(CustomWordsImportValidationError.describe(trigger))). Nothing was imported."
+      return String(
+        localized:
+          "That contains a trigger EnviousWispr can't use (\(CustomWordsImportValidationError.describe(trigger))). Nothing was imported.",
+        comment:
+          "Snippets, import: error. %@ is the trigger, already quoted.")
     case .unusableExpansion(let trigger):
-      return
-        "The text for \(CustomWordsImportValidationError.describe(trigger)) contains "
-        + "characters EnviousWispr can't store. Nothing was imported."
+      return String(
+        localized:
+          "The text for \(CustomWordsImportValidationError.describe(trigger)) contains characters EnviousWispr can't store. Nothing was imported.",
+        comment:
+          "Snippets, import: error. %@ is the snippet's trigger, already quoted.")
     }
   }
 }

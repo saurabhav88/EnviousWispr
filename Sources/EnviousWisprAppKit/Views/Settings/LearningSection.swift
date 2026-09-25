@@ -305,9 +305,9 @@ struct LearningSection: View {
         localized: "Added 1 name",
         comment: "Your Words, import from Contacts: result after adding names: one name added.")
       : String(
-        localized: "Added \(count) names",
+        localized: "Added \(String(count)) names",
         comment:
-          "Your Words, import from Contacts: result after adding names: %lld is the number of names, never 1."
+          "Your Words, import from Contacts: result after adding names: %@ is the number of names, never 1."
       )
   }
 

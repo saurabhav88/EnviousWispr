@@ -340,9 +340,9 @@ struct CustomTermsSection<Actions: View>: View {
     count == 1
       ? String(localized: "1 word", comment: "Your Words: list heading, shown in capitals.")
       : String(
-        localized: "\(count) words",
+        localized: "\(String(count)) words",
         comment:
-          "Your Words: list heading, shown in capitals. %lld is the number of words, never 1.")
+          "Your Words: list heading, shown in capitals. %@ is the number of words, never 1.")
   }
 
   private var wordCountLabel: some View {
@@ -455,9 +455,9 @@ struct CustomTermsSection<Actions: View>: View {
             "Your Words: under a word. %@ is its category. The English says 1 times; translate naturally for one use."
         )
         : String(
-          localized: "\(categoryLabel) · used \(frequencyUsed) times",
+          localized: "\(categoryLabel) · used \(String(frequencyUsed)) times",
           comment:
-            "Your Words: under a word. %@ is its category, %lld how many times it was used (never 1)."
+            "Your Words: under a word. the first %@ is its category, the second how many times it was used (never 1)."
         )
     }
     return categoryLabel

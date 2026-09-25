@@ -206,7 +206,8 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
     }
     let mb = { (b: Int64) in Int((Double(b) / 1_048_576).rounded()) }
     return String(
-      localized: "Downloading the correction model (\(mb(written)) of \(mb(total)) MB)",
+      localized:
+        "Downloading the correction model (\(String(mb(written))) of \(String(mb(total))) MB)",
       comment:
         "Your Words, Learn from: the self-learning dictionary row: download progress. The first number is megabytes done, the second the total."
     )

@@ -53,8 +53,8 @@ struct CustomWordEditSheet: View {
     count == 1
       ? String(localized: "1 mishearing", comment: "Edit word sheet: one alternate spelling.")
       : String(
-        localized: "\(count) mishearings",
-        comment: "Edit word sheet: %lld is the number of alternate spellings, never 1.")
+        localized: "\(String(count)) mishearings",
+        comment: "Edit word sheet: %@ is the number of alternate spellings, never 1.")
   }
 
   var body: some View {

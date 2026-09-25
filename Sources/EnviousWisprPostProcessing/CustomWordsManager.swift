@@ -54,7 +54,9 @@ package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
   /// was written; the learn path reports it as "target gone".
   case noRestorableBuiltin
 
-  package var errorDescription: String? {
+  /// The same sentences in fixed English, for app.log: a log line must read the same whatever
+  /// language the app runs in (#3142 G6). `errorDescription` is the on-screen copy.
+  package var diagnosticDescription: String {
     switch self {
     case .unreadableExistingFile:
       return "Your saved words could not be read. Nothing was changed. Try again."
@@ -68,10 +70,50 @@ package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
       return
         "Your word list is being updated by another EnviousWispr window. Nothing was changed. Try again."
     case .coordinationUnavailable:
-      return
-        "Your saved words could not be updated safely. Nothing was changed. Try again."
+      return "Your saved words could not be updated safely. Nothing was changed. Try again."
     case .noRestorableBuiltin:
       return "That word is no longer where it was. Nothing was changed."
+    }
+  }
+
+  package var errorDescription: String? {
+    switch self {
+    case .unreadableExistingFile:
+      return String(
+        localized:
+          "Your saved words could not be read. Nothing was changed. Try again.",
+        comment:
+          "Your Words: error. The saved list could not be read.")
+    case .corruptedExistingFile:
+      return String(
+        localized:
+          "Your saved words file was damaged and moved aside for recovery. No edit or import was applied.",
+        comment:
+          "Your Words: error. The saved list was damaged.")
+    case .unusableValue:
+      return String(
+        localized:
+          "That word or spelling can't be saved. It may be too long, or contain characters that aren't part of a word.",
+        comment:
+          "Your Words: error. A word or misheard form could not be saved.")
+    case .libraryBusy:
+      return String(
+        localized:
+          "Your word list is being updated by another EnviousWispr window. Nothing was changed. Try again.",
+        comment:
+          "Your Words: error. Another window holds the list.")
+    case .coordinationUnavailable:
+      return String(
+        localized:
+          "Your saved words could not be updated safely. Nothing was changed. Try again.",
+        comment:
+          "Your Words: error. Saving is briefly unavailable.")
+    case .noRestorableBuiltin:
+      return String(
+        localized:
+          "That word is no longer where it was. Nothing was changed.",
+        comment:
+          "Your Words: error. A built-in word could not be restored.")
     }
   }
 }
@@ -681,7 +723,7 @@ public final class CustomWordsManager {
         // failures if that ever changed.
         Task {
           await AppLogger.shared.log(
-            "CustomWordsManager: recordReplacements flush failed: \(persistenceError.localizedDescription)",
+            "CustomWordsManager: recordReplacements flush failed: \(persistenceError.diagnosticDescription)",
             level: .info, category: "CustomWords"
           )
         }

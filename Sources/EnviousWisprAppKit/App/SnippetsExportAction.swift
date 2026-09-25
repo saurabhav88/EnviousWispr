@@ -108,12 +108,19 @@ enum SnippetsExportAction {
     case .cancelled, .written:
       return nil
     case .nothingToExport:
-      return "There are no snippets to export yet."
+      return String(
+        localized: "There are no snippets to export yet.",
+        comment: "Snippets, export: notice when the list is empty.")
     case .refusedLiveStore:
-      return
-        "That is EnviousWispr's own snippets file. Pick somewhere else — saving over it would erase your snippets."
+      return String(
+        localized:
+          "That is EnviousWispr's own snippets file. Pick somewhere else — saving over it would erase your snippets.",
+        comment: "Snippets, export: refusal when the chosen file is the app's own snippet store.")
     case .failed(let reason):
-      return "The export did not finish. \(reason)"
+      return String(
+        localized: "The export did not finish. \(reason)",
+        comment:
+          "Snippets, export: error. %@ is the system's reason, already in the user's language.")
     }
   }
 }

@@ -73,8 +73,8 @@ struct ContactsImportConfirm: View {
         comment: "Your Words, import from Contacts: one new name.")
     case (false, 0):
       return String(
-        localized: "We'll add \(newCount) names from your contacts.",
-        comment: "Your Words, import from Contacts: %lld is the number of new names, never 1.")
+        localized: "We'll add \(String(newCount)) names from your contacts.",
+        comment: "Your Words, import from Contacts: %@ is the number of new names, never 1.")
     case (true, 1):
       return String(
         localized: "We'll add 1 name from your contacts. 1 is already in your list.",
@@ -82,22 +82,24 @@ struct ContactsImportConfirm: View {
       )
     case (true, _):
       return String(
-        localized: "We'll add 1 name from your contacts. \(alreadyCount) are already in your list.",
+        localized:
+          "We'll add 1 name from your contacts. \(String(alreadyCount)) are already in your list.",
         comment:
-          "Your Words, import from Contacts: one new name. %lld is the number already in the word list, never 1."
+          "Your Words, import from Contacts: one new name. %@ is the number already in the word list, never 1."
       )
     case (false, 1):
       return String(
-        localized: "We'll add \(newCount) names from your contacts. 1 is already in your list.",
+        localized:
+          "We'll add \(String(newCount)) names from your contacts. 1 is already in your list.",
         comment:
-          "Your Words, import from Contacts: %lld is the number of new names, never 1; one is already in the word list."
+          "Your Words, import from Contacts: %@ is the number of new names, never 1; one is already in the word list."
       )
     case (false, _):
       return String(
         localized:
-          "We'll add \(newCount) names from your contacts. \(alreadyCount) are already in your list.",
+          "We'll add \(String(newCount)) names from your contacts. \(String(alreadyCount)) are already in your list.",
         comment:
-          "Your Words, import from Contacts: the first %lld is the number of new names, the second the number already in the word list; neither is 1."
+          "Your Words, import from Contacts: the first %@ is the number of new names, the second the number already in the word list; neither is 1."
       )
     }
   }
@@ -107,7 +109,7 @@ struct ContactsImportConfirm: View {
       ? String(
         localized: "Add 1 name", comment: "Your Words, import from Contacts: button for one name.")
       : String(
-        localized: "Add \(newCount) names",
-        comment: "Your Words, import from Contacts: button. %lld is the number of names, never 1.")
+        localized: "Add \(String(newCount)) names",
+        comment: "Your Words, import from Contacts: button. %@ is the number of names, never 1.")
   }
 }

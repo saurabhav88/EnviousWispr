@@ -54,8 +54,16 @@ struct SnippetImportReviewRow: Identifiable, Sendable, Equatable {
   var statusNote: String? {
     switch status {
     case .new: return nil
-    case .existing(let trigger): return "You have this, as \u{201C}\(trigger)\u{201D}."
-    case .duplicateInBatch: return "Already listed above."
+    case .existing(let trigger):
+      return String(
+        localized: "You have this, as \u{201C}\(trigger)\u{201D}.",
+        comment:
+          "Snippets, import review: a row's note. %@ is the user's existing trigger; use this language's quotation marks."
+      )
+    case .duplicateInBatch:
+      return String(
+        localized: "Already listed above.",
+        comment: "Snippets, import review: a row's note when the same trigger appears twice.")
     }
   }
 }
@@ -110,27 +118,144 @@ enum SnippetImportResultCopy {
   static func message(for result: SnippetImportFlowModel.Result) -> String {
     switch result {
     case .completed(let added):
-      return "Added \(added) \(added == 1 ? "snippet" : "snippets"). Say your keyword, then the trigger, and it's pasted."
+      return added == 1
+        ? String(
+          localized: "Added 1 snippet. Say your keyword, then the trigger, and it's pasted.",
+          comment: "Snippets, import result: one snippet added.")
+        : String(
+          localized:
+            "Added \(String(added)) snippets. Say your keyword, then the trigger, and it's pasted.",
+          comment: "Snippets, import result. %@ is the number of snippets added, never 1.")
     case .nothingFound:
-      return "No snippets were found, and nothing was changed."
+      return String(
+        localized: "No snippets were found, and nothing was changed.",
+        comment: "Snippets, import result: the source had no snippets.")
     case .nothingCompatible(let found):
-      let entries = found == 1 ? "entry" : "entries"
-      return "Found \(found) \(entries), but none could be imported. Nothing was changed."
+      return found == 1
+        ? String(
+          localized: "Found 1 entry, but none could be imported. Nothing was changed.",
+          comment: "Snippets, import result: one entry found, and it could not be imported.")
+        : String(
+          localized:
+            "Found \(String(found)) entries, but none could be imported. Nothing was changed.",
+          comment:
+            "Snippets, import result: %@ is the number of entries found, never 1; none could be imported."
+        )
     case .nothingApproved:
-      return "You skipped everything, so nothing was changed."
+      return String(
+        localized: "You skipped everything, so nothing was changed.",
+        comment: "Snippets, import result: the user skipped every row.")
     case .failed(let message):
       return message
     }
   }
 
-  /// The one-line summary above the review list.
+  /// The confirm button, whole, by count (#3142).
+  static func confirmTitle(approvedCount count: Int) -> String {
+    switch count {
+    case 0:
+      return String(
+        localized: "Add nothing",
+        comment: "Snippets, import snippets: confirm button when no snippet is chosen.")
+    case 1:
+      return String(
+        localized: "Add 1 snippet",
+        comment: "Snippets, import snippets: confirm button for one snippet.")
+    default:
+      return String(
+        localized: "Add \(String(count)) snippets",
+        comment:
+          "Snippets, import snippets: confirm button. %@ is the number of snippets, never 1.")
+    }
+  }
+
+  /// The paste box's count line, whole, by the two counts (#3142). `found` is never 0 here: the
+  /// sheet says "No snippets found" first.
+  static func pasteSummary(found: Int, skipped: Int) -> String {
+    switch (found == 1, skipped) {
+    case (true, 0):
+      return String(
+        localized: "1 snippet found.",
+        comment: "Snippets, paste count: one snippet, nothing skipped.")
+    case (false, 0):
+      return String(
+        localized: "\(String(found)) snippets found.",
+        comment: "Snippets, paste count. %@ is the number of snippets, never 1.")
+    case (true, 1):
+      return String(
+        localized: "1 snippet found, 1 line skipped.",
+        comment: "Snippets, paste count: one snippet, one unreadable line.")
+    case (false, 1):
+      return String(
+        localized: "\(String(found)) snippets found, 1 line skipped.",
+        comment:
+          "Snippets, paste count. %@ is the number of snippets, never 1; one unreadable line.")
+    case (true, _):
+      return String(
+        localized: "1 snippet found, \(String(skipped)) lines skipped.",
+        comment:
+          "Snippets, paste count: one snippet. %@ is the number of unreadable lines, never 1.")
+    case (false, _):
+      return String(
+        localized: "\(String(found)) snippets found, \(String(skipped)) lines skipped.",
+        comment:
+          "Snippets, paste count. The first %@ is snippets, the second unreadable lines; neither is 1."
+      )
+    }
+  }
+
+  /// The one-line summary above the review list: each count that is not zero, as its own whole
+  /// phrase, then a localized list pattern for one, two or three phrases (#3142).
   static func reviewSummary(new: Int, existing: Int, duplicates: Int) -> String {
     var parts: [String] = []
-    if new > 0 { parts.append("\(new) new \(new == 1 ? "snippet" : "snippets")") }
-    if existing > 0 { parts.append("\(existing) you already have") }
-    if duplicates > 0 { parts.append("\(duplicates) listed twice") }
-    guard !parts.isEmpty else { return "Nothing to review." }
-    return parts.joined(separator: ", ") + "."
+    if new == 1 {
+      parts.append(
+        String(
+          localized: "1 new snippet",
+          comment: "Snippets, import review summary: one phrase of a list, one new snippet."))
+    } else if new > 0 {
+      parts.append(
+        String(
+          localized: "\(String(new)) new snippets",
+          comment:
+            "Snippets, import review summary: one phrase of a list. %@ is the number of new snippets, never 1."
+        ))
+    }
+    if existing > 0 {
+      parts.append(
+        String(
+          localized: "\(String(existing)) you already have",
+          comment:
+            "Snippets, import review summary: one phrase of a list. %@ is how many the user already has (1 or more)."
+        ))
+    }
+    if duplicates > 0 {
+      parts.append(
+        String(
+          localized: "\(String(duplicates)) listed twice",
+          comment:
+            "Snippets, import review summary: one phrase of a list. %@ is how many appear twice (1 or more)."
+        ))
+    }
+    switch parts.count {
+    case 0:
+      return String(
+        localized: "Nothing to review.",
+        comment: "Snippets, import review summary: nothing in the source.")
+    case 1:
+      return String(
+        localized: "snippetImport.summary.one", defaultValue: "\(parts[0]).",
+        comment: "Snippets, import review summary: a sentence of one phrase. %@ is the phrase.")
+    case 2:
+      return String(
+        localized: "snippetImport.summary.two", defaultValue: "\(parts[0]), \(parts[1]).",
+        comment: "Snippets, import review summary: a sentence listing two phrases.")
+    default:
+      return String(
+        localized: "snippetImport.summary.three",
+        defaultValue: "\(parts[0]), \(parts[1]), \(parts[2]).",
+        comment: "Snippets, import review summary: a sentence listing three phrases.")
+    }
   }
 
   /// The notice for lines a source could not read, shown beside the rows that did come
@@ -138,9 +263,24 @@ enum SnippetImportResultCopy {
   static func noticeMessage(for notice: SnippetImportNotice) -> String {
     switch notice {
     case .incompatibleSourceEntriesExcluded(let count):
-      return "\(count) \(count == 1 ? "entry was" : "entries were") left out because EnviousWispr can't use \(count == 1 ? "it" : "them")."
+      return count == 1
+        ? String(
+          localized: "1 entry was left out because EnviousWispr can't use it.",
+          comment: "Snippets, import review: notice, one entry could not be used.")
+        : String(
+          localized: "\(String(count)) entries were left out because EnviousWispr can't use them.",
+          comment:
+            "Snippets, import review: notice. %@ is the number of entries that could not be used, never 1."
+        )
     case .linesSkipped(let count):
-      return "\(count) \(count == 1 ? "line" : "lines") skipped because \(count == 1 ? "it has" : "they have") no trigger and text."
+      return count == 1
+        ? String(
+          localized: "1 line skipped because it has no trigger and text.",
+          comment: "Snippets, import review: notice, one unreadable line.")
+        : String(
+          localized: "\(String(count)) lines skipped because they have no trigger and text.",
+          comment:
+            "Snippets, import review: notice. %@ is the number of unreadable lines, never 1.")
     }
   }
 }

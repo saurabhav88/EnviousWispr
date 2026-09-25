@@ -564,13 +564,13 @@ private struct ImportPasteScreen: View {
       // find out at the end (Codex review, #1683).
       return String(
         localized:
-          "That's more than \(CustomWordsImportLimits.maximumCandidates) words. Paste a smaller batch.",
-        comment: "Your Words, import words: the paste is too long. %lld is the limit.")
+          "That's more than \(String(CustomWordsImportLimits.maximumCandidates)) words. Paste a smaller batch.",
+        comment: "Your Words, import words: the paste is too long. %@ is the limit.")
     default:
       return String(
-        localized: "\(count) words ready to review.",
+        localized: "\(String(count)) words ready to review.",
         comment:
-          "Your Words, import words: %lld is the number of words found in the pasted text, never 1."
+          "Your Words, import words: %@ is the number of words found in the pasted text, never 1."
       )
     }
   }
@@ -810,8 +810,8 @@ enum CustomWordsImportReviewCopy {
         localized: "Add 1 word", comment: "Your Words, import words: confirm button for one word.")
     default:
       return String(
-        localized: "Add \(count) words",
-        comment: "Your Words, import words: confirm button. %lld is the number of words, never 1.")
+        localized: "Add \(String(count)) words",
+        comment: "Your Words, import words: confirm button. %@ is the number of words, never 1.")
     }
   }
 
@@ -827,23 +827,23 @@ enum CustomWordsImportReviewCopy {
         localized: "1 new word found.", comment: "Your Words, import review: one new word.")
     case (let new, 0):
       return String(
-        localized: "\(new) new words found.",
-        comment: "Your Words, import review: %lld is the number of new words, never 1.")
+        localized: "\(String(new)) new words found.",
+        comment: "Your Words, import review: %@ is the number of new words, never 1.")
     case (0, let have):
       return String(
-        localized: "You already have all \(have) of these.",
+        localized: "You already have all \(String(have)) of these.",
         comment:
-          "Your Words, import review: every word in the file is already in the list. %lld is how many."
+          "Your Words, import review: every word in the file is already in the list. %@ is how many."
       )
     case (1, let have):
       return String(
-        localized: "1 new word found. \(have) you already have.",
-        comment: "Your Words, import review: one new word. %lld is the number already in the list.")
+        localized: "1 new word found. \(String(have)) you already have.",
+        comment: "Your Words, import review: one new word. %@ is the number already in the list.")
     case (let new, let have):
       return String(
-        localized: "\(new) new words found. \(have) you already have.",
+        localized: "\(String(new)) new words found. \(String(have)) you already have.",
         comment:
-          "Your Words, import review: the first %lld is the number of new words (never 1), the second the number already in the list."
+          "Your Words, import review: the first %@ is the number of new words (never 1), the second the number already in the list."
       )
     }
   }

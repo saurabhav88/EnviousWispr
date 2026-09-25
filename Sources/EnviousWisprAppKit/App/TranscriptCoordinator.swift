@@ -250,9 +250,9 @@ final class TranscriptCoordinator {
     }
     return String(
       localized:
-        "This will permanently delete all \(count) items in History, including any hidden by a filter or search. This action cannot be undone.",
+        "This will permanently delete all \(String(count)) items in History, including any hidden by a filter or search. This action cannot be undone.",
       comment:
-        "Delete All confirmation in History. %lld is how many rows will be deleted, including hidden ones. Never 1."
+        "Delete All confirmation in History. %@ is how many rows will be deleted, including hidden ones. Never 1."
     )
   }
 

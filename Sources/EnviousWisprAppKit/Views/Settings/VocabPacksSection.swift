@@ -147,8 +147,8 @@ struct VocabPacksSection: View {
         localized: "1 fix", comment: "Your Words, vocabulary packs: under a pack with one fix.")
     case (false, true):
       return String(
-        localized: "\(termCount) fixes",
-        comment: "Your Words, vocabulary packs: under a pack. %lld is its number of fixes, never 1."
+        localized: "\(String(termCount)) fixes",
+        comment: "Your Words, vocabulary packs: under a pack. %@ is its number of fixes, never 1."
       )
     case (true, false):
       return String(
@@ -158,9 +158,9 @@ struct VocabPacksSection: View {
       )
     case (false, false):
       return String(
-        localized: "\(termCount) fixes · e.g. \(list)",
+        localized: "\(String(termCount)) fixes · e.g. \(list)",
         comment:
-          "Your Words, vocabulary packs: under a pack. %lld is its number of fixes (never 1), %@ example words separated by commas."
+          "Your Words, vocabulary packs: under a pack. the first %@ is its number of fixes (never 1), the second example words separated by commas."
       )
     }
   }

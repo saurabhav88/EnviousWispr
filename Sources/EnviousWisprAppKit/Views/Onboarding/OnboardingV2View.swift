@@ -226,9 +226,9 @@ final class OnboardingV2ViewModel {
       let freeMB = freeSpace / 1_048_576
       downloadError = String(
         localized:
-          "Not enough disk space (\(freeMB) MB free). EnviousWispr needs about 1 GB to download and install the speech model.",
+          "Not enough disk space (\(String(freeMB)) MB free). EnviousWispr needs about 1 GB to download and install the speech model.",
         comment:
-          "Setup error before the speech model download. %lld is the free space in megabytes.")
+          "Setup error before the speech model download. %@ is the free space in megabytes.")
       checklistStatuses[0] = .error(downloadError!)
       blockStep("model_download", reason: "insufficient_disk_space")
       return
@@ -985,11 +985,13 @@ final class OnboardingV2ViewModel {
       switch phase {
       case ModelLoadStallPolicy.downloadingPhase:
         return String(
-          localized: "Downloading speech model... \(megabytes) MB of \(total) MB (\(percent)%)",
+          localized:
+            "Downloading speech model... \(String(megabytes)) MB of \(String(total)) MB (\(String(percent))%)",
           comment: "Setup download progress: megabytes downloaded, total megabytes, percent done.")
       case legacyDownloadingPhase:
         return String(
-          localized: "Downloading model files... \(megabytes) MB of \(total) MB (\(percent)%)",
+          localized:
+            "Downloading model files... \(String(megabytes)) MB of \(String(total)) MB (\(String(percent))%)",
           comment: "Setup download progress: megabytes downloaded, total megabytes, percent done.")
       default:
         break

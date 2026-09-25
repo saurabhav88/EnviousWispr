@@ -14,30 +14,44 @@ package enum ImportFileError: LocalizedError, Sendable, Equatable {
   package var errorDescription: String? {
     switch self {
     case .unreadable:
-      return "That file couldn't be read."
+      return String(
+        localized:
+          "That file couldn't be read.",
+        comment:
+          "Your Words, import: error. The file could not be read.")
     case .tooLarge:
-      return "That file is too big to be a word list. Check you picked the right one."
+      return String(
+        localized:
+          "That file is too big to be a word list. Check you picked the right one.",
+        comment:
+          "Your Words, import: error. The file is too large.")
     case .tooManyWords(_, let limit):
       // Says "more than", never an exact figure. On the text path the count is
       // a stop-sentinel — scanning halts one past the limit rather than
       // counting a file it is going to refuse — so printing it would state a
       // number nobody measured (Codex review, #1683). The associated value is
       // kept for tests and telemetry, which can tell the two cases apart.
-      return
-        "That file has more than \(limit) words, which is more than EnviousWispr "
-        + "can import at once. Try splitting it into smaller files."
+      return String(
+        localized:
+          "That file has more than \(String(limit)) words, which is more than EnviousWispr can import at once. Try splitting it into smaller files.",
+        comment:
+          "Your Words, import: error. %@ is a large limit (never 1).")
     case .tooManyStoredValues(_, let limit):
       // Distinct from tooManyWords on purpose: this file trips the ceiling on
       // total words PLUS alternate spellings, so reporting it as a word count
       // would state a number the user cannot see anywhere and advise splitting
       // a file whose word count is fine (Codex review, #1683).
-      return
-        "That file has more than \(limit) words and alternate spellings "
-        + "combined, which is more than EnviousWispr can import at once."
+      return String(
+        localized:
+          "That file has more than \(String(limit)) words and alternate spellings combined, which is more than EnviousWispr can import at once.",
+        comment:
+          "Your Words, import: error. %@ is a large limit (never 1).")
     case .unsupportedType(let name):
-      return
-        "EnviousWispr can't read \(name) files yet. "
-        + "Try a file you exported from EnviousWispr, or a plain text list."
+      return String(
+        localized:
+          "EnviousWispr can't read \(name) files yet. Try a file you exported from EnviousWispr, or a plain text list.",
+        comment:
+          "Your Words, import: error. %@ is the file's type, such as a file extension.")
     case .exportedWords(let underlying):
       // The decoder already distinguishes "not ours", "from a newer
       // version", and "damaged"; passing its sentence through keeps the user

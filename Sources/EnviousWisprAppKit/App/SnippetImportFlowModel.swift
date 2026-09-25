@@ -431,9 +431,10 @@ final class SnippetImportFlowModel {
     attempt = Attempt(id: UUID(), source: attempt.source)
     let run = attempt
     let pending = candidates
-    staleNotice =
-      "Your snippets changed while you were reviewing. "
-      + "Nothing was imported. Here is the updated list."
+    staleNotice = String(
+      localized:
+        "Your snippets changed while you were reviewing. Nothing was imported. Here is the updated list.",
+      comment: "Snippets, import review: notice after the list changed during review.")
     beginWork(.comparing)
 
     activeTask = Task { [weak self] in
