@@ -19,10 +19,11 @@ struct WhatsNewSettingsView: View {
         // More Reliable") repeated down the page and carried no information, so
         // the eye could not use them to find anything (founder, 2026-07-11).
         ForEach(versionGroup.entries) { entry in
+          let display = WhatsNewLocalizedDisplay(entry)
           VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
               SettingsRowIcon(systemName: entry.icon)
-              Text(entry.title)
+              Text(display.title)
                 .font(.stRowTitle)
                 .foregroundStyle(.stAccent)
                 .fixedSize(horizontal: false, vertical: true)
@@ -34,7 +35,7 @@ struct WhatsNewSettingsView: View {
             BrandedSection {
               BrandedRow(showDivider: false) {
                 VStack(alignment: .leading, spacing: 8) {
-                  Text(entry.description)
+                  Text(display.description)
                     .settingsReadingCopy()
 
                   // Sub-points beneath the paragraph (#2484), in the same reading
@@ -42,9 +43,9 @@ struct WhatsNewSettingsView: View {
                   // as a caption. Same shape as the numbered steps in the Globe key
                   // popover; a bullet glyph instead of a number, since these are
                   // points and not an order.
-                  if !entry.bullets.isEmpty {
+                  if !display.bullets.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                      ForEach(Array(entry.bullets.enumerated()), id: \.offset) { _, bullet in
+                      ForEach(Array(display.bullets.enumerated()), id: \.offset) { _, bullet in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                           Text("•")
                             .foregroundStyle(.stTextTertiary)
@@ -64,6 +65,40 @@ struct WhatsNewSettingsView: View {
     .onAppear {
       settings.markWhatsNewSeen()
     }
+  }
+}
+
+// MARK: - Localized display
+
+/// What the What's New screen shows for one entry (#3142): each field looked up in the String
+/// Catalog under `whatsNew.<id>.title`, `.description` and `.bullet.<n>`, the keys
+/// `scripts/ci/render-release-notes.py --catalog-seed-json` gives it and the catalog sync
+/// writes. The entry's own English is the fallback for every field, so an entry with no
+/// translation reads exactly as written. `WhatsNewContent` keeps its direct English literals:
+/// the GitHub release notes parse that source text, and identity stays on the entry.
+struct WhatsNewLocalizedDisplay: Equatable {
+  let title: String
+  let description: String
+  let bullets: [String]
+
+  init(_ entry: WhatsNewContent.Entry, bundle: Bundle = .main) {
+    let keys = Self.keys(for: entry)
+    title = bundle.localizedString(forKey: keys.title, value: entry.title, table: nil)
+    description = bundle.localizedString(
+      forKey: keys.description, value: entry.description, table: nil)
+    bullets = zip(keys.bullets, entry.bullets).map { key, english in
+      bundle.localizedString(forKey: key, value: english, table: nil)
+    }
+  }
+
+  static func keys(for entry: WhatsNewContent.Entry) -> (
+    title: String, description: String, bullets: [String]
+  ) {
+    let base = "whatsNew.\(entry.id)"
+    return (
+      "\(base).title", "\(base).description",
+      entry.bullets.indices.map { "\(base).bullet.\($0)" }
+    )
   }
 }
 

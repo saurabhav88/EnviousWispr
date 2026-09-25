@@ -215,6 +215,72 @@ struct WhatsNewContentTests {
       ])
   }
 
+  // MARK: - In-app translation (#3142)
+
+  private static let sample = WhatsNewContent.Entry(
+    id: "two-points", icon: "sparkles", title: "Headline", description: "Paragraph",
+    bullets: ["First", "Second"], version: "9.9.9")
+
+  /// A bundle holding one English strings table, so the lookup is exercised against a table
+  /// this test controls. The test host's own locale proves nothing about the app in German.
+  private static func withStringsBundle(
+    _ table: [String: String], body: (Bundle) throws -> Void
+  ) throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3142-\(UUID().uuidString).bundle", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let lproj = root.appendingPathComponent("en.lproj", isDirectory: true)
+    try FileManager.default.createDirectory(at: lproj, withIntermediateDirectories: true)
+    let data = try PropertyListSerialization.data(
+      fromPropertyList: table, format: .binary, options: 0)
+    try data.write(to: lproj.appendingPathComponent("Localizable.strings"))
+    try body(try #require(Bundle(url: root)))
+  }
+
+  @Test("the screen looks each field up by entry id and bullet position")
+  func displayKeys() {
+    let keys = WhatsNewLocalizedDisplay.keys(for: Self.sample)
+    #expect(keys.title == "whatsNew.two-points.title")
+    #expect(keys.description == "whatsNew.two-points.description")
+    #expect(keys.bullets == ["whatsNew.two-points.bullet.0", "whatsNew.two-points.bullet.1"])
+  }
+
+  @Test("with no translation every field shows the entry's English")
+  func displayFallsBackToEnglish() throws {
+    try Self.withStringsBundle([:]) { bundle in
+      let display = WhatsNewLocalizedDisplay(Self.sample, bundle: bundle)
+      #expect(display.title == "Headline")
+      #expect(display.description == "Paragraph")
+      #expect(display.bullets == ["First", "Second"])
+    }
+  }
+
+  @Test("a table entry replaces only its own field")
+  func displayUsesTheTable() throws {
+    try Self.withStringsBundle([
+      "whatsNew.two-points.title": "Überschrift",
+      "whatsNew.two-points.bullet.1": "Zweiter Punkt",
+    ]) { bundle in
+      let display = WhatsNewLocalizedDisplay(Self.sample, bundle: bundle)
+      #expect(display.title == "Überschrift")
+      #expect(display.description == "Paragraph")
+      #expect(display.bullets == ["First", "Zweiter Punkt"])
+    }
+  }
+
+  @Test("every real entry reads as written when nothing is translated")
+  func realEntriesFallBackToEnglish() throws {
+    #expect(!WhatsNewContent.entries.isEmpty)
+    try Self.withStringsBundle([:]) { bundle in
+      for entry in WhatsNewContent.entries {
+        let display = WhatsNewLocalizedDisplay(entry, bundle: bundle)
+        #expect(display.title == entry.title, "\(entry.id)")
+        #expect(display.description == entry.description, "\(entry.id)")
+        #expect(display.bullets == entry.bullets, "\(entry.id)")
+      }
+    }
+  }
+
   /// #2484: the same two-way control for `bullets`. The renderer reads the array
   /// strictly, so one non-literal member makes it dump `[]` for the whole entry
   /// rather than the readable prefix; the compiled value has both members, and only
