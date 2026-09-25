@@ -980,8 +980,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // exit (disabled, too short, server unavailable, preflight refused) never does. A closed
     // vocabulary, never the language code or any text.
     var languageHintReceipt = ""
-    if provider == .egOne, plan.family == .egOneEnvelopeNamedLanguage {
-      let hint = (egOneDecision ?? Self.egOneLanguageDecision(context)).hint
+    // Only the decision the prompt was built from is ever reported; a missing one records
+    // nothing rather than a recomputed answer the prompt never saw.
+    if provider == .egOne, plan.family == .egOneEnvelopeNamedLanguage, let egOneDecision {
+      let hint = egOneDecision.hint
       languageHintReceipt = ", polish_language_hint=\(hint)"
       if let takeID = context.takeID { telemetry.recordPolishLanguageHint(takeID, hint) }
     }

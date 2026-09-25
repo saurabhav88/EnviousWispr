@@ -201,9 +201,11 @@ package enum DictationLanguageResolver {
   /// Measured on the #3111 sets: 19 of 20 Polish sentences with an English phrase flagged (all
   /// four EG-1 translated), 0 of 20 with a single English product name, 0 of 561 pure
   /// non-English sentences across 17 languages. Window 3 flagged product names; window 5 lost
-  /// recall. Cost about 0.23 ms per word, so `englishStretchWordLimit` bounds a pathological
-  /// input at about a second while EG-1's own cleanup runs about 25 ms per word; past the
-  /// limit the answer is `.scanLimit`, never a guess.
+  /// recall. Cost about 0.23 ms per word against EG-1 cleanup's roughly 25 ms per word, so
+  /// on any input EG-1 can finish inside its fixed step budget (a few hundred words) the scan
+  /// is about 1% of that polish. It still counts against that budget: at
+  /// `englishStretchWordLimit` it costs about a second, on an input far too long to polish in
+  /// time anyway. Past the limit the answer is `.scanLimit`, never a guess.
   package enum EnglishStretchScan: Sendable, Equatable {
     case clear, mixed, scanLimit
   }

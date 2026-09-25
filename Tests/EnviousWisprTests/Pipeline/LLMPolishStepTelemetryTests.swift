@@ -664,16 +664,31 @@ struct LLMPolishStepLanguageHintTests {
     throw CancellationError()
   }
 
-  @Test("An English stretch reports mixed, and too long to check reports scanLimit")
+  final class PromptBox: @unchecked Sendable { var system: String? }
+
+  struct PromptRecordingPolisher: TranscriptPolisher {
+    let box: PromptBox
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      box.system = instructions.systemPrompt
+      return LLMResult(polishedText: text.prefix(1).uppercased() + text.dropFirst() + ".")
+    }
+  }
+
+  @Test("An English stretch reports mixed, and too long to check reports scanLimit, from the same decision the prompt used")
   func stretchHints() async throws {
     for (scan, expected) in [
       (DictationLanguageResolver.EnglishStretchScan.mixed, "mixed"), (.scanLimit, "scanLimit"),
     ] {
       let spy = LLMPolishStepTelemetryTests.Spy()
-      let step = step(spy: spy)
+      let box = PromptBox()
+      let step = step(spy: spy, polisher: PromptRecordingPolisher(box: box))
       step.englishStretchScanner = { _ in scan }
       _ = try await step.process(context(textLanguage: "pl", language: "pl", source: .dictation))
       #expect(spy.hintCalls.map(\.hint) == [expected])
+      #expect(box.system == EGOneEnvelopePromptBuilder.systemPrompt, "the prompt carried no name")
     }
   }
 
