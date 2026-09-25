@@ -861,7 +861,7 @@ final class TranscriptCoordinator {
       let analysis = current.speakerAnalysis
     else {
       emitRenameTelemetry(.failed)
-      return RenameFailure(message: "Couldn't save the name.", currentName: nil)
+      return RenameFailure(message: RenameFailure.couldNotSaveName, currentName: nil)
     }
     do {
       let saved = try mergeSpeakerFields(
@@ -870,14 +870,14 @@ final class TranscriptCoordinator {
       guard saved else {
         emitRenameTelemetry(.failed)
         return RenameFailure(
-          message: "This recording was removed from History.", currentName: nil)
+          message: RenameFailure.recordingRemoved, currentName: nil)
       }
       emitRenameTelemetry(.saved)
       return nil
     } catch {
       emitRenameTelemetry(.failed)
       return RenameFailure(
-        message: "Couldn't save the name.", currentName: current.speakerNames?[speakerId])
+        message: RenameFailure.couldNotSaveName, currentName: current.speakerNames?[speakerId])
     }
   }
 
@@ -1425,9 +1425,14 @@ enum HistoryFilter: String, CaseIterable, Sendable {
   /// The word on the control.
   var title: String {
     switch self {
-    case .all: return "All"
-    case .dictations: return "Dictations"
-    case .transcripts: return "Transcripts"
+    case .all: return String(localized: "All", comment: "History filter: show every row.")
+    case .dictations:
+      return String(
+        localized: "Dictations",
+        comment: "History filter: rows made by dictating with the keyboard shortcut.")
+    case .transcripts:
+      return String(
+        localized: "Transcripts", comment: "History filter: rows made with Transcribe a File.")
     }
   }
 }

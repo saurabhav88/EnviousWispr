@@ -121,6 +121,9 @@
     },
     "AI POLISH · OPTIONAL" : {},
     "AI Polish" : {},
+    "AI Polished" : {
+      "comment" : "History detail chip: AI polish rewrote this text."
+    },
     "AI polish engine" : {},
     "AI polish needs macOS 26" : {
       "comment" : "Setup notice title on Macs older than macOS 26."
@@ -151,6 +154,9 @@
     "After installing, come back and click refresh." : {},
     "After your mic has been idle, wait 1 to 2 seconds before speaking." : {
       "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
+    },
+    "All" : {
+      "comment" : "History filter: show every row."
     },
     "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {},
     "All quiet" : {
@@ -212,6 +218,9 @@
     },
     "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay." : {
       "comment" : "First paragraph of the Bluetooth guide in Microphone settings."
+    },
+    "Both" : {
+      "comment" : "Transcript speaker label when two people spoke in a turn the app could not separate."
     },
     "Bring the words across from another dictation app you use." : {},
     "Bring your snippets in from anywhere. Nothing is added until you review it." : {},
@@ -283,7 +292,13 @@
       "comment" : "Pill when the text was copied instead of pasted. ⌘V is the paste shortcut."
     },
     "Copy Log Path" : {},
+    "Copy cleaned" : {
+      "comment" : "Export button: copy the cleaned text (shown in Marked Up view)."
+    },
     "Copy error details" : {},
+    "Copy everything" : {
+      "comment" : "Export button: copy the whole transcript."
+    },
     "Copy to clipboard" : {},
     "Couldn't keep this recording. It was discarded." : {
       "comment" : "Pill after the user pressed Escape and the recording could not be kept for recovery."
@@ -293,6 +308,9 @@
       "comment" : "Setup error: the speech model download server could not be reached."
     },
     "Couldn't save the file" : {},
+    "Couldn't save the name." : {
+      "comment" : "Speaker rename popover: saving the new name failed."
+    },
     "Couldn't save to history: %@" : {
       "comment" : "Pill: the dictation could not be saved to History. %@ is the reason."
     },
@@ -309,7 +327,6 @@
     "Degraded" : {},
     "Delete" : {},
     "Delete \"%@\"?" : {},
-    "Delete %@" : {},
     "Delete %lld %@?" : {
       "localizations" : {
         "en" : {
@@ -323,6 +340,12 @@
     "Delete all" : {},
     "Delete all history" : {},
     "Delete all history?" : {},
+    "Delete dictation" : {
+      "comment" : "VoiceOver label of the History delete button for a dictation."
+    },
+    "Delete transcript" : {
+      "comment" : "VoiceOver label of the History delete button for a transcript."
+    },
     "Detected %@" : {
       "comment" : "VoiceOver announcement from the recording overlay: a language was detected. %@ is the language name."
     },
@@ -332,7 +355,9 @@
     "Detected %@. This can be changed in Settings." : {
       "comment" : "Chip after a dictation in a detected language. %@ is the language name."
     },
-    "Dictation" : {},
+    "Dictation" : {
+      "comment" : "History detail title for a row made by dictating. Also the default file name when saving it."
+    },
     "Dictation cancelled" : {
       "comment" : "Pill title after the user pressed Escape during a dictation."
     },
@@ -343,6 +368,9 @@
     "Dictation language" : {},
     "Dictation ready. Press to start." : {
       "comment" : "VoiceOver announcement from the recording overlay: the speech engine finished loading."
+    },
+    "Dictations" : {
+      "comment" : "History filter: rows made by dictating with the keyboard shortcut."
     },
     "Dictionary" : {},
     "Dictionary section" : {},
@@ -703,7 +731,9 @@
     "Opens the Live Preview settings page" : {},
     "Opens the file chooser. You can also drag a file here." : {},
     "Or run `ollama serve` in Terminal." : {},
-    "Original" : {},
+    "Original" : {
+      "comment" : "History detail section title: the words as first transcribed."
+    },
     "Other available models" : {},
     "POWER USER?" : {},
     "Pack on" : {},
@@ -730,6 +760,9 @@
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
     "Polish failed. Using raw text." : {
       "comment" : "Pill: AI polish failed, so the unpolished text was pasted."
+    },
+    "Polished" : {
+      "comment" : "History detail section title: the AI-polished text."
     },
     "Polishing" : {
       "comment" : "Sidebar status chip while AI polish rewrites the text. Very short space, no ellipsis."
@@ -764,6 +797,9 @@
     "Preview is unavailable while a recording is in progress." : {},
     "Previous page" : {},
     "Pro Tip" : {},
+    "Processed" : {
+      "comment" : "History detail section title: the cleaned-up text."
+    },
     "Processing transcription" : {
       "comment" : "VoiceOver announcement from the recording overlay: speech is being turned into text."
     },
@@ -851,6 +887,12 @@
     "Run Pipeline Benchmark" : {},
     "Running" : {},
     "Save as a text file" : {},
+    "Save as…" : {
+      "comment" : "Export button: save the transcript to a file."
+    },
+    "Save cleaned as…" : {
+      "comment" : "Export button: save the cleaned text to a file (Marked Up view)."
+    },
     "Save the text you type over and over. An email address, a signature, a link you always paste." : {},
     "Saved to History" : {
       "comment" : "Pill subtitle after a crash recovery succeeded."
@@ -882,6 +924,12 @@
       "comment" : "Setup error: the speech model setup made no progress."
     },
     "Setup paused. Start it again whenever you're ready." : {},
+    "Share cleaned…" : {
+      "comment" : "Export button: share the cleaned text (Marked Up view)."
+    },
+    "Share…" : {
+      "comment" : "Export button: share the transcript."
+    },
     "Sharpening neural networks..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
@@ -956,6 +1004,9 @@
     "The speech engine did not finish waking up." : {},
     "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below." : {},
     "These let EnviousWispr listen and paste for you." : {},
+    "These words are not saved to History. Copy or save them before you leave, or press Clean it again to retry." : {
+      "comment" : "Transcribe a File: nothing was saved to History. 'Clean it again' is a button."
+    },
     "These words are only on this screen. Copy or save them before you leave." : {},
     "They are still saved on your Mac. Nothing has been changed or deleted, and EnviousWispr will not write over them. Restart the app, and tell us if this keeps happening." : {},
     "This can't be undone." : {},
@@ -965,6 +1016,9 @@
     "This model did not pass any of our cleanup tests." : {},
     "This pack has no words." : {},
     "This passage could not be cleaned up. These are the raw words." : {},
+    "This recording was removed from History." : {
+      "comment" : "Speaker rename popover: the recording no longer exists in History, so the name was not saved."
+    },
     "This usually takes a moment. Nothing else is needed from you." : {},
     "This version is not saved" : {},
     "This version of EnviousWispr cannot run that preview engine." : {
@@ -1001,10 +1055,15 @@
     "Transcribing…" : {
       "comment" : "Toolbar status badge while speech is turned into text. One ellipsis character."
     },
-    "Transcript" : {},
+    "Transcript" : {
+      "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it."
+    },
     "Transcription Complete" : {},
     "Transcription error. Try again." : {
       "comment" : "Pill after a failed dictation: speech could not be turned into text. The user should retry."
+    },
+    "Transcripts" : {
+      "comment" : "History filter: rows made with Transcribe a File."
     },
     "Try Again" : {},
     "Try a different search, or another filter." : {},
@@ -1028,6 +1087,9 @@
       "comment" : "Pill result after the user pressed Undo: the word was removed again."
     },
     "Unknown" : {},
+    "Unknown speaker" : {
+      "comment" : "Transcript turn header when the speaker has no name."
+    },
     "Unload model after" : {},
     "Unloaded" : {
       "comment" : "Main window sidebar: the speech model is not in memory."
@@ -1103,6 +1165,9 @@
     "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
       "comment" : "Setup: shown when the speech engine did not finish warming up."
     },
+    "You deleted this from History, so it is not saved there. Copy or save it before you leave." : {
+      "comment" : "Transcribe a File: the user deleted this transcript from History."
+    },
     "You have this" : {},
     "You're all set! Select a model above." : {},
     "You've entered snippets. This will discard them." : {},
@@ -1112,6 +1177,9 @@
     "Your first dictation" : {},
     "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
       "comment" : "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break."
+    },
+    "Your original words are saved to History. This cleaned version is not. Copy or save it before you leave." : {
+      "comment" : "Transcribe a File: the original is in History but the cleaned version is not."
     },
     "Your recording indicator appears while you hold the key." : {
       "comment" : "Practice screen footnote under the text box."

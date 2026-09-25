@@ -56,7 +56,17 @@ struct TranscriptDetailView: View {
   /// #2807: what this row IS, by name. A Dictation was made with the keybind; a Transcript
   /// came from Transcribe a File. Read from `isImported`, the row's only kind.
   private var kindWord: String {
-    transcript.isImported ? "Transcript" : "Dictation"
+    transcript.isImported
+      ? String(
+        localized: "Transcript",
+        comment:
+          "History detail title for a row made with Transcribe a File. Also the default file name when saving it."
+      )
+      : String(
+        localized: "Dictation",
+        comment:
+          "History detail title for a row made by dictating. Also the default file name when saving it."
+      )
   }
 
   var body: some View {
@@ -217,7 +227,14 @@ struct TranscriptDetailView: View {
       }
       .buttonStyle(.borderless)
       .foregroundStyle(.stTextSecondary)
-      .accessibilityLabel("Delete \(kindWord.lowercased())")
+      .accessibilityLabel(
+        transcript.isImported
+          ? String(
+            localized: "Delete transcript",
+            comment: "VoiceOver label of the History delete button for a transcript.")
+          : String(
+            localized: "Delete dictation",
+            comment: "VoiceOver label of the History delete button for a dictation."))
     }
     .buttonStyle(.bordered)
     .controlSize(.large)
@@ -260,7 +277,11 @@ struct TranscriptDetailView: View {
           }
           metaChip(transcript.backendType.displayName, icon: nil, accent: false)
           if transcript.polishedText != nil {
-            metaChip("AI Polished", icon: nil, accent: true)
+            metaChip(
+              String(
+                localized: "AI Polished",
+                comment: "History detail chip: AI polish rewrote this text."), icon: nil,
+              accent: true)
           }
         }
 
@@ -356,7 +377,11 @@ struct TranscriptDetailView: View {
     // the title above says what the row is (a dictation or a transcript).
     if let output = transcript.polishedText ?? transcript.processedText {
       transcriptSection(
-        transcript.polishedText == nil ? "Processed" : "Polished",
+        transcript.polishedText == nil
+          ? String(
+            localized: "Processed", comment: "History detail section title: the cleaned-up text.")
+          : String(
+            localized: "Polished", comment: "History detail section title: the AI-polished text."),
         icon: transcript.polishedText == nil ? "doc.text" : "sparkles"
       ) {
         Text(output)
@@ -365,7 +390,12 @@ struct TranscriptDetailView: View {
           .foregroundStyle(.stTextPrimary)
           .textSelection(.enabled)
       }
-      transcriptSection("Original", icon: "doc.text") {
+      transcriptSection(
+        String(
+          localized: "Original",
+          comment: "History detail section title: the words as first transcribed."),
+        icon: "doc.text"
+      ) {
         Text(transcript.text)
           .font(.system(size: 15))
           .lineSpacing(3)

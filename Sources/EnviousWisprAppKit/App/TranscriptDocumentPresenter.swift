@@ -100,7 +100,11 @@ enum TranscriptDocumentPresenter {
     let blocks = turns.map { turn -> String in
       let original = slice(rawText, turn.originalTextRange)
       let text = effectiveMode == .original ? original : (turn.processedText ?? original)
-      let name = displayName(for: turn.speakerId, in: speakerNames) ?? "Unknown speaker"
+      let name =
+        displayName(for: turn.speakerId, in: speakerNames)
+        ?? String(
+          localized: "Unknown speaker",
+          comment: "Transcript turn header when the speaker has no name.")
       let header: String
       if timesOn, let label = timeLabel(for: turn) {
         header = "\(name) (\(label))"
@@ -117,8 +121,22 @@ enum TranscriptDocumentPresenter {
   /// wizard's own existing titles unchanged.
   static func exportButtonLabels(mode: ViewMode) -> (copy: String, save: String, share: String) {
     mode == .markedUp
-      ? ("Copy cleaned", "Save cleaned as…", "Share cleaned…")
-      : ("Copy everything", "Save as…", "Share…")
+      ? (
+        String(
+          localized: "Copy cleaned",
+          comment: "Export button: copy the cleaned text (shown in Marked Up view)."),
+        String(
+          localized: "Save cleaned as…",
+          comment: "Export button: save the cleaned text to a file (Marked Up view)."),
+        String(
+          localized: "Share cleaned…",
+          comment: "Export button: share the cleaned text (Marked Up view).")
+      )
+      : (
+        String(localized: "Copy everything", comment: "Export button: copy the whole transcript."),
+        String(localized: "Save as…", comment: "Export button: save the transcript to a file."),
+        String(localized: "Share…", comment: "Export button: share the transcript.")
+      )
   }
 
   /// `nil` for `"unknown"`; "Both" for a turn the assembler could not give to one speaker
@@ -131,7 +149,12 @@ enum TranscriptDocumentPresenter {
     -> String?
   {
     guard speakerId != TurnAssembler.unknownSpeakerID else { return nil }
-    guard speakerId != TurnAssembler.bothSpeakersID else { return "Both" }
+    guard speakerId != TurnAssembler.bothSpeakersID else {
+      return String(
+        localized: "Both",
+        comment:
+          "Transcript speaker label when two people spoke in a turn the app could not separate.")
+    }
     return speakerNames[speakerId]
   }
 
