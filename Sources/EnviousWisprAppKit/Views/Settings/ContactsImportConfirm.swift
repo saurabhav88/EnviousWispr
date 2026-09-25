@@ -20,8 +20,10 @@ struct ContactsImportConfirm: View {
         Text(addCountMessage)
           .font(.body)
         Text(
-          "EnviousWispr never uploads your address book. These names are added to your "
-            + "word list on this Mac so dictation spells them right."
+          String(
+            localized:
+              "EnviousWispr never uploads your address book. These names are added to your word list on this Mac so dictation spells them right.",
+            comment: "Your Words, import from Contacts: the privacy note under the count.")
         )
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)

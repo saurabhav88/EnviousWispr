@@ -280,7 +280,10 @@ final class VocabularyPackManager {
         return packDict != before
       })
     else {
-      persistenceError = "Couldn't save this pack change. Nothing was changed. Try again."
+      persistenceError = String(
+        localized: "Couldn't save this pack change. Nothing was changed. Try again.",
+        comment:
+          "Your Words, vocabulary packs: turning a pack or word on or off could not be saved.")
       return
     }
     overrides = saved

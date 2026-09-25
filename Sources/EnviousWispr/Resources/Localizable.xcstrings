@@ -1156,6 +1156,9 @@
     "Couldn't save the name." : {
       "comment" : "Speaker rename popover: saving the new name failed."
     },
+    "Couldn't save this pack change. Nothing was changed. Try again." : {
+      "comment" : "Your Words, vocabulary packs: turning a pack or word on or off could not be saved."
+    },
     "Couldn't save to history: %@" : {
       "comment" : "Pill: the dictation could not be saved to History. %@ is the reason."
     },
@@ -1472,6 +1475,9 @@
     },
     "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead." : {
       "comment" : "Practice screen when microphone permission is off. Keep the line break."
+    },
+    "EnviousWispr never uploads your address book. These names are added to your word list on this Mac so dictation spells them right." : {
+      "comment" : "Your Words, import from Contacts: the privacy note under the count."
     },
     "EnviousWispr words file" : {
       "comment" : "Your Words: the name of an exported words file."
@@ -4425,6 +4431,9 @@
     },
     "the new %@" : {
       "comment" : "Settings > AI Polish, local model row: names an upgrade whose version is unknown. %@ is the model name."
+    },
+    "the quarterly numbers came in" : {
+      "comment" : "Appearance settings, recording pill picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence."
     },
     "then your snippet, and it expands." : {},
     "under a minute" : {

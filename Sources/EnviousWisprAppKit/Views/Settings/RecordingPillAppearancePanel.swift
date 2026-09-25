@@ -333,7 +333,14 @@ struct RecordingPillPreviewTile: View {
   /// independent measurement of the leaf; using a different sentence there would
   /// compare two different pictures and call the difference a defect.
   static func sampleDisplay(for design: RecordingPillDesign) -> LivePreviewDisplay {
-    design.canHoldWords ? .text("the quarterly numbers came in") : .off
+    design.canHoldWords
+      ? .text(
+        String(
+          localized: "the quarterly numbers came in",
+          comment:
+            "Appearance settings, recording pill picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence."
+        ))
+      : .off
   }
 
   /// Mid level, so the meter and the rainbow mark are visibly alive rather than
