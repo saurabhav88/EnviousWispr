@@ -1253,7 +1253,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Email (optional)"
+            "value" : "Email (optional, if you'd like a reply)"
           }
         }
       }
