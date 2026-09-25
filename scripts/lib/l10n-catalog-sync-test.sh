@@ -43,7 +43,7 @@ def entry(key, value=None):
 
 
 def fixture(root, extra_keys=(), drop_manual=None, manual_override=None, drop_target=None, extra_target=None, metadata_only_target=None):
-    base = root / "dd/Build/Intermediates.noindex/EnviousWispr.build/Debug"
+    base = root / "dd/Build/Intermediates.noindex/EnviousWispr.build/Release"
     for t in TARGETS:
         if t == drop_target:
             continue
@@ -103,14 +103,14 @@ def expect(name, code, out, want_code, want_text):
         print(out)
 
 
-def case(name, want_code, want_text, *, mode="--check", prepare_update=True, fake_xcode_build=None, remove_catalog=False, **fx):
+def case(name, want_code, want_text, *, mode="--check", configuration="Release", prepare_update=True, fake_xcode_build=None, remove_catalog=False, **fx):
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         catalog = root / "Localizable.xcstrings"
         committed_catalog(catalog)
         if prepare_update:
             clean = fixture(root / "clean")
-            code, out = run("--update", "--derived-data", str(clean), "--configuration", "Debug", "--catalog", str(catalog))
+            code, out = run("--update", "--derived-data", str(clean), "--configuration", "Release", "--catalog", str(catalog))
             assert code == 0, out
         dd = fixture(root / "case", **fx)
         env = None
@@ -125,7 +125,7 @@ def case(name, want_code, want_text, *, mode="--check", prepare_update=True, fak
             env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
         if remove_catalog:
             catalog.unlink()
-        code, out = run(mode, "--derived-data", str(dd), "--configuration", "Debug", "--catalog", str(catalog), env=env)
+        code, out = run(mode, "--derived-data", str(dd), "--configuration", configuration, "--catalog", str(catalog), env=env)
         expect(name, code, out, want_code, want_text)
         if name == "clean sync passes":
             data = json.loads(catalog.read_text())
@@ -142,8 +142,8 @@ with tempfile.TemporaryDirectory() as tmp:
     catalog = root / "Localizable.xcstrings"
     committed_catalog(catalog)
     dd = fixture(root / "clean", extra_keys=["a label that will be deleted"])
-    assert run("--update", "--derived-data", str(dd), "--configuration", "Debug", "--catalog", str(catalog))[0] == 0
-    code, out = run("--check", "--derived-data", str(fixture(root / "case")), "--configuration", "Debug", "--catalog", str(catalog))
+    assert run("--update", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))[0] == 0
+    code, out = run("--check", "--derived-data", str(fixture(root / "case")), "--configuration", "Release", "--catalog", str(catalog))
     expect("stale key is drift", code, out, 1, "removed: 'a label that will be deleted'")
 case("missing manual key refuses", 2, "is not extracted", drop_manual="menu.setupRequired.continue")
 manual_override_key[0] = "settings.aiPolish.enable.title"
@@ -154,6 +154,8 @@ case("unknown first-party target refuses", 2, "does not know", extra_target="Env
 case("wrong Xcode build refuses", 2, "is not the pinned", fake_xcode_build="00X000")
 case("metadata-only target refuses", 2, "no .stringsdata", metadata_only_target="EnviousWisprStorage")
 case("missing catalog refuses", 2, "REFUSED", remove_catalog=True)
+# Debug extracts #if DEBUG copy that never ships; only Release is an authority.
+case("Debug configuration refuses", 2, "invalid choice", configuration="Debug")
 
 print(f"{cases} cases, {len(failures)} failed" + (f": {failures}" if failures else ""))
 sys.exit(1 if failures else 0)

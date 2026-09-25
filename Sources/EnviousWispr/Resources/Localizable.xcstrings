@@ -1,6 +1,572 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {},
+    " to cancel without changing your keybind." : {},
+    "\"%@\"" : {},
+    "%@ by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {},
+    "%@ now recognizes %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ now recognizes %2$@"
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, example, pastes %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, example, pastes %2$@"
+          }
+        }
+      }
+    },
+    "%@, native %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, native %2$@"
+          }
+        }
+      }
+    },
+    "%@, not yet known" : {},
+    "%@, pastes %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, pastes %2$@"
+          }
+        }
+      }
+    },
+    "%@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@. %2$@"
+          }
+        }
+      }
+    },
+    "%lld" : {},
+    "%lld imported" : {},
+    "%lld of %lld processed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld processed"
+          }
+        }
+      }
+    },
+    "%lld selected" : {},
+    "%lld words" : {},
+    "%lld%%" : {},
+    "%lld." : {},
+    "(%@)" : {},
+    "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {},
+    "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
+    "AI POLISH · OPTIONAL" : {},
+    "AI Polish" : {},
+    "AI polish engine" : {},
+    "ALL LANGUAGES" : {},
+    "AVAILABLE ON THIS MAC" : {},
+    "About 2 GB download. Runs entirely on your Mac." : {},
+    "Accessibility permission required for paste" : {},
+    "Activate to install and restart" : {},
+    "Activates recording. Then press the key combination you want." : {},
+    "Add" : {},
+    "Add %@" : {},
+    "Add Custom Word" : {},
+    "Add a mishearing (e.g. clawed)" : {},
+    "Add the names of people you know to your word list, so dictation spells them right." : {},
+    "After installing, come back and click refresh." : {},
+    "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {},
+    "All your contacts are already in your word list." : {},
+    "Almost there. Just two permissions." : {},
+    "Always replace, even when the original might be right" : {},
+    "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {},
+    "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {},
+    "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation." : {},
+    "Attention" : {},
+    "Audio duration:" : {},
+    "Auto" : {},
+    "Auto-copy to clipboard" : {},
+    "Auto-detect language" : {},
+    "Automatic" : {},
+    "Automatically fix grammar, punctuation, and formatting." : {},
+    "Available" : {},
+    "Batch ASR:" : {},
+    "Bring the words across from another dictation app you use." : {},
+    "Bring your snippets in from anywhere. Nothing is added until you review it." : {},
+    "Bring your words in from anywhere. Nothing is added until you review it." : {},
+    "CSV" : {},
+    "Cancel" : {},
+    "Cancelling…" : {},
+    "Category" : {},
+    "Change" : {},
+    "Change dictation language: %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Change dictation language: %1$@, %2$@"
+          }
+        }
+      }
+    },
+    "Change your AI model, keybind, and more in Settings." : {},
+    "Check Apple Intelligence availability" : {},
+    "Check again" : {},
+    "Check for new contacts each time EnviousWispr starts. Off by default." : {},
+    "Checking Ollama installation..." : {},
+    "Checking model status..." : {},
+    "Choose a file" : {},
+    "Choose a file you exported from EnviousWispr, or a plain text list of words." : {},
+    "Choose the %@ you exported, a CSV with a trigger column and a text column, or a plain list. Your keyword stays as it is." : {},
+    "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs finish in one to two seconds. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends your text to Anthropic under your API account." : {},
+    "Cleaned" : {},
+    "Cleanup summary: %@" : {},
+    "Clear Logs" : {},
+    "Clear search" : {},
+    "Click to change" : {},
+    "Close %@ pack" : {},
+    "Comparing words" : {},
+    "Configure Live Preview" : {},
+    "Contacts access is off. Turn it on in System Settings, then try again." : {},
+    "Continue" : {},
+    "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)" : {},
+    "Copy Log Path" : {},
+    "Copy error details" : {},
+    "Copy to clipboard" : {},
+    "Couldn't prepare model. Click to retry." : {},
+    "Couldn't save the file" : {},
+    "Default" : {},
+    "Degraded" : {},
+    "Delete" : {},
+    "Delete \"%@\"?" : {},
+    "Delete %@" : {},
+    "Delete %lld %@?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete %1$lld %2$@?"
+          }
+        }
+      }
+    },
+    "Delete all" : {},
+    "Delete all history" : {},
+    "Delete all history?" : {},
+    "Dictation" : {},
+    "Dictation keybind" : {},
+    "Dictation language" : {},
+    "Dictionary" : {},
+    "Dictionary section" : {},
+    "Discard" : {},
+    "Dismiss" : {},
+    "Document" : {},
+    "Done" : {},
+    "Double-press to go hands-free." : {},
+    "Download anyway" : {},
+    "Download paused. Resume anytime." : {},
+    "Download size: %@" : {},
+    "Downloading %@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "Downloading the local speech model so EnviousWispr can run privately on your Mac." : {},
+    "EDITED" : {},
+    "EG-1 is the model we trained ourselves, tuned only for cleaning up dictation. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {},
+    "Edit Custom Word" : {},
+    "Edit snippet" : {},
+    "Enable %@" : {},
+    "Enable %@ pack" : {},
+    "Enable Accessibility in Settings to use Auto-Paste — transcriptions will paste directly into your active app." : {},
+    "Enable Dictionary" : {},
+    "Enable debug mode" : {},
+    "Engine" : {},
+    "Esc" : {},
+    "Escape Recovery" : {},
+    "Example" : {},
+    "Expands to" : {},
+    "Export a copy first" : {},
+    "FINISH SETUP" : {},
+    "Finding spoken variants… %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Finding spoken variants… %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "Finish your current dictation first, then try again." : {},
+    "Fix Now" : {},
+    "For example, say “%@ %@” and that snippet is pasted." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "For example, say “%1$@ %2$@” and that snippet is pasted."
+          }
+        }
+      }
+    },
+    "GET STARTED!" : {},
+    "Gemini API rate limits by tier" : {},
+    "Get Started" : {},
+    "Get your Claude API key" : {},
+    "Get your free API key at aistudio.google.com" : {},
+    "Get your free API key at platform.openai.com" : {},
+    "Getting AI suggestions..." : {},
+    "Getting the speech engine ready\nso your first go is instant." : {},
+    "Grant" : {},
+    "Granted" : {},
+    "Hold to dictate. Release to transcribe." : {},
+    "How OpenAI model availability works by usage tier" : {},
+    "How it should be written" : {},
+    "How long to wait after you stop speaking before ending the recording." : {},
+    "Import from Contacts" : {},
+    "Imported from %@" : {},
+    "Importing in progress" : {},
+    "Importing your words" : {},
+    "In a hurry? Skip ahead" : {},
+    "Installed" : {},
+    "Interrupted" : {},
+    "Interrupted recording" : {},
+    "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
+    "Keep editing" : {},
+    "Keep in sync on launch" : {},
+    "Keep this recording permanently instead of letting it be deleted" : {},
+    "Kept recovered recording" : {},
+    "Keybind: %@" : {},
+    "Language" : {},
+    "Language suggestions" : {},
+    "License information isn't available in this build." : {},
+    "List" : {},
+    "Live" : {},
+    "Loaded" : {},
+    "Loading the speech model" : {},
+    "Lock" : {},
+    "Locked models? Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status." : {},
+    "Locked models? Those aren't blocked by EnviousWispr. Your OpenAI API key doesn't currently have access to them. OpenAI gates some models behind spend tier or organization verification." : {},
+    "Log Level" : {},
+    "Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained." : {},
+    "Looking for apps on this Mac." : {},
+    "Loose" : {},
+    "Marked up" : {},
+    "Match strictness" : {},
+    "Matched word for word, and only after you say “%@”." : {},
+    "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence." : {},
+    "Mishearings" : {},
+    "Model" : {},
+    "Model is freed after every transcription. Expect a reload delay on each recording." : {},
+    "Model is ready" : {},
+    "Model status:" : {},
+    "Model: %@ · Capacity: %@ tokens" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Model: %1$@ · Capacity: %2$@ tokens"
+          }
+        }
+      }
+    },
+    "Move EnviousWispr" : {},
+    "Nearly there" : {},
+    "New snippet" : {},
+    "New words come across with the alternate spellings you set up in the other app." : {},
+    "Next page" : {},
+    "No audio captured" : {},
+    "No dictations yet" : {},
+    "No language matches your search." : {},
+    "No matches for \"%@\"." : {},
+    "No matching history." : {},
+    "No mishearings yet. Type one above and click Add." : {},
+    "No model selected" : {},
+    "No snippets match “%@”" : {},
+    "No snippets yet" : {},
+    "No spoken variants" : {},
+    "No suggestions available" : {},
+    "No transcripts yet" : {},
+    "No vocabulary packs available." : {},
+    "Not Now" : {},
+    "Not available with your API key" : {},
+    "Not checked" : {},
+    "Not fully polished" : {},
+    "Not saved. %@" : {},
+    "Not selected" : {},
+    "Not working" : {},
+    "Nothing has run yet. You can still change everything." : {},
+    "Nothing here yet" : {},
+    "OK" : {},
+    "Off" : {},
+    "Ollama is a free tool you install once. Models on your Mac need no API key and no per-use cost, and they keep your dictation on your Mac. Ollama also offers hosted models, which run on Ollama's servers. Those are listed separately below and are never selected for you. A hosted model needs you signed in to Ollama, and some of them need a paid Ollama plan." : {},
+    "Ollama is installed but isn't running yet." : {},
+    "Ollama needs a language model to polish your text." : {},
+    "Ollama runs AI models on your Mac. No API keys, completely free." : {},
+    "On" : {},
+    "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything." : {},
+    "One moment, still working on that" : {},
+    "One per line: the trigger, then =, then the text. A tab, an arrow, or a comma work too. For text on several lines, paste exported JSON or CSV, or type \\n where a line should break." : {},
+    "Open Console.app" : {},
+    "Open Log Directory" : {},
+    "Open System Settings" : {},
+    "Opens Keybinds" : {},
+    "Opens the Live Preview settings page" : {},
+    "Opens the file chooser. You can also drag a file here." : {},
+    "Or run `ollama serve` in Terminal." : {},
+    "Original" : {},
+    "Other available models" : {},
+    "POWER USER?" : {},
+    "Pack on" : {},
+    "Packs" : {},
+    "Page %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Page %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "Paste into active app" : {},
+    "Paste unavailable — Accessibility permission required" : {},
+    "Paste your snippets, then check the count before you continue." : {},
+    "Paste your words, one per line or separated by commas." : {},
+    "Persists across relaunches. Toggle with Cmd+Shift+D from anywhere." : {},
+    "Picking the right model. Gemini sells two sizes inside each generation. For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks. Pro models are overkill: slightly smarter on hard reasoning, slower and pricier on a job that doesn't need it." : {},
+    "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job." : {},
+    "Pipeline Benchmark Results" : {},
+    "Play recording sounds" : {},
+    "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
+    "Prepare model" : {},
+    "Preparing model for faster responses..." : {},
+    "Press " : {},
+    "Press keys..." : {},
+    "Press keys…" : {},
+    "Press the record button to start dictating." : {},
+    "Press your keybind and start talking." : {},
+    "Preview" : {},
+    "Preview %@" : {},
+    "Preview is unavailable while a recording is in progress." : {},
+    "Previous page" : {},
+    "Pro Tip" : {},
+    "RECENT" : {},
+    "Re-check Ollama status" : {},
+    "Re-check model status" : {},
+    "Re-runs the onboarding flow without wiping app state. Disabled during recording." : {},
+    "Read as" : {},
+    "Read selections through the clipboard" : {},
+    "Reading %@" : {},
+    "Ready for import" : {},
+    "Ready to Transcribe" : {},
+    "Ready to Wispr!" : {},
+    "Recommended" : {},
+    "Recommended for cleanup" : {},
+    "Record" : {},
+    "Recording · %@" : {},
+    "Recovered" : {},
+    "Recovered recording" : {},
+    "Refresh available models" : {},
+    "Remove Model" : {},
+    "Remove all imported names" : {},
+    "Remove filler words (um, uh, hmm...)" : {},
+    "Remove mishearing %@" : {},
+    "Remove this file" : {},
+    "Removes this word and its mishearings. Can't be undone." : {},
+    "Removing model..." : {},
+    "Rename speaker" : {},
+    "Required to paste your dictation" : {},
+    "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed." : {},
+    "Reset" : {},
+    "Reset keybind to default" : {},
+    "Reset to allow the app to suggest locking a detected language again." : {},
+    "Reset to default" : {},
+    "Restart Onboarding…" : {},
+    "Restore clipboard after paste" : {},
+    "Retry" : {},
+    "Retry preparing model" : {},
+    "Run ASR Benchmark" : {},
+    "Run Pipeline Benchmark" : {},
+    "Running" : {},
+    "Save as a text file" : {},
+    "Save the text you type over and over. An email address, a signature, a link you always paste." : {},
+    "Saved to History" : {},
+    "Saves and restores whatever was on your clipboard before pasting your dictation." : {},
+    "Say" : {},
+    "Say \"<phrase> emoji\" to get the glyph. Bare words never convert." : {},
+    "Say your keyword, then the words you saved a snippet under, and that snippet is pasted." : {},
+    "Search %@ words" : {},
+    "Search by name or code" : {},
+    "Search by word, mishearing, or category" : {},
+    "Search history" : {},
+    "Search languages" : {},
+    "Search snippets" : {},
+    "See all words in the %@ pack" : {},
+    "Select an item from the sidebar to view it." : {},
+    "Selected" : {},
+    "Selected%@" : {},
+    "Selected: %@" : {},
+    "Selects %@ for AI polish" : {},
+    "Set how this word is recognized in what you dictate." : {},
+    "Setup paused. Start it again whenever you're ready." : {},
+    "Show" : {},
+    "Show in Finder" : {},
+    "Shows the %@ Dictionary tab" : {},
+    "Shows the reminder popover once per launch. This guide always stays." : {},
+    "Skip and finish setup" : {},
+    "Skip this step" : {},
+    "Skipped" : {},
+    "Smart insertion" : {},
+    "Snippet" : {},
+    "Snippets to import" : {},
+    "Snippets you already have are left exactly as they are." : {},
+    "Snippets you already saved in another dictation app, found on this Mac." : {},
+    "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back." : {},
+    "Something went wrong" : {},
+    "Speaker name" : {},
+    "Spreadsheets aren't supported yet." : {},
+    "Start recording" : {},
+    "Status:" : {},
+    "Status: %@" : {},
+    "Step %lld of 6" : {},
+    "Stop" : {},
+    "Stop recording" : {},
+    "Stop recording on silence" : {},
+    "Streaming finalize:" : {},
+    "Streaming vs Batch WER:" : {},
+    "Strict" : {},
+    "Strips common filler words from transcriptions." : {},
+    "Supported formats" : {},
+    "TRY AGAIN" : {},
+    "Tap the keycap to change your keybind,\nthen press GET STARTED!" : {},
+    "Test that %@ is live" : {},
+    "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {},
+    "The model could not be removed. Please try again." : {},
+    "The privacy-first dictation app built for macOS." : {},
+    "The speech engine did not finish waking up." : {},
+    "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below." : {},
+    "These let EnviousWispr listen and paste for you." : {},
+    "These words are only on this screen. Copy or save them before you leave." : {},
+    "They are still saved on your Mac. Nothing has been changed or deleted, and EnviousWispr will not write over them. Restart the app, and tell us if this keeps happening." : {},
+    "This can't be undone." : {},
+    "This choice also changes the transcription engine used for dictation." : {},
+    "This may take a moment on first run while the model loads." : {},
+    "This may take a moment on first run." : {},
+    "This model did not pass any of our cleanup tests." : {},
+    "This pack has no words." : {},
+    "This passage could not be cleaned up. These are the raw words." : {},
+    "This usually takes a moment. Nothing else is needed from you." : {},
+    "This version is not saved" : {},
+    "Times" : {},
+    "Tip: %@" : {},
+    "Tokens are shared between the model's setup instructions, your dictation, and its answer." : {},
+    "Transcribe a File" : {},
+    "Transcript" : {},
+    "Transcription Complete" : {},
+    "Try Again" : {},
+    "Try a different search, or another filter." : {},
+    "Try setup again" : {},
+    "Turn on Accessibility" : {},
+    "Turn on the microphone" : {},
+    "Unavailable" : {},
+    "Unknown" : {},
+    "Unload model after" : {},
+    "Unloaded" : {},
+    "Update available" : {},
+    "Update available, version %@" : {},
+    "Upgrading to %@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Upgrading to %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "Upload an audio or video file, then EnviousWispr will transcribe it and polish it into clean, readable text." : {},
+    "Use Transcribe a File to add one." : {},
+    "Use dictation's polish settings" : {},
+    "VAD: Active" : {},
+    "Valid" : {},
+    "Validating…" : {},
+    "Verifying download integrity" : {},
+    "Version %@ is ready. Click to restart." : {},
+    "View" : {},
+    "Warming Up the AI..." : {},
+    "Warming up" : {},
+    "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {},
+    "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose." : {},
+    "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about %lld minutes." : {},
+    "When to use it. Pick %@ if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about %lld minutes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "When to use it. Pick %1$@ if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about %2$lld minutes."
+          }
+        }
+      }
+    },
+    "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better. Handles dictations up to about 8 minutes." : {},
+    "When you use your cancel keybind, Escape by default, EnviousWispr keeps the dictation instead of discarding it. It finishes transcribing and polishing, then offers to paste it. Another recording cannot start until that finishes, the same as after any dictation. AI polish runs as usual, which uses your own API key when configured. The audio is deleted once the text is saved; the text stays in History for 24 hours unless you Keep it. The Cancel button still discards immediately." : {},
+    "Which words to show" : {},
+    "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup." : {},
+    "Words to import" : {},
+    "Words you already have are left exactly as they are." : {},
+    "Work out the language from what you say." : {},
+    "YOUR PROCESSING PATH" : {},
+    "You have this" : {},
+    "You're all set! Select a model above." : {},
+    "You've entered snippets. This will discard them." : {},
+    "You've entered words. This will discard them." : {},
+    "Your Voice, Instantly Captured." : {},
+    "Your dictations and transcripts will appear here." : {},
+    "Your first dictation" : {},
+    "Your snippets could not be read" : {},
+    "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually." : {},
     "menu.setupRequired.continue" : {
       "comment" : "Menu bar item shown at the top of the menu while first-run setup is unfinished. Opens setup.",
       "extractionState" : "manual",
@@ -13,6 +579,7 @@
         }
       }
     },
+    "my email address" : {},
     "notification.update.ready.body" : {
       "comment" : "Body of the macOS notification when an app update has downloaded. %@ is the version number, for example 2.6.0.",
       "extractionState" : "manual",
@@ -25,6 +592,8 @@
         }
       }
     },
+    "or drag and drop here" : {},
+    "selected" : {},
     "settings.aiPolish.enable.title" : {
       "comment" : "Settings > AI Polish: title of the switch that turns AI polish on or off.",
       "extractionState" : "manual",
@@ -36,7 +605,13 @@
           }
         }
       }
-    }
+    },
+    "then your snippet, and it expands." : {},
+    "v%@" : {},
+    "·" : {},
+    "· %@" : {},
+    "•" : {},
+    "⏎" : {}
   },
   "version" : "1.0"
 }

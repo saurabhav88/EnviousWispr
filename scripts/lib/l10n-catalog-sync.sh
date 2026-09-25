@@ -6,11 +6,16 @@
 # (SWIFT_EMIT_LOC_STRINGS). A normal CLI build does NOT rewrite the committed
 # catalog (measured 2026-09-24), so this script is how the catalog follows the code:
 #
-#   l10n-catalog-sync.sh --update --derived-data <dir> --configuration <cfg>
+#   l10n-catalog-sync.sh --update --derived-data <dir> --configuration Release
 #       syncs the committed catalog from that build's production `.stringsdata`.
-#   l10n-catalog-sync.sh --check  --derived-data <dir> --configuration <cfg>
+#   l10n-catalog-sync.sh --check  --derived-data <dir> --configuration Release
 #       syncs a scratch copy and fails (exit 1) if it differs from the committed
 #       catalog, printing the added, removed and changed keys. Exit 2: could not run.
+#
+# Release is the only accepted configuration: the catalog holds the text that
+# SHIPS. A Debug build also extracts copy from `#if DEBUG` screens (13 keys when
+# measured 2026-09-24), which would then read as drift against the Release check
+# CI runs, and would hand translators text no customer sees.
 #
 # Inputs are an EXPLICIT production-target list, never a directory sweep: the same
 # derived-data tree also holds third-party and test-target `.stringsdata`, and a test
@@ -164,7 +169,7 @@ def main(argv):
     mode.add_argument("--update", action="store_true")
     mode.add_argument("--check", action="store_true")
     parser.add_argument("--derived-data", required=True, type=pathlib.Path)
-    parser.add_argument("--configuration", required=True, choices=["Debug", "Dev", "Release"])
+    parser.add_argument("--configuration", required=True, choices=["Release"])
     parser.add_argument("--catalog", type=pathlib.Path, default=CATALOG)
     args = parser.parse_args(argv)
     try:
