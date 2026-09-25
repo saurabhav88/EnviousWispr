@@ -179,11 +179,12 @@ struct WarmingScreenV2: View {
   private var checklist: some View {
     VStack(alignment: .leading, spacing: 12) {
       WarmingChecklistRow(
-        title: "Microphone ready",
+        title: String(localized: "Microphone ready", comment: "Setup warm-up checklist item."),
         state: permissions.hasMicrophonePermission ? .done : .pending)
-      WarmingChecklistRow(title: "Your shortcut is set", state: .done)
       WarmingChecklistRow(
-        title: "Speech engine",
+        title: String(localized: "Your shortcut is set", comment: "Setup warm-up checklist item."), state: .done)
+      WarmingChecklistRow(
+        title: String(localized: "Speech engine", comment: "Setup warm-up checklist item."),
         state: {
           switch viewModel.warmingOutcome {
           case .ready: return .done

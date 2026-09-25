@@ -101,9 +101,15 @@
     "AI POLISH · OPTIONAL" : {},
     "AI Polish" : {},
     "AI polish engine" : {},
+    "AI polish needs macOS 26" : {
+      "comment" : "Setup notice title on Macs older than macOS 26."
+    },
     "ALL LANGUAGES" : {},
     "AVAILABLE ON THIS MAC" : {},
     "About 2 GB download. Runs entirely on your Mac." : {},
+    "Accessibility" : {
+      "comment" : "Setup permissions: title of the macOS Accessibility permission row."
+    },
     "Accessibility permission required for paste" : {},
     "Activate to install and restart" : {},
     "Activates recording. Then press the key combination you want." : {},
@@ -125,9 +131,15 @@
     "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {},
     "All your contacts are already in your word list." : {},
     "Almost there. Just two permissions." : {},
+    "Almost there... pinky promise" : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Always replace, even when the original might be right" : {},
     "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {},
     "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {},
+    "Apple Intelligence is turned off" : {
+      "comment" : "Setup notice title when Apple Intelligence is off in System Settings."
+    },
     "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation." : {},
     "Attention" : {},
     "Audio duration:" : {},
@@ -150,6 +162,9 @@
     "Bring the words across from another dictation app you use." : {},
     "Bring your snippets in from anywhere. Nothing is added until you review it." : {},
     "Bring your words in from anywhere. Nothing is added until you review it." : {},
+    "Built for Apple Silicon." : {
+      "comment" : "Welcome screen feature line under Native Speed."
+    },
     "Built-in or wired mics usually avoid this startup delay." : {
       "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
     },
@@ -157,6 +172,9 @@
       "comment" : "Last line of the Bluetooth guide in Microphone settings."
     },
     "CSV" : {},
+    "Calibrating whisper detection..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Cancel" : {},
     "Cancelling…" : {},
     "Category" : {},
@@ -177,6 +195,9 @@
     "Check for new contacts each time EnviousWispr starts. Off by default." : {},
     "Checking Ollama installation..." : {},
     "Checking model status..." : {},
+    "Checking speech model files..." : {
+      "comment" : "Setup progress: checking already-downloaded speech model files."
+    },
     "Choose a file" : {},
     "Choose a file you exported from EnviousWispr, or a plain text list of words." : {},
     "Choose the %@ you exported, a CSV with a trigger column and a text column, or a plain list. Your keyword stays as it is." : {},
@@ -189,13 +210,22 @@
     "Close %@ pack" : {},
     "Comparing words" : {},
     "Configure Live Preview" : {},
+    "Configuring on-device AI" : {
+      "comment" : "Setup checklist step."
+    },
     "Contacts access is off. Turn it on in System Settings, then try again." : {},
     "Continue" : {},
     "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)" : {},
+    "Convincing AI that you said 'duck'..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Copy Log Path" : {},
     "Copy error details" : {},
     "Copy to clipboard" : {},
     "Couldn't prepare model. Click to retry." : {},
+    "Couldn't reach the download server. Please check your internet connection and try again." : {
+      "comment" : "Setup error: the speech model download server could not be reached."
+    },
     "Couldn't save the file" : {},
     "Couldn’t save “%@”" : {
       "comment" : "Pill when a word could not be saved to the dictionary. %@ is that word."
@@ -204,6 +234,9 @@
       "comment" : "Pill result when removing the just-added word failed."
     },
     "Default" : {},
+    "Default: ⌥ Option" : {
+      "comment" : "Setup checklist: the default dictation key. ⌥ is the Option key symbol."
+    },
     "Degraded" : {},
     "Delete" : {},
     "Delete \"%@\"?" : {},
@@ -235,6 +268,9 @@
     "Done" : {},
     "Double-press to go hands-free." : {},
     "Download anyway" : {},
+    "Download failed: %@" : {
+      "comment" : "Setup error with no friendlier wording. %@ is the system's description of the error."
+    },
     "Download paused. Resume anytime." : {},
     "Download size: %@" : {},
     "Downloading %@ (%@)" : {
@@ -243,6 +279,34 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Downloading %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "Downloading model files..." : {
+      "comment" : "Setup progress: the speech model is downloading."
+    },
+    "Downloading model files... %lld MB of %lld MB (%lld%%)" : {
+      "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading model files... %1$lld MB of %2$lld MB (%3$lld%%)"
+          }
+        }
+      }
+    },
+    "Downloading speech model..." : {
+      "comment" : "Setup progress: the speech model is downloading."
+    },
+    "Downloading speech model... %lld MB of %lld MB (%lld%%)" : {
+      "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading speech model... %1$lld MB of %2$lld MB (%3$lld%%)"
           }
         }
       }
@@ -286,6 +350,9 @@
         }
       }
     },
+    "Free & Private" : {
+      "comment" : "Welcome screen feature title."
+    },
     "GET STARTED!" : {},
     "Gemini API rate limits by tier" : {},
     "Get Started" : {},
@@ -309,6 +376,15 @@
     "Importing your words" : {},
     "In a hurry? Skip ahead" : {},
     "Installed" : {},
+    "Installing 'um' and 'uh' filters..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Installing model..." : {
+      "comment" : "Setup progress: the speech model is being installed."
+    },
+    "Installing model... %@" : {
+      "comment" : "Setup progress: %@ is the name of the speech model being installed."
+    },
     "Interrupted" : {},
     "Interrupted recording" : {},
     "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
@@ -321,8 +397,14 @@
     "Language suggestions" : {},
     "License information isn't available in this build." : {},
     "List" : {},
+    "Listening for input" : {
+      "comment" : "Label under the keybind field while it waits for a key combination."
+    },
     "Live" : {},
     "Loaded" : {},
+    "Loading all 50,000 words..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Loading the speech model" : {},
     "Lock" : {},
     "Locked models? Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status." : {},
@@ -335,8 +417,14 @@
     "Match strictness" : {},
     "Matched word for word, and only after you say “%@”." : {},
     "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence." : {},
+    "Microphone" : {
+      "comment" : "Setup permissions: title of the microphone permission row."
+    },
     "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default)." : {
       "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings. 'Microphone readiness' is the name of a setting."
+    },
+    "Microphone ready" : {
+      "comment" : "Setup warm-up checklist item."
     },
     "Mishearings" : {},
     "Model" : {},
@@ -354,12 +442,21 @@
       }
     },
     "Move EnviousWispr" : {},
+    "Native Speed" : {
+      "comment" : "Welcome screen feature title."
+    },
     "Nearly there" : {},
     "New snippet" : {},
     "New words come across with the alternate spellings you set up in the other app." : {},
     "Next page" : {},
+    "No account required. Anonymous analytics only." : {
+      "comment" : "Welcome screen feature line under Free & Private."
+    },
     "No audio captured" : {},
     "No dictations yet" : {},
+    "No internet connection. Please connect to the internet and try again." : {
+      "comment" : "Setup error: no internet during the speech model download."
+    },
     "No language matches your search." : {},
     "No matches for \"%@\"." : {},
     "No matching history." : {},
@@ -374,6 +471,12 @@
     "Not Now" : {},
     "Not available with your API key" : {},
     "Not checked" : {},
+    "Not enough disk space (%lld MB free). EnviousWispr needs about 1 GB to download and install the speech model." : {
+      "comment" : "Setup error before the speech model download. %lld is the free space in megabytes."
+    },
+    "Not enough disk space. Please free up space and try again." : {
+      "comment" : "Setup error: the disk filled up during the speech model download."
+    },
     "Not fully polished" : {},
     "Not saved. %@" : {},
     "Not selected" : {},
@@ -382,14 +485,23 @@
     "Nothing here yet" : {},
     "OK" : {},
     "Off" : {},
+    "Offline-Ready" : {
+      "comment" : "Welcome screen feature title: works without internet."
+    },
     "Ollama is a free tool you install once. Models on your Mac need no API key and no per-use cost, and they keep your dictation on your Mac. Ollama also offers hosted models, which run on Ollama's servers. Those are listed separately below and are never selected for you. A hosted model needs you signed in to Ollama, and some of them need a paid Ollama plan." : {},
     "Ollama is installed but isn't running yet." : {},
     "Ollama needs a language model to polish your text." : {},
     "Ollama runs AI models on your Mac. No API keys, completely free." : {},
     "On" : {},
+    "On-Device" : {
+      "comment" : "Welcome screen feature title: dictation runs on this Mac."
+    },
     "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything." : {},
     "One moment, still working on that" : {},
     "One per line: the trigger, then =, then the text. A tab, an arrow, or a comma work too. For text on several lines, paste exported JSON or CSV, or type \\n where a line should break." : {},
+    "One-time setup" : {
+      "comment" : "Setup checklist: note under the speech model step."
+    },
     "Open Console.app" : {},
     "Open Log Directory" : {},
     "Open System Settings" : {},
@@ -422,11 +534,20 @@
     "Pipeline Benchmark Results" : {},
     "Play recording sounds" : {},
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
+    "Polishing the speech engine..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Preferred mic order: Built-in or wired > USB > Bluetooth" : {
       "comment" : "Microphone settings: the recommended input types, best first. Keep the > signs."
     },
     "Prepare model" : {},
     "Preparing model for faster responses..." : {},
+    "Preparing speech model…" : {
+      "comment" : "Setup: shown while the speech model download is being prepared."
+    },
+    "Preparing to ignore background noise..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Press " : {},
     "Press keys..." : {},
     "Press keys…" : {},
@@ -451,6 +572,9 @@
     "Recommended for cleanup" : {},
     "Record" : {},
     "Recording · %@" : {},
+    "Recording, press a key combination" : {
+      "comment" : "VoiceOver value of the keybind field while it waits for a key combination."
+    },
     "Recovered" : {},
     "Recovered recording" : {},
     "Refresh available models" : {},
@@ -495,7 +619,19 @@
     "Selected: %@" : {},
     "Selects %@ for AI polish" : {},
     "Set how this word is recognized in what you dictate." : {},
+    "Setting up speech model" : {
+      "comment" : "Setup checklist step."
+    },
+    "Setting your keybind" : {
+      "comment" : "Setup checklist step."
+    },
+    "Setup didn't finish. Try again, and if it keeps happening, restart the app." : {
+      "comment" : "Setup error: the speech model setup made no progress."
+    },
     "Setup paused. Start it again whenever you're ready." : {},
+    "Sharpening neural networks..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Show" : {},
     "Show Bluetooth tips" : {
       "comment" : "Microphone settings: switch that turns the Bluetooth tip card on or off."
@@ -518,11 +654,17 @@
     "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back." : {},
     "Something went wrong" : {},
     "Speaker name" : {},
+    "Speech engine" : {
+      "comment" : "Setup warm-up checklist item."
+    },
     "Spreadsheets aren't supported yet." : {},
     "Start recording" : {},
     "Status:" : {},
     "Status: %@" : {},
     "Step %lld of 6" : {},
+    "Still working: checking download source…" : {
+      "comment" : "Setup: shown when preparing the download takes more than 10 seconds."
+    },
     "Stop" : {},
     "Stop recording" : {},
     "Stop recording on silence" : {},
@@ -533,8 +675,17 @@
     "Supported formats" : {},
     "TRY AGAIN" : {},
     "Tap the keycap to change your keybind,\nthen press GET STARTED!" : {},
+    "Teaching AI to listen politely..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Test that %@ is live" : {},
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {},
+    "The download server is busy. Please wait a moment and try again." : {
+      "comment" : "Setup error: the download server refused because of too many requests."
+    },
+    "The download timed out. Please check your internet connection and try again." : {
+      "comment" : "Setup error: the speech model download timed out."
+    },
     "The model could not be removed. Please try again." : {},
     "The privacy-first dictation app built for macOS." : {},
     "The speech engine did not finish waking up." : {},
@@ -553,13 +704,28 @@
     "This version is not saved" : {},
     "Times" : {},
     "Tip: %@" : {},
+    "To hear your voice for transcription." : {
+      "comment" : "Setup permissions: why the microphone is needed."
+    },
+    "To paste your transcribed text into any app." : {
+      "comment" : "Setup permissions: why Accessibility is needed."
+    },
     "Tokens are shared between the model's setup instructions, your dictation, and its answer." : {},
+    "Training patience module..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Transcribe a File" : {},
     "Transcript" : {},
     "Transcription Complete" : {},
     "Try Again" : {},
     "Try a different search, or another filter." : {},
     "Try setup again" : {},
+    "Tuning the neural ears..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
+      "comment" : "Setup notice when Apple Intelligence is off in System Settings."
+    },
     "Turn on Accessibility" : {},
     "Turn on the microphone" : {},
     "Unavailable" : {},
@@ -574,6 +740,9 @@
     "Unloaded" : {},
     "Update available" : {},
     "Update available, version %@" : {},
+    "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it." : {
+      "comment" : "Setup notice on Macs older than macOS 26."
+    },
     "Upgrading to %@ (%@)" : {
       "localizations" : {
         "en" : {
@@ -594,10 +763,16 @@
     "Valid" : {},
     "Validating…" : {},
     "Verifying download integrity" : {},
+    "Verifying download..." : {
+      "comment" : "Setup progress: checking the downloaded speech model."
+    },
     "Version %@ is ready. Click to restart." : {},
     "View" : {},
     "Warming Up the AI..." : {},
     "Warming up" : {},
+    "Warming up Apple Silicon..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {},
     "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose." : {},
     "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about %lld minutes." : {},
@@ -618,7 +793,13 @@
     "Words to import" : {},
     "Words you already have are left exactly as they are." : {},
     "Work out the language from what you say." : {},
+    "Works without internet." : {
+      "comment" : "Welcome screen feature line under Offline-Ready."
+    },
     "YOUR PROCESSING PATH" : {},
+    "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
+      "comment" : "Setup: shown when the speech engine did not finish warming up."
+    },
     "You have this" : {},
     "You're all set! Select a model above." : {},
     "You've entered snippets. This will discard them." : {},
@@ -626,7 +807,13 @@
     "Your Voice, Instantly Captured." : {},
     "Your dictations and transcripts will appear here." : {},
     "Your first dictation" : {},
+    "Your shortcut is set" : {
+      "comment" : "Setup warm-up checklist item."
+    },
     "Your snippets could not be read" : {},
+    "Your voice never leaves your Mac." : {
+      "comment" : "Welcome screen feature line under On-Device."
+    },
     "feedback.email.invalid" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
