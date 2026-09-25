@@ -111,7 +111,7 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
   ) -> (any PastedRegionAXRegistration)? {
     guard !registrationFails else { return nil }
-    let registration = PastedRegionFakeRegistration(handler: handler)
+    let registration = PastedRegionFakeRegistration(handler: { kind, _ in handler(kind) })
     registrations.append(registration)
     return registration
   }
@@ -171,7 +171,7 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   func registerLanding(
     pid: pid_t, element: AXUIElement?, application: AXUIElement,
     admit: @MainActor (AXUIElement) -> Bool,
-    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+    handler: @escaping @MainActor (PastedRegionAXNotification, AXUIElement) -> Void
   ) -> (any PastedRegionAXRegistration)? {
     // The live order: the budget before the observer exists, then value-changed and destroyed on
     // the element, then focus on the application.
@@ -196,12 +196,12 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
 
 @MainActor
 final class PastedRegionFakeRegistration: PastedRegionAXRegistration {
-  let handler: @MainActor (PastedRegionAXNotification) -> Void
+  let handler: @MainActor (PastedRegionAXNotification, AXUIElement) -> Void
   /// Empty by default: a fake never claims a complete registration it was not scripted to have.
   let registeredNotifications: Set<PastedRegionAXNotification>
   private(set) var invalidated = 0
   init(
-    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void,
+    handler: @escaping @MainActor (PastedRegionAXNotification, AXUIElement) -> Void,
     registered: Set<PastedRegionAXNotification> = []
   ) {
     self.handler = handler
@@ -210,7 +210,12 @@ final class PastedRegionFakeRegistration: PastedRegionAXRegistration {
   func invalidate() { invalidated += 1 }
   /// Deliver as the real observer would: even after `invalidate`, a callback
   /// already queued on the run loop can still arrive.
-  func fire(_ notification: PastedRegionAXNotification) { handler(notification) }
+  /// `element`: what the notification names. The default is an element no fixture uses, so a
+  /// focus notification without one is a move away from any pre-write focus (#3152).
+  func fire(_ notification: PastedRegionAXNotification, element: AXUIElement? = nil) {
+    handler(notification, element ?? Self.unrelatedElement)
+  }
+  static let unrelatedElement = AXUIElementCreateApplication(999_991)
 }
 
 /// Logical clock: nothing fires until the test advances it.

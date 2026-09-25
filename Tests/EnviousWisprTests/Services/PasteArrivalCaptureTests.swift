@@ -217,6 +217,62 @@ struct PasteArrivalCaptureTests {
     #expect(destroyed.landing == .inconclusive(.elementDestroyed))
   }
 
+  @Test("a focus notification naming the pre-write focus is a re-announcement, not a move (#3152)")
+  func focusReannouncementKeepsTheMiss() throws {
+    // Chrome re-posts the unchanged page focus after a Cmd+V into it (measured, #3152).
+    let session = try prepare()
+    session.commit()
+    registration?.fire(.focusedElementChanged, element: field)
+    registration?.fire(.focusedElementChanged, element: field)
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .absent)
+    // Still a miss the shadow watches to the end: the re-announcement lost nothing.
+    registration?.fire(.focusedElementChanged, element: field)
+    scheduler.advance(ms: 1_200)
+    #expect(reports.list.map(\.lateCheck) == [.completedNoHit])
+  }
+
+  @Test("a focus notification naming another element is a move, even if focus comes back (#3152)")
+  func focusElsewhereStaysInconclusive() throws {
+    let other = AXUIElementCreateApplication(7_777)
+    let moved = try prepare()
+    moved.commit()
+    registration?.fire(.focusedElementChanged, element: other)
+    scheduler.advance(ms: 300)
+    #expect(moved.landing == .inconclusive(.focusChanged))
+
+    // Away and back: the move is not undone by a later notification naming the original field.
+    let bounced = try prepare()
+    bounced.commit()
+    registration?.fire(.focusedElementChanged, element: other)
+    registration?.fire(.focusedElementChanged, element: field)
+    scheduler.advance(ms: 300)
+    #expect(bounced.landing == .inconclusive(.focusChanged))
+  }
+
+  @Test("with nothing focused before the write, every focus notification is a move (#3152)")
+  func noPriorFocusHasNothingToReannounce() throws {
+    ax.focusedByApplication[pid] = .noFocus
+    ax.focused[pid] = .noFocus
+    let session = try prepare()
+    session.commit()
+    registration?.fire(.focusedElementChanged, element: field)
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .inconclusive(.focusChanged))
+  }
+
+  @Test("in the shadow, another element censors the late check; the pre-write focus does not")
+  func shadowCensorsOnlyARealMove() throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .absent)
+    registration?.fire(.focusedElementChanged, element: field)
+    registration?.fire(.focusedElementChanged, element: AXUIElementCreateApplication(7_777))
+    scheduler.advance(ms: 1_200)
+    #expect(reports.list.map(\.lateCheck) == [.censored])
+  }
+
   @Test("an unstable final read is inconclusive, never absent")
   func unstableIsNotAbsent() throws {
     let session = try prepare()
