@@ -204,6 +204,14 @@ struct AppWindowCoordinatorTests {
     prefixed.identifier = NSUserInterfaceItemIdentifier("onboardingTips")
     #expect(!OnboardingWindowIdentity.matches(prefixed))
 
+    // Only a number may follow the scene's AppWindow prefix.
+    for raw in ["onboarding-AppWindow-help", "onboarding-AppWindow-"] {
+      let other = NSWindow(
+        contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+      other.identifier = NSUserInterfaceItemIdentifier(raw)
+      #expect(!OnboardingWindowIdentity.matches(other), "\(raw)")
+    }
+
     // Another scene's window never matches, even titled like Setup.
     let lookalike = NSWindow(
       contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)

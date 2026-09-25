@@ -9,6 +9,10 @@ enum OnboardingWindowIdentity {
   static func matches(_ window: NSWindow) -> Bool {
     guard let raw = window.identifier?.rawValue else { return false }
     let id = AppConstants.onboardingWindowID
-    return raw == id || raw.hasPrefix("\(id)-AppWindow-")
+    if raw == id { return true }
+    let prefix = "\(id)-AppWindow-"
+    guard raw.hasPrefix(prefix) else { return false }
+    let number = raw.dropFirst(prefix.count)
+    return !number.isEmpty && number.allSatisfy { $0.isASCII && $0.isNumber }
   }
 }
