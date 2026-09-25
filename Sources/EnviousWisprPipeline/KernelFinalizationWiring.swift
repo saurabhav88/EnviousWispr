@@ -22,15 +22,18 @@ import os
 /// The polish/storage side-channel (PR-4 §3.3). The kernel's three closures
 /// thread only a `String`; this reference carries the raw / polished split and
 /// the polish metadata the `store` closure and the driver need. `@Observable`
-/// so a driver reading `transcript` / `polishError` from it tracks changes.
+/// so a driver reading `transcript` / `polishNotice` from it tracks changes.
 @MainActor
 @Observable
 final class KernelFinalizationOutcome {
   /// The `Transcript` the `store` closure built and saved — the driver reads
   /// this as `currentTranscript`.
   var transcript: Transcript?
-  /// The polish-step error, or `nil` — the driver reads this as `lastPolishError`.
-  var polishError: String?
+  /// The polish notice, or `nil` — the driver reads it as `lastPolishNotice` and its text as
+  /// `lastPolishError`.
+  var polishNotice: PolishNotice?
+  /// The notice's text, for readers that only show it.
+  var polishError: String? { polishNotice?.text }
   /// Raw ASR text (pre-polish) — `store` uses it for `Transcript.text`.
   var rawText: String?
   /// Polished text, or `nil` — `store` uses it for `Transcript.polishedText`.
@@ -500,7 +503,7 @@ struct KernelFinalizationWiring {
       outcome.polishValidatorGuard = ctx.polishValidatorGuard
       outcome.symbolTokens = ctx.symbolTokens
       outcome.polishRanRemote = ctx.polishRanRemote
-      outcome.polishError = result.polishError
+      outcome.polishNotice = result.polishNotice
       outcome.polishDurationSeconds = CFAbsoluteTimeGetCurrent() - start
 
       // #1358: the display text after the limb chain. `ctx.polishedText ?? ctx.text`

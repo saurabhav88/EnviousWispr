@@ -2,6 +2,7 @@ import AppKit
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 
@@ -808,8 +809,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// The transcript the `store` closure built for the last completed session.
   public var currentTranscript: Transcript? { outcome.transcript }
 
-  /// The polish error from the last session, or `nil`.
-  public var lastPolishError: String? { outcome.polishError }
+  /// The polish notice from the last session, or `nil`. Its tone decides the completion
+  /// warning (#3142).
+  public var lastPolishNotice: PolishNotice? { outcome.polishNotice }
+
+  /// The last session's polish notice text, for readers that only show it.
+  public var lastPolishError: String? { outcome.polishNotice?.text }
 
   /// #1167: whether the last session's durable history save succeeded. `false`
   /// ⟺ the save threw but delivery still proceeded (best-effort save). The App
@@ -965,7 +970,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       // in-flight outcome intact for completion telemetry. Without this, a
       // prior session's "AI polish failed" surface lingered into the next
       // dictation (#859).
-      outcome.polishError = nil
+      outcome.polishNotice = nil
     }
     fireStateChangeIfNeeded()
   }
@@ -1199,7 +1204,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // reads were always-nil in production until this PR — finding #6).
         lastTerminalReason = nil
         outcome.transcript = nil
-        outcome.polishError = nil
+        outcome.polishNotice = nil
         outcome.rawText = nil
         outcome.polishedText = nil
         outcome.llmProvider = nil
@@ -1282,7 +1287,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // Mirror the sync `reset()` method: clear the stale polish-error
         // surface alongside the transcript (#859). Both reset entry points
         // intentionally parallel each other (doc-comment at the sync method).
-        outcome.polishError = nil
+        outcome.polishNotice = nil
       }
       // PR-4.5 #9 (Codex r5): when the kernel is already idle, `reset()` is a
       // no-op, so the kernel-state observation does NOT fire. After

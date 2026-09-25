@@ -504,8 +504,11 @@ struct PolishFailureReasonTests {
       #expect(
         unreadable.composedMessage(provider: provider)
           == missing.composedMessage(provider: provider))
-      // The completion planner keys the skip-vs-hard-failure toast off this.
-      #expect(PolishFailureReason.isSkipNotice(unreadable.composedMessage(provider: provider)))
+      // The completion planner keys the skip-vs-hard-failure toast off the notice's tone.
+      #expect(unreadable.notice(provider: provider).leadIn == .skipped)
+      #expect(
+        unreadable.notice(provider: provider).text
+          == unreadable.composedMessage(provider: provider))
     }
     #expect(unreadable.leadIn == missing.leadIn)
     #expect(unreadable.leadIn == .skipped)

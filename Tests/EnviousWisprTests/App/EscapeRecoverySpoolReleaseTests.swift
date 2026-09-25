@@ -86,7 +86,7 @@ struct EscapeRecoverySpoolReleaseTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: row,
       historySaved: true,
       historySaveReason: nil,
@@ -145,7 +145,7 @@ struct EscapeRecoverySpoolReleaseTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: Transcript(
         text: "hello", backendType: .parakeet, recoverySessionID: "spool-xyz"),
       historySaved: true,

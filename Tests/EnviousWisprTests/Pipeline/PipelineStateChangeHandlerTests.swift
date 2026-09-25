@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -91,7 +92,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil
@@ -116,7 +117,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: "openai_timeout",
+      lastPolishNotice: PolishNotice(leadIn: .failed, text: "openai_timeout"),
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil
@@ -139,7 +140,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: "still set but fallback wins",
+      lastPolishNotice: PolishNotice(leadIn: .failed, text: "still set but fallback wins"),
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil
@@ -161,7 +162,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil
@@ -184,7 +185,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil
@@ -210,7 +211,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: nil,
       historySaved: true,
       historySaveReason: nil
@@ -232,7 +233,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.recording,
       pipelineOverlayIntent: .recording(audioLevel: 0),
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: nil,
       historySaved: true,
       historySaveReason: nil
@@ -261,7 +262,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.error(.deviceRemoved),
       pipelineOverlayIntent: .error(reason: .deviceRemoved),
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: nil,
       historySaved: true,
       historySaveReason: nil
@@ -288,7 +289,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: first,
       historySaved: true,
       historySaveReason: nil
@@ -296,7 +297,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: second,
       historySaved: true,
       historySaveReason: nil
@@ -319,7 +320,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: transcript,
       historySaved: false,
       historySaveReason: "disk is full"
@@ -353,7 +354,7 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
+      lastPolishNotice: nil,
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil,

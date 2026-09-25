@@ -182,7 +182,7 @@ import Testing
     let h = makeDriver()
     #expect(h.driver.currentTranscript == nil)
     h.outcome.transcript = Transcript(text: "hello world")
-    h.outcome.polishError = "polish timed out"
+    h.outcome.polishNotice = PolishNotice(leadIn: .failed, text: "polish timed out")
     #expect(h.driver.currentTranscript?.text == "hello world")
     #expect(h.driver.lastPolishError == "polish timed out")
   }
@@ -355,7 +355,7 @@ import Testing
     func resetWhenIdleClearsStalePolishError() {
       let h = makeDriver()
       // A prior session's polish failure left a message on the public surface.
-      h.outcome.polishError = "AI polish failed"
+      h.outcome.polishNotice = PolishNotice(leadIn: .failed, text: "AI polish failed")
       #expect(h.driver.lastPolishError == "AI polish failed")
       h.driver.reset()  // kernel is at idle (resting)
       #expect(
@@ -366,7 +366,7 @@ import Testing
     @Test("handle(.reset) clears the stale polish error once the kernel is idle (#859)")
     func handleResetWhenIdleClearsStalePolishError() async throws {
       let h = makeDriver()
-      h.outcome.polishError = "AI polish failed"
+      h.outcome.polishNotice = PolishNotice(leadIn: .failed, text: "AI polish failed")
       try await h.driver.handle(event: .reset)  // kernel is at idle (resting)
       #expect(
         h.driver.lastPolishError == nil,
@@ -386,7 +386,7 @@ import Testing
       #expect(h.kernel.testForceTransition(to: .stopping))
       #expect(h.kernel.testForceTransition(to: .delivering))
       h.kernel.testSetDeliveringPhase(.finalizing(.transcribing))
-      h.outcome.polishError = "in-flight polish error"
+      h.outcome.polishNotice = PolishNotice(leadIn: .failed, text: "in-flight polish error")
       h.driver.reset()
       #expect(h.driver.lastPolishError == "in-flight polish error")
     }

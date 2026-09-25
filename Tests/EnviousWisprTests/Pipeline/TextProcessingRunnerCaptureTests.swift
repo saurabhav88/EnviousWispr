@@ -217,6 +217,7 @@ struct TextProcessingRunnerCaptureTests {
     // The notice the user reads is untouched by the downgrade.
     #expect(
       result.polishError == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
+    #expect(result.polishNotice?.leadIn == .skipped)
     #expect(spy.calls.isEmpty)
     #expect(records.calls.count == 1)
     #expect(records.calls.first?.reason == "api_key_missing")
@@ -267,6 +268,7 @@ struct TextProcessingRunnerCaptureTests {
 
     #expect(
       result.polishError == "AI polish failed: Ollama isn't reachable. Start Ollama and try again.")
+    #expect(result.polishNotice?.leadIn == .failed)
     #expect(spy.calls.isEmpty)
     #expect(records.calls.count == 1)
     #expect(records.calls.first?.reason == "provider_unreachable")
@@ -347,6 +349,7 @@ struct TextProcessingRunnerCaptureTests {
     // Same sentence the no-key user reads; a different fingerprint for us.
     #expect(
       result.polishError == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
+    #expect(result.polishNotice?.leadIn == .skipped)
     #expect(spy.calls.count == 1)
     #expect(spy.calls.first?.fingerprintDetail == "api_key_unreadable")
     #expect(records.calls.first?.reason == "api_key_unreadable")
@@ -468,6 +471,7 @@ struct TextProcessingRunnerCaptureTests {
     #expect(spy.calls.first?.tags["polish.error_case"] == "timed_out")
     #expect(spy.calls.first?.tags["polish.is_timeout"] == "true")
     #expect(result.polishError?.hasPrefix("AI cleanup skipped:") == true)
+    #expect(result.polishNotice?.leadIn == .skipped)
     // #1446: `is_timeout` reaches the durable record too, not only the alert.
     #expect(records.calls.count == 1)
     #expect(records.calls.first?.reason == "timed_out")
@@ -489,6 +493,7 @@ struct TextProcessingRunnerCaptureTests {
       rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(result.polishError == "AI polish failed: LLM request failed: boom")
+    #expect(result.polishNotice?.leadIn == .failed)
     // The alerting capture for on-device polish is owned by the polish step
     // (`captureAFMPolishError`), never by the runner.
     #expect(spy.calls.isEmpty)

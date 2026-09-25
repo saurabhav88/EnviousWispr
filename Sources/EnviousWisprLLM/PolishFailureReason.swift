@@ -164,12 +164,11 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     //
     // Scope of the arm, stated precisely because it is easy to overclaim: the
     // PILL the user actually sees does NOT come through here. It comes from
-    // `ollamaPreflightSkipMessage`, which interpolates `LeadIn.skipped.text`
-    // itself, and `isSkipNotice` matches that prefix — so the skip tone on
-    // screen survives even without this arm. `leadIn`'s only production reader
-    // is `composedMessage`, which the runner never reaches for this reason
-    // (`TextProcessingRunner`'s `ollamaPreflightSkipMessage ?? composedMessage`
-    // short-circuits). Verified by mutation: deleting this arm leaves every
+    // `ollamaPreflightSkipNotice`, which carries `.skipped` itself — so the skip
+    // tone on screen survives even without this arm. `leadIn`'s production
+    // readers are `composedMessage` and `notice(provider:)`, which the runner
+    // never reaches for this reason (`TextProcessingRunner`'s
+    // `ollamaPreflightSkipNotice ?? notice(provider:)` short-circuits). Verified by mutation: deleting this arm leaves every
     // pill and gate test GREEN and fails only the classification test.
     //
     // It stays because the classification must be true for the next consumer,
@@ -353,8 +352,8 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   /// path only (server down / model missing found before any attempt started).
   /// Nil for every other reason. Deliberately distinct from the mid-flight
   /// `composedMessage` copy: at preflight time no attempt failed, so the tone
-  /// is the skip lead-in (which `isSkipNotice` and the completion planner
-  /// already recognize), and the "no model is installed" wording never implies
+  /// is the skip lead-in (`ollamaPreflightSkipNotice` carries `.skipped`, which
+  /// the completion planner reads), and the "no model is installed" wording never implies
   /// a visible selection the picker may honestly not show. Mid-flight failures
   /// on a running server keep today's `composedMessage(provider:)` copy.
   public var ollamaPreflightSkipMessage: String? {
@@ -377,16 +376,15 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     }
   }
 
-  /// Whether a composed notice string represents a "skipped" (not-really-broken)
-  /// outcome rather than a hard failure. Keyed off the single `LeadIn.skipped.text`
-  /// constant that `composedMessage` also uses, so it can never drift from the
-  /// notice it inspects. The completion planner uses this to suppress the
-  /// transient "Polish failed. Using raw text." overlay for skips (the in-window
-  /// notice still shows the actionable "AI cleanup skipped: ..." message). A
-  /// legacy raw message or the Apple Intelligence "AI polish failed: ..." string
-  /// is correctly treated as NOT a skip, so its hard-failure toast still fires.
-  public static func isSkipNotice(_ noticeMessage: String) -> Bool {
-    noticeMessage.hasPrefix(LeadIn.skipped.text)
+  /// The notice for this reason: its text and its tone, built together so they cannot drift.
+  public func notice(provider: LLMProvider) -> PolishNotice {
+    PolishNotice(leadIn: leadIn, text: composedMessage(provider: provider))
+  }
+
+  /// `ollamaPreflightSkipMessage` as a notice. Always skip-toned: that copy is written with
+  /// the skipped lead-in.
+  public var ollamaPreflightSkipNotice: PolishNotice? {
+    ollamaPreflightSkipMessage.map { PolishNotice(leadIn: .skipped, text: $0) }
   }
 
   /// Maps every error the runner sees directly to a reason: the `.classified`
@@ -445,5 +443,21 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       }
     }
     return .unknown
+  }
+}
+
+/// The polish notice a dictation ends with: the sentence the user reads and whether it reports a
+/// skip or a failure (#3142).
+///
+/// The completion planner decides whether to show the transient "Polish failed" warning from
+/// `leadIn`, never from `text`: the text is translated, and a translated sentence need not start
+/// with the translated lead-in. One value carries both so the two cannot disagree.
+public struct PolishNotice: Equatable, Sendable {
+  public let leadIn: PolishFailureReason.LeadIn
+  public let text: String
+
+  public init(leadIn: PolishFailureReason.LeadIn, text: String) {
+    self.leadIn = leadIn
+    self.text = text
   }
 }

@@ -471,10 +471,11 @@ struct OllamaReadinessPreflightTests {
       noSelection
         == "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish.")
     #expect(modelMissing != noSelection, "the two states must not collapse to one sentence")
-    // All three must carry the skip lead-in the completion planner keys off.
-    #expect(PolishFailureReason.isSkipNotice(serverDown ?? "") == true)
-    #expect(PolishFailureReason.isSkipNotice(modelMissing ?? "") == true)
-    #expect(PolishFailureReason.isSkipNotice(noSelection ?? "") == true)
+    // All three carry the skip tone the completion planner reads (#3142), with the same text.
+    for reason in [PolishFailureReason.providerUnreachable, .modelUnavailable, .noModelSelected] {
+      #expect(reason.ollamaPreflightSkipNotice?.leadIn == .skipped, "\(reason)")
+      #expect(reason.ollamaPreflightSkipNotice?.text == reason.ollamaPreflightSkipMessage)
+    }
   }
 
   /// Rule 6: no em or en dashes in user-facing copy. Checked on the whole

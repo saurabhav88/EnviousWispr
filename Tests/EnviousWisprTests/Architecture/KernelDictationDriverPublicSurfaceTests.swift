@@ -16,7 +16,7 @@ import Testing
 //   2. Call `KernelDictationDriverFactory.makeForParakeet(inputs:)` and receive the
 //      public `KernelDictationDriver`.
 //   3. Read every App-consumed member from the returned driver (state,
-//      overlayIntent, currentTranscript, lastPolishError, four limb-step
+//      overlayIntent, currentTranscript, lastPolishError, lastPolishNotice, four limb-step
 //      accessors, onStateChange, the 5 new methods, currentSessionConfig).
 //
 // If a `public` modifier was missed on the driver, factory, or `Inputs`, this
@@ -58,6 +58,7 @@ import Testing
     _ = driver.overlayIntent
     _ = driver.currentTranscript
     _ = driver.lastPolishError
+    _ = driver.lastPolishNotice  // #3142: the typed notice the completion planner reads
     _ = driver.wordCorrection
     _ = driver.fillerRemoval
     _ = driver.emojiFormatter

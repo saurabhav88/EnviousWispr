@@ -8,8 +8,11 @@ import Foundation
 @MainActor
 internal struct TextProcessingRunResult {
   let context: TextProcessingContext
-  /// Error message from polish step failure, if any. Surfaced to user as lastPolishError.
-  let polishError: String?
+  /// The polish notice, if any: its text is surfaced to the user as lastPolishError and its
+  /// tone decides the completion warning (#3142).
+  let polishNotice: PolishNotice?
+  /// The notice's text, for readers that only show it.
+  var polishError: String? { polishNotice?.text }
 }
 
 /// Runs the post-ASR text processing chain: word correction -> filler removal -> LLM polish.
@@ -223,7 +226,7 @@ internal final class TextProcessingRunner {
     // (the runner keeps the INPUT context on failure) and both passes read one set.
     context.englishSpelling = evidence.englishSpelling
     context.spellingProtectedWords = Self.spellingProtectedWords(steps: steps)
-    var polishError: String?
+    var polishNotice: PolishNotice?
 
     let logger = self.logger
     Task {
@@ -421,9 +424,9 @@ internal final class TextProcessingRunner {
           // #1305 surfaced skip: set the pinned skipped-tone notice, fire NO
           // Sentry capture (that is the point of the class). The composed
           // fallback covers a defensive future reason without pinned copy.
-          polishError =
-            skipReason.ollamaPreflightSkipMessage
-            ?? skipReason.composedMessage(provider: .ollama)
+          polishNotice =
+            skipReason.ollamaPreflightSkipNotice
+            ?? skipReason.notice(provider: .ollama)
         } else if step.errorSurfacePolicy == .surface && !polishSkippedSilently {
           let model = polishModelAtStart ?? "unknown"
           if let provider = polishProviderAtStart, provider != .appleIntelligence {
@@ -433,7 +436,7 @@ internal final class TextProcessingRunner {
             // fire-and-forget; the raw transcript/prompt/provider-body never
             // leave the device (the reason set is closed and content-free).
             let reason = PolishFailureReason.from(error)
-            polishError = reason.composedMessage(provider: provider)
+            polishNotice = reason.notice(provider: provider)
             // #1446: EVERY attempted-and-failed polish gets a durable counted
             // record, whatever its channel. Sentry alerting is the interrupting
             // SUBSET below, not the record itself.
@@ -469,7 +472,8 @@ internal final class TextProcessingRunner {
             // The view now renders `polishError` verbatim, so the runner owns the
             // "AI polish failed:" prefix here. AFM generation failures are
             // captured at the polish step, so no Sentry capture fires here.
-            polishError = Self.appleIntelligenceFailureNotice(for: error)
+            polishNotice = PolishNotice(
+              leadIn: .failed, text: Self.appleIntelligenceFailureNotice(for: error))
             // #1446: the durable count MUST still cover this arm. An AFM success
             // emits `llm.polish_completed`, so omitting its failures would leave
             // `llm.polish_failed` unable to partition live polish outcomes and
@@ -485,7 +489,7 @@ internal final class TextProcessingRunner {
             // No polish-provider snapshot: a non-LLMPolishStep surfacing step
             // (only reachable in tests; production's sole `.surface` step is
             // LLMPolishStep). Preserve the legacy raw message; no capture.
-            polishError = error.localizedDescription
+            polishNotice = PolishNotice(leadIn: .failed, text: error.localizedDescription)
           }
         }
         // #1055: emit a dedicated skip event so we can measure how often long
@@ -551,7 +555,7 @@ internal final class TextProcessingRunner {
         // Heart & Limbs: limb failed, continue with input text
       }
     }
-    return TextProcessingRunResult(context: context, polishError: polishError)
+    return TextProcessingRunResult(context: context, polishNotice: polishNotice)
   }
 
   /// #3142: the Apple Intelligence failure notice, one localized frame around the error's own
