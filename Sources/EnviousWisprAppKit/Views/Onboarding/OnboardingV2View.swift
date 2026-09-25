@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprPipeline
@@ -832,7 +833,9 @@ final class OnboardingV2ViewModel {
 
   /// Maps raw error descriptions to user-friendly messages.
   /// The download failures `friendlyError` recognises by type rather than by wording.
-  enum DownloadFailureKind: Equatable { case timeout, noInternet, cannotConnect, noSpace }
+  enum DownloadFailureKind: Equatable {
+    case timeout, noInternet, cannotConnect, rateLimited, noSpace
+  }
 
   static func friendlyError(_ error: any Error) -> String {
     // #1348 Phase 2: typed delivery failures render the D6 state copy from
@@ -877,6 +880,7 @@ final class OnboardingV2ViewModel {
           default: break
           }
         }
+        if ParakeetModelLoadFailure.isRateLimited(current) { return .rateLimited }
         if (current.domain == NSCocoaErrorDomain && current.code == NSFileWriteOutOfSpaceError)
           || (current.domain == NSPOSIXErrorDomain && current.code == Int(ENOSPC))
         {
@@ -906,7 +910,7 @@ final class OnboardingV2ViewModel {
           "Couldn't reach the download server. Please check your internet connection and try again.",
         comment: "Setup error: the speech model download server could not be reached.")
     }
-    if desc.contains("rate limit") {
+    if typed == .rateLimited || desc.contains("rate limit") {
       return String(
         localized: "The download server is busy. Please wait a moment and try again.",
         comment: "Setup error: the download server refused because of too many requests.")

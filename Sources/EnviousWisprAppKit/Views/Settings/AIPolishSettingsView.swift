@@ -21,13 +21,6 @@ import SwiftUI
 /// codes still log via Sentry/OSLog from the underlying call sites; the badge
 /// only needs to tell the user what to try next. Per #724 / PR #720 review.
 enum AIPolishKeychainFailureMessage {
-  /// Returns a single short sentence prefixed with `"Failed: "` so existing
-  /// `validationStatus.hasPrefix("Failed")` checks in the view still light up
-  /// the error styling.
-  static func text(for error: any Error, action: Action) -> String {
-    "Failed: " + body(for: error, action: action)
-  }
-
   /// The verb the message should suggest. `clear` is the Clear button path;
   /// `save` is the Save button path. The verb only matters for the generic
   /// fallback; specific OSStatus mappings are action-agnostic.
@@ -36,7 +29,9 @@ enum AIPolishKeychainFailureMessage {
     case clear
   }
 
-  private static func body(for error: any Error, action: Action) -> String {
+  /// Returns one whole sentence beginning "Failed: ". Each is localized whole, never glued
+  /// to a prefix; the badge's error styling comes from `KeyStoreStatus.failed`, not the text.
+  static func text(for error: any Error, action: Action) -> String {
     if let keyStoreError = error as? KeyStoreError {
       switch keyStoreError {
       case .storeFailed(let status), .retrieveFailed(let status), .deleteFailed(let status):
@@ -45,9 +40,13 @@ enum AIPolishKeychainFailureMessage {
         // Internal misuse — only the two supported keys ever pass the gate. If
         // a user-facing message ever appears here, it is an engineering bug,
         // not a Keychain state the user can fix.
-        return "This key store item is not supported. Please contact support."
+        return String(
+          localized: "Failed: This key store item is not supported. Please contact support.",
+          comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
       case .rollbackFailed:
-        return "We could not finish saving. Restart EnviousWispr and try again."
+        return String(
+          localized: "Failed: We could not finish saving. Restart EnviousWispr and try again.",
+          comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
       }
     }
     // Unexpected error type — generic fallback.
@@ -60,22 +59,37 @@ enum AIPolishKeychainFailureMessage {
   private static func message(for status: OSStatus, action: Action) -> String {
     switch status {
     case errSecUserCanceled:
-      return "Cancelled."
+      return String(
+        localized: "Failed: Cancelled.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecAuthFailed:
-      return "Could not access the Keychain. Unlock it from Keychain Access and try again."
+      return String(
+        localized:
+          "Failed: Could not access the Keychain. Unlock it from Keychain Access and try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecInteractionNotAllowed, errSecInteractionRequired:
-      return "Keychain is locked. Unlock it and try again."
+      return String(
+        localized: "Failed: Keychain is locked. Unlock it and try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecMissingEntitlement:
-      return "EnviousWispr is missing Keychain entitlements. Reinstall the app."
+      return String(
+        localized: "Failed: EnviousWispr is missing Keychain entitlements. Reinstall the app.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecNotAvailable:
-      return "Keychain is unavailable. Restart EnviousWispr and try again."
+      return String(
+        localized: "Failed: Keychain is unavailable. Restart EnviousWispr and try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecItemNotFound:
       // Hit only on Save (retrieve path during store's previous-value lookup);
       // the delete path treats not-found as success, so Clear cannot reach
       // here in normal flows.
-      return "Key not found. Try again."
+      return String(
+        localized: "Failed: Key not found. Try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecDuplicateItem:
-      return "A duplicate key is already saved. Clear it and try again."
+      return String(
+        localized: "Failed: A duplicate key is already saved. Clear it and try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     default:
       return genericMessage(for: action)
     }
@@ -84,9 +98,13 @@ enum AIPolishKeychainFailureMessage {
   private static func genericMessage(for action: Action) -> String {
     switch action {
     case .save:
-      return "Could not save the key. Try again, or restart the app."
+      return String(
+        localized: "Failed: Could not save the key. Try again, or restart the app.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case .clear:
-      return "Could not clear the saved key. Try again, or restart the app."
+      return String(
+        localized: "Failed: Could not clear the saved key. Try again, or restart the app.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     }
   }
 }

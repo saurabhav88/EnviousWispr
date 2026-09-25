@@ -399,6 +399,9 @@
     "Dismiss Bluetooth tips" : {
       "comment" : "VoiceOver label for the close (x) button of the Bluetooth tip card."
     },
+    "Dividing it up to clean" : {
+      "comment" : "Transcribe a File, Working step: splitting the transcript into sections for cleanup."
+    },
     "Document" : {},
     "Done" : {},
     "Double-press to go hands-free." : {},
@@ -478,6 +481,39 @@
     "Expands to" : {},
     "Export a copy first" : {},
     "FINISH SETUP" : {},
+    "Failed: A duplicate key is already saved. Clear it and try again." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: Cancelled." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: Could not access the Keychain. Unlock it from Keychain Access and try again." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: Could not clear the saved key. Try again, or restart the app." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: Could not save the key. Try again, or restart the app." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: EnviousWispr is missing Keychain entitlements. Reinstall the app." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: Key not found. Try again." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: Keychain is locked. Unlock it and try again." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: Keychain is unavailable. Restart EnviousWispr and try again." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: This key store item is not supported. Please contact support." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
+    "Failed: We could not finish saving. Restart EnviousWispr and try again." : {
+      "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
+    },
     "Finding spoken variants… %lld of %lld" : {
       "localizations" : {
         "en" : {
@@ -487,6 +523,9 @@
           }
         }
       }
+    },
+    "Finding who said what" : {
+      "comment" : "Transcribe a File, Working step: the pass that labels speakers."
     },
     "Finish your current dictation first, then try again." : {},
     "Finishing a take. Please wait." : {
@@ -518,6 +557,9 @@
     },
     "Getting dictation ready…" : {
       "comment" : "Pill title while the speech engine loads after a restart."
+    },
+    "Getting the engine ready" : {
+      "comment" : "Transcribe a File, Working step: set-up before transcription starts."
     },
     "Getting the preview ready..." : {
       "comment" : "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods."
@@ -819,6 +861,9 @@
       "comment" : "Microphone settings: the recommended input types, best first. Keep the > signs."
     },
     "Prepare model" : {},
+    "Preparing cleanup" : {
+      "comment" : "Transcribe a File, Working step: set-up before AI cleanup of the transcript."
+    },
     "Preparing model for faster responses..." : {},
     "Preparing speech model…" : {
       "comment" : "Setup: shown while the speech model download is being prepared."
@@ -935,6 +980,9 @@
     "Save the text you type over and over. An email address, a signature, a link you always paste." : {},
     "Saved to History" : {
       "comment" : "Pill subtitle after a crash recovery succeeded."
+    },
+    "Saved!" : {
+      "comment" : "Settings > AI Polish: the API key was saved."
     },
     "Saves and restores whatever was on your clipboard before pasting your dictation." : {},
     "Say" : {},

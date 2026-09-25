@@ -88,6 +88,14 @@ enum SharedOllamaCleanup {
 
 // MARK: - Shared state
 
+/// What the last API-key Save or Clear left for the badge to show.
+enum KeyStoreStatus: Equatable {
+  case none
+  case saved
+  /// A whole, user-facing sentence from `AIPolishKeychainFailureMessage`.
+  case failed(String)
+}
+
 /// The editor's own state, held by the host so both `Part`s and the lifecycle modifier
 /// read one copy.
 ///
@@ -101,7 +109,9 @@ final class ProviderSetupModel {
   var openAIKey: String = ""
   var geminiKey: String = ""
   var claudeKey: String = ""
-  var validationStatus: String = ""
+  /// The API-key Save/Clear outcome the badge shows. Typed so the badge's colour and the
+  /// clear-on-typing rule never read the (translated) sentence back (#3142).
+  var keyStoreStatus: KeyStoreStatus = .none
   /// #1455: whether a NON-EMPTY key is currently persisted in Keychain, for
   /// the missing-key notice. Cached, updated only at the 3 real mutation
   /// points (onAppear load, successful save, successful clear) rather than a
@@ -954,17 +964,17 @@ struct ProviderSetupSection: View {
 
   @ViewBuilder
   private var validationBadge: some View {
-    if model.validationStatus.hasPrefix("Failed") {
-      Text(model.validationStatus)
+    if case .failed(let message) = model.keyStoreStatus {
+      Text(message)
         .font(.stHelper)
         .foregroundStyle(.stError)
     } else {
       switch surfaceValidation {
       case .idle:
-        if !model.validationStatus.isEmpty {
-          Text(model.validationStatus)
+        if model.keyStoreStatus == .saved {
+          Text("Saved!", comment: "Settings > AI Polish: the API key was saved.")
             .font(.stHelper)
-            .foregroundStyle(model.validationStatus.contains("Saved") ? .stSuccess : .stError)
+            .foregroundStyle(.stSuccess)
         }
       case .validating:
         HStack(spacing: 4) {
@@ -2002,10 +2012,10 @@ struct ProviderSetupSection: View {
   private func saveKey(key: String, keychainId: String) -> Bool {
     do {
       try keychainManager.store(key: keychainId, value: key)
-      model.validationStatus = "Saved!"
+      model.keyStoreStatus = .saved
       Task {
         try? await Task.sleep(for: .seconds(2))
-        model.validationStatus = ""
+        model.keyStoreStatus = .none
       }
       TelemetryService.shared.apiKeyChanged(
         provider: apiKeyProviderLabel(keychainId), action: "save", result: "success")
@@ -2014,7 +2024,8 @@ struct ProviderSetupSection: View {
       providerSetupKeychainUILog.error(
         "Save key failed action=save keyID=\(keychainId, privacy: .public) error=\(String(describing: error), privacy: .public)"
       )
-      model.validationStatus = AIPolishKeychainFailureMessage.text(for: error, action: .save)
+      model.keyStoreStatus = .failed(
+        AIPolishKeychainFailureMessage.text(for: error, action: .save))
       TelemetryService.shared.apiKeyChanged(
         provider: apiKeyProviderLabel(keychainId), action: "save", result: "failure")
       return false
@@ -2031,13 +2042,13 @@ struct ProviderSetupSection: View {
     return keychainId
   }
 
-  /// Clears any "Failed: …" validation badge the moment the user resumes
+  /// Clears any failed Save/Clear badge the moment the user resumes
   /// typing in either key field. Without this, a stale clear-failure from a
   /// prior attempt sits next to fresh input until the next save/clear runs.
   /// See #724.
   private func dismissStaleFailureStatus() {
-    if model.validationStatus.hasPrefix("Failed") {
-      model.validationStatus = ""
+    if case .failed = model.keyStoreStatus {
+      model.keyStoreStatus = .none
     }
   }
 
@@ -2045,7 +2056,7 @@ struct ProviderSetupSection: View {
   private func clearKey(keychainId: String) -> Bool {
     do {
       try keychainManager.delete(key: keychainId)
-      model.validationStatus = ""
+      model.keyStoreStatus = .none
       TelemetryService.shared.apiKeyChanged(
         provider: apiKeyProviderLabel(keychainId), action: "remove", result: "success")
       return true
@@ -2053,7 +2064,8 @@ struct ProviderSetupSection: View {
       providerSetupKeychainUILog.error(
         "Clear key failed action=clear keyID=\(keychainId, privacy: .public) error=\(String(describing: error), privacy: .public)"
       )
-      model.validationStatus = AIPolishKeychainFailureMessage.text(for: error, action: .clear)
+      model.keyStoreStatus = .failed(
+        AIPolishKeychainFailureMessage.text(for: error, action: .clear))
       TelemetryService.shared.apiKeyChanged(
         provider: apiKeyProviderLabel(keychainId), action: "remove", result: "failure")
       return false

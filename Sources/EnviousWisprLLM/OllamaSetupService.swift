@@ -1758,13 +1758,12 @@ public final class OllamaSetupService {
       } catch {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
-        let message = error.localizedDescription.lowercased()
         let hosted = self.pullOperationIsHostedRegistration
         // A hosted registration writes a manifest and nothing else, so it cannot
         // plausibly exhaust the disk. Keeping the disk branch local-only means a
         // hosted failure never blames the user's free space for something that
         // needed none.
-        if !hosted, message.contains("no space") || message.contains("errno 28") {
+        if !hosted, Self.isDiskFull(error) {
           self.setupState = .error(
             "Not enough disk space. The model needs about 2 GB free."
           )
@@ -2068,6 +2067,22 @@ public final class OllamaSetupService {
   }
 
   // MARK: - Error Mapping
+
+  /// Whether a failed pull ran out of disk. Reads the error's code, or Ollama's own
+  /// message carried in `LLMError.requestFailed`, never `localizedDescription`: system
+  /// text follows the app's language, so an English word match would miss it (#3142).
+  nonisolated static func isDiskFull(_ error: any Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(ENOSPC) { return true }
+    if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileWriteOutOfSpaceError {
+      return true
+    }
+    if case LLMError.requestFailed(let message) = error {
+      let lowered = message.lowercased()
+      return lowered.contains("no space") || lowered.contains("errno 28")
+    }
+    return false
+  }
 
   private func friendlyMessage(for urlError: URLError) -> String {
     let hosted = pullOperationIsHostedRegistration

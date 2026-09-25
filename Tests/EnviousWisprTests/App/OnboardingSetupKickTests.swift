@@ -187,6 +187,10 @@ struct OnboardingSetupCopyProjectionTests {
     #expect(
       OnboardingV2ViewModel.friendlyError(error(NSPOSIXErrorDomain, Int(ENOSPC)))
         == "Not enough disk space. Please free up space and try again.")
+    // The model-load error's frozen XPC/Sentry domain and code 7 (Hugging Face rate limit).
+    #expect(
+      OnboardingV2ViewModel.friendlyError(error("EnviousWisprASR.ParakeetModelLoadSentryError", 7))
+        == "The download server is busy. Please wait a moment and try again.")
     let wrapped = NSError(
       domain: "FluidAudio.DownloadError", code: 7,
       userInfo: [

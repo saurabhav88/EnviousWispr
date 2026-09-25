@@ -124,6 +124,16 @@ enum ParakeetModelLoadSentryError: Error, LocalizedError, CustomNSError, Sendabl
   }
 }
 
+/// Questions other modules ask about a model-load failure, answered from its frozen domain and
+/// code (they survive the XPC round-trip), never from its description (#3142).
+package enum ParakeetModelLoadFailure {
+  /// Whether Hugging Face refused the download for too many requests.
+  package static func isRateLimited(_ error: NSError) -> Bool {
+    if case .hfRateLimited = ParakeetModelLoadSentryError(reconstructingFrom: error) { return true }
+    return false
+  }
+}
+
 extension ParakeetModelLoadSentryError: StableSentryErrorIdentity {
   var sentryFingerprintDescriptor: String {
     // No live Sentry measurement has been run against these case-level descriptors

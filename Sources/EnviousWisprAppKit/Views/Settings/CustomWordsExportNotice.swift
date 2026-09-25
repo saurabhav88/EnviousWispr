@@ -18,6 +18,12 @@ enum CustomWordsExportNotice: Equatable {
     }
   }
 
+  /// Whether this is a real failure. Callers style by this, never by the title text (#3142).
+  var isFailure: Bool {
+    if case .failure = self { return true }
+    return false
+  }
+
   var message: String {
     switch self {
     case .failure(let text), .info(let text): return text

@@ -45,6 +45,8 @@ struct WorkingStepModel: Equatable {
 
   /// The coordinator names these phases while `state` is `.transcribing`; each is set-up
   /// work, not transcription. The first precedes transcribing, the other two precede cleaning.
+  /// These are the producer's English tokens and decide which row is active; the card shows
+  /// `displayPhase(_:)` of them, never the token, so translation cannot move a branch (#3142).
   static let enginePhase = "Getting the engine ready"
   static let cleanupPreparingPhases: Set<String> = ["Preparing cleanup", "Dividing it up to clean"]
   static let preparingPhases: Set<String> = cleanupPreparingPhases.union([enginePhase])
@@ -90,13 +92,13 @@ struct WorkingStepModel: Equatable {
     switch state {
     case .transcribing:
       if cleanupPreparingPhases.contains(phase) {
-        return rows(activeKind: .cleaning, title: phase, fraction: nil)
+        return rows(activeKind: .cleaning, title: displayPhase(phase), fraction: nil)
       }
       if speakerStepState == .inProgress || phase == speakerPhase {
-        return rows(activeKind: .findingSpeakers, title: speakerPhase, fraction: nil)
+        return rows(activeKind: .findingSpeakers, title: displayPhase(speakerPhase), fraction: nil)
       }
       if phase == enginePhase {
-        return rows(activeKind: .transcribing, title: enginePhase, fraction: nil)
+        return rows(activeKind: .transcribing, title: displayPhase(enginePhase), fraction: nil)
       }
       let fraction = transcribingFraction.map { min(max($0, 0), 1) }
       return rows(
@@ -119,11 +121,37 @@ struct WorkingStepModel: Equatable {
     }
   }
 
+  /// What the card shows for a phase token the coordinator names. Only the tokens the card
+  /// displays are here; an unknown token reads as itself (English), never as blank.
+  static func displayPhase(_ phase: String) -> String {
+    switch phase {
+    case enginePhase:
+      return String(
+        localized: "Getting the engine ready",
+        comment: "Transcribe a File, Working step: set-up before transcription starts.")
+    case speakerPhase:
+      return String(
+        localized: "Finding who said what",
+        comment: "Transcribe a File, Working step: the pass that labels speakers.")
+    case "Preparing cleanup":
+      return String(
+        localized: "Preparing cleanup",
+        comment: "Transcribe a File, Working step: set-up before AI cleanup of the transcript.")
+    case "Dividing it up to clean":
+      return String(
+        localized: "Dividing it up to clean",
+        comment:
+          "Transcribe a File, Working step: splitting the transcript into sections for cleanup.")
+    default:
+      return phase
+    }
+  }
+
   /// The resting title of a row that is done or not yet reached.
   static func doneTitle(_ kind: Kind) -> String {
     switch kind {
     case .transcribing: return "Transcribing"
-    case .findingSpeakers: return speakerPhase
+    case .findingSpeakers: return displayPhase(speakerPhase)
     case .cleaning: return "Cleaning"
     }
   }
