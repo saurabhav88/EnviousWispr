@@ -377,6 +377,12 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   /// Focus and lifetime notifications invalidate a negative; a value notification only wakes a read.
   private var sawFocusChanged = false
   private var sawElementDestroyed = false
+  /// The element focused before the write (nil when nothing was, or it could not be read). A focus
+  /// notification naming this element announces no change: Chrome re-posts the unchanged page
+  /// focus after a Cmd+V into it (#3152, measured), which must not void a genuine miss.
+  private var focusedBefore: AXUIElement?
+  /// Focus notifications that named `focusedBefore`: counted, never treated as a move.
+  private var focusReannouncements = 0
   /// The destination the decision was made on stayed observable through the shadow. Anything that
   /// loses it (focus, lifetime, app switch, an unreadable or different read) censors the late check:
   /// "no late hit" is claimed only for a field that was actually still being watched.
@@ -542,10 +548,13 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   /// Registers the notifications before the write. A partial registration is kept, so teardown
   /// invalidates exactly what succeeded; the verdict treats it as incomplete.
   private func arm(element: AXUIElement?, budget: PasteLandingPrepareBudget) {
+    focusedBefore = element
     let generation = self.generation
     registration = ax.registerLanding(
       pid: context.pid, element: element, application: application, admit: budget.admit,
-      handler: { [weak self] notification in self?.notified(notification, generation: generation) })
+      handler: { [weak self] notification, named in
+        self?.notified(notification, named: named, generation: generation)
+      })
     let required = Self.requiredNotifications(hasElement: element != nil)
     registrationComplete =
       registration.map { required.isSubset(of: $0.registeredNotifications) } ?? false
@@ -626,12 +635,20 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     manualAccessibilityEnabled = ax.enableManualAccessibility(application)
   }
 
-  private func notified(_ notification: PastedRegionAXNotification, generation: Int) {
+  private func notified(
+    _ notification: PastedRegionAXNotification, named: AXUIElement, generation: Int
+  ) {
     guard generation == self.generation, phase != .finished else { return }
     switch notification {
     case .focusedElementChanged:
-      sawFocusChanged = true
-      if phase == .shadowing { shadowObservable = false }
+      // Only an element OTHER than the pre-write focus is a move. A move away and back still
+      // counts: the notification naming the other element set the flag, and nothing clears it.
+      if let focusedBefore, CFEqual(named, focusedBefore) {
+        focusReannouncements += 1
+      } else {
+        sawFocusChanged = true
+        if phase == .shadowing { shadowObservable = false }
+      }
     case .elementDestroyed:
       sawElementDestroyed = true
       if phase == .shadowing { shadowObservable = false }
@@ -850,7 +867,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       + "target_window=\(o.targetWindow.rawValue) before_ms=\(o.beforeMs) resolve_ms=\(o.resolveMs) "
       + "late_check=\(o.lateCheck.status)"
     if case .found(let ms) = o.lateCheck { line += " late_found_ms=\(ms)" }
-    return line
+    return line + " focus_reannounced=\(focusReannouncements)"
   }
 
   /// The production reporter: the vendor event.

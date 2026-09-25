@@ -46,6 +46,7 @@ import wispr_eyes as w  # noqa: E402
 from escape_recovery_uat import screen_is_locked  # noqa: E402
 
 CHROME = "com.google.Chrome"
+TEXTEDIT = "com.apple.TextEdit"
 SENTENCE = u.SENTENCE
 # The arrival session's one line (#3106 PR A): observed is found / absent / no_target /
 # cannot_read / inconclusive; late_found_ms appears only on a late hit (empty group otherwise).
@@ -186,7 +187,7 @@ def address_bar_value():
 
 
 EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea", "readonly": "AXTextArea",
-                  "reuseafter": "AXWebArea",
+                  "reuseafter": "AXWebArea", "clickout": "AXTextArea",
                   "copy-during-wait": "AXWebArea", "new-take": "AXWebArea"}
 
 
@@ -208,6 +209,9 @@ def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landin
     and closes EnviousWispr's Settings, and focus does not always return to the app under test
     (measured 2026-09-23: Slack lost the front to our window), so a multi-app run applies it once."""
     from silent_audio import AudioRoute, take_was_virtual
+    # One silent route for the whole run (`main`), not one per take: every switch opens Settings
+    # and flips the founder's microphone, so a 10-take run used to flip it 20+ times.
+    route = route or RUN_ROUTE["route"]
     own = route is None
     hold = {"entered": False, "completed": False}
     if own:
@@ -388,6 +392,10 @@ def verify_kept(name):
 
 PHASE_BASE = {"offset": 0}
 
+# The run's one AudioRoute, applied in `main` before the first phase and restored once at the end.
+# `take()` uses it when set; a standalone caller that never sets it still gets a per-take route.
+RUN_ROUTE = {"route": None}
+
 
 def phase_new_take_after_miss():
     """§8 (#3106 PR B): a new dictation starts between a missed paste and its notice. The old
@@ -473,8 +481,23 @@ def phase_textedit():
     sentinel = "ew-uat-sentinel-landing-textedit"
     restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")  # before the take
     u.set_clipboard_text(sentinel)
+    # The same take as `u.phase_dictate`, but through `take()`: the run's one audio route and its
+    # stuck-take guard, never a second route that would overwrite the run's recovery file.
+    path = u.new_textedit_doc(f"3106-landing-{u.RUN_ID}")
+    u.require_front(TEXTEDIT, "textedit: document open")
+    for _ in range(4):  # other windows closed, so the hold's key goes to this document
+        if not w.close_window():
+            break
     base = u.log_size()
-    delivered = u.phase_dictate()  # the plan 1 driver's own take (speech: not metered)
+    take("textedit", base, bundle=TEXTEDIT, expect_landing=False)  # speech: not metered
+    ok = u.wait_for("the dictation to land in the document",
+                    lambda: u.sentence_overlap(u.doc_text(path)) >= 5, deadline=20.0)
+    delivered = u.doc_text(path)
+    u.check("textedit: the take landed in the document (5+ of the sentence's 7 words)", ok,
+            f"{u.sentence_overlap(delivered)}/7 {delivered[:80]!r}")
+    if not ok:
+        raise u.Aborted("textedit: no dictation landed")
+    delivered = delivered[:-1] if delivered.endswith(" ") else delivered
     quiet("textedit checks", verify_textedit, base, delivered, restore_on, sentinel)
 
 
@@ -711,8 +734,114 @@ def phase_reuse_right_after():
             str(kept))
 
 
+# The arrival session's count of focus notifications that named the pre-write focus (#3152).
+REANNOUNCED = re.compile(r"PASTE_LANDING .* focus_reannounced=(\d+)")
+
+
+def page_web_area():
+    """The focused page's `AXWebArea` in Chrome (the focused element or its nearest ancestor)."""
+    from ui_helpers import find_app_pid, get_attr, get_ax_app
+    pid = find_app_pid("Google Chrome")
+    element = get_attr(get_ax_app(pid), "AXFocusedUIElement") if pid else None
+    for _ in range(30):
+        if element is None or get_attr(element, "AXRole") == "AXWebArea":
+            return element
+        element = get_attr(element, "AXParent")
+    return None
+
+
+def page_descendants(area):
+    """(role, element) for every descendant of `area`, depth-bounded."""
+    from ui_helpers import get_attr
+    out = []
+
+    def walk(element, depth=0):
+        if element is None or depth > 12:
+            return
+        for child in get_attr(element, "AXChildren") or []:
+            out.append((get_attr(child, "AXRole"), child))
+            walk(child, depth + 1)
+    walk(area)
+    return out
+
+
+def phase_click_out():
+    """#3152. The box is focused when the take starts, then the user clicks out onto the page
+    before it ends (staged by focusing the page's web area through accessibility). The paste goes
+    nowhere, and Chrome re-announces the unchanged page focus after the Cmd+V: the miss must be
+    `absent`, kept, and shown, not voided as `focus_changed`."""
+    import threading
+    from ApplicationServices import AXUIElementSetAttributeValue
+    name = "clickout"
+    print(f"\n== {name}: box focused at the start, focus moved to the page before the take ends")
+    quiet(f"{name} staging", open_page, "focused")
+    area = page_web_area()
+    if area is None:
+        raise u.Aborted(f"{name}: the page's web area was not found")
+    box = [el for role, el in page_descendants(area) if role == "AXTextArea"]
+    if len(box) != 1:
+        raise u.Aborted(f"{name}: expected one text box on the page, found {len(box)}")
+    sentinel = f"ew-uat-sentinel-landing-{name}"
+    u.set_clipboard_text(sentinel)
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+    moved = {}
+    stop = threading.Event()  # set on every exit, so no path leaves the worker able to move focus
+
+    def click_out():
+        if not u.wait_for("the take to start", lambda: stop.is_set()
+                          or "Recording started" in u.log_since(base), deadline=20.0):
+            return
+        # The user clicks out partway through speaking, after the box was captured at the
+        # start (the capture is logged with "Recording started"); the take lasts ~3 s.
+        if stop.wait(0.8):  # settle: mid-take user action, not a wait for app state
+            return
+        moved["rc"] = AXUIElementSetAttributeValue(area, "AXFocused", True)
+        moved["moved"] = u.wait_for("focus on the page", lambda: focused_role() == "AXWebArea",
+                                    deadline=1.0)
+        # The move must precede the paste, or this phase stages a different case.
+        moved["before_paste"] = not CASCADE.search(u.log_since(base))
+    thread = threading.Thread(target=click_out, daemon=True)
+    thread.start()
+    try:
+        lines, cascades = take(name, base)
+    finally:
+        stop.set()
+        # Once stopped, the worker ends within one wait poll or one bounded AX call.
+        thread.join(timeout=5.0)
+        moved["worker_finished"] = not thread.is_alive()
+    if not moved["worker_finished"]:
+        # Never recover or clean up beside a worker that can still move Chrome's focus.
+        raise u.Aborted(f"{name}: the mid-take focus worker did not finish")
+    quiet(f"{name} checks", verify_click_out, name, lines, cascades, moved, box[0])
+
+
+def verify_click_out(name, lines, cascades, moved, box):
+    from ui_helpers import get_attr
+    u.check(f"{name}: focus moved to the page mid-take",
+            moved.get("worker_finished") and moved.get("rc") == 0 and moved.get("moved")
+            and moved.get("before_paste"), str(moved))
+    chrome_tiers = [t for t, app in cascades if app.strip() == CHROME]
+    u.check(f"{name}: one Cmd+V into Chrome (the box was captured at the start)",
+            chrome_tiers == ["cgevent"], str(cascades))
+    u.check(f"{name}: exactly one PASTE_LANDING line", len(lines) == 1, str(lines))
+    if len(lines) != 1:
+        return
+    observed, reason = lines[0][1], lines[0][2]
+    u.check(f"{name}: observed=absent (was inconclusive/focus_changed before #3152)",
+            observed == "absent", f"{observed}/{reason}")
+    counts = REANNOUNCED.findall(u.log_since(PHASE_BASE["offset"]))
+    # Proves the new branch ran: without a re-announcement this phase would pass on old code too.
+    u.check(f"{name}: Chrome re-announced the unchanged focus, and it was ignored",
+            len(counts) == 1 and int(counts[0]) >= 1, str(counts))
+    value = get_attr(box, "AXValue")
+    u.check(f"{name}: the box is still empty (read, not unreadable)", value == "",
+            repr(value if value is None else str(value)[:80]))
+    verify_kept(name)
+
+
 PHASES = ["focused", "nofocus", "textedit", "readonly", "copy", "newtake", "otherwindow",
-          "closedwindow", "reuseafter"]
+          "closedwindow", "reuseafter", "clickout"]
 
 
 def main():
@@ -736,7 +865,13 @@ def main():
     if not sink.apply():
         print(f"ABORT: alert and output devices did not switch to BlackHole (restored: {sink.restore()})")
         return 2
+    from silent_audio import AudioRoute
+    route = None
     try:
+        route = AudioRoute()  # inside the try: a failed Settings read must still restore the sink
+        route.install_restore_handlers()
+        route.apply()
+        RUN_ROUTE["route"] = route
         u.run_metered("control", lambda: None)
         for name in wanted:
             # Metered inside each phase, around the stretches that play no speech.
@@ -748,6 +883,8 @@ def main():
                 phase_new_take_after_miss()
             elif name == "reuseafter":
                 phase_reuse_right_after()
+            elif name == "clickout":
+                phase_click_out()
             elif name in ("otherwindow", "closedwindow"):
                 phase_other_window(close_target=name == "closedwindow")
             else:
@@ -765,6 +902,20 @@ def main():
                 u.check(label, bool(step()))
             except Exception as exc:
                 u.check(label, False, repr(exc))
+        # The microphone goes back once, and only when no take can still be listening: a take whose
+        # stop was not confirmed leaves the virtual route in place (`LiveTakeNotStopped`).
+        if route is None:
+            pass  # never built, so never applied: nothing of the microphone's to put back
+        elif TAKE_STUCK["stuck"]:
+            u.record("microphone restored", "FAIL", "a take may still be live; the virtual route is "
+                     "left in place. Recover: quit the dev app, then "
+                     "`python3 Tests/RuntimeUAT/silent_audio.py restore`.")
+        else:
+            try:
+                u.check("microphone restored (once, for the whole run)", route.restore())
+            except Exception as exc:
+                u.check("microphone restored (once, for the whole run)", False, repr(exc))
+        RUN_ROUTE["route"] = None
         try:
             u.check("devices restored", sink.restore())
         except Exception as exc:

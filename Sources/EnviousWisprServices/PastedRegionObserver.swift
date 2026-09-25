@@ -501,10 +501,12 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// `application`. `admit` is asked before EACH `AXObserverAddNotification` with the handle that
   /// call messages; a refusal stops registering. Returns nil when the observer could not be
   /// created or nothing registered; otherwise `registeredNotifications` says what did.
+  /// `handler` receives the element each notification names: for focus-changed, the element the
+  /// application announces as focused (#3152).
   func registerLanding(
     pid: pid_t, element: AXUIElement?, application: AXUIElement,
     admit: @MainActor (AXUIElement) -> Bool,
-    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+    handler: @escaping @MainActor (PastedRegionAXNotification, AXUIElement) -> Void
   ) -> (any PastedRegionAXRegistration)?
 }
 
@@ -2137,7 +2139,7 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
   package func registerLanding(
     pid: pid_t, element: AXUIElement?, application: AXUIElement,
     admit: @MainActor (AXUIElement) -> Bool,
-    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+    handler: @escaping @MainActor (PastedRegionAXNotification, AXUIElement) -> Void
   ) -> (any PastedRegionAXRegistration)? {
     Registration.make(
       pid: pid, element: element, application: application, admit: admit, handler: handler)
@@ -2152,7 +2154,7 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
   ) -> (any PastedRegionAXRegistration)? {
     Registration.make(
       pid: pid, element: element, application: application, admit: { _ in true },
-      handler: handler)
+      handler: { kind, _ in handler(kind) })
   }
 
   @MainActor
@@ -2160,7 +2162,7 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     private let observer: AXObserver
     private let element: AXUIElement?
     private let application: AXUIElement
-    private var handler: (@MainActor (PastedRegionAXNotification) -> Void)?
+    private var handler: (@MainActor (PastedRegionAXNotification, AXUIElement) -> Void)?
     private var registered: [(AXUIElement, CFString)] = []
     private var sourceAdded = false
 
@@ -2175,7 +2177,7 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     static func make(
       pid: pid_t, element: AXUIElement?, application: AXUIElement,
       admit: @MainActor (AXUIElement) -> Bool,
-      handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+      handler: @escaping @MainActor (PastedRegionAXNotification, AXUIElement) -> Void
     ) -> Registration? {
       // The budget is asked before the observer exists: a spent budget creates nothing.
       guard admit(application) else { return nil }
@@ -2198,16 +2200,17 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
       return registration
     }
 
-    private static let callback: AXObserverCallback = { _, _, notification, refcon in
+    private static let callback: AXObserverCallback = { _, element, notification, refcon in
       guard let refcon else { return }
       guard let kind = Registration.kind(of: notification as String) else { return }
       // The source lives on the main run loop, so this is the main thread. The
       // pointer is handed across the isolation boundary once, here, and read
       // only inside the main-actor block (`extract-before-assumeisolated`).
       nonisolated(unsafe) let opaque = refcon
+      nonisolated(unsafe) let named = element
       MainActor.assumeIsolated {
         let registration = Unmanaged<Registration>.fromOpaque(opaque).takeUnretainedValue()
-        registration.handler?(kind)
+        registration.handler?(kind, named)
       }
     }
 

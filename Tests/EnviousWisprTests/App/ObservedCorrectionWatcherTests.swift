@@ -134,7 +134,7 @@ private final class CaptureAX: PastedRegionAXOperations {
   func registerLanding(
     pid: pid_t, element: AXUIElement?, application: AXUIElement,
     admit: @MainActor (AXUIElement) -> Bool,
-    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+    handler: @escaping @MainActor (PastedRegionAXNotification, AXUIElement) -> Void
   ) -> (any PastedRegionAXRegistration)? { nil }
 }
 

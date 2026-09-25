@@ -59,7 +59,8 @@ struct PasteLandingLifecycleTests {
     #expect(ax.landingCalls.isEmpty)
   }
 
-  @Test("Unsupported, wrong type, stale element and cannot-complete are all unknown, on either side")
+  @Test(
+    "Unsupported, wrong type, stale element and cannot-complete are all unknown, on either side")
   func unreadableWindows() {
     // A loop, not `arguments:`: the window read carries an `AXUIElement`, which is not Sendable.
     let bads: [PastedRegionWindowRead] = [
@@ -178,7 +179,9 @@ struct PasteLandingLifecycleTests {
     #expect(ax.timeoutsSet.isEmpty, "no timeout is installed for a call that will not run")
     #expect(prepare.elapsedMs == 500)
     ax.focusedByApplication[Self.pid] = .noFocus
-    #expect(PasteArrivalCapture.focus(of: Self.app, pid: Self.pid, ax: ax, budget: prepare) == nil, "still refused")
+    #expect(
+      PasteArrivalCapture.focus(of: Self.app, pid: Self.pid, ax: ax, budget: prepare) == nil,
+      "still refused")
     #expect(ax.landingCalls.isEmpty)
   }
 
@@ -252,7 +255,7 @@ struct PasteLandingLifecycleTests {
   ) -> (any PastedRegionAXRegistration)? {
     ax.registerLanding(
       pid: Self.pid, element: element, application: Self.app, admit: prepare.admit,
-      handler: { _ in })
+      handler: { _, _ in })
   }
 
   @Test("A full registration reports all three notifications")
@@ -287,7 +290,8 @@ struct PasteLandingLifecycleTests {
     let ax = PastedRegionFakeAX()
     let registration = register(ax, element: nil, budget: budget(ax).0)
     #expect(registration?.registeredNotifications == [.focusedElementChanged])
-    #expect(PasteArrivalCapture.requiredNotifications(hasElement: false) == [.focusedElementChanged])
+    #expect(
+      PasteArrivalCapture.requiredNotifications(hasElement: false) == [.focusedElementChanged])
     #expect(ax.landingCalls.map(\.call) == ["add:focusedElementChanged"])
   }
 
@@ -357,7 +361,9 @@ extension PasteLandingLifecycleTests {
   }
 
   /// Unwraps a prepared session. Not `#require`: its expansion wants a Sendable value.
-  private func prepared(_ session: PasteArrivalCapture?, sourceLocation: SourceLocation = #_sourceLocation)
+  private func prepared(
+    _ session: PasteArrivalCapture?, sourceLocation: SourceLocation = #_sourceLocation
+  )
     throws -> PasteArrivalCapture
   {
     guard let session else {
@@ -389,10 +395,22 @@ extension PasteLandingLifecycleTests {
       rig.lines == [
         "PASTE_LANDING tier=cgevent observed=absent reason=absent app=com.apple.TextEdit "
           + "app_class=native host_exposed_focus=true manual_ax=false target_window=unknown "
-          + "before_ms=0 resolve_ms=300 late_check=completed_no_hit"
+          + "before_ms=0 resolve_ms=300 late_check=completed_no_hit focus_reannounced=0"
       ])
     #expect(rig.reports.count == 1)
     #expect(rig.registration?.invalidated == 1, "torn down after reporting")
+  }
+
+  @Test("The line counts focus re-announcements of the pre-write focus (#3152)")
+  func reannouncementsAreCounted() throws {
+    let rig = Rig()
+    let session = try prepared(rig.prepare())
+    session.commit()
+    rig.registration?.fire(.focusedElementChanged, element: Self.field)
+    rig.registration?.fire(.focusedElementChanged, element: Self.field)
+    rig.clock.advance(ms: 1_500)
+    #expect(session.landing == .absent)
+    #expect(rig.lines.count == 1 && rig.lines[0].hasSuffix(" focus_reannounced=2"), "\(rig.lines)")
   }
 
   @Test("A value notification wakes a read: the new occurrence is found at once")
@@ -403,7 +421,9 @@ extension PasteLandingLifecycleTests {
     rig.registration?.fire(.valueChanged)
     #expect(session.landing == .found(.sameField))
     #expect(rig.clock.now == 0, "no deadline was needed")
-    #expect(rig.lines.first?.hasSuffix("late_check=not_applicable") == true, "\(rig.lines)")
+    #expect(
+      rig.lines.first?.hasSuffix("late_check=not_applicable focus_reannounced=0") == true,
+      "\(rig.lines)")
   }
 
   @Test("A focus notification between arm and commit still invalidates a negative")
@@ -416,7 +436,9 @@ extension PasteLandingLifecycleTests {
     #expect(session.landing == .inconclusive(.focusChanged))
   }
 
-  @Test("Cancel before commit: registration invalidated once, no decision, no log, late callbacks ignored")
+  @Test(
+    "Cancel before commit: registration invalidated once, no decision, no log, late callbacks ignored"
+  )
   func cancelIsSilent() async throws {
     let rig = Rig()
     let session = try prepared(rig.prepare())
@@ -431,7 +453,9 @@ extension PasteLandingLifecycleTests {
     #expect(rig.lines.isEmpty && rig.reports.isEmpty)
   }
 
-  @Test("A terminated target outranks a frontmost change; a live target with another app in front is app_switched")
+  @Test(
+    "A terminated target outranks a frontmost change; a live target with another app in front is app_switched"
+  )
   func terminationBeforeSwitch() throws {
     let rig = Rig()
     let session = try prepared(rig.prepare())
@@ -449,7 +473,8 @@ extension PasteLandingLifecycleTests {
     #expect(second.landing == .inconclusive(.appSwitched))
   }
 
-  @Test("Nothing focused: only the application's focus notification, and no_target when it stays so")
+  @Test(
+    "Nothing focused: only the application's focus notification, and no_target when it stays so")
   func noFocus() throws {
     let rig = Rig()
     rig.ax.focusedByApplication[42] = .noFocus
@@ -579,7 +604,8 @@ extension PasteLandingLifecycleTests {
     #expect(failed.lines.first?.contains("manual_ax=unknown") == true, "\(failed.lines)")
     // Paired: the same Slack session with the question answered "no" is native, as before.
     let answered = Rig()
-    #expect(try prepared(answered.prepare(bundleID: "com.tinyspeck.slackmacgap")).appClass == .native)
+    #expect(
+      try prepared(answered.prepare(bundleID: "com.tinyspeck.slackmacgap")).appClass == .native)
   }
 
   @Test("The app class comes from the snapshot: browser first, then manual host, then native")
@@ -609,10 +635,12 @@ extension PasteLandingLifecycleTests {
     typealias C = PasteArrivalCapture
     #expect(C.selectedText(in: text, range: .range(location: 1, length: 2)) == "😀")
     #expect(C.selectedText(in: text, range: .range(location: 4, length: 0)) == "")
-    #expect(C.selectedText(in: text, range: .range(location: 2, length: 1)) == nil, "splits the emoji")
+    #expect(
+      C.selectedText(in: text, range: .range(location: 2, length: 1)) == nil, "splits the emoji")
     #expect(C.selectedText(in: text, range: .range(location: 0, length: 5)) == nil, "past the end")
     #expect(C.selectedText(in: text, range: .range(location: -1, length: 1)) == nil)
-    #expect(C.selectedText(in: text, range: .range(location: 1, length: Int.max)) == nil, "overflow")
+    #expect(
+      C.selectedText(in: text, range: .range(location: 1, length: Int.max)) == nil, "overflow")
     #expect(C.selectedText(in: text, range: .unavailable) == nil)
   }
 }

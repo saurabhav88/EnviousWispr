@@ -846,7 +846,7 @@ import os
     #expect(
       line.hasPrefix("PASTE_LANDING tier=cgevent observed=absent reason=absent"),
       "the session survived its whole shadow: \(line)")
-    #expect(line.hasSuffix("late_check=completed_no_hit"), "\(line)")
+    #expect(line.hasSuffix("late_check=completed_no_hit focus_reannounced=0"), "\(line)")
   }
 
   @Test("a clipboard-only cascade result is non-fatal and still completes delivery")
