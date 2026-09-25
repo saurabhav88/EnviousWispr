@@ -1,5 +1,5 @@
 import EnviousWisprCore
-import EnviousWisprLLM
+@testable import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -43,6 +43,7 @@ struct LLMPolishStepTelemetryTests {
     private(set) var afmPolishErrorCalls: [any Error] = []
     private(set) var completedCalls: [(message: String, data: [String: Any]?)] = []
     private(set) var skipCalls: [(provider: String, reason: String, takeID: String?)] = []
+    private(set) var hintCalls: [(takeID: String, hint: String)] = []
 
     var seams: LLMPolishStep.TelemetrySeams {
       LLMPolishStep.TelemetrySeams(
@@ -63,6 +64,9 @@ struct LLMPolishStepTelemetryTests {
         },
         recordPolishSkipped: { provider, reason, takeID in
           self.skipCalls.append((provider, reason, takeID))
+        },
+        recordPolishLanguageHint: { takeID, hint in
+          self.hintCalls.append((takeID, hint))
         })
     }
   }
@@ -561,5 +565,198 @@ struct LLMPolishStepTelemetryTests {
     #expect(spy.skipCalls.isEmpty)
     #expect(spy.providerInitErrorCalls.isEmpty)
     #expect(spy.afmPolishErrorCalls.isEmpty)
+  }
+}
+
+/// #3111: `polish_language_hint`, which instruction EG-1's named-language prompt selected.
+/// When this fails, the #3111 dashboard reports a language-naming rate that is not what the
+/// app did: a hint on takes that never planned the prompt, none on takes that did, or the
+/// wrong reason.
+@MainActor
+@Suite("EG-1 polish language hint (#3111)", .tags(.observabilityContract))
+struct LLMPolishStepLanguageHintTests {
+
+  static let transcript =
+    "daty płatności są późniejsze niż daty zakupu prawdopodobnie różnica w rejestracji transakcji"
+
+  @MainActor
+  final class Runtime: EGOneEndpointProviding {
+    let endpoint: EGOneEndpoint?
+    init(ready: Bool = true, contextTokens: Int = 32768) {
+      endpoint = ready ? EGOneEndpoint(port: 1, authToken: "t", contextTokens: contextTokens) : nil
+    }
+    func activeEndpoint() async -> EGOneEndpoint? { endpoint }
+  }
+
+  struct EchoPolisher: TranscriptPolisher {
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      LLMResult(polishedText: text.prefix(1).uppercased() + text.dropFirst() + ".")
+    }
+  }
+
+  struct FailingPolisher: TranscriptPolisher {
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      throw LLMError.requestFailed("simulated failure after the prompt was planned")
+    }
+  }
+
+  func step(
+    spy: LLMPolishStepTelemetryTests.Spy, family: PromptFamily = .egOneEnvelopeNamedLanguage,
+    ready: Bool = true, contextTokens: Int = 32768,
+    polisher: any TranscriptPolisher = EchoPolisher()
+  ) -> LLMPolishStep {
+    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: spy.seams)
+    step.llmProvider = .egOne
+    step.llmModel = LLMProvider.egOneModelName
+    step.egOneRuntime = Runtime(ready: ready, contextTokens: contextTokens)
+    step.promptPlanner = DefaultPromptPlanner(egOneFamily: family)
+    step.makeEGOnePolisher = { _ in polisher }
+    return step
+  }
+
+  func context(
+    text: String = transcript, textLanguage: String?, language: String?,
+    source: DictationLanguageResolver.Resolution.Source, takeID: String? = "TAKE-1"
+  ) -> TextProcessingContext {
+    var ctx = TextProcessingContext(text: text, language: language)
+    ctx.textLanguage = textLanguage
+    ctx.languageSource = source
+    ctx.takeID = takeID
+    return ctx
+  }
+
+  @Test(
+    "Each decision is recorded once, under the take, with its closed value",
+    arguments: [
+      ("pl", "pl", DictationLanguageResolver.Resolution.Source.dictation, "named"),
+      ("en", "en", .dictation, "english"),
+      (nil, nil, DictationLanguageResolver.Resolution.Source.none, "unsure"),
+      ("pl", "de", .locked, "conflict"),
+      ("fi", "fi", .dictation, "untested"),
+    ] as [(String?, String?, DictationLanguageResolver.Resolution.Source, String)])
+
+  func eachValue(
+    text: String?, language: String?, source: DictationLanguageResolver.Resolution.Source,
+    expected: String
+  ) async throws {
+    let spy = LLMPolishStepTelemetryTests.Spy()
+    _ = try await step(spy: spy).process(
+      context(textLanguage: text, language: language, source: source))
+    #expect(spy.hintCalls.map(\.hint) == [expected])
+    #expect(spy.hintCalls.map(\.takeID) == ["TAKE-1"])
+  }
+
+  /// Runs `body`, requires it to throw, and returns the error, so a test cannot pass because
+  /// the path it names silently succeeded or failed differently.
+  func requireThrow(_ body: () async throws -> Void) async throws -> any Error {
+    do {
+      try await body()
+    } catch {
+      return error
+    }
+    Issue.record("expected a throw")
+    throw CancellationError()
+  }
+
+  final class PromptBox: @unchecked Sendable { var system: String? }
+
+  struct PromptRecordingPolisher: TranscriptPolisher {
+    let box: PromptBox
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      box.system = instructions.systemPrompt
+      return LLMResult(polishedText: text.prefix(1).uppercased() + text.dropFirst() + ".")
+    }
+  }
+
+  @Test("An English stretch reports mixed, and too long to check reports scanLimit, from the same decision the prompt used")
+  func stretchHints() async throws {
+    for (scan, expected) in [
+      (DictationLanguageResolver.EnglishStretchScan.mixed, "mixed"), (.scanLimit, "scanLimit"),
+    ] {
+      let spy = LLMPolishStepTelemetryTests.Spy()
+      let box = PromptBox()
+      let step = step(spy: spy, polisher: PromptRecordingPolisher(box: box))
+      step.englishStretchScanner = { _ in scan }
+      _ = try await step.process(context(textLanguage: "pl", language: "pl", source: .dictation))
+      #expect(spy.hintCalls.map(\.hint) == [expected])
+      #expect(box.system == EGOneEnvelopePromptBuilder.systemPrompt, "the prompt carried no name")
+    }
+  }
+
+  @Test("A failure after the prompt was planned still reports the hint")
+  func failureAfterPlanningKeepsTheHint() async throws {
+    let spy = LLMPolishStepTelemetryTests.Spy()
+    let error = try await requireThrow {
+      _ = try await step(spy: spy, polisher: FailingPolisher()).process(
+        context(textLanguage: "pl", language: "pl", source: .dictation))
+    }
+    guard case LLMError.requestFailed = error else {
+      Issue.record("expected the polisher's own failure, got \(error)")
+      return
+    }
+    #expect(spy.hintCalls.map(\.hint) == ["named"])
+  }
+
+  @Test("No hint when the prompt was never planned, the family is not the named one, or there is no take")
+  func absentCases() async throws {
+    let plain = LLMPolishStepTelemetryTests.Spy()
+    _ = try await step(spy: plain, family: .egOneEnvelope).process(
+      context(textLanguage: "pl", language: "pl", source: .dictation))
+    #expect(plain.hintCalls.isEmpty, "plain 1.2 family")
+
+    let unavailable = LLMPolishStepTelemetryTests.Spy()
+    let notReady = try await requireThrow {
+      _ = try await step(spy: unavailable, ready: false).process(
+        context(textLanguage: "pl", language: "pl", source: .dictation))
+    }
+    guard case LLMError.localEngineSkipped(.notReady, _) = notReady else {
+      Issue.record("expected a not-ready skip, got \(notReady)")
+      return
+    }
+    #expect(unavailable.hintCalls.isEmpty, "server not ready: never planned")
+
+    let refused = LLMPolishStepTelemetryTests.Spy()
+    let tooLong = try await requireThrow {
+      _ = try await step(spy: refused, contextTokens: 16).process(
+        context(textLanguage: "pl", language: "pl", source: .dictation))
+    }
+    guard case LLMError.localEngineSkipped(.inputTooLong, _) = tooLong else {
+      Issue.record("expected the context preflight to refuse, got \(tooLong)")
+      return
+    }
+    #expect(refused.hintCalls.isEmpty, "preflight refused: never planned")
+
+    let tooShort = LLMPolishStepTelemetryTests.Spy()
+    _ = try await step(spy: tooShort).process(
+      context(text: "tak", textLanguage: "pl", language: "pl", source: .dictation))
+    #expect(tooShort.hintCalls.isEmpty, "too short: never planned")
+
+    let noTake = LLMPolishStepTelemetryTests.Spy()
+    _ = try await step(spy: noTake).process(
+      context(textLanguage: "pl", language: "pl", source: .dictation, takeID: nil))
+    #expect(noTake.hintCalls.isEmpty, "recovery and file import carry no take")
+  }
+
+  @Test("`.silent` construction silences the hint")
+  func silentSilencesTheHint() async throws {
+    let spy = LLMPolishStepTelemetryTests.Spy()
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), telemetry: .silent(wrapping: spy.seams))
+    step.llmProvider = .egOne
+    step.llmModel = LLMProvider.egOneModelName
+    step.egOneRuntime = Runtime()
+    step.promptPlanner = DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage)
+    step.makeEGOnePolisher = { _ in EchoPolisher() }
+    _ = try await step.process(context(textLanguage: "pl", language: "pl", source: .dictation))
+    #expect(spy.hintCalls.isEmpty)
   }
 }

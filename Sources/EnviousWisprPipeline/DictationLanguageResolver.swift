@@ -156,16 +156,29 @@ package enum DictationLanguageResolver {
     /// English, nothing about the insertion. Wispr Flow takes this language
     /// from the user's setting and its ASR, never from a confidence read.
     let learnLanguage: String?
+    /// #3111: what the dictation TEXT alone says, at `minConfidence`, whatever
+    /// rung answered `language`. A lock is intent and an engine answer can come
+    /// from one window, so EG-1 names a language only when the text agrees:
+    /// naming the wrong one translates INTO it (Polish labelled German came back
+    /// German on 31 of 40 sentences). Never used to change `language`, `source`,
+    /// `englishVeto` or `learnLanguage`.
+    ///
+    /// Nil means unsure OR not requested: the lock and engine rungs read the
+    /// text only when the caller passes `identifyTextOnAllPaths`, which the
+    /// pipeline runner does and the cursor-insertion repair, inside its 100 ms
+    /// deadline, does not.
+    let textLanguage: String?
 
     init(
       language: String?, learnLanguage: String?, source: Source, confidenceBucket: Bucket,
-      englishVeto: Bool = false
+      englishVeto: Bool = false, textLanguage: String? = nil
     ) {
       self.language = language
       self.learnLanguage = learnLanguage
       self.source = source
       self.confidenceBucket = confidenceBucket
       self.englishVeto = englishVeto
+      self.textLanguage = textLanguage
     }
   }
 
@@ -179,6 +192,57 @@ package enum DictationLanguageResolver {
   /// rule 1 (`CursorInsertionRepair.swift:392`) adds the leading one and rule 3
   /// (`:487`) the trailing one, and both read that same field. Measured both
   /// ways; unconstrained also decouples this from which engine ran.
+  /// #3111: whether a mostly non-English text carries an English STRETCH. The whole-text
+  /// recogniser reads a Polish sentence with an English clause inside as Polish at 1.000, and
+  /// EG-1 told "Polish" then translates the clause (4 of 20 measured). This reads every run of
+  /// `englishStretchWindow` consecutive words and reports `.mixed` on the first run whose top
+  /// hypothesis is English at `englishStretchConfidence` or more.
+  ///
+  /// Measured on the #3111 sets: 19 of 20 Polish sentences with an English phrase flagged (all
+  /// four EG-1 translated), 0 of 20 with a single English product name, 0 of 561 pure
+  /// non-English sentences across 17 languages. Window 3 flagged product names; window 5 lost
+  /// recall. Cost about 0.23 ms per word against EG-1 cleanup's roughly 25 ms per word, so
+  /// on any input EG-1 can finish inside its fixed step budget (a few hundred words) the scan
+  /// is about 1% of that polish. It still counts against that budget: at
+  /// `englishStretchWordLimit` it costs about a second, on an input far too long to polish in
+  /// time anyway. Past the limit the answer is `.scanLimit`, never a guess.
+  package enum EnglishStretchScan: Sendable, Equatable {
+    case clear, mixed, scanLimit
+  }
+
+  package static let englishStretchWindow = 4
+  package static let englishStretchConfidence = 0.8
+  package static let englishStretchWordLimit = 4000
+
+  package static func englishStretch(in text: String) -> EnglishStretchScan {
+    let tokenizer = NLTokenizer(unit: .word)
+    tokenizer.string = text
+    let recognizer = NLLanguageRecognizer()
+    var window: [String] = []
+    var words = 0
+    var result = EnglishStretchScan.clear
+    tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+      words += 1
+      guard words <= englishStretchWordLimit else {
+        result = .scanLimit
+        return false
+      }
+      window.append(String(text[range]))
+      if window.count > englishStretchWindow { window.removeFirst() }
+      guard window.count == englishStretchWindow else { return true }
+      recognizer.reset()
+      recognizer.processString(window.joined(separator: " "))
+      if let top = recognizer.languageHypotheses(withMaximum: 3).max(by: { $0.value < $1.value }),
+        top.key == .english, top.value >= englishStretchConfidence
+      {
+        result = .mixed
+        return false
+      }
+      return true
+    }
+    return result
+  }
+
   package static func identify(_ text: String) -> (language: String, confidence: Double)? {
     guard !text.isEmpty else { return nil }
     let recognizer = NLLanguageRecognizer()
@@ -205,36 +269,54 @@ package enum DictationLanguageResolver {
   /// - Parameter identify: seam. Real recogniser output cannot reproducibly hit
   ///   0.899 / 0.900 / 0.901 across OS versions, so the boundary is tested
   ///   through this rather than by hunting for input that happens to land there.
+  /// - Parameter identifyTextOnAllPaths: #3111. Also read the text on the lock and
+  ///   engine rungs, for `Resolution.textLanguage` only; precedence is unchanged.
+  ///   Off by default so the cursor-insertion repair keeps its no-recogniser fast
+  ///   path inside its deadline; `TextProcessingRunner` turns it on.
   package static func resolve(
     lockedLanguage: String?,
     engineDetectsLanguage: Bool,
     engineReportedLanguage: String?,
     text: String,
     surroundingText: String = "",
+    identifyTextOnAllPaths: Bool = false,
     identify: (String) -> (language: String, confidence: Double)? = Self.identify
   ) -> Resolution {
-    if let lockedLanguage, !lockedLanguage.isEmpty {
-      return Resolution(
-        language: lockedLanguage, learnLanguage: lockedLanguage, source: .locked,
-        confidenceBucket: .none)
-    }
-    if engineDetectsLanguage, let engineReportedLanguage, !engineReportedLanguage.isEmpty {
-      return Resolution(
-        language: engineReportedLanguage, learnLanguage: engineReportedLanguage, source: .engine,
-        confidenceBucket: .none)
-    }
-
     // `isFinite` at every acceptance gate, not only in the bucket. Infinity
     // satisfies `>= minConfidence` while bucketing to `none`, which would resolve
     // a language while reporting no confidence — a contradiction the field could
     // never explain. Hypothetical from the real recogniser, reachable through the
     // seam, and silent if wrong, which is the shape worth guarding.
-    let fromDictation = identify(text).flatMap { $0.confidence.isFinite ? $0 : nil }
+    //
+    // #3111: one recogniser call per resolution, whichever rung answers. The lock
+    // and engine rungs make it only when asked to.
+    func identifyText() -> (language: String, confidence: Double)? {
+      identify(text).flatMap { $0.confidence.isFinite ? $0 : nil }
+    }
+    func confident(_ answer: (language: String, confidence: Double)?) -> String? {
+      guard let answer, answer.confidence >= minConfidence else { return nil }
+      return answer.language
+    }
+
+    if let lockedLanguage, !lockedLanguage.isEmpty {
+      return Resolution(
+        language: lockedLanguage, learnLanguage: lockedLanguage, source: .locked,
+        confidenceBucket: .none,
+        textLanguage: identifyTextOnAllPaths ? confident(identifyText()) : nil)
+    }
+    if engineDetectsLanguage, let engineReportedLanguage, !engineReportedLanguage.isEmpty {
+      return Resolution(
+        language: engineReportedLanguage, learnLanguage: engineReportedLanguage, source: .engine,
+        confidenceBucket: .none,
+        textLanguage: identifyTextOnAllPaths ? confident(identifyText()) : nil)
+    }
+
+    let fromDictation = identifyText()
     let dictationBucket = fromDictation.map { Resolution.Bucket($0.confidence) } ?? .none
     if let fromDictation, fromDictation.confidence >= minConfidence {
       return Resolution(
         language: fromDictation.language, learnLanguage: fromDictation.language, source: .dictation,
-        confidenceBucket: dictationBucket)
+        confidenceBucket: dictationBucket, textLanguage: fromDictation.language)
     }
 
     // The surrounding document may VETO, never authorise.

@@ -5,9 +5,10 @@ import EnviousWisprCore
 /// Never throws. Bad/missing inputs degrade gracefully.
 public struct DefaultPromptPlanner: PromptPlanning {
   /// Which EG-1 prompt THIS app build serves. Read from the bundled `eg1-manifest.json`'s
-  /// `promptTemplateID`, because the artifact and its prompt are one contract — a model may
-  /// only ever be sent the instruction it was tuned on — and one app build ships exactly one
-  /// manifest. Held as a value rather than re-read per polish so the decision is made once,
+  /// `promptTemplateID`, because the artifact and its prompt are one contract, and one app
+  /// build ships exactly one manifest. Keep the 1.1 and plain 1.2 training prompts
+  /// addressable. #3111 adds a separately measured named-language contract for the same 1.2
+  /// weights; the manifest selects each contract by its own template ID. Held as a value rather than re-read per polish so the decision is made once,
   /// and injectable so a test can drive a template id this build does not ship.
   let egOneFamily: PromptFamily
 
@@ -63,6 +64,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
     case .localFixed: return LocalFixedPromptBuilder()
     case .egOneFixed: return EGOnePromptBuilder()
     case .egOneEnvelope: return EGOneEnvelopePromptBuilder()
+    case .egOneEnvelopeNamedLanguage: return EGOneNamedLanguagePromptBuilder()
     case .s1ControlLine: return S1ControlLinePromptBuilder()
     }
   }
@@ -113,18 +115,18 @@ public struct DefaultPromptPlanner: PromptPlanning {
       // `PromptBuildInput.ollamaIsRemote` for why local is the fail-safe direction.
       return ollamaIsRemote == true ? .cloudFixed : .localFixed
     case .egOne:
-      // Native EG-1 (#1271): the bundled first-party server always runs the model's
-      // training prompt. WHICH training prompt is the manifest's answer, not a constant —
-      // 1.1 and 1.2 were tuned on different text, and serving either model the other's
-      // instruction is the drift the hot-swap contract exists to prevent. Model identity
+      // Native EG-1 (#1271): WHICH prompt contract is the manifest's answer, not a
+      // constant. 1.1 and plain 1.2 are training prompts, and #3111's named-language
+      // contract is separately measured for the 1.2 weights; serving any model a contract
+      // nobody paired with it is the drift the hot-swap contract exists to prevent. Model identity
       // is manifest-enforced by `EGOneRuntime` (activation refuses a name/template
       // mismatch), so no per-model-id heuristics apply here.
       return egOneFamily
     case .s1Mini:
       // #2649: a fixed third-party training format. Unlike EG-1 this is NOT read
-      // from the manifest's `promptTemplateID`: the two EG-1 families exist
-      // because WE retrained the model and had to keep serving 1.1 users their
-      // 1.1 prompt. S1-mini's text is not ours to change, so a second family
+      // from the manifest's `promptTemplateID`: EG-1 retains separate 1.1, plain
+      // 1.2 and named-language 1.2 prompt contracts because WE own its training and
+      // prompt (#3111 changed the prompt id for the same 1.2 weights). S1-mini's text is not ours to change, so a second family
       // could only arise from upstream publishing a different format, which
       // would be a new artifact and a new manifest.
       return .s1ControlLine

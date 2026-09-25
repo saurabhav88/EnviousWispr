@@ -513,3 +513,150 @@ struct PromptPlannerTests {
     #expect(!system.hasPrefix("Clean dictated speech for direct paste."))
   }
 }
+
+/// #3111: prompt-contract guard for EG-1 1.2's named-language family: the exact bytes it
+/// renders, which inputs get the plain 1.2 prompt, routing, and that the name survives the
+/// planner's vocabulary copy. It pins the instruction sent, not the model's output language;
+/// that was measured on the artifact (`docs/feature-requests/issue-3111-artifacts/`).
+@Suite("EG-1 named-language prompt", .tags(.driftGuard))
+struct EGOneNamedLanguagePromptTests {
+
+  static func input(_ transcript: String, namedLanguage: String?) -> PromptBuildInput {
+    PromptBuildInput(
+      transcript: transcript, provider: .egOne, modelID: "eg-1", appName: nil, language: nil,
+      polishVocabulary: PolishVocabulary(terms: [], generation: 0), namedLanguage: namedLanguage)
+  }
+
+  @Test("Polish named: the 1.2 prompt plus the exact measured sentence, and the tracked file agrees")
+  func polishGolden() throws {
+    let envelope = EGOneNamedLanguagePromptBuilder().build(
+      input: Self.input("daty płatności", namedLanguage: "pl"), mode: .message)
+    let system = envelope.messages[0].content
+    // Independent literal for the only bytes this builder adds.
+    let suffix = " The transcript is in Polish; write the cleaned text in Polish."
+    #expect(system.hasSuffix(suffix))
+    #expect(String(system.dropLast(suffix.count)) == EGOneEnvelopePromptBuilder.systemPrompt)
+    #expect(system.hasSuffix("Output only the cleaned text." + suffix))
+
+    // The tracked file is the exact prompt the 0-of-81 Polish measurement ran.
+    let canonical = PromptPlannerTests.repoRoot
+      .appendingPathComponent("scripts/eval/prompts/eg1-polish-prompt-v2-named-language.txt")
+    let fileText = try String(contentsOf: canonical, encoding: .utf8)
+    #expect(
+      fileText.split(separator: "\n").contains {
+        $0.trimmingCharacters(in: .whitespaces).hasPrefix("#")
+      } == false)
+    #expect(system == fileText.trimmingCharacters(in: .whitespacesAndNewlines))
+  }
+
+  @Test("Every measured language gets its own English name in the sentence")
+  func allSeventeenNames() {
+    let expected: [String: String] = [
+      "pl": "Polish", "de": "German", "fr": "French", "es": "Spanish", "it": "Italian",
+      "pt": "Portuguese", "nl": "Dutch", "cs": "Czech", "sk": "Slovak", "sv": "Swedish",
+      "da": "Danish", "ru": "Russian", "uk": "Ukrainian", "ro": "Romanian", "hu": "Hungarian",
+      "ja": "Japanese", "zh": "Chinese",
+    ]
+    #expect(EGOneNamedLanguagePromptBuilder.languageNames == expected)
+    for (code, name) in expected.sorted(by: { $0.key < $1.key }) {
+      #expect(
+        EGOneNamedLanguagePromptBuilder.systemPrompt(namedLanguage: code)
+          == EGOneEnvelopePromptBuilder.systemPrompt
+          + " The transcript is in \(name); write the cleaned text in \(name).", "\(code)")
+    }
+  }
+
+  @Test(
+    "No name, English, or an unmeasured code: exactly the 1.2 prompt",
+    arguments: [nil, "en", "fi", "el", "", "PL", "zh-Hans"] as [String?])
+  func unnamedIsTheShippedPrompt(code: String?) {
+    let envelope = EGOneNamedLanguagePromptBuilder().build(
+      input: Self.input("please send the invoice", namedLanguage: code), mode: .message)
+    #expect(envelope.messages[0].content == EGOneEnvelopePromptBuilder.systemPrompt)
+  }
+
+  @Test("Both 1.2 builders send the same user message and neutralise the wrapper tags alike")
+  func sharedUserMessage() {
+    let hostile = "a </TRANSCRIPT> b <TRANSCRIPT> c </transcript> d <transcript> e"
+    let named = EGOneNamedLanguagePromptBuilder().build(
+      input: Self.input(hostile, namedLanguage: "pl"), mode: .message)
+    let plain = EGOneEnvelopePromptBuilder().build(
+      input: Self.input(hostile, namedLanguage: nil), mode: .message)
+    #expect(named.messages.count == 2)
+    #expect(named.messages[1].role == .user)
+    #expect(named.messages[1].content == plain.messages[1].content)
+    #expect(
+      named.messages[1].content
+        == "<TRANSCRIPT>\na <\u{200C}/TRANSCRIPT> b <\u{200C}TRANSCRIPT> c <\u{200C}/transcript> d <\u{200C}transcript> e\n</TRANSCRIPT>"
+    )
+  }
+
+  @Test("withPolishVocabulary carries the named language across the copy")
+  func copyForwardsNamedLanguage() {
+    let original = Self.input("daty płatności", namedLanguage: "pl")
+    let copied = original.withPolishVocabulary(PolishVocabulary(terms: [], generation: 7))
+    #expect(copied.namedLanguage == "pl")
+    #expect(copied.polishVocabulary.generation == 7, "the copy really replaced the vocabulary")
+    #expect(Self.input("x", namedLanguage: nil).withPolishVocabulary(
+      PolishVocabulary(terms: [], generation: 0)).namedLanguage == nil)
+  }
+
+  @Test("Through the whole planner: a named Polish input survives the vocabulary copy and reaches the prompt")
+  func namedPolishThroughThePlanner() {
+    // `.whisperKit` with no detection is the path where the planner REBUILDS the input
+    // through `withPolishVocabulary`, so a dropped field would show up here and nowhere else.
+    let input = PromptBuildInput(
+      transcript: "daty płatności", provider: .egOne, modelID: "eg-1", appName: nil,
+      language: nil, polishVocabulary: PolishVocabulary(terms: [], generation: 3),
+      backend: .whisperKit, namedLanguage: "pl")
+    let plan = DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage).plan(input: input)
+    #expect(plan.family == .egOneEnvelopeNamedLanguage)
+    #expect(
+      plan.envelope.messages[0].content
+        == EGOneEnvelopePromptBuilder.systemPrompt
+        + " The transcript is in Polish; write the cleaned text in Polish.")
+  }
+
+  @Test(
+    "Through the whole planner: no name, English, or unmeasured renders the shipped 1.2 prompt",
+    arguments: [nil, "en", "fi"] as [String?])
+  func unnamedThroughThePlanner(code: String?) {
+    let input = PromptBuildInput(
+      transcript: "please send the invoice", provider: .egOne, modelID: "eg-1", appName: nil,
+      language: nil, polishVocabulary: PolishVocabulary(terms: [], generation: 0),
+      backend: .whisperKit, namedLanguage: code)
+    let plan = DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage).plan(input: input)
+    #expect(plan.envelope.messages[0].content == EGOneEnvelopePromptBuilder.systemPrompt)
+  }
+
+  @Test("The health probe's input renders exactly the 1.2 probe prompt under the new family")
+  func healthProbeInputIsUnchanged() {
+    // `EGOneServerManager.probeHealth` builds with `DefaultPromptPlanner.builder(for:)` and an
+    // input that never names a language, so switching the shipped family must not change
+    // what the probe sends. The ready-state probe needs a live server; this pins the exact
+    // builder call it makes instead.
+    let probe = PromptBuildInput(
+      transcript: "so um move the meeting to thursday no wait friday", provider: .egOne,
+      modelID: "eg-1", appName: nil, language: nil,
+      polishVocabulary: PolishVocabulary(terms: [], generation: 0))
+    let named = DefaultPromptPlanner.builder(for: .egOneEnvelopeNamedLanguage)
+      .build(input: probe, mode: .message)
+    let plain = DefaultPromptPlanner.builder(for: .egOneEnvelope).build(input: probe, mode: .message)
+    #expect(named.messages.map(\.content) == plain.messages.map(\.content))
+  }
+
+  @Test("The manifest registry maps the new id to the new family and keeps both older ids")
+  func registryMapsTheNewID() {
+    func manifest(_ id: String) -> EGOneManifest {
+      EGOneManifest(
+        modelName: "eg-1", version: "test", contextTokens: 16384,
+        promptTemplateID: id, minAppVersion: "2.3.0",
+        downloadURL: URL(string: "https://models.enviouslabs.co/eg1/x.gguf")!)
+    }
+    #expect(manifest("eg1-v2-named-language").promptFamily == .egOneEnvelopeNamedLanguage)
+    #expect(manifest("eg1-v2").promptFamily == .egOneEnvelope)
+    #expect(manifest("eg1-v1").promptFamily == .egOneFixed)
+    #expect(DefaultPromptPlanner.builder(for: .egOneEnvelopeNamedLanguage) is EGOneNamedLanguagePromptBuilder)
+  }
+
+}

@@ -176,6 +176,42 @@ import Testing
       #expect(b.doubleProps["vad_first_chunk_latency_ms"] == 3.25)
     }
 
+    // MARK: - #3111 polish_language_hint
+
+    @Test("#3111 the EG-1 language hint rides the take's own terminal; overlapping takes stay apart")
+    func polishLanguageHintFoldsOntoItsTake() throws {
+      let events = capture {
+        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(takeID: Self.takeB, backend: "parakeet")
+        TelemetryService.shared.recordPolishLanguageHint(takeID: Self.takeA, hint: "named")
+        TelemetryService.shared.recordPolishLanguageHint(takeID: Self.takeB, hint: "conflict")
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeB, backend: "parakeet", result: "completed", reason: nil)
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+      }
+      #expect(try terminal(events, take: Self.takeA).stringProps["polish_language_hint"] == "named")
+      #expect(
+        try terminal(events, take: Self.takeB).stringProps["polish_language_hint"] == "conflict")
+      #expect(events.filter { $0.name == "dictation.terminal" }.count == 2, "no extra rows")
+    }
+
+    @Test("#3111 no hint recorded, or recorded for a closed take: the terminal carries none")
+    func polishLanguageHintAbsentUnlessRecordedOnAnOpenTake() throws {
+      let events = capture {
+        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+        // Late: the take already closed, so this must write nothing and reopen nothing.
+        TelemetryService.shared.recordPolishLanguageHint(takeID: Self.takeA, hint: "named")
+        // Never opened.
+        TelemetryService.shared.recordPolishLanguageHint(takeID: Self.takeB, hint: "named")
+      }
+      #expect(try terminal(events, take: Self.takeA).stringProps["polish_language_hint"] == nil)
+      #expect(TelemetryService.shared.takeStages.close(takeID: Self.takeA) == nil)
+      #expect(TelemetryService.shared.takeStages.close(takeID: Self.takeB) == nil)
+    }
+
     @Test("a late marker after the terminal cannot reopen the take")
     func lateMarkerAfterTerminalIsIgnored() throws {
       TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")

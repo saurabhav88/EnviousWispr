@@ -2,7 +2,7 @@
   "modelName": "eg-1",
   "version": "eg1-1.2-c003",
   "contextTokens": 16384,
-  "promptTemplateID": "eg1-v2",
+  "promptTemplateID": "eg1-v2-named-language",
   "minAppVersion": "2.3.0",
   "downloadURL": "https://models.enviouslabs.co/eg1/eg1-1.2-c003/eg1-1.2-c003-00001-of-00008.gguf",
   "licenseURL": "https://models.enviouslabs.co/eg1/EG-1-MODEL-LICENSE.txt",

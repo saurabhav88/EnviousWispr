@@ -31,13 +31,23 @@ public enum PromptFamily: String, Sendable {
 
   /// EG-1's training prompt from version 1.2 onward. It extends `egOneFixed` with the
   /// greeting/sign-off envelope rule and three worked self-correction examples, and it is
-  /// the prompt the 1.2 weights were tuned on. The two cases must coexist: a user still
-  /// holding 1.1 bytes has to keep receiving 1.1's prompt, because the artifact and its
-  /// prompt are one contract: a model may only ever be sent the instruction it was
-  /// tuned on, so a prompt change is a new template id and a new case, never an edit.
+  /// the prompt the 1.2 weights were tuned on. Keep the 1.1 and plain 1.2 training prompts
+  /// addressable: a user still holding 1.1 bytes has to keep receiving 1.1's prompt. #3111
+  /// adds a separately measured named-language contract for the same 1.2 weights; the
+  /// manifest selects each contract by its own template ID, so a prompt change is a new
+  /// template id and a new case, never an edit.
   /// Selected from the shipped manifest's `promptTemplateID`, never from the model's name.
   /// Canonical text: `scripts/eval/prompts/eg1-polish-prompt-v2.txt`.
   case egOneEnvelope
+
+  /// EG-1 1.2's prompt plus, when the pipeline is sure of it, one sentence naming the
+  /// dictation's language (#3111). Same weights as `egOneEnvelope`, a different prompt
+  /// contract, so its own template id (`eg1-v2-named-language`) and case. With no name
+  /// it renders `egOneEnvelope`'s prompt byte for byte. Measured on the 1.2 artifact:
+  /// non-English dictations coming back in English went from 41 of 480 to 0.
+  /// Canonical text (Polish instance):
+  /// `scripts/eval/prompts/eg1-polish-prompt-v2-named-language.txt`.
+  case egOneEnvelopeNamedLanguage
 
   /// S1-mini's published input format (#2649): the model card's exact system
   /// prompt, then a user message whose FIRST line is a control line

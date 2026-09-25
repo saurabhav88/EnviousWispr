@@ -92,9 +92,12 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
     switch promptTemplateID {
     case "eg1-v1": return .egOneFixed
     case "eg1-v2": return .egOneEnvelope
-    // #2649. One row, and there will not be a second: EG-1 has two families
-    // because WE retrained it and had to keep serving 1.1 users their 1.1
-    // prompt. S1-mini's text is not ours to change, so a second family could
+    // #3111: the 1.2 weights with the named-language prompt. `eg1-v2` stays mapped so a
+    // future manifest (say a multilingual-trained revision) can select the plain prompt.
+    case "eg1-v2-named-language": return .egOneEnvelopeNamedLanguage
+    // #2649. One row, and there will not be a second: EG-1 retains separate 1.1,
+    // plain 1.2 and named-language 1.2 prompt contracts because WE own its training
+    // and prompt (#3111 changed the prompt id for the same 1.2 weights). S1-mini's text is not ours to change, so a second family could
     // only come from upstream publishing a different format, which would be a
     // new artifact and a new manifest.
     case "s1-control-line-v1": return .s1ControlLine

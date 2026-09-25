@@ -35,6 +35,11 @@ public struct TextProcessingContext: Sendable {
   /// re-derived from `language` or `englishRulesVetoed`: the resolver owns
   /// that ladder. Nil when never resolved, and nil under the non-English veto.
   package var learnLanguage: String?
+  /// #3111: `DictationLanguageResolver.Resolution.textLanguage` for this take —
+  /// what the raw ASR text alone says at the resolver's floor, read on every
+  /// rung because the runner asks for it. Nil means the text was unsure, or the
+  /// context never went through the runner. Read only by EG-1's language naming.
+  package var textLanguage: String?
   /// #1846: which dictation this text belongs to, frozen by `TextProcessingRunner`
   /// at the start of the chain. Observation-only: never persisted, never `Codable`,
   /// and it never influences a processing decision.

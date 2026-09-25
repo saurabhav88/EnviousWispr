@@ -199,6 +199,11 @@ struct EGOnePipelineRoutingTests {
       DefaultPromptPlanner.family(
         for: .egOne, modelID: "eg-1", ollamaIsRemote: nil, egOneFamily: .egOneEnvelope)
         == .egOneEnvelope)
+    // #3111: the shipped manifest's named-language family comes back for native EG-1.
+    #expect(
+      DefaultPromptPlanner.family(
+        for: .egOne, modelID: "eg-1", ollamaIsRemote: nil, egOneFamily: .egOneEnvelopeNamedLanguage)
+        == .egOneEnvelopeNamedLanguage)
   }
 
   @Test("skip reasons carry the local_polish_ telemetry prefix")

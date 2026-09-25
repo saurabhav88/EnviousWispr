@@ -71,6 +71,15 @@ public final class FileImportRunner {
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
   private let outputClassifierHolder: OutputClassifierHolder?
 
+  /// Test seams (#3111), production defaults unchanged: the language recogniser the
+  /// runner resolves with, the EG-1 polisher factory, and the prompt planner, so a test
+  /// can observe which prompt an import and its "Clean it again" pass send without a real
+  /// model. The planner is a seam because the default reads the EG-1 family from the APP
+  /// bundle's manifest, which a test host does not carry.
+  private let languageIdentifier: (String) -> (language: String, confidence: Double)?
+  private let makeEGOnePolisher: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher)?
+  private let promptPlanner: (any PromptPlanning)?
+
   /// **One import, one configuration.** Frozen when the run starts and applied
   /// identically to every part, so a user who changes their polisher halfway
   /// through does not get a document polished two different ways. Reuses
@@ -82,16 +91,35 @@ public final class FileImportRunner {
   /// The custom-words vocabulary, frozen with the settings for the same reason.
   private var frozenVocabulary: CorrectorVocabulary?
 
-  public init(
+  public convenience init(
     keychainManager: KeychainManager,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     outputClassifierHolder: OutputClassifierHolder? = nil
   ) {
+    self.init(
+      keychainManager: keychainManager, egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
+      outputClassifierHolder: outputClassifierHolder,
+      languageIdentifier: DictationLanguageResolver.identify, makeEGOnePolisher: nil,
+      promptPlanner: nil)
+  }
+
+  init(
+    keychainManager: KeychainManager,
+    egOneRuntime: (any EGOneEndpointProviding)?,
+    s1MiniRuntime: (any EGOneEndpointProviding)?,
+    outputClassifierHolder: OutputClassifierHolder?,
+    languageIdentifier: @escaping (String) -> (language: String, confidence: Double)?,
+    makeEGOnePolisher: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher)?,
+    promptPlanner: (any PromptPlanning)?
+  ) {
     self.keychainManager = keychainManager
     self.egOneRuntime = egOneRuntime
     self.s1MiniRuntime = s1MiniRuntime
     self.outputClassifierHolder = outputClassifierHolder
+    self.languageIdentifier = languageIdentifier
+    self.makeEGOnePolisher = makeEGOnePolisher
+    self.promptPlanner = promptPlanner
   }
 
   /// Freezes the configuration this import runs under. Called once, before the
@@ -119,7 +147,7 @@ public final class FileImportRunner {
     try Task.checkCancellation()
 
     let steps = makeSteps(settings: settings)
-    let runner = TextProcessingRunner(telemetry: .silent)
+    let runner = TextProcessingRunner(telemetry: .silent, languageIdentifier: languageIdentifier)
     // The frozen locked language, or nil for auto — matched to how the recovery
     // replay reads the same field (`RecoveryTextProcessor.swift:149`), so an
     // import and a replay resolve language the same way rather than two ways.
@@ -208,6 +236,8 @@ public final class FileImportRunner {
     llmPolish.onToken = nil
     llmPolish.outputClassifierHolder = outputClassifierHolder
     llmPolish.egOneRuntime = egOneRuntime
+    if let makeEGOnePolisher { llmPolish.makeEGOnePolisher = makeEGOnePolisher }
+    if let promptPlanner { llmPolish.promptPlanner = promptPlanner }
     llmPolish.s1MiniRuntime = s1MiniRuntime
     llmPolish.llmProvider = LLMProvider(rawValue: settings.llmProvider) ?? .none
     llmPolish.llmModel = LLMProvider.replacingRetiredModel(

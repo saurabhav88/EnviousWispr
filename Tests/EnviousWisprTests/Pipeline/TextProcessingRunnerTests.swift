@@ -755,6 +755,37 @@ extension TextProcessingRunnerTests {
     #expect(abstained.context.englishRulesVetoed == false)
   }
 
+  @Test(
+    "#3111 the text's own language is seeded on every rung, from one recogniser call",
+    .tags(.productOutcome))
+  func textLanguageSeededOnEveryRung() async throws {
+    // When this fails, EG-1 cannot tell a Polish take locked to Polish from an English one
+    // locked to German, and either keeps translating or translates into the lock.
+    final class Counter: @unchecked Sendable { var calls = 0 }
+    let evidences: [(LanguageEvidence, DictationLanguageResolver.Resolution.Source)] = [
+      (.locked("de"), .locked),
+      (LanguageEvidence(
+        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "en",
+        englishSpelling: .american), .engine),
+      (.none, .dictation),
+    ]
+    for (evidence, source) in evidences {
+      let counter = Counter()
+      let result = try await Self.seamRunner { _ in
+        counter.calls += 1
+        return ("pl", 0.96)
+      }.run(rawText: "x", evidence: evidence, targetAppName: nil, steps: [])
+      #expect(result.context.languageSource == source)
+      #expect(result.context.textLanguage == "pl", "\(source)")
+      #expect(counter.calls == 1, "\(source): one recogniser call per take")
+    }
+
+    let unsure = try await Self.seamRunner { _ in ("pl", 0.6) }.run(
+      rawText: "x", evidence: .locked("pl"), targetAppName: nil, steps: [])
+    #expect(unsure.context.language == "pl")
+    #expect(unsure.context.textLanguage == nil, "under the floor the text is unsure, whatever the lock says")
+  }
+
   @Test("#2614 a locked non-English take keeps its lock even when the text reads as English")
   func lockedLanguageOutranksTheText() async throws {
     // Spanish locked, English spoken numbers. Automatic would resolve this text to

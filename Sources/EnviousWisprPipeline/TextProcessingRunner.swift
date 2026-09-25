@@ -206,12 +206,17 @@ internal final class TextProcessingRunner {
       engineDetectsLanguage: evidence.engineDetectsLanguage,
       engineReportedLanguage: evidence.engineReportedLanguage,
       text: rawText,
+      // #3111: EG-1 names a language only when the TEXT agrees with any lock or
+      // engine answer, so the text is read on those rungs too. Still one
+      // recogniser call per take.
+      identifyTextOnAllPaths: true,
       identify: languageIdentifier)
     var context = TextProcessingContext(text: rawText, language: resolution.language)
     context.languageSource = resolution.source
     context.languageConfidenceBucket = resolution.confidenceBucket
     context.englishRulesVetoed = resolution.englishVeto
     context.learnLanguage = resolution.learnLanguage
+    context.textLanguage = resolution.textLanguage
     context.targetAppName = targetAppName
     context.takeID = takeID
     // #3124: seeded here, before the loop, so a spelling pass that times out cannot lose them

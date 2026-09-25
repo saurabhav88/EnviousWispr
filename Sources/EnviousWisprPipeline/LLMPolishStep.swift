@@ -126,6 +126,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     EGOneConnector(endpoint: $0)
   }
 
+  /// #3111 test seam: the English-stretch scan EG-1 language naming runs on the text it is
+  /// about to send. Production reads the real recogniser.
+  var englishStretchScanner: @Sendable (String) -> DictationLanguageResolver.EnglishStretchScan =
+    DictationLanguageResolver.englishStretch
+
   /// #2649 test seam, mirroring `makeEGOnePolisher`. A separate factory rather
   /// than one that switches on provider: the two connectors differ in what an
   /// empty answer MEANS, and a single factory would put that decision in the
@@ -183,6 +188,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     /// `takeID` (#1846) is the LIVE in-flight take — polish runs before the session
     /// terminal, so the concluded key is not yet stamped.
     let recordPolishSkipped: @MainActor (String, String, String?) -> Void
+    /// #3111: which instruction EG-1's named-language prompt selected, for the take's
+    /// terminal row. `(takeID, hint)`. Silenced for recovery and file import like the rest.
+    let recordPolishLanguageHint: @MainActor (String, String) -> Void
 
     static let live = TelemetrySeams(
       limbFailureObserved: { limb, op, result, cat, dur in
@@ -203,6 +211,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       },
       recordPolishSkipped: { provider, reason, takeID in
         TelemetryService.shared.polishSkipped(provider: provider, reason: reason, takeID: takeID)
+      },
+      recordPolishLanguageHint: { takeID, hint in
+        TelemetryService.shared.recordPolishLanguageHint(takeID: takeID, hint: hint)
       })
 
     /// Returns a seam that discards every signal unconditionally — `seams` is
@@ -221,7 +232,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         captureProviderInitError: { _ in },
         captureAFMPolishError: { _ in },
         breadcrumbCompleted: { _, _ in },
-        recordPolishSkipped: { _, _, _ in })
+        recordPolishSkipped: { _, _, _ in },
+        recordPolishLanguageHint: { _, _ in })
     }
   }
 
@@ -532,6 +544,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// which would wrongly short-circuit polish. Character-count is the correct
   /// gate for non-whitespace-segmented scripts. 10 chars ≈ a short utterance.
   private static let minCharsForCJKPolish = 10
+
+  /// #3111: the EG-1 language-naming decision for this take, from the language facts the
+  /// runner froze from the RAW text before any cleanup step ran. One call site per reader,
+  /// one function, so the prompt and anything that reports it cannot disagree.
+  static func egOneLanguageDecision(_ context: TextProcessingContext) -> EGOneLanguageNaming.Decision {
+    EGOneLanguageNaming.decide(
+      textLanguage: context.textLanguage, resolvedLanguage: context.language,
+      source: context.languageSource)
+  }
 
   /// The too-short skip's return value: text untouched, AI fields nil (#1022).
   private static func bypassedContext(_ context: TextProcessingContext) -> TextProcessingContext {
@@ -896,6 +917,22 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // custom words mid-polish. Migration default: all entries tagged global.
     let vocabularySnapshot = PromptVocabulary.fromLegacy(polishVocabulary.terms)
 
+    // #3111: decided ONCE per polish, for the prompt and the hint alike. The English-stretch
+    // scan reads the text EG-1 is about to receive, runs only when a name would otherwise be
+    // sent, and runs off the main actor.
+    var egOneDecision: EGOneLanguageNaming.Decision?
+    if provider == .egOne {
+      let preliminary = Self.egOneLanguageDecision(context)
+      if case .named = preliminary {
+        let scanner = englishStretchScanner
+        let text = context.text
+        let scan = await Task.detached(priority: .userInitiated) { scanner(text) }.value
+        egOneDecision = EGOneLanguageNaming.applying(scan, to: preliminary)
+      } else {
+        egOneDecision = preliminary
+      }
+    }
+
     let input = PromptBuildInput(
       transcript: context.text,
       provider: provider,
@@ -919,7 +956,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // Already captured for this attempt at the readiness probe above; nil for every
       // non-Ollama provider, which routes nothing.
       ollamaIsRemote: ollamaRemote,
-      s1Control: s1Control
+      s1Control: s1Control,
+      // #3111: native EG-1 only, and only when the raw text itself names a measured
+      // language that no lock or engine answer contradicts. Nil sends today's prompt.
+      namedLanguage: egOneDecision?.namedLanguage
     )
     let plan = promptPlanner.plan(input: input)
 
@@ -935,11 +975,23 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // carry a field that means nothing to them.
     let controlReceipt =
       plan.family == .s1ControlLine ? ", control_line=\(s1Control.controlLine)" : ""
+    // #3111: the instruction EG-1's named-language family selected, recorded once the prompt
+    // is PLANNED and before the model is asked, so a timeout still reports it and an early
+    // exit (disabled, too short, server unavailable, preflight refused) never does. A closed
+    // vocabulary, never the language code or any text.
+    var languageHintReceipt = ""
+    // Only the decision the prompt was built from is ever reported; a missing one records
+    // nothing rather than a recomputed answer the prompt never saw.
+    if provider == .egOne, plan.family == .egOneEnvelopeNamedLanguage, let egOneDecision {
+      let hint = egOneDecision.hint
+      languageHintReceipt = ", polish_language_hint=\(hint)"
+      if let takeID = context.takeID { telemetry.recordPolishLanguageHint(takeID, hint) }
+    }
     Task {
       await AppLogger.shared.log(
         "LLM prompt route: provider=\(provider.rawValue), model=\(model), "
           + "prompt_family=\(plan.family.rawValue), system_chars=\(systemChars)"
-          + controlReceipt,
+          + controlReceipt + languageHintReceipt,
         level: .info, category: "LLM"
       )
     }

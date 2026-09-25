@@ -25,7 +25,9 @@ struct LocalPolishPromptOverheadTests {
   /// EG-1's 1,147-byte system prompt.
   static let reservedBytes = LLMPolishStep.localPromptOverheadBytes
 
-  static func input(provider: LLMProvider, modelID: String) -> PromptBuildInput {
+  static func input(
+    provider: LLMProvider, modelID: String, namedLanguage: String? = nil
+  ) -> PromptBuildInput {
     PromptBuildInput(
       transcript: "",
       provider: provider,
@@ -33,8 +35,15 @@ struct LocalPolishPromptOverheadTests {
       appName: nil,
       language: nil,
       polishVocabulary: PolishVocabulary(terms: [], generation: 0),
-      ollamaIsRemote: nil)
+      ollamaIsRemote: nil,
+      namedLanguage: namedLanguage)
   }
+
+  /// #3111: the named-language code whose English name is longest in UTF-8, derived from
+  /// the table rather than hand-picked so a longer name added later is covered.
+  static let longestNamedLanguage: String = EGOneNamedLanguages.names
+    .sorted { $0.key < $1.key }
+    .max { $0.value.utf8.count < $1.value.utf8.count }!.key
 
   /// Rendered with an EMPTY transcript, so what is measured is exactly the
   /// overhead and nothing else.
@@ -53,6 +62,18 @@ struct LocalPolishPromptOverheadTests {
         overhead <= Self.reservedBytes,
         "\(row.name) renders \(overhead) bytes of overhead, over the \(Self.reservedBytes) reserved")
     }
+    // #3111: the named-language family at its LONGEST name, the worst case it can render.
+    for code in [Self.longestNamedLanguage, nil] {
+      let envelope = DefaultPromptPlanner.builder(for: .egOneEnvelopeNamedLanguage)
+        .build(
+          input: Self.input(
+            provider: .egOne, modelID: LLMProvider.egOneModelName, namedLanguage: code),
+          mode: .message)
+      let overhead = envelope.messages.reduce(0) { $0 + $1.content.utf8.count }
+      #expect(
+        overhead <= Self.reservedBytes,
+        "EG-1 v2 named (\(code ?? "none")) renders \(overhead) bytes, over the \(Self.reservedBytes) reserved")
+    }
   }
 
   /// Two-way control. A reserve larger than every prompt passes trivially, so
@@ -68,11 +89,14 @@ struct LocalPolishPromptOverheadTests {
   /// wrong on the next word added to a prompt.
   @Test("the reserve leaves headroom above the largest bundled prompt")
   func reserveLeavesHeadroom() {
-    let largest = [PromptFamily.egOneFixed, .egOneEnvelope, .s1ControlLine]
+    let largest = [PromptFamily.egOneFixed, .egOneEnvelope, .s1ControlLine,
+      .egOneEnvelopeNamedLanguage]
       .map { family in
         DefaultPromptPlanner.builder(for: family)
           .build(
-            input: Self.input(provider: .egOne, modelID: LLMProvider.egOneModelName),
+            input: Self.input(
+              provider: .egOne, modelID: LLMProvider.egOneModelName,
+              namedLanguage: Self.longestNamedLanguage),
             mode: .message)
           .messages.reduce(0) { $0 + $1.content.utf8.count }
       }
