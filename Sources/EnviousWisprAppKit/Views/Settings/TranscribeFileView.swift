@@ -343,7 +343,11 @@ struct TranscribeFileView: View {
         Text(note).foregroundStyle(Color.stTextSecondary)
         Spacer(minLength: 12)
         if showBack, coordinator.canGoBack {
-          wizardSecondary("Back") { coordinator.goBack() }
+          wizardSecondary(
+            String(
+              localized: "Back",
+              comment: "Transcribe a File: button that returns to the previous step.")
+          ) { coordinator.goBack() }
         }
         wizardPrimary(forwardTitle, isEnabled: forwardEnabled, action: forward)
       }
@@ -439,9 +443,15 @@ struct TranscribeFileView: View {
       // A real `Button` here was a second actionable control in one target: hit-testing is
       // off for the pointer and says nothing about keyboard focus or VoiceOver activation,
       // so anyone not using a mouse met both. Found by Codex.
-      wizardPrimary("Choose a file", size: .large, showsArrow: false)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+      wizardPrimary(
+        String(
+          localized: "Choose a file",
+          comment: "Transcribe a File, Upload step: the button drawn inside the drop zone."),
+        size: .large,
+        showsArrow: false
+      )
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
       Text("or drag and drop here").foregroundStyle(Color.stTextSecondary)
       WrappingHStack(spacing: 6) {
         Text("Supported formats").foregroundStyle(Color.stTextTertiary)
@@ -481,15 +491,47 @@ struct TranscribeFileView: View {
     BrandedSection {
       VStack(spacing: 0) {
         HStack(spacing: 0) {
-          featureTile("lock", "Your voice stays here", "Audio never leaves this Mac.")
+          featureTile(
+            "lock",
+            String(
+              localized: "Your voice stays here",
+              comment: "Transcribe a File, Upload step: a feature tile's title."),
+            String(
+              localized: "Audio never leaves this Mac.",
+              comment: "Transcribe a File, Upload step: a feature tile's detail."))
           Divider()
-          featureTile("bolt", "Two transcription engines", "Fast, or All Languages.")
+          featureTile(
+            "bolt",
+            String(
+              localized: "Two transcription engines",
+              comment: "Transcribe a File, Upload step: a feature tile's title."),
+            String(
+              localized: "Fast, or All Languages.",
+              comment:
+                "Transcribe a File, Upload step: a feature tile's detail. Fast and All Languages are the two engines' names."
+            ))
         }
         Divider()
         HStack(spacing: 0) {
-          featureTile("sparkles", "Six ways to polish", "On device, or your own cloud key.")
+          featureTile(
+            "sparkles",
+            String(
+              localized: "Six ways to polish",
+              comment: "Transcribe a File, Upload step: a feature tile's title."),
+            String(
+              localized: "On device, or your own cloud key.",
+              comment: "Transcribe a File, Upload step: a feature tile's detail."))
           Divider()
-          featureTile("shield", "Original kept", "Never overwritten.")
+          featureTile(
+            "shield",
+            String(
+              localized: "Original kept",
+              comment: "Transcribe a File, Upload step: a feature tile's title."),
+            String(
+              localized: "Never overwritten.",
+              comment:
+                "Transcribe a File, Upload step: a feature tile's detail: the original words are never replaced."
+            ))
         }
       }
       .fixedSize(horizontal: false, vertical: true)
@@ -544,7 +586,12 @@ struct TranscribeFileView: View {
         Text(file.detailLine).foregroundStyle(Color.stTextTertiary)
       }
       Spacer(minLength: 12)
-      wizardSecondary("Choose a different file", isEnabled: !coordinator.isRunning) {
+      wizardSecondary(
+        String(
+          localized: "Choose a different file",
+          comment: "Transcribe a File, Upload step: button beside the chosen file."),
+        isEnabled: !coordinator.isRunning
+      ) {
         chooseFile()
       }
       // #2772 finding 4: the prototype's `.ellip`, a bordered square to the RIGHT of
@@ -580,8 +627,13 @@ struct TranscribeFileView: View {
   /// second one starts at the halfway mark whatever the first one says.
   private var fileChecksRow: some View {
     HStack(spacing: 20) {
-      check("Audio found").frame(maxWidth: .infinity, alignment: .leading)
-      check("Ready in \(coordinator.estimateText(backend: settings.selectedBackend))").frame(maxWidth: .infinity, alignment: .leading)
+      check(
+        String(
+          localized: "Audio found", comment: "Transcribe a File: a check under the chosen file.")
+      )
+      .frame(maxWidth: .infinity, alignment: .leading)
+      check(coordinator.readyInText(backend: settings.selectedBackend))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
@@ -592,7 +644,12 @@ struct TranscribeFileView: View {
       Text("Nothing has run yet. You can still change everything.")
         .foregroundStyle(Color.stTextTertiary)
       Spacer(minLength: 12)
-      wizardPrimary("Continue") { coordinator.advance() }
+      wizardPrimary(
+        String(
+          localized: "Continue", comment: "Transcribe a File: button that goes to the next step.")
+      ) {
+        coordinator.advance()
+      }
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
@@ -609,7 +666,10 @@ struct TranscribeFileView: View {
 
   @ViewBuilder
   private var transcriptionStep: some View {
-    stepHeading("Select transcription engine")
+    stepHeading(
+      String(
+        localized: "Select transcription engine",
+        comment: "Transcribe a File, Transcription step: heading."))
     // #2772 §3.2. There is ONE transcription engine slot and `EngineCoordinator` owns
     // exactly one live target, so this choice is shared with dictation rather than
     // per-import — unlike the polisher on the next step, which is not. Shipped #2648
@@ -622,27 +682,96 @@ struct TranscribeFileView: View {
       .fixedSize(horizontal: false, vertical: true)
     HStack(alignment: .top, spacing: 14) {
       engineCard(
-        backend: .parakeet, title: "Fast", icon: "bolt.fill", recommended: true,
-        blurb: "Best for everyday English and European recordings.",
+        backend: .parakeet, title: WorkingPageModel.engineName(.parakeet),
+        icon: "bolt.fill", recommended: true,
+        blurb: String(
+          localized: "Best for everyday English and European recordings.",
+          comment: "Transcribe a File, Transcription step: the Fast engine's card."),
         specs: [
-          ("Model", "Parakeet v3"),
-          ("Languages", "25 European"),
-          ("An hour of audio", "About 7 seconds"),
-          ("Runs on", "This Mac · Neural Engine"),
+          (Self.specModel, "Parakeet v3"),
+          (
+            Self.specLanguages,
+            String(
+              localized: "25 European",
+              comment:
+                "Transcribe a File, Transcription step: the Fast engine's languages: 25 European languages."
+            )
+          ),
+          (
+            Self.specHourOfAudio,
+            String(
+              localized: "About 7 seconds",
+              comment:
+                "Transcribe a File, Transcription step: how long the Fast engine takes for an hour of audio."
+            )
+          ),
+          (Self.specRunsOn, Self.runsOnNeuralEngine),
         ])
       engineCard(
-        backend: .whisperKit, title: "All Languages", icon: "globe", recommended: false,
-        blurb: "Best for other languages or the toughest audio.",
+        backend: .whisperKit, title: WorkingPageModel.engineName(.whisperKit),
+        icon: "globe", recommended: false,
+        blurb: String(
+          localized: "Best for other languages or the toughest audio.",
+          comment: "Transcribe a File, Transcription step: the All Languages engine's card."),
         specs: [
-          ("Model", "Whisper Large v3 Turbo"),
-          ("Languages", "99+"),
-          ("An hour of audio", "About 2 minutes"),
-          ("Runs on", "This Mac · Apple GPU"),
+          (Self.specModel, "Whisper Large v3 Turbo"),
+          (Self.specLanguages, "99+"),
+          (
+            Self.specHourOfAudio,
+            String(
+              localized: "About 2 minutes",
+              comment:
+                "Transcribe a File, Transcription step: how long the All Languages engine takes for an hour of audio."
+            )
+          ),
+          (Self.specRunsOn, Self.runsOnAppleGPU),
         ])
     }
     actionRow(
-      note: "Both engines run entirely on this Mac.", forwardTitle: "Continue",
+      note: String(
+        localized: "Both engines run entirely on this Mac.",
+        comment: "Transcribe a File, Transcription step: the note beside Continue."),
+      forwardTitle: Self.continueTitle,
       forward: { coordinator.advance() })
+  }
+
+  static var continueTitle: String {
+    String(localized: "Continue", comment: "Transcribe a File: button that goes to the next step.")
+  }
+  static var recommendedBadge: String {
+    String(localized: "Recommended", comment: "Transcribe a File: badge on the recommended engine.")
+  }
+  static var specModel: String {
+    String(
+      localized: "Model",
+      comment: "Transcribe a File, Transcription step: a row label in an engine card's spec table.")
+  }
+  static var specLanguages: String {
+    String(
+      localized: "Languages",
+      comment: "Transcribe a File, Transcription step: a row label in an engine card's spec table.")
+  }
+  static var specHourOfAudio: String {
+    String(
+      localized: "An hour of audio",
+      comment:
+        "Transcribe a File, Transcription step: a row label in an engine card's spec table. How long an hour of audio takes."
+    )
+  }
+  static var specRunsOn: String {
+    String(
+      localized: "Runs on",
+      comment: "Transcribe a File, Transcription step: a row label in an engine card's spec table.")
+  }
+  static var runsOnNeuralEngine: String {
+    String(
+      localized: "This Mac · Neural Engine",
+      comment: "Transcribe a File: where the Fast engine runs. Neural Engine is Apple's chip name.")
+  }
+  static var runsOnAppleGPU: String {
+    String(
+      localized: "This Mac · Apple GPU",
+      comment: "Transcribe a File: where the All Languages engine runs.")
   }
 
   private func engineCard(
@@ -669,7 +798,7 @@ struct TranscribeFileView: View {
           HStack(spacing: 8) {
             Image(systemName: icon).foregroundStyle(Color.stAccent)
             Text(title).font(.stRowTitle).lineLimit(1).fixedSize()
-            if recommended { Self.wizardBadge("Recommended") }
+            if recommended { Self.wizardBadge(Self.recommendedBadge) }
             Spacer(minLength: 8)
             check
           }
@@ -680,7 +809,7 @@ struct TranscribeFileView: View {
               Spacer(minLength: 8)
               check
             }
-            if recommended { Self.wizardBadge("Recommended") }
+            if recommended { Self.wizardBadge(Self.recommendedBadge) }
           }
         }
         Text(blurb)
@@ -757,7 +886,9 @@ struct TranscribeFileView: View {
 
   @ViewBuilder
   private var polishStep: some View {
-    stepHeading("Select polishing engine")
+    stepHeading(
+      String(
+        localized: "Select polishing engine", comment: "Transcribe a File, Polish step: heading."))
     // Six across at the design's width, three when six would squeeze a card under
     // `polishCardMinimumWidth`, two below that. The prototype steps 6 → 3 → 2 at its own
     // window breakpoints; the app's pane is narrower than its window by the sidebar, so the
@@ -811,8 +942,12 @@ struct TranscribeFileView: View {
     }
     actionRow(
       note: polishReadiness.footer
-        ?? "Numbers, dates, your saved words and filler removal run either way.",
-      forwardTitle: "Continue", forwardEnabled: polishReadiness.isReady,
+        ?? String(
+          localized: "Numbers, dates, your saved words and filler removal run either way.",
+          comment:
+            "Transcribe a File, Polish step: the note beside Continue: what runs even without a cleanup engine."
+        ),
+      forwardTitle: Self.continueTitle, forwardEnabled: polishReadiness.isReady,
       forward: {
         guard polishReadiness.isReady else { return }
         coordinator.advance()
@@ -903,40 +1038,72 @@ struct TranscribeFileView: View {
   static let polishChoices: [PolishChoice] = [
     PolishChoice(
       provider: .egOne,
-      detail:
-        """
-        Our best model for cleanup and list-making. On an imported recording it removes about \
-        four times more filler than Apple Intelligence.
-        """),
+      detail: String(
+        localized: """
+          Our best model for cleanup and list-making. On an imported recording it removes about \
+          four times more filler than Apple Intelligence.
+          """,
+        comment:
+          "Transcribe a File, Polish step: the description of the selected cleanup engine. EG-1."
+      )),
     PolishChoice(
       provider: .appleIntelligence,
-      detail: "Apple's on-device model. Needs macOS 26 or later."),
+      detail: String(
+        localized: "Apple's on-device model. Needs macOS 26 or later.",
+        comment:
+          "Transcribe a File, Polish step: the description of the selected cleanup engine. Apple Intelligence."
+      )),
     PolishChoice(
       provider: .ollama,
       // Deliberately says nothing about where the text goes. Ollama proxies
       // some models to its own servers, so the answer depends on the MODEL, and
       // this line cannot see one. `ollamaPrivacyLine` says it right below.
-      detail: "Any model you run in Ollama."),
+      detail: String(
+        localized: "Any model you run in Ollama.",
+        comment:
+          "Transcribe a File, Polish step: the description of the selected cleanup engine. Ollama.")
+    ),
     PolishChoice(
       provider: .openAI,
-      detail: "Your own OpenAI key. Only the text is sent, never the audio."),
+      detail: String(
+        localized: "Your own OpenAI key. Only the text is sent, never the audio.",
+        comment:
+          "Transcribe a File, Polish step: the description of the selected cleanup engine. OpenAI.")
+    ),
     PolishChoice(
       provider: .gemini,
-      detail: "Your own Google key. Only the text is sent, never the audio."),
+      detail: String(
+        localized: "Your own Google key. Only the text is sent, never the audio.",
+        comment:
+          "Transcribe a File, Polish step: the description of the selected cleanup engine. Google Gemini."
+      )),
     PolishChoice(
       provider: .claude,
-      detail: "Your own Anthropic key. Only the text is sent, never the audio."),
+      detail: String(
+        localized: "Your own Anthropic key. Only the text is sent, never the audio.",
+        comment:
+          "Transcribe a File, Polish step: the description of the selected cleanup engine. Anthropic Claude."
+      )),
   ]
 
   /// Where an Ollama polish actually sends the text, for the model selected now.
   /// The unknown case says so rather than guessing either way.
   private var ollamaPrivacyLine: String {
     switch coordinator.polishOllamaLocalityNow() {
-    case true: return "The model you picked runs on Ollama's servers, so the text is sent there."
-    case false: return "That model runs on this Mac, so nothing leaves it."
+    case true:
+      return String(
+        localized: "The model you picked runs on Ollama's servers, so the text is sent there.",
+        comment: "Transcribe a File, Polish step: where the chosen Ollama model runs.")
+    case false:
+      return String(
+        localized: "That model runs on this Mac, so nothing leaves it.",
+        comment: "Transcribe a File, Polish step: where the chosen Ollama model runs.")
     case nil:
-      return
-        "Checking whether that model runs here or on Ollama's servers. Start Ollama to find out."
+      return String(
+        localized:
+          "Checking whether that model runs here or on Ollama's servers. Start Ollama to find out.",
+        comment:
+          "Transcribe a File, Polish step: where the chosen Ollama model runs is not known yet.")
     }
   }
 
@@ -970,7 +1137,7 @@ struct TranscribeFileView: View {
             .foregroundStyle(selected ? Color.stAccent : Color.stTextSecondary)
         }
         Text(choice.title).font(.stRowLabel).fixedSize(horizontal: false, vertical: true)
-        if choice.provider == .egOne { Self.wizardBadge("Recommended") }
+        if choice.provider == .egOne { Self.wizardBadge(Self.recommendedBadge) }
         // Wraps, like the title. A single-line subtitle truncated at three columns, and the
         // words it lost were the ones saying whether the engine is ready.
         Text(cardSubtitle(for: choice.provider))
@@ -1035,16 +1202,31 @@ struct TranscribeFileView: View {
   /// running app: this sentence is a privacy claim.
   static func polisherLocation(_ provider: LLMProvider, ollamaModelIsRemote: Bool?) -> String {
     switch provider {
-    case .egOne, .s1Mini, .appleIntelligence: return "This Mac"
+    case .egOne, .s1Mini, .appleIntelligence: return Self.thisMac
     case .openAI, .gemini, .claude: return provider.displayName
     case .ollama:
       switch ollamaModelIsRemote {
-      case .some(true): return "Ollama's servers"
-      case .some(false): return "This Mac"
-      case nil: return "Location not checked"
+      case .some(true):
+        return String(
+          localized: "Ollama's servers",
+          comment: "Transcribe a File, Review step: where the cleanup runs.")
+      case .some(false): return Self.thisMac
+      case nil:
+        return String(
+          localized: "Location not checked",
+          comment: "Transcribe a File, Review step: where the cleanup runs is not known yet.")
       }
-    case .none: return "No cleanup"
+    case .none:
+      return String(
+        localized: "No cleanup",
+        comment: "Transcribe a File, Review step: no cleanup engine was chosen.")
     }
+  }
+
+  static var thisMac: String {
+    String(
+      localized: "This Mac",
+      comment: "Transcribe a File, Review step: the cleanup runs on this Mac.")
   }
 
   private var selectedPolish: PolishChoice? {
@@ -1055,7 +1237,8 @@ struct TranscribeFileView: View {
 
   @ViewBuilder
   private var reviewStep: some View {
-    stepHeading("Review and start")
+    stepHeading(
+      String(localized: "Review and start", comment: "Transcribe a File, Review step: heading."))
     if case .rejected(let reason) = coordinator.state {
       InsetNotice(
         verbatim: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange
@@ -1074,8 +1257,11 @@ struct TranscribeFileView: View {
                 }
                 Spacer(minLength: 0)
               }
-              check("Audio found")
-              check("Ready in \(coordinator.estimateText(backend: settings.selectedBackend))")
+              check(
+                String(
+                  localized: "Audio found",
+                  comment: "Transcribe a File: a check under the chosen file."))
+              check(coordinator.readyInText(backend: settings.selectedBackend))
             }
           }
           .padding(.horizontal, SettingsLayout.rowPaddingH)
@@ -1084,11 +1270,7 @@ struct TranscribeFileView: View {
         // The founder's lock decision, said BEFORE the user commits rather than
         // discovered when their keybind stops working.
         InsetNotice(
-          text:
-            """
-            Dictation pauses while this runs. Your keybind will not record until the transcript \
-            is finished, in \(coordinator.estimateText(backend: settings.selectedBackend)).
-            """,
+          verbatim: coordinator.dictationPauseText(backend: settings.selectedBackend),
           systemImage: "mic.slash", tint: .orange)
         // The words change with what the action IS. After a refusal the file is
         // still read and still in memory, so this is a retry, not a fresh start.
@@ -1110,14 +1292,28 @@ struct TranscribeFileView: View {
         actionRow(
           note: polishReadiness.footer
             ?? (coordinator.canRetry
-              ? "Your file is still here. Nothing needs reading again."
+              ? String(
+                localized: "Your file is still here. Nothing needs reading again.",
+                comment:
+                  "Transcribe a File, Review step: the note beside Try again after a refusal.")
               : (coordinator.rawTranscript.isEmpty
-                ? "Nothing has run yet."
-                : "Already transcribed. Only the cleanup runs again.")),
+                ? String(
+                  localized: "Nothing has run yet.",
+                  comment: "Transcribe a File, Review step: the note beside Start transcription.")
+                : String(
+                  localized: "Already transcribed. Only the cleanup runs again.",
+                  comment: "Transcribe a File, Review step: the note beside Clean it again."))),
           forwardTitle: coordinator.canRetry
-            ? "Try again"
+            ? String(
+              localized: "Try again",
+              comment: "Transcribe a File, Review step: button that retries after a refusal.")
             : (coordinator.rawTranscript.isEmpty
-              ? "Start transcription" : "Clean it again"),
+              ? String(
+                localized: "Start transcription",
+                comment: "Transcribe a File, Review step: button that starts the run.")
+              : String(
+                localized: "Clean it again",
+                comment: "Transcribe a File, Review step: button that runs only the cleanup again.")),
           forwardEnabled: polishReadiness.isReady,
           forward: {
             guard polishReadiness.isReady else { return }
@@ -1140,14 +1336,17 @@ struct TranscribeFileView: View {
           Image(systemName: settings.selectedBackend == .parakeet ? "bolt.fill" : "globe")
             .foregroundStyle(Color.stAccent)
         },
-        title: settings.selectedBackend == .parakeet ? "Fast" : "All Languages",
+        title: WorkingPageModel.engineName(settings.selectedBackend),
         recommended: settings.selectedBackend == .parakeet,
-        blurb: "Writes down what was said.",
+        blurb: String(
+          localized: "Writes down what was said.",
+          comment:
+            "Transcribe a File, Review step: the transcription engine's card in the processing path."
+        ),
         rows: [
           (
-            "Runs on",
-            settings.selectedBackend == .parakeet
-              ? "This Mac · Neural Engine" : "This Mac · Apple GPU"
+            Self.specRunsOn,
+            settings.selectedBackend == .parakeet ? Self.runsOnNeuralEngine : Self.runsOnAppleGPU
           )
         ])
       Image(systemName: "arrow.down")
@@ -1169,8 +1368,11 @@ struct TranscribeFileView: View {
         },
         title: settings.effectiveFileImportLLMProvider.displayName,
         recommended: settings.effectiveFileImportLLMProvider == .egOne,
-        blurb: "Cleans it into readable text.",
-        rows: [("Runs on", selectedPolisherLocation)])
+        blurb: String(
+          localized: "Cleans it into readable text.",
+          comment:
+            "Transcribe a File, Review step: the cleanup engine's card in the processing path."),
+        rows: [(Self.specRunsOn, selectedPolisherLocation)])
     }
   }
 
@@ -1198,7 +1400,7 @@ struct TranscribeFileView: View {
       HStack(spacing: 8) {
         mark()
         Text(title).font(.stRowLabel)
-        if recommended { Self.wizardBadge("Recommended") }
+        if recommended { Self.wizardBadge(Self.recommendedBadge) }
         Spacer(minLength: 0)
       }
       Text(blurb).foregroundStyle(Color.stTextSecondary)
@@ -1221,7 +1423,10 @@ struct TranscribeFileView: View {
 
   @ViewBuilder
   private var workingStep: some View {
-    stepHeading("Working on your transcript")
+    stepHeading(
+      String(
+        localized: "Working on your transcript",
+        comment: "Transcribe a File, Working step: heading."))
     // #2817: ONE card and nothing else (founder, 2026-09-13: hide the work). The finished
     // parts, the raw queue and the live document that used to grow under this card are gone:
     // on a two-hour file the page grew by 500 words each time a part landed and the user read
@@ -1436,7 +1641,13 @@ struct TranscribeFileView: View {
   /// switch. Fixed on screen; `doneLayout` puts the document's own `ScrollView` under it.
   @ViewBuilder
   private var doneFixedTop: some View {
-    stepHeading(coordinator.state == .stopped ? "Stopped" : "Your transcript is ready")
+    stepHeading(
+      coordinator.state == .stopped
+        ? String(
+          localized: "Stopped",
+          comment: "Transcribe a File, Done step: heading after the user stopped the run.")
+        : String(
+          localized: "Your transcript is ready", comment: "Transcribe a File, Done step: heading."))
     // A refusal raised while a document exists lands HERE rather than on Upload,
     // because Upload's only offer is choosing another file, which clears it. The
     // sentence sits above the words it did not touch.
@@ -1464,7 +1675,15 @@ struct TranscribeFileView: View {
         ProgressView().controlSize(.small)
         Text(label).foregroundStyle(Color.stTextSecondary)
         Spacer(minLength: 12)
-        wizardSecondary("Stop") { coordinator.stop() }
+        wizardSecondary(
+          String(
+            localized: "Stop",
+            comment:
+              "Transcribe a File, Done step: button that stops the speaker labelling still running."
+          )
+        ) {
+          coordinator.stop()
+        }
       }
     }
     // Two distinct stored outcomes (found by chunk review), each with its own honestly-scoped
@@ -1485,14 +1704,26 @@ struct TranscribeFileView: View {
       // Absent, not inert, when a retry could only reach the same failure (no usable word
       // timings): offering it would promise what the retry cannot deliver (§3e).
       if coordinator.canRetrySpeakerAnalysis {
-        wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+        wizardSecondary(
+          String(
+            localized: "Try again",
+            comment: "Transcribe a File, Done step: button that retries speaker labelling.")
+        ) {
+          coordinator.retrySpeakerAnalysis()
+        }
       }
     case .unresolved:
       InsetNotice(
         text: "Speaker detection didn't finish for this recording.",
         systemImage: "person.crop.circle.badge.questionmark", tint: .orange)
       if coordinator.canRetrySpeakerAnalysis {
-        wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+        wizardSecondary(
+          String(
+            localized: "Try again",
+            comment: "Transcribe a File, Done step: button that retries speaker labelling.")
+        ) {
+          coordinator.retrySpeakerAnalysis()
+        }
       }
     }
     // ONE row, which is finding 12. Founder, on the shipped two-row version: "You see how
@@ -1618,7 +1849,13 @@ struct TranscribeFileView: View {
         // user pressed rather than at the window corner.
         shareButton
         Spacer(minLength: 12)
-        wizardSecondary("New transcription", systemImage: "arrow.up") {
+        wizardSecondary(
+          String(
+            localized: "New transcription",
+            comment:
+              "Transcribe a File, Done step: button that clears this transcript and starts over."),
+          systemImage: "arrow.up"
+        ) {
           coordinator.startOver()
         }
       }
@@ -1679,7 +1916,7 @@ struct TranscribeFileView: View {
   /// The chips, which wrap among themselves when the row is narrow.
   private var doneMetadata: some View {
     WrappingHStack(spacing: 10) {
-      chip("\(coordinator.wordCount) words")
+      chip(Self.wordCountChip(coordinator.wordCount))
       if let file = coordinator.file {
         chip(FileImportCoordinator.durationText(file.seconds))
       }
@@ -1733,9 +1970,19 @@ struct TranscribeFileView: View {
   /// or the provider `None`, reads "No AI polish"; a provider that polished nothing reads
   /// "No AI polish applied". There is no "Partly polished" any more.
   static func polishCredit(provider: LLMProvider?, anyPartPolished: Bool) -> String {
-    guard let provider, provider != LLMProvider.none else { return "No AI polish" }
-    guard anyPartPolished else { return "No AI polish applied" }
-    return "Polished by \(provider.displayName)"
+    guard let provider, provider != LLMProvider.none else {
+      return String(
+        localized: "No AI polish",
+        comment: "Transcribe a File, Done step: chip: no cleanup engine was chosen.")
+    }
+    guard anyPartPolished else {
+      return String(
+        localized: "No AI polish applied",
+        comment: "Transcribe a File, Done step: chip: the cleanup engine ran but cleaned nothing.")
+    }
+    return String(
+      localized: "Polished by \(provider.displayName)",
+      comment: "Transcribe a File, Done step: chip. %@ is the cleanup engine's name.")
   }
 
   /// A readable name for the finished document, and the date under it.
@@ -1745,7 +1992,11 @@ struct TranscribeFileView: View {
   /// is about the meeting. Derived rather than asked for, because asking would be a form on
   /// the screen that exists to hand the words over.
   private var documentTitle: String {
-    guard let name = coordinator.file?.name else { return "Transcript" }
+    guard let name = coordinator.file?.name else {
+      return String(
+        localized: "Transcript",
+        comment: "Transcribe a File, Done step: the document title when the file has no name.")
+    }
     return TranscribeFileExport.readableTitle(fromFileName: name)
   }
 
@@ -1754,6 +2005,20 @@ struct TranscribeFileView: View {
   private var documentSubtitle: String? {
     guard let date = coordinator.documentCreatedAt else { return nil }
     return TranscribeFileExport.documentDateFormatter.string(from: date)
+  }
+
+  /// The Done step's word count chip. The English has always said "1 words" for one word;
+  /// that exact text is kept as its own entry, so other languages can say it naturally.
+  static func wordCountChip(_ count: Int) -> String {
+    count == 1
+      ? String(
+        localized: "1 words",
+        comment:
+          "Transcribe a File, Done step: chip for a one-word transcript. Translate naturally for one word."
+      )
+      : String(
+        localized: "\(String(count)) words",
+        comment: "Transcribe a File, Done step: chip. %@ is the transcript's word count, never 1.")
   }
 
   private func chip(_ text: String) -> some View {
@@ -1786,7 +2051,13 @@ struct TranscribeFileView: View {
   }
 
   static func footerLead(step: FileImportCoordinator.Step) -> String {
-    step == .working ? "Safe to leave this page." : "Secure. Private. Local."
+    step == .working
+      ? String(
+        localized: "Safe to leave this page.",
+        comment: "Transcribe a File: the footer while the run works.")
+      : String(
+        localized: "Secure. Private. Local.", comment: "Transcribe a File: the footer's lead words."
+      )
   }
 
   /// **Computed, never fixed, and after a run it describes THAT run.**
@@ -1810,23 +2081,63 @@ struct TranscribeFileView: View {
     step: FileImportCoordinator.Step, isCloudPolish: Bool, provider: LLMProvider
   ) -> String {
     let providerName = provider.displayName
-    let underOwnKey = Self.usesTheUsersOwnKey(provider) ? ", under your own key" : ""
+    // Whole sentences: "under your own key" is never spliced in (#3142).
+    let ownKey = Self.usesTheUsersOwnKey(provider)
+    let bothStay = String(
+      localized: "Your audio and text both stay on this Mac.",
+      comment: "Transcribe a File: the footer's privacy sentence: nothing leaves the Mac.")
     switch step {
     case .working:
       // The cloud branch belongs HERE most of all: this is the step during
       // which the text is actually being sent. A line claiming both stay on the
       // Mac would be false at the exact moment it is on screen.
-      return isCloudPolish
-        ? "Your audio never leaves this Mac. The text is going to \(providerName)\(underOwnKey)."
-        : "Your audio and text both stay on this Mac."
+      guard isCloudPolish else { return bothStay }
+      return ownKey
+        ? String(
+          localized:
+            "Your audio never leaves this Mac. The text is going to \(providerName), under your own key.",
+          comment:
+            "Transcribe a File: the footer's privacy sentence, while the run works. %@ is the cloud provider, used with the user's own API key."
+        )
+        : String(
+          localized: "Your audio never leaves this Mac. The text is going to \(providerName).",
+          comment:
+            "Transcribe a File: the footer's privacy sentence, while the run works. %@ is where the text goes, such as Ollama."
+        )
     case .done:
-      return isCloudPolish
-        ? "Your audio stayed on this Mac. Only the text went to \(providerName)\(underOwnKey)."
-        : "Your untouched words are kept beside this one."
+      guard isCloudPolish else {
+        return String(
+          localized: "Your untouched words are kept beside this one.",
+          comment:
+            "Transcribe a File: the footer's privacy sentence, after a local run: the original words are kept."
+        )
+      }
+      return ownKey
+        ? String(
+          localized:
+            "Your audio stayed on this Mac. Only the text went to \(providerName), under your own key.",
+          comment:
+            "Transcribe a File: the footer's privacy sentence, after the run. %@ is the cloud provider, used with the user's own API key."
+        )
+        : String(
+          localized: "Your audio stayed on this Mac. Only the text went to \(providerName).",
+          comment:
+            "Transcribe a File: the footer's privacy sentence, after the run. %@ is where the text went, such as Ollama."
+        )
     case .upload, .transcription, .polish, .review:
-      return isCloudPolish
-        ? "Your audio never leaves this Mac. Only the text goes to \(providerName)\(underOwnKey)."
-        : "Your audio and text both stay on this Mac."
+      guard isCloudPolish else { return bothStay }
+      return ownKey
+        ? String(
+          localized:
+            "Your audio never leaves this Mac. Only the text goes to \(providerName), under your own key.",
+          comment:
+            "Transcribe a File: the footer's privacy sentence, before the run. %@ is the cloud provider, used with the user's own API key."
+        )
+        : String(
+          localized: "Your audio never leaves this Mac. Only the text goes to \(providerName).",
+          comment:
+            "Transcribe a File: the footer's privacy sentence, before the run. %@ is where the text will go, such as Ollama."
+        )
     }
   }
 
@@ -1907,22 +2218,55 @@ struct TranscribeFileView: View {
   /// One honest sentence per refusal. No mechanism, no error codes.
   static func sentence(for reason: FileImportCoordinator.FileImportRejection) -> String {
     switch reason {
-    case .cannotRead: return "That file couldn't be opened. Try a different one."
-    case .noAudio: return "There's no sound in that file."
-    case .noSpeechFound: return "No speech was found in that file."
-    case .engineBusy(.dictation): return "A dictation is running. Try again when it finishes."
-    case .engineBusy(.crashRecovery): return "Finishing an earlier take. Try again in a moment."
+    case .cannotRead:
+      return String(
+        localized: "That file couldn't be opened. Try a different one.",
+        comment: "Transcribe a File: why the file was refused.")
+    case .noAudio:
+      return String(
+        localized: "There's no sound in that file.",
+        comment: "Transcribe a File: why the file was refused.")
+    case .noSpeechFound:
+      return String(
+        localized: "No speech was found in that file.",
+        comment: "Transcribe a File: why the file was refused.")
+    case .engineBusy(.dictation):
+      return String(
+        localized: "A dictation is running. Try again when it finishes.",
+        comment: "Transcribe a File: why the file was refused.")
+    case .engineBusy(.crashRecovery):
+      return String(
+        localized: "Finishing an earlier take. Try again in a moment.",
+        comment:
+          "Transcribe a File: why the file was refused. An interrupted dictation is being recovered."
+      )
     case .engineNotInstalled:
-      return "That transcription engine isn't downloaded yet. Get it in Transcription settings."
-    case .engineNotReady: return "The transcription engine didn't start. Try again."
+      return String(
+        localized:
+          "That transcription engine isn't downloaded yet. Get it in Transcription settings.",
+        comment: "Transcribe a File: why the file was refused.")
+    case .engineNotReady:
+      return String(
+        localized: "The transcription engine didn't start. Try again.",
+        comment: "Transcribe a File: why the file was refused.")
     case .polisherNotReady:
-      return "The cleanup engine didn't start. Your words are here. Clean it again to retry."
-    case .engineBusy(.fileImport): return "Another file is being transcribed right now."
+      return String(
+        localized: "The cleanup engine didn't start. Your words are here. Clean it again to retry.",
+        comment: "Transcribe a File: why the file was refused. Clean it again is a button.")
+    case .engineBusy(.fileImport):
+      return String(
+        localized: "Another file is being transcribed right now.",
+        comment: "Transcribe a File: why the file was refused.")
     // #2787: a dictation ended but its transcription never returned; the engine
     // is not free until the app restarts.
     case .engineBusy(.abandonedDecode):
-      return "The last dictation is still transcribing. Restart the app, then try again."
-    case .failed: return "Something went wrong reading that file. Try a different one."
+      return String(
+        localized: "The last dictation is still transcribing. Restart the app, then try again.",
+        comment: "Transcribe a File: why the file was refused.")
+    case .failed:
+      return String(
+        localized: "Something went wrong reading that file. Try a different one.",
+        comment: "Transcribe a File: why the file was refused.")
     }
   }
 

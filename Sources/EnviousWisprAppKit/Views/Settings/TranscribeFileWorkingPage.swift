@@ -37,7 +37,18 @@ struct WorkingPageModel: Equatable {
   let summary: Summary
   let counts: [Count]
 
-  static let engineNames: [ASRBackendType: String] = [.parakeet: "Fast", .whisperKit: "All Languages"]
+  /// The engine's name on Transcribe a File. Exhaustive, so a new engine must be named here.
+  static func engineName(_ backend: ASRBackendType) -> String {
+    switch backend {
+    case .parakeet:
+      return String(
+        localized: "Fast", comment: "Transcribe a File: the Parakeet transcription engine's name.")
+    case .whisperKit:
+      return String(
+        localized: "All Languages",
+        comment: "Transcribe a File: the WhisperKit transcription engine's name.")
+    }
+  }
 
   /// The counts, top to bottom, in the order the run produces them.
   ///
@@ -60,17 +71,22 @@ struct WorkingPageModel: Equatable {
     if transcriptLanded {
       transcribed =
         totalMinutes > 0
-        ? "\(totalMinutes) of \(totalMinutes) min" : FileImportCoordinator.durationText(fileSeconds)
+        ? minutesOf(totalMinutes, totalMinutes) : FileImportCoordinator.durationText(fileSeconds)
     } else if let fraction = transcribingFraction, totalMinutes > 0 {
       let reached = min(totalMinutes, Int(min(max(fraction, 0), 1) * fileSeconds / 60))
-      transcribed = "\(reached) of \(totalMinutes) min"
+      transcribed = minutesOf(reached, totalMinutes)
     } else {
       transcribed = nil
     }
     let speakerValue = speakersFound.map { "\($0)" }
     let sections: String?
     if let sectionsTotal, sectionsTotal > 0 {
-      sections = "\(min(max(sectionsDone ?? 0, 0), sectionsTotal)) of \(sectionsTotal)"
+      sections = String(
+        localized:
+          "\(String(min(max(sectionsDone ?? 0, 0), sectionsTotal))) of \(String(sectionsTotal))",
+        comment:
+          "Transcribe a File, Working page: sections cleaned. The first %@ is done, the second the total."
+      )
     } else {
       sections = nil
     }
@@ -78,15 +94,40 @@ struct WorkingPageModel: Equatable {
     return WorkingPageModel(
       summary: Summary(
         fileName: fileName, length: FileImportCoordinator.durationText(fileSeconds),
-        engine: engineNames[engine] ?? engine.rawValue,
+        engine: engineName(engine),
         polisher: polisher.displayName,
         estimate: estimate),
       counts: [
-        Count(kind: .transcribed, label: "Transcribed", value: transcribed),
-        Count(kind: .speakers, label: "Speakers found", value: speakerValue),
-        Count(kind: .sections, label: "Sections cleaned", value: sections),
-        Count(kind: .words, label: "Words so far", value: wordsValue),
+        Count(
+          kind: .transcribed,
+          label: String(
+            localized: "Transcribed",
+            comment: "Transcribe a File, Working page: a live count's label."), value: transcribed),
+        Count(
+          kind: .speakers,
+          label: String(
+            localized: "Speakers found",
+            comment: "Transcribe a File, Working page: a live count's label."), value: speakerValue),
+        Count(
+          kind: .sections,
+          label: String(
+            localized: "Sections cleaned",
+            comment: "Transcribe a File, Working page: a live count's label."), value: sections),
+        Count(
+          kind: .words,
+          label: String(
+            localized: "Words so far",
+            comment: "Transcribe a File, Working page: a live count's label."), value: wordsValue),
       ])
+  }
+
+  /// "12 of 100 min": minutes transcribed over the file's whole minutes.
+  static func minutesOf(_ reached: Int, _ total: Int) -> String {
+    String(
+      localized: "\(String(reached)) of \(String(total)) min",
+      comment:
+        "Transcribe a File, Working page: minutes transcribed. The first %@ is done, the second the total; min abbreviates minutes."
+    )
   }
 }
 
@@ -100,23 +141,66 @@ struct TranscribeFileWorkingPage: View {
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
       BrandedSection {
         VStack(alignment: .leading, spacing: 8) {
-          sectionTitle("This file")
-          row("File", model.summary.fileName)
-          row("Length", model.summary.length)
-          row("Transcription", model.summary.engine)
-          row("Polish", model.summary.polisher)
-          row("Estimate", model.summary.estimate)
+          sectionTitle(
+            String(
+              localized: "This file",
+              comment:
+                "Transcribe a File, Working page: heading of the file summary, shown in capitals."))
+          row(
+            String(
+              localized: "File",
+              comment: "Transcribe a File, Working page: a row label in the file summary."),
+            model.summary.fileName)
+          row(
+            String(
+              localized: "Length",
+              comment: "Transcribe a File, Working page: a row label in the file summary."),
+            model.summary.length)
+          row(
+            String(
+              localized: "Transcription",
+              comment:
+                "Transcribe a File, Working page: a row label in the file summary. The transcription engine."
+            ), model.summary.engine)
+          row(
+            String(
+              localized: "Polish",
+              comment:
+                "Transcribe a File, Working page: a row label in the file summary. The cleanup engine."
+            ), model.summary.polisher)
+          row(
+            String(
+              localized: "Estimate",
+              comment:
+                "Transcribe a File, Working page: a row label in the file summary. How long the run should take."
+            ), model.summary.estimate)
         }
         .padding(.horizontal, SettingsLayout.rowPaddingH)
         .padding(.vertical, SettingsLayout.rowPaddingV)
       }
       BrandedSection {
         VStack(alignment: .leading, spacing: 8) {
-          sectionTitle("So far")
+          sectionTitle(
+            String(
+              localized: "So far",
+              comment:
+                "Transcribe a File, Working page: heading of the live counts, shown in capitals."))
           ForEach(model.counts) { count in
             row(count.label, count.value ?? "–")
               .accessibilityElement(children: .ignore)
-              .accessibilityLabel(count.value.map { "\(count.label), \($0)" } ?? "\(count.label), not yet known")
+              .accessibilityLabel(
+                count.value.map {
+                  String(
+                    localized: "\(count.label), \($0)",
+                    comment:
+                      "VoiceOver, Transcribe a File: a live count. The first %@ is its label, the second its value."
+                  )
+                }
+                  ?? String(
+                    localized: "\(count.label), not yet known",
+                    comment:
+                      "VoiceOver, Transcribe a File: a live count with no value yet. %@ is its label."
+                  ))
           }
         }
         .padding(.horizontal, SettingsLayout.rowPaddingH)

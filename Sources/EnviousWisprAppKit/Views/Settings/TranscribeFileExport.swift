@@ -88,9 +88,21 @@ enum TranscribeFileExport {
     segments.map { segment in
       switch segment.kind {
       case .same: return segment.text + segment.trailing
-      case .removed: return "Removed: \(segment.text). "
-      case .changed: return "Changed: \(segment.text). "
-      case .added: return "Added: \(segment.text). "
+      case .removed:
+        return String(
+          localized: "Removed: \(segment.text).",
+          comment: "VoiceOver, marked-up transcript: a word the cleanup removed. %@ is the word.")
+          + " "
+      case .changed:
+        return String(
+          localized: "Changed: \(segment.text).",
+          comment: "VoiceOver, marked-up transcript: a word the cleanup changed. %@ is the word.")
+          + " "
+      case .added:
+        return String(
+          localized: "Added: \(segment.text).",
+          comment: "VoiceOver, marked-up transcript: a word the cleanup added. %@ is the word.")
+          + " "
       }
     }.joined()
   }
@@ -105,7 +117,8 @@ enum TranscribeFileExport {
       element: NSApp.mainWindow as Any,
       notification: .announcementRequested,
       userInfo: [
-        .announcement: "Copied",
+        .announcement: String(
+          localized: "Copied", comment: "VoiceOver announcement after the transcript is copied."),
         .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
       ])
   }
@@ -121,7 +134,12 @@ enum TranscribeFileExport {
     label: String, copiedAt: Date?, now: Date, holdSeconds: Double = copiedHoldSeconds
   ) -> (title: String, systemImage: String) {
     if let copiedAt, now.timeIntervalSince(copiedAt) < holdSeconds, now >= copiedAt {
-      return ("Copied", "checkmark")
+      return (
+        String(
+          localized: "Copied",
+          comment: "Transcribe a File: the Copy button's title for two seconds after a press."),
+        "checkmark"
+      )
     }
     return (label, "doc.on.doc")
   }

@@ -43,12 +43,23 @@ final class FileImportCoordinator {
 
     var title: String {
       switch self {
-      case .upload: return "Upload"
-      case .transcription: return "Transcription"
-      case .polish: return "Polish"
-      case .review: return "Review"
-      case .working: return "Working"
-      case .done: return "Done"
+      case .upload:
+        return String(
+          localized: "Upload", comment: "Transcribe a File: a step name in the step bar.")
+      case .transcription:
+        return String(
+          localized: "Transcription", comment: "Transcribe a File: a step name in the step bar.")
+      case .polish:
+        return String(
+          localized: "Polish", comment: "Transcribe a File: a step name in the step bar.")
+      case .review:
+        return String(
+          localized: "Review", comment: "Transcribe a File: a step name in the step bar.")
+      case .working:
+        return String(
+          localized: "Working", comment: "Transcribe a File: a step name in the step bar.")
+      case .done:
+        return String(localized: "Done", comment: "Transcribe a File: a step name in the step bar.")
       }
     }
   }
@@ -89,8 +100,24 @@ final class FileImportCoordinator {
         ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file),
         codec,
         String(format: "%.1f kHz", sampleRate / 1000),
-        channelCount == 1 ? "mono" : (channelCount == 2 ? "stereo" : "\(channelCount) channels"),
+        FileImportCoordinator.channelsText(channelCount),
       ].joined(separator: " · ")
+    }
+  }
+
+  /// "mono", "stereo" or "6 channels", in the file's detail line.
+  nonisolated static func channelsText(_ count: Int) -> String {
+    switch count {
+    case 1:
+      return String(
+        localized: "mono", comment: "Transcribe a File: a file's audio has one channel.")
+    case 2:
+      return String(
+        localized: "stereo", comment: "Transcribe a File: a file's audio has two channels.")
+    default:
+      return String(
+        localized: "\(String(count)) channels",
+        comment: "Transcribe a File: a file's audio channels. %@ is the count, never 1 or 2.")
     }
   }
 
@@ -100,10 +127,24 @@ final class FileImportCoordinator {
   /// that has no business hopping to the main actor to format a number.
   nonisolated static func durationText(_ seconds: Double) -> String {
     let total = Int(seconds.rounded())
-    if total < 60 { return "\(total) sec" }
+    if total < 60 {
+      return String(
+        localized: "\(total) sec",
+        comment:
+          "Transcribe a File: a length under a minute. %lld is seconds; sec abbreviates seconds.")
+    }
     let minutes = wholeMinutes(seconds)
-    if minutes < 60 { return "\(minutes) min" }
-    return "\(minutes / 60) hr \(minutes % 60) min"
+    if minutes < 60 {
+      return String(
+        localized: "\(minutes) min",
+        comment:
+          "Transcribe a File: a length under an hour. %lld is minutes; min abbreviates minutes.")
+    }
+    return String(
+      localized: "\(String(minutes / 60)) hr \(minutes % 60) min",
+      comment:
+        "Transcribe a File: a length of an hour or more. %@ is hours (hr), %lld minutes (min)."
+    )
   }
 
   /// The file's length in whole minutes, truncated, the one number every "N of M minutes"
@@ -140,7 +181,27 @@ final class FileImportCoordinator {
   nonisolated static func estimateText(audioSeconds: Double, backend: ASRBackendType = .parakeet)
     -> String
   {
-    ImportEstimateWording.text(seconds: audioSeconds / 60.0 * secondsPerAudioMinute(for: backend))
+    ImportEstimateWording.text(
+      seconds: estimateSeconds(audioSeconds: audioSeconds, backend: backend))
+  }
+
+  /// The estimated run time the three estimate sentences are chosen from (#3142).
+  nonisolated static func estimateSeconds(audioSeconds: Double, backend: ASRBackendType) -> Double {
+    audioSeconds / 60.0 * secondsPerAudioMinute(for: backend)
+  }
+
+  /// "Ready in about 3 minutes" for the chosen file, or "" before one is chosen.
+  func readyInText(backend: ASRBackendType) -> String {
+    guard let file else { return "" }
+    return ImportEstimateWording.readyIn(
+      seconds: Self.estimateSeconds(audioSeconds: file.seconds, backend: backend))
+  }
+
+  /// The Review step's "Dictation pauses…" sentence for the chosen file, or "" before one.
+  func dictationPauseText(backend: ASRBackendType) -> String {
+    guard let file else { return "" }
+    return ImportEstimateWording.dictationPauses(
+      seconds: Self.estimateSeconds(audioSeconds: file.seconds, backend: backend))
   }
 
   // MARK: - What the screen is showing
@@ -239,7 +300,11 @@ final class FileImportCoordinator {
   /// Found by Codex.
   private(set) var saveMessage: String?
 
-  func noteSaveSucceeded(fileName: String) { saveMessage = "Saved to \(fileName)." }
+  func noteSaveSucceeded(fileName: String) {
+    saveMessage = String(
+      localized: "Saved to \(fileName).",
+      comment: "Transcribe a File: the transcript was saved. %@ is the file name.")
+  }
 
   /// Forgets the last save outcome. Called wherever the document is replaced or
   /// regenerated, because a stale "Saved to Meeting.txt" over words that have
@@ -251,7 +316,9 @@ final class FileImportCoordinator {
   }
 
   func noteSaveFailed(_ error: any Error) {
-    saveMessage = "That file couldn't be saved. Your words are still here. Try another place."
+    saveMessage = String(
+      localized: "That file couldn't be saved. Your words are still here. Try another place.",
+      comment: "Transcribe a File: saving the transcript failed.")
     saveFailureDetail = String(describing: error)
   }
 
@@ -1295,7 +1362,11 @@ final class FileImportCoordinator {
   /// analysis itself. Since #2851 nothing runs behind Done: the speaker step finishes before
   /// the cleanup starts, and the turns are written once, cleaned, at the end.
   var speakerStatusLabel: String? {
-    speakerStepState == .inProgress ? "Finding speakers" : nil
+    speakerStepState == .inProgress
+      ? String(
+        localized: "Finding speakers",
+        comment: "Transcribe a File, Done step: speaker labels are still being worked out.")
+      : nil
   }
 
   // MARK: - Speaker sections (#2851 follow-up)
