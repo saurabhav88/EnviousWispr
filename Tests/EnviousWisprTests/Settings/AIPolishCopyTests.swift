@@ -214,11 +214,18 @@ struct AIPolishCopyTests {
         == "LLM request failed: HTTP 500")
     #expect(LLMError.emptyResponse.errorDescription == "LLM returned an empty response.")
     #expect(LLMError.requestFailed("HTTP 500").errorDescription == "LLM request failed: HTTP 500")
-    // modelNotReady reaches the AFM notice but is deferred to Chunk 8;
-    // the other cases here have no proven screen path for their descriptions.
+    // The other cases here have no proven screen path for their descriptions.
     #expect(LLMError.invalidAPIKey.localizedDisplayMessage == nil)
     #expect(LLMError.rateLimited.localizedDisplayMessage == nil)
-    #expect(LLMError.modelNotReady("x").localizedDisplayMessage == nil)
+    // #3142: the on-device model's reason is typed, translated on screen, English in logs.
+    #expect(
+      LLMError.modelNotReady(.downloadingOrRestricted).localizedDisplayMessage
+        == "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
+    )
+    #expect(
+      LLMError.modelNotReady(.downloadingOrRestricted).errorDescription
+        == "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
+    )
   }
 
   @Test("The key check shows a model error's display copy, and any other error's description")

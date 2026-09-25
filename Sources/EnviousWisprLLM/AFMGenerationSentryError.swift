@@ -18,8 +18,9 @@ import Foundation
 /// plain existential `Error` at the module boundary.
 ///
 /// Each case carries the original error's description as an associated `String` —
-/// `TextProcessingRunner.swift:378` surfaces `"AI polish failed: " + error.localizedDescription`
-/// to the user for some AFM failures, so a bare no-payload case would regress that
+/// `TextProcessingRunner.appleIntelligenceFailureNotice(for:)` shows it to the user after
+/// "AI polish failed:" for some AFM failures (this type has no translated display copy, so its
+/// description is what appears), so a bare no-payload case would regress that
 /// customer-visible text. The description travels with the case but is never part of the
 /// fingerprint or semantic ID.
 enum AFMGenerationSentryError: Error, LocalizedError, Sendable, Equatable {

@@ -236,11 +236,33 @@
     "%@ spellings" : {
       "comment" : "Quick Add panel: a row's count of misheard forms. %@ is the count, never 1."
     },
+    "%@ word removed · %@ changed" : {
+      "comment" : "Transcribe a File, cleanup changes: the legend above the text. The first %@ is 1 (words removed), the second the number of words changed. Keep the middle dot.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ word removed · %2$@ changed"
+          }
+        }
+      }
+    },
     "%@ words" : {
       "comment" : "Transcribe a File, Done step: chip. %@ is the transcript's word count, never 1.\nYour Words: list heading, shown in capitals. %@ is the number of words, never 1."
     },
     "%@ words ready to review." : {
       "comment" : "Your Words, import words: %@ is the number of words found in the pasted text, never 1."
+    },
+    "%@ words removed · %@ changed" : {
+      "comment" : "Transcribe a File, cleanup changes: the legend above the text. The first %@ is the number of words removed (never 1), the second the number changed. Keep the middle dot.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ words removed · %2$@ changed"
+          }
+        }
+      }
     },
     "%@ you already have" : {
       "comment" : "Snippets, import review summary: one phrase of a list. %@ is how many the user already has (1 or more)."
@@ -456,6 +478,9 @@
     "A different app is already in that Applications spot." : {
       "comment" : "Move to Applications result, another app has the name: the heading."
     },
+    "A file is being transcribed. Try again when it finishes." : {
+      "comment" : "Settings > Diagnostics, speed test: refused because Transcribe a File is using the engine."
+    },
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
     "A language download is in progress. This updates when it finishes." : {
       "comment" : "Live Preview settings: status install in flight detail."
@@ -508,9 +533,92 @@
     "AI cleanup is paused. Your upgrade to the new %@ stopped part-way." : {
       "comment" : "Settings > AI Polish, local model row: an upgrade stopped. %@ is the model name; the version is unknown."
     },
+    "AI cleanup skipped: %@ did not answer in time. Your original text was pasted unchanged." : {
+      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+    },
+    "AI cleanup skipped: no %@ API key set yet. Add one in Settings." : {
+      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI cleanup skipped: no polish model is selected. Pick one in Settings." : {
+      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used."
+    },
+    "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+    },
+    "AI cleanup skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+    },
+    "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings." : {
+      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used."
+    },
     "AI polish engine" : {},
     "AI polish failed: %@" : {
       "comment" : "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system."
+    },
+    "AI polish failed: %@ blocked this text. Your original was pasted unchanged." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ denied access. Check your provider billing, API access, region, or selected model." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is. EnviousWispr is the app name; keep it."
+    },
+    "AI polish failed: %@ hit a rate or quota limit. Wait a moment, or check your %@ billing if it keeps happening." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. Both placeholders are the AI provider's name, such as Gemini; keep them as is.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "AI polish failed: %1$@ hit a rate or quota limit. Wait a moment, or check your %2$@ billing if it keeps happening."
+          }
+        }
+      }
+    },
+    "AI polish failed: %@ is having problems right now. Try again shortly." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ rejected the request. Pick another model in Settings." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ rejected your API key. Check or replace it in Settings." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: %@ returned no cleanup text. Try again." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: Ollama isn't reachable. Start Ollama and try again." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: Ollama isn't signed in. Run ollama signin in Terminal, then try again." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. Keep the command ollama signin as is."
+    },
+    "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: couldn't reach %@. Check your internet connection, VPN, or proxy." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: that Ollama model isn't downloaded yet. Pull it in Ollama or pick another in Settings." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: that Ollama model requires a subscription. Pick another model or check your Ollama plan." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used."
+    },
+    "AI polish failed: the selected %@ model isn't available. Pick another in Settings." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: too many requests to %@ right now. It should work again in a moment." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+    },
+    "AI polish failed: your %@ account is out of credits. Check your provider billing." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
     },
     "AI polish needs macOS 26" : {
       "comment" : "Setup notice title on Macs older than macOS 26."
@@ -800,6 +908,9 @@
     },
     "Apple Intelligence model access works but generation failed. Try again later." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "Apple Intelligence not available on this system." : {
+      "comment" : "AI Polish settings, checking the API key: this Mac can't use Apple Intelligence."
     },
     "Apple Intelligence requires macOS 26 or later." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
@@ -1307,8 +1418,17 @@
     "Couldn't save this pack change. Nothing was changed. Try again." : {
       "comment" : "Your Words, vocabulary packs: turning a pack or word on or off could not be saved."
     },
-    "Couldn't save to history: %@" : {
-      "comment" : "Pill: the dictation could not be saved to History. %@ is the reason."
+    "Couldn't save to history: a storage error" : {
+      "comment" : "Pill: the dictation could not be saved to History. Any other storage failure."
+    },
+    "Couldn't save to history: disk is full" : {
+      "comment" : "Pill: the dictation could not be saved to History. The disk is full."
+    },
+    "Couldn't save to history: permission denied" : {
+      "comment" : "Pill: the dictation could not be saved to History. The app was not allowed to write the file."
+    },
+    "Couldn't save to history: the volume is read-only" : {
+      "comment" : "Pill: the dictation could not be saved to History. The disk can't be written to."
     },
     "Couldn't save, try again" : {
       "comment" : "Your Words, import from Contacts: an error: the names could not be saved."
@@ -1697,6 +1817,9 @@
       "comment" : "Your Words export: the line inside the save dialog, one word."
     },
     "FINISH SETUP" : {},
+    "Failed to load test audio: %@" : {
+      "comment" : "Settings > Diagnostics, speed test: the test recording could not be read. %@ is the system's description of the error."
+    },
     "Failed: A duplicate key is already saved. Clear it and try again." : {
       "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
     },
@@ -1783,6 +1906,9 @@
       "comment" : "Settings > AI Polish, local model row: button."
     },
     "Finish your current dictation first, then try again." : {},
+    "Finished importing your words." : {
+      "comment" : "Pill: the background import of Your Words finished."
+    },
     "Finishing a take. Please wait." : {
       "comment" : "Pill: a previous recording is being recovered, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
     },
@@ -1977,6 +2103,9 @@
       "comment" : "Settings sidebar: file import is running."
     },
     "Importing your words" : {},
+    "Importing your words now. Check progress on the Dictionary page." : {
+      "comment" : "Pill: an import of Your Words started and continues in the background."
+    },
     "Improve recognition with your words and vocabulary." : {
       "comment" : "Settings: the one-line description under a page title."
     },
@@ -2019,6 +2148,9 @@
     "Interrupted recording" : {},
     "Interruption: %@" : {
       "comment" : "VoiceOver announcement from the recording overlay: %@ is the interruption sentence shown on the pill."
+    },
+    "Invalid API key" : {
+      "comment" : "AI Polish settings, checking the API key: the provider rejected the key."
     },
     "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
     "It stays on your Mac, is discarded when the recording ends, and never changes a character of what gets pasted." : {
@@ -2200,6 +2332,9 @@
     },
     "Loading model…" : {
       "comment" : "Toolbar status badge while the speech model loads. One ellipsis character."
+    },
+    "Loading test audio..." : {
+      "comment" : "Settings > Diagnostics, speed test: progress."
     },
     "Loading the correction model" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
@@ -2438,6 +2573,9 @@
     "No AI polish applied" : {
       "comment" : "Transcribe a File, Done step: chip: the cleanup engine ran but cleaned nothing."
     },
+    "No API key found" : {
+      "comment" : "AI Polish settings, checking the API key: no key is saved for this provider."
+    },
     "No Ollama Cloud models are available right now." : {},
     "No account required. Anonymous analytics only." : {
       "comment" : "Welcome screen feature line under Free & Private."
@@ -2653,6 +2791,9 @@
     "Ollama Cloud models have not been loaded yet." : {},
     "Ollama is a free tool you install once. Models on your Mac need no API key and no per-use cost, and they keep your dictation on your Mac. Ollama also offers hosted models, which run on Ollama's servers. Those are listed separately below and are never selected for you. A hosted model needs you signed in to Ollama, and some of them need a paid Ollama plan." : {},
     "Ollama is installed but isn't running yet." : {},
+    "Ollama is not running. Start it with: ollama serve" : {
+      "comment" : "AI Polish settings, checking the API key: Ollama is not running. Keep the command ollama serve as is."
+    },
     "Ollama listed this model but did not return a name EnviousWispr can add. Try again after updating Ollama." : {
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; no usable name came back for a hosted model."
     },
@@ -2857,6 +2998,9 @@
     "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job." : {},
     "Pill Position" : {},
     "Pipeline Benchmark Results" : {},
+    "Pipeline benchmark complete" : {
+      "comment" : "Settings > Diagnostics, speed test: the full-pipeline test finished."
+    },
     "Play a short sound when recording starts and stops." : {
       "comment" : "Settings: the one-line description under a page title."
     },
@@ -3136,6 +3280,12 @@
     "Run Pipeline Benchmark" : {},
     "Running" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Running batch ASR..." : {
+      "comment" : "Settings > Diagnostics, speed test: progress. ASR means speech recognition."
+    },
+    "Running streaming ASR..." : {
+      "comment" : "Settings > Diagnostics, speed test: progress. ASR means speech recognition."
     },
     "Runs on" : {
       "comment" : "Speech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table."
@@ -3511,6 +3661,9 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Test that %@ is live" : {},
+    "Testing %llds audio..." : {
+      "comment" : "Settings > Diagnostics, speed test: progress. %lld is a length in seconds, such as 15."
+    },
     "Text copied to clipboard" : {
       "comment" : "VoiceOver announcement from the recording overlay: the text was copied instead of pasted."
     },
@@ -3706,6 +3859,12 @@
     "The downloaded correction model is not the one this version was tested with" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
     },
+    "The engine finished loading but was not ready to use." : {
+      "comment" : "Settings > Diagnostics, speed test: why loading the speech engine failed."
+    },
+    "The engine is busy. Try again in a moment." : {
+      "comment" : "Settings > Diagnostics, speed test: refused because the speech engine is in use."
+    },
     "The export did not finish. %@" : {
       "comment" : "Snippets, export: error. %@ is the system's reason, already in the user's language."
     },
@@ -3739,6 +3898,9 @@
     },
     "The on-device model is not ready — it may still be downloading. Try again later." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider." : {
+      "comment" : "AI polish error: Apple Intelligence's on-device model can't be used yet. Shown after 'AI polish failed:'."
     },
     "The preview detects your language as you speak." : {
       "comment" : "Live Preview settings: universal auto."
@@ -4544,6 +4706,30 @@
     },
     "back" : {
       "comment" : "Quick Add panel: keyboard legend beside esc: goes back to the list. Lowercase, very short."
+    },
+    "benchmark.failure.modelLoad" : {
+      "comment" : "Settings > Diagnostics, speed test: loading the speech engine failed. %@ is the reason, one sentence, already translated or from the system.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Model load failed: %@"
+          }
+        }
+      }
+    },
+    "benchmark.progress.loadingModel" : {
+      "comment" : "Settings > Diagnostics, speed test: loading the speech engine before the test.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Loading model..."
+          }
+        }
+      }
     },
     "by Superwhisper" : {
       "comment" : "AI Polish provider list: description under a provider name. Required licence credit; keep Superwhisper as written."

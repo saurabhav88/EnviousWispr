@@ -12,15 +12,21 @@ struct HistorySaveErrorClassTests {
   @Test("Cocoa file-write codes map to the right class + reason")
   func cocoaCodesMap() {
     let cases: [(Int, HistorySaveErrorClass, String)] = [
-      (NSFileWriteOutOfSpaceError, .fullDisk, "disk is full"),
-      (NSFileWriteNoPermissionError, .permissionDenied, "permission denied"),
-      (NSFileWriteVolumeReadOnlyError, .readOnly, "the volume is read-only"),
+      (NSFileWriteOutOfSpaceError, .fullDisk, "Couldn't save to history: disk is full"),
+      (
+        NSFileWriteNoPermissionError, .permissionDenied,
+        "Couldn't save to history: permission denied"
+      ),
+      (
+        NSFileWriteVolumeReadOnlyError, .readOnly,
+        "Couldn't save to history: the volume is read-only"
+      ),
     ]
     for (code, expectedClass, expectedReason) in cases {
       let err = NSError(domain: NSCocoaErrorDomain, code: code)
       let klass = HistorySaveErrorClass(storageError: err)
       #expect(klass == expectedClass, "code \(code) should map to \(expectedClass)")
-      #expect(klass.userReason == expectedReason)
+      #expect(klass.userMessage == expectedReason)
     }
   }
 
@@ -59,7 +65,7 @@ struct HistorySaveErrorClassTests {
     let klass = HistorySaveErrorClass(
       storageError: NSError(domain: "SomethingElse", code: 42))
     #expect(klass == .unknown)
-    #expect(klass.userReason == "a storage error")
+    #expect(klass.userMessage == "Couldn't save to history: a storage error")
   }
 
   @Test("rawValue strings are the telemetry-stable, privacy-safe class names")

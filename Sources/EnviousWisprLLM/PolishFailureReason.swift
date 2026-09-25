@@ -110,18 +110,12 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   /// Unclassified.
   case unknown
 
-  /// Whether the on-screen notice leads with "AI polish failed:" (a real error)
-  /// or "AI cleanup skipped:" (not-really-broken).
+  /// Whether the on-screen notice reports a real error ("AI polish failed: ...") or a
+  /// not-really-broken skip ("AI cleanup skipped: ..."). The words themselves live in each
+  /// notice's whole sentence (#3142); this is the tone the completion planner reads.
   public enum LeadIn: Sendable, Equatable {
     case failed
     case skipped
-
-    public var text: String {
-      switch self {
-      case .failed: return "AI polish failed:"
-      case .skipped: return "AI cleanup skipped:"
-      }
-    }
   }
 
   /// Low-cardinality Sentry reason tag (`polish.error_case`).
@@ -263,54 +257,126 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     }
   }
 
-  /// The actionable user sentence (no lead-in). Always rendered with a concrete
-  /// provider by the runner; `<Provider>` is the hardcoded display name, never a
-  /// user host URL.
-  public func message(provider: LLMProvider) -> String {
+  /// The full self-contained notice, one whole sentence per reason and provider (#3142).
+  ///
+  /// The lead-in is part of each sentence rather than spliced in front of a fragment, because a
+  /// translation can reorder the whole thing. The notice's tone travels separately as `leadIn`
+  /// (`notice(provider:)`); nothing reads it back out of this text. Always rendered with a
+  /// concrete provider by the runner; `name` is the hardcoded display name, never a user host URL.
+  public func composedMessage(provider: LLMProvider) -> String {
     let name = provider.displayName
     let isOllama = provider == .ollama
     switch self {
     case .apiKeyMissing, .apiKeyUnreadable:
       // One arm, not two: copy parity between the two key reasons is a contract
       // (#1446), and a shared arm cannot drift the way two arms can.
-      return "no \(name) API key set yet. Add one in Settings."
+      return String(
+        localized:
+          "AI cleanup skipped: no \(name) API key set yet. Add one in Settings.",
+        comment:
+          "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+      )
     // #1914: Ollama 401 means the user is signed out and 403 means the selected
     // model requires a subscription. Local Ollama has no authentication layer,
     // so these measured responses need provider-specific guidance without a
     // remoteness fact.
     case .apiKeyRejected:
       return isOllama
-        ? "Ollama isn't signed in. Run ollama signin in Terminal, then try again."
-        : "\(name) rejected your API key. Check or replace it in Settings."
+        ? String(
+          localized:
+            "AI polish failed: Ollama isn't signed in. Run ollama signin in Terminal, then try again.",
+          comment:
+            "Dictation notice: AI polish failed and the original text was used. Keep the command ollama signin as is."
+        )
+        : String(
+          localized:
+            "AI polish failed: \(name) rejected your API key. Check or replace it in Settings.",
+          comment:
+            "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+        )
     case .accessDenied:
       return isOllama
-        ? "that Ollama model requires a subscription. Pick another model or check your Ollama plan."
-        : "\(name) denied access. Check your provider billing, API access, "
-          + "region, or selected model."
+        ? String(
+          localized:
+            "AI polish failed: that Ollama model requires a subscription. Pick another model or check your Ollama plan.",
+          comment: "Dictation notice: AI polish failed and the original text was used.")
+        : String(
+          localized:
+            "AI polish failed: \(name) denied access. Check your provider billing, API access, region, or selected model.",
+          comment:
+            "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+        )
     case .outOfCredits:
-      return "your \(name) account is out of credits. Check your provider billing."
+      return String(
+        localized:
+          "AI polish failed: your \(name) account is out of credits. Check your provider billing.",
+        comment:
+          "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+      )
     case .rateLimited:
-      return "too many requests to \(name) right now. It should work again in a moment."
+      return String(
+        localized:
+          "AI polish failed: too many requests to \(name) right now. It should work again in a moment.",
+        comment:
+          "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+      )
     case .rateLimitedOrQuota:
-      return
-        "\(name) hit a rate or quota limit. Wait a moment, or check your \(name) billing if it keeps happening."
+      return String(
+        localized:
+          "AI polish failed: \(name) hit a rate or quota limit. Wait a moment, or check your \(name) billing if it keeps happening.",
+        comment:
+          "Dictation notice: AI polish failed and the original text was used. Both placeholders are the AI provider's name, such as Gemini; keep them as is."
+      )
     case .modelUnavailable:
       return isOllama
-        ? "that Ollama model isn't downloaded yet. Pull it in Ollama or pick another in Settings."
-        : "the selected \(name) model isn't available. Pick another in Settings."
+        ? String(
+          localized:
+            "AI polish failed: that Ollama model isn't downloaded yet. Pull it in Ollama or pick another in Settings.",
+          comment: "Dictation notice: AI polish failed and the original text was used.")
+        : String(
+          localized:
+            "AI polish failed: the selected \(name) model isn't available. Pick another in Settings.",
+          comment:
+            "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+        )
     case .noModelSelected:
-      return "no polish model is selected. Pick one in Settings."
+      return String(
+        localized:
+          "AI cleanup skipped: no polish model is selected. Pick one in Settings.",
+        comment: "Dictation notice: AI cleanup was skipped, not broken; the original text was used."
+      )
     case .inputTooLong:
-      return
-        "this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+      return String(
+        localized:
+          "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings.",
+        comment: "Dictation notice: AI cleanup was skipped, not broken; the original text was used."
+      )
     case .contentBlocked:
-      return "\(name) blocked this text. Your original was pasted unchanged."
+      return String(
+        localized:
+          "AI polish failed: \(name) blocked this text. Your original was pasted unchanged.",
+        comment:
+          "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+      )
     case .providerUnreachable:
       return isOllama
-        ? "Ollama isn't reachable. Start Ollama and try again."
-        : "couldn't reach \(name). Check your internet connection, VPN, or proxy."
+        ? String(
+          localized:
+            "AI polish failed: Ollama isn't reachable. Start Ollama and try again.",
+          comment: "Dictation notice: AI polish failed and the original text was used.")
+        : String(
+          localized:
+            "AI polish failed: couldn't reach \(name). Check your internet connection, VPN, or proxy.",
+          comment:
+            "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+        )
     case .providerServerError:
-      return "\(name) is having problems right now. Try again shortly."
+      return String(
+        localized:
+          "AI polish failed: \(name) is having problems right now. Try again shortly.",
+        comment:
+          "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+      )
     // #2884: every retrievable production Gemini 400 carried a model the picker
     // let through that cannot polish text (gemini-3.5-transcribe). Name who
     // rejected it and the fix for the three key-holding providers. The sentence
@@ -320,12 +386,25 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     case .badRequest:
       switch provider {
       case .openAI, .gemini, .claude:
-        return "\(name) rejected the request. Pick another model in Settings."
+        return String(
+          localized:
+            "AI polish failed: \(name) rejected the request. Pick another model in Settings.",
+          comment:
+            "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+        )
       case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
-        return "a configuration problem stopped it. Your original text was pasted unchanged."
+        return String(
+          localized:
+            "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged.",
+          comment: "Dictation notice: AI polish failed and the original text was used.")
       }
     case .emptyResponse:
-      return "\(name) returned no cleanup text. Try again."
+      return String(
+        localized:
+          "AI polish failed: \(name) returned no cleanup text. Try again.",
+        comment:
+          "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+      )
     // #2093: was "the dictation took too long", which blamed the user's input for
     // something the data says it did not cause. Measured across 121 production
     // timeouts: median dictation 106 characters, 26 of 54 Gemini cases under 100,
@@ -333,19 +412,25 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     // answer inside the budget. A user-facing sentence is a claim like any
     // other, and this one was refuted by our own telemetry.
     case .timedOut:
-      return "\(name) did not answer in time. Your original text was pasted unchanged."
+      return String(
+        localized:
+          "AI cleanup skipped: \(name) did not answer in time. Your original text was pasted unchanged.",
+        comment:
+          "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+      )
     case .unknown:
-      return "an unexpected error stopped it. Your original text was pasted unchanged."
+      return String(
+        localized:
+          "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged.",
+        comment: "Dictation notice: AI polish failed and the original text was used.")
     case .outputTruncated:
-      return "\(name) ended the response before cleanup finished. "
-        + "EnviousWispr kept your complete original text instead. "
-        + "If this keeps happening, choose another model or use a shorter dictation."
+      return String(
+        localized:
+          "AI polish failed: \(name) ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation.",
+        comment:
+          "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is. EnviousWispr is the app name; keep it."
+      )
     }
-  }
-
-  /// The full self-contained notice: `<leadIn> <message>`.
-  public func composedMessage(provider: LLMProvider) -> String {
-    "\(leadIn.text) \(message(provider: provider))"
   }
 
   /// #1305: the pinned surfaced-skip notice for the Ollama readiness PREFLIGHT
@@ -359,18 +444,29 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   public var ollamaPreflightSkipMessage: String? {
     switch self {
     case .providerUnreachable:
-      return "\(LeadIn.skipped.text) Ollama isn't running. Start it in Settings → AI Polish."
+      return String(
+        localized: "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish.",
+        comment:
+          "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+      )
     case .modelUnavailable:
       // #1914: was "no model is installed in Ollama", which is false whenever
       // models ARE installed and the armed one simply is not among them — the
       // ordinary case after a delete or rename. It also collided with the empty
       // selection, which now has its own arm below.
-      return
-        "\(LeadIn.skipped.text) the selected Ollama model isn't installed. "
-        + "Download it or pick another in Settings → AI Polish."
+      return String(
+        localized:
+          "AI cleanup skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish.",
+        comment:
+          "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+      )
     case .noModelSelected:
-      return
-        "\(LeadIn.skipped.text) no polish model selected. Pick one in Settings → AI Polish."
+      return String(
+        localized:
+          "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish.",
+        comment:
+          "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+      )
     default:
       return nil
     }

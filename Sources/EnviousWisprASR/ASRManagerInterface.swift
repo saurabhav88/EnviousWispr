@@ -58,6 +58,14 @@ public struct ASREngineNotReadyAfterLoadError: Error, LocalizedError, Equatable 
   public var errorDescription: String? {
     "The engine finished loading but was not ready to use."
   }
+
+  /// The same sentence in the app's language, for the Diagnostics benchmark (#3142).
+  /// `errorDescription` stays fixed English: logs and recovery read it.
+  public var displayMessage: String {
+    String(
+      localized: "The engine finished loading but was not ready to use.",
+      comment: "Settings > Diagnostics, speed test: why loading the speech engine failed.")
+  }
 }
 
 /// #1525 PR G. Pinned defensively at introduction rather than retrofitted: this

@@ -71,16 +71,22 @@ public enum WordDiff {
     /// Numbers follow the locale: a German user reads "1.204".
     public var legend: String { legend(locale: .current) }
 
+    /// #3142: one whole sentence for each singular or plural form, so a translation can reorder
+    /// it. The numbers arrive already formatted for `locale`.
     public func legend(locale: Locale) -> String {
-      let removed = Self.count(removedWords, "word", "words", locale: locale)
+      let removed = removedWords.formatted(.number.locale(locale))
       let changed = changedWords.formatted(.number.locale(locale))
-      return "\(removed) removed · \(changed) changed"
-    }
-
-    private static func count(_ n: Int, _ singular: String, _ plural: String, locale: Locale)
-      -> String
-    {
-      "\(n.formatted(.number.locale(locale))) \(n == 1 ? singular : plural)"
+      return removedWords == 1
+        ? String(
+          localized: "\(removed) word removed · \(changed) changed",
+          comment:
+            "Transcribe a File, cleanup changes: the legend above the text. The first %@ is 1 (words removed), the second the number of words changed. Keep the middle dot."
+        )
+        : String(
+          localized: "\(removed) words removed · \(changed) changed",
+          comment:
+            "Transcribe a File, cleanup changes: the legend above the text. The first %@ is the number of words removed (never 1), the second the number changed. Keep the middle dot."
+        )
     }
 
     /// Two results in reading order, as one. Counts add; the segments concatenate.

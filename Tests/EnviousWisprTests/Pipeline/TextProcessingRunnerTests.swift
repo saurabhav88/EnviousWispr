@@ -334,9 +334,8 @@ struct TextProcessingRunnerTests {
     // carries an informative message. Unlike the permanent frameworkUnavailable
     // cases (pre-26 / switched off), it must keep surfacing so the user learns
     // why polish is temporarily unavailable instead of silent raw text.
-    let message = "The on-device model is not ready. It may still be downloading."
     let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
-      throw LLMError.modelNotReady(message)
+      throw LLMError.modelNotReady(.downloadingOrRestricted)
     }
 
     let after = RecordingStep(name: "Suffix") { context in
@@ -354,7 +353,10 @@ struct TextProcessingRunnerTests {
 
     #expect(after.runCount == 1)
     #expect(result.context.text == "start-after")
-    #expect(result.polishError == LLMError.modelNotReady(message).localizedDescription)
+    #expect(
+      result.polishError
+        == "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
+    )
   }
 
   @Test("skips a timed-out non-LLM step and continues without polishError")

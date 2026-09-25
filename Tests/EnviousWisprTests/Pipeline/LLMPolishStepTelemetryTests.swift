@@ -185,7 +185,7 @@ struct LLMPolishStepTelemetryTests {
     let spy = Spy()
     let step = makeStep(
       provider: .appleIntelligence, model: "apple-intelligence", telemetry: spy.seams)
-    let underlying = LLMError.modelNotReady("still downloading")
+    let underlying = LLMError.modelNotReady(.downloadingOrRestricted)
     step.makePolisher = { _, _, _ in
       ThrowingPolisher(makeError: { AFMPolishError(underlying: underlying) })
     }
@@ -264,7 +264,9 @@ struct LLMPolishStepTelemetryTests {
         provider: .appleIntelligence, model: "apple-intelligence",
         telemetry: .silent(wrapping: afmSpy.seams))
       step.makePolisher = { _, _, _ in
-        ThrowingPolisher(makeError: { AFMPolishError(underlying: LLMError.modelNotReady("x")) })
+        ThrowingPolisher(makeError: {
+          AFMPolishError(underlying: LLMError.modelNotReady(.downloadingOrRestricted))
+        })
       }
       await #expect(throws: LLMError.self) {
         _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
@@ -324,8 +326,8 @@ struct LLMPolishStepTelemetryTests {
       let live = LLMPolishStep.TelemetrySeams.live
       live.limbFailureObserved("ollama", "evict", "failed", "http_500", 42)
       live.breadcrumbStarted("live probe", nil)
-      live.captureProviderInitError(LLMError.modelNotReady("probe"))
-      live.captureAFMPolishError(LLMError.modelNotReady("probe"))
+      live.captureProviderInitError(LLMError.modelNotReady(.downloadingOrRestricted))
+      live.captureAFMPolishError(LLMError.modelNotReady(.downloadingOrRestricted))
       live.breadcrumbCompleted("live probe", nil)
       live.recordPolishSkipped("openAI", "probe", nil)
       #expect(
@@ -343,8 +345,8 @@ struct LLMPolishStepTelemetryTests {
       let silent = LLMPolishStep.TelemetrySeams.silent(wrapping: .live)
       silent.limbFailureObserved("ollama", "evict", "failed", "http_500", 42)
       silent.breadcrumbStarted("silent probe", nil)
-      silent.captureProviderInitError(LLMError.modelNotReady("probe"))
-      silent.captureAFMPolishError(LLMError.modelNotReady("probe"))
+      silent.captureProviderInitError(LLMError.modelNotReady(.downloadingOrRestricted))
+      silent.captureAFMPolishError(LLMError.modelNotReady(.downloadingOrRestricted))
       silent.breadcrumbCompleted("silent probe", nil)
       silent.recordPolishSkipped("openAI", "probe", nil)
 

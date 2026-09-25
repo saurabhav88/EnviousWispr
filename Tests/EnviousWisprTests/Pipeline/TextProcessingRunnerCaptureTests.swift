@@ -517,7 +517,7 @@ struct TextProcessingRunnerCaptureTests {
     let records = RecordSpy()
     let runner = makeRunner(spy, records)
     let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") {
-      LLMError.modelNotReady("still downloading")
+      LLMError.modelNotReady(.downloadingOrRestricted)
     }
 
     _ = try await runner.run(
@@ -870,10 +870,10 @@ struct TextProcessingRunnerCaptureTests {
     #expect(
       TextProcessingRunner.appleIntelligenceFailureNotice(for: LLMError.requestFailed("boom"))
         == "AI polish failed: LLM request failed: boom")
-    // No display copy yet (#3142 known gap): the connector's own English sentence passes through.
     #expect(
       TextProcessingRunner.appleIntelligenceFailureNotice(
-        for: LLMError.modelNotReady("The on-device model is not ready."))
-        == "AI polish failed: The on-device model is not ready.")
+        for: LLMError.modelNotReady(.downloadingOrRestricted))
+        == "AI polish failed: The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
+    )
   }
 }

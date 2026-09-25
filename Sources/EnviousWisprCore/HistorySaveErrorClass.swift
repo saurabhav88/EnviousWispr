@@ -58,14 +58,28 @@ public enum HistorySaveErrorClass: String, Sendable {
     }
   }
 
-  /// Privacy-safe, human-readable reason for the user pill — no paths, no
-  /// usernames. Rendered as "Couldn't save to history: <userReason>".
-  public var userReason: String {
+  /// Privacy-safe, human-readable pill sentence — no paths, no usernames. One whole sentence
+  /// per class (#3142), so a translation can reorder it; the pill shows it as is.
+  public var userMessage: String {
     switch self {
-    case .fullDisk: return "disk is full"
-    case .permissionDenied: return "permission denied"
-    case .readOnly: return "the volume is read-only"
-    case .unknown: return "a storage error"
+    case .fullDisk:
+      return String(
+        localized: "Couldn't save to history: disk is full",
+        comment: "Pill: the dictation could not be saved to History. The disk is full.")
+    case .permissionDenied:
+      return String(
+        localized: "Couldn't save to history: permission denied",
+        comment:
+          "Pill: the dictation could not be saved to History. The app was not allowed to write the file."
+      )
+    case .readOnly:
+      return String(
+        localized: "Couldn't save to history: the volume is read-only",
+        comment: "Pill: the dictation could not be saved to History. The disk can't be written to.")
+    case .unknown:
+      return String(
+        localized: "Couldn't save to history: a storage error",
+        comment: "Pill: the dictation could not be saved to History. Any other storage failure.")
     }
   }
 }

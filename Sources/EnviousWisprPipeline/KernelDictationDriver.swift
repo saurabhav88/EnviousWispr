@@ -822,10 +822,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// the history-save-failed pill on this.
   public var lastHistorySaved: Bool { outcome.historySaved }
 
-  /// #1167: privacy-safe user reason for the history-save-failed pill, or `nil`
-  /// on a successful save. Rendered as "Couldn't save to history: <reason>".
+  /// #1167: the privacy-safe history-save-failed pill sentence, or `nil` on a successful save.
+  /// A whole translated sentence (#3142); the pill shows it as is.
   public var lastHistorySaveReason: String? {
-    outcome.historySaveError.map { HistorySaveErrorClass(storageError: $0).userReason }
+    outcome.historySaveError.map { HistorySaveErrorClass(storageError: $0).userMessage }
   }
 
   /// #1167: normalized error class for the `dictation.completed` telemetry
