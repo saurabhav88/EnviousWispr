@@ -41,9 +41,8 @@ changes its English, which is what lets the catalog sync mark an existing transl
 review. The entry `id:` must be a direct literal of lowercase words joined by hyphens,
 written before `title:`, and unique; the seed refuses any entry it cannot key, and any entry
 `--self-test` would refuse. Entries are read only inside the `static let entries = [...]`
-array, outside comments and ordinary string literals. The literal scanner does not read
-Swift RAW strings (a `#` before the opening quote), so the seed and `--self-test` refuse a
-source holding one anywhere; the parse contract already forbids them in entries.
+array, outside comments and string literals of every Swift form (ordinary, multiline and
+raw); the parse contract still requires ordinary literals for the entry fields themselves.
 
 Used by .github/workflows/release.yml. Designed to fail SAFELY: if it cannot produce
 notes for the requested version, it exits non-zero and the workflow falls back to
@@ -128,7 +127,6 @@ FIELD_LITERAL = re.compile(r'\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
 VERSION_LITERAL = re.compile(r'\s*"([\d.]+)"')
 
 
-RAW_STRING_OPEN = re.compile(r'#+"')
 ENTRIES_DECLARATION = re.compile(r"\bstatic\s+let\s+entries\b[^=\n]*=\s*\[")
 
 
@@ -175,12 +173,35 @@ BULLETS_OPEN = re.compile(r"bullets:\s*\[")
 STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"', re.DOTALL)
 
 
+def string_end(fields, quote, hashes):
+    """Index just past the Swift string literal whose opening quote is at `quote`, with
+    `hashes` `#` marks before it: three quote marks open a multiline string, the terminator
+    repeats the opening quotes and the same number of `#`, and an escape is a backslash
+    followed by those `#` (none for an ordinary string), which also skips the character it
+    escapes."""
+    n = len(fields)
+    multiline = fields.startswith('"""', quote)
+    close = ('"""' if multiline else '"') + "#" * hashes
+    escape = "\\" + "#" * hashes
+    k = quote + (3 if multiline else 1)
+    while k < n:
+        if fields.startswith(escape, k):
+            k += len(escape) + 1
+        elif fields.startswith(close, k):
+            return k + len(close)
+        else:
+            k += 1
+    return n
+
+
 def mask_literals_and_comments(fields):
     """`fields` with every string literal, `//` comment and `/* */` comment replaced by
     spaces (newlines kept, so positions and line anchors still index the original), so a
     search over it sees only the entry's own argument syntax. One left-to-right scan, so
     each form is read in its own context: a `//` or `/*` inside a string is prose, a quote
-    inside a comment is not a string, and block comments nest as Swift nests them."""
+    inside a comment is not a string, and block comments nest as Swift nests them. Strings
+    are read in every Swift form (ordinary, multiline with three quote marks, and raw with
+    any number of `#` on each side), each to its own terminator."""
     out = list(fields)
     i, n = 0, len(fields)
 
@@ -190,13 +211,15 @@ def mask_literals_and_comments(fields):
                 out[k] = " "
 
     while i < n:
-        if fields[i] == '"':
-            j = i + 1
-            while j < n and fields[j] != '"':
-                j += 2 if fields[j] == "\\" else 1
-            j = min(j + 1, n)
+        hashes = 0
+        while i + hashes < n and fields[i + hashes] == "#":
+            hashes += 1
+        if i + hashes < n and fields[i + hashes] == '"':
+            j = string_end(fields, i + hashes, hashes)
             blank(i, j)
             i = j
+        elif hashes:
+            i += hashes
         elif fields.startswith("//", i):
             j = fields.find("\n", i)
             j = n if j < 0 else j
@@ -363,15 +386,6 @@ def dropped_entries(entries, swift_path):
     # or a string is not an entry's. A version label counts when a literal follows it.
     # Both read only inside the entries array, where `parse_entries` reads.
     masked = mask_literals_and_comments(source)
-    # A raw string would be scanned as ordinary quotes and could expose or hide an entry,
-    # so it is refused wherever it is (a `#` outside strings and comments opening a quote).
-    for hash_mark in re.finditer(r"#", masked):
-        if RAW_STRING_OPEN.match(source, hash_mark.start()):
-            line = source.count("\n", 0, hash_mark.start()) + 1
-            return (
-                f"error: line {line} holds a raw string literal; What's New is parsed from "
-                "ordinary double-quoted literals only, so rewrite it without the #"
-            )
     first, last = entries_region(masked)
     field_count = sum(
         1 for label in re.compile(r"\bversion:").finditer(masked, first, last)
@@ -695,7 +709,7 @@ FIXTURE_CASES = [
 # (label, Swift source text, expected start of the refusal message, or None for a seed).
 SEED_REFUSALS = [
     (
-        "a raw string anywhere in the source is refused, even one hiding a fake entries array",
+        "a raw string holding a fake entries array is masked, and the real array is read",
         '''
 enum WhatsNewContent {
   static let example = #"""
@@ -714,7 +728,47 @@ enum WhatsNewContent {
   ]
 }
 ''',
-        "error: line 3 holds a raw string literal",
+        None,
+    ),
+    (
+        "a one-line raw string ends only at its own quote-and-hash terminator",
+        '''
+enum WhatsNewContent {
+  static let example = #"x " static let entries = [Entry(id: "fake", version: "1.0.0")] "#
+
+  static let entries: [Entry] = [
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      title: "Real title",
+      description: "Real paragraph.",
+      version: "9.9.9"
+    ),
+  ]
+}
+''',
+        None,
+    ),
+    (
+        "an ordinary multiline string with a quote and a # inside is masked, not refused",
+        '''
+enum WhatsNewContent {
+  static let example = """
+    Say " #"
+    """
+
+  static let entries: [Entry] = [
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      title: "Real title",
+      description: "Real paragraph.",
+      version: "9.9.9"
+    ),
+  ]
+}
+''',
+        None,
     ),
     (
         "an Entry( outside the entries array is not a What's New entry",
@@ -1024,7 +1078,9 @@ def self_test_fixtures():
                     failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted a seed")
                 elif seed.get("whatsNew.real.title", "Real title") != "Real title":
                     failures.append(f"[{label}] title {seed['whatsNew.real.title']!r}, wanted 'Real title'")
-                elif any(".demo." in k for k in seed):
+                elif any(".demo." in k or ".fake." in k for k in seed) or (
+                    'id: "real"' in source and "whatsNew.real.title" not in seed
+                ):
                     failures.append(f"[{label}] seeded an entry outside the array: {sorted(seed)!r}")
             elif seed is not None or not (error or "").startswith(want_error):
                 failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted {want_error!r}")
