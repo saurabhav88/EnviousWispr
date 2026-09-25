@@ -216,7 +216,7 @@ struct LivePreviewStatusBarPresentationTests {
     let locked = bar(
       .unsupportedLanguage, engine: .apple, appleActive: .unsupportedLanguage,
       languageMode: .locked("da"))
-    #expect(locked.language?.name == LanguageCatalog.entry(for: "da").englishName)
+    #expect(locked.language?.name == LanguageCatalog.entry(for: "da").displayName)
     #expect(locked.language?.provenance == LivePreviewSettingsCopy.languageProvenanceUserPicked)
 
     // On Auto there is no lock to name, and Apple's preview takes the locale from
@@ -276,7 +276,7 @@ struct LivePreviewStatusBarPresentationTests {
 
     let locked = bar(
       .active, engine: .universal, appleActive: nil, languageMode: .locked("de"))
-    #expect(locked.language?.name == LanguageCatalog.entry(for: "de").englishName)
+    #expect(locked.language?.name == LanguageCatalog.entry(for: "de").displayName)
     #expect(locked.language?.provenance == LivePreviewSettingsCopy.languageProvenanceUserPicked)
   }
 

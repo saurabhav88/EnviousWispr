@@ -34,8 +34,12 @@ enum LivePreviewPackPresentation {
   /// Rendered as SECTION headers rather than rows: styled as a row label they carried the same
   /// visual weight as a language name and disappeared into the list, so the boundary between
   /// "installed" and "downloadable" was invisible after ten rows (founder, 2026-08-16).
-  static let installedGroupTitle = "On this Mac"
-  static let availableGroupTitle = "Available to download"
+  static let installedGroupTitle = String(
+    localized: "On this Mac",
+    comment: "Live Preview language list: heading for languages already installed.")
+  static let availableGroupTitle = String(
+    localized: "Available to download",
+    comment: "Live Preview language list: heading for languages that can be downloaded.")
 
   /// Rows matching `query`, or all of them when it is empty.
   ///

@@ -27,32 +27,49 @@ enum LivePreviewSettingsCopy {
   /// Founder decision: Live Preview everywhere. The collision is answered by
   /// renaming the OTHER setting to "Faster Transcription" (#2155, ships
   /// immediately after this), not by this one staying nameless.
-  static let sectionHeader = "Live Preview"
+  static let sectionHeader = String(
+    localized: "Live Preview",
+    comment: "Live Preview settings: section header.")
 
-  static let toggleLabel = "Show words while I speak"
+  static let toggleLabel = String(
+    localized: "Show words while I speak",
+    comment: "Live Preview settings: toggle label.")
 
   // MARK: - Language packs (#2080)
 
-  static let packsHeader = "Languages"
+  static let packsHeader = String(
+    localized: "Languages",
+    comment: "Live Preview settings: packs header.")
 
   /// Explains the thing a user is otherwise left to infer: their Mac has only some
   /// of these, the missing ones are a download, and we will not take that decision
   /// for them. No size promise beyond "about" — Apple reports none, and the figure
   /// below is ours, measured, not theirs.
   static let packsDescription =
-    "Apple provides the speech for the on-screen preview. Your Mac already has some "
-    + "languages; the rest are about 140 MB each and download only when you ask. "
-    + "Nothing downloads on its own."
+    String(
+      localized:
+        "Apple provides the speech for the on-screen preview. Your Mac already has some languages; the rest are about 140 MB each and download only when you ask. Nothing downloads on its own.",
+      comment: "Live Preview settings: packs description.")
 
-  static let packInstall = "Download"
-  static let packInstalling = "Downloading"
-  static let packRetry = "Try again"
+  static let packInstall = String(
+    localized: "Download",
+    comment: "Live Preview settings: pack install.")
+  static let packInstalling = String(
+    localized: "Downloading",
+    comment: "Live Preview settings: pack installing.")
+  static let packRetry = String(
+    localized: "Try again",
+    comment: "Live Preview settings: pack retry.")
 
   /// Placeholder and empty state for the language search. Wording matches `LanguageLockSheet`
   /// verbatim: the app already has a language search and a second phrasing for the same job would
   /// read as a different feature.
-  static let packsSearchPlaceholder = "Search by name or code"
-  static let packsNoSearchMatch = "No language matches your search."
+  static let packsSearchPlaceholder = String(
+    localized: "Search by name or code",
+    comment: "Live Preview settings: packs search placeholder.")
+  static let packsNoSearchMatch = String(
+    localized: "No language matches your search.",
+    comment: "Live Preview settings: packs no search match.")
 
   /// Shown while the list is being read, which is two local inventory reads and moves
   /// no bytes over the network.
@@ -62,18 +79,24 @@ enum LivePreviewSettingsCopy {
   /// contradicts the promise three lines above it. A spinner is not a transfer, and a
   /// page that cries download while idle teaches the user to disbelieve the word when
   /// it is true.
-  static let packsLoading = "Checking which languages are on this Mac"
+  static let packsLoading = String(
+    localized: "Checking which languages are on this Mac",
+    comment: "Live Preview settings: packs loading.")
 
   /// Shown when the list itself could not be read. Distinct from an empty list on
   /// purpose: "we could not ask your Mac" and "your Mac supports none" are
   /// different facts, and showing an empty list for the first would be a lie.
   static let packsUnavailable =
-    "Could not read the language list from macOS. Reopen this page to try again."
+    String(
+      localized: "Could not read the language list from macOS. Reopen this page to try again.",
+      comment: "Live Preview settings: packs unavailable.")
 
   /// Shown when one download fails. Says what to do rather than what went wrong,
   /// because the causes (offline, disk, Apple's servers) all have the same remedy.
   static let packInstallFailed =
-    "That download did not finish. Check your connection and try again."
+    String(
+      localized: "That download did not finish. Check your connection and try again.",
+      comment: "Live Preview settings: pack install failed.")
 
   /// In the recording pill when the chosen language has no pack yet.
   ///
@@ -86,7 +109,11 @@ enum LivePreviewSettingsCopy {
   /// (`RecordingOverlayPanel`), and every one of the 54 languages has to fit. See
   /// the plan's §14.
   static func previewNeedsLanguagePack(_ languageName: String) -> String {
-    "\(languageName) isn't downloaded yet. Open Settings to download it."
+    String(
+      localized: "livePreview.languagePackNotDownloaded",
+      defaultValue: "\(languageName) isn't downloaded yet. Open Settings to download it.",
+      comment:
+        "Recording pill and Live Preview: a language pack is missing. %@ is the language's name.")
   }
 
   // MARK: - Status card (#2154)
@@ -100,17 +127,25 @@ enum LivePreviewSettingsCopy {
   /// RULE: a-language-mismatch-shows-NOTHING-not-garbage), so "showing your
   /// words" would be a promise this page cannot keep.
 
-  static let statusActiveLabel = "Activated"
-  static let statusActiveDetail = "Ready to show your words while you speak."
+  static let statusActiveLabel = String(
+    localized: "Activated",
+    comment: "Live Preview settings: status active label.")
+  static let statusActiveDetail = String(
+    localized: "Ready to show your words while you speak.",
+    comment: "Live Preview settings: status active detail.")
 
-  static let statusOffLabel = "Off"
+  static let statusOffLabel = String(
+    localized: "Off",
+    comment: "Live Preview settings: status off label.")
   /// **Deliberately promises nothing about what happens next.** The off state is
   /// checked BEFORE any engine detail, so switching on can land straight on
   /// "needs a download" or a missing language pack. An earlier draft said
   /// "switch it on to see your words while you speak", which is a promise this
   /// card cannot keep for every user who reads it.
   static let statusOffDetail =
-    "Switch it on and this bar will show whether anything else is needed."
+    String(
+      localized: "Switch it on and this bar will show whether anything else is needed.",
+      comment: "Live Preview settings: status off detail.")
 
   // `statusUnavailableLabel` / `statusUnavailableDetail` were DELETED by #2154's
   // final sweep, not merely unused. "Not available on this Mac" was returned
@@ -120,35 +155,62 @@ enum LivePreviewSettingsCopy {
   // its own reason. Do not reintroduce a generic both-unavailable sentence: the
   // condition that would produce it has no single honest wording.
 
-  static let statusNeedsMacOS26Label = "Apple's engine needs macOS 26"
+  static let statusNeedsMacOS26Label = String(
+    localized: "Apple's engine needs macOS 26",
+    comment:
+      "Live Preview settings: status needs mac os26 label. Apple's engine is the Apple speech engine."
+  )
   /// Two details, for the same reason `statusUnsupportedLanguageDetail` has two:
   /// pointing at the Universal card is only useful when that card can actually
   /// help. A build shipped without its files makes the advice a dead end.
   static let statusNeedsMacOS26Detail =
-    "Pick the Universal engine below, which works on macOS 14 and later."
+    String(
+      localized: "Pick the Universal engine below, which works on macOS 14 and later.",
+      comment:
+        "Live Preview settings: status needs mac os26 detail. Universal is the name of the other preview engine."
+    )
   static let statusNeedsMacOS26DetailNoAlternative =
-    "Dictation itself works normally. Only the on-screen preview is unavailable."
+    String(
+      localized: "Dictation itself works normally. Only the on-screen preview is unavailable.",
+      comment: "Live Preview settings: status needs mac os26 detail no alternative.")
 
-  static let statusCheckingLabel = "Checking"
-  static let statusCheckingDetail = "Reading which languages are on this Mac."
+  static let statusCheckingLabel = String(
+    localized: "Checking",
+    comment: "Live Preview settings: status checking label.")
+  static let statusCheckingDetail = String(
+    localized: "Reading which languages are on this Mac.",
+    comment: "Live Preview settings: status checking detail.")
   /// Shown while a language download is running, when the resolved language is
   /// stale by construction. True whichever language is downloading, which is
   /// what lets the card say it without knowing.
   static let statusInstallInFlightDetail =
-    "A language download is in progress. This updates when it finishes."
+    String(
+      localized: "A language download is in progress. This updates when it finishes.",
+      comment: "Live Preview settings: status install in flight detail.")
   /// Shown when the dictation language changed while a download was running, so
   /// the resolved language describes the previous choice. Says what is true
   /// without pretending to know the new answer yet.
   static let statusLanguageChangedDetail =
-    "Working out what your new language needs. This updates when the download finishes."
+    String(
+      localized:
+        "Working out what your new language needs. This updates when the download finishes.",
+      comment: "Live Preview settings: status language changed detail.")
 
   static func statusNeedsLanguageLabel(_ languageName: String) -> String {
-    "\(languageName) isn't downloaded yet"
+    String(
+      localized: "\(languageName) isn't downloaded yet",
+      comment:
+        "Live Preview settings, status card: a language pack is missing. %@ is the language's name."
+    )
   }
   static let statusNeedsLanguageDetail =
-    "Use Browse downloads below to get it and start the preview."
+    String(
+      localized: "Use Browse downloads below to get it and start the preview.",
+      comment: "Live Preview settings: status needs language detail.")
 
-  static let statusUnsupportedLanguageLabel = "Apple can't preview this language"
+  static let statusUnsupportedLanguageLabel = String(
+    localized: "Apple can't preview this language",
+    comment: "Live Preview settings: status unsupported language label.")
   /// **Two details, because the advice is only true when the other engine
   /// exists.** This state is reached with Apple selected and supported, which
   /// says nothing about whether the universal engine is composable in this
@@ -156,28 +218,51 @@ enum LivePreviewSettingsCopy {
   /// cannot help them. Found by enumerating the class after two review rounds,
   /// not by either round.
   static let statusUnsupportedLanguageDetail =
-    "Dictation still works normally. Try the Universal engine instead."
+    String(
+      localized: "Dictation still works normally. Try the Universal engine instead.",
+      comment: "Live Preview settings: status unsupported language detail.")
   static let statusUnsupportedLanguageDetailNoAlternative =
-    "Dictation still works normally. Only the on-screen preview is unavailable for it."
+    String(
+      localized:
+        "Dictation still works normally. Only the on-screen preview is unavailable for it.",
+      comment: "Live Preview settings: status unsupported language detail no alternative.")
 
-  static let statusNeedsDownloadLabel = "Needs a download"
-  static let statusNeedsDownloadDetail = "Get the Universal engine from the card below."
+  static let statusNeedsDownloadLabel = String(
+    localized: "Needs a download",
+    comment: "Live Preview settings: status needs download label.")
+  static let statusNeedsDownloadDetail = String(
+    localized: "Get the Universal engine from the card below.",
+    comment:
+      "Live Preview settings: status needs download detail. Universal is the name of the other preview engine."
+  )
 
-  static let statusGettingReadyLabel = "Getting ready"
+  static let statusGettingReadyLabel = String(
+    localized: "Getting ready",
+    comment: "Live Preview settings: status getting ready label.")
   /// **State-neutral on purpose.** This label covers downloading, preparing AND
   /// verifying, and the last two can be pure local work on files already on
   /// disk. Saying "downloading" there announces a transfer that is not
   /// happening, which is the same defect `packsLoading` was split out to fix.
-  static let statusGettingReadyDetail = "The Universal engine is being prepared."
+  static let statusGettingReadyDetail = String(
+    localized: "The Universal engine is being prepared.",
+    comment:
+      "Live Preview settings: status getting ready detail. Universal is the name of the other preview engine."
+  )
 
   /// The label only. **The DETAIL comes from `ModelDeliveryCopy.message`**,
   /// because the right remedy depends on the reason: a full disk needs space
   /// freed, not a connection checked. One owner for that mapping, not two.
-  static let statusDownloadFailedLabel = "Download did not finish"
+  static let statusDownloadFailedLabel = String(
+    localized: "Download did not finish",
+    comment: "Live Preview settings: status download failed label.")
 
-  static let statusBuildCannotRunLabel = "Can't run that engine"
+  static let statusBuildCannotRunLabel = String(
+    localized: "Can't run that engine",
+    comment: "Live Preview settings: status build cannot run label.")
   static let statusBuildCannotRunDetail =
-    "This version of EnviousWispr is missing that engine's files. Pick Apple instead."
+    String(
+      localized: "This version of EnviousWispr is missing that engine's files. Pick Apple instead.",
+      comment: "Live Preview settings: status build cannot run detail.")
   /// **The same defect with no fallback to offer, and it must not blame the
   /// Mac.** Reached on macOS 14 or 15 with the universal engine selected and its
   /// files missing: that Mac is perfectly capable of running this engine, and
@@ -185,7 +270,10 @@ enum LivePreviewSettingsCopy {
   /// this Mac" there accuses the user's hardware for our mistake, and sends them
   /// looking for an upgrade that would not help.
   static let statusBuildCannotRunDetailNoAlternative =
-    "This version of EnviousWispr is missing that engine's files. Updating the app should restore it."
+    String(
+      localized:
+        "This version of EnviousWispr is missing that engine's files. Updating the app should restore it.",
+      comment: "Live Preview settings: status build cannot run detail no alternative.")
 
   /// **One of exactly TWO strings permitted to name the other feature** (with
   /// `statusPausedDetail` below), the closed exception in
@@ -199,9 +287,14 @@ enum LivePreviewSettingsCopy {
   /// Why the pause exists: the universal preview refuses to run while the heart
   /// decodes continuously, because concurrent decode was measured costing
   /// transcription 1.50x. Yielding is the design, not a defect.
-  static let pausedForFasterTranscription = "Paused while Faster Transcription is on"
+  static let pausedForFasterTranscription = String(
+    localized: "Paused while Faster Transcription is on",
+    comment: "Live Preview settings: paused for faster transcription.")
   static let statusPausedDetail =
-    "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview."
+    String(
+      localized:
+        "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview.",
+      comment: "Live Preview settings: status paused detail.")
 
   /// **The claim that may not be dropped, moved rather than deleted (#2436).**
   ///
@@ -218,18 +311,24 @@ enum LivePreviewSettingsCopy {
   /// while this is the only surface a user reads before deciding whether to switch
   /// on something that watches them speak.
   static let previewPrivacyFooter =
-    "It stays on your Mac, is discarded when the recording ends, and never changes a "
-    + "character of what gets pasted."
+    String(
+      localized:
+        "It stays on your Mac, is discarded when the recording ends, and never changes a character of what gets pasted.",
+      comment: "Live Preview settings: preview privacy footer.")
 
   // MARK: - Pack catalogue sheet (#2436)
 
   /// **An empty FILTER is not a failed SEARCH.** With every pack installed, the default
   /// "Not on this Mac" half is empty and no search has happened, so
   /// `packsNoSearchMatch` would blame a query the user never typed.
-  static let catalogNothingToInstall = "Every language Apple offers is already on this Mac."
+  static let catalogNothingToInstall = String(
+    localized: "Every language Apple offers is already on this Mac.",
+    comment: "Live Preview settings: catalog nothing to install.")
   /// The bar's one remedy, named for where it goes rather than what it fetches: the
   /// catalogue is the only thing that can resolve a display name to an installable pack.
-  static let browseDownloadsButton = "Browse downloads"
+  static let browseDownloadsButton = String(
+    localized: "Browse downloads",
+    comment: "Live Preview settings: browse downloads button.")
 
   /// The Languages row's trailing button, and the row's own summary.
   // `packsBrowseButton` ("Browse") was DELETED, not left unused. The Languages
@@ -246,7 +345,9 @@ enum LivePreviewSettingsCopy {
   /// part - they can see what is on the mac on the top of the live preview page").
   /// What is already installed is answered by the language control at the top of
   /// the page, which lists exactly the languages you can switch to.
-  static let packsInstallRowTitle = "Install new languages"
+  static let packsInstallRowTitle = String(
+    localized: "Install new languages",
+    comment: "Live Preview settings: packs install row title.")
 
   // `packInstalled` ("Ready"), `packInUse` ("In use"), `packsInstalledSummary`,
   // `catalogFilterAvailable`, `catalogFilterInstalled` and `catalogNoneInstalled`
@@ -258,12 +359,16 @@ enum LivePreviewSettingsCopy {
   // The facts they carried are still stated where they are true: which language is
   // previewing NOW is the status bar's, and what is installed is the language
   // control's, which lists exactly what you can switch to.
-  static let catalogDoneButton = "Done"
+  static let catalogDoneButton = String(
+    localized: "Done",
+    comment: "Live Preview settings: catalog done button.")
 
   /// The close control carries no visible text, so this IS its name for
   /// VoiceOver. "Close" rather than "Done": both leave, and only one of them
   /// implies something was committed — nothing in this sheet is.
-  static let catalogCloseLabel = "Close"
+  static let catalogCloseLabel = String(
+    localized: "Close",
+    comment: "Live Preview settings: catalog close label.")
 
   // MARK: - Status-bar language chip (#2436)
 
@@ -274,7 +379,11 @@ enum LivePreviewSettingsCopy {
   /// "Automatic", not "Any language": the universal engine supports a finite set, so
   /// "any" is a claim wider than the code (`LanguageLockOptions` restricts the lockable
   /// set to the backend's own). This names the SETTING, which is what the chip is for.
-  static let languageAnyLanguage = "Automatic"
+  static let languageAnyLanguage = String(
+    localized: "Automatic",
+    comment:
+      "Live Preview settings: language any language. Shown as the language when the preview follows automatic detection."
+  )
 
   /// **Where the language came from — CONFIGURATION only, never activity.**
   ///
@@ -295,13 +404,25 @@ enum LivePreviewSettingsCopy {
   /// wrong language, and naming the Mac as the source is what makes that legible
   /// instead of a bug report. the deleted `activeSource` carried the same distinction in
   /// sentence form; these are its two-word shoulders for the status bar.
-  static let languageProvenanceFromMac = "from your Mac"
-  static let languageProvenanceUserPicked = "you picked this"
+  static let languageProvenanceFromMac = String(
+    localized: "from your Mac",
+    comment:
+      "Live Preview settings: language provenance from mac. A caption under the language: where it came from."
+  )
+  static let languageProvenanceUserPicked = String(
+    localized: "you picked this",
+    comment:
+      "Live Preview settings: language provenance user picked. A caption under the language: where it came from."
+  )
   /// "automatic", not "auto-detect": the guard forbids activity words and "detect" is
   /// one, even inside a setting's name. Arguing the matcher into an exception would
   /// have traded a real guard for one word — and the word is not load-bearing, since
   /// the picker this chip opens calls the same setting Automatic.
-  static let languageProvenanceDetected = "no language pinned"
+  static let languageProvenanceDetected = String(
+    localized: "no language pinned",
+    comment:
+      "Live Preview settings: language provenance detected. A caption under the language: where it came from."
+  )
 
   /// **The universal engine follows a LOCK, and only auto-detects on Auto.**
   /// `WhisperPreviewEngineResolver` maps `.locked(code)` straight through to the
@@ -311,9 +432,13 @@ enum LivePreviewSettingsCopy {
   /// user they stranded is the one locked to the wrong language with no way to
   /// see or change it from here. Cloud/local review r7.
   static func universalLocked(_ name: String) -> String {
-    "Your words will appear in \(name)."
+    String(
+      localized: "Your words will appear in \(name).",
+      comment: "Live Preview settings: the preview's language. %@ is the language's name.")
   }
-  static let universalAuto = "The preview detects your language as you speak."
+  static let universalAuto = String(
+    localized: "The preview detects your language as you speak.",
+    comment: "Live Preview settings: universal auto.")
 
   /// **Paused variants. The row must DESCRIBE the configuration, never promise
   /// output, whenever the engine is refused.**
@@ -339,10 +464,16 @@ enum LivePreviewSettingsCopy {
   /// "fixed" to match. Ref: live-preview.md RULE:
   /// the-status-card-may-only-claim-what-its-inputs-prove.
   static func universalLockedPaused(_ name: String) -> String {
-    "The preview is set to \(name)."
+    String(
+      localized: "The preview is set to \(name).",
+      comment:
+        "Live Preview settings: the preview's chosen language while it is paused. %@ is the language's name."
+    )
   }
   static let universalAutoPaused =
-    "The preview is set to detect your language as you speak."
+    String(
+      localized: "The preview is set to detect your language as you speak.",
+      comment: "Live Preview settings: universal auto paused.")
 
   /// Says the consequence out loud. Picking a language here is not a
   /// preview-only setting: it sets the DICTATION language, on a different page.
@@ -373,11 +504,14 @@ enum LivePreviewSettingsCopy {
   /// wrong language, and naming the source is what makes that legible instead of a
   /// bug report.
   static let pickerAppleCaveat =
-    "This changes dictation too, not just the preview. On Automatic, dictation "
-    + "follows what you speak, but the preview must pick one language up front and "
-    + "uses your Mac's."
+    String(
+      localized:
+        "This changes dictation too, not just the preview. On Automatic, dictation follows what you speak, but the preview must pick one language up front and uses your Mac's.",
+      comment: "Live Preview settings: picker apple caveat.")
 
   static let pickerUniversalCaveat =
-    "This changes dictation too, not just the preview. On Automatic, this engine "
-    + "works the language out as you speak."
+    String(
+      localized:
+        "This changes dictation too, not just the preview. On Automatic, this engine works the language out as you speak.",
+      comment: "Live Preview settings: picker universal caveat.")
 }

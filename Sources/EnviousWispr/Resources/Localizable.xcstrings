@@ -41,6 +41,9 @@
     "%@ is warming up after a restart" : {
       "comment" : "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name."
     },
+    "%@ isn't downloaded yet" : {
+      "comment" : "Live Preview settings, status card: a language pack is missing. %@ is the language's name."
+    },
     "%@ isn't downloaded yet. Open Settings to download it." : {
       "comment" : "Pill: the chosen speech engine is not downloaded. %@ is the engine's name."
     },
@@ -158,6 +161,9 @@
     },
     "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {},
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
+    "A language download is in progress. This updates when it finishes." : {
+      "comment" : "Live Preview settings: status install in flight detail."
+    },
     "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown." : {
       "comment" : "Appearance settings: description of the Capsule recording pill style."
     },
@@ -228,6 +234,9 @@
       "comment" : "Speech engine settings, Faster Transcription: help panel heading."
     },
     "Activate to install and restart" : {},
+    "Activated" : {
+      "comment" : "Live Preview settings: status active label."
+    },
     "Activates recording. Then press the key combination you want." : {},
     "Add" : {
       "comment" : "AI Polish, Ollama model list: button that adds a hosted model; nothing downloads."
@@ -326,6 +335,15 @@
     "Apple Neural Engine" : {
       "comment" : "Speech engine settings, engine card: the chip it runs on. Use Apple's own name for the Neural Engine in your language."
     },
+    "Apple can't preview this language" : {
+      "comment" : "Live Preview settings: status unsupported language label."
+    },
+    "Apple provides the speech for the on-screen preview. Your Mac already has some languages; the rest are about 140 MB each and download only when you ask. Nothing downloads on its own." : {
+      "comment" : "Live Preview settings: packs description."
+    },
+    "Apple's engine needs macOS 26" : {
+      "comment" : "Live Preview settings: status needs mac os26 label. Apple's engine is the Apple speech engine."
+    },
     "Applies after the current dictation finishes." : {
       "comment" : "Speech engine settings: an engine change waits until the dictation in progress ends."
     },
@@ -365,10 +383,15 @@
     "Auto-stop on silence is unavailable right now" : {
       "comment" : "Banner inside the recording panel: stopping automatically on silence is not available."
     },
-    "Automatic" : {},
+    "Automatic" : {
+      "comment" : "Live Preview settings: language any language. Shown as the language when the preview follows automatic detection."
+    },
     "Automatically fix grammar, punctuation, and formatting." : {},
     "Available" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Available to download" : {
+      "comment" : "Live Preview language list: heading for languages that can be downloaded."
     },
     "Azerbaijani" : {
       "comment" : "A language name (dictation language picker)."
@@ -417,6 +440,9 @@
     "British spelling: colour, organise, centre" : {
       "comment" : "Dictation language picker: under English (UK). Keep the three example words in British spelling; they show the result."
     },
+    "Browse downloads" : {
+      "comment" : "Live Preview settings: browse downloads button."
+    },
     "Built for Apple Silicon." : {
       "comment" : "Welcome screen feature line under Native Speed."
     },
@@ -442,8 +468,11 @@
     "Can't reach the download server. Check your connection and try again." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
     },
+    "Can't run that engine" : {
+      "comment" : "Live Preview settings: status build cannot run label."
+    },
     "Cancel" : {
-      "comment" : "Settings > AI Polish, local model row: button that stops the download."
+      "comment" : "Live Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download."
     },
     "Cancelling…" : {},
     "Cantonese" : {
@@ -478,12 +507,15 @@
       "comment" : "AI Polish, Ollama model list: when the hosted list was last verified. %@ is a date."
     },
     "Checking" : {
-      "comment" : "AI Polish provider status chip."
+      "comment" : "AI Polish provider status chip.\nLive Preview settings: status checking label."
     },
     "Checking Ollama installation..." : {},
     "Checking model status..." : {},
     "Checking speech model files..." : {
       "comment" : "Setup progress: checking already-downloaded speech model files.\nSpeech engine settings, speech model download: checking files already on disk."
+    },
+    "Checking which languages are on this Mac" : {
+      "comment" : "Live Preview settings: packs loading."
     },
     "Chinese" : {
       "comment" : "A language name (dictation language picker)."
@@ -512,7 +544,7 @@
     "Click to change" : {},
     "Clipboard" : {},
     "Close" : {
-      "comment" : "Dictation language picker: VoiceOver name of the close button."
+      "comment" : "Dictation language picker: VoiceOver name of the close button.\nLive Preview settings: catalog close label."
     },
     "Close %@ pack" : {},
     "Cloud" : {
@@ -549,6 +581,9 @@
     "Copy to clipboard" : {},
     "Could not download the model from models.enviouslabs.co. Check your connection. On a managed network, ask IT to allow this domain." : {
       "comment" : "AI Polish, local model card: why the model download failed. Keep models.enviouslabs.co exactly; it is a web address."
+    },
+    "Could not read the language list from macOS. Reopen this page to try again." : {
+      "comment" : "Live Preview settings: packs unavailable."
     },
     "Couldn't add speaker labels to this recording." : {},
     "Couldn't add the model. Check your internet connection and try again." : {
@@ -660,11 +695,20 @@
     "Dictation cancelled. Press Undo to get it back, or find it in History." : {
       "comment" : "VoiceOver announcement from the recording overlay: the user pressed Escape. Undo is a button; History is the app's list of past dictations."
     },
+    "Dictation itself works normally. Only the on-screen preview is unavailable." : {
+      "comment" : "Live Preview settings: status needs mac os26 detail no alternative."
+    },
     "Dictation keybind" : {},
     "Dictation language" : {},
     "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in %@." : {},
     "Dictation ready. Press to start." : {
       "comment" : "VoiceOver announcement from the recording overlay: the speech engine finished loading."
+    },
+    "Dictation still works normally. Only the on-screen preview is unavailable for it." : {
+      "comment" : "Live Preview settings: status unsupported language detail no alternative."
+    },
+    "Dictation still works normally. Try the Universal engine instead." : {
+      "comment" : "Live Preview settings: status unsupported language detail."
     },
     "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time." : {},
     "Dictations" : {
@@ -687,11 +731,13 @@
     },
     "Dock" : {},
     "Document" : {},
-    "Done" : {},
+    "Done" : {
+      "comment" : "Live Preview settings: catalog done button."
+    },
     "Double-press to go hands-free." : {},
     "Double-press to lock it on. Triple-press to cancel." : {},
     "Download" : {
-      "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac."
+      "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install."
     },
     "Download %@" : {
       "comment" : "Settings > AI Polish, local model row: button. %@ is the model name, such as EG-1."
@@ -713,16 +759,25 @@
     "Download canceled. Your progress is saved." : {
       "comment" : "AI Polish, local model card: why the model download failed."
     },
+    "Download did not finish" : {
+      "comment" : "Live Preview settings: status download failed label."
+    },
     "Download failed. Check your internet connection and try again." : {
       "comment" : "AI Polish, Ollama setup: a model download failed."
     },
     "Download failed: %@" : {
       "comment" : "Setup error with no friendlier wording. %@ is the system's description of the error."
     },
+    "Download paused. It will pick up where it stopped." : {
+      "comment" : "Live Preview settings, preview engine: download cancelled."
+    },
     "Download paused. Resume anytime." : {
       "comment" : "AI Polish, local model card: the reason under the health status.\nSettings > AI Polish, local model row: the user paused the model download.\nSpeech engine settings, speech model download: the user paused it.\nSpeech model download: why it failed. Shown in setup and in Settings."
     },
     "Download size: %@" : {},
+    "Download stopped." : {
+      "comment" : "Live Preview settings, preview engine: download stopped."
+    },
     "Download the model to get started." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
@@ -733,7 +788,7 @@
       "comment" : "AI Polish, Ollama setup: a model download was interrupted."
     },
     "Downloading" : {
-      "comment" : "AI Polish provider status chip."
+      "comment" : "AI Polish provider status chip.\nLive Preview settings: pack installing."
     },
     "Downloading %@ (%@)" : {
       "comment" : "Settings > AI Polish, local model row: first download. the first %@ is the model name, the second its size.",
@@ -826,6 +881,9 @@
     "Escape Recovery" : {},
     "Estonian" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "Every language Apple offers is already on this Mac." : {
+      "comment" : "Live Preview settings: catalog nothing to install."
     },
     "Example" : {},
     "Expands to" : {},
@@ -939,6 +997,9 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Get Started" : {},
+    "Get the Universal engine from the card below." : {
+      "comment" : "Live Preview settings: status needs download detail. Universal is the name of the other preview engine."
+    },
     "Get your Claude API key" : {},
     "Get your free API key at aistudio.google.com" : {},
     "Get your free API key at platform.openai.com" : {},
@@ -948,6 +1009,9 @@
     },
     "Getting dictation ready…" : {
       "comment" : "Pill title while the speech engine loads after a restart."
+    },
+    "Getting ready" : {
+      "comment" : "Live Preview settings: status getting ready label."
     },
     "Getting the engine ready" : {
       "comment" : "Transcribe a File, Working step: set-up before transcription starts."
@@ -1030,6 +1094,9 @@
     "Install Ollama" : {
       "comment" : "AI Polish, Ollama setup: the current step."
     },
+    "Install new languages" : {
+      "comment" : "Live Preview settings: packs install row title."
+    },
     "Installed" : {},
     "Installing 'um' and 'uh' filters..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
@@ -1046,6 +1113,9 @@
       "comment" : "VoiceOver announcement from the recording overlay: %@ is the interruption sentence shown on the pill."
     },
     "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
+    "It stays on your Mac, is discarded when the recording ends, and never changes a character of what gets pasted." : {
+      "comment" : "Live Preview settings: preview privacy footer."
+    },
     "Italian" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1106,7 +1176,7 @@
     "Language" : {},
     "Language suggestions" : {},
     "Languages" : {
-      "comment" : "Speech engine settings, engine card: a row label in the card's spec table."
+      "comment" : "Live Preview settings: packs header.\nSpeech engine settings, engine card: a row label in the card's spec table."
     },
     "Lao" : {
       "comment" : "A language name (dictation language picker)."
@@ -1119,6 +1189,9 @@
     },
     "Learn from..." : {},
     "Learn more" : {},
+    "Learn more about engines" : {
+      "comment" : "Live Preview settings, preview engine: learn more label."
+    },
     "Leave this off. If you regularly dictate for five minutes or more in one go it may be worth the trade, and the risk of a lost ending is highest there too." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: recommendation."
     },
@@ -1154,6 +1227,9 @@
     },
     "Live" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Live Preview" : {
+      "comment" : "Live Preview settings: section header."
     },
     "Loaded" : {
       "comment" : "Main window sidebar: the speech model is in memory."
@@ -1271,8 +1347,14 @@
       "comment" : "Welcome screen feature title."
     },
     "Nearly there" : {},
+    "Needs a download" : {
+      "comment" : "Live Preview settings: status needs download label."
+    },
     "Needs attention" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Needs macOS 26 or later." : {
+      "comment" : "Live Preview settings, preview engine: apple needs newer mac os."
     },
     "Nepali" : {
       "comment" : "A language name (dictation language picker)."
@@ -1292,7 +1374,9 @@
     "No internet connection. Please connect to the internet and try again." : {
       "comment" : "Setup error: no internet during the speech model download."
     },
-    "No language matches your search." : {},
+    "No language matches your search." : {
+      "comment" : "Live Preview settings: packs no search match."
+    },
     "No matches for \"%@\"." : {},
     "No matching history." : {},
     "No microphone found. Please connect one." : {
@@ -1324,6 +1408,9 @@
     "Not available with your API key" : {},
     "Not checked" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Not downloaded yet." : {
+      "comment" : "Live Preview settings, preview engine: not downloaded yet."
     },
     "Not enough disk space (%lld MB free). EnviousWispr needs about 1 GB to download and install the speech model." : {
       "comment" : "Setup error before the speech model download. %lld is the free space in megabytes."
@@ -1369,7 +1456,7 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Off" : {
-      "comment" : "AI Polish provider status chip: AI Polish is off.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches."
+      "comment" : "AI Polish provider status chip: AI Polish is off.\nLive Preview settings: status off label.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches."
     },
     "Offline-Ready" : {
       "comment" : "Welcome screen feature title: works without internet."
@@ -1394,7 +1481,7 @@
       "comment" : "Speech engine settings, Faster Transcription: help panel: speed."
     },
     "On this Mac" : {
-      "comment" : "AI Polish provider list: group heading."
+      "comment" : "AI Polish provider list: group heading.\nLive Preview language list: heading for languages already installed."
     },
     "On this engine, transcribing as you go is about as accurate as waiting until you stop. It can still occasionally drop a final word or two, which we are working on." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy."
@@ -1478,11 +1565,17 @@
     "Paused to free memory for other apps. Use the refresh button to restart it." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
+    "Paused while Faster Transcription is on" : {
+      "comment" : "Live Preview settings: paused for faster transcription."
+    },
     "Performance" : {},
     "Persian" : {
       "comment" : "A language name (dictation language picker)."
     },
     "Persists across relaunches. Toggle with Cmd+Shift+D from anywhere." : {},
+    "Pick the Universal engine below, which works on macOS 14 and later." : {
+      "comment" : "Live Preview settings: status needs mac os26 detail. Universal is the name of the other preview engine."
+    },
     "Pick this for everyday English and European dictation." : {
       "comment" : "Speech engine settings, engine card: when to pick the fast engine."
     },
@@ -1546,6 +1639,9 @@
     "Press your keybind and start talking." : {},
     "Preview" : {},
     "Preview %@" : {},
+    "Preview engine" : {
+      "comment" : "Live Preview settings, preview engine: section header."
+    },
     "Preview is unavailable while a recording is in progress." : {},
     "Previous page" : {},
     "Pro Tip" : {},
@@ -1573,9 +1669,15 @@
     "Reading Well" : {
       "comment" : "Appearance settings: name of the recording pill style that shows your words as you speak."
     },
+    "Reading which languages are on this Mac." : {
+      "comment" : "Live Preview settings: status checking detail."
+    },
     "Ready for import" : {},
     "Ready to Transcribe" : {},
     "Ready to Wispr!" : {},
+    "Ready to show your words while you speak." : {
+      "comment" : "Live Preview settings: status active detail."
+    },
     "Ready — press to dictate" : {
       "comment" : "Pill title when the speech engine finished loading."
     },
@@ -1627,6 +1729,9 @@
       "comment" : "Pill title while a recording interrupted by a crash is recovered."
     },
     "Refresh available models" : {},
+    "Remove" : {
+      "comment" : "Live Preview settings, Universal engine card: button. It deletes the downloaded engine."
+    },
     "Remove Model" : {},
     "Remove all imported names" : {},
     "Remove filler words (um, uh, hmm...)" : {},
@@ -1648,7 +1753,7 @@
     "Restore" : {},
     "Restore clipboard after paste" : {},
     "Resume" : {
-      "comment" : "Settings > AI Polish, local model row: button that resumes the download.\nSpeech engine settings, speech model download: button that resumes it."
+      "comment" : "Live Preview settings, Universal engine card: button. It resumes the download.\nSettings > AI Polish, local model row: button that resumes the download.\nSpeech engine settings, speech model download: button that resumes it."
     },
     "Resume upgrade" : {
       "comment" : "Settings > AI Polish, local model row: button."
@@ -1707,7 +1812,9 @@
     },
     "Say your keyword, then the words you saved a snippet under, and that snippet is pasted." : {},
     "Search %@ words" : {},
-    "Search by name or code" : {},
+    "Search by name or code" : {
+      "comment" : "Live Preview settings: packs search placeholder."
+    },
     "Search by word, mishearing, or category" : {},
     "Search history" : {},
     "Search languages" : {},
@@ -1765,6 +1872,9 @@
     },
     "Show app in Dock" : {},
     "Show in Finder" : {},
+    "Show words while I speak" : {
+      "comment" : "Live Preview settings: toggle label."
+    },
     "Shown once per launch when Bluetooth is your mic" : {
       "comment" : "Small print at the bottom of the Bluetooth tip card."
     },
@@ -1863,6 +1973,9 @@
     "Swedish" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Switch it on and this bar will show whether anything else is needed." : {
+      "comment" : "Live Preview settings: status off detail."
+    },
     "TRY AGAIN" : {},
     "Tagalog" : {
       "comment" : "A language name (dictation language picker)."
@@ -1893,15 +2006,24 @@
     "That did not work" : {
       "comment" : "Practice screen headline. The dictation failed on our side."
     },
+    "That download did not finish. Check your connection and try again." : {
+      "comment" : "Live Preview settings: pack install failed."
+    },
     "That is it. You are set." : {
       "comment" : "Practice screen headline. The first dictation worked."
     },
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {},
+    "The Universal engine is being prepared." : {
+      "comment" : "Live Preview settings: status getting ready detail. Universal is the name of the other preview engine."
+    },
     "The download couldn't be verified. Try again, and if this keeps happening, contact support." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
     },
     "The download couldn't finish. Try again, and if this keeps happening, contact support." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
+    },
+    "The download did not finish." : {
+      "comment" : "Live Preview settings, preview engine: download failed."
     },
     "The download did not verify correctly and was discarded. Please try again." : {
       "comment" : "AI Polish, local model card: why the model download failed."
@@ -1931,6 +2053,15 @@
     "The model stopped twice in a row. Use the refresh button to try again." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
+    "The preview detects your language as you speak." : {
+      "comment" : "Live Preview settings: universal auto."
+    },
+    "The preview is set to %@." : {
+      "comment" : "Live Preview settings: the preview's chosen language while it is paused. %@ is the language's name."
+    },
+    "The preview is set to detect your language as you speak." : {
+      "comment" : "Live Preview settings: universal auto paused."
+    },
     "The privacy-first dictation app built for macOS." : {},
     "The speech engine did not finish waking up." : {},
     "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below." : {},
@@ -1950,6 +2081,12 @@
       "comment" : "AI Polish, local model card: why the model download failed."
     },
     "This can't be undone." : {},
+    "This changes dictation too, not just the preview. On Automatic, dictation follows what you speak, but the preview must pick one language up front and uses your Mac's." : {
+      "comment" : "Live Preview settings: picker apple caveat."
+    },
+    "This changes dictation too, not just the preview. On Automatic, this engine works the language out as you speak." : {
+      "comment" : "Live Preview settings: picker universal caveat."
+    },
     "This choice also changes the transcription engine used for dictation." : {},
     "This engine has to commit to a language before it can start. If your language is set to Auto-detect, EnviousWispr ignores this setting and transcribes after you stop instead, because guessing the language early gets it wrong too often." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: explanation."
@@ -1971,7 +2108,13 @@
     "This usually takes a moment. Nothing else is needed from you." : {},
     "This version is not saved" : {},
     "This version of EnviousWispr cannot run that preview engine." : {
-      "comment" : "On-screen preview status: this app build lacks the preview engine's files."
+      "comment" : "Live Preview settings, preview engine: unavailable in this build.\nOn-screen preview status: this app build lacks the preview engine's files."
+    },
+    "This version of EnviousWispr is missing that engine's files. Pick Apple instead." : {
+      "comment" : "Live Preview settings: status build cannot run detail."
+    },
+    "This version of EnviousWispr is missing that engine's files. Updating the app should restore it." : {
+      "comment" : "Live Preview settings: status build cannot run detail no alternative."
     },
     "This will permanently delete all %lld items in History, including any hidden by a filter or search. This action cannot be undone." : {
       "comment" : "Delete All confirmation in History. %lld is how many rows will be deleted, including hidden ones. Never 1."
@@ -2040,9 +2183,12 @@
       "comment" : "History filter: rows made with Transcribe a File."
     },
     "Try Again" : {
-      "comment" : "Settings > AI Polish, local model row: button after a failed download.\nSpeech engine settings, speech model download: button after a failure."
+      "comment" : "Live Preview settings, Universal engine card: button. It retries a failed download.\nSettings > AI Polish, local model row: button after a failed download.\nSpeech engine settings, speech model download: button after a failure."
     },
     "Try a different search, or another filter." : {},
+    "Try again" : {
+      "comment" : "Live Preview settings: pack retry."
+    },
     "Try setup again" : {},
     "Try these first" : {
       "comment" : "AI Polish, Ollama model list: heading for hosted models that worked without a paid plan when last checked."
@@ -2075,6 +2221,9 @@
     },
     "Undone" : {
       "comment" : "Pill result after the user pressed Undo: the word was removed again."
+    },
+    "Universal" : {
+      "comment" : "Live Preview settings, preview engine: universal title. Universal is the name of the preview engine that works on any macOS 14+ Mac."
     },
     "Unknown" : {
       "comment" : "AI Polish provider status chip.\nAI Polish, Ollama model list: the model's download size is unknown.\nAI Polish, Ollama model list: the model's size in parameters is unknown."
@@ -2123,8 +2272,14 @@
     "Urdu" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Use Browse downloads below to get it and start the preview." : {
+      "comment" : "Live Preview settings: status needs language detail."
+    },
     "Use Transcribe a File to add one." : {},
     "Use dictation's polish settings" : {},
+    "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26." : {
+      "comment" : "Live Preview settings, preview engine: apple description."
+    },
     "Uses your selected Ollama model, local or hosted" : {
       "comment" : "AI Polish: privacy line under the selected provider."
     },
@@ -2245,8 +2400,14 @@
       "comment" : "Speech engine settings, spoken punctuation: help panel title."
     },
     "Work out the language from what you say." : {},
+    "Working out what your new language needs. This updates when the download finishes." : {
+      "comment" : "Live Preview settings: status language changed detail."
+    },
     "Working, but responding slowly right now." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
+    },
+    "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download." : {
+      "comment" : "Live Preview settings, preview engine: universal description. 217 MB is a download size."
     },
     "Works without internet." : {
       "comment" : "Welcome screen feature line under Offline-Ready."
@@ -2278,6 +2439,9 @@
       "comment" : "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
     },
     "Your Voice, Instantly Captured." : {},
+    "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview." : {
+      "comment" : "Live Preview settings: status paused detail."
+    },
     "Your dictations and transcripts will appear here." : {},
     "Your first dictation" : {},
     "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
@@ -2299,6 +2463,9 @@
     "Your snippets could not be read" : {},
     "Your voice never leaves your Mac." : {
       "comment" : "Welcome screen feature line under On-Device."
+    },
+    "Your words will appear in %@." : {
+      "comment" : "Live Preview settings: the preview's language. %@ is the language's name."
     },
     "a blank line" : {
       "comment" : "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
@@ -2400,6 +2567,9 @@
         }
       }
     },
+    "from your Mac" : {
+      "comment" : "Live Preview settings: language provenance from mac. A caption under the language: where it came from."
+    },
     "language.picker.spellingAccessibility" : {
       "comment" : "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses.",
       "extractionState" : "extracted_with_value",
@@ -2420,6 +2590,18 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "livePreview.languagePackNotDownloaded" : {
+      "comment" : "Recording pill and Live Preview: a language pack is missing. %@ is the language's name.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%@ isn't downloaded yet. Open Settings to download it."
           }
         }
       }
@@ -2449,6 +2631,9 @@
       }
     },
     "my email address" : {},
+    "no language pinned" : {
+      "comment" : "Live Preview settings: language provenance detected. A caption under the language: where it came from."
+    },
     "notification.update.ready.body" : {
       "comment" : "Body of the macOS notification when an app update has downloaded. %@ is the version number, for example 2.6.0.",
       "extractionState" : "manual",
@@ -2485,6 +2670,9 @@
     },
     "then your snippet, and it expands." : {},
     "v%@" : {},
+    "you picked this" : {
+      "comment" : "Live Preview settings: language provenance user picked. A caption under the language: where it came from."
+    },
     "your own setup" : {
       "comment" : "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
     },

@@ -549,11 +549,29 @@ struct LivePreviewSettingsView: View {
 
   private static func label(for action: LivePreviewEnginePresentation.Action) -> String {
     switch action {
-    case .download: return "Download"
-    case .cancelDownload: return "Cancel"
-    case .resumeDownload: return "Resume"
-    case .retryDownload: return "Try Again"
-    case .remove: return "Remove"
+    case .download:
+      return String(
+        localized: "Download",
+        comment:
+          "Live Preview settings, Universal engine card: button. It starts the engine download.")
+    case .cancelDownload:
+      return String(
+        localized: "Cancel",
+        comment: "Live Preview settings, Universal engine card: button. It stops the download.")
+    case .resumeDownload:
+      return String(
+        localized: "Resume",
+        comment: "Live Preview settings, Universal engine card: button. It resumes the download.")
+    case .retryDownload:
+      return String(
+        localized: "Try Again",
+        comment:
+          "Live Preview settings, Universal engine card: button. It retries a failed download.")
+    case .remove:
+      return String(
+        localized: "Remove",
+        comment:
+          "Live Preview settings, Universal engine card: button. It deletes the downloaded engine.")
     }
   }
 

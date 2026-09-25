@@ -186,7 +186,7 @@ enum LivePreviewStatusBarPresentation {
         name: LivePreviewSettingsCopy.languageAnyLanguage, provenance: autoProvenance)
     case .locked(let code):
       return Language(
-        name: LanguageCatalog.entry(for: code).englishName,
+        name: LanguageCatalog.entry(for: code).displayName,
         provenance: LivePreviewSettingsCopy.languageProvenanceUserPicked)
     }
   }
