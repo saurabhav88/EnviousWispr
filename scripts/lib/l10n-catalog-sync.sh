@@ -216,8 +216,11 @@ def main(argv):
                 print("catalog already in sync")
             return 0
         if added or removed or changed:
-            print(f"DRIFT: {len(added)} added, {len(removed)} removed, {len(changed)} changed. "
-                  "Run scripts/lib/l10n-catalog-sync.sh --update and commit the catalog.")
+            print(f"DRIFT: {len(added)} added, {len(removed)} removed, {len(changed)} changed. To fix, on Xcode "
+                  f"{PINNED_XCODE_BUILD}: xcodebuild build -project EnviousWispr.xcodeproj -scheme EnviousWispr-Release "
+                  "-configuration Release -derivedDataPath .derivedData/L10n -destination 'generic/platform=macOS', "
+                  "then scripts/lib/l10n-catalog-sync.sh --update --derived-data .derivedData/L10n "
+                  "--configuration Release, and commit Sources/EnviousWispr/Resources/Localizable.xcstrings.")
             return 1
         print("catalog in sync")
         return 0
