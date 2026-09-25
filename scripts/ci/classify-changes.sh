@@ -17,8 +17,11 @@
 #
 # Classify contract (lifted VERBATIM from the pre-#1151 inline step):
 #   - a change to pr-check.yml / main-post-merge.yml self-forces a full build
-#   - any path outside (website/ docs/ .github/ .claude/ CLAUDE.md) forces a
-#     full build
+#   - any path outside (website/ docs/ .github/ .claude/ CLAUDE.md, plus the
+#     ROOT .gitignore and .mailmap) forces a full build. The two git files
+#     cannot change a build: CI builds the tracked tree, and they only steer
+#     what git will add later or how it names authors. Added after a
+#     .gitignore-only PR (#3190) ran the whole Xcode suite.
 #   - otherwise content-only -> skip
 #   Empty input -> true: the here-string feeds grep one blank line, which is
 #   NOT excluded, so the verbatim classifier over-builds. Preserved as-is; an
@@ -69,7 +72,7 @@ classify() {
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
     echo "==> CI build workflow or composite action changed — full Xcode build required (needs_website=$website)"
-  elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md)' <<<"$changed"; then
+  elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md|\.gitignore$|\.mailmap$)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
     echo "==> Swift source changes detected — full Xcode build required (needs_website=$website)"
@@ -285,7 +288,15 @@ self_test() {
   # without dragging the website checks along.
   _expect_classify "scripts/ci/classify-changes.sh" true "classifier self-forces website" true
   _expect_classify "scripts/build-dev-app.sh" true "ordinary scripts path: build only" false
-  _expect_classify ".gitignore" true "gitignore not excluded" false
+  # The root git metadata files skip the build (#3190). Anchored to the ROOT
+  # file only: a nested .gitignore, a look-alike name, and .gitattributes
+  # (which changes checkout content: eol, filters, LFS) must all still build.
+  _expect_classify ".gitignore" false "root gitignore skips build" false
+  _expect_classify ".mailmap" false "root mailmap skips build" false
+  _expect_classify $'.gitignore\nSources/B.swift' true "gitignore + swift still builds" false
+  _expect_classify "Tests/.gitignore" true "nested gitignore still builds" false
+  _expect_classify ".gitignore.bak" true "gitignore look-alike still builds" false
+  _expect_classify ".gitattributes" true "gitattributes still builds" false
   _expect_classify "" true "empty input -> over-build (verbatim quirk)" false
   _expect_classify $'docs/a.md\nSources/B.swift' true "mixed docs+swift" false
   _expect_classify "website/src/pages/help/index.astro" false "website only -> website check, no build" true
