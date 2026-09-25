@@ -161,6 +161,12 @@ enum SettingsDefaultValues {
   // The permanent Microphone-settings guide stays regardless of this flag.
   static let showBluetoothTips = true
 
+  // #2480 (founder, 2026-09-24, choosing Wispr Flow's design): a normal Dock app
+  // by default, so the window opens in front with the app menu and a Cmd-Tab
+  // entry. Off is for people who want a menu-bar-only utility; the Dock icon then
+  // appears only while a window is open.
+  static let showInDock = true
+
   // Recording start/stop sounds default ON, paired to Whisper Tick (founder,
   // 2026-09-01), superseding the shipped OFF. Start and stop are the two moments
   // a user most needs confirmed without looking at the pill. Whisper Tick was

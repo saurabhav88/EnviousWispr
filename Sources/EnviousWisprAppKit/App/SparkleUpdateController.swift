@@ -55,16 +55,19 @@ final class SparkleUpdateController: NSObject {
   /// Those have defaults because a test that does not exercise updates still needs
   /// the type; this one has none because the calls it carries are exactly what a
   /// unit test must never make.
-  private let application: any ApplicationActivating
+  ///
+  /// #2480: the Dock-policy owner (`AppWindowCoordinator`), not the raw activation
+  /// seam. Sparkle reports its dialog and session; the owner decides the policy.
+  private let updateDialogPresenter: any UpdateDialogPresenting
 
   init(
     holder: UpdateCoordinatorHolder,
-    application: any ApplicationActivating,
+    updateDialogPresenter: any UpdateDialogPresenting,
     bundleVersionProvider: @escaping () -> String = { AppConstants.appVersion },
     updaterFactory: SparkleUpdaterFactory = SparkleUpdateController.defaultUpdaterFactory
   ) {
     self.holder = holder
-    self.application = application
+    self.updateDialogPresenter = updateDialogPresenter
     self.bundleVersionProvider = bundleVersionProvider
     self.updaterFactory = updaterFactory
     super.init()
@@ -138,18 +141,15 @@ extension SparkleUpdateController: @preconcurrency SPUStandardUserDriverDelegate
 
   /// Bring app to front when Sparkle shows an update dialog (LSUIElement fix).
   func standardUserDriverWillShowModalAlert() {
-    application.setPolicy(.regular)
-    application.activate(.standard)
+    updateDialogPresenter.updateDialogWillShow()
   }
 
-  /// Return to accessory mode when the entire update session ends — but only
-  /// if the user doesn't still have a main app window open (#1392). This
-  /// hook fires on every attended-check outcome (dismissed, error, or an
-  /// update found), so an unconditional revert here would take Settings down
-  /// with it whenever the user checked for updates from inside it.
+  /// The entire update session ended. This hook fires on every attended-check
+  /// outcome (dismissed, error, or an update found), so the owner re-decides the
+  /// Dock policy rather than dropping it: a main window the user still has open,
+  /// even minimized, keeps it (#1392), and so does "Show app in Dock" (#2480).
   func standardUserDriverWillFinishUpdateSession() {
-    guard !AppWindowCoordinator.isMainWindowPresented() else { return }
-    application.setPolicy(.accessory)
+    updateDialogPresenter.updateSessionDidEnd()
   }
 
   /// Issue #343: pure yes/no decision per Sparkle's documented gentle-reminder

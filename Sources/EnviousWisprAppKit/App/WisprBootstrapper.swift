@@ -911,6 +911,25 @@ package final class WisprBootstrapper {
       settingsChangeTelemetry?.flush()
     }
 
+    // PR-B.2 of #763: window-lifecycle home, and since #2480 the sole owner of the
+    // Dock policy. **Built HERE, before `settings.onChange` and Sparkle, because both
+    // report to it** (the "Show app in Dock" switch, the update dialog). Its inputs,
+    // `presentationEffects` and `settings`, already exist, so this is a reorder, not
+    // a late-bound seam: same reasoning as `MenuBarController` below.
+    let appWindowCoordinator = AppWindowCoordinator(
+      application: presentationEffects.application,
+      // Strong: `settings` holds no reference back to the coordinator, and a nil fallback
+      // would be a second copy of the default, which lives only in `SettingsDefaultValues`.
+      showInDock: { [settings] in settings.showInDock },
+      canOpenOnboarding: { [weak settings] in
+        guard let settings else { return false }
+        return settings.onboardingState != .completed
+      },
+      isOnboardingComplete: { [weak settings] in
+        settings?.onboardingState == .completed
+      }
+    )
+
     // #1480: late-binding bridge so this early-assigned onChange closure can
     // forward setting-change facts to the (later-constructed) presenter.
     let bluetoothAwarenessPresenterHolder = BluetoothAwarenessPresenterHolder()
@@ -919,7 +938,7 @@ package final class WisprBootstrapper {
       [
         weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
         bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
-        weak learnFromEdits
+        weak learnFromEdits, weak appWindowCoordinator
       ] key
       in
       guard let settingsSync, let settings else { return }
@@ -930,6 +949,10 @@ package final class WisprBootstrapper {
       // #996: the learn-from-edits toggle reaches the watcher (cancels a live
       // watch on off; re-read at every boundary otherwise).
       learnFromEdits?.settingChanged(key, settings: settings)
+      // #2480: the Dock switch takes effect now, not at the next window close.
+      if key == .showInDock {
+        appWindowCoordinator?.refreshActivationPolicy(excluding: nil)
+      }
       // #1047: appearance is a view-shell concern (no pipeline sync) — apply it
       // to NSApp here so both the menu and the Settings picker take effect live.
       if key == .appearance {
@@ -1033,7 +1056,7 @@ package final class WisprBootstrapper {
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
     let sparkleUpdateController = SparkleUpdateController(
-      holder: updateCoordinatorHolder, application: presentationEffects.application)
+      holder: updateCoordinatorHolder, updateDialogPresenter: appWindowCoordinator)
 
     // #1019: event-driven update-discovery triggers (wake / network). Data-free
     // — it reads `updateCoordinator` lazily (nil until `startUpdater()`), so it
@@ -1367,18 +1390,6 @@ package final class WisprBootstrapper {
       endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() }
     )
 
-    // PR-B.2 of #763: window-lifecycle home.
-    let appWindowCoordinator = AppWindowCoordinator(
-      application: presentationEffects.application,
-      canOpenOnboarding: { [weak settings] in
-        guard let settings else { return false }
-        return settings.onboardingState != .completed
-      },
-      isOnboardingComplete: { [weak settings] in
-        settings?.onboardingState == .completed
-      }
-    )
-
     // PR-B.3 of #763: menu bar surface home.
     // **Built HERE rather than at its `self.quickAdd =` assignment below, because the menu-bar
     // action needs it (#2412) and that assignment is a hundred lines further on.** A closure cannot
@@ -1465,7 +1476,6 @@ package final class WisprBootstrapper {
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
-      application: presentationEffects.application,
       wheelScrollSmoother: WheelScrollSmoother(monitor: scrollWheelMonitor),
       settings: settings,
       permissions: permissions,
@@ -1973,6 +1983,9 @@ package final class WisprBootstrapper {
   // evaluates (issue #739 / SparkleUpdateController contract).
 
   package func applicationWillFinishLaunching() {
+    // #2480: regular before any scene or Sparkle window exists, so the launch window
+    // opens with the app menu, Dock icon and Cmd-Tab entry.
+    appWindowCoordinator.beginLaunch()
     sparkleUpdateController.startUpdater()
     // #1019: wire the active-dictation guard so the new install affordances
     // (menu item / notification) never relaunch the app mid-capture.
@@ -1999,6 +2012,8 @@ package final class WisprBootstrapper {
     // a Mac left lowered by a dead process is put back before any take can start.
     dictationRuntime.otherAudioHold.adoptOrphans()
     appLifecycleCoordinator.runDidFinishLaunching()
+    // #2480: bring the launch window to the front.
+    appWindowCoordinator.finishLaunch()
     // #2381. AFTER launch, not during: `NSApp.servicesProvider` set before the app has finished
     // launching is registered against an app that cannot yet answer, and the menu item is then
     // present and inert.
@@ -2023,6 +2038,14 @@ package final class WisprBootstrapper {
       // exists, which the initializer guarantees.
       debugImportDoor.install()
     #endif
+  }
+
+  /// #2480: a Dock-icon click (or a double-click on the running app). Returns what
+  /// AppKit's `applicationShouldHandleReopen` expects: `false` when handled.
+  /// AppKit's own `hasVisibleWindows` is deliberately not consulted: it counts the
+  /// recording pill and the Quick Add panel, so it can be true with Settings closed.
+  package func applicationShouldHandleReopen() -> Bool {
+    !appWindowCoordinator.reopenFromDock()
   }
 
   package func applicationDidBecomeActive() {
@@ -2131,7 +2154,6 @@ private struct MainWindowRoot: View {
       .environment(\.keychainManager, b.keychainManager)
       .background(
         ActionWirer(
-          application: b.application,
           settings: b.settings,
           appWindowCoordinator: b.appWindowCoordinator,
           menuBarController: b.menuBarController,
@@ -2186,10 +2208,6 @@ private struct OnboardingWindowRoot: View {
 /// Hidden view that wires SwiftUI environment actions into App-owned homes.
 /// Must live inside a SwiftUI view hierarchy to access @Environment.
 private struct ActionWirer: View {
-  /// #2455 C3. This view makes the onboarding-dismissal policy call, so it holds
-  /// the seam directly rather than reaching through the bootstrapper — it already
-  /// takes each collaborator it uses by value for the same reason.
-  let application: any ApplicationActivating
   /// The onboarding-auto-open gate reads `onboardingState` off the settings
   /// store directly (epic #763).
   let settings: SettingsManager
@@ -2237,7 +2255,7 @@ private struct ActionWirer: View {
         if !newValue {
           // State-driven dismissal: binding flipped to false → close window.
           dismissWindow(id: "onboarding")
-          application.setPolicy(.accessory)
+          appWindowCoordinator.refreshAfterOnboardingDismissal()
           menuBarController.updateIcon()
         }
       }

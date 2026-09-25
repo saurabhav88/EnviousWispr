@@ -99,6 +99,9 @@ enum SettingsProjection {
     /// #1413. The chosen mode only (a closed four-value enum); never which app or
     /// device it acted on.
     case otherAudioWhileDictating = "other_audio_while_dictating"
+    /// #2480. On or off only. Answers how many people choose a menu-bar-only app
+    /// once the Dock icon is the default.
+    case showInDock = "show_in_dock"
   }
 
   /// Logicals whose underlying control is a slider; they earn the longer
@@ -172,6 +175,7 @@ enum SettingsProjection {
     case .playRecordingSounds: return [.playRecordingSounds]
     case .recordingSoundPairing: return [.recordingSoundPairing]
     case .otherAudioWhileDictating: return [.otherAudioWhileDictating]
+    case .showInDock: return [.showInDock]
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
       .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
@@ -264,6 +268,7 @@ enum SettingsProjection {
     case .playRecordingSounds: return onOff(settings.playRecordingSounds)
     case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
     case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue
+    case .showInDock: return onOff(settings.showInDock)
     }
   }
 

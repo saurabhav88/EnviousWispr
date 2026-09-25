@@ -99,6 +99,9 @@ package final class LiveApplication {
         launchEnter, OverlayFirstRenderMarkers.capture(.launchExit))
     #endif
   }
+  package func applicationShouldHandleReopen() -> Bool {
+    bootstrapper.applicationShouldHandleReopen()
+  }
   package func applicationDidBecomeActive() {
     bootstrapper.applicationDidBecomeActive()
   }

@@ -35,6 +35,7 @@ struct AppWindowCoordinatorTests {
     var openCount = 0
     let coordinator = AppWindowCoordinator(
       application: RecordingDesktopPresentationEffects(),
+      showInDock: { true },
       canOpenOnboarding: { true },
       isOnboardingComplete: { false }
     )
@@ -62,6 +63,7 @@ struct AppWindowCoordinatorTests {
     var openCount = 0
     let coordinator = AppWindowCoordinator(
       application: RecordingDesktopPresentationEffects(),
+      showInDock: { true },
       canOpenOnboarding: { true },
       isOnboardingComplete: { false }
     )
@@ -80,6 +82,7 @@ struct AppWindowCoordinatorTests {
     var openCount = 0
     let coordinator = AppWindowCoordinator(
       application: RecordingDesktopPresentationEffects(),
+      showInDock: { true },
       canOpenOnboarding: { false },  // onboarding complete → ineligible
       isOnboardingComplete: { true }
     )
@@ -101,6 +104,7 @@ struct AppWindowCoordinatorTests {
     var openCount = 0
     let coordinator = AppWindowCoordinator(
       application: RecordingDesktopPresentationEffects(),
+      showInDock: { true },
       canOpenOnboarding: { false },
       isOnboardingComplete: { true }
     )
@@ -117,6 +121,7 @@ struct AppWindowCoordinatorTests {
     var dismissedCount = 0
     let coordinator = AppWindowCoordinator(
       application: RecordingDesktopPresentationEffects(),
+      showInDock: { true },
       canOpenOnboarding: { true },
       isOnboardingComplete: { false }
     )

@@ -13,7 +13,7 @@ import Observation
 /// `@Environment` instead of an `NSApp.delegate` downcast.
 @MainActor
 @Observable
-final class AppWindowCoordinator {
+final class AppWindowCoordinator: UpdateDialogPresenting {
   /// Open-eligibility seam. Returns `true` only when onboarding state exists
   /// and is not `.completed`. Folds today's stacked `guard let appState` +
   /// `guard onboardingState != .completed` into one closure, preserving the
@@ -54,22 +54,102 @@ final class AppWindowCoordinator {
   /// this epic exists to remove.
   private let application: any ApplicationActivating
 
+  /// #2480: the "Show app in Dock" setting, read at each fall point.
+  private let showInDock: @MainActor () -> Bool
+
+  /// #2480: true while Sparkle has an update dialog up, so a window closing
+  /// underneath it cannot drop the app to accessory and strand the dialog.
+  private var updateDialogActive = false
+
   init(
     application: any ApplicationActivating,
+    showInDock: @escaping @MainActor () -> Bool,
     canOpenOnboarding: @escaping @MainActor () -> Bool,
     isOnboardingComplete: @escaping @MainActor () -> Bool
   ) {
     self.application = application
+    self.showInDock = showInDock
     self.canOpenOnboarding = canOpenOnboarding
     self.isOnboardingComplete = isOnboardingComplete
   }
 
-  /// Install the main-window close observer. Called once from
+  // MARK: - Dock policy (#2480)
+  //
+  // Rises happen only at events we own (launch, a user open, a Sparkle dialog)
+  // and always go to `.regular`. Falls happen only at events AppKit reliably
+  // posts (`willClose`), a Sparkle session end, or the setting flipping, and are
+  // the only places a decision is made. No code tries to detect a window
+  // APPEARING: #2480's review rounds found no complete signal for that
+  // (`didChangeOcclusionStateNotification` tracks occlusion, not every
+  // `isVisible` change, and an observer can miss a launch-time window).
+
+  /// The whole policy rule, pure. `.regular` (Dock icon, app menu, Cmd-Tab) when
+  /// the user wants the Dock icon or anything of ours is on screen; otherwise
+  /// `.accessory` (menu bar icon only).
+  static func activationPolicy(
+    showInDock: Bool, mainWindowPresented: Bool, onboardingPresented: Bool,
+    updateDialogActive: Bool
+  ) -> ApplicationPolicy {
+    showInDock || mainWindowPresented || onboardingPresented || updateDialogActive
+      ? .regular : .accessory
+  }
+
+  /// Launch rise, from `applicationWillFinishLaunching` before any scene or Sparkle
+  /// starts. `.regular` under EITHER setting: the main scene opens at launch, and
+  /// with the setting off the Dock icon then shows only until that window closes,
+  /// which is what "off" promises. Before #2480 launch forced `.accessory`, which
+  /// left the launch window behind other apps with no app menu or Cmd-Tab entry.
+  func beginLaunch() {
+    application.setPolicy(.regular)
+  }
+
+  /// One activation request once launch has finished, so the launch window comes
+  /// up in front. A request, not a guarantee: macOS may decline it.
+  func finishLaunch() {
+    application.activate(.ignoringOtherApps)
+  }
+
+  /// Sparkle is about to show a modal (`UpdateDialogPresenting`).
+  func updateDialogWillShow() {
+    updateDialogActive = true
+    application.setPolicy(.regular)
+    application.activate(.standard)
+  }
+
+  /// Sparkle's whole update session ended (`UpdateDialogPresenting`).
+  func updateSessionDidEnd() {
+    updateDialogActive = false
+    refreshActivationPolicy(excluding: nil)
+  }
+
+  /// Fall point. Reads our windows ONCE, now, at a moment when they are stable,
+  /// leaving out the window that is closing (it still reads visible during
+  /// `willClose`).
+  func refreshActivationPolicy(excluding closing: NSWindow?) {
+    let windows = NSApp.windows.filter { $0 !== closing }
+    application.setPolicy(
+      Self.activationPolicy(
+        showInDock: showInDock(),
+        mainWindowPresented: Self.isMainWindowPresented(
+          windowStates: windows.map {
+            (
+              matchesIdentity: Self.matchesMainWindowIdentity($0), isVisible: $0.isVisible,
+              isMiniaturized: $0.isMiniaturized
+            )
+          }),
+        onboardingPresented: windows.contains {
+          Self.matchesOnboardingWindowIdentity($0) && ($0.isVisible || $0.isMiniaturized)
+        },
+        updateDialogActive: updateDialogActive))
+  }
+
+  /// Install the main/onboarding window close observer (#2480: the Dock-policy
+  /// fall point). Called once from
   /// `AppDelegate.applicationDidFinishLaunching` at the same position the
   /// inline observer block occupied before PR-B.2.
   func installOnLaunch() {
-    // When the unified window closes, revert to .accessory immediately.
-    // There's only one window now, so no need for the 200ms re-check delay.
+    // #2480: when the main OR onboarding window closes, re-decide the Dock policy
+    // without it. Before #2480 this dropped to `.accessory` unconditionally.
     // Store token so we can remove on termination (H11 observer leak fix).
     windowCloseObserver = NotificationCenter.default.addObserver(
       forName: NSWindow.willCloseNotification,
@@ -88,9 +168,10 @@ final class AppWindowCoordinator {
         if self.mainWindow == nil, self.isMainWindow(window) {
           self.mainWindow = window
         }
-        // Match by identity so status-bar/panel windows never trigger the reset.
-        guard window === self.mainWindow else { return }
-        self.application.setPolicy(.accessory)
+        // Match by identity so status-bar/panel windows never trigger a re-decision.
+        guard window === self.mainWindow || Self.matchesOnboardingWindowIdentity(window)
+        else { return }
+        self.refreshActivationPolicy(excluding: window)
       }
     }
   }
@@ -106,6 +187,11 @@ final class AppWindowCoordinator {
     // Match on it: onboarding ("Setup"), Sparkle's update dialog, and save/open
     // panels all carry different titles, so none is mistaken for the main window.
     window.styleMask.contains(.titled) && window.title == AppConstants.appName
+  }
+
+  /// The onboarding scene's window. SwiftUI titles it with the scene name.
+  private static func matchesOnboardingWindowIdentity(_ window: NSWindow) -> Bool {
+    window.title == AppConstants.onboardingWindowTitle
   }
 
   private func isMainWindow(_ window: NSWindow) -> Bool {
@@ -167,18 +253,49 @@ final class AppWindowCoordinator {
   }
 
   /// Show the unified window: bring it to front, set .regular, activate.
-  func showWindow() {
+  ///
+  /// Returns whether anything was opened (#2480: the Dock-icon reopen handler
+  /// reports "handled" only when this did something).
+  @discardableResult
+  func showWindow() -> Bool {
+    var opened = false
     if let action = openMainWindowAction {
       action()
+      opened = true
     } else {
       // Fallback: find and show the existing main window by scene identity.
       for window in NSApp.windows where isMainWindow(window) {
         window.makeKeyAndOrderFront(nil)
+        opened = true
         break
       }
     }
+    // #2480: rise only when something was opened. With "Show app in Dock" off, a
+    // rise with no window would leave a Dock icon that no close event removes.
+    guard opened else { return false }
     application.setPolicy(.regular)
     application.activate(.ignoringOtherApps)
+    return true
+  }
+
+  /// #2480: Dock-icon reopen. Returns whether it handled the click. Until onboarding
+  /// is done the window the user needs is Setup, even when the main window is also on
+  /// screen (first run can leave it visible, #3149); afterwards it is the main window.
+  /// When that window is already on screen, AppKit's default bringing it forward is
+  /// right.
+  func reopenFromDock() -> Bool {
+    let onboardingDone = isOnboardingComplete()
+    let neededWindowOnScreen = NSApp.windows.contains {
+      (onboardingDone
+        ? Self.matchesMainWindowIdentity($0) : Self.matchesOnboardingWindowIdentity($0))
+        && $0.isVisible
+    }
+    guard !neededWindowOnScreen else { return false }
+    guard onboardingDone else {
+      openOnboardingWindow()
+      return true
+    }
+    return showWindow()
   }
 
   /// Open the onboarding window and begin monitoring for early close (abort flow).
@@ -250,8 +367,17 @@ final class AppWindowCoordinator {
   /// dismisses the window.
   func closeOnboardingWindow() {
     dismissOnboardingAction?()
-    application.setPolicy(.accessory)
+    refreshAfterOnboardingDismissal()
     onOnboardingDismissed?()
+  }
+
+  /// #2480: a programmatic onboarding dismissal is its own fall point. SwiftUI's
+  /// `dismissWindow` is not documented to post `willClose`, so this re-decides
+  /// without any onboarding window rather than relying on the observer (which
+  /// repeats the same decision if it does fire).
+  func refreshAfterOnboardingDismissal() {
+    refreshActivationPolicy(
+      excluding: NSApp.windows.first { Self.matchesOnboardingWindowIdentity($0) })
   }
 
   /// Drain a queued onboarding-open request. Returns `true` iff it replayed a
@@ -263,4 +389,14 @@ final class AppWindowCoordinator {
     openOnboardingWindow()
     return true
   }
+}
+
+/// What Sparkle needs from the Dock-policy owner (#2480). A required init
+/// parameter of `SparkleUpdateController`, so an unwired state cannot compile.
+@MainActor
+protocol UpdateDialogPresenting: AnyObject {
+  /// Sparkle is about to show a modal: make the app regular and bring it forward.
+  func updateDialogWillShow()
+  /// The whole update session ended: re-decide the Dock policy.
+  func updateSessionDidEnd()
 }

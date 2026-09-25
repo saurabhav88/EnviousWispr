@@ -89,9 +89,6 @@ final class AppLifecycleCoordinator {
   /// flush as `last_stage` / `stage_age_ms`.
   private let transcriptionCheckpointStore: TranscriptionCheckpointStore
 
-  /// #2455 C3: required and non-defaulted. The one call this type makes moves the
-  /// app to accessory at launch, which a unit test must never do to the real app.
-  private let application: any ApplicationActivating
   /// #996: what each real transition into `.recording` tells the learn-from-edits
   /// watcher (a new dictation cancels a live edit watch, plan §3.1 step 4). One
   /// closure, stored because the pipeline-state closure is installed in
@@ -101,7 +98,6 @@ final class AppLifecycleCoordinator {
   private let onRecordingStarted: @MainActor () -> Void
 
   init(
-    application: any ApplicationActivating,
     wheelScrollSmoother: WheelScrollSmoother,
     settings: SettingsManager,
     permissions: PermissionsService,
@@ -131,7 +127,6 @@ final class AppLifecycleCoordinator {
     // must fail to compile, not silently drop the watcher's cancellation.
     onRecordingStarted: @escaping @MainActor () -> Void
   ) {
-    self.application = application
     self.onRecordingStarted = onRecordingStarted
     self.wheelScrollSmoother = wheelScrollSmoother
     self.settings = settings
@@ -174,13 +169,10 @@ final class AppLifecycleCoordinator {
   }
 
   func runDidFinishLaunching() {
-    // Hide dock icon on launch — we're a menu bar utility.
-    // If onboarding is needed, stay .regular so SwiftUI creates the main window
-    // hierarchy and ActionWirer can wire callbacks before opening the
-    // onboarding window.
-    if settings.onboardingState == .completed {
-      application.setPolicy(.accessory)
-    }
+    // #2480: no Dock-policy write here. Launch used to force `.accessory` once
+    // onboarding was done, which left the launch window behind other apps with no
+    // app menu or Cmd-Tab entry. `AppWindowCoordinator` owns the policy now
+    // (`beginLaunch` / `finishLaunch`, called by the bootstrapper).
 
     // #1451: recover from App Translocation. Runs on EVERY launch (NOT gated by
     // onboarding — the 14 stuck users already finished onboarding), returns
