@@ -129,6 +129,9 @@
       "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
     },
     "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {},
+    "All quiet" : {
+      "comment" : "Practice screen headline. Nothing was heard."
+    },
     "All your contacts are already in your word list." : {},
     "Almost there. Just two permissions." : {},
     "Almost there... pinky promise" : {
@@ -206,6 +209,9 @@
     "Cleanup summary: %@" : {},
     "Clear Logs" : {},
     "Clear search" : {},
+    "Click the box first" : {
+      "comment" : "Practice screen headline. The words went to the clipboard."
+    },
     "Click to change" : {},
     "Close %@ pack" : {},
     "Comparing words" : {},
@@ -322,6 +328,12 @@
     "Enable Dictionary" : {},
     "Enable debug mode" : {},
     "Engine" : {},
+    "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead." : {
+      "comment" : "Practice screen when Accessibility permission is off. Keep the line break."
+    },
+    "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead." : {
+      "comment" : "Practice screen when microphone permission is off. Keep the line break."
+    },
     "Esc" : {},
     "Escape Recovery" : {},
     "Example" : {},
@@ -361,11 +373,17 @@
     "Get your free API key at platform.openai.com" : {},
     "Getting AI suggestions..." : {},
     "Getting the speech engine ready\nso your first go is instant." : {},
+    "Go ahead. Let go of %@ when you are done." : {
+      "comment" : "Practice screen while recording. %@ is the dictation shortcut, for example ⌥."
+    },
     "Got it" : {
       "comment" : "Button that closes the Bluetooth tip card."
     },
     "Grant" : {},
     "Granted" : {},
+    "Hold %@ and say something.\nLet go when you are done." : {
+      "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
+    },
     "Hold to dictate. Release to transcribe." : {},
     "How OpenAI model availability works by usage tier" : {},
     "How it should be written" : {},
@@ -399,6 +417,9 @@
     "List" : {},
     "Listening for input" : {
       "comment" : "Label under the keybind field while it waits for a key combination."
+    },
+    "Listening…" : {
+      "comment" : "Practice screen headline. Shown while the key is held."
     },
     "Live" : {},
     "Loaded" : {},
@@ -653,6 +674,9 @@
     "Snippets you already saved in another dictation app, found on this Mac." : {},
     "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back." : {},
     "Something went wrong" : {},
+    "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere." : {
+      "comment" : "Practice screen when the dictation failed on our side. Keep the line break."
+    },
     "Speaker name" : {},
     "Speech engine" : {
       "comment" : "Setup warm-up checklist item."
@@ -679,6 +703,12 @@
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
     "Test that %@ is live" : {},
+    "That did not work" : {
+      "comment" : "Practice screen headline. The dictation failed on our side."
+    },
+    "That is it. You are set." : {
+      "comment" : "Practice screen headline. The first dictation worked."
+    },
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {},
     "The download server is busy. Please wait a moment and try again." : {
       "comment" : "Setup error: the download server refused because of too many requests."
@@ -702,6 +732,12 @@
     "This passage could not be cleaned up. These are the raw words." : {},
     "This usually takes a moment. Nothing else is needed from you." : {},
     "This version is not saved" : {},
+    "Those are your words, typed for you.\nIn any other app, click into a text box first." : {
+      "comment" : "Practice screen, after the first dictation worked. Keep the line break."
+    },
+    "Time for your first dictation!" : {
+      "comment" : "Practice screen headline. Before the first try."
+    },
     "Times" : {},
     "Tip: %@" : {},
     "To hear your voice for transcription." : {
@@ -773,6 +809,12 @@
     "Warming up Apple Silicon..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "We cannot hear you" : {
+      "comment" : "Practice screen headline. A permission is missing."
+    },
+    "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold %@ again." : {
+      "comment" : "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
+    },
     "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {},
     "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose." : {},
     "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about %lld minutes." : {},
@@ -807,6 +849,12 @@
     "Your Voice, Instantly Captured." : {},
     "Your dictations and transcripts will appear here." : {},
     "Your first dictation" : {},
+    "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
+      "comment" : "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break."
+    },
+    "Your recording indicator appears while you hold the key." : {
+      "comment" : "Practice screen footnote under the text box."
+    },
     "Your shortcut is set" : {
       "comment" : "Setup warm-up checklist item."
     },
