@@ -30,7 +30,11 @@ struct SpeechEngineSettingsView: View {
       let reason = status.blockedReason
     else { return nil }
     switch reason {
-    case .pipelineActive, .recovery: return "Applies after the current dictation finishes."
+    case .pipelineActive, .recovery:
+      return String(
+        localized: "Applies after the current dictation finishes.",
+        comment:
+          "Speech engine settings: an engine change waits until the dictation in progress ends.")
     case .notInstalled, .loading: return nil
     }
   }
@@ -56,13 +60,47 @@ struct SpeechEngineSettingsView: View {
     ) {
       EngineCard(
         icon: "bolt.fill",
-        title: "Fast",
-        tagline: "Pick this for everyday English and European dictation.",
+        title: String(
+          localized: "Fast", comment: "Speech engine settings, engine card: the fast engine's name."
+        ),
+        tagline: String(
+          localized: "Pick this for everyday English and European dictation.",
+          comment: "Speech engine settings, engine card: when to pick the fast engine."),
         specs: [
-          ("Model", "Parakeet v3"),
-          ("Languages", "25 European languages"),
-          ("Runs on", "Apple Neural Engine"),
-          ("Transcribe time", "Usually ~0.1s after you speak"),
+          (
+            String(
+              localized: "Model",
+              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
+            "Parakeet v3"
+          ),
+          (
+            String(
+              localized: "Languages",
+              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
+            String(
+              localized: "25 European languages",
+              comment: "Speech engine settings, engine card: how many languages it covers.")
+          ),
+          (
+            String(
+              localized: "Runs on",
+              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
+            String(
+              localized: "Apple Neural Engine",
+              comment:
+                "Speech engine settings, engine card: the chip it runs on. Use Apple's own name for the Neural Engine in your language."
+            )
+          ),
+          (
+            String(
+              localized: "Transcribe time",
+              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
+            String(
+              localized: "Usually ~0.1s after you speak",
+              comment:
+                "Speech engine settings, engine card: how quickly text appears. 0.1s is a tenth of a second."
+            )
+          ),
         ],
         isSelected: settings.selectedBackend == .parakeet
       ) {
@@ -70,13 +108,44 @@ struct SpeechEngineSettingsView: View {
       }
       EngineCard(
         icon: "globe",
-        title: "All Languages",
-        tagline: "Pick this for other languages or the toughest audio.",
+        title: String(
+          localized: "All Languages",
+          comment: "Speech engine settings, engine card: the multilingual engine's name."),
+        tagline: String(
+          localized: "Pick this for other languages or the toughest audio.",
+          comment: "Speech engine settings, engine card: when to pick the multilingual engine."),
         specs: [
-          ("Model", "Whisper Large v3 Turbo"),
-          ("Languages", "99+ languages"),
-          ("Runs on", "Apple GPU"),
-          ("Transcribe time", "Usually 1-2s after you speak"),
+          (
+            String(
+              localized: "Model",
+              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
+            "Whisper Large v3 Turbo"
+          ),
+          (
+            String(
+              localized: "Languages",
+              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
+            String(
+              localized: "99+ languages",
+              comment: "Speech engine settings, engine card: how many languages it covers.")
+          ),
+          (
+            String(
+              localized: "Runs on",
+              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
+            String(
+              localized: "Apple GPU",
+              comment:
+                "Speech engine settings, engine card: the chip it runs on, the graphics processor.")
+          ),
+          (
+            String(
+              localized: "Transcribe time",
+              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
+            String(
+              localized: "Usually 1-2s after you speak",
+              comment: "Speech engine settings, engine card: how quickly text appears, in seconds.")
+          ),
         ],
         isSelected: settings.selectedBackend == .whisperKit
       ) {
@@ -98,11 +167,15 @@ struct SpeechEngineSettingsView: View {
       // selectable cards rather than a segmented pill (#3). Copy advertises
       // Parakeet's 25 European languages, not just English (founder, 2026-07-03).
       VStack(alignment: .leading, spacing: 10) {
-        Text("Transcription Engine".uppercased())
-          .font(.stSectionHeader)
-          .tracking(0.6)
-          .foregroundStyle(.stAccent)
-          .padding(.leading, 4)
+        Text(
+          String(
+            localized: "Transcription Engine", comment: "Speech engine settings: section heading."
+          ).uppercased()
+        )
+        .font(.stSectionHeader)
+        .tracking(0.6)
+        .foregroundStyle(.stAccent)
+        .padding(.leading, 4)
 
         engineCards
 
@@ -197,9 +270,12 @@ struct SpeechEngineSettingsView: View {
                   // stored code is preserved, so switching back restores it.
                   if !isLockHonouredByActiveEngine(code) {
                     Text(
-                      "The fast engine can't lock to this language, so it's detecting "
-                        + "automatically. Choose one of its 25 European languages, or switch "
-                        + "to the multilingual engine."
+                      String(
+                        localized:
+                          "The fast engine can't lock to this language, so it's detecting automatically. Choose one of its 25 European languages, or switch to the multilingual engine.",
+                        comment:
+                          "Speech engine settings: the locked language is not one the fast engine supports."
+                      )
                     )
                     .font(.stHelper)
                     .foregroundStyle(.stWarning)
@@ -256,7 +332,12 @@ struct SpeechEngineSettingsView: View {
           BrandedRow {
             VStack(alignment: .leading, spacing: 4) {
               BrandedSlider(
-                "Pause duration", value: $settings.vadSilenceTimeout, in: 0.5...3.0,
+                String(
+                  localized: "Pause duration",
+                  comment:
+                    "Speech engine settings, Auto-Stop: slider for how long a silence ends the recording."
+                ),
+                value: $settings.vadSilenceTimeout, in: 0.5...3.0,
                 step: 0.25, low: "0.5s", high: "3.0s", format: "%.1fs")
               Text("How long to wait after you stop speaking before ending the recording.")
                 .settingsReadingCopy()
@@ -454,15 +535,21 @@ struct SpeechEngineSettingsView: View {
   private var languageSectionCopy: String {
     switch settings.selectedBackend {
     case .whisperKit:
-      return
-        "Auto-detect your language, or lock to a specific one. WhisperKit supports 99+ languages."
+      return String(
+        localized:
+          "Auto-detect your language, or lock to a specific one. WhisperKit supports 99+ languages.",
+        comment:
+          "Speech engine settings, Language section: explanation for the multilingual engine (WhisperKit)."
+      )
     case .parakeet:
-      return """
-        Auto-detect your language, or lock to one of 25 European languages. \
-        Locking helps stop the fast engine reaching for a different alphabet, \
-        like Greek or Cyrillic appearing in German. It cannot tell apart two \
-        languages written in the same alphabet.
-        """
+      return String(
+        localized: """
+          Auto-detect your language, or lock to one of 25 European languages. \
+          Locking helps stop the fast engine reaching for a different alphabet, \
+          like Greek or Cyrillic appearing in German. It cannot tell apart two \
+          languages written in the same alphabet.
+          """,
+        comment: "Speech engine settings, Language section: explanation for the fast engine.")
     }
   }
 
@@ -503,21 +590,57 @@ struct SpeechEngineSettingsView: View {
       return nil
     case .preparing(let validating):
       return (
-        validating ? "Checking speech model files..." : "Preparing download...", nil, false, nil
+        validating
+          ? String(
+            localized: "Checking speech model files...",
+            comment:
+              "Speech engine settings, speech model download: checking files already on disk.")
+          : String(
+            localized: "Preparing download...",
+            comment: "Speech engine settings, speech model download: about to start."),
+        nil, false, nil
       )
     case .downloading(_, let bytesWritten, let totalBytes):
       let mb = Int(Double(bytesWritten) / 1_048_576)
       let totalMB = Int(Double(totalBytes) / 1_048_576)
-      return ("Downloading speech model...", "\(mb) MB of \(totalMB) MB", true, nil)
+      return (
+        String(
+          localized: "Downloading speech model...",
+          comment: "Speech engine settings, speech model download: in progress."),
+        String(
+          localized: "\(mb) MB of \(totalMB) MB",
+          comment:
+            "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total."
+        ),
+        true, nil
+      )
     case .verifying:
-      return ("Verifying download...", nil, false, nil)
+      return (
+        String(
+          localized: "Verifying download...",
+          comment: "Speech engine settings, speech model download: checking the downloaded files."),
+        nil, false, nil
+      )
     case .cancelled:
-      return ("Download paused. Resume anytime.", nil, false, "Resume")
+      return (
+        String(
+          localized: "Download paused. Resume anytime.",
+          comment: "Speech engine settings, speech model download: the user paused it."),
+        nil, false,
+        String(
+          localized: "Resume",
+          comment: "Speech engine settings, speech model download: button that resumes it.")
+      )
     case .failed(let failure):
       return (
-        "Speech model download failed.",
+        String(
+          localized: "Speech model download failed.",
+          comment: "Speech engine settings, speech model download: failed."),
         ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail),
-        false, "Try Again"
+        false,
+        String(
+          localized: "Try Again",
+          comment: "Speech engine settings, speech model download: button after a failure.")
       )
     }
   }
@@ -588,7 +711,10 @@ struct SpeechEngineSettingsView: View {
 
     case .notDownloaded:
       VStack(alignment: .leading, spacing: 8) {
-        whisperKitStepIndicator("Download Model")
+        whisperKitStepIndicator(
+          LocalizedStringResource(
+            "Download Model",
+            comment: "Speech engine settings, WhisperKit model: the current setup step."))
 
         Text(
           "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup."
@@ -608,7 +734,10 @@ struct SpeechEngineSettingsView: View {
 
     case .downloading(let progress, let status):
       VStack(alignment: .leading, spacing: 8) {
-        whisperKitStepIndicator("Downloading...")
+        whisperKitStepIndicator(
+          LocalizedStringResource(
+            "Downloading...",
+            comment: "Speech engine settings, WhisperKit model: the current setup step."))
 
         ProgressView(value: progress)
           .progressViewStyle(.linear)
@@ -638,7 +767,10 @@ struct SpeechEngineSettingsView: View {
 
     case .paused:
       VStack(alignment: .leading, spacing: 8) {
-        whisperKitStepIndicator("Download Paused")
+        whisperKitStepIndicator(
+          LocalizedStringResource(
+            "Download Paused",
+            comment: "Speech engine settings, WhisperKit model: the current setup step."))
         Text("Download paused. Resume anytime.")
           .settingsReadingCopy()
         HStack {
@@ -736,8 +868,8 @@ struct SpeechEngineSettingsView: View {
   }
 
   @ViewBuilder
-  private func whisperKitStepIndicator(_ title: String) -> some View {
-    Label(title, systemImage: "1.circle.fill")
+  private func whisperKitStepIndicator(_ title: LocalizedStringResource) -> some View {
+    Label(String(localized: title), systemImage: "1.circle.fill")
       .foregroundStyle(Color.stAccent)
       .font(.stRowLabel)
   }

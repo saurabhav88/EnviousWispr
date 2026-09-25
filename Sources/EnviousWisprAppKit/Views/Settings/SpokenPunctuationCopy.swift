@@ -16,27 +16,44 @@ import Foundation
 ///
 /// No em-dashes or en-dashes (brand rule).
 enum SpokenPunctuationCopy {
-  static let toggleLabel = "Convert spoken punctuation"
+  static let toggleLabel = String(
+    localized: "Convert spoken punctuation",
+    comment: "Speech engine settings, spoken punctuation: the toggle's name.")
   static let toggleDescription =
-    "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for "
-    + "you, so this can compete with it."
+    String(
+      localized:
+        "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it.",
+      comment: "Speech engine settings, spoken punctuation: description under the toggle.")
 
-  static let helpButtonAccessibilityLabel = "What can I say?"
-  static let helpTitle = "Words you can say"
-  static let helpSayColumn = "Say this"
-  static let helpGetColumn = "You get"
+  static let helpButtonAccessibilityLabel = String(
+    localized: "What can I say?",
+    comment: "Speech engine settings, spoken punctuation: VoiceOver name of the help button.")
+  static let helpTitle = String(
+    localized: "Words you can say",
+    comment: "Speech engine settings, spoken punctuation: help panel title.")
+  static let helpSayColumn = String(
+    localized: "Say this",
+    comment:
+      "Speech engine settings, spoken punctuation: help table column: the words the user says.")
+  static let helpGetColumn = String(
+    localized: "You get",
+    comment:
+      "Speech engine settings, spoken punctuation: help table column: what appears in the text.")
   /// Closing note in the panel: names the failure mode a user will otherwise discover
   /// by having a sentence quietly broken.
   static let helpFootnote =
-    "These words become marks even when you meant the word itself, like \"the grace "
-    + "period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, "
-    + "\"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes "
-    + "pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", "
-    + "can still become a symbol."
+    String(
+      localized:
+        "These words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol.",
+      comment:
+        "Speech engine settings, spoken punctuation: help panel footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly."
+    )
 
   /// Spoken phrase paired with what the user sees. Order is the order shown.
   /// `result` is display copy, not the literal replacement: "new line" inserts a real
-  /// line break, which cannot be rendered meaningfully in a table cell.
+  /// line break, which cannot be rendered meaningfully in a table cell. `spoken` is what the
+  /// dictation engine accepts, so it stays in the dictation language, never translated; a
+  /// result that is a word ("a line break") is interface text and is localized (#3142).
   struct Phrase: Identifiable, Equatable {
     let spoken: String
     let result: String
@@ -53,7 +70,19 @@ enum SpokenPunctuationCopy {
     Phrase(spoken: "colon", result: ":"),
     Phrase(spoken: "semicolon", result: ";"),
     Phrase(spoken: "backslash", result: "\\"),
-    Phrase(spoken: "new line", result: "a line break"),
-    Phrase(spoken: "new paragraph", result: "a blank line"),
+    Phrase(
+      spoken: "new line",
+      result: String(
+        localized: "a line break",
+        comment:
+          "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
+      )),
+    Phrase(
+      spoken: "new paragraph",
+      result: String(
+        localized: "a blank line",
+        comment:
+          "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
+      )),
   ]
 }

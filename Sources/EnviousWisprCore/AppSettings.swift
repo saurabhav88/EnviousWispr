@@ -74,13 +74,34 @@ public enum ModelUnloadPolicy: String, Codable, CaseIterable, Sendable {
 
   public var displayName: String {
     switch self {
-    case .never: return "Never"
-    case .immediately: return "Immediately"
-    case .twoMinutes: return "After 2 minutes"
-    case .fiveMinutes: return "After 5 minutes"
-    case .tenMinutes: return "After 10 minutes"
-    case .fifteenMinutes: return "After 15 minutes"
-    case .sixtyMinutes: return "After 1 hour"
+    case .never:
+      return String(
+        localized: "Never",
+        comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
+    case .immediately:
+      return String(
+        localized: "Immediately",
+        comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
+    case .twoMinutes:
+      return String(
+        localized: "After 2 minutes",
+        comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
+    case .fiveMinutes:
+      return String(
+        localized: "After 5 minutes",
+        comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
+    case .tenMinutes:
+      return String(
+        localized: "After 10 minutes",
+        comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
+    case .fifteenMinutes:
+      return String(
+        localized: "After 15 minutes",
+        comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
+    case .sixtyMinutes:
+      return String(
+        localized: "After 1 hour",
+        comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
     }
   }
 

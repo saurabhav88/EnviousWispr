@@ -57,9 +57,12 @@ import Foundation
 /// No em-dashes or en-dashes (brand rule).
 enum ModelPreparingCopy {
   /// Shown while the coordinator-owned warm is in flight.
-  static let preparing = "Getting the model ready. This usually takes about 30 seconds."
+  static let preparing = String(
+    localized: "Getting the model ready. This usually takes about 30 seconds.",
+    comment: "Speech engine settings: the speech model is warming up.")
   /// The unchanged settled label.
-  static let ready = "Model Ready"
+  static let ready = String(
+    localized: "Model Ready", comment: "Speech engine settings: the speech model is ready to use.")
 
   /// Whether the row should show the preparing state.
   ///

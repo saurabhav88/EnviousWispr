@@ -63,16 +63,24 @@ enum LiveTranscriptionCopy {
   /// (a historical record — see the note there), the two comments quoting the original
   /// user report, and `ParakeetStreamingSentryError`'s diagnostic strings, which would
   /// change Sentry grouping and fire new-issue alerts for no user benefit.
-  static let toggleLabel = "Faster Transcription"
-  static let helpButtonAccessibilityLabel = "What does Faster Transcription change?"
+  static let toggleLabel = String(
+    localized: "Faster Transcription",
+    comment: "Speech engine settings, Faster Transcription: the toggle's name.")
+  static let helpButtonAccessibilityLabel = String(
+    localized: "What does Faster Transcription change?",
+    comment: "Speech engine settings, Faster Transcription: VoiceOver name of the help button.")
 
   /// Shown under the toggle only when WhisperKit is selected AND the language is
   /// Auto-detect, because streaming must commit to one language up front and a bad early
   /// guess poisons the whole dictation (#1276). Lives here rather than inline so all of
   /// this toggle's user-facing strings have one home.
   static let autoLanguageFootnote =
-    "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses "
-    + "clean batch transcription for accuracy."
+    String(
+      localized:
+        "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy.",
+      comment:
+        "Speech engine settings, Faster Transcription: note under the toggle when the language is Auto-detect."
+    )
 
   /// One measured comparison row. `off` and `on` are display copy for the two settings.
   struct Comparison: Identifiable, Equatable {
@@ -123,21 +131,40 @@ enum LiveTranscriptionCopy {
   /// first place. True whether or not the preview is on, because the preview runs a
   /// separate recognizer that this setting does not touch.
   static let parakeetToggleDescription =
-    "Transcribes while you speak instead of once when you stop. Nothing looks different "
-    + "while you record; this only changes when the work happens. It does not save time "
-    + "you can notice on most dictations, and it can drop your last few words."
+    String(
+      localized:
+        "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It does not save time you can notice on most dictations, and it can drop your last few words.",
+      comment:
+        "Speech engine settings, Faster Transcription: description under the toggle (fast engine).")
 
   static let parakeet = Panel(
-    title: "What Faster Transcription changes",
-    speedHeading: "Speed",
+    title: String(
+      localized: "What Faster Transcription changes",
+      comment: "Speech engine settings, Faster Transcription: help panel title."),
+    speedHeading: String(
+      localized: "Speed",
+      comment: "Speech engine settings, Faster Transcription: help panel heading."),
     speedBody:
-      "On dictations under a minute, both settings finish at about the same moment. The "
-      + "difference is smaller than you can feel. It only pulls ahead on recordings of "
-      + "roughly five minutes or longer.",
-    accuracyHeading: "Accuracy, measured",
+      String(
+        localized:
+          "On dictations under a minute, both settings finish at about the same moment. The difference is smaller than you can feel. It only pulls ahead on recordings of roughly five minutes or longer.",
+        comment: "Speech engine settings, Faster Transcription: help panel: speed."),
+    accuracyHeading: String(
+      localized: "Accuracy, measured",
+      comment: "Speech engine settings, Faster Transcription: help panel heading."),
     comparisons: [
-      Comparison(metric: "Word errors", off: "2.0%", on: "3.7%"),
-      Comparison(metric: "Repeated or invented words", off: "17", on: "51"),
+      Comparison(
+        metric: String(
+          localized: "Word errors",
+          comment:
+            "Speech engine settings, Faster Transcription: help panel table: a measured quantity."),
+        off: "2.0%", on: "3.7%"),
+      Comparison(
+        metric: String(
+          localized: "Repeated or invented words",
+          comment:
+            "Speech engine settings, Faster Transcription: help panel table: a measured quantity."),
+        off: "17", on: "51"),
     ],
     // Stated as a comparison against the same audio rather than a bare rate, because that
     // is what was measured. NOT a table row: in the replay the off setting was the
@@ -145,21 +172,31 @@ enum LiveTranscriptionCopy {
     // and printing it beside genuinely measured columns would be a fabricated figure in
     // the one panel whose whole purpose is to be trusted.
     accuracyBody:
-      "About 1 in 24 dictations lost its final words with this on, compared with the same "
-      + "recording transcribed after stopping.",
-    whyHeading: "Why this happens",
+      String(
+        localized:
+          "About 1 in 24 dictations lost its final words with this on, compared with the same recording transcribed after stopping.",
+        comment: "Speech engine settings, Faster Transcription: help panel: accuracy."),
+    whyHeading: String(
+      localized: "Why this happens",
+      comment: "Speech engine settings, Faster Transcription: help panel heading."),
     whyBody:
-      "With this on, EnviousWispr transcribes overlapping chunks of audio while you talk "
-      + "and joins them together. When two chunks disagree about the same moment of "
-      + "speech, nothing can tell which reading was right. The longer you talk, the more "
-      + "joins there are, so the problem grows with length.",
-    recommendationHeading: "What we recommend",
+      String(
+        localized:
+          "With this on, EnviousWispr transcribes overlapping chunks of audio while you talk and joins them together. When two chunks disagree about the same moment of speech, nothing can tell which reading was right. The longer you talk, the more joins there are, so the problem grows with length.",
+        comment: "Speech engine settings, Faster Transcription: help panel: explanation."),
+    recommendationHeading: String(
+      localized: "What we recommend",
+      comment: "Speech engine settings, Faster Transcription: help panel heading."),
     recommendationBody:
-      "Leave this off. If you regularly dictate for five minutes or more in one go it may "
-      + "be worth the trade, and the risk of a lost ending is highest there too.",
+      String(
+        localized:
+          "Leave this off. If you regularly dictate for five minutes or more in one go it may be worth the trade, and the risk of a lost ending is highest there too.",
+        comment: "Speech engine settings, Faster Transcription: help panel: recommendation."),
     footnote:
-      "Measured on 28 test recordings and a replay of 500 real dictations, comparing both "
-      + "settings on the same audio."
+      String(
+        localized:
+          "Measured on 28 test recordings and a replay of 500 real dictations, comparing both settings on the same audio.",
+        comment: "Speech engine settings, Faster Transcription: help panel footnote.")
   )
 
   // MARK: - WhisperKit
@@ -168,33 +205,54 @@ enum LiveTranscriptionCopy {
   /// clarification that lands on only one of two engine descriptions is the partial
   /// port this codebase keeps relearning.
   static let whisperKitToggleDescription =
-    "Transcribes while you speak instead of once when you stop. Nothing looks different "
-    + "while you record; this only changes when the work happens. It mainly helps on long "
-    + "recordings, and it needs a language selected."
+    String(
+      localized:
+        "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It mainly helps on long recordings, and it needs a language selected.",
+      comment:
+        "Speech engine settings, Faster Transcription: description under the toggle (multilingual engine)."
+    )
 
   static let whisperKit = Panel(
-    title: "What Faster Transcription changes",
-    speedHeading: "Speed",
+    title: String(
+      localized: "What Faster Transcription changes",
+      comment: "Speech engine settings, Faster Transcription: help panel title."),
+    speedHeading: String(
+      localized: "Speed",
+      comment: "Speech engine settings, Faster Transcription: help panel heading."),
     speedBody:
-      "On short dictations you will not notice a difference. On long ones it helps clearly: "
-      + "transcribing after you stop gets slower the longer you spoke, while transcribing "
-      + "as you go stays about the same however long the recording is.",
-    accuracyHeading: "Accuracy",
+      String(
+        localized:
+          "On short dictations you will not notice a difference. On long ones it helps clearly: transcribing after you stop gets slower the longer you spoke, while transcribing as you go stays about the same however long the recording is.",
+        comment: "Speech engine settings, Faster Transcription: help panel: speed."),
+    accuracyHeading: String(
+      localized: "Accuracy",
+      comment: "Speech engine settings, Faster Transcription: help panel heading."),
     comparisons: [],
     accuracyBody:
-      "On this engine, transcribing as you go is about as accurate as waiting until you "
-      + "stop. It can still occasionally drop a final word or two, which we are working on.",
-    whyHeading: "One thing to know",
+      String(
+        localized:
+          "On this engine, transcribing as you go is about as accurate as waiting until you stop. It can still occasionally drop a final word or two, which we are working on.",
+        comment: "Speech engine settings, Faster Transcription: help panel: accuracy."),
+    whyHeading: String(
+      localized: "One thing to know",
+      comment: "Speech engine settings, Faster Transcription: help panel heading."),
     whyBody:
-      "This engine has to commit to a language before it can start. If your language is "
-      + "set to Auto-detect, EnviousWispr ignores this setting and transcribes after you "
-      + "stop instead, because guessing the language early gets it wrong too often.",
-    recommendationHeading: "What we recommend",
+      String(
+        localized:
+          "This engine has to commit to a language before it can start. If your language is set to Auto-detect, EnviousWispr ignores this setting and transcribes after you stop instead, because guessing the language early gets it wrong too often.",
+        comment: "Speech engine settings, Faster Transcription: help panel: explanation."),
+    recommendationHeading: String(
+      localized: "What we recommend",
+      comment: "Speech engine settings, Faster Transcription: help panel heading."),
     recommendationBody:
-      "If you pick a specific language and often dictate for more than a minute, turn this "
-      + "on. Otherwise it makes little difference either way.",
+      String(
+        localized:
+          "If you pick a specific language and often dictate for more than a minute, turn this on. Otherwise it makes little difference either way.",
+        comment: "Speech engine settings, Faster Transcription: help panel: recommendation."),
     footnote:
-      "This engine transcribes differently from the Fast engine, so its behaviour and the "
-      + "advice here are not the same."
+      String(
+        localized:
+          "This engine transcribes differently from the Fast engine, so its behaviour and the advice here are not the same.",
+        comment: "Speech engine settings, Faster Transcription: help panel footnote.")
   )
 }

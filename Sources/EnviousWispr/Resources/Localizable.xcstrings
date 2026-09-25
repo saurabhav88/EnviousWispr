@@ -4,6 +4,17 @@
     "" : {},
     " to cancel without changing your keybind." : {},
     "\"%@\"" : {},
+    "%@ (%@)" : {
+      "comment" : "Speech engine settings: the locked language, as in \"Deutsch (German)\". The first %@ is its name in its own language, the second its name in the interface language.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$@)"
+          }
+        }
+      }
+    },
     "%@ (checked %@)" : {
       "comment" : "Ollama model picker: section heading. The first %@ is the group name, the second the date its list was checked.",
       "localizations" : {
@@ -74,6 +85,7 @@
       }
     },
     "%@, native %@" : {
+      "comment" : "Dictation language picker, VoiceOver: a language row. The first %@ is the language's name, the second its name in its own language.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -108,6 +120,17 @@
       "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced."
     },
     "%lld" : {},
+    "%lld MB of %lld MB" : {
+      "comment" : "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld MB of %2$lld MB"
+          }
+        }
+      }
+    },
     "%lld imported" : {},
     "%lld of %lld processed" : {
       "localizations" : {
@@ -124,8 +147,14 @@
     "%lld%%" : {},
     "%lld." : {},
     "(%@)" : {},
+    "25 European languages" : {
+      "comment" : "Speech engine settings, engine card: how many languages it covers."
+    },
     "60-minute limit reached. Transcribing..." : {
       "comment" : "Pill when a recording hit the 60-minute cap and is now being transcribed."
+    },
+    "99+ languages" : {
+      "comment" : "Speech engine settings, engine card: how many languages it covers."
     },
     "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {},
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
@@ -181,6 +210,9 @@
     },
     "ALL LANGUAGES" : {},
     "AVAILABLE ON THIS MAC" : {},
+    "About 1 in 24 dictations lost its final words with this on, compared with the same recording transcribed after stopping." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy."
+    },
     "About 2 GB download. Runs entirely on your Mac." : {},
     "Accessibility" : {
       "comment" : "Setup permissions: title of the macOS Accessibility permission row."
@@ -189,6 +221,12 @@
       "comment" : "VoiceOver announcement from the recording overlay: macOS Accessibility permission is needed to paste."
     },
     "Accessibility permission required for paste" : {},
+    "Accuracy" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel heading."
+    },
+    "Accuracy, measured" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel heading."
+    },
     "Activate to install and restart" : {},
     "Activates recording. Then press the key combination you want." : {},
     "Add" : {
@@ -216,12 +254,36 @@
     "Adjust settings" : {
       "comment" : "Button on the Bluetooth tip card that opens the Microphone settings."
     },
+    "Afrikaans" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "After 1 hour" : {
+      "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
+    },
+    "After 10 minutes" : {
+      "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
+    },
+    "After 15 minutes" : {
+      "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
+    },
+    "After 2 minutes" : {
+      "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
+    },
+    "After 5 minutes" : {
+      "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
+    },
     "After installing, come back and click refresh." : {},
     "After your mic has been idle, wait 1 to 2 seconds before speaking." : {
       "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
     },
+    "Albanian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "All" : {
       "comment" : "History filter: show every row."
+    },
+    "All Languages" : {
+      "comment" : "Speech engine settings, engine card: the multilingual engine's name."
     },
     "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {},
     "All quiet" : {
@@ -237,6 +299,12 @@
     },
     "Always keeps the microphone engine active. The macOS microphone indicator may stay visible and power use may increase." : {},
     "Always replace, even when the original might be right" : {},
+    "American spelling: color, organize, center" : {
+      "comment" : "Dictation language picker: under English. Keep the three example words in American spelling; they show the result."
+    },
+    "Amharic" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Another app is using Ollama's port (11434). Close it and try again." : {
       "comment" : "AI Polish, Ollama setup: error. 11434 is a network port number."
     },
@@ -246,12 +314,30 @@
     "Anything saved lands in History" : {
       "comment" : "Pill subtitle during recovery. History is the app's list of past dictations."
     },
+    "Apple GPU" : {
+      "comment" : "Speech engine settings, engine card: the chip it runs on, the graphics processor."
+    },
     "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {},
     "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {},
     "Apple Intelligence is turned off" : {
       "comment" : "Setup notice title when Apple Intelligence is off in System Settings."
     },
     "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation." : {},
+    "Apple Neural Engine" : {
+      "comment" : "Speech engine settings, engine card: the chip it runs on. Use Apple's own name for the Neural Engine in your language."
+    },
+    "Applies after the current dictation finishes." : {
+      "comment" : "Speech engine settings: an engine change waits until the dictation in progress ends."
+    },
+    "Arabic" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Armenian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Assamese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Attention" : {},
     "Audio capture error. Try again." : {
       "comment" : "Pill after a failed dictation: the recording could not start or capture audio. The user should retry."
@@ -267,6 +353,12 @@
     "Auto-Stop" : {},
     "Auto-copy to clipboard" : {},
     "Auto-detect language" : {},
+    "Auto-detect your language, or lock to a specific one. WhisperKit supports 99+ languages." : {
+      "comment" : "Speech engine settings, Language section: explanation for the multilingual engine (WhisperKit)."
+    },
+    "Auto-detect your language, or lock to one of 25 European languages. Locking helps stop the fast engine reaching for a different alphabet, like Greek or Cyrillic appearing in German. It cannot tell apart two languages written in the same alphabet." : {
+      "comment" : "Speech engine settings, Language section: explanation for the fast engine."
+    },
     "Auto-paste needs Accessibility" : {
       "comment" : "Pill: macOS Accessibility permission is needed to paste."
     },
@@ -278,10 +370,25 @@
     "Available" : {
       "comment" : "AI Polish provider status chip."
     },
+    "Azerbaijani" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Back" : {},
+    "Bashkir" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Basque" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Batch ASR:" : {},
     "Beginning of dictation was unclear and was skipped" : {
       "comment" : "Pill: the start of the recording was unusable and left out."
+    },
+    "Belarusian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Bengali" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Bluetooth mic detected" : {
       "comment" : "Title of the tip card shown when a Bluetooth microphone is the input."
@@ -295,12 +402,21 @@
     "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay." : {
       "comment" : "First paragraph of the Bluetooth guide in Microphone settings."
     },
+    "Bosnian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Both" : {
       "comment" : "Transcript speaker label when two people spoke in a turn the app could not separate."
+    },
+    "Breton" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Bring the words across from another dictation app you use." : {},
     "Bring your snippets in from anywhere. Nothing is added until you review it." : {},
     "Bring your words in from anywhere. Nothing is added until you review it." : {},
+    "British spelling: colour, organise, centre" : {
+      "comment" : "Dictation language picker: under English (UK). Keep the three example words in British spelling; they show the result."
+    },
     "Built for Apple Silicon." : {
       "comment" : "Welcome screen feature line under Native Speed."
     },
@@ -313,19 +429,34 @@
     "Built-in, wired, and USB mics do not have this Bluetooth startup delay." : {
       "comment" : "Last line of the Bluetooth guide in Microphone settings."
     },
+    "Bulgarian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Burmese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "CSV" : {},
     "Calibrating whisper detection..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Can't reach the download server. Check your connection and try again." : {
+      "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
     },
     "Cancel" : {
       "comment" : "Settings > AI Polish, local model row: button that stops the download."
     },
     "Cancelling…" : {},
+    "Cantonese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Capsule" : {
       "comment" : "Appearance settings: name of the original recording pill style."
     },
     "Casual" : {
       "comment" : "AI Polish, S1-mini writing-style card: tone option."
+    },
+    "Catalan" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Category" : {},
     "Change" : {},
@@ -352,7 +483,10 @@
     "Checking Ollama installation..." : {},
     "Checking model status..." : {},
     "Checking speech model files..." : {
-      "comment" : "Setup progress: checking already-downloaded speech model files."
+      "comment" : "Setup progress: checking already-downloaded speech model files.\nSpeech engine settings, speech model download: checking files already on disk."
+    },
+    "Chinese" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Choose a file" : {},
     "Choose a file you exported from EnviousWispr, or a plain text list of words." : {},
@@ -377,6 +511,9 @@
     },
     "Click to change" : {},
     "Clipboard" : {},
+    "Close" : {
+      "comment" : "Dictation language picker: VoiceOver name of the close button."
+    },
     "Close %@ pack" : {},
     "Cloud" : {
       "comment" : "AI Polish provider list: group heading."
@@ -392,6 +529,9 @@
     },
     "Continue" : {},
     "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)" : {},
+    "Convert spoken punctuation" : {
+      "comment" : "Speech engine settings, spoken punctuation: the toggle's name."
+    },
     "Convincing AI that you said 'duck'..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
@@ -436,6 +576,15 @@
     },
     "Couldn’t undo" : {
       "comment" : "Pill result when removing the just-added word failed."
+    },
+    "Croatian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Czech" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Danish" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Debug Mode" : {},
     "Default" : {},
@@ -547,8 +696,14 @@
     "Download %@" : {
       "comment" : "Settings > AI Polish, local model row: button. %@ is the model name, such as EG-1."
     },
+    "Download Model" : {
+      "comment" : "Speech engine settings, WhisperKit model: the current setup step."
+    },
     "Download Ollama" : {
       "comment" : "AI Polish, Ollama setup: opens the Ollama download page."
+    },
+    "Download Paused" : {
+      "comment" : "Speech engine settings, WhisperKit model: the current setup step."
     },
     "Download WhisperKit Model" : {},
     "Download a Model" : {
@@ -565,7 +720,7 @@
       "comment" : "Setup error with no friendlier wording. %@ is the system's description of the error."
     },
     "Download paused. Resume anytime." : {
-      "comment" : "AI Polish, local model card: the reason under the health status.\nSettings > AI Polish, local model row: the user paused the model download."
+      "comment" : "AI Polish, local model card: the reason under the health status.\nSettings > AI Polish, local model row: the user paused the model download.\nSpeech engine settings, speech model download: the user paused it.\nSpeech model download: why it failed. Shown in setup and in Settings."
     },
     "Download size: %@" : {},
     "Download the model to get started." : {
@@ -592,7 +747,7 @@
       }
     },
     "Downloading model files..." : {
-      "comment" : "Setup progress: the speech model is downloading."
+      "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, WhisperKit model: download status line."
     },
     "Downloading model files... %lld MB of %lld MB (%lld%%)" : {
       "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
@@ -606,7 +761,7 @@
       }
     },
     "Downloading speech model..." : {
-      "comment" : "Setup progress: the speech model is downloading."
+      "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, speech model download: in progress."
     },
     "Downloading speech model... %lld MB of %lld MB (%lld%%)" : {
       "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
@@ -621,10 +776,13 @@
     },
     "Downloading the local speech model so EnviousWispr can run privately on your Mac." : {},
     "Downloading..." : {
-      "comment" : "AI Polish, Ollama setup: step label while a model downloads."
+      "comment" : "AI Polish, Ollama setup: step label while a model downloads.\nSpeech engine settings, WhisperKit model: the current setup step."
     },
     "Downloading… %lld%%" : {
       "comment" : "AI Polish, Ollama model list: download progress. %lld is a whole-number percentage."
+    },
+    "Dutch" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "EDITED" : {},
     "EG-1 is the model we trained ourselves, tuned only for cleaning up dictation. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {},
@@ -643,6 +801,12 @@
     "Enable Dictionary" : {},
     "Enable debug mode" : {},
     "Engine" : {},
+    "English" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "English (UK)" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment." : {
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; a hosted model's name could not be confirmed."
     },
@@ -660,6 +824,9 @@
     },
     "Esc" : {},
     "Escape Recovery" : {},
+    "Estonian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Example" : {},
     "Expands to" : {},
     "Export" : {},
@@ -699,6 +866,18 @@
     "Failed: We could not finish saving. Restart EnviousWispr and try again." : {
       "comment" : "Settings > AI Polish: API key Save or Clear failed. Shown under the key field."
     },
+    "Faroese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Fast" : {
+      "comment" : "Speech engine settings, engine card: the fast engine's name."
+    },
+    "Faster Transcription" : {
+      "comment" : "Speech engine settings, Faster Transcription: the toggle's name."
+    },
+    "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy." : {
+      "comment" : "Speech engine settings, Faster Transcription: note under the toggle when the language is Auto-detect."
+    },
     "Finding spoken variants… %lld of %lld" : {
       "localizations" : {
         "en" : {
@@ -719,6 +898,9 @@
     "Finishing a take. Please wait." : {
       "comment" : "Pill: a previous recording is being recovered, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
     },
+    "Finnish" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Fix Now" : {},
     "For example, say “%@ %@” and that snippet is pasted." : {
       "localizations" : {
@@ -736,13 +918,25 @@
     "Free & Private" : {
       "comment" : "Welcome screen feature title."
     },
+    "French" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "GET STARTED!" : {},
+    "Galician" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Gemini API rate limits by tier" : {},
     "Gemini polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response." : {
       "comment" : "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
     },
     "General" : {
       "comment" : "AI Polish, S1-mini writing-style card: context option."
+    },
+    "Georgian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "German" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Get Started" : {},
     "Get your Claude API key" : {},
@@ -757,6 +951,9 @@
     },
     "Getting the engine ready" : {
       "comment" : "Transcribe a File, Working step: set-up before transcription starts."
+    },
+    "Getting the model ready. This usually takes about 30 seconds." : {
+      "comment" : "Speech engine settings: the speech model is warming up."
     },
     "Getting the preview ready..." : {
       "comment" : "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods."
@@ -775,8 +972,29 @@
       "comment" : "Button to grant a requested macOS permission, including microphone or Accessibility."
     },
     "Granted" : {},
+    "Greek" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Gujarati" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Haitian Creole" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Hands-free" : {
       "comment" : "Preview panel header badge: hands-free dictation is active (it continues until pressed again)."
+    },
+    "Hausa" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Hawaiian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Hebrew" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Hindi" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Hold %@ and say something.\nLet go when you are done." : {
       "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
@@ -785,12 +1003,30 @@
     "How OpenAI model availability works by usage tier" : {},
     "How it should be written" : {},
     "How long to wait after you stop speaking before ending the recording." : {},
+    "Hungarian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Icelandic" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "If you are on hotel or public Wi-Fi, finish signing in to the network, then try again." : {
+      "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
+    },
+    "If you pick a specific language and often dictate for more than a minute, turn this on. Otherwise it makes little difference either way." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: recommendation."
+    },
+    "Immediately" : {
+      "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
+    },
     "Import" : {},
     "Import from Contacts" : {},
     "Imported from %@" : {},
     "Importing in progress" : {},
     "Importing your words" : {},
     "In a hurry? Skip ahead" : {},
+    "Indonesian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Install Ollama" : {
       "comment" : "AI Polish, Ollama setup: the current step."
     },
@@ -810,6 +1046,21 @@
       "comment" : "VoiceOver announcement from the recording overlay: %@ is the interruption sentence shown on the pill."
     },
     "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
+    "Italian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Japanese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Javanese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Kannada" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Kazakh" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Keep" : {
       "comment" : "History row button: keeps a cancelled dictation instead of deleting it in 24 hours."
     },
@@ -843,18 +1094,42 @@
     },
     "Keybind: %@" : {},
     "Keyword" : {},
+    "Khmer" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Korean" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "LLM Deactivated" : {
       "comment" : "Sidebar and menu: no AI polish provider is chosen."
     },
     "Language" : {},
     "Language suggestions" : {},
+    "Languages" : {
+      "comment" : "Speech engine settings, engine card: a row label in the card's spec table."
+    },
+    "Lao" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Latin" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Latvian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Learn from..." : {},
     "Learn more" : {},
+    "Leave this off. If you regularly dictate for five minutes or more in one go it may be worth the trade, and the risk of a lost ending is highest there too." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: recommendation."
+    },
     "Let EnviousWispr pick up new words on its own, from things you already have." : {},
     "Level Rail" : {
       "comment" : "Appearance settings: name of the recording pill style with a voice level meter."
     },
     "License information isn't available in this build." : {},
+    "Lingala" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "List" : {},
     "Listening" : {
       "comment" : "Preview panel header: hold-to-talk dictation is active."
@@ -873,6 +1148,9 @@
     },
     "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences." : {
       "comment" : "AI Polish, S1-mini writing-style card: explains the structure options. Lists and Prose are the option names."
+    },
+    "Lithuanian" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Live" : {
       "comment" : "AI Polish provider status chip."
@@ -902,8 +1180,32 @@
     "Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained." : {},
     "Looking for apps on this Mac." : {},
     "Loose" : {},
+    "Luxembourgish" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Macedonian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Malagasy" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Malay" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Malayalam" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Maltese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Manage Models" : {
       "comment" : "AI Polish, Ollama: heading of the model download list."
+    },
+    "Maori" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Marathi" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Marked up" : {},
     "Match strictness" : {},
@@ -911,6 +1213,9 @@
     "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence." : {},
     "May need a paid Ollama plan" : {
       "comment" : "AI Polish, Ollama model list: heading for hosted models that may need a paid Ollama plan."
+    },
+    "Measured on 28 test recordings and a replay of 500 real dictations, comparing both settings on the same audio." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel footnote."
     },
     "Memory" : {},
     "Microphone" : {
@@ -939,7 +1244,10 @@
     },
     "Mishearings" : {},
     "Model" : {
-      "comment" : "AI Polish: card title above the model picker."
+      "comment" : "AI Polish: card title above the model picker.\nSpeech engine settings, engine card: a row label in the card's spec table."
+    },
+    "Model Ready" : {
+      "comment" : "Speech engine settings: the speech model is ready to use."
     },
     "Model Setup" : {},
     "Model is freed after every transcription. Expect a reload delay on each recording." : {},
@@ -955,6 +1263,9 @@
         }
       }
     },
+    "Mongolian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Move EnviousWispr" : {},
     "Native Speed" : {
       "comment" : "Welcome screen feature title."
@@ -962,6 +1273,12 @@
     "Nearly there" : {},
     "Needs attention" : {
       "comment" : "AI Polish provider status chip."
+    },
+    "Nepali" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Never" : {
+      "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
     },
     "New snippet" : {},
     "New words come across with the alternate spellings you set up in the other app." : {},
@@ -997,6 +1314,12 @@
     "No supported dictation apps found on this Mac. EnviousWispr can read snippets from %@." : {},
     "No transcripts yet" : {},
     "No vocabulary packs available." : {},
+    "Norwegian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Norwegian Nynorsk" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Not Now" : {},
     "Not available with your API key" : {},
     "Not checked" : {
@@ -1013,6 +1336,9 @@
     },
     "Not enough free disk space. The download needs about %@ free during install." : {
       "comment" : "AI Polish, local model card: why the model download failed. %@ is an amount of disk space, such as 6 GB."
+    },
+    "Not enough free space to install the speech model. Free up about 1 GB and try again." : {
+      "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
     },
     "Not fully polished" : {},
     "Not installed" : {
@@ -1039,6 +1365,9 @@
     },
     "OK" : {},
     "OSLog" : {},
+    "Occitan" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Off" : {
       "comment" : "AI Polish provider status chip: AI Polish is off.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches."
     },
@@ -1058,8 +1387,17 @@
     },
     "Ollama runs AI models on your Mac. No API keys, completely free." : {},
     "On" : {},
+    "On dictations under a minute, both settings finish at about the same moment. The difference is smaller than you can feel. It only pulls ahead on recordings of roughly five minutes or longer." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: speed."
+    },
+    "On short dictations you will not notice a difference. On long ones it helps clearly: transcribing after you stop gets slower the longer you spoke, while transcribing as you go stays about the same however long the recording is." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: speed."
+    },
     "On this Mac" : {
       "comment" : "AI Polish provider list: group heading."
+    },
+    "On this engine, transcribing as you go is about as accurate as waiting until you stop. It can still occasionally drop a final word or two, which we are working on." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy."
     },
     "On-Device" : {
       "comment" : "Welcome screen feature title: dictation runs on this Mac."
@@ -1079,6 +1417,9 @@
     "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything." : {},
     "One moment, still working on that" : {},
     "One per line: the trigger, then =, then the text. A tab, an arrow, or a comma work too. For text on several lines, paste exported JSON or CSV, or type \\n where a line should break." : {},
+    "One thing to know" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel heading."
+    },
     "One-time setup" : {
       "comment" : "Setup checklist: note under the speech model step."
     },
@@ -1118,6 +1459,9 @@
         }
       }
     },
+    "Pashto" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Paste" : {
       "comment" : "History detail button: pastes this row's text into the currently active app."
     },
@@ -1125,6 +1469,9 @@
     "Paste unavailable — Accessibility permission required" : {},
     "Paste your snippets, then check the count before you continue." : {},
     "Paste your words, one per line or separated by commas." : {},
+    "Pause duration" : {
+      "comment" : "Speech engine settings, Auto-Stop: slider for how long a silence ends the recording."
+    },
     "Paused" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -1132,13 +1479,25 @@
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
     "Performance" : {},
+    "Persian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Persists across relaunches. Toggle with Cmd+Shift+D from anywhere." : {},
+    "Pick this for everyday English and European dictation." : {
+      "comment" : "Speech engine settings, engine card: when to pick the fast engine."
+    },
+    "Pick this for other languages or the toughest audio." : {
+      "comment" : "Speech engine settings, engine card: when to pick the multilingual engine."
+    },
     "Picking the right model. Gemini sells two sizes inside each generation. For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks. Pro models are overkill: slightly smarter on hard reasoning, slower and pricier on a job that doesn't need it." : {},
     "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job." : {},
     "Pill Position" : {},
     "Pipeline Benchmark Results" : {},
     "Play recording sounds" : {},
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
+    "Polish" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Polish failed. Using raw text." : {
       "comment" : "Pill: AI polish failed, so the unpolished text was pasted."
     },
@@ -1157,6 +1516,9 @@
     "Polishing…" : {
       "comment" : "Toolbar status badge while AI polish rewrites the text. One ellipsis character."
     },
+    "Portuguese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Preferred mic order: Built-in or wired > USB > Bluetooth" : {
       "comment" : "Microphone settings: the recommended input types, best first. Keep the > signs."
     },
@@ -1164,12 +1526,18 @@
     "Preparing cleanup" : {
       "comment" : "Transcribe a File, Working step: set-up before AI cleanup of the transcript."
     },
+    "Preparing download..." : {
+      "comment" : "Speech engine settings, speech model download: about to start."
+    },
     "Preparing model for faster responses..." : {},
     "Preparing speech model…" : {
       "comment" : "Setup: shown while the speech model download is being prepared."
     },
     "Preparing to ignore background noise..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Preparing..." : {
+      "comment" : "Speech engine settings, WhisperKit model: download status line."
     },
     "Press " : {},
     "Press keys..." : {},
@@ -1189,6 +1557,9 @@
     },
     "Prose" : {
       "comment" : "AI Polish, S1-mini writing-style card: structure option: plain sentences."
+    },
+    "Punjabi" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Quick Add" : {},
     "RECENT" : {},
@@ -1264,6 +1635,9 @@
     "Removes this word and its mishearings. Can't be undone." : {},
     "Removing model..." : {},
     "Rename speaker" : {},
+    "Repeated or invented words" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel table: a measured quantity."
+    },
     "Required to paste your dictation" : {},
     "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed." : {},
     "Reset" : {},
@@ -1274,22 +1648,34 @@
     "Restore" : {},
     "Restore clipboard after paste" : {},
     "Resume" : {
-      "comment" : "Settings > AI Polish, local model row: button that resumes the download."
+      "comment" : "Settings > AI Polish, local model row: button that resumes the download.\nSpeech engine settings, speech model download: button that resumes it."
     },
     "Resume upgrade" : {
       "comment" : "Settings > AI Polish, local model row: button."
     },
     "Retry" : {},
     "Retry preparing model" : {},
+    "Romanian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Run ASR Benchmark" : {},
     "Run Pipeline Benchmark" : {},
     "Running" : {
       "comment" : "AI Polish provider status chip."
     },
+    "Runs on" : {
+      "comment" : "Speech engine settings, engine card: a row label in the card's spec table."
+    },
     "Runs on Ollama's servers" : {
       "comment" : "AI Polish, Ollama model list: heading for models Ollama runs on its own servers."
     },
+    "Russian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "SELECTED FILE" : {},
+    "Sanskrit" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Save" : {
       "comment" : "AI Polish: button that saves the API key."
     },
@@ -1313,6 +1699,12 @@
     "Saves and restores whatever was on your clipboard before pasting your dictation." : {},
     "Say" : {},
     "Say \"<phrase> emoji\" to get the glyph. Bare words never convert." : {},
+    "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it." : {
+      "comment" : "Speech engine settings, spoken punctuation: description under the toggle."
+    },
+    "Say this" : {
+      "comment" : "Speech engine settings, spoken punctuation: help table column: the words the user says."
+    },
     "Say your keyword, then the words you saved a snippet under, and that snippet is pasted." : {},
     "Search %@ words" : {},
     "Search by name or code" : {},
@@ -1341,6 +1733,9 @@
     "Sends transcribed text, never audio" : {
       "comment" : "AI Polish: privacy line under the selected provider."
     },
+    "Serbian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Set how this word is recognized in what you dictate." : {},
     "Setting up speech model" : {
       "comment" : "Setup checklist step."
@@ -1361,6 +1756,9 @@
     "Sharpening neural networks..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Shona" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Show" : {},
     "Show Bluetooth tips" : {
       "comment" : "Microphone settings: switch that turns the Bluetooth tip card on or off."
@@ -1372,14 +1770,29 @@
     },
     "Shows the %@ Dictionary tab" : {},
     "Shows the reminder popover once per launch. This guide always stays." : {},
+    "Sindhi" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Sinhala" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Skip and finish setup" : {},
     "Skip this step" : {},
     "Skipped" : {},
+    "Slovak" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Slovenian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Smart insertion" : {},
     "Snippet" : {},
     "Snippets to import" : {},
     "Snippets you already have are left exactly as they are." : {},
     "Snippets you already saved in another dictation app, found on this Mac." : {},
+    "Somali" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back." : {},
     "Something needs attention. Try the refresh button." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
@@ -1389,11 +1802,20 @@
       "comment" : "Practice screen when the dictation failed on our side. Keep the line break."
     },
     "Sounds" : {},
+    "Spanish" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Speaker detection didn't finish for this recording." : {},
     "Speaker name" : {},
     "Speech Model" : {},
     "Speech engine" : {
       "comment" : "Setup warm-up checklist item."
+    },
+    "Speech model download failed." : {
+      "comment" : "Speech engine settings, speech model download: failed."
+    },
+    "Speed" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel heading."
     },
     "Spreadsheets aren't supported yet." : {},
     "Start Ollama" : {
@@ -1404,7 +1826,7 @@
       "comment" : "AI Polish provider status chip."
     },
     "Starting download..." : {
-      "comment" : "AI Polish, Ollama setup: a model download is starting."
+      "comment" : "AI Polish, Ollama setup: a model download is starting.\nSpeech engine settings, WhisperKit model: download status line."
     },
     "Starting the model. This takes a few seconds." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
@@ -1425,6 +1847,9 @@
     "Structure" : {
       "comment" : "AI Polish, S1-mini writing-style card: the structure setting's name."
     },
+    "Sundanese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Superwhisper trained %@ on these three settings. Change them any time; a new pick applies to your next dictation." : {
       "comment" : "AI Polish, S1-mini writing-style card: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written."
     },
@@ -1432,14 +1857,38 @@
       "comment" : "AI Polish, S1-mini writing-style card on Transcribe a File: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written."
     },
     "Supported formats" : {},
+    "Swahili" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Swedish" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "TRY AGAIN" : {},
+    "Tagalog" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Tajik" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Tamil" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Tap the keycap to change your keybind,\nthen press GET STARTED!" : {},
+    "Tatar" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Teaching AI to listen politely..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Telugu" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "Test that %@ is live" : {},
     "Text copied to clipboard" : {
       "comment" : "VoiceOver announcement from the recording overlay: the text was copied instead of pasted."
+    },
+    "Thai" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "That did not work" : {
       "comment" : "Practice screen headline. The dictation failed on our side."
@@ -1448,6 +1897,12 @@
       "comment" : "Practice screen headline. The first dictation worked."
     },
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {},
+    "The download couldn't be verified. Try again, and if this keeps happening, contact support." : {
+      "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
+    },
+    "The download couldn't finish. Try again, and if this keeps happening, contact support." : {
+      "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
+    },
     "The download did not verify correctly and was discarded. Please try again." : {
       "comment" : "AI Polish, local model card: why the model download failed."
     },
@@ -1459,6 +1914,9 @@
     },
     "The download timed out. Please check your internet connection and try again." : {
       "comment" : "Setup error: the speech model download timed out."
+    },
+    "The fast engine can't lock to this language, so it's detecting automatically. Choose one of its 25 European languages, or switch to the multilingual engine." : {
+      "comment" : "Speech engine settings: the locked language is not one the fast engine supports."
     },
     "The model could not be removed. Please try again." : {},
     "The model did not answer a test request. Use the refresh button to try again." : {
@@ -1481,6 +1939,9 @@
       "comment" : "Transcribe a File: nothing was saved to History. 'Clean it again' is a button."
     },
     "These words are only on this screen. Copy or save them before you leave." : {},
+    "These words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol." : {
+      "comment" : "Speech engine settings, spoken punctuation: help panel footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly."
+    },
     "They are still saved on your Mac. Nothing has been changed or deleted, and EnviousWispr will not write over them. Restart the app, and tell us if this keeps happening." : {},
     "This Mac has 8 GB of memory. %@ may run slower here. Dictation always works, even when polish is unavailable." : {
       "comment" : "AI Polish, local model card: low-memory note. %@ is the model name, such as EG-1."
@@ -1490,6 +1951,12 @@
     },
     "This can't be undone." : {},
     "This choice also changes the transcription engine used for dictation." : {},
+    "This engine has to commit to a language before it can start. If your language is set to Auto-detect, EnviousWispr ignores this setting and transcribes after you stop instead, because guessing the language early gets it wrong too often." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: explanation."
+    },
+    "This engine transcribes differently from the Fast engine, so its behaviour and the advice here are not the same." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel footnote."
+    },
     "This may take a moment on first run while the model loads." : {},
     "This may take a moment on first run." : {},
     "This model did not pass any of our cleanup tests." : {},
@@ -1515,6 +1982,9 @@
     "Those are your words, typed for you.\nIn any other app, click into a text box first." : {
       "comment" : "Practice screen, after the first dictation worked. Keep the line break."
     },
+    "Tibetan" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Time for your first dictation!" : {
       "comment" : "Practice screen headline. Before the first try."
     },
@@ -1534,6 +2004,15 @@
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
     "Transcribe a File" : {},
+    "Transcribe time" : {
+      "comment" : "Speech engine settings, engine card: a row label in the card's spec table."
+    },
+    "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It does not save time you can notice on most dictations, and it can drop your last few words." : {
+      "comment" : "Speech engine settings, Faster Transcription: description under the toggle (fast engine)."
+    },
+    "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It mainly helps on long recordings, and it needs a language selected." : {
+      "comment" : "Speech engine settings, Faster Transcription: description under the toggle (multilingual engine)."
+    },
     "Transcribing" : {
       "comment" : "Sidebar status chip while speech is turned into text. Very short space, no ellipsis."
     },
@@ -1550,6 +2029,9 @@
       "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it."
     },
     "Transcription Complete" : {},
+    "Transcription Engine" : {
+      "comment" : "Speech engine settings: section heading."
+    },
     "Transcription Mode" : {},
     "Transcription error. Try again." : {
       "comment" : "Pill after a failed dictation: speech could not be turned into text. The user should retry."
@@ -1558,7 +2040,7 @@
       "comment" : "History filter: rows made with Transcribe a File."
     },
     "Try Again" : {
-      "comment" : "Settings > AI Polish, local model row: button after a failed download."
+      "comment" : "Settings > AI Polish, local model row: button after a failed download.\nSpeech engine settings, speech model download: button after a failure."
     },
     "Try a different search, or another filter." : {},
     "Try setup again" : {},
@@ -1568,6 +2050,12 @@
     "Tuning the neural ears..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Turkish" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Turkmen" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
       "comment" : "Setup notice when Apple Intelligence is off in System Settings."
     },
@@ -1576,6 +2064,9 @@
     },
     "Turn on Accessibility" : {},
     "Turn on the microphone" : {},
+    "Ukrainian" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Unavailable" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -1629,6 +2120,9 @@
       }
     },
     "Upload an audio or video file, then EnviousWispr will transcribe it and polish it into clean, readable text." : {},
+    "Urdu" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "Use Transcribe a File to add one." : {},
     "Use dictation's polish settings" : {},
     "Uses your selected Ollama model, local or hosted" : {
@@ -1636,6 +2130,15 @@
     },
     "Using a Bluetooth microphone?" : {
       "comment" : "Heading of the Bluetooth guide in Microphone settings."
+    },
+    "Usually 1-2s after you speak" : {
+      "comment" : "Speech engine settings, engine card: how quickly text appears, in seconds."
+    },
+    "Usually ~0.1s after you speak" : {
+      "comment" : "Speech engine settings, engine card: how quickly text appears. 0.1s is a tenth of a second."
+    },
+    "Uzbek" : {
+      "comment" : "A language name (dictation language picker)."
     },
     "VAD: Active" : {},
     "Valid" : {},
@@ -1648,9 +2151,15 @@
     },
     "Verifying download integrity" : {},
     "Verifying download..." : {
-      "comment" : "Setup progress: checking the downloaded speech model."
+      "comment" : "Setup progress: checking the downloaded speech model.\nSpeech engine settings, speech model download: checking the downloaded files."
+    },
+    "Verifying..." : {
+      "comment" : "Speech engine settings, WhisperKit model: download status line."
     },
     "Version %@ is ready. Click to restart." : {},
+    "Vietnamese" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "View" : {},
     "Vocabulary Packs" : {},
     "Warming Up the AI..." : {},
@@ -1669,6 +2178,21 @@
       "comment" : "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
     },
     "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {},
+    "Welsh" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "What Faster Transcription changes" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel title."
+    },
+    "What can I say?" : {
+      "comment" : "Speech engine settings, spoken punctuation: VoiceOver name of the help button."
+    },
+    "What does Faster Transcription change?" : {
+      "comment" : "Speech engine settings, Faster Transcription: VoiceOver name of the help button."
+    },
+    "What we recommend" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel heading."
+    },
     "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose." : {},
     "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about %lld minutes." : {},
     "When to use it. Pick %@ if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about %lld minutes." : {
@@ -1685,6 +2209,9 @@
     "When you use your cancel keybind, Escape by default, EnviousWispr keeps the dictation instead of discarding it. It finishes transcribing and polishing, then offers to paste it. Another recording cannot start until that finishes, the same as after any dictation. AI polish runs as usual, which uses your own API key when configured. The audio is deleted once the text is saved; the text stays in History for 24 hours unless you Keep it. The Cancel button still discards immediately." : {},
     "Which words to show" : {},
     "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup." : {},
+    "Why this happens" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel heading."
+    },
     "Why use %@" : {
       "comment" : "AI Polish: card title explaining a provider. %@ is the model name, S1-mini."
     },
@@ -1706,8 +2233,17 @@
     "Why use OpenAI" : {
       "comment" : "AI Polish: card title explaining a provider."
     },
+    "With this on, EnviousWispr transcribes overlapping chunks of audio while you talk and joins them together. When two chunks disagree about the same moment of speech, nothing can tell which reading was right. The longer you talk, the more joins there are, so the problem grows with length." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: explanation."
+    },
+    "Word errors" : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel table: a measured quantity."
+    },
     "Words to import" : {},
     "Words you already have are left exactly as they are." : {},
+    "Words you can say" : {
+      "comment" : "Speech engine settings, spoken punctuation: help panel title."
+    },
     "Work out the language from what you say." : {},
     "Working, but responding slowly right now." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
@@ -1719,11 +2255,20 @@
       "comment" : "AI Polish, S1-mini writing-style card: the card title."
     },
     "YOUR PROCESSING PATH" : {},
+    "Yiddish" : {
+      "comment" : "A language name (dictation language picker)."
+    },
+    "Yoruba" : {
+      "comment" : "A language name (dictation language picker)."
+    },
     "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
       "comment" : "Setup: shown when the speech engine did not finish warming up."
     },
     "You deleted this from History, so it is not saved there. Copy or save it before you leave." : {
       "comment" : "Transcribe a File: the user deleted this transcript from History."
+    },
+    "You get" : {
+      "comment" : "Speech engine settings, spoken punctuation: help table column: what appears in the text."
     },
     "You have this" : {},
     "You're all set! Select a model above." : {},
@@ -1754,6 +2299,12 @@
     "Your snippets could not be read" : {},
     "Your voice never leaves your Mac." : {
       "comment" : "Welcome screen feature line under On-Device."
+    },
+    "a blank line" : {
+      "comment" : "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
+    },
+    "a line break" : {
+      "comment" : "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
     },
     "by Superwhisper" : {
       "comment" : "AI Polish provider list: description under a provider name. Required licence credit; keep Superwhisper as written."
@@ -1849,6 +2400,30 @@
         }
       }
     },
+    "language.picker.spellingAccessibility" : {
+      "comment" : "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "language.picker.subtitle" : {
+      "comment" : "Dictation language picker: second line of a language row. The first %@ is the language's name, the second its code, such as de.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
     "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually." : {},
     "menu.sendFeedback" : {
       "extractionState" : "extracted_with_value",
@@ -1890,7 +2465,9 @@
       "comment" : "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
     },
     "or drag and drop here" : {},
-    "selected" : {},
+    "selected" : {
+      "comment" : "Dictation language picker, VoiceOver: the chosen row."
+    },
     "settings.aiPolish.enable.title" : {
       "comment" : "Settings > AI Polish: title of the switch that turns AI polish on or off.",
       "extractionState" : "manual",
