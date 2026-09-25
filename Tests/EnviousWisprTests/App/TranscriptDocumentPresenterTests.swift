@@ -184,6 +184,14 @@ struct TranscriptDocumentPresenterTests {
     #expect(original?.isCleanedFallback == false)
   }
 
+  @Test("a turn two people shared exports under Both")
+  func sharedTurnExportsUnderBoth() {
+    let turns = [Self.turn("0-5", TurnAssembler.bothSpeakersID, 0..<5, processedText: "Hi!")]
+    let result = TranscriptDocumentPresenter.exportText(
+      turns: turns, rawText: Self.rawText, speakerNames: [:], timesOn: false, mode: .cleaned)
+    #expect(result?.text.hasPrefix("Both\n") == true)
+  }
+
   @Test("an unnamed speaker exports under an explicit label, never a blank line")
   func unnamedSpeakerExportsUnderAnExplicitLabel() {
     let turns = [Self.turn("0-5", "A", 0..<5, processedText: "Hi!")]
@@ -202,6 +210,8 @@ struct TranscriptDocumentPresenterTests {
     #expect(markedUp.copy == "Copy cleaned")
     #expect(markedUp.save == "Save cleaned as…")
     #expect(markedUp.share == "Share cleaned…")
+    #expect(cleaned.save == "Save as…")
+    #expect(cleaned.share == "Share…")
   }
 
   @Test("a range mismatch against the supplied rawText renders an empty slice rather than crashing")

@@ -87,9 +87,20 @@ extension RecordingPillDesign {
   /// render with a blank card until somebody remembered the other list.
   var displayName: String {
     switch self {
-    case .classic: return "Capsule"
-    case .readingWell: return "Reading Well"
-    case .levelRail: return "Level Rail"
+    case .classic:
+      return String(
+        localized: "Capsule",
+        comment: "Appearance settings: name of the original recording pill style.")
+    case .readingWell:
+      return String(
+        localized: "Reading Well",
+        comment:
+          "Appearance settings: name of the recording pill style that shows your words as you speak."
+      )
+    case .levelRail:
+      return String(
+        localized: "Level Rail",
+        comment: "Appearance settings: name of the recording pill style with a voice level meter.")
     }
   }
 
@@ -98,11 +109,18 @@ extension RecordingPillDesign {
   var summary: String {
     switch self {
     case .classic:
-      return "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown."
+      return String(
+        localized:
+          "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown.",
+        comment: "Appearance settings: description of the Capsule recording pill style.")
     case .readingWell:
-      return "A wide panel that shows your words as you speak, growing a line at a time."
+      return String(
+        localized: "A wide panel that shows your words as you speak, growing a line at a time.",
+        comment: "Appearance settings: description of the Reading Well recording pill style.")
     case .levelRail:
-      return "A wider capsule with a live rainbow meter of your voice beside the timer."
+      return String(
+        localized: "A wider capsule with a live rainbow meter of your voice beside the timer.",
+        comment: "Appearance settings: description of the Level Rail recording pill style.")
     }
   }
 
@@ -276,7 +294,6 @@ struct OverlayAnnouncement: Equatable, Sendable {
     OverlayAnnouncement(text: text, isHighPriority: false)
   }
 }
-
 
 /// How a presentation's width is decided. `.measured` means the render model
 /// computes it; nothing may substitute a default for it.

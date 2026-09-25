@@ -64,6 +64,21 @@ struct RenameFailure: Equatable, Sendable {
   /// and its `hasCommitted` guard stays stuck, so an outside click no longer commits (found
   /// by second-pass review).
   let attemptID = UUID()
+
+  /// #3142: the two outcomes both rename paths (History and Transcribe a File) report,
+  /// authored once.
+  static var couldNotSaveName: String {
+    String(
+      localized: "Couldn't save the name.",
+      comment: "Speaker rename popover: saving the new name failed.")
+  }
+  static var recordingRemoved: String {
+    String(
+      localized: "This recording was removed from History.",
+      comment:
+        "Speaker rename popover: the recording no longer exists in History, so the name was not saved."
+    )
+  }
 }
 
 private struct TurnRowView: View {
@@ -105,7 +120,11 @@ private struct TurnRowView: View {
   /// `turn.speakerName == nil` is the same signal for BOTH "unnamed real speaker" and
   /// "unknown classification," so the tap target is gated on `speakerId`, not on the name.
   @ViewBuilder private var speakerLabel: some View {
-    let displayName = turn.speakerName ?? "Unknown speaker"
+    let displayName =
+      turn.speakerName
+      ?? String(
+        localized: "Unknown speaker",
+        comment: "Transcript turn header when the speaker has no name.")
     if turn.speakerId == TurnAssembler.unknownSpeakerID
       || turn.speakerId == TurnAssembler.bothSpeakersID
     {

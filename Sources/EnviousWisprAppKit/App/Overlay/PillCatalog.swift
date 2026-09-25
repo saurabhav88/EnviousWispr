@@ -223,7 +223,13 @@ enum PillCatalog {
         id: id, kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
         width: .fixed(300), fixedHeight: 56,  // :859 and :1118 both pass height: 56
         expiry: .after(seconds: 6), isMultiline: true,
-        action: NoticeAction(label: "Grant", action: .grantAccessibility))
+        action: NoticeAction(
+          label: String(
+            localized: "Grant",
+            comment:
+              "Button to grant a requested macOS permission, including microphone or Accessibility."
+          ),
+          action: .grantAccessibility))
 
     case .warning(let reason):
       return notice(
@@ -243,12 +249,21 @@ enum PillCatalog {
       // are this pill's own copy, not the narrator's.
       if reason == .permissionDenied {
         return notice(
-          id: id, kind: .notification, text: "Microphone access needed",
-          secondary: "Turn it on to start dictating.",
+          id: id, kind: .notification,
+          text: String(
+            localized: "Microphone access needed",
+            comment: "Pill title when macOS microphone permission is off."),
+          secondary: String(
+            localized: "Turn it on to start dictating.",
+            comment: "Pill line under Microphone access needed."),
           accessibilityLabel: DictationNarrator.copy(for: reason),
           width: .fixed(400), fixedHeight: 64,
           expiry: .after(seconds: 6), severity: .error, isMultiline: true,
-          action: NoticeAction(label: "Open Settings", action: .openMicrophoneSettings))
+          action: NoticeAction(
+            label: String(
+              localized: "Open Settings",
+              comment: "Pill button: opens the macOS microphone privacy settings."),
+            action: .openMicrophoneSettings))
       }
       return notice(
         id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
@@ -315,11 +330,17 @@ enum PillCatalog {
         // which would have left the recovery pill on screen forever.
         expiry: .after(seconds: 6), isMultiline: true,
         action: NoticeAction(
-          label: "Discard",
+          label: String(
+            localized: "Discard",
+            comment:
+              "Button to discard pending work, including a recovering recording or an uncommitted word or snippet import."
+          ),
           // The button's own spoken label, which the leaf used to spell as a bare
           // literal with no model field behind it. "Discard" alone is ambiguous
           // out of context; this says what is being discarded.
-          accessibilityLabel: "Discard recovering recording",
+          accessibilityLabel: String(
+            localized: "Discard recovering recording",
+            comment: "VoiceOver label of the Discard button on the recovery pill."),
           action: .discardRecovery))
 
     case .recoverySucceeded:
@@ -352,7 +373,8 @@ enum PillCatalog {
       // reducer.
       return PillDefinition(
         id: id, content: .correctionLearned(model),
-        expiry: .after(seconds: CorrectionLearnedPillCopy.learnedDwellSeconds, pausesOnHover: false),
+        expiry: .after(
+          seconds: CorrectionLearnedPillCopy.learnedDwellSeconds, pausesOnHover: false),
         requestedWidth: .measured)
 
     case .correctionLearnedSaveError(let error):

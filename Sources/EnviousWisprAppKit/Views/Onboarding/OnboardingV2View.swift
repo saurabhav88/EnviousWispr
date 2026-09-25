@@ -134,18 +134,42 @@ final class OnboardingV2ViewModel {
 
   /// Fun status messages shown during model compilation (~20-30s wait).
   private static let installQuips = [
-    "Tuning the neural ears...",
-    "Teaching AI to listen politely...",
-    "Loading all 50,000 words...",
-    "Installing 'um' and 'uh' filters...",
-    "Calibrating whisper detection...",
-    "Warming up Apple Silicon...",
-    "Polishing the speech engine...",
-    "Training patience module...",
-    "Preparing to ignore background noise...",
-    "Sharpening neural networks...",
-    "Convincing AI that you said 'duck'...",
-    "Almost there... pinky promise",
+    String(
+      localized: "Tuning the neural ears...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Teaching AI to listen politely...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Loading all 50,000 words...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Installing 'um' and 'uh' filters...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Calibrating whisper detection...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Warming up Apple Silicon...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Polishing the speech engine...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Training patience module...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Preparing to ignore background noise...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Sharpening neural networks...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Convincing AI that you said 'duck'...",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
+    String(
+      localized: "Almost there... pinky promise",
+      comment: "Playful status line cycled on the setup screen while the speech model installs."),
   ]
 
   // Sleep prevention — holds a power assertion during download to prevent macOS sleep.
@@ -199,8 +223,11 @@ final class OnboardingV2ViewModel {
       freeSpace < Self.requiredDiskSpaceBytes
     {
       let freeMB = freeSpace / 1_048_576
-      downloadError =
-        "Not enough disk space (\(freeMB) MB free). EnviousWispr needs about 1 GB to download and install the speech model."
+      downloadError = String(
+        localized:
+          "Not enough disk space (\(freeMB) MB free). EnviousWispr needs about 1 GB to download and install the speech model.",
+        comment:
+          "Setup error before the speech model download. %lld is the free space in megabytes.")
       checklistStatuses[0] = .error(downloadError!)
       blockStep("model_download", reason: "insufficient_disk_space")
       return
@@ -348,8 +375,10 @@ final class OnboardingV2ViewModel {
   /// failed warm-up only starts the load and a second one is needed. That is
   /// the exact experience this gate exists to prevent, so the copy must not
   /// promise its absence.
-  static let warmingFailureCopy =
-    "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate."
+  static let warmingFailureCopy = String(
+    localized:
+      "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate.",
+    comment: "Setup: shown when the speech engine did not finish warming up.")
 
   /// Start the gate's warm-up if none is live. Safe to call on every view
   /// re-appear: a live attempt makes a re-kick a no-op.
@@ -802,7 +831,10 @@ final class OnboardingV2ViewModel {
   // MARK: - Friendly Error Messages
 
   /// Maps raw error descriptions to user-friendly messages.
-  private static func friendlyError(_ error: any Error) -> String {
+  /// The download failures `friendlyError` recognises by type rather than by wording.
+  enum DownloadFailureKind: Equatable { case timeout, noInternet, cannotConnect, noSpace }
+
+  static func friendlyError(_ error: any Error) -> String {
     // #1348 Phase 2: typed delivery failures render the D6 state copy from
     // the single copy authority (ModelDeliveryCopy) — never inline strings.
     if let delivery = error as? ParakeetDeliveryError {
@@ -815,30 +847,152 @@ final class OnboardingV2ViewModel {
     // internet connection or VPN" copy was factually wrong on the install
     // phase (which runs with networking disabled) and is deleted.
     if error is ModelLoadWatchdog.WedgeError {
-      return "Setup didn't finish. Try again, and if it keeps happening, restart the app."
+      return String(
+        localized: "Setup didn't finish. Try again, and if it keeps happening, restart the app.",
+        comment: "Setup error: the speech model setup made no progress.")
     }
 
-    let desc = error.localizedDescription.lowercased()
+    // #3142: `localizedDescription` follows the app's language, so the English
+    // word matches below stop matching once the app ships in another language.
+    // The error's TYPE decides first; each typed case is one whose English
+    // description the word match already classified the same way, so English
+    // behavior is unchanged. The word matches stay for wrapped errors.
+    // The error and the errors it wraps (`NSUnderlyingErrorKey`), so a download failure
+    // wrapped by a higher layer is still recognised by type. Bounded against cycles.
+    var chain: [NSError] = []
+    var next: NSError? = error as NSError
+    while let current = next, chain.count < 4 {
+      chain.append(current)
+      next = current.userInfo[NSUnderlyingErrorKey] as? NSError
+    }
+    // The NEAREST recognised typed cause decides: an out-of-space error wrapping a timeout
+    // is a disk problem. The English word checks below run only when no typed cause exists.
+    let typed: DownloadFailureKind? =
+      chain.lazy.compactMap { current -> DownloadFailureKind? in
+        if current.domain == NSURLErrorDomain {
+          switch URLError.Code(rawValue: current.code) {
+          case .timedOut: return .timeout
+          case .notConnectedToInternet, .networkConnectionLost: return .noInternet
+          case .cannotConnectToHost: return .cannotConnect
+          default: break
+          }
+        }
+        if (current.domain == NSCocoaErrorDomain && current.code == NSFileWriteOutOfSpaceError)
+          || (current.domain == NSPOSIXErrorDomain && current.code == Int(ENOSPC))
+        {
+          return .noSpace
+        }
+        return nil
+      }.first
+    let desc = typed == nil ? error.localizedDescription.lowercased() : ""
 
-    if desc.contains("timed out") || desc.contains("timeout") {
-      return "The download timed out. Please check your internet connection and try again."
+    if typed == .timeout || desc.contains("timed out") || desc.contains("timeout") {
+      return String(
+        localized: "The download timed out. Please check your internet connection and try again.",
+        comment: "Setup error: the speech model download timed out.")
     }
-    if desc.contains("not connected") || desc.contains("network") || desc.contains("offline") {
-      return "No internet connection. Please connect to the internet and try again."
+    if typed == .noInternet
+      || desc.contains("not connected") || desc.contains("network") || desc.contains("offline")
+    {
+      return String(
+        localized: "No internet connection. Please connect to the internet and try again.",
+        comment: "Setup error: no internet during the speech model download.")
     }
-    if desc.contains("could not connect") || desc.contains("cannot connect") {
-      return
-        "Couldn't reach the download server. Please check your internet connection and try again."
+    if typed == .cannotConnect || desc.contains("could not connect")
+      || desc.contains("cannot connect")
+    {
+      return String(
+        localized:
+          "Couldn't reach the download server. Please check your internet connection and try again.",
+        comment: "Setup error: the speech model download server could not be reached.")
     }
     if desc.contains("rate limit") {
-      return "The download server is busy. Please wait a moment and try again."
+      return String(
+        localized: "The download server is busy. Please wait a moment and try again.",
+        comment: "Setup error: the download server refused because of too many requests.")
     }
-    if desc.contains("disk") || desc.contains("space") || desc.contains("no space") {
-      return "Not enough disk space. Please free up space and try again."
+    if typed == .noSpace || desc.contains("disk") || desc.contains("space")
+      || desc.contains("no space")
+    {
+      return String(
+        localized: "Not enough disk space. Please free up space and try again.",
+        comment: "Setup error: the disk filled up during the speech model download.")
     }
 
     // Fallback: use the original description but trim technical prefixes
-    return "Download failed: \(error.localizedDescription)"
+    return String(
+      localized: "Download failed: \(error.localizedDescription)",
+      comment:
+        "Setup error with no friendlier wording. %@ is the system's description of the error.")
+  }
+
+  /// #3142: the progress file carries phase TOKENS that the stall guard keys on
+  /// by exact value (`ModelLoadStallPolicy`), so they are translated here, at the
+  /// screen, never at the producer. Each English value equals its token; an
+  /// unknown token shows as written.
+  static func displayPhase(_ phase: String) -> String {
+    switch phase {
+    case ModelLoadStallPolicy.validatingCachePhase:
+      return String(
+        localized: "Checking speech model files...",
+        comment: "Setup progress: checking already-downloaded speech model files.")
+    case ModelLoadStallPolicy.downloadingPhase:
+      return String(
+        localized: "Downloading speech model...",
+        comment: "Setup progress: the speech model is downloading.")
+    case ModelLoadStallPolicy.verifyingDownloadPhase:
+      return String(
+        localized: "Verifying download...",
+        comment: "Setup progress: checking the downloaded speech model.")
+    case ModelLoadStallPolicy.installPhase:
+      return String(
+        localized: "Installing model...",
+        comment: "Setup progress: the speech model is being installed.")
+    case Self.legacyDownloadingPhase:
+      return String(
+        localized: "Downloading model files...",
+        comment: "Setup progress: the speech model is downloading.")
+    default:
+      return phase
+    }
+  }
+
+  /// The download phase token `ParakeetBackend.makeLoadProgressHandler` writes
+  /// as a literal rather than through `ModelLoadStallPolicy`.
+  static let legacyDownloadingPhase = "Downloading model files..."
+
+  /// The whole progress line, localized as ONE sentence per known producer form
+  /// (plan §3: never two translated fragments glued together). Both download
+  /// producers write the counter as `<mb> MB of <total> MB (<pct>%)`; its
+  /// numbers are re-read so the sentence around them translates. A form not
+  /// listed here shows the translated phase and the detail as written.
+  static func displayProgress(phase: String, detail: String) -> String {
+    guard !detail.isEmpty else { return displayPhase(phase) }
+
+    if phase == ModelLoadStallPolicy.installPhase {
+      return String(
+        localized: "Installing model... \(detail)",
+        comment: "Setup progress: %@ is the name of the speech model being installed.")
+    }
+
+    if let match = detail.wholeMatch(of: /(\d+) MB of (\d+) MB \((\d+)%\)/),
+      let megabytes = Int(match.1), let total = Int(match.2), let percent = Int(match.3)
+    {
+      switch phase {
+      case ModelLoadStallPolicy.downloadingPhase:
+        return String(
+          localized: "Downloading speech model... \(megabytes) MB of \(total) MB (\(percent)%)",
+          comment: "Setup download progress: megabytes downloaded, total megabytes, percent done.")
+      case legacyDownloadingPhase:
+        return String(
+          localized: "Downloading model files... \(megabytes) MB of \(total) MB (\(percent)%)",
+          comment: "Setup download progress: megabytes downloaded, total megabytes, percent done.")
+      default:
+        break
+      }
+    }
+
+    return "\(displayPhase(phase)) \(detail)"
   }
 
   func requestMicPermission(permissions: PermissionsService) async {
@@ -1103,10 +1257,36 @@ private struct WelcomeScreenV2: View {
   var viewModel: OnboardingV2ViewModel
 
   private static let features: [(icon: String, title: String, subtitle: String)] = [
-    ("shield.fill", "On-Device", "Your voice never leaves your Mac."),
-    ("wifi.slash", "Offline-Ready", "Works without internet."),
-    ("bolt.fill", "Native Speed", "Built for Apple Silicon."),
-    ("person.fill", "Free & Private", "No account required. Anonymous analytics only."),
+    (
+      "shield.fill",
+      String(
+        localized: "On-Device", comment: "Welcome screen feature title: dictation runs on this Mac."
+      ),
+      String(
+        localized: "Your voice never leaves your Mac.",
+        comment: "Welcome screen feature line under On-Device.")
+    ),
+    (
+      "wifi.slash",
+      String(
+        localized: "Offline-Ready", comment: "Welcome screen feature title: works without internet."
+      ),
+      String(
+        localized: "Works without internet.",
+        comment: "Welcome screen feature line under Offline-Ready.")
+    ),
+    (
+      "bolt.fill", String(localized: "Native Speed", comment: "Welcome screen feature title."),
+      String(
+        localized: "Built for Apple Silicon.",
+        comment: "Welcome screen feature line under Native Speed.")
+    ),
+    (
+      "person.fill", String(localized: "Free & Private", comment: "Welcome screen feature title."),
+      String(
+        localized: "No account required. Anonymous analytics only.",
+        comment: "Welcome screen feature line under Free & Private.")
+    ),
   ]
 
   @State private var appeared = false
@@ -1202,10 +1382,22 @@ private struct ChecklistPhaseView: View {
   @Environment(DictationRuntime.self) private var dictationRuntime
 
   private static let items: [(title: String, subtitle: String)] = [
-    ("Setting up speech model", "One-time setup"),
+    (
+      String(localized: "Setting up speech model", comment: "Setup checklist step."),
+      String(
+        localized: "One-time setup", comment: "Setup checklist: note under the speech model step.")
+    ),
     // #2650: the provider's display name has one owner.
-    ("Configuring on-device AI", LLMProvider.appleIntelligence.displayName),
-    ("Setting your keybind", "Default: ⌥ Option"),
+    (
+      String(localized: "Configuring on-device AI", comment: "Setup checklist step."),
+      LLMProvider.appleIntelligence.displayName
+    ),
+    (
+      String(localized: "Setting your keybind", comment: "Setup checklist step."),
+      String(
+        localized: "Default: ⌥ Option",
+        comment: "Setup checklist: the default dictation key. ⌥ is the Option key symbol.")
+    ),
   ]
 
   var body: some View {
@@ -1346,11 +1538,15 @@ private struct ChecklistPhaseView: View {
     // visibly escalate so the screen never reads as frozen.
     if phase == ModelLoadStallPolicy.listingPhase {
       if let since = viewModel.listingPhaseSince, Date().timeIntervalSince(since) > 10 {
-        return "Still working: checking download source…"
+        return String(
+          localized: "Still working: checking download source…",
+          comment: "Setup: shown when preparing the download takes more than 10 seconds.")
       }
-      return "Preparing speech model…"
+      return String(
+        localized: "Preparing speech model…",
+        comment: "Setup: shown while the speech model download is being prepared.")
     }
-    return detail.isEmpty ? phase : "\(phase) \(detail)"
+    return OnboardingV2ViewModel.displayProgress(phase: phase, detail: detail)
   }
 }
 
@@ -1486,8 +1682,12 @@ private struct PermissionsPhaseView: View {
       VStack(spacing: 10) {
         PermissionRow(
           icon: "mic.fill",
-          title: "Microphone",
-          subtitle: "To hear your voice for transcription.",
+          title: String(
+            localized: "Microphone",
+            comment: "Setup permissions: title of the microphone permission row."),
+          subtitle: String(
+            localized: "To hear your voice for transcription.",
+            comment: "Setup permissions: why the microphone is needed."),
           isGranted: viewModel.micGranted,
           onGrant: {
             Task { await viewModel.requestMicPermission(permissions: permissions) }
@@ -1496,8 +1696,12 @@ private struct PermissionsPhaseView: View {
 
         PermissionRow(
           icon: "accessibility",
-          title: "Accessibility",
-          subtitle: "To paste your transcribed text into any app.",
+          title: String(
+            localized: "Accessibility",
+            comment: "Setup permissions: title of the macOS Accessibility permission row."),
+          subtitle: String(
+            localized: "To paste your transcribed text into any app.",
+            comment: "Setup permissions: why Accessibility is needed."),
           isGranted: viewModel.accessibilityGranted,
           onGrant: { viewModel.openAccessibilitySettings(permissions: permissions) }
         )
@@ -1719,18 +1923,29 @@ private struct AIPolishNoticeSection: View {
 
   private var title: String {
     switch notice {
-    case .enableInSettings: return "Apple Intelligence is turned off"
-    case .updateMacOS: return "AI polish needs macOS 26"
+    case .enableInSettings:
+      return String(
+        localized: "Apple Intelligence is turned off",
+        comment: "Setup notice title when Apple Intelligence is off in System Settings.")
+    case .updateMacOS:
+      return String(
+        localized: "AI polish needs macOS 26",
+        comment: "Setup notice title on Macs older than macOS 26.")
     }
   }
 
   private var message: String {
     switch notice {
     case .enableInSettings:
-      return "Turn it on to enable free, on-device AI polish. Dictation works fine without it."
+      return String(
+        localized:
+          "Turn it on to enable free, on-device AI polish. Dictation works fine without it.",
+        comment: "Setup notice when Apple Intelligence is off in System Settings.")
     case .updateMacOS:
-      return
-        "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it."
+      return String(
+        localized:
+          "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it.",
+        comment: "Setup notice on Macs older than macOS 26.")
     }
   }
 }
@@ -1993,7 +2208,10 @@ private struct KeycapHotkeyView: View {
           .accessibilityLabel("Dictation keybind")
           .accessibilityValue(
             isRecording
-              ? "Recording, press a key combination"
+              ? String(
+                localized: "Recording, press a key combination",
+                comment:
+                  "VoiceOver value of the keybind field while it waits for a key combination.")
               // Spoken projection, not the visible keycap text (#1987). Visible
               // display is unchanged.
               : KeySymbols.accessibilityDescription(keyCode: keyCode, modifiers: modifiers)
@@ -2019,14 +2237,20 @@ private struct KeycapHotkeyView: View {
       .padding(.top, 4)  // breathing room for chip
 
       // Key name label
-      Text(isRecording ? "Listening for input" : keyNameLabel)
-        .font(.system(size: 11, weight: .semibold))
-        .kerning(0.55)
-        .foregroundStyle(
-          isRecording ? Color.obAccent.opacity(0.7) : Color.obTextTertiary
-        )
-        .padding(.top, 7)
-        .padding(.bottom, 14)
+      Text(
+        isRecording
+          ? String(
+            localized: "Listening for input",
+            comment: "Label under the keybind field while it waits for a key combination.")
+          : keyNameLabel
+      )
+      .font(.system(size: 11, weight: .semibold))
+      .kerning(0.55)
+      .foregroundStyle(
+        isRecording ? Color.obAccent.opacity(0.7) : Color.obTextTertiary
+      )
+      .padding(.top, 7)
+      .padding(.bottom, 14)
 
       // Divider
       Rectangle()

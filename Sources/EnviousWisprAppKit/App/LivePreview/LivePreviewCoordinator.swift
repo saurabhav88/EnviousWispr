@@ -1002,31 +1002,52 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 /// internally; the STRINGS avoid "live" for the reason given on
 /// `LivePreviewSettingsCopy.sectionHeader`, and a test enforces it.
 enum LivePreviewCopy {
-  static let needsNewerMacOS = "On-screen preview needs macOS 26."
-  static let languageUnsupported = "On-screen preview does not support this language yet."
-  static let notReady = "On-screen preview is not ready yet."
+  static let needsNewerMacOS = String(
+    localized: "On-screen preview needs macOS 26.",
+    comment: "On-screen preview status: the Mac is older than macOS 26.")
+  static let languageUnsupported = String(
+    localized: "On-screen preview does not support this language yet.",
+    comment: "On-screen preview status: the dictation language is not supported by the preview.")
+  static let notReady = String(
+    localized: "On-screen preview is not ready yet.",
+    comment: "On-screen preview status: the preview could not start yet.")
   /// Shown while the recognizer is being prepared, which on first use of a language
   /// can include downloading an Apple speech model.
-  static let preparing = "Getting the preview ready..."
+  static let preparing = String(
+    localized: "Getting the preview ready...",
+    comment:
+      "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods."
+  )
   /// Shown in the pill while the preview is running but has not heard words yet.
   ///
   /// **Rendered by the CAPSULE layout only since #2202.** The preview pill's
   /// header carries `listeningMode` instead, and showing both would greet a
   /// first-time user with the same word twice in one small box.
-  static let listening = "Listening..."
+  static let listening = String(
+    localized: "Listening...",
+    comment: "Recording pill while the preview has not heard words yet. Three ASCII periods.")
   /// #2202: the preview header's state, hold-to-talk. Quiet and grey — you are
   /// holding a key, it ends when you let go, and the state barely needs saying.
-  static let listeningMode = "Listening"
+  static let listeningMode = String(
+    localized: "Listening",
+    comment: "Preview panel header: hold-to-talk dictation is active.")
   /// #2202: the preview header's state, hands-free. Carried on a filled badge
   /// because this mode persists until the user presses again, and a size change
   /// is a weak signal — you only notice it if you saw the other size a second
   /// earlier.
-  static let handsFreeMode = "Hands-free"
+  static let handsFreeMode = String(
+    localized: "Hands-free",
+    comment:
+      "Preview panel header badge: hands-free dictation is active (it continues until pressed again)."
+  )
   /// #2108. The universal preview model has not been downloaded. Names the
   /// action rather than the fault: nothing is broken, the user has simply not
   /// chosen to download it yet.
-  static let previewModelNotInstalled =
-    "Download the preview model in Settings to see words appear."
+  static let previewModelNotInstalled = String(
+    localized: "Download the preview model in Settings to see words appear.",
+    comment:
+      "On-screen preview status: the preview model is not downloaded. Settings is this app's settings window."
+  )
   /// #2108 Gate C. Faster Transcription already decodes continuously while you
   /// speak, and a second decoder would slow it by half (measured).
   ///
@@ -1035,9 +1056,12 @@ enum LivePreviewCopy {
   /// `App/LivePreview/` — user-facing pill text outside the surface list. The tool
   /// now covers this directory; the lesson is that a copy string is user-facing
   /// because of where it is SHOWN, never because of which folder holds it.
-  static let heartIsStreaming = "On-screen preview pauses while Faster Transcription is on."
+  static let heartIsStreaming = String(
+    localized: "On-screen preview pauses while Faster Transcription is on.",
+    comment: "On-screen preview status. Faster Transcription is the name of a setting.")
   /// No remedy offered ON PURPOSE. A build shipped without the engine's files is
   /// ours to fix, and a "Download" button here would point at nothing.
-  static let engineUnavailableInThisBuild =
-    "This version of EnviousWispr cannot run that preview engine."
+  static let engineUnavailableInThisBuild = String(
+    localized: "This version of EnviousWispr cannot run that preview engine.",
+    comment: "On-screen preview status: this app build lacks the preview engine's files.")
 }

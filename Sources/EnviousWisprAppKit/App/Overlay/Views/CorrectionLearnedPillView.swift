@@ -23,17 +23,31 @@ enum CorrectionLearnedPillCopy {
   static let minimumScale = 0.5
   static let maximumSentenceWidth: CGFloat = 400
 
-  static let undo = "Undo"
-  static let undone = "Undone"
-  static let couldNotUndo = "Couldn\u{2019}t undo"
-  static let undoAvailable = "Undo available"
+  // #3142: every sentence below is localized WHOLE, quotes included, so a
+  // translator can move the word and use their own quotation marks. The word
+  // itself is the user's, inserted verbatim.
+  static let undo = String(
+    localized: "Undo",
+    comment: "Button on the pill shown after a word is added to the dictionary. Removes it again.")
+  static let undone = String(
+    localized: "Undone",
+    comment: "Pill result after the user pressed Undo: the word was removed again.")
+  static let couldNotUndo = String(
+    localized: "Couldn\u{2019}t undo",
+    comment: "Pill result when removing the just-added word failed.")
 
   /// The one line the `.learned` phase draws.
   static func sentence(for model: LearnedCorrectionPillModel) -> String {
-    let word = "\u{201C}\(model.canonical)\u{201D}"
     switch model.kind {
-    case .added: return "Added \(word) to Dictionary"
-    case .updated: return "\(word) updated"
+    case .added:
+      return String(
+        localized: "Added \u{201C}\(model.canonical)\u{201D} to Dictionary",
+        comment: "Pill after a correction taught the app a new word. %@ is that word.")
+    case .updated:
+      return String(
+        localized: "\u{201C}\(model.canonical)\u{201D} updated",
+        comment:
+          "Pill after a correction changed a word already in the dictionary. %@ is that word.")
     }
   }
 
@@ -49,14 +63,21 @@ enum CorrectionLearnedPillCopy {
   }
 
   static func saveError(_ error: LearnedCorrectionSaveError) -> String {
-    "Couldn\u{2019}t save \u{201C}\(error.canonical)\u{201D}"
+    String(
+      localized: "Couldn\u{2019}t save \u{201C}\(error.canonical)\u{201D}",
+      comment: "Pill when a word could not be saved to the dictionary. %@ is that word.")
   }
 
   /// VoiceOver: the sentence, then that Undo is available (the button is a
   /// separate element, so the offer is audible before it is reached).
   static func announcement(for model: LearnedCorrectionPillModel) -> String {
     let line = line(for: model)
-    return line.showsUndo ? "\(line.text). \(undoAvailable)." : line.text
+    guard line.showsUndo else { return line.text }
+    return String(
+      localized: "\(line.text). Undo available.",
+      comment:
+        "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced."
+    )
   }
 }
 

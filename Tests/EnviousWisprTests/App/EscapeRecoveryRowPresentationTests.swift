@@ -222,6 +222,7 @@ struct EscapeRecoveryRowPresentationTests {
     "the spoken form says hours and minutes in words",
     arguments: [
       (82_800.0, "Kept for now, deleted in 23 hours"),
+      (7_200.0, "Kept for now, deleted in 2 hours"),
       (3_600.0, "Kept for now, deleted in 1 hour"),
       (120.0, "Kept for now, deleted in 2 minutes"),
       (60.0, "Kept for now, deleted in 1 minute"),

@@ -48,21 +48,37 @@ enum DictationNarrator {
     // Our-fault start / capture failures → retry.
     case .prepareFailed, .modelWedged, .modelLoadFailed, .captureStartFailed,
       .micWouldNotOpen, .captureStalled, .zeroSignal:
-      return "Audio capture error. Try again."
+      return String(
+        localized: "Audio capture error. Try again.",
+        comment:
+          "Pill after a failed dictation: the recording could not start or capture audio. The user should retry."
+      )
     // Our-fault transcribe failures (incl. "couldn't catch that") → retry.
     case .asrFailed, .asrWedged, .asrInterrupted, .noAudioCaptured,
       .asrEmptyWithSpeech, .emptyAfterProcessing, .unknown:
-      return "Transcription error. Try again."
+      return String(
+        localized: "Transcription error. Try again.",
+        comment:
+          "Pill after a failed dictation: speech could not be turned into text. The user should retry."
+      )
     // User-actionable.
     case .permissionDenied:
-      return "Microphone access is off."
+      return String(
+        localized: "Microphone access is off.",
+        comment: "Pill: macOS microphone permission is off for the app.")
     case .noMicrophoneFound:
-      return "No microphone found. Please connect one."
+      return String(
+        localized: "No microphone found. Please connect one.",
+        comment: "Pill: no input device is available.")
     // Informational interruptions (audio was saved).
     case .deviceRemoved:
-      return "Microphone disconnected."
+      return String(
+        localized: "Microphone disconnected.",
+        comment: "Pill: the microphone was unplugged during recording. The audio so far was saved.")
     case .engineLost, .unknownInterruption:
-      return "Recording interrupted."
+      return String(
+        localized: "Recording interrupted.",
+        comment: "Pill: recording stopped unexpectedly. The audio so far was saved.")
     }
   }
 
@@ -79,11 +95,17 @@ enum DictationNarrator {
   static func copy(for phase: ProcessingPhase) -> String {
     switch phase {
     case .transcribing:
-      return "Transcribing..."
+      return String(
+        localized: "Transcribing...",
+        comment: "Pill and main window while speech is turned into text. Three ASCII periods.")
     case .polishing:
-      return "Polishing..."
+      return String(
+        localized: "Polishing...",
+        comment: "Pill and main window while AI polish rewrites the text. Three ASCII periods.")
     case .transcribingMaxDurationReached:
-      return "60-minute limit reached. Transcribing..."
+      return String(
+        localized: "60-minute limit reached. Transcribing...",
+        comment: "Pill when a recording hit the 60-minute cap and is now being transcribed.")
     }
   }
 
@@ -91,9 +113,13 @@ enum DictationNarrator {
   static func statusBadgeCopy(for phase: ProcessingPhase) -> String {
     switch phase {
     case .transcribing, .transcribingMaxDurationReached:
-      return "Transcribing\u{2026}"
+      return String(
+        localized: "Transcribing\u{2026}",
+        comment: "Toolbar status badge while speech is turned into text. One ellipsis character.")
     case .polishing:
-      return "Polishing\u{2026}"
+      return String(
+        localized: "Polishing\u{2026}",
+        comment: "Toolbar status badge while AI polish rewrites the text. One ellipsis character.")
     }
   }
 
@@ -102,9 +128,15 @@ enum DictationNarrator {
   static func shortCopy(for phase: ProcessingPhase) -> String {
     switch phase {
     case .transcribing, .transcribingMaxDurationReached:
-      return "Transcribing"
+      return String(
+        localized: "Transcribing",
+        comment:
+          "Sidebar status chip while speech is turned into text. Very short space, no ellipsis.")
     case .polishing:
-      return "Polishing"
+      return String(
+        localized: "Polishing",
+        comment:
+          "Sidebar status chip while AI polish rewrites the text. Very short space, no ellipsis.")
     }
   }
 
@@ -129,8 +161,10 @@ enum DictationNarrator {
   static func copy(for reason: TerminalAdvisoryReason) -> String {
     switch reason {
     case .zeroSignal, .vadGateNoSpeech, .noTransport:
-      return
-        "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings."
+      return String(
+        localized:
+          "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings.",
+        comment: "Pill when the microphone delivered only silence.")
     }
   }
 
@@ -141,8 +175,12 @@ enum DictationNarrator {
   /// seventh sentence above, byte for byte, so every existing caller is unchanged.
   static func copy(for reason: TerminalAdvisoryReason, hint: MultiInputAdvisoryHint?) -> String {
     guard let hint else { return copy(for: reason) }
-    return
-      "Audio isn't capturing from \(hint.deviceName). Try a different input under Settings > Microphone."
+    return String(
+      localized:
+        "Audio isn't capturing from \(hint.deviceName). Try a different input under Settings > Microphone.",
+      comment:
+        "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Microphone is a place in this app."
+    )
   }
 
   // MARK: - Post-completion + advisory warnings (E3, #1567)
@@ -153,28 +191,47 @@ enum DictationNarrator {
   static func copy(for reason: RecordingWarningReason) -> String {
     switch reason {
     case .modelNotDownloaded(let engineLabel):
-      return "\(engineLabel) isn't downloaded yet. Open Settings to download it."
+      return String(
+        localized: "\(engineLabel) isn't downloaded yet. Open Settings to download it.",
+        comment: "Pill: the chosen speech engine is not downloaded. %@ is the engine's name.")
     case .polishFailed:
-      return "Polish failed. Using raw text."
+      return String(
+        localized: "Polish failed. Using raw text.",
+        comment: "Pill: AI polish failed, so the unpolished text was pasted.")
     case .historySaveFailed(let reason):
-      return "Couldn't save to history: \(reason)"
+      return String(
+        localized: "Couldn't save to history: \(reason)",
+        comment: "Pill: the dictation could not be saved to History. %@ is the reason.")
     // #2087. States the OUTCOME the user has to act on — the words are gone —
     // rather than the mechanism, which is a crash-recovery file they never
     // heard of. No dash characters, per the content rules.
     case .escapeRecoveryUnavailable:
-      return "Couldn't keep this recording. It was discarded."
+      return String(
+        localized: "Couldn't keep this recording. It was discarded.",
+        comment:
+          "Pill after the user pressed Escape and the recording could not be kept for recovery.")
     case .salvagedBeginning:
-      return "Beginning of dictation was unclear and was skipped"
+      return String(
+        localized: "Beginning of dictation was unclear and was skipped",
+        comment: "Pill: the start of the recording was unusable and left out.")
     case .interruptedTail(let disclosure, let alsoTrimmedLead):
       switch (disclosure, alsoTrimmedLead) {
       case (.deviceRemoved, true):
-        return "Microphone disconnected. Words may be missing."
+        return String(
+          localized: "Microphone disconnected. Words may be missing.",
+          comment: "Pill: the microphone was unplugged; words at the start and end may be missing.")
       case (.deviceRemoved, false):
-        return "Microphone disconnected. Text may be cut short."
+        return String(
+          localized: "Microphone disconnected. Text may be cut short.",
+          comment: "Pill: the microphone was unplugged; the end of the text may be missing.")
       case (.otherInterruption, true):
-        return "Recording interrupted. Words may be missing."
+        return String(
+          localized: "Recording interrupted. Words may be missing.",
+          comment: "Pill: recording was interrupted; words may be missing.")
       case (.otherInterruption, false):
-        return "Recording interrupted. Text may be cut short."
+        return String(
+          localized: "Recording interrupted. Text may be cut short.",
+          comment: "Pill: recording was interrupted; the end of the text may be missing.")
       }
     // #2648. Says what the user has to act on: nothing was recorded, and when
     // to try again. The mechanism is a single inference slot they have never
@@ -195,21 +252,35 @@ enum DictationNarrator {
         // 58 characters and this pill truncates rather than wrapping. The character-count
         // test is a heuristic; live overlay UAT verifies fit. The earlier version of this
         // comment quoted the exact truncated string, which nobody had observed.
-        return "Transcribing a file. Please wait."
+        return String(
+          localized: "Transcribing a file. Please wait.",
+          comment:
+            "Pill: a file is being transcribed, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+        )
       case .crashRecovery:
         // 42 characters, and MEASURED truncating in the same pill on 2026-09-10 by the
         // sweep that caught the file-import one. Pre-existing, shipped, and cut off in
         // exactly the same place. 30 fits.
-        return "Finishing a take. Please wait."
+        return String(
+          localized: "Finishing a take. Please wait.",
+          comment:
+            "Pill: a previous recording is being recovered, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+        )
       case .dictation:
-        return "Already recording."
+        return String(
+          localized: "Already recording.",
+          comment: "Pill: a dictation is already in progress.")
       case .abandonedDecode:
         // #2787: the decode the user stopped waiting for still owns the engine.
         // Say what will actually work, not "try again soon" — on the machine
         // this was written for, soon never came.
         // 33 characters. #2787 shipped this at 45 against a 46 "ceiling" that #2772
         // photographed cutting a 41-character sentence short; the two met at the merge.
-        return "A take is stuck. Restart the app."
+        return String(
+          localized: "A take is stuck. Restart the app.",
+          comment:
+            "Pill: an earlier dictation is stuck and holds the speech engine. Must fit a small single-line pill (about 40 characters)."
+        )
       }
     }
   }
@@ -222,9 +293,14 @@ enum DictationNarrator {
   static func copy(for reason: RecordingNoticeReason) -> String {
     switch reason {
     case .approachingCap:
-      return "Recording auto-stops in under a minute (60-minute cap)"
+      return String(
+        localized: "Recording auto-stops in under a minute (60-minute cap)",
+        comment: "Banner inside the recording panel in the last minute before the 60-minute limit.")
     case .autoStopUnavailable:
-      return "Auto-stop on silence is unavailable right now"
+      return String(
+        localized: "Auto-stop on silence is unavailable right now",
+        comment:
+          "Banner inside the recording panel: stopping automatically on silence is not available.")
     }
   }
 
@@ -239,32 +315,90 @@ enum DictationNarrator {
     -> String
   {
     switch intent {
-    case .hidden: return "Recording complete"
-    case .recording(audioLevel: _): return "Recording started"
-    case .processing(phase: _): return "Processing transcription"
-    case .clipboardFallback: return "Text copied to clipboard"
-    case .accessibilityToast: return "Accessibility permission needed for auto-paste"
-    case .warning(let reason): return "Warning: \(copy(for: reason))"
-    case .error(let reason): return "Error: \(copy(for: reason))"
+    case .hidden:
+      return String(
+        localized: "Recording complete",
+        comment: "VoiceOver announcement from the recording overlay: recording ended.")
+    case .recording(audioLevel: _):
+      return String(
+        localized: "Recording started",
+        comment: "VoiceOver announcement from the recording overlay: recording began.")
+    case .processing(phase: _):
+      return String(
+        localized: "Processing transcription",
+        comment:
+          "VoiceOver announcement from the recording overlay: speech is being turned into text.")
+    case .clipboardFallback:
+      return String(
+        localized: "Text copied to clipboard",
+        comment:
+          "VoiceOver announcement from the recording overlay: the text was copied instead of pasted."
+      )
+    case .accessibilityToast:
+      return String(
+        localized: "Accessibility permission needed for auto-paste",
+        comment:
+          "VoiceOver announcement from the recording overlay: macOS Accessibility permission is needed to paste."
+      )
+    case .warning(let reason):
+      return String(
+        localized: "Warning: \(copy(for: reason))",
+        comment:
+          "VoiceOver announcement from the recording overlay: %@ is the warning sentence shown on the pill."
+      )
+    case .error(let reason):
+      return String(
+        localized: "Error: \(copy(for: reason))",
+        comment:
+          "VoiceOver announcement from the recording overlay: %@ is the error sentence shown on the pill."
+      )
     // #1891: NO "Error: " prefix. A screen-reader user would otherwise hear
     // the exact opposite of what the sentence says. This arm is the reason the
     // advisory is a separate intent rather than a suppression flag on `.error`.
     case .advisory(let reason): return copy(for: reason, hint: hint)
-    case .interruption(let reason): return "Interruption: \(copy(for: reason))"
-    case .passiveChip(let payload): return "Detected \(payload.displayName)"
-    case .cachingModel(engineLabel: _): return "Getting dictation ready, one moment"
-    case .engineReady: return "Dictation ready. Press to start."
-    case .recoveringLastRecording: return "Recovering your last recording. Press Discard to skip."
+    case .interruption(let reason):
+      return String(
+        localized: "Interruption: \(copy(for: reason))",
+        comment:
+          "VoiceOver announcement from the recording overlay: %@ is the interruption sentence shown on the pill."
+      )
+    case .passiveChip(let payload):
+      return String(
+        localized: "Detected \(payload.displayName)",
+        comment:
+          "VoiceOver announcement from the recording overlay: a language was detected. %@ is the language name."
+      )
+    case .cachingModel(engineLabel: _):
+      return String(
+        localized: "Getting dictation ready, one moment",
+        comment: "VoiceOver announcement from the recording overlay: the speech engine is loading.")
+    case .engineReady:
+      return String(
+        localized: "Dictation ready. Press to start.",
+        comment:
+          "VoiceOver announcement from the recording overlay: the speech engine finished loading.")
+    case .recoveringLastRecording:
+      return String(
+        localized: "Recovering your last recording. Press Discard to skip.",
+        comment:
+          "VoiceOver announcement from the recording overlay: a recording interrupted by a crash is being recovered. Discard is a button."
+      )
     case .recoverySucceeded: return recoverySucceededText
     case .bluetoothAwareness:
-      return "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
+      return String(
+        localized: "Bluetooth microphone detected. Wait a moment before speaking on a cold start.",
+        comment: "VoiceOver announcement from the recording overlay: the Bluetooth tip.")
     // #2087: no "Warning: " or "Error: " prefix — nothing went wrong. The
     // sentence names what happened and the one action, matching the pill's
     // copy (`Dictation cancelled` · Undo, see `escapeRecoveryPillTitle`). History
     // is named because a VoiceOver user who misses a 3-second dwell needs the
     // unhurried door, and the pill must never be the only way back to the text.
     case .escapeRecovery:
-      return "Dictation cancelled. Press Undo to get it back, or find it in History."
+      return String(
+        localized: "Dictation cancelled. Press Undo to get it back, or find it in History.",
+        comment:
+          "VoiceOver announcement from the recording overlay: the user pressed Escape. Undo is a button; History is the app's list of past dictations."
+      )
     }
   }
 
@@ -284,17 +418,34 @@ enum DictationNarrator {
   /// a File is a Transcript, everywhere the app speaks. What was cancelled here is a
   /// dictation, so the pill says so. The verb, the Undo action and the announcement's
   /// shape are the 2026-08-18 lock, unchanged.
-  static let escapeRecoveryPillTitle = "Dictation cancelled"
-  static let escapeRecoveryPillAction = "Undo"
+  static let escapeRecoveryPillTitle = String(
+    localized: "Dictation cancelled",
+    comment: "Pill title after the user pressed Escape during a dictation.")
+  static let escapeRecoveryPillAction = String(
+    localized: "Undo", comment: "Pill button after Escape: brings the cancelled dictation back.")
 
-  static let coldStartTitle = "Getting dictation ready…"
+  static let coldStartTitle = String(
+    localized: "Getting dictation ready…",
+    comment: "Pill title while the speech engine loads after a restart.")
   static func coldStartSubtitle(engineLabel: String) -> String {
-    "\(engineLabel) is warming up after a restart"
+    String(
+      localized: "\(engineLabel) is warming up after a restart",
+      comment:
+        "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name.")
   }
-  static let readyTitle = "Ready — press to dictate"  // dash kept (founder 2026-07-15)
-  static let clipboardFallbackText = "Copied. Press \u{2318}V to paste"
-  static let accessibilityToastText = "Auto-paste needs Accessibility"
-  static let recoveryTitle = "Recovering your last recording…"
+  // dash kept (founder 2026-07-15)
+  static let readyTitle = String(
+    localized: "Ready — press to dictate",
+    comment: "Pill title when the speech engine finished loading.")
+  static let clipboardFallbackText = String(
+    localized: "Copied. Press \u{2318}V to paste",
+    comment: "Pill when the text was copied instead of pasted. ⌘V is the paste shortcut.")
+  static let accessibilityToastText = String(
+    localized: "Auto-paste needs Accessibility",
+    comment: "Pill: macOS Accessibility permission is needed to paste.")
+  static let recoveryTitle = String(
+    localized: "Recovering your last recording…",
+    comment: "Pill title while a recording interrupted by a crash is recovered.")
   /// #1897 — CONDITIONAL, and it must stay that way. This read "Saved to History
   /// when it's done", which asserts an outcome the app cannot know yet, and a
   /// recovery that ends without text says nothing at all — so the pill had
@@ -339,20 +490,40 @@ enum DictationNarrator {
   /// transcript that actually saved reaches History, and that holds by
   /// construction because `transcriptCoordinator.append` is non-throwing and runs
   /// immediately after a successful `save`.
-  static let recoverySubtitle = "Anything saved lands in History"
+  static let recoverySubtitle = String(
+    localized: "Anything saved lands in History",
+    comment: "Pill subtitle during recovery. History is the app's list of past dictations.")
   /// The recovery pill's CONTAINER accessibility label (no ellipsis — distinct
   /// bytes from `recoveryTitle`). VoiceOver reads it as the group's spoken status.
-  static let recoveryAccessibilityLabel = "Recovering your last recording"
+  static let recoveryAccessibilityLabel = String(
+    localized: "Recovering your last recording", comment: "VoiceOver label of the recovery pill.")
   /// #1464 — the recovery SUCCESS notice (green `.recoverySucceeded` pill).
   /// Title + subtitle for the visual pill; `recoverySucceededText` is the single
   /// spoken VoiceOver sentence. No em-dash (Rule 6). Founder-approved 2026-07-16.
-  static let recoverySucceededTitle = "Recovered your last recording"
-  static let recoverySucceededSubtitle = "Saved to History"
-  static let recoverySucceededText = "Recovered your last recording. Saved to History."
-  static let loadingModelStatus = "Loading model..."  // main-window body (ASCII ellipsis)
-  static let loadingModelBadge = "Loading model\u{2026}"  // toolbar badge (Unicode ellipsis)
-  static let loadingModelSidebar = "Loading Model"  // sidebar row (title-case, no ellipsis)
+  static let recoverySucceededTitle = String(
+    localized: "Recovered your last recording",
+    comment: "Pill title after a crash recovery succeeded.")
+  static let recoverySucceededSubtitle = String(
+    localized: "Saved to History", comment: "Pill subtitle after a crash recovery succeeded.")
+  static let recoverySucceededText = String(
+    localized: "Recovered your last recording. Saved to History.",
+    comment: "VoiceOver announcement after a crash recovery succeeded.")
+  // main-window body (ASCII ellipsis)
+  static let loadingModelStatus = String(
+    localized: "Loading model...",
+    comment: "Main window status while the speech model loads. Three ASCII periods.")
+  // toolbar badge (Unicode ellipsis)
+  static let loadingModelBadge = String(
+    localized: "Loading model\u{2026}",
+    comment: "Toolbar status badge while the speech model loads. One ellipsis character.")
+  // sidebar row (title-case, no ellipsis)
+  static let loadingModelSidebar = String(
+    localized: "Loading Model",
+    comment: "Sidebar status row while the speech model loads. Title case, no ellipsis.")
   /// Shared by the toolbar badge and the sidebar row — one word, one authority.
-  static let recordingStatus = "Recording"
-  static let errorStatus = "Error"  // sidebar row + main-window `.error` heading (single word)
+  static let recordingStatus = String(
+    localized: "Recording", comment: "Toolbar badge and sidebar status while recording.")
+  // sidebar row + main-window `.error` heading (single word)
+  static let errorStatus = String(
+    localized: "Error", comment: "Sidebar status and main window heading after a failed dictation.")
 }

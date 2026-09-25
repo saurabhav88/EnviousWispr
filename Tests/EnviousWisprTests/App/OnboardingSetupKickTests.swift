@@ -116,3 +116,99 @@ import Testing
   }
 
 #endif
+
+/// #3142: setup copy that is translated at the screen rather than where it is
+/// produced. English must read exactly as before, and the download-error
+/// wording must not depend on the error's text being English.
+@MainActor
+@Suite("Onboarding setup copy projection", .tags(.productOutcome))
+struct OnboardingSetupCopyProjectionTests {
+  @Test(
+    "each progress-file phase token reads as itself in English; an unknown one shows as written")
+  func phaseTokensReadAsThemselves() {
+    let tokens = [
+      "Checking speech model files...", "Downloading speech model...", "Verifying download...",
+      "Installing model...", "Downloading model files...",
+    ]
+    #expect(
+      [
+        ModelLoadStallPolicy.validatingCachePhase, ModelLoadStallPolicy.downloadingPhase,
+        ModelLoadStallPolicy.verifyingDownloadPhase, ModelLoadStallPolicy.installPhase,
+        OnboardingV2ViewModel.legacyDownloadingPhase,
+      ] == tokens, "the phase tokens changed; the screen's translation table must follow them")
+    for token in tokens { #expect(OnboardingV2ViewModel.displayPhase(token) == token) }
+    #expect(OnboardingV2ViewModel.displayPhase("Some new phase...") == "Some new phase...")
+  }
+
+  @Test(
+    "each whole progress line keeps its English bytes; an unknown form shows the phase and the detail as written"
+  )
+  func progressLinesKeepTheirEnglish() {
+    #expect(
+      OnboardingV2ViewModel.displayProgress(
+        phase: ModelLoadStallPolicy.downloadingPhase, detail: "12 MB of 483 MB (2%)")
+        == "Downloading speech model... 12 MB of 483 MB (2%)")
+    #expect(
+      OnboardingV2ViewModel.displayProgress(
+        phase: OnboardingV2ViewModel.legacyDownloadingPhase, detail: "0 MB of 483 MB (0%)")
+        == "Downloading model files... 0 MB of 483 MB (0%)")
+    #expect(
+      OnboardingV2ViewModel.displayProgress(
+        phase: ModelLoadStallPolicy.installPhase, detail: "parakeet-tdt-0.6b-v3")
+        == "Installing model... parakeet-tdt-0.6b-v3")
+    #expect(
+      OnboardingV2ViewModel.displayProgress(
+        phase: ModelLoadStallPolicy.verifyingDownloadPhase, detail: "")
+        == "Verifying download...")
+    #expect(
+      OnboardingV2ViewModel.displayProgress(phase: "Some new phase...", detail: "3 of 9")
+        == "Some new phase... 3 of 9")
+  }
+
+  @Test("a download error is recognised by its type even when its description is not English")
+  func downloadErrorsAreRecognisedByType() {
+    func error(_ domain: String, _ code: Int) -> NSError {
+      NSError(
+        domain: domain, code: code,
+        userInfo: [NSLocalizedDescriptionKey: "Ein Fehler ist aufgetreten."])
+    }
+    #expect(
+      OnboardingV2ViewModel.friendlyError(error(NSURLErrorDomain, URLError.timedOut.rawValue))
+        == "The download timed out. Please check your internet connection and try again.")
+    #expect(
+      OnboardingV2ViewModel.friendlyError(
+        error(NSURLErrorDomain, URLError.notConnectedToInternet.rawValue))
+        == "No internet connection. Please connect to the internet and try again.")
+    #expect(
+      OnboardingV2ViewModel.friendlyError(
+        error(NSURLErrorDomain, URLError.cannotConnectToHost.rawValue))
+        == "Couldn't reach the download server. Please check your internet connection and try again."
+    )
+    #expect(
+      OnboardingV2ViewModel.friendlyError(error(NSPOSIXErrorDomain, Int(ENOSPC)))
+        == "Not enough disk space. Please free up space and try again.")
+    let wrapped = NSError(
+      domain: "FluidAudio.DownloadError", code: 7,
+      userInfo: [
+        NSLocalizedDescriptionKey: "Der Download ist fehlgeschlagen.",
+        NSUnderlyingErrorKey: error(NSURLErrorDomain, URLError.notConnectedToInternet.rawValue),
+      ])
+    #expect(
+      OnboardingV2ViewModel.friendlyError(wrapped)
+        == "No internet connection. Please connect to the internet and try again.",
+      "a wrapped download error is recognised by the type it wraps")
+    let diskOverTimeout = NSError(
+      domain: NSPOSIXErrorDomain, code: Int(ENOSPC),
+      userInfo: [
+        NSLocalizedDescriptionKey: "No space left on device",
+        NSUnderlyingErrorKey: error(NSURLErrorDomain, URLError.timedOut.rawValue),
+      ])
+    #expect(
+      OnboardingV2ViewModel.friendlyError(diskOverTimeout)
+        == "Not enough disk space. Please free up space and try again.",
+      "the nearest typed cause decides, not the first message branch")
+    #expect(
+      OnboardingV2ViewModel.friendlyError(error("Other", 1))
+        == "Download failed: Ein Fehler ist aufgetreten.")
+  }
+}

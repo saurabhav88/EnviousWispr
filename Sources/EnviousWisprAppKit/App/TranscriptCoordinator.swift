@@ -234,11 +234,26 @@ final class TranscriptCoordinator {
     // #2807: Delete All is GLOBAL while the list can be filtered or searched, so the
     // sentence says that a hidden row goes too. The count is the global one for the same
     // reason: a confirmation must count what it is about to destroy, not what is on screen.
-    let subject =
-      count == 1
-      ? "the only item in History, even if a filter or search is hiding it"
-      : "all \(count) items in History, including any hidden by a filter or search"
-    return "This will permanently delete \(subject). This action cannot be undone."
+    //
+    //
+    // #3142: each branch is ONE whole localizable sentence. The count == 1 branch stays in
+    // code (not catalog plural forms) because unit tests run outside the app bundle and
+    // must still read the English a user sees; a language with more plural forms adds
+    // them to the counted sentence in the catalog.
+    guard count != 1 else {
+      return String(
+        localized:
+          "This will permanently delete the only item in History, even if a filter or search is hiding it. This action cannot be undone.",
+        comment:
+          "Delete All confirmation in History when exactly one row exists (it may be hidden by a filter)."
+      )
+    }
+    return String(
+      localized:
+        "This will permanently delete all \(count) items in History, including any hidden by a filter or search. This action cannot be undone.",
+      comment:
+        "Delete All confirmation in History. %lld is how many rows will be deleted, including hidden ones. Never 1."
+    )
   }
 
   /// What the list shows when it has no rows (#2807), or nil while it has some.
@@ -861,7 +876,7 @@ final class TranscriptCoordinator {
       let analysis = current.speakerAnalysis
     else {
       emitRenameTelemetry(.failed)
-      return RenameFailure(message: "Couldn't save the name.", currentName: nil)
+      return RenameFailure(message: RenameFailure.couldNotSaveName, currentName: nil)
     }
     do {
       let saved = try mergeSpeakerFields(
@@ -870,14 +885,14 @@ final class TranscriptCoordinator {
       guard saved else {
         emitRenameTelemetry(.failed)
         return RenameFailure(
-          message: "This recording was removed from History.", currentName: nil)
+          message: RenameFailure.recordingRemoved, currentName: nil)
       }
       emitRenameTelemetry(.saved)
       return nil
     } catch {
       emitRenameTelemetry(.failed)
       return RenameFailure(
-        message: "Couldn't save the name.", currentName: current.speakerNames?[speakerId])
+        message: RenameFailure.couldNotSaveName, currentName: current.speakerNames?[speakerId])
     }
   }
 
@@ -1425,9 +1440,14 @@ enum HistoryFilter: String, CaseIterable, Sendable {
   /// The word on the control.
   var title: String {
     switch self {
-    case .all: return "All"
-    case .dictations: return "Dictations"
-    case .transcripts: return "Transcripts"
+    case .all: return String(localized: "All", comment: "History filter: show every row.")
+    case .dictations:
+      return String(
+        localized: "Dictations",
+        comment: "History filter: rows made by dictating with the keyboard shortcut.")
+    case .transcripts:
+      return String(
+        localized: "Transcripts", comment: "History filter: rows made with Transcribe a File.")
     }
   }
 }

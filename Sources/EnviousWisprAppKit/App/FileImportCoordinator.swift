@@ -2280,7 +2280,7 @@ final class FileImportCoordinator {
       current.turns != nil, let analysis = current.speakerAnalysis
     else {
       emitRenameTelemetry(.failed)
-      return RenameFailure(message: "Couldn't save the name.", currentName: nil)
+      return RenameFailure(message: RenameFailure.couldNotSaveName, currentName: nil)
     }
     do {
       let saved = try writeExplicitRename(
@@ -2288,7 +2288,7 @@ final class FileImportCoordinator {
       guard saved else {
         emitRenameTelemetry(.failed)
         return RenameFailure(
-          message: "This recording was removed from History.", currentName: nil)
+          message: RenameFailure.recordingRemoved, currentName: nil)
       }
       // Neither `turns` nor `speakerNames` below is itself an `@Observable`-tracked stored
       // property — they read through `currentHistoryRow`, a closure Observation cannot see
@@ -2300,7 +2300,7 @@ final class FileImportCoordinator {
     } catch {
       emitRenameTelemetry(.failed)
       return RenameFailure(
-        message: "Couldn't save the name.", currentName: current.speakerNames?[id])
+        message: RenameFailure.couldNotSaveName, currentName: current.speakerNames?[id])
     }
   }
 
@@ -2644,19 +2644,25 @@ final class FileImportCoordinator {
     // user just took it out. Repeating "your original words are saved" over a row they
     // deleted would be the page describing what was CONFIGURED rather than what happened.
     if historyRowWasDeleted {
-      return
-        "You deleted this from History, so it is not saved there. Copy or save it before you leave."
+      return String(
+        localized:
+          "You deleted this from History, so it is not saved there. Copy or save it before you leave.",
+        comment: "Transcribe a File: the user deleted this transcript from History.")
     }
     if rawIsSavedToHistory {
-      return """
-        Your original words are saved to History. This cleaned version is not. Copy or save \
-        it before you leave.
-        """
+      return String(
+        localized: """
+          Your original words are saved to History. This cleaned version is not. Copy or save \
+          it before you leave.
+          """,
+        comment: "Transcribe a File: the original is in History but the cleaned version is not.")
     }
-    return """
-      These words are not saved to History. Copy or save them before you leave, or press \
-      Clean it again to retry.
-      """
+    return String(
+      localized: """
+        These words are not saved to History. Copy or save them before you leave, or press \
+        Clean it again to retry.
+        """,
+      comment: "Transcribe a File: nothing was saved to History. 'Clean it again' is a button.")
   }
 
 }

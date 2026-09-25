@@ -146,7 +146,10 @@ struct FileImportHistoryTests {
     #expect(c.historySaveFailure == nil, "a deletion is not a failure and offers no retry")
     // The words are still on screen, which is what makes the deletion safe to respect.
     #expect(!c.documentText.isEmpty)
-    #expect(c.historySaveNotice?.contains("You deleted this from History") == true)
+    #expect(
+      c.historySaveNotice
+        == "You deleted this from History, so it is not saved there. Copy or save it before you leave."
+    )
 
     // A deletion AFTER the run is the same fact, asked live: the badge must not keep
     // reporting a write that once succeeded.
@@ -457,6 +460,10 @@ struct FileImportHistoryTests {
     #expect(c.parts.isEmpty, "the run cleaned parts after failing to save the words")
     #expect(!c.isSavedToHistory, "the screen would claim a save that did not happen")
     #expect(c.hasDocument, "the raw words must still be on screen to copy")
+    #expect(
+      c.historySaveNotice
+        == "These words are not saved to History. Copy or save them before you leave, or press Clean it again to retry."
+    )
   }
 
   /// A re-polish of a document whose first write was refused has no row to update, so it must
@@ -511,7 +518,10 @@ struct FileImportHistoryTests {
     #expect(spy.writes.count == 1, "only the raw write should have happened")
     #expect(c.documentText != spy.writes.last?.displayText)
     #expect(!c.isSavedToHistory, "the badge claimed a save for words that were not saved")
-    #expect(c.historySaveNotice != nil, "the user was told nothing about the mismatch")
+    #expect(
+      c.historySaveNotice
+        == "Your original words are saved to History. This cleaned version is not. Copy or save it before you leave.",
+      "the user was told nothing, or the wrong thing, about the mismatch")
   }
 
   /// Two writes, one recording, one moment in time. Rebuilding the row per write took

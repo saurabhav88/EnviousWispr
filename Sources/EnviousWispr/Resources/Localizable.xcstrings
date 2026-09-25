@@ -5,6 +5,12 @@
     " to cancel without changing your keybind." : {},
     "\"%@\"" : {},
     "%@ by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {},
+    "%@ is warming up after a restart" : {
+      "comment" : "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name."
+    },
+    "%@ isn't downloaded yet. Open Settings to download it." : {
+      "comment" : "Pill: the chosen speech engine is not downloaded. %@ is the engine's name."
+    },
     "%@ now recognizes %@" : {
       "localizations" : {
         "en" : {
@@ -76,6 +82,9 @@
         }
       }
     },
+    "%@. Undo available." : {
+      "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced."
+    },
     "%lld" : {},
     "%lld imported" : {},
     "%lld of %lld processed" : {
@@ -93,14 +102,41 @@
     "%lld%%" : {},
     "%lld." : {},
     "(%@)" : {},
+    "60-minute limit reached. Transcribing..." : {
+      "comment" : "Pill when a recording hit the 60-minute cap and is now being transcribed."
+    },
     "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {},
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
+    "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown." : {
+      "comment" : "Appearance settings: description of the Capsule recording pill style."
+    },
+    "A take is stuck. Restart the app." : {
+      "comment" : "Pill: an earlier dictation is stuck and holds the speech engine. Must fit a small single-line pill (about 40 characters)."
+    },
+    "A wide panel that shows your words as you speak, growing a line at a time." : {
+      "comment" : "Appearance settings: description of the Reading Well recording pill style."
+    },
+    "A wider capsule with a live rainbow meter of your voice beside the timer." : {
+      "comment" : "Appearance settings: description of the Level Rail recording pill style."
+    },
     "AI POLISH · OPTIONAL" : {},
     "AI Polish" : {},
+    "AI Polished" : {
+      "comment" : "History detail chip: AI polish rewrote this text."
+    },
     "AI polish engine" : {},
+    "AI polish needs macOS 26" : {
+      "comment" : "Setup notice title on Macs older than macOS 26."
+    },
     "ALL LANGUAGES" : {},
     "AVAILABLE ON THIS MAC" : {},
     "About 2 GB download. Runs entirely on your Mac." : {},
+    "Accessibility" : {
+      "comment" : "Setup permissions: title of the macOS Accessibility permission row."
+    },
+    "Accessibility permission needed for auto-paste" : {
+      "comment" : "VoiceOver announcement from the recording overlay: macOS Accessibility permission is needed to paste."
+    },
     "Accessibility permission required for paste" : {},
     "Activate to install and restart" : {},
     "Activates recording. Then press the key combination you want." : {},
@@ -109,29 +145,104 @@
     "Add Custom Word" : {},
     "Add a mishearing (e.g. clawed)" : {},
     "Add the names of people you know to your word list, so dictation spells them right." : {},
+    "Added “%@” to Dictionary" : {
+      "comment" : "Pill after a correction taught the app a new word. %@ is that word."
+    },
+    "Adjust settings" : {
+      "comment" : "Button on the Bluetooth tip card that opens the Microphone settings."
+    },
     "After installing, come back and click refresh." : {},
+    "After your mic has been idle, wait 1 to 2 seconds before speaking." : {
+      "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
+    },
+    "All" : {
+      "comment" : "History filter: show every row."
+    },
     "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {},
+    "All quiet" : {
+      "comment" : "Practice screen headline. Nothing was heard."
+    },
     "All your contacts are already in your word list." : {},
     "Almost there. Just two permissions." : {},
+    "Almost there... pinky promise" : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Already recording." : {
+      "comment" : "Pill: a dictation is already in progress."
+    },
     "Always replace, even when the original might be right" : {},
+    "Anything saved lands in History" : {
+      "comment" : "Pill subtitle during recovery. History is the app's list of past dictations."
+    },
     "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {},
     "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {},
+    "Apple Intelligence is turned off" : {
+      "comment" : "Setup notice title when Apple Intelligence is off in System Settings."
+    },
     "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation." : {},
     "Attention" : {},
+    "Audio capture error. Try again." : {
+      "comment" : "Pill after a failed dictation: the recording could not start or capture audio. The user should retry."
+    },
     "Audio duration:" : {},
+    "Audio isn't capturing from %@. Try a different input under Settings > Microphone." : {
+      "comment" : "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Microphone is a place in this app."
+    },
+    "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings." : {
+      "comment" : "Pill when the microphone delivered only silence."
+    },
     "Auto" : {},
     "Auto-copy to clipboard" : {},
     "Auto-detect language" : {},
+    "Auto-paste needs Accessibility" : {
+      "comment" : "Pill: macOS Accessibility permission is needed to paste."
+    },
+    "Auto-stop on silence is unavailable right now" : {
+      "comment" : "Banner inside the recording panel: stopping automatically on silence is not available."
+    },
     "Automatic" : {},
     "Automatically fix grammar, punctuation, and formatting." : {},
     "Available" : {},
     "Batch ASR:" : {},
+    "Beginning of dictation was unclear and was skipped" : {
+      "comment" : "Pill: the start of the recording was unusable and left out."
+    },
+    "Bluetooth mic detected" : {
+      "comment" : "Title of the tip card shown when a Bluetooth microphone is the input."
+    },
+    "Bluetooth microphone detected. Wait a moment before speaking on a cold start." : {
+      "comment" : "VoiceOver announcement from the recording overlay: the Bluetooth tip."
+    },
+    "Bluetooth microphones can take a moment on a cold start." : {
+      "comment" : "First line of the Bluetooth tip card."
+    },
+    "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay." : {
+      "comment" : "First paragraph of the Bluetooth guide in Microphone settings."
+    },
+    "Both" : {
+      "comment" : "Transcript speaker label when two people spoke in a turn the app could not separate."
+    },
     "Bring the words across from another dictation app you use." : {},
     "Bring your snippets in from anywhere. Nothing is added until you review it." : {},
     "Bring your words in from anywhere. Nothing is added until you review it." : {},
+    "Built for Apple Silicon." : {
+      "comment" : "Welcome screen feature line under Native Speed."
+    },
+    "Built-in or wired mics usually avoid this startup delay." : {
+      "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
+    },
+    "Built-in, wired, and USB mics do not have this Bluetooth startup delay." : {
+      "comment" : "Last line of the Bluetooth guide in Microphone settings."
+    },
     "CSV" : {},
+    "Calibrating whisper detection..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Cancel" : {},
     "Cancelling…" : {},
+    "Capsule" : {
+      "comment" : "Appearance settings: name of the original recording pill style."
+    },
     "Category" : {},
     "Change" : {},
     "Change dictation language: %@, %@" : {
@@ -150,6 +261,9 @@
     "Check for new contacts each time EnviousWispr starts. Off by default." : {},
     "Checking Ollama installation..." : {},
     "Checking model status..." : {},
+    "Checking speech model files..." : {
+      "comment" : "Setup progress: checking already-downloaded speech model files."
+    },
     "Choose a file" : {},
     "Choose a file you exported from EnviousWispr, or a plain text list of words." : {},
     "Choose the %@ you exported, a CSV with a trigger column and a text column, or a plain list. Your keyword stays as it is." : {},
@@ -158,23 +272,61 @@
     "Cleanup summary: %@" : {},
     "Clear Logs" : {},
     "Clear search" : {},
+    "Click the box first" : {
+      "comment" : "Practice screen headline. The words went to the clipboard."
+    },
     "Click to change" : {},
     "Close %@ pack" : {},
     "Comparing words" : {},
     "Configure Live Preview" : {},
+    "Configuring on-device AI" : {
+      "comment" : "Setup checklist step."
+    },
     "Contacts access is off. Turn it on in System Settings, then try again." : {},
     "Continue" : {},
     "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)" : {},
+    "Convincing AI that you said 'duck'..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Copied. Press ⌘V to paste" : {
+      "comment" : "Pill when the text was copied instead of pasted. ⌘V is the paste shortcut."
+    },
     "Copy Log Path" : {},
+    "Copy cleaned" : {
+      "comment" : "Export button: copy the cleaned text (shown in Marked Up view)."
+    },
     "Copy error details" : {},
+    "Copy everything" : {
+      "comment" : "Export button: copy the whole transcript."
+    },
     "Copy to clipboard" : {},
+    "Couldn't keep this recording. It was discarded." : {
+      "comment" : "Pill after the user pressed Escape and the recording could not be kept for recovery."
+    },
     "Couldn't prepare model. Click to retry." : {},
+    "Couldn't reach the download server. Please check your internet connection and try again." : {
+      "comment" : "Setup error: the speech model download server could not be reached."
+    },
     "Couldn't save the file" : {},
+    "Couldn't save the name." : {
+      "comment" : "Speaker rename popover: saving the new name failed."
+    },
+    "Couldn't save to history: %@" : {
+      "comment" : "Pill: the dictation could not be saved to History. %@ is the reason."
+    },
+    "Couldn’t save “%@”" : {
+      "comment" : "Pill when a word could not be saved to the dictionary. %@ is that word."
+    },
+    "Couldn’t undo" : {
+      "comment" : "Pill result when removing the just-added word failed."
+    },
     "Default" : {},
+    "Default: ⌥ Option" : {
+      "comment" : "Setup checklist: the default dictation key. ⌥ is the Option key symbol."
+    },
     "Degraded" : {},
     "Delete" : {},
     "Delete \"%@\"?" : {},
-    "Delete %@" : {},
     "Delete %lld %@?" : {
       "localizations" : {
         "en" : {
@@ -188,25 +340,111 @@
     "Delete all" : {},
     "Delete all history" : {},
     "Delete all history?" : {},
-    "Dictation" : {},
+    "Delete dictation" : {
+      "comment" : "VoiceOver label of the History delete button for a dictation."
+    },
+    "Delete transcript" : {
+      "comment" : "VoiceOver label of the History delete button for a transcript."
+    },
+    "Deleted in %lldh" : {
+      "comment" : "History row badge: hours until a cancelled dictation is deleted. h abbreviates hours."
+    },
+    "Deleted in %lldm" : {
+      "comment" : "History row badge: minutes until a cancelled dictation is deleted. m abbreviates minutes."
+    },
+    "Deleted in under a minute" : {
+      "comment" : "History row badge: a cancelled dictation is deleted within a minute."
+    },
+    "Deleting" : {
+      "comment" : "History row badge: a cancelled dictation is being deleted now."
+    },
+    "Deleting now" : {
+      "comment" : "VoiceOver: a cancelled dictation in History is being deleted now."
+    },
+    "Detected %@" : {
+      "comment" : "VoiceOver announcement from the recording overlay: a language was detected. %@ is the language name."
+    },
+    "Detected %@. Lock it?" : {
+      "comment" : "Chip after a dictation in a detected language. %@ is the language name. Lock keeps dictation in that language."
+    },
+    "Detected %@. This can be changed in Settings." : {
+      "comment" : "Chip after a dictation in a detected language. %@ is the language name."
+    },
+    "Dictation" : {
+      "comment" : "History detail title for a row made by dictating. Also the default file name when saving it."
+    },
+    "Dictation cancelled" : {
+      "comment" : "Pill title after the user pressed Escape during a dictation."
+    },
+    "Dictation cancelled. Press Undo to get it back, or find it in History." : {
+      "comment" : "VoiceOver announcement from the recording overlay: the user pressed Escape. Undo is a button; History is the app's list of past dictations."
+    },
     "Dictation keybind" : {},
     "Dictation language" : {},
+    "Dictation ready. Press to start." : {
+      "comment" : "VoiceOver announcement from the recording overlay: the speech engine finished loading."
+    },
+    "Dictations" : {
+      "comment" : "History filter: rows made by dictating with the keyboard shortcut."
+    },
     "Dictionary" : {},
     "Dictionary section" : {},
-    "Discard" : {},
+    "Discard" : {
+      "comment" : "Button to discard pending work, including a recovering recording or an uncommitted word or snippet import."
+    },
+    "Discard recovering recording" : {
+      "comment" : "VoiceOver label of the Discard button on the recovery pill."
+    },
     "Dismiss" : {},
+    "Dismiss Bluetooth tips" : {
+      "comment" : "VoiceOver label for the close (x) button of the Bluetooth tip card."
+    },
     "Document" : {},
     "Done" : {},
     "Double-press to go hands-free." : {},
     "Download anyway" : {},
+    "Download failed: %@" : {
+      "comment" : "Setup error with no friendlier wording. %@ is the system's description of the error."
+    },
     "Download paused. Resume anytime." : {},
     "Download size: %@" : {},
+    "Download the preview model in Settings to see words appear." : {
+      "comment" : "On-screen preview status: the preview model is not downloaded. Settings is this app's settings window."
+    },
     "Downloading %@ (%@)" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Downloading %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "Downloading model files..." : {
+      "comment" : "Setup progress: the speech model is downloading."
+    },
+    "Downloading model files... %lld MB of %lld MB (%lld%%)" : {
+      "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading model files... %1$lld MB of %2$lld MB (%3$lld%%)"
+          }
+        }
+      }
+    },
+    "Downloading speech model..." : {
+      "comment" : "Setup progress: the speech model is downloading."
+    },
+    "Downloading speech model... %lld MB of %lld MB (%lld%%)" : {
+      "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading speech model... %1$lld MB of %2$lld MB (%3$lld%%)"
           }
         }
       }
@@ -222,6 +460,18 @@
     "Enable Dictionary" : {},
     "Enable debug mode" : {},
     "Engine" : {},
+    "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead." : {
+      "comment" : "Practice screen when Accessibility permission is off. Keep the line break."
+    },
+    "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead." : {
+      "comment" : "Practice screen when microphone permission is off. Keep the line break."
+    },
+    "Error" : {
+      "comment" : "Sidebar status and main window heading after a failed dictation."
+    },
+    "Error: %@" : {
+      "comment" : "VoiceOver announcement from the recording overlay: %@ is the error sentence shown on the pill."
+    },
     "Esc" : {},
     "Escape Recovery" : {},
     "Example" : {},
@@ -239,6 +489,9 @@
       }
     },
     "Finish your current dictation first, then try again." : {},
+    "Finishing a take. Please wait." : {
+      "comment" : "Pill: a previous recording is being recovered, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+    },
     "Fix Now" : {},
     "For example, say “%@ %@” and that snippet is pasted." : {
       "localizations" : {
@@ -250,6 +503,9 @@
         }
       }
     },
+    "Free & Private" : {
+      "comment" : "Welcome screen feature title."
+    },
     "GET STARTED!" : {},
     "Gemini API rate limits by tier" : {},
     "Get Started" : {},
@@ -257,9 +513,32 @@
     "Get your free API key at aistudio.google.com" : {},
     "Get your free API key at platform.openai.com" : {},
     "Getting AI suggestions..." : {},
+    "Getting dictation ready, one moment" : {
+      "comment" : "VoiceOver announcement from the recording overlay: the speech engine is loading."
+    },
+    "Getting dictation ready…" : {
+      "comment" : "Pill title while the speech engine loads after a restart."
+    },
+    "Getting the preview ready..." : {
+      "comment" : "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods."
+    },
     "Getting the speech engine ready\nso your first go is instant." : {},
-    "Grant" : {},
+    "Go ahead. Let go of %@ when you are done." : {
+      "comment" : "Practice screen while recording. %@ is the dictation shortcut, for example ⌥."
+    },
+    "Got it" : {
+      "comment" : "Button that closes the Bluetooth tip card."
+    },
+    "Grant" : {
+      "comment" : "Button to grant a requested macOS permission, including microphone or Accessibility."
+    },
     "Granted" : {},
+    "Hands-free" : {
+      "comment" : "Preview panel header badge: hands-free dictation is active (it continues until pressed again)."
+    },
+    "Hold %@ and say something.\nLet go when you are done." : {
+      "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
+    },
     "Hold to dictate. Release to transcribe." : {},
     "How OpenAI model availability works by usage tier" : {},
     "How it should be written" : {},
@@ -270,20 +549,85 @@
     "Importing your words" : {},
     "In a hurry? Skip ahead" : {},
     "Installed" : {},
+    "Installing 'um' and 'uh' filters..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Installing model..." : {
+      "comment" : "Setup progress: the speech model is being installed."
+    },
+    "Installing model... %@" : {
+      "comment" : "Setup progress: %@ is the name of the speech model being installed."
+    },
     "Interrupted" : {},
     "Interrupted recording" : {},
+    "Interruption: %@" : {
+      "comment" : "VoiceOver announcement from the recording overlay: %@ is the interruption sentence shown on the pill."
+    },
     "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
+    "Keep" : {
+      "comment" : "History row button: keeps a cancelled dictation instead of deleting it in 24 hours."
+    },
     "Keep editing" : {},
     "Keep in sync on launch" : {},
     "Keep this recording permanently instead of letting it be deleted" : {},
+    "Kept" : {
+      "comment" : "History row badge: a cancelled dictation the user chose to keep permanently."
+    },
+    "Kept for now, deleted in %lld hours" : {
+      "comment" : "VoiceOver: hours until a cancelled dictation in History is deleted. Never 1."
+    },
+    "Kept for now, deleted in %lld minutes" : {
+      "comment" : "VoiceOver: minutes until a cancelled dictation in History is deleted. Never 1."
+    },
+    "Kept for now, deleted in 1 hour" : {
+      "comment" : "VoiceOver: a cancelled dictation in History is deleted in one hour."
+    },
+    "Kept for now, deleted in 1 minute" : {
+      "comment" : "VoiceOver: a cancelled dictation in History is deleted in one minute."
+    },
+    "Kept for now, deleted in under a minute" : {
+      "comment" : "VoiceOver: a cancelled dictation in History is deleted within a minute."
+    },
     "Kept recovered recording" : {},
     "Keybind: %@" : {},
+    "LLM Deactivated" : {
+      "comment" : "Sidebar and menu: no AI polish provider is chosen."
+    },
     "Language" : {},
     "Language suggestions" : {},
+    "Level Rail" : {
+      "comment" : "Appearance settings: name of the recording pill style with a voice level meter."
+    },
     "License information isn't available in this build." : {},
     "List" : {},
+    "Listening" : {
+      "comment" : "Preview panel header: hold-to-talk dictation is active."
+    },
+    "Listening for input" : {
+      "comment" : "Label under the keybind field while it waits for a key combination."
+    },
+    "Listening..." : {
+      "comment" : "Recording pill while the preview has not heard words yet. Three ASCII periods."
+    },
+    "Listening…" : {
+      "comment" : "Practice screen headline. Shown while the key is held."
+    },
     "Live" : {},
-    "Loaded" : {},
+    "Loaded" : {
+      "comment" : "Main window sidebar: the speech model is in memory."
+    },
+    "Loading Model" : {
+      "comment" : "Sidebar status row while the speech model loads. Title case, no ellipsis."
+    },
+    "Loading all 50,000 words..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Loading model..." : {
+      "comment" : "Main window status while the speech model loads. Three ASCII periods."
+    },
+    "Loading model…" : {
+      "comment" : "Toolbar status badge while the speech model loads. One ellipsis character."
+    },
     "Loading the speech model" : {},
     "Lock" : {},
     "Locked models? Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status." : {},
@@ -296,6 +640,30 @@
     "Match strictness" : {},
     "Matched word for word, and only after you say “%@”." : {},
     "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence." : {},
+    "Microphone" : {
+      "comment" : "Setup permissions: title of the microphone permission row."
+    },
+    "Microphone access is off." : {
+      "comment" : "Pill: macOS microphone permission is off for the app."
+    },
+    "Microphone access needed" : {
+      "comment" : "Pill title when macOS microphone permission is off."
+    },
+    "Microphone disconnected." : {
+      "comment" : "Pill: the microphone was unplugged during recording. The audio so far was saved."
+    },
+    "Microphone disconnected. Text may be cut short." : {
+      "comment" : "Pill: the microphone was unplugged; the end of the text may be missing."
+    },
+    "Microphone disconnected. Words may be missing." : {
+      "comment" : "Pill: the microphone was unplugged; words at the start and end may be missing."
+    },
+    "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default)." : {
+      "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings. 'Microphone readiness' is the name of a setting."
+    },
+    "Microphone ready" : {
+      "comment" : "Setup warm-up checklist item."
+    },
     "Mishearings" : {},
     "Model" : {},
     "Model is freed after every transcription. Expect a reload delay on each recording." : {},
@@ -312,15 +680,27 @@
       }
     },
     "Move EnviousWispr" : {},
+    "Native Speed" : {
+      "comment" : "Welcome screen feature title."
+    },
     "Nearly there" : {},
     "New snippet" : {},
     "New words come across with the alternate spellings you set up in the other app." : {},
     "Next page" : {},
+    "No account required. Anonymous analytics only." : {
+      "comment" : "Welcome screen feature line under Free & Private."
+    },
     "No audio captured" : {},
     "No dictations yet" : {},
+    "No internet connection. Please connect to the internet and try again." : {
+      "comment" : "Setup error: no internet during the speech model download."
+    },
     "No language matches your search." : {},
     "No matches for \"%@\"." : {},
     "No matching history." : {},
+    "No microphone found. Please connect one." : {
+      "comment" : "Pill: no input device is available."
+    },
     "No mishearings yet. Type one above and click Add." : {},
     "No model selected" : {},
     "No snippets match “%@”" : {},
@@ -332,6 +712,12 @@
     "Not Now" : {},
     "Not available with your API key" : {},
     "Not checked" : {},
+    "Not enough disk space (%lld MB free). EnviousWispr needs about 1 GB to download and install the speech model." : {
+      "comment" : "Setup error before the speech model download. %lld is the free space in megabytes."
+    },
+    "Not enough disk space. Please free up space and try again." : {
+      "comment" : "Setup error: the disk filled up during the speech model download."
+    },
     "Not fully polished" : {},
     "Not saved. %@" : {},
     "Not selected" : {},
@@ -339,23 +725,51 @@
     "Nothing has run yet. You can still change everything." : {},
     "Nothing here yet" : {},
     "OK" : {},
-    "Off" : {},
+    "Off" : {
+      "comment" : "Short disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches."
+    },
+    "Offline-Ready" : {
+      "comment" : "Welcome screen feature title: works without internet."
+    },
     "Ollama is a free tool you install once. Models on your Mac need no API key and no per-use cost, and they keep your dictation on your Mac. Ollama also offers hosted models, which run on Ollama's servers. Those are listed separately below and are never selected for you. A hosted model needs you signed in to Ollama, and some of them need a paid Ollama plan." : {},
     "Ollama is installed but isn't running yet." : {},
     "Ollama needs a language model to polish your text." : {},
     "Ollama runs AI models on your Mac. No API keys, completely free." : {},
     "On" : {},
+    "On-Device" : {
+      "comment" : "Welcome screen feature title: dictation runs on this Mac."
+    },
+    "On-screen preview does not support this language yet." : {
+      "comment" : "On-screen preview status: the dictation language is not supported by the preview."
+    },
+    "On-screen preview is not ready yet." : {
+      "comment" : "On-screen preview status: the preview could not start yet."
+    },
+    "On-screen preview needs macOS 26." : {
+      "comment" : "On-screen preview status: the Mac is older than macOS 26."
+    },
+    "On-screen preview pauses while Faster Transcription is on." : {
+      "comment" : "On-screen preview status. Faster Transcription is the name of a setting."
+    },
     "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything." : {},
     "One moment, still working on that" : {},
     "One per line: the trigger, then =, then the text. A tab, an arrow, or a comma work too. For text on several lines, paste exported JSON or CSV, or type \\n where a line should break." : {},
+    "One-time setup" : {
+      "comment" : "Setup checklist: note under the speech model step."
+    },
     "Open Console.app" : {},
     "Open Log Directory" : {},
+    "Open Settings" : {
+      "comment" : "Pill button: opens the macOS microphone privacy settings."
+    },
     "Open System Settings" : {},
     "Opens Keybinds" : {},
     "Opens the Live Preview settings page" : {},
     "Opens the file chooser. You can also drag a file here." : {},
     "Or run `ollama serve` in Terminal." : {},
-    "Original" : {},
+    "Original" : {
+      "comment" : "History detail section title: the words as first transcribed."
+    },
     "Other available models" : {},
     "POWER USER?" : {},
     "Pack on" : {},
@@ -370,6 +784,9 @@
         }
       }
     },
+    "Paste" : {
+      "comment" : "History detail button: pastes this row's text into the currently active app."
+    },
     "Paste into active app" : {},
     "Paste unavailable — Accessibility permission required" : {},
     "Paste your snippets, then check the count before you continue." : {},
@@ -380,8 +797,35 @@
     "Pipeline Benchmark Results" : {},
     "Play recording sounds" : {},
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
+    "Polish failed. Using raw text." : {
+      "comment" : "Pill: AI polish failed, so the unpolished text was pasted."
+    },
+    "Polished" : {
+      "comment" : "History detail section title: the AI-polished text."
+    },
+    "Polishing" : {
+      "comment" : "Sidebar status chip while AI polish rewrites the text. Very short space, no ellipsis."
+    },
+    "Polishing the speech engine..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Polishing..." : {
+      "comment" : "Pill and main window while AI polish rewrites the text. Three ASCII periods."
+    },
+    "Polishing…" : {
+      "comment" : "Toolbar status badge while AI polish rewrites the text. One ellipsis character."
+    },
+    "Preferred mic order: Built-in or wired > USB > Bluetooth" : {
+      "comment" : "Microphone settings: the recommended input types, best first. Keep the > signs."
+    },
     "Prepare model" : {},
     "Preparing model for faster responses..." : {},
+    "Preparing speech model…" : {
+      "comment" : "Setup: shown while the speech model download is being prepared."
+    },
+    "Preparing to ignore background noise..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Press " : {},
     "Press keys..." : {},
     "Press keys…" : {},
@@ -392,6 +836,12 @@
     "Preview is unavailable while a recording is in progress." : {},
     "Previous page" : {},
     "Pro Tip" : {},
+    "Processed" : {
+      "comment" : "History detail section title: the cleaned-up text."
+    },
+    "Processing transcription" : {
+      "comment" : "VoiceOver announcement from the recording overlay: speech is being turned into text."
+    },
     "RECENT" : {},
     "Re-check Ollama status" : {},
     "Re-check model status" : {},
@@ -399,15 +849,60 @@
     "Read as" : {},
     "Read selections through the clipboard" : {},
     "Reading %@" : {},
+    "Reading Well" : {
+      "comment" : "Appearance settings: name of the recording pill style that shows your words as you speak."
+    },
     "Ready for import" : {},
     "Ready to Transcribe" : {},
     "Ready to Wispr!" : {},
+    "Ready — press to dictate" : {
+      "comment" : "Pill title when the speech engine finished loading."
+    },
     "Recommended" : {},
     "Recommended for cleanup" : {},
     "Record" : {},
+    "Recording" : {
+      "comment" : "Toolbar badge and sidebar status while recording."
+    },
+    "Recording auto-stops in under a minute (60-minute cap)" : {
+      "comment" : "Banner inside the recording panel in the last minute before the 60-minute limit."
+    },
+    "Recording complete" : {
+      "comment" : "VoiceOver announcement from the recording overlay: recording ended."
+    },
+    "Recording interrupted." : {
+      "comment" : "Pill: recording stopped unexpectedly. The audio so far was saved."
+    },
+    "Recording interrupted. Text may be cut short." : {
+      "comment" : "Pill: recording was interrupted; the end of the text may be missing."
+    },
+    "Recording interrupted. Words may be missing." : {
+      "comment" : "Pill: recording was interrupted; words may be missing."
+    },
+    "Recording started" : {
+      "comment" : "VoiceOver announcement from the recording overlay: recording began."
+    },
     "Recording · %@" : {},
+    "Recording, press a key combination" : {
+      "comment" : "VoiceOver value of the keybind field while it waits for a key combination."
+    },
     "Recovered" : {},
     "Recovered recording" : {},
+    "Recovered your last recording" : {
+      "comment" : "Pill title after a crash recovery succeeded."
+    },
+    "Recovered your last recording. Saved to History." : {
+      "comment" : "VoiceOver announcement after a crash recovery succeeded."
+    },
+    "Recovering your last recording" : {
+      "comment" : "VoiceOver label of the recovery pill."
+    },
+    "Recovering your last recording. Press Discard to skip." : {
+      "comment" : "VoiceOver announcement from the recording overlay: a recording interrupted by a crash is being recovered. Discard is a button."
+    },
+    "Recovering your last recording…" : {
+      "comment" : "Pill title while a recording interrupted by a crash is recovered."
+    },
     "Refresh available models" : {},
     "Remove Model" : {},
     "Remove all imported names" : {},
@@ -431,8 +926,16 @@
     "Run Pipeline Benchmark" : {},
     "Running" : {},
     "Save as a text file" : {},
+    "Save as…" : {
+      "comment" : "Export button: save the transcript to a file."
+    },
+    "Save cleaned as…" : {
+      "comment" : "Export button: save the cleaned text to a file (Marked Up view)."
+    },
     "Save the text you type over and over. An email address, a signature, a link you always paste." : {},
-    "Saved to History" : {},
+    "Saved to History" : {
+      "comment" : "Pill subtitle after a crash recovery succeeded."
+    },
     "Saves and restores whatever was on your clipboard before pasting your dictation." : {},
     "Say" : {},
     "Say \"<phrase> emoji\" to get the glyph. Bare words never convert." : {},
@@ -450,10 +953,34 @@
     "Selected: %@" : {},
     "Selects %@ for AI polish" : {},
     "Set how this word is recognized in what you dictate." : {},
+    "Setting up speech model" : {
+      "comment" : "Setup checklist step."
+    },
+    "Setting your keybind" : {
+      "comment" : "Setup checklist step."
+    },
+    "Setup didn't finish. Try again, and if it keeps happening, restart the app." : {
+      "comment" : "Setup error: the speech model setup made no progress."
+    },
     "Setup paused. Start it again whenever you're ready." : {},
+    "Share cleaned…" : {
+      "comment" : "Export button: share the cleaned text (Marked Up view)."
+    },
+    "Share…" : {
+      "comment" : "Export button: share the transcript."
+    },
+    "Sharpening neural networks..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Show" : {},
+    "Show Bluetooth tips" : {
+      "comment" : "Microphone settings: switch that turns the Bluetooth tip card on or off."
+    },
     "Show app in Dock" : {},
     "Show in Finder" : {},
+    "Shown once per launch when Bluetooth is your mic" : {
+      "comment" : "Small print at the bottom of the Bluetooth tip card."
+    },
     "Shows the %@ Dictionary tab" : {},
     "Shows the reminder popover once per launch. This guide always stays." : {},
     "Skip and finish setup" : {},
@@ -466,12 +993,21 @@
     "Snippets you already saved in another dictation app, found on this Mac." : {},
     "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back." : {},
     "Something went wrong" : {},
+    "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere." : {
+      "comment" : "Practice screen when the dictation failed on our side. Keep the line break."
+    },
     "Speaker name" : {},
+    "Speech engine" : {
+      "comment" : "Setup warm-up checklist item."
+    },
     "Spreadsheets aren't supported yet." : {},
     "Start recording" : {},
     "Status:" : {},
     "Status: %@" : {},
     "Step %lld of 6" : {},
+    "Still working: checking download source…" : {
+      "comment" : "Setup: shown when preparing the download takes more than 10 seconds."
+    },
     "Stop" : {},
     "Stop recording" : {},
     "Stop recording on silence" : {},
@@ -482,13 +1018,34 @@
     "Supported formats" : {},
     "TRY AGAIN" : {},
     "Tap the keycap to change your keybind,\nthen press GET STARTED!" : {},
+    "Teaching AI to listen politely..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Test that %@ is live" : {},
+    "Text copied to clipboard" : {
+      "comment" : "VoiceOver announcement from the recording overlay: the text was copied instead of pasted."
+    },
+    "That did not work" : {
+      "comment" : "Practice screen headline. The dictation failed on our side."
+    },
+    "That is it. You are set." : {
+      "comment" : "Practice screen headline. The first dictation worked."
+    },
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {},
+    "The download server is busy. Please wait a moment and try again." : {
+      "comment" : "Setup error: the download server refused because of too many requests."
+    },
+    "The download timed out. Please check your internet connection and try again." : {
+      "comment" : "Setup error: the speech model download timed out."
+    },
     "The model could not be removed. Please try again." : {},
     "The privacy-first dictation app built for macOS." : {},
     "The speech engine did not finish waking up." : {},
     "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below." : {},
     "These let EnviousWispr listen and paste for you." : {},
+    "These words are not saved to History. Copy or save them before you leave, or press Clean it again to retry." : {
+      "comment" : "Transcribe a File: nothing was saved to History. 'Clean it again' is a button."
+    },
     "These words are only on this screen. Copy or save them before you leave." : {},
     "They are still saved on your Mac. Nothing has been changed or deleted, and EnviousWispr will not write over them. Restart the app, and tell us if this keeps happening." : {},
     "This can't be undone." : {},
@@ -498,25 +1055,95 @@
     "This model did not pass any of our cleanup tests." : {},
     "This pack has no words." : {},
     "This passage could not be cleaned up. These are the raw words." : {},
+    "This recording was removed from History." : {
+      "comment" : "Speaker rename popover: the recording no longer exists in History, so the name was not saved."
+    },
     "This usually takes a moment. Nothing else is needed from you." : {},
     "This version is not saved" : {},
+    "This version of EnviousWispr cannot run that preview engine." : {
+      "comment" : "On-screen preview status: this app build lacks the preview engine's files."
+    },
+    "This will permanently delete all %lld items in History, including any hidden by a filter or search. This action cannot be undone." : {
+      "comment" : "Delete All confirmation in History. %lld is how many rows will be deleted, including hidden ones. Never 1."
+    },
+    "This will permanently delete the only item in History, even if a filter or search is hiding it. This action cannot be undone." : {
+      "comment" : "Delete All confirmation in History when exactly one row exists (it may be hidden by a filter)."
+    },
+    "Those are your words, typed for you.\nIn any other app, click into a text box first." : {
+      "comment" : "Practice screen, after the first dictation worked. Keep the line break."
+    },
+    "Time for your first dictation!" : {
+      "comment" : "Practice screen headline. Before the first try."
+    },
     "Times" : {},
     "Tip: %@" : {},
+    "To hear your voice for transcription." : {
+      "comment" : "Setup permissions: why the microphone is needed."
+    },
+    "To paste your transcribed text into any app." : {
+      "comment" : "Setup permissions: why Accessibility is needed."
+    },
     "Tokens are shared between the model's setup instructions, your dictation, and its answer." : {},
+    "Training patience module..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
     "Transcribe a File" : {},
-    "Transcript" : {},
+    "Transcribing" : {
+      "comment" : "Sidebar status chip while speech is turned into text. Very short space, no ellipsis."
+    },
+    "Transcribing a file. Please wait." : {
+      "comment" : "Pill: a file is being transcribed, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+    },
+    "Transcribing..." : {
+      "comment" : "Pill and main window while speech is turned into text. Three ASCII periods."
+    },
+    "Transcribing…" : {
+      "comment" : "Toolbar status badge while speech is turned into text. One ellipsis character."
+    },
+    "Transcript" : {
+      "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it."
+    },
     "Transcription Complete" : {},
+    "Transcription error. Try again." : {
+      "comment" : "Pill after a failed dictation: speech could not be turned into text. The user should retry."
+    },
+    "Transcripts" : {
+      "comment" : "History filter: rows made with Transcribe a File."
+    },
     "Try Again" : {},
     "Try a different search, or another filter." : {},
     "Try setup again" : {},
+    "Tuning the neural ears..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
+      "comment" : "Setup notice when Apple Intelligence is off in System Settings."
+    },
+    "Turn it on to start dictating." : {
+      "comment" : "Pill line under Microphone access needed."
+    },
     "Turn on Accessibility" : {},
     "Turn on the microphone" : {},
     "Unavailable" : {},
+    "Undo" : {
+      "comment" : "Button on the pill shown after a word is added to the dictionary. Removes it again.\nPill button after Escape: brings the cancelled dictation back."
+    },
+    "Undone" : {
+      "comment" : "Pill result after the user pressed Undo: the word was removed again."
+    },
     "Unknown" : {},
+    "Unknown speaker" : {
+      "comment" : "Transcript turn header when the speaker has no name."
+    },
     "Unload model after" : {},
-    "Unloaded" : {},
+    "Unloaded" : {
+      "comment" : "Main window sidebar: the speech model is not in memory."
+    },
     "Update available" : {},
     "Update available, version %@" : {},
+    "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it." : {
+      "comment" : "Setup notice on Macs older than macOS 26."
+    },
     "Upgrading to %@ (%@)" : {
       "localizations" : {
         "en" : {
@@ -530,14 +1157,32 @@
     "Upload an audio or video file, then EnviousWispr will transcribe it and polish it into clean, readable text." : {},
     "Use Transcribe a File to add one." : {},
     "Use dictation's polish settings" : {},
+    "Using a Bluetooth microphone?" : {
+      "comment" : "Heading of the Bluetooth guide in Microphone settings."
+    },
     "VAD: Active" : {},
     "Valid" : {},
     "Validating…" : {},
     "Verifying download integrity" : {},
+    "Verifying download..." : {
+      "comment" : "Setup progress: checking the downloaded speech model."
+    },
     "Version %@ is ready. Click to restart." : {},
     "View" : {},
     "Warming Up the AI..." : {},
     "Warming up" : {},
+    "Warming up Apple Silicon..." : {
+      "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Warning: %@" : {
+      "comment" : "VoiceOver announcement from the recording overlay: %@ is the warning sentence shown on the pill."
+    },
+    "We cannot hear you" : {
+      "comment" : "Practice screen headline. A permission is missing."
+    },
+    "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold %@ again." : {
+      "comment" : "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
+    },
     "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {},
     "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose." : {},
     "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about %lld minutes." : {},
@@ -558,7 +1203,16 @@
     "Words to import" : {},
     "Words you already have are left exactly as they are." : {},
     "Work out the language from what you say." : {},
+    "Works without internet." : {
+      "comment" : "Welcome screen feature line under Offline-Ready."
+    },
     "YOUR PROCESSING PATH" : {},
+    "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
+      "comment" : "Setup: shown when the speech engine did not finish warming up."
+    },
+    "You deleted this from History, so it is not saved there. Copy or save it before you leave." : {
+      "comment" : "Transcribe a File: the user deleted this transcript from History."
+    },
     "You have this" : {},
     "You're all set! Select a model above." : {},
     "You've entered snippets. This will discard them." : {},
@@ -566,7 +1220,22 @@
     "Your Voice, Instantly Captured." : {},
     "Your dictations and transcripts will appear here." : {},
     "Your first dictation" : {},
+    "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
+      "comment" : "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break."
+    },
+    "Your original words are saved to History. This cleaned version is not. Copy or save it before you leave." : {
+      "comment" : "Transcribe a File: the original is in History but the cleaned version is not."
+    },
+    "Your recording indicator appears while you hold the key." : {
+      "comment" : "Practice screen footnote under the text box."
+    },
+    "Your shortcut is set" : {
+      "comment" : "Setup warm-up checklist item."
+    },
     "Your snippets could not be read" : {},
+    "Your voice never leaves your Mac." : {
+      "comment" : "Welcome screen feature line under On-Device."
+    },
     "feedback.email.invalid" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -710,6 +1379,9 @@
     "v%@" : {},
     "·" : {},
     "· %@" : {},
+    "“%@” updated" : {
+      "comment" : "Pill after a correction changed a word already in the dictionary. %@ is that word."
+    },
     "•" : {},
     "⏎" : {}
   },

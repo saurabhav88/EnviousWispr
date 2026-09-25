@@ -101,58 +101,16 @@ struct PracticeScreenV2: View {
   }
 
   private var headline: String {
-    switch viewModel.practiceState {
-    case .cannotHear: return "We cannot hear you"
-    case .listening: return "Listening…"
-    case .somethingBroke: return "That did not work"
-    case .missedTheBox: return "Click the box first"
-    case .saidNothing: return "All quiet"
-    case .worked: return "That is it. You are set."
-    case .waiting:
-      return viewModel.practiceSucceeded
-        ? "That is it. You are set." : "Time for your first dictation!"
-    }
+    PracticeScreenCopy.headline(viewModel.practiceState, succeeded: viewModel.practiceSucceeded)
   }
 
   private var subhead: String {
-    switch viewModel.practiceState {
-    case .cannotHear(let reason, _):
-      return reason == "mic_denied"
-        ? "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead."
-        : "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead."
-    case .listening:
-      return "Go ahead. Let go of \(shortcutName) when you are done."
-    case .somethingBroke:
-      // Takes the blame explicitly. Someone told "we did not hear anything"
-      // tries harder at a thing that is broken; someone told it was us tries
-      // once more and then moves on, which is the honest ask.
-      return
-        "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere."
-    case .missedTheBox:
-      // Says what happened and what to do, and takes the blame off them. The
-      // words are genuinely on the clipboard, so telling them that is useful
-      // rather than a consolation.
-      return
-        "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold \(shortcutName) again."
-    case .saidNothing:
-      // Not an error, and never worded as one: the microphone worked, there
-      // was simply nothing to hear. The prompt is drawn from the persona banks
-      // so it sounds like something a person would actually say.
-      return
-        "Your microphone is working. We just did not hear anything.\nTry holding \(shortcutName) and saying: tell grandma I will call Sunday."
-    case .worked:
-      return "Those are your words, typed for you.\nIn any other app, click into a text box first."
-    case .waiting:
-      return viewModel.practiceSucceeded
-        ? "Those are your words, typed for you.\nIn any other app, click into a text box first."
-        : "Hold \(shortcutName) and say something.\nLet go when you are done."
-    }
+    PracticeScreenCopy.subhead(
+      viewModel.practiceState, succeeded: viewModel.practiceSucceeded, shortcutName: shortcutName)
   }
 
   private var footnote: String {
-    if cannotHear { return " " }
-    if viewModel.practiceSucceeded { return " " }
-    return "Your recording indicator appears while you hold the key."
+    PracticeScreenCopy.footnote(cannotHear: cannotHear, succeeded: viewModel.practiceSucceeded)
   }
 
   var body: some View {
@@ -324,5 +282,113 @@ struct PracticeScreenV2: View {
       }
     }
     .animation(.easeInOut(duration: 0.3), value: viewModel.practiceState)
+  }
+}
+
+/// #3142: every sentence the practice screen draws, chosen from its typed state.
+/// Each sentence is localized whole; the shortcut name is inserted as written.
+enum PracticeScreenCopy {
+  static func headline(_ state: OnboardingV2ViewModel.PracticeState, succeeded: Bool) -> String {
+    let youAreSet = String(
+      localized: "That is it. You are set.",
+      comment: "Practice screen headline. The first dictation worked.")
+    switch state {
+    case .cannotHear:
+      return String(
+        localized: "We cannot hear you",
+        comment: "Practice screen headline. A permission is missing.")
+    case .listening:
+      return String(
+        localized: "Listening…", comment: "Practice screen headline. Shown while the key is held.")
+    case .somethingBroke:
+      return String(
+        localized: "That did not work",
+        comment: "Practice screen headline. The dictation failed on our side.")
+    case .missedTheBox:
+      return String(
+        localized: "Click the box first",
+        comment: "Practice screen headline. The words went to the clipboard.")
+    case .saidNothing:
+      return String(localized: "All quiet", comment: "Practice screen headline. Nothing was heard.")
+    case .worked: return youAreSet
+    case .waiting:
+      return succeeded
+        ? youAreSet
+        : String(
+          localized: "Time for your first dictation!",
+          comment: "Practice screen headline. Before the first try.")
+    }
+  }
+
+  static func subhead(
+    _ state: OnboardingV2ViewModel.PracticeState, succeeded: Bool, shortcutName: String
+  ) -> String {
+    let worked = String(
+      localized:
+        "Those are your words, typed for you.\nIn any other app, click into a text box first.",
+      comment: "Practice screen, after the first dictation worked. Keep the line break.")
+    switch state {
+    case .cannotHear(let reason, _):
+      return reason == "mic_denied"
+        ? String(
+          localized:
+            "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead.",
+          comment: "Practice screen when microphone permission is off. Keep the line break.")
+        : String(
+          localized:
+            "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead.",
+          comment: "Practice screen when Accessibility permission is off. Keep the line break.")
+    case .listening:
+      return String(
+        localized: "Go ahead. Let go of \(shortcutName) when you are done.",
+        comment: "Practice screen while recording. %@ is the dictation shortcut, for example ⌥.")
+    case .somethingBroke:
+      // Takes the blame explicitly. Someone told "we did not hear anything"
+      // tries harder at a thing that is broken; someone told it was us tries
+      // once more and then moves on, which is the honest ask.
+      return String(
+        localized:
+          "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere.",
+        comment: "Practice screen when the dictation failed on our side. Keep the line break.")
+    case .missedTheBox:
+      // Says what happened and what to do, and takes the blame off them. The
+      // words are genuinely on the clipboard, so telling them that is useful
+      // rather than a consolation.
+      return String(
+        localized:
+          "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold \(shortcutName) again.",
+        comment:
+          "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
+      )
+    case .saidNothing:
+      // Not an error, and never worded as one: the microphone worked, there
+      // was simply nothing to hear. The prompt is drawn from the persona banks
+      // so it sounds like something a person would actually say.
+      return String(
+        localized:
+          "Your microphone is working. We just did not hear anything.\nTry holding \(shortcutName) and saying: tell grandma I will call Sunday.",
+        comment:
+          "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break."
+      )
+    case .worked:
+      return worked
+    case .waiting:
+      return succeeded
+        ? worked
+        : String(
+          localized: "Hold \(shortcutName) and say something.\nLet go when you are done.",
+          comment:
+            "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
+        )
+    }
+  }
+
+  /// A single space, not empty, so the line keeps its height when there is nothing to say.
+  static func footnote(cannotHear: Bool, succeeded: Bool) -> String {
+    if cannotHear { return " " }
+    if succeeded { return " " }
+    return String(
+      localized: "Your recording indicator appears while you hold the key.",
+      comment: "Practice screen footnote under the text box.")
   }
 }
