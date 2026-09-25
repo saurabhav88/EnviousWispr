@@ -122,22 +122,49 @@ def normalise_literal(raw):
 
 BULLETS_OPEN = re.compile(r"bullets:\s*\[")
 STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"', re.DOTALL)
-LINE_COMMENT = re.compile(r"//[^\n]*")
-
-
-def blank_out(match):
-    """The matched text as spaces of the same length, so positions found in the masked
-    text index the original."""
-    return " " * (match.end() - match.start())
 
 
 def mask_literals_and_comments(fields):
-    """`fields` with every string literal and `//` comment replaced by spaces, so a
-    search over it sees only the entry's own argument syntax. Literals go first: a
-    `//` inside a description is prose, not a comment, and blanking the literal
-    removes it before the comment pass looks."""
-    masked = STRING_LITERAL.sub(blank_out, fields)
-    return LINE_COMMENT.sub(blank_out, masked)
+    """`fields` with every string literal, `//` comment and `/* */` comment replaced by
+    spaces (newlines kept, so positions and line anchors still index the original), so a
+    search over it sees only the entry's own argument syntax. One left-to-right scan, so
+    each form is read in its own context: a `//` or `/*` inside a string is prose, a quote
+    inside a comment is not a string, and block comments nest as Swift nests them."""
+    out = list(fields)
+    i, n = 0, len(fields)
+
+    def blank(a, b):
+        for k in range(a, b):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < n:
+        if fields[i] == '"':
+            j = i + 1
+            while j < n and fields[j] != '"':
+                j += 2 if fields[j] == "\\" else 1
+            j = min(j + 1, n)
+            blank(i, j)
+            i = j
+        elif fields.startswith("//", i):
+            j = fields.find("\n", i)
+            j = n if j < 0 else j
+            blank(i, j)
+            i = j
+        elif fields.startswith("/*", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                if fields.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif fields.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            blank(i, j)
+            i = j
+        else:
+            i += 1
+    return "".join(out)
 
 
 # No trailing `\s*` on the label: in the masked text the literal itself is spaces, and
@@ -282,7 +309,8 @@ def dropped_entries(entries, swift_path):
     with open(swift_path, encoding="utf-8") as fh:
         source = fh.read()
     field_count = len(re.findall(r'version:\s*"[\d.]+"', source))
-    call_count = len(re.findall(r"(?m)^[ \t]*Entry\(", source))
+    # Counted in the masked source: an `Entry(` inside a comment is not a call.
+    call_count = len(re.findall(r"(?m)^[ \t]*Entry\(", mask_literals_and_comments(source)))
     if len(entries) != field_count or len(entries) != call_count:
         return (
             f"error: parsed {len(entries)} entries but the source has {field_count} "
@@ -596,9 +624,25 @@ FIXTURE_CASES = [
 ]
 
 
-# Whole-file refusals through `seed_for_catalog`, the path `--catalog-seed-json` runs:
-# (label, Swift source text, expected start of the refusal message).
+# Whole-file outcomes through `seed_for_catalog`, the path `--catalog-seed-json` runs:
+# (label, Swift source text, expected start of the refusal message, or None for a seed).
 SEED_REFUSALS = [
+    (
+        "an Entry( inside a block comment is not counted as an entry",
+        '''
+    Entry(
+      id: "only",
+      icon: "sparkles",
+      title: "Only",
+      description: "The one real entry.",
+      version: "9.9.9"
+    ),
+    /*
+    Entry(
+    */
+''',
+        None,
+    ),
     (
         "an entry whose version is not a literal drops out, and the seed refuses the file",
         '''
@@ -746,6 +790,42 @@ SEED_CASES = [
         ["9.9.9: Constant id: no readable `id:` literal before `title:`"],
     ),
     (
+        "an id inside a block comment is not the entry's id",
+        '''
+    Entry(
+      /* id: "old", */
+      id: "actual",
+      icon: "sparkles",
+      title: "Block comment",
+      description: "Keyed by its real id.",
+      version: "9.9.9"
+    ),
+''',
+        {
+            "whatsNew.actual.title": "Block comment",
+            "whatsNew.actual.description": "Keyed by its real id.",
+        },
+        [],
+    ),
+    (
+        "an id inside a nested block comment is not the entry's id",
+        '''
+    Entry(
+      /* outer /* inner */ id: "old", */
+      id: "actual",
+      icon: "sparkles",
+      title: "Nested comment",
+      description: "Keyed by its real id.",
+      version: "9.9.9"
+    ),
+''',
+        {
+            "whatsNew.actual.title": "Nested comment",
+            "whatsNew.actual.description": "Keyed by its real id.",
+        },
+        [],
+    ),
+    (
         "a concatenated id is refused rather than read as its first piece",
         '''
     Entry(
@@ -812,7 +892,10 @@ def self_test_fixtures():
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(source)
             seed, error = seed_for_catalog(path)
-            if seed is not None or not (error or "").startswith(want_error):
+            if want_error is None:
+                if error is not None or not seed:
+                    failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted a seed")
+            elif seed is not None or not (error or "").startswith(want_error):
                 failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted {want_error!r}")
     return failures
 
@@ -931,7 +1014,7 @@ def main():
             f"self-test OK: {len(entries)} entries parsed (matches source); "
             f"{cv} renders {body.count('- **')} item(s); "
             f"{len(FIXTURE_CASES)} fixture cases, {len(SEED_CASES)} seed cases and "
-            f"{len(SEED_REFUSALS)} seed refusal pass"
+            f"{len(SEED_REFUSALS)} whole-file seed cases pass"
         )
         return 0
 
