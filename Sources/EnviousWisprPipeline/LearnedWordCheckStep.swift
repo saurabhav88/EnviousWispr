@@ -236,7 +236,8 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
     let learned = LearnedWordCandidates.learnedWords(from: vocabulary.terms)
     let questions = LearnedWordCandidates.questions(
       for: context.text, learned: learned,
-      language: context.englishRulesVetoed ? nil : context.language)
+      language: context.englishRulesVetoed ? nil : context.language,
+      knownSpellings: vocabulary.terms.filter { $0.source != .pack }.map(\.canonical))
     let start = ContinuousClock.now
     func outcome(approved: Int, applied: Int, contested: Int, reason: Outcome.FallbackReason?)
       -> Outcome

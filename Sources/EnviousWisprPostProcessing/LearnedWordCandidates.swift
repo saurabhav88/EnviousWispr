@@ -37,11 +37,15 @@ public enum LearnedWordCandidates: Sendable {
 
   public static func questions(
     for text: String, learned: [LearnedWord], maxSpots: Int = 16,
-    language: String? = nil
+    language: String? = nil, knownSpellings: [String] = []
   ) -> [LearnedWordCheckQuestion] {
     guard text.isEmpty == false, learned.isEmpty == false else { return [] }
     var candidates = [Candidate]()
     var seen = Set<CandidateKey>()
+    // #3105 founder live test: "EnviousWispr" (already right, from the user's own word)
+    // was asked about and swapped for the learned "EnviousSales". Text already spelled
+    // exactly as one of the user's words is final: no spot overlapping it is asked.
+    let settled = settledRanges(in: text, knownSpellings: knownSpellings)
 
     // One budget for every question the checker is asked, exact observed
     // spellings first (the strongest prior), then sound matches (Codex PR-3
@@ -49,6 +53,7 @@ public enum LearnedWordCandidates: Sendable {
     // into hundreds of questions).
     func add(_ range: Range<String.Index>, word: String) {
       guard candidates.count < maxSpots else { return }
+      guard settled.allSatisfy({ !$0.overlaps(range) }) else { return }
       guard text[range].unicodeScalars.elementsEqual(word.unicodeScalars) == false else { return }
       let key = CandidateKey(range: range, wordUTF8: Data(word.utf8))
       if seen.insert(key).inserted { candidates.append(Candidate(range: range, word: word)) }
@@ -104,6 +109,28 @@ public enum LearnedWordCandidates: Sendable {
         id: id, sentence: text, range: candidate.range,
         contextRange: contextRange(in: text, around: candidate.range), word: candidate.word)
     }
+  }
+
+  /// Every whole-word, exact-case occurrence in `text` of a spelling the user already has.
+  static func settledRanges(in text: String, knownSpellings: [String]) -> [Range<String.Index>] {
+    var ranges = [Range<String.Index>]()
+    for spelling in Set(knownSpellings) where spelling.isEmpty == false {
+      var searchStart = text.startIndex
+      while searchStart < text.endIndex,
+        let range = text.range(of: spelling, options: .literal, range: searchStart..<text.endIndex)
+      {
+        let startsAtBoundary =
+          range.lowerBound == text.startIndex
+          || LearnedWordSpotFinder.isWordScalar(
+            text.unicodeScalars[text.unicodeScalars.index(before: range.lowerBound)]) == false
+        let endsAtBoundary =
+          range.upperBound == text.endIndex
+          || LearnedWordSpotFinder.isWordScalar(text.unicodeScalars[range.upperBound]) == false
+        if startsAtBoundary && endsAtBoundary { ranges.append(range) }
+        searchStart = text.unicodeScalars.index(after: range.lowerBound)
+      }
+    }
+    return ranges
   }
 
   /// Match spots.py's re.findall(r"[a-z0-9']+", span.lower()). An empty

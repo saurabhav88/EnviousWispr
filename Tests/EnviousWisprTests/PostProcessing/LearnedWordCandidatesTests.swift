@@ -32,6 +32,26 @@ struct LearnedWordCandidatesTests {
     #expect(extendedQuestions.contains { String(extended[$0.range]) == "time" } == false)
   }
 
+  @Test("text already spelled as one of the user's words is never asked about")
+  func settledSpellingsAreNotAsked() {
+    // Founder live test 2026-09-25: word correction made "EnviousWispr", then the
+    // checker was asked whether it should be the learned "EnviousSales", and said yes.
+    let sales = [LearnedWord(canonical: "EnviousSales", observedMisspellings: ["Envious Sales"])]
+    let text = "I'm using EnviousWispr to dictate while I work on EnviousSales copy"
+    let unguarded = LearnedWordCandidates.questions(for: text, learned: sales, language: "en")
+    #expect(unguarded.contains { String(text[$0.range]).contains("EnviousWispr") },
+      "control: without the known spellings the spot is asked")
+    let guarded = LearnedWordCandidates.questions(
+      for: text, learned: sales, language: "en",
+      knownSpellings: ["EnviousWispr", "EnviousSales"])
+    #expect(guarded.contains { String(text[$0.range]).contains("EnviousWispr") } == false)
+    // A misheard spelling is still asked: only exact, whole-word, exact-case text is settled.
+    let misheard = "I'm using envious sails to dictate"
+    #expect(LearnedWordCandidates.questions(
+      for: misheard, learned: sales, language: "en",
+      knownSpellings: ["EnviousWispr", "EnviousSales"]).isEmpty == false)
+  }
+
   @Test("rare words and split terms still reach the checker")
   func rareSoundMatches() {
     let kotlin = [LearnedWord(canonical: "Kotlin", observedMisspellings: [])]
