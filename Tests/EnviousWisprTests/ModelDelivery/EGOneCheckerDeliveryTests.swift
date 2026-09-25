@@ -51,7 +51,7 @@ struct EGOneCheckerDeliveryTests {
     let contract = try #require(checker.checkerContract)
 
     #expect(
-      checker.manifestDigest == "cabd451d5160713283adc195986ba890c0a68f0dec863aa1086c72a90329914f")
+      checker.manifestDigest == "d0dc89505a065298ad13df38c6e34073a345e5aa6ccf8a2eace4bd732ba851c3")
     #expect(checker.identity.family == .egOneChecker)
     #expect(checker.identity.cacheKey != base.identity.cacheKey)
     #expect(checker.files.count == 1)
@@ -109,7 +109,7 @@ struct EGOneCheckerDeliveryTests {
     let checker = try Self.manifest("eg1-checker-delivery-manifest")
     let contract = try #require(checker.checkerContract)
     let base = try Self.manifest("eg1-delivery-manifest")
-    func verdict(_ manifest: DeliveryManifest, prompt: String = "eg1-v2")
+    func verdict(_ manifest: DeliveryManifest, prompt: String = "eg1-v2-named-language")
       -> EGOneCheckerCompatibility
     {
       compatibility(

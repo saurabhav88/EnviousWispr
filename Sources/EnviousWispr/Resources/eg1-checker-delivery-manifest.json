@@ -53,9 +53,9 @@
         "3a7b065f44ab398f9eb9656aa263f43a9be1acd6af55a0790c7960162675e729",
         "91160e7d004150b44a360a7db69237b5405f34d29855c15480324a4abfdf5c0c"
       ],
-      "promptTemplateID": "eg1-v2",
+      "promptTemplateID": "eg1-v2-named-language",
       "runtimeABI": "llamacpp-eg1-v1"
     }
   },
-  "manifestDigest": "cabd451d5160713283adc195986ba890c0a68f0dec863aa1086c72a90329914f"
+  "manifestDigest": "d0dc89505a065298ad13df38c6e34073a345e5aa6ccf8a2eace4bd732ba851c3"
 }

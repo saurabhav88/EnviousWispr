@@ -213,9 +213,15 @@ import Testing
       // Held here because the coordinator and the paste registry hold their
       // collaborators WEAKLY: without an app-lifetime owner the presenter and
       // the watcher would be released the moment `init` returned.
-      count <= 45,
+      // #3105: 45 -> 46. `checkerEligibility` (`EGOneCheckerEligibility`), the one
+      // owner of whether EG-1's learned-word check may run: it observes the base
+      // and add-on deliveries for the whole run and every path (live, recovery,
+      // file import) asks it. Not inside `learnFromEdits`: that slot owns
+      // learning a word (Judge 1); this owns using one (Judge 2), and the
+      // delivery observers it holds must outlive any one dictation.
+      count <= 46,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 45. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 46. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

@@ -109,7 +109,7 @@ public final class FileImportRunner {
       keychainManager: keychainManager, egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
       outputClassifierHolder: outputClassifierHolder,
       languageIdentifier: DictationLanguageResolver.identify, makeEGOnePolisher: nil,
-      promptPlanner: nil)
+      promptPlanner: nil, checkerSelectionProvider: checkerSelectionProvider)
   }
 
   init(
@@ -119,7 +119,8 @@ public final class FileImportRunner {
     outputClassifierHolder: OutputClassifierHolder?,
     languageIdentifier: @escaping (String) -> (language: String, confidence: Double)?,
     makeEGOnePolisher: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher)?,
-    promptPlanner: (any PromptPlanning)?
+    promptPlanner: (any PromptPlanning)?,
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     self.keychainManager = keychainManager
     self.egOneRuntime = egOneRuntime

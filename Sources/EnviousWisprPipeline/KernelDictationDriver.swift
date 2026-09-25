@@ -2,6 +2,7 @@ import AppKit
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 

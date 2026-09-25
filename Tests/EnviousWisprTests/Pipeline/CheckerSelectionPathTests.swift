@@ -47,7 +47,7 @@ struct CheckerSelectionPathTests {
       languageMode: languageMode, wordCorrectionEnabled: true,
       fillerRemovalEnabled: false, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, llmProvider: LLMProvider.egOne.rawValue,
-      llmModel: "none", s1Control: nil)
+      llmModel: "none", s1Control: nil, englishSpelling: nil)
   }
 
   @Test("recovery asks its frozen provider with the replay language")

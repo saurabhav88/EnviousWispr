@@ -94,7 +94,7 @@ struct TelemetryEmitterRegistryTests {
   /// the Auto Dictionary readiness query reads it. That site did not move, so sitesFingerprint
   /// stays unchanged; its registry row is now graded as the folded terminal summary.
   static let sitesFingerprint =
-    "ef98b87770348f83b1d2343cb5f5b6075da8505545c8ddd00b858762372c8c96"
+    "4ca611cad8d49363711644b457264a01294410afc7e4bea573f56fdf39b18fa7"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

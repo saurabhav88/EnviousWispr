@@ -8,46 +8,64 @@ import SwiftUI
 struct LearnedCheckerSettingsStatus: Equatable {
   let line: String
   let canRetry: Bool
-  static let retryTitle = "Try again"
+  static let retryTitle = LocalizedStringResource(
+    "Try again",
+    comment: "Your Words, Learn from: the self-learning dictionary row: retry the word check download.")
 
   init(selection: LearnedWordCheckerSelection) {
     // The judge's owner names it and its languages; the copy has no engine or
     // language of its own, so a new judge or language needs no edit here.
-    let judge = selection.judge?.displayName ?? "The polish engine"
+    let judge = selection.judge?.displayName
+      ?? String(localized: "The polish engine", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     let languages = Self.languageList(selection.judge?.qualifiedLanguages ?? [])
     if selection.checker != nil {
       line = languages.map {
-        "Checked by: \(judge). Learned words are checked before they're used in \($0)."
-      } ?? "Checked by: \(judge). Learned words are checked before they're used."
+        String(
+          localized: "Checked by: \(judge). Learned words are checked before they're used in \($0).",
+          comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+      } ?? String(
+        localized: "Checked by: \(judge). Learned words are checked before they're used.",
+        comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
       canRetry = false
       return
     }
     canRetry = selection.retryAvailable
     switch selection.absence {
     case .adapterDownloading:
-      line = "Learn-only: \(judge)'s word check is downloading. Learned words are saved for later."
+      line = String(
+        localized: "Learn-only: \(judge)'s word check is downloading. Learned words are saved for later.",
+        comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .adapterDeliveryFailed, .deliveryDisabled:
       line = selection.retryAvailable
-        ? "Learn-only: \(judge)'s word check couldn't download. Learned words are saved for later."
-        : "Learn-only: \(judge)'s word check isn't available yet. Learned words are saved for later."
+        ? String(
+          localized:
+            "Learn-only: \(judge)'s word check couldn't download. Learned words are saved for later.",
+          comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+        : String(
+          localized:
+            "Learn-only: \(judge)'s word check isn't available yet. Learned words are saved for later.",
+          comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .notEGOne:
-      line = "Learn-only: This polish choice doesn't use learned words yet."
+      line = String(
+        localized: "Learn-only: This polish choice doesn't use learned words yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .unqualifiedLanguage:
-      line = languages.map { "Learn-only: Learned words are checked in \($0) only." }
-        ?? "Learn-only: Learned words aren't checked in this language yet."
+      line = languages.map {
+        String(localized: "Learn-only: Learned words are checked in \($0) only.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+      } ?? String(
+        localized: "Learn-only: Learned words aren't checked in this language yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable, .none:
-      line = "Learn-only: \(judge)'s word check isn't ready. Learned words are saved for later."
+      line = String(
+        localized: "Learn-only: \(judge)'s word check isn't ready. Learned words are saved for later.",
+        comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     }
   }
 
-  /// "English", "English and German": names in English, the app's UI language.
+  /// "English", "English and German": language names in the app's interface
+  /// language, which `Locale.current` follows (interface-localization.md).
   static func languageList(_ codes: [String]) -> String? {
-    let english = Locale(identifier: "en")
-    let names = codes.map { english.localizedString(forLanguageCode: $0) ?? $0 }
+    let names = codes.map { Locale.current.localizedString(forLanguageCode: $0) ?? $0 }
     guard !names.isEmpty else { return nil }
-    let formatter = ListFormatter()
-    formatter.locale = english
-    return formatter.string(from: names)
+    return ListFormatter.localizedString(byJoining: names)
   }
 }
 

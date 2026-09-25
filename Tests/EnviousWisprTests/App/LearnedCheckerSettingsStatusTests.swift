@@ -63,7 +63,7 @@ struct LearnedCheckerSettingsStatusTests {
     let lines = reasons.map { LearnedCheckerSettingsStatus(selection: .init(absence: $0)).line }
       + [LearnedCheckerSettingsStatus(selection: .init(
         checker: ReadyChecker(), identity: "eg1c-v2")).line,
-        LearnedCheckerSettingsStatus.retryTitle]
+        String(localized: LearnedCheckerSettingsStatus.retryTitle)]
     for line in lines {
       let lower = line.lowercased()
       #expect(!lower.contains("adapter"))
