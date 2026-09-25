@@ -1,7 +1,7 @@
 import EnviousWisprCore
-import EnviousWisprLLM
 import Testing
 
+@testable import EnviousWisprLLM
 @testable import EnviousWisprPipeline
 
 /// #2648 — the chain one part of an imported transcript runs through.
@@ -84,6 +84,35 @@ struct FileImportRunnerTests {
       == "the color of the center")
   }
 
+  /// #3111: an EG-1 import is told the language its text is in, exactly like a dictation, and so is
+  /// a second pass over the same saved text (what "Clean it again" runs). When this fails, an imported
+  /// Polish recording comes back translated into English.
+  @Test("#3111 an EG-1 import names the text's language, and so does a second pass over the saved text")
+  func egOneImportNamesTheLanguage() async throws {
+    let capture = NamedPromptCapture()
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(), egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.97) },
+      makeEGOnePolisher: { _ in PromptCapturingPolisher(capture: capture) },
+      promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
+    runner.freeze(settings: Self.egOneSnapshot, vocabulary: nil)
+    _ = try await runner.process(part: Self.polishPart)
+    _ = try await runner.process(part: Self.polishPart)
+    #expect(capture.systemPrompts == [Self.namedPolishPrompt, Self.namedPolishPrompt])
+  }
+
+  nonisolated static let polishPart =
+    "daty płatności są późniejsze niż daty zakupu prawdopodobnie różnica w rejestracji transakcji"
+  nonisolated static let namedPolishPrompt =
+    EGOneEnvelopePromptBuilder.systemPrompt
+    + " The transcript is in Polish; write the cleaned text in Polish."
+  static let egOneSnapshot = RecordingSettingsSnapshot(
+    backendType: .parakeet, backendSupportsLanguageDetection: false,
+    languageMode: .auto, wordCorrectionEnabled: false, fillerRemovalEnabled: false,
+    emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
+    llmProvider: LLMProvider.egOne.rawValue, llmModel: LLMProvider.egOneModelName, s1Control: nil,
+    englishSpelling: nil)
+
   /// A part cannot run before the import's configuration is frozen. This is a programming error rather
   /// than a user-facing one, and it fails loudly instead of running under whatever the defaults happen
   /// to be — which would silently polish with the wrong provider.
@@ -148,5 +177,33 @@ struct FileImportRunnerTests {
 
     #expect(failed.isUnpolished, "a real polish failure stopped being marked")
     #expect(failed.wasPolishAttempted)
+  }
+}
+
+// MARK: - #3111 fixtures shared with FileImportCoordinatorTests
+
+/// An EG-1 server that is always ready. No server runs: the polisher below answers.
+@MainActor
+final class ReadyEGOneRuntime: EGOneEndpointProviding {
+  func activeEndpoint() async -> EGOneEndpoint? {
+    EGOneEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+  }
+}
+
+/// Every system prompt an EG-1 polish was sent, in order.
+final class NamedPromptCapture: @unchecked Sendable {
+  var systemPrompts: [String] = []
+}
+
+/// A fake EG-1 polisher that records the system prompt and returns its input, capitalised, so
+/// the step accepts it.
+struct PromptCapturingPolisher: TranscriptPolisher {
+  let capture: NamedPromptCapture
+  func polish(
+    text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    capture.systemPrompts.append(instructions.systemPrompt)
+    return LLMResult(polishedText: text.prefix(1).uppercased() + text.dropFirst() + ".")
   }
 }

@@ -533,6 +533,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// gate for non-whitespace-segmented scripts. 10 chars ≈ a short utterance.
   private static let minCharsForCJKPolish = 10
 
+  /// #3111: the EG-1 language-naming decision for this take, from the language facts the
+  /// runner froze from the RAW text before any cleanup step ran. One call site per reader,
+  /// one function, so the prompt and anything that reports it cannot disagree.
+  static func egOneLanguageDecision(_ context: TextProcessingContext) -> EGOneLanguageNaming.Decision {
+    EGOneLanguageNaming.decide(
+      textLanguage: context.textLanguage, resolvedLanguage: context.language,
+      source: context.languageSource)
+  }
+
   /// The too-short skip's return value: text untouched, AI fields nil (#1022).
   private static func bypassedContext(_ context: TextProcessingContext) -> TextProcessingContext {
     var ctx = context
@@ -919,7 +928,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // Already captured for this attempt at the readiness probe above; nil for every
       // non-Ollama provider, which routes nothing.
       ollamaIsRemote: ollamaRemote,
-      s1Control: s1Control
+      s1Control: s1Control,
+      // #3111: native EG-1 only, and only when the raw text itself names a measured
+      // language that no lock or engine answer contradicts. Nil sends today's prompt.
+      namedLanguage: provider == .egOne ? Self.egOneLanguageDecision(context).namedLanguage : nil
     )
     let plan = promptPlanner.plan(input: input)
 

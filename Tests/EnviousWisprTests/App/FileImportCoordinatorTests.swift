@@ -1,10 +1,11 @@
 import EnviousWisprASR
 import EnviousWisprCore
-import EnviousWisprPipeline
+@testable import EnviousWisprLLM
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprPipeline
 
 /// #2648 — the state machine behind Transcribe a File.
 ///
@@ -1241,6 +1242,35 @@ struct FileImportCoordinatorTests {
     await settleUntil { coordinator.state == .finished }
     #expect(coordinator.runConfiguration?.polishProvider == .ollama, "the new polisher is frozen")
     #expect(coordinator.runConfiguration?.backendType == .parakeet, "the engine that made the words")
+  }
+
+  /// #3111: "Clean it again" re-runs the saved text through the real import runner, and the
+  /// second pass is told the language exactly as the first was. When this fails, cleaning a
+  /// Polish import again comes back in English.
+  @Test("#3111 Clean it again names the language on the second pass, from the saved text")
+  func rePolishNamesTheLanguage() async {
+    let capture = NamedPromptCapture()
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(), egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.97) },
+      makeEGOnePolisher: { _ in PromptCapturingPolisher(capture: capture) },
+      promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
+    runner.freeze(settings: FileImportRunnerTests.egOneSnapshot, vocabulary: nil)
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribe: { _ in FileImportRunnerTests.polishPart },
+      processPart: { part in try await runner.process(part: part) })
+    coordinator.choose(url: Self.anyURL)
+    await settleUntil { if case .ready = coordinator.state { return true } else { return false } }
+    coordinator.start()
+    await settleUntil { coordinator.state == .finished }
+    let firstPass = capture.systemPrompts.count
+    #expect(firstPass > 0)
+
+    coordinator.rePolish()
+    await settleUntil { coordinator.state == .finished && capture.systemPrompts.count > firstPass }
+    #expect(capture.systemPrompts.count > firstPass, "the second pass reached EG-1")
+    #expect(capture.systemPrompts.allSatisfy { $0 == FileImportRunnerTests.namedPolishPrompt })
   }
 
   // MARK: - Changing the polisher
