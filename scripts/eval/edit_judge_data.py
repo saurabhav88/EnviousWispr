@@ -71,10 +71,14 @@ THREE_CLASSES = ("notCorrection", "correctionButUnsafe", "correctionAndSafe")
 # labeller and are minted `blind-labelled-unanimous` instead. Consumable as
 # TRAINING data with that meaning; never review evidence, never a dev row.
 # `unreviewed` rows (mined candidates with label null) are never training data.
-REVIEWED_STATUSES = frozenset({"template-reviewed", "authored-sample-reviewed", "blind-labelled-unanimous", "mined-heuristic-labelled", "harvest-jev-labelled"})
+REVIEWED_STATUSES = frozenset({"template-reviewed", "authored-sample-reviewed", "blind-labelled-unanimous", "mined-heuristic-labelled", "harvest-jev-labelled", "rule-constructed", "rule-labelled-real"})
 # Statuses whose label rests on one model labeller: the corpus builder keeps
 # these out of dev and calibration (they may only train).
-TRAIN_ONLY_STATUSES = frozenset({"harvest-jev-labelled"})
+# #3105 (2026-09-25 night finalist): `rule-constructed` rows (half-typed stops built
+# from a real fix) and `rule-labelled-real` rows (real-speech pairs labelled by the
+# founder's written rulings, #3105 comments 5826937409 and 5827148399) carry a rule
+# label and no human review of each row, so they may only train as well.
+TRAIN_ONLY_STATUSES = frozenset({"harvest-jev-labelled", "rule-constructed", "rule-labelled-real"})
 
 
 def stage_one_shape_drop(original: str, replacement: str) -> bool:

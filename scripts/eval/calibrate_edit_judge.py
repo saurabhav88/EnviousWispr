@@ -85,7 +85,7 @@ def classifier_probs(run: Path, manifest: dict, contract: dict, rows: list[dict]
     head = torch.nn.Linear(backbone.config.hidden_size, len(trainer.CLASS_ORDER))
     head.load_state_dict(load_file(str(model_dir / "head.safetensors")))
     encode = lambda t: tok(t, add_special_tokens=False)["input_ids"]  # noqa: E731
-    enc = trainer.encode_rows(rows, contract, encode)
+    enc = trainer.encode_rows(rows, contract, encode, trainer.pair_input_form(manifest["decision_config"]))
     needs_types = probe.CANDIDATES[manifest["judge"]]["token_types"] == "bert_segments"
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     backbone.to(device)

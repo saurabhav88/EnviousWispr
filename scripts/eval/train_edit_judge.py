@@ -55,6 +55,7 @@ import shutil
 import subprocess
 import sys
 import time
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -534,12 +535,43 @@ def load_compat_receipt(path: Path, candidate: str) -> dict:
     return {"revision": entry["revision"], "tokenizer_files_sha256": entry.get("tokenizer_files_sha256", {}), "toolchain": doc["toolchain"], "receipt": str(path), "receipt_sha256": data.sha256_file(path)}
 
 
-def encode_rows(rows: list[dict], contract: dict, encode) -> list[dict]:
+PAIR_INPUT_FORMS = ("plain", "spell")
+
+
+def spelled(word: str) -> str:
+    """One code point per item, space-joined, after NFC (the Swift loader mirrors
+    this with `unicodeScalars`, `CoreMLCorrectionJudge.spelled`)."""
+    return " ".join(unicodedata.normalize("NFC", word))
+
+
+def pair_input_text(original: str, replacement: str, form: str = "plain") -> str:
+    """The edit side of the pair. `plain`: `original → replacement`. `spell`
+    (#3105): the same, then ` | ` and both sides spelled letter by letter.
+    The app reads the form from the export's `decision_config.pair_input`."""
+    plain = f"{original} → {replacement}"
+    if form == "plain":
+        return plain
+    if form == "spell":
+        return f"{plain} | {spelled(original)} → {spelled(replacement)}"
+    raise ValueError(f"unknown pair input form {form!r}")
+
+
+def pair_input_form(decision_config: dict) -> str:
+    """The form a run or export was trained with, from
+    `decision_config.encoding.pair_input` (bound by `config_sha256`); absent
+    means `plain`, every run before #3105."""
+    form = (decision_config.get("encoding") or {}).get("pair_input", "plain")
+    if form not in PAIR_INPUT_FORMS:
+        raise RuntimeError(f"decision_config.pair_input {form!r} is not one of {PAIR_INPUT_FORMS}")
+    return form
+
+
+def encode_rows(rows: list[dict], contract: dict, encode, form: str = "plain") -> list[dict]:
     """Pair-encode every row with the Python mirror of the shipped adapter:
-    input = `Edit: original → replacement`, output = `Sentence: pasted`."""
+    input = `Edit: <pair_input_text>`, output = `Sentence: pasted`."""
     out = []
     for r in rows:
-        enc = probe.mirror_pair_encoding(contract, encode, f"{r['original']} → {r['replacement']}", r["pasted"])
+        enc = probe.mirror_pair_encoding(contract, encode, pair_input_text(r["original"], r["replacement"], form), r["pasted"])
         out.append(enc)
     return out
 
@@ -653,6 +685,10 @@ def main() -> int:
     p.add_argument("--candidate", choices=list(probe.CANDIDATES), default="xenc-xlmr-base")
     p.add_argument("--dev-dir", type=Path, help="default <artifacts>/dev")
     p.add_argument("--seed", type=int, default=996)
+    p.add_argument("--threshold-from-bench", type=Path, help="detection: lock the threshold at --bench-recall on this bench file (rows with a bool `correction`) instead of the dev/cross-dev rule; requires --threshold-waiver (#3105)")
+    p.add_argument("--bench-recall", type=float, default=DETECTION_RECALL_MIN, help="recall target for --threshold-from-bench")
+    p.add_argument("--threshold-waiver", help="the founder decision that licenses --threshold-from-bench (quote plus reference); recorded in the run")
+    p.add_argument("--pair-input", choices=PAIR_INPUT_FORMS, default="plain", help="edit text form (#3105): plain, or spell (both sides also spelled letter by letter)")
     p.add_argument("--epochs", type=int, default=3)
     p.add_argument("--lr", type=float, default=2e-5)
     p.add_argument("--batch-size", type=int, default=16)
@@ -665,6 +701,9 @@ def main() -> int:
     p.add_argument("--loss-normalisation", choices=["global", "batch"], default="global", help="detection: `global` = mean(loss*w) with global family weights (the declared objective); `batch` = sum(loss*w)/sum(w) per minibatch (the pre-2026-09-19 behaviour, kept for a controlled comparison and recorded in the experiment)")
     args = p.parse_args()
     objective = Objective(args.objective)
+    if args.threshold_from_bench and (objective.name != "detection" or not args.threshold_waiver):
+        print("INFRA-ERROR: --threshold-from-bench needs --objective detection and --threshold-waiver", file=sys.stderr)
+        return 2
     if args.candidate not in TRAINABLE_CANDIDATES:
         print(f"INFRA-ERROR: {args.candidate} is not cleared for training; cleared: {sorted(TRAINABLE_CANDIDATES)} (mDeBERTa fails tokenizer load and conversion on this stack, chunk 2b)", file=sys.stderr)
         return 2
@@ -770,13 +809,13 @@ def main() -> int:
     # runner's upstream stack, before anything is fitted.
     sample = random.Random(args.seed).sample(train_rows, min(40, len(train_rows)))
     parity_texts = list(dict.fromkeys(
-        [contract["inputPrefix"] + f"{r['original']} → {r['replacement']}" for r in sample]
+        [contract["inputPrefix"] + pair_input_text(r["original"], r["replacement"], args.pair_input) for r in sample]
         + [contract["outputPrefix"] + r["pasted"] for r in sample]
         + [contract["inputPrefix"], contract["outputPrefix"]]))
     # Pairs as the trainer feeds them (input = "original → replacement",
     # output = pasted), plus the probe's long fixtures so truncation is
     # exercised and an empty side so the specials still assemble.
-    parity_pairs = [(f"{r['original']} → {r['replacement']}", r["pasted"]) for r in sample[:12]] + list(probe.PAIR_FIXTURES) + [("", sample[0]["pasted"]), (f"{sample[0]['original']} → {sample[0]['replacement']}", "")]
+    parity_pairs = [(pair_input_text(r["original"], r["replacement"], args.pair_input), r["pasted"]) for r in sample[:12]] + list(probe.PAIR_FIXTURES) + [("", sample[0]["pasted"]), (pair_input_text(sample[0]["original"], sample[0]["replacement"], args.pair_input), "")]
     shape_rows = train_rows + dev_rows + cal_rows + cross_rows
     # What a parity receipt is bound to: every input of the two checks. A
     # receipt for any other tokenizer, contract, split, cross-dev, seed or
@@ -867,7 +906,7 @@ def main() -> int:
         "detection_selection": {"false_proposal_ub_max": FALSE_PROPOSAL_UB_MAX, "recall_min": DETECTION_RECALL_MIN, "populations": ["dev", "cross_dev"] if cross_rows else ["dev"], "rule": selection_rule_text(objective, bool(cross_rows))} if objective.name == "detection" else None,
         "cross_dev": {"path": str(args.cross_dev), "rows": len(cross_rows), "file_sha256": data.sha256_file(args.cross_dev), "positives": sum(1 for r in cross_rows if r["correction"]), "negatives": sum(1 for r in cross_rows if not r["correction"]), "families": len({data.family_key(r) for r in cross_rows}), "label_sources": sorted({str(r.get("label_source", ""))[:80] for r in cross_rows})} if cross_rows else None,
         "dev_dir": str(dev_dir),
-        "encoding": {"contract": "tokenizer-contract.json", "input": "Edit: {original} → {replacement}", "output": "Sentence: {pasted}", "max_length": contract["maxLength"], "pooling": "CLS"},
+        "encoding": {"contract": "tokenizer-contract.json", "input": "Edit: {original} → {replacement}" + (" | {original spelled} → {replacement spelled}" if args.pair_input == "spell" else ""), "pair_input": args.pair_input, "output": "Sentence: {pasted}", "max_length": contract["maxLength"], "pooling": "CLS"},
         "optimizer": {"name": "AdamW", "lr": args.lr, "weight_decay": 0.01, "batch_size": args.batch_size, "epochs": args.epochs, "class_weights": class_weights, "loss": "cross-entropy"},
         "stopping_rule": ("keep the epoch with the best dev macro-F1 at threshold 0.50 with the stage-1 shape rule applied (same subject as threshold selection); no early stop below epochs" if objective.name == "detection" else "keep the epoch with the best dev macro-F1 over the three classes; no early stop below epochs"),
         "shape_rule": "EditRunShape-v1 (edit_judge_data.stage_one_shape_drop mirror; parity pinned against the Swift runner before training)" if objective.name == "detection" else None,
@@ -898,7 +937,7 @@ def main() -> int:
     model = Judge().to(device)
 
     def tensors(rows):
-        enc = encode_rows(rows, contract, encode)
+        enc = encode_rows(rows, contract, encode, args.pair_input)
         ids = torch.tensor([e["input_ids"] for e in enc], dtype=torch.long)
         mask = torch.tensor([e["attention_mask"] for e in enc], dtype=torch.long)
         types = torch.tensor([e["token_type_ids"] for e in enc], dtype=torch.long)
@@ -1012,6 +1051,23 @@ def main() -> int:
     single_population_reference = objective.select(dev_rows, dev_probs) if cross_rows else None
     cal_probs = predict(cal_t)
     locked = objective.selected_threshold(selection)
+    waiver = None
+    if args.threshold_from_bench:
+        # #3105 founder decision: lock at the recall point on the fresh real-speech
+        # bench although the standard dev/cross-dev bar is not met. The standard
+        # selection is kept and reported; `qualifying` keeps its real value.
+        bench_rows = [r for r in data.read_jsonl(args.threshold_from_bench) if isinstance(r.get("correction"), bool)]
+        bench_probs = predict(tensors(bench_rows))
+        pos = sorted((p[1] for r, p in zip(bench_rows, bench_probs) if r["correction"]), reverse=True)
+        bench_locked = pos[max(0, math.ceil(args.bench_recall * len(pos)) - 1)]
+        waiver = {
+            "founder_decision": args.threshold_waiver,
+            "bench": str(args.threshold_from_bench), "bench_sha256": data.sha256_file(args.threshold_from_bench),
+            "rows": len(bench_rows), "positives": len(pos), "recall_target": args.bench_recall,
+            "standard_selection_qualifying": selection["qualifying"], "standard_locked": locked,
+            "bench_at_locked": objective.score(bench_rows, bench_probs, bench_locked),
+        }
+        locked = bench_locked
     results = {
         "objective": objective.name,
         "best_epoch": best,
@@ -1050,7 +1106,7 @@ def main() -> int:
         "checkpoint": str(model_dir),
         "tokenizer": str(tok_dir),
         "tokenizer_inventory": tokenizer_inventory,
-        "thresholds": {objective.threshold_key: locked, "qualifying": selection["qualifying"], **({"branch": selection["branch"], "selection_populations": selection.get("populations", ["dev"]), "selection_rule": selection_rule_text(objective, bool(cross_rows))} if objective.name == "detection" else {})},
+        "thresholds": {objective.threshold_key: locked, "qualifying": selection["qualifying"], **({"waiver": waiver} if waiver else {}), **({"branch": selection["branch"], "selection_populations": selection.get("populations", ["dev"]), "selection_rule": selection_rule_text(objective, bool(cross_rows))} if objective.name == "detection" else {})},
         "provenance": f"train_edit_judge.py run {run_id}; templates {split_manifest['templates_version']} sha {split_manifest['templates_sha256'][:12]}; revision {revision}",
         "hash_version": data.HASH_VERSION,
         "execution_identity": execution_identity,
