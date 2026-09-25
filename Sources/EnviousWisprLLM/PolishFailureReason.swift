@@ -159,9 +159,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     // Scope of the arm, stated precisely because it is easy to overclaim: the
     // PILL the user actually sees does NOT come through here. It comes from
     // `ollamaPreflightSkipNotice`, which carries `.skipped` itself — so the skip
-    // tone on screen survives even without this arm. `leadIn`'s production
-    // readers are `composedMessage` and `notice(provider:)`, which the runner
-    // never reaches for this reason (`TextProcessingRunner`'s
+    // tone on screen survives even without this arm. `notice(provider:)` reads
+    // `leadIn` (`composedMessage` builds only the displayed text), and the
+    // runner never reaches it for this reason (`TextProcessingRunner`'s
     // `ollamaPreflightSkipNotice ?? notice(provider:)` short-circuits). Verified by mutation: deleting this arm leaves every
     // pill and gate test GREEN and fails only the classification test.
     //

@@ -192,6 +192,18 @@ struct AppWindowCoordinatorTests {
     translated.title = "Einrichtung"
     #expect(OnboardingWindowIdentity.matches(translated))
 
+    // SwiftUI's numbered form for the same scene matches too.
+    let numbered = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    numbered.identifier = NSUserInterfaceItemIdentifier("onboarding-AppWindow-1")
+    #expect(OnboardingWindowIdentity.matches(numbered))
+
+    // A different scene whose id merely starts with the same letters never matches.
+    let prefixed = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    prefixed.identifier = NSUserInterfaceItemIdentifier("onboardingTips")
+    #expect(!OnboardingWindowIdentity.matches(prefixed))
+
     // Another scene's window never matches, even titled like Setup.
     let lookalike = NSWindow(
       contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)

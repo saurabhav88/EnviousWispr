@@ -101,7 +101,7 @@ enum QuickAddPanelCopy {
       comment: "Quick Add panel: the word already exists. %@ is the word.")
   }
 
-  /// The one place a `Notice` becomes English.
+  /// The one place a `Notice` becomes localized display text.
   ///
   /// **Exhaustive over `Kind` on purpose.** The model carries the FACTS — which thing happened, to
   /// which word, with which spelling — and never a sentence, so a new outcome cannot ship borrowing
