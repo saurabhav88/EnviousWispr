@@ -59,10 +59,11 @@ struct SendFeedbackView: View {
           .allowsHitTesting(false)
       )
       .overlay(alignment: .topTrailing) {
-        if issue == .messageTooLong { warning(Self.tooLongText).padding(8) }
+        if issue == .messageTooLong { warning().padding(8) }
       }
       .accessibilityLabel(
         String(localized: "feedback.message.label", defaultValue: "Feedback message"))
+      .help(Text(verbatim: issue == .messageTooLong ? Self.tooLongText : ""))
       .accessibilityHint(Text(verbatim: issue == .messageTooLong ? Self.tooLongText : ""))
   }
 
@@ -79,8 +80,9 @@ struct SendFeedbackView: View {
         .allowsHitTesting(false)
     )
     .overlay(alignment: .trailing) {
-      if issue == .invalidEmail { warning(Self.invalidEmailText).padding(.trailing, 10) }
+      if issue == .invalidEmail { warning().padding(.trailing, 10) }
     }
+    .help(Text(verbatim: issue == .invalidEmail ? Self.invalidEmailText : ""))
     .accessibilityHint(Text(verbatim: issue == .invalidEmail ? Self.invalidEmailText : ""))
   }
 
@@ -92,11 +94,12 @@ struct SendFeedbackView: View {
     String(localized: "feedback.message.tooLong", defaultValue: "Maximum 4,000 characters")
   }
 
-  /// The reason Send is disabled, as a symbol with a tooltip, so it is not carried by color alone.
-  private func warning(_ reason: String) -> some View {
+  /// Marks the field that blocks Send, so the reason is not carried by color alone. Decoration:
+  /// the field carries the tooltip and hint, and a click on the symbol reaches the field.
+  private func warning() -> some View {
     Image(systemName: "exclamationmark.circle.fill")
       .foregroundStyle(Color.stError)
-      .help(Text(verbatim: reason))
+      .allowsHitTesting(false)
       .accessibilityHidden(true)
   }
 
