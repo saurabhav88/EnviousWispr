@@ -33,8 +33,11 @@ enum BluetoothTipsCopy {
     localized: "After your mic has been idle, wait 1 to 2 seconds before speaking.",
     comment: "Bluetooth tip, shown on the tip card and in Microphone settings.")
   static let tipReadiness = String(
-    localized: "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default).",
-    comment: "Bluetooth tip, shown on the tip card and in Microphone settings. 'Microphone readiness' is the name of a setting.")
+    localized:
+      "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default).",
+    comment:
+      "Bluetooth tip, shown on the tip card and in Microphone settings. 'Microphone readiness' is the name of a setting."
+  )
   static let tipHeadphones = String(
     localized: "Built-in or wired mics usually avoid this startup delay.",
     comment: "Bluetooth tip, shown on the tip card and in Microphone settings.")
@@ -49,7 +52,8 @@ enum BluetoothTipsCopy {
     localized: "Using a Bluetooth microphone?",
     comment: "Heading of the Bluetooth guide in Microphone settings.")
   static let settingsIntro = String(
-    localized: "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay.",
+    localized:
+      "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay.",
     comment: "First paragraph of the Bluetooth guide in Microphone settings.")
   static let micOrder = String(
     localized: "Preferred mic order: Built-in or wired > USB > Bluetooth",

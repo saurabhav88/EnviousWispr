@@ -27,11 +27,14 @@ enum CorrectionLearnedPillCopy {
   // translator can move the word and use their own quotation marks. The word
   // itself is the user's, inserted verbatim.
   static let undo = String(
-    localized: "Undo", comment: "Button on the pill shown after a word is added to the dictionary. Removes it again.")
+    localized: "Undo",
+    comment: "Button on the pill shown after a word is added to the dictionary. Removes it again.")
   static let undone = String(
-    localized: "Undone", comment: "Pill result after the user pressed Undo: the word was removed again.")
+    localized: "Undone",
+    comment: "Pill result after the user pressed Undo: the word was removed again.")
   static let couldNotUndo = String(
-    localized: "Couldn\u{2019}t undo", comment: "Pill result when removing the just-added word failed.")
+    localized: "Couldn\u{2019}t undo",
+    comment: "Pill result when removing the just-added word failed.")
 
   /// The one line the `.learned` phase draws.
   static func sentence(for model: LearnedCorrectionPillModel) -> String {
@@ -43,7 +46,8 @@ enum CorrectionLearnedPillCopy {
     case .updated:
       return String(
         localized: "\u{201C}\(model.canonical)\u{201D} updated",
-        comment: "Pill after a correction changed a word already in the dictionary. %@ is that word.")
+        comment:
+          "Pill after a correction changed a word already in the dictionary. %@ is that word.")
     }
   }
 
@@ -71,7 +75,9 @@ enum CorrectionLearnedPillCopy {
     guard line.showsUndo else { return line.text }
     return String(
       localized: "\(line.text). Undo available.",
-      comment: "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced.")
+      comment:
+        "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced."
+    )
   }
 }
 

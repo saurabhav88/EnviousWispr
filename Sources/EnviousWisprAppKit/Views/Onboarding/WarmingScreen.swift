@@ -44,7 +44,7 @@ struct WarmingScreenV2: View {
   var body: some View {
     VStack(spacing: 0) {
       RainbowLipsView(animationState: viewModel.lipsState, size: 122)
-      .padding(.bottom, 18)
+        .padding(.bottom, 18)
 
       Text(failureMessage == nil ? "Warming up" : "Nearly there")
         .font(.system(size: 28, weight: .heavy, design: .rounded))
@@ -182,7 +182,8 @@ struct WarmingScreenV2: View {
         title: String(localized: "Microphone ready", comment: "Setup warm-up checklist item."),
         state: permissions.hasMicrophonePermission ? .done : .pending)
       WarmingChecklistRow(
-        title: String(localized: "Your shortcut is set", comment: "Setup warm-up checklist item."), state: .done)
+        title: String(localized: "Your shortcut is set", comment: "Setup warm-up checklist item."),
+        state: .done)
       WarmingChecklistRow(
         title: String(localized: "Speech engine", comment: "Setup warm-up checklist item."),
         state: {

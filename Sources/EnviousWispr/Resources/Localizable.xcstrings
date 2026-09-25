@@ -5,6 +5,9 @@
     " to cancel without changing your keybind." : {},
     "\"%@\"" : {},
     "%@ by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {},
+    "%@ isn't downloaded yet. Open Settings to download it." : {
+      "comment" : "Pill: the chosen speech engine is not downloaded. %@ is the engine's name."
+    },
     "%@ now recognizes %@" : {
       "localizations" : {
         "en" : {
@@ -96,8 +99,14 @@
     "%lld%%" : {},
     "%lld." : {},
     "(%@)" : {},
+    "60-minute limit reached. Transcribing..." : {
+      "comment" : "Pill when a recording hit the 60-minute cap and is now being transcribed."
+    },
     "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {},
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
+    "A take is stuck. Restart the app." : {
+      "comment" : "Pill: an earlier dictation is stuck and holds the speech engine. Must fit a small single-line pill (about 40 characters)."
+    },
     "AI POLISH · OPTIONAL" : {},
     "AI Polish" : {},
     "AI polish engine" : {},
@@ -137,6 +146,9 @@
     "Almost there... pinky promise" : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Already recording." : {
+      "comment" : "Pill: a dictation is already in progress."
+    },
     "Always replace, even when the original might be right" : {},
     "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {},
     "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {},
@@ -145,14 +157,29 @@
     },
     "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation." : {},
     "Attention" : {},
+    "Audio capture error. Try again." : {
+      "comment" : "Pill after a failed dictation: the recording could not start or capture audio. The user should retry."
+    },
     "Audio duration:" : {},
+    "Audio isn't capturing from %@. Try a different input under Settings > Microphone." : {
+      "comment" : "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Microphone is a place in this app."
+    },
+    "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings." : {
+      "comment" : "Pill when the microphone delivered only silence."
+    },
     "Auto" : {},
     "Auto-copy to clipboard" : {},
     "Auto-detect language" : {},
+    "Auto-stop on silence is unavailable right now" : {
+      "comment" : "Banner inside the recording panel: stopping automatically on silence is not available."
+    },
     "Automatic" : {},
     "Automatically fix grammar, punctuation, and formatting." : {},
     "Available" : {},
     "Batch ASR:" : {},
+    "Beginning of dictation was unclear and was skipped" : {
+      "comment" : "Pill: the start of the recording was unusable and left out."
+    },
     "Bluetooth mic detected" : {
       "comment" : "Title of the tip card shown when a Bluetooth microphone is the input."
     },
@@ -228,11 +255,17 @@
     "Copy Log Path" : {},
     "Copy error details" : {},
     "Copy to clipboard" : {},
+    "Couldn't keep this recording. It was discarded." : {
+      "comment" : "Pill after the user pressed Escape and the recording could not be kept for recovery."
+    },
     "Couldn't prepare model. Click to retry." : {},
     "Couldn't reach the download server. Please check your internet connection and try again." : {
       "comment" : "Setup error: the speech model download server could not be reached."
     },
     "Couldn't save the file" : {},
+    "Couldn't save to history: %@" : {
+      "comment" : "Pill: the dictation could not be saved to History. %@ is the reason."
+    },
     "Couldn’t save “%@”" : {
       "comment" : "Pill when a word could not be saved to the dictionary. %@ is that word."
     },
@@ -351,6 +384,9 @@
       }
     },
     "Finish your current dictation first, then try again." : {},
+    "Finishing a take. Please wait." : {
+      "comment" : "Pill: a previous recording is being recovered, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+    },
     "Fix Now" : {},
     "For example, say “%@ %@” and that snippet is pasted." : {
       "localizations" : {
@@ -441,6 +477,18 @@
     "Microphone" : {
       "comment" : "Setup permissions: title of the microphone permission row."
     },
+    "Microphone access is off." : {
+      "comment" : "Pill: macOS microphone permission is off for the app."
+    },
+    "Microphone disconnected." : {
+      "comment" : "Pill: the microphone was unplugged during recording. The audio so far was saved."
+    },
+    "Microphone disconnected. Text may be cut short." : {
+      "comment" : "Pill: the microphone was unplugged; the end of the text may be missing."
+    },
+    "Microphone disconnected. Words may be missing." : {
+      "comment" : "Pill: the microphone was unplugged; words at the start and end may be missing."
+    },
     "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default)." : {
       "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings. 'Microphone readiness' is the name of a setting."
     },
@@ -481,6 +529,9 @@
     "No language matches your search." : {},
     "No matches for \"%@\"." : {},
     "No matching history." : {},
+    "No microphone found. Please connect one." : {
+      "comment" : "Pill: no input device is available."
+    },
     "No mishearings yet. Type one above and click Add." : {},
     "No model selected" : {},
     "No snippets match “%@”" : {},
@@ -555,8 +606,20 @@
     "Pipeline Benchmark Results" : {},
     "Play recording sounds" : {},
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
+    "Polish failed. Using raw text." : {
+      "comment" : "Pill: AI polish failed, so the unpolished text was pasted."
+    },
+    "Polishing" : {
+      "comment" : "Sidebar status chip while AI polish rewrites the text. Very short space, no ellipsis."
+    },
     "Polishing the speech engine..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Polishing..." : {
+      "comment" : "Pill and main window while AI polish rewrites the text. Three ASCII periods."
+    },
+    "Polishing…" : {
+      "comment" : "Toolbar status badge while AI polish rewrites the text. One ellipsis character."
     },
     "Preferred mic order: Built-in or wired > USB > Bluetooth" : {
       "comment" : "Microphone settings: the recommended input types, best first. Keep the > signs."
@@ -592,6 +655,18 @@
     "Recommended" : {},
     "Recommended for cleanup" : {},
     "Record" : {},
+    "Recording auto-stops in under a minute (60-minute cap)" : {
+      "comment" : "Banner inside the recording panel in the last minute before the 60-minute limit."
+    },
+    "Recording interrupted." : {
+      "comment" : "Pill: recording stopped unexpectedly. The audio so far was saved."
+    },
+    "Recording interrupted. Text may be cut short." : {
+      "comment" : "Pill: recording was interrupted; the end of the text may be missing."
+    },
+    "Recording interrupted. Words may be missing." : {
+      "comment" : "Pill: recording was interrupted; words may be missing."
+    },
     "Recording · %@" : {},
     "Recording, press a key combination" : {
       "comment" : "VoiceOver value of the keybind field while it waits for a key combination."
@@ -751,8 +826,23 @@
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
     "Transcribe a File" : {},
+    "Transcribing" : {
+      "comment" : "Sidebar status chip while speech is turned into text. Very short space, no ellipsis."
+    },
+    "Transcribing a file. Please wait." : {
+      "comment" : "Pill: a file is being transcribed, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+    },
+    "Transcribing..." : {
+      "comment" : "Pill and main window while speech is turned into text. Three ASCII periods."
+    },
+    "Transcribing…" : {
+      "comment" : "Toolbar status badge while speech is turned into text. One ellipsis character."
+    },
     "Transcript" : {},
     "Transcription Complete" : {},
+    "Transcription error. Try again." : {
+      "comment" : "Pill after a failed dictation: speech could not be turned into text. The user should retry."
+    },
     "Try Again" : {},
     "Try a different search, or another filter." : {},
     "Try setup again" : {},

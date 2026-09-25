@@ -289,20 +289,34 @@ struct PracticeScreenV2: View {
 /// Each sentence is localized whole; the shortcut name is inserted as written.
 enum PracticeScreenCopy {
   static func headline(_ state: OnboardingV2ViewModel.PracticeState, succeeded: Bool) -> String {
-    let youAreSet = String(localized: "That is it. You are set.", comment: "Practice screen headline. The first dictation worked.")
+    let youAreSet = String(
+      localized: "That is it. You are set.",
+      comment: "Practice screen headline. The first dictation worked.")
     switch state {
-    case .cannotHear: return String(localized: "We cannot hear you", comment: "Practice screen headline. A permission is missing.")
-    case .listening: return String(localized: "Listening…", comment: "Practice screen headline. Shown while the key is held.")
+    case .cannotHear:
+      return String(
+        localized: "We cannot hear you",
+        comment: "Practice screen headline. A permission is missing.")
+    case .listening:
+      return String(
+        localized: "Listening…", comment: "Practice screen headline. Shown while the key is held.")
     case .somethingBroke:
-      return String(localized: "That did not work", comment: "Practice screen headline. The dictation failed on our side.")
+      return String(
+        localized: "That did not work",
+        comment: "Practice screen headline. The dictation failed on our side.")
     case .missedTheBox:
-      return String(localized: "Click the box first", comment: "Practice screen headline. The words went to the clipboard.")
-    case .saidNothing: return String(localized: "All quiet", comment: "Practice screen headline. Nothing was heard.")
+      return String(
+        localized: "Click the box first",
+        comment: "Practice screen headline. The words went to the clipboard.")
+    case .saidNothing:
+      return String(localized: "All quiet", comment: "Practice screen headline. Nothing was heard.")
     case .worked: return youAreSet
     case .waiting:
       return succeeded
         ? youAreSet
-        : String(localized: "Time for your first dictation!", comment: "Practice screen headline. Before the first try.")
+        : String(
+          localized: "Time for your first dictation!",
+          comment: "Practice screen headline. Before the first try.")
     }
   }
 
@@ -310,7 +324,8 @@ enum PracticeScreenCopy {
     _ state: OnboardingV2ViewModel.PracticeState, succeeded: Bool, shortcutName: String
   ) -> String {
     let worked = String(
-      localized: "Those are your words, typed for you.\nIn any other app, click into a text box first.",
+      localized:
+        "Those are your words, typed for you.\nIn any other app, click into a text box first.",
       comment: "Practice screen, after the first dictation worked. Keep the line break.")
     switch state {
     case .cannotHear(let reason, _):
@@ -342,7 +357,9 @@ enum PracticeScreenCopy {
       return String(
         localized:
           "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold \(shortcutName) again.",
-        comment: "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break.")
+        comment:
+          "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
+      )
     case .saidNothing:
       // Not an error, and never worded as one: the microphone worked, there
       // was simply nothing to hear. The prompt is drawn from the persona banks
@@ -350,7 +367,9 @@ enum PracticeScreenCopy {
       return String(
         localized:
           "Your microphone is working. We just did not hear anything.\nTry holding \(shortcutName) and saying: tell grandma I will call Sunday.",
-        comment: "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break.")
+        comment:
+          "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break."
+      )
     case .worked:
       return worked
     case .waiting:
@@ -358,7 +377,9 @@ enum PracticeScreenCopy {
         ? worked
         : String(
           localized: "Hold \(shortcutName) and say something.\nLet go when you are done.",
-          comment: "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break.")
+          comment:
+            "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
+        )
     }
   }
 

@@ -48,21 +48,37 @@ enum DictationNarrator {
     // Our-fault start / capture failures → retry.
     case .prepareFailed, .modelWedged, .modelLoadFailed, .captureStartFailed,
       .micWouldNotOpen, .captureStalled, .zeroSignal:
-      return "Audio capture error. Try again."
+      return String(
+        localized: "Audio capture error. Try again.",
+        comment:
+          "Pill after a failed dictation: the recording could not start or capture audio. The user should retry."
+      )
     // Our-fault transcribe failures (incl. "couldn't catch that") → retry.
     case .asrFailed, .asrWedged, .asrInterrupted, .noAudioCaptured,
       .asrEmptyWithSpeech, .emptyAfterProcessing, .unknown:
-      return "Transcription error. Try again."
+      return String(
+        localized: "Transcription error. Try again.",
+        comment:
+          "Pill after a failed dictation: speech could not be turned into text. The user should retry."
+      )
     // User-actionable.
     case .permissionDenied:
-      return "Microphone access is off."
+      return String(
+        localized: "Microphone access is off.",
+        comment: "Pill: macOS microphone permission is off for the app.")
     case .noMicrophoneFound:
-      return "No microphone found. Please connect one."
+      return String(
+        localized: "No microphone found. Please connect one.",
+        comment: "Pill: no input device is available.")
     // Informational interruptions (audio was saved).
     case .deviceRemoved:
-      return "Microphone disconnected."
+      return String(
+        localized: "Microphone disconnected.",
+        comment: "Pill: the microphone was unplugged during recording. The audio so far was saved.")
     case .engineLost, .unknownInterruption:
-      return "Recording interrupted."
+      return String(
+        localized: "Recording interrupted.",
+        comment: "Pill: recording stopped unexpectedly. The audio so far was saved.")
     }
   }
 
@@ -79,11 +95,17 @@ enum DictationNarrator {
   static func copy(for phase: ProcessingPhase) -> String {
     switch phase {
     case .transcribing:
-      return "Transcribing..."
+      return String(
+        localized: "Transcribing...",
+        comment: "Pill and main window while speech is turned into text. Three ASCII periods.")
     case .polishing:
-      return "Polishing..."
+      return String(
+        localized: "Polishing...",
+        comment: "Pill and main window while AI polish rewrites the text. Three ASCII periods.")
     case .transcribingMaxDurationReached:
-      return "60-minute limit reached. Transcribing..."
+      return String(
+        localized: "60-minute limit reached. Transcribing...",
+        comment: "Pill when a recording hit the 60-minute cap and is now being transcribed.")
     }
   }
 
@@ -91,9 +113,13 @@ enum DictationNarrator {
   static func statusBadgeCopy(for phase: ProcessingPhase) -> String {
     switch phase {
     case .transcribing, .transcribingMaxDurationReached:
-      return "Transcribing\u{2026}"
+      return String(
+        localized: "Transcribing\u{2026}",
+        comment: "Toolbar status badge while speech is turned into text. One ellipsis character.")
     case .polishing:
-      return "Polishing\u{2026}"
+      return String(
+        localized: "Polishing\u{2026}",
+        comment: "Toolbar status badge while AI polish rewrites the text. One ellipsis character.")
     }
   }
 
@@ -102,9 +128,15 @@ enum DictationNarrator {
   static func shortCopy(for phase: ProcessingPhase) -> String {
     switch phase {
     case .transcribing, .transcribingMaxDurationReached:
-      return "Transcribing"
+      return String(
+        localized: "Transcribing",
+        comment:
+          "Sidebar status chip while speech is turned into text. Very short space, no ellipsis.")
     case .polishing:
-      return "Polishing"
+      return String(
+        localized: "Polishing",
+        comment:
+          "Sidebar status chip while AI polish rewrites the text. Very short space, no ellipsis.")
     }
   }
 
@@ -129,8 +161,10 @@ enum DictationNarrator {
   static func copy(for reason: TerminalAdvisoryReason) -> String {
     switch reason {
     case .zeroSignal, .vadGateNoSpeech, .noTransport:
-      return
-        "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings."
+      return String(
+        localized:
+          "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings.",
+        comment: "Pill when the microphone delivered only silence.")
     }
   }
 
@@ -141,8 +175,12 @@ enum DictationNarrator {
   /// seventh sentence above, byte for byte, so every existing caller is unchanged.
   static func copy(for reason: TerminalAdvisoryReason, hint: MultiInputAdvisoryHint?) -> String {
     guard let hint else { return copy(for: reason) }
-    return
-      "Audio isn't capturing from \(hint.deviceName). Try a different input under Settings > Microphone."
+    return String(
+      localized:
+        "Audio isn't capturing from \(hint.deviceName). Try a different input under Settings > Microphone.",
+      comment:
+        "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Microphone is a place in this app."
+    )
   }
 
   // MARK: - Post-completion + advisory warnings (E3, #1567)
@@ -153,28 +191,47 @@ enum DictationNarrator {
   static func copy(for reason: RecordingWarningReason) -> String {
     switch reason {
     case .modelNotDownloaded(let engineLabel):
-      return "\(engineLabel) isn't downloaded yet. Open Settings to download it."
+      return String(
+        localized: "\(engineLabel) isn't downloaded yet. Open Settings to download it.",
+        comment: "Pill: the chosen speech engine is not downloaded. %@ is the engine's name.")
     case .polishFailed:
-      return "Polish failed. Using raw text."
+      return String(
+        localized: "Polish failed. Using raw text.",
+        comment: "Pill: AI polish failed, so the unpolished text was pasted.")
     case .historySaveFailed(let reason):
-      return "Couldn't save to history: \(reason)"
+      return String(
+        localized: "Couldn't save to history: \(reason)",
+        comment: "Pill: the dictation could not be saved to History. %@ is the reason.")
     // #2087. States the OUTCOME the user has to act on — the words are gone —
     // rather than the mechanism, which is a crash-recovery file they never
     // heard of. No dash characters, per the content rules.
     case .escapeRecoveryUnavailable:
-      return "Couldn't keep this recording. It was discarded."
+      return String(
+        localized: "Couldn't keep this recording. It was discarded.",
+        comment:
+          "Pill after the user pressed Escape and the recording could not be kept for recovery.")
     case .salvagedBeginning:
-      return "Beginning of dictation was unclear and was skipped"
+      return String(
+        localized: "Beginning of dictation was unclear and was skipped",
+        comment: "Pill: the start of the recording was unusable and left out.")
     case .interruptedTail(let disclosure, let alsoTrimmedLead):
       switch (disclosure, alsoTrimmedLead) {
       case (.deviceRemoved, true):
-        return "Microphone disconnected. Words may be missing."
+        return String(
+          localized: "Microphone disconnected. Words may be missing.",
+          comment: "Pill: the microphone was unplugged; words at the start and end may be missing.")
       case (.deviceRemoved, false):
-        return "Microphone disconnected. Text may be cut short."
+        return String(
+          localized: "Microphone disconnected. Text may be cut short.",
+          comment: "Pill: the microphone was unplugged; the end of the text may be missing.")
       case (.otherInterruption, true):
-        return "Recording interrupted. Words may be missing."
+        return String(
+          localized: "Recording interrupted. Words may be missing.",
+          comment: "Pill: recording was interrupted; words may be missing.")
       case (.otherInterruption, false):
-        return "Recording interrupted. Text may be cut short."
+        return String(
+          localized: "Recording interrupted. Text may be cut short.",
+          comment: "Pill: recording was interrupted; the end of the text may be missing.")
       }
     // #2648. Says what the user has to act on: nothing was recorded, and when
     // to try again. The mechanism is a single inference slot they have never
@@ -195,21 +252,35 @@ enum DictationNarrator {
         // 58 characters and this pill truncates rather than wrapping. The character-count
         // test is a heuristic; live overlay UAT verifies fit. The earlier version of this
         // comment quoted the exact truncated string, which nobody had observed.
-        return "Transcribing a file. Please wait."
+        return String(
+          localized: "Transcribing a file. Please wait.",
+          comment:
+            "Pill: a file is being transcribed, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+        )
       case .crashRecovery:
         // 42 characters, and MEASURED truncating in the same pill on 2026-09-10 by the
         // sweep that caught the file-import one. Pre-existing, shipped, and cut off in
         // exactly the same place. 30 fits.
-        return "Finishing a take. Please wait."
+        return String(
+          localized: "Finishing a take. Please wait.",
+          comment:
+            "Pill: a previous recording is being recovered, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+        )
       case .dictation:
-        return "Already recording."
+        return String(
+          localized: "Already recording.",
+          comment: "Pill: a dictation is already in progress.")
       case .abandonedDecode:
         // #2787: the decode the user stopped waiting for still owns the engine.
         // Say what will actually work, not "try again soon" — on the machine
         // this was written for, soon never came.
         // 33 characters. #2787 shipped this at 45 against a 46 "ceiling" that #2772
         // photographed cutting a 41-character sentence short; the two met at the merge.
-        return "A take is stuck. Restart the app."
+        return String(
+          localized: "A take is stuck. Restart the app.",
+          comment:
+            "Pill: an earlier dictation is stuck and holds the speech engine. Must fit a small single-line pill (about 40 characters)."
+        )
       }
     }
   }
@@ -222,9 +293,14 @@ enum DictationNarrator {
   static func copy(for reason: RecordingNoticeReason) -> String {
     switch reason {
     case .approachingCap:
-      return "Recording auto-stops in under a minute (60-minute cap)"
+      return String(
+        localized: "Recording auto-stops in under a minute (60-minute cap)",
+        comment: "Banner inside the recording panel in the last minute before the 60-minute limit.")
     case .autoStopUnavailable:
-      return "Auto-stop on silence is unavailable right now"
+      return String(
+        localized: "Auto-stop on silence is unavailable right now",
+        comment:
+          "Banner inside the recording panel: stopping automatically on silence is not available.")
     }
   }
 

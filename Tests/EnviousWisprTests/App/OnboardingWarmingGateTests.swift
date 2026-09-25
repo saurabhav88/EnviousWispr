@@ -734,7 +734,8 @@ import Testing
         #expect(
           vm.practiceText == "hey Mike pick up Emma from school today",
           "re-appearing inside one visit wiped the words the user had just dictated")
-        #expect(vm.practiceSucceeded, "re-appearing inside one visit undid a success the user earned")
+        #expect(
+          vm.practiceSucceeded, "re-appearing inside one visit undid a success the user earned")
 
         // NEW visit: the floor moves, so the previous visit's words and its lit
         // FINISH SETUP must not survive. This is the shipped defect's half.
@@ -1027,7 +1028,9 @@ struct OnboardingPracticeCopyTests {
   @Test("every headline branch reads exactly as before")
   func headlines() {
     typealias Copy = PracticeScreenCopy
-    #expect(Copy.headline(.cannotHear(reason: "mic_denied", permission: nil), succeeded: false) == "We cannot hear you")
+    #expect(
+      Copy.headline(.cannotHear(reason: "mic_denied", permission: nil), succeeded: false)
+        == "We cannot hear you")
     #expect(Copy.headline(.listening, succeeded: false) == "Listening\u{2026}")
     #expect(Copy.headline(.somethingBroke, succeeded: false) == "That did not work")
     #expect(Copy.headline(.missedTheBox, succeeded: false) == "Click the box first")
@@ -1044,27 +1047,35 @@ struct OnboardingPracticeCopyTests {
     }
     #expect(
       sub(.cannotHear(reason: "mic_denied", permission: nil))
-        == "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead.")
+        == "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead."
+    )
     #expect(
       sub(.cannotHear(reason: "accessibility_denied", permission: nil))
-        == "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead.")
+        == "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead."
+    )
     #expect(sub(.listening) == "Go ahead. Let go of \u{2325} Option when you are done.")
     #expect(
       sub(.somethingBroke)
-        == "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere.")
+        == "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere."
+    )
     #expect(
       sub(.missedTheBox)
-        == "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold \u{2325} Option again.")
+        == "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold \u{2325} Option again."
+    )
     #expect(
       sub(.saidNothing)
-        == "Your microphone is working. We just did not hear anything.\nTry holding \u{2325} Option and saying: tell grandma I will call Sunday.")
-    let worked = "Those are your words, typed for you.\nIn any other app, click into a text box first."
+        == "Your microphone is working. We just did not hear anything.\nTry holding \u{2325} Option and saying: tell grandma I will call Sunday."
+    )
+    let worked =
+      "Those are your words, typed for you.\nIn any other app, click into a text box first."
     #expect(sub(.worked, true) == worked)
     #expect(sub(.waiting, true) == worked)
     #expect(sub(.waiting) == "Hold \u{2325} Option and say something.\nLet go when you are done.")
   }
 
-  @Test("the footnote is a single space while a permission is missing or after success, and the hint otherwise")
+  @Test(
+    "the footnote is a single space while a permission is missing or after success, and the hint otherwise"
+  )
   func footnotes() {
     #expect(PracticeScreenCopy.footnote(cannotHear: true, succeeded: false) == " ")
     #expect(PracticeScreenCopy.footnote(cannotHear: false, succeeded: true) == " ")

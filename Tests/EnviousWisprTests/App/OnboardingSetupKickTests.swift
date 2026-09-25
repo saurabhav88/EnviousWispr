@@ -123,7 +123,8 @@ import Testing
 @MainActor
 @Suite("Onboarding setup copy projection", .tags(.productOutcome))
 struct OnboardingSetupCopyProjectionTests {
-  @Test("each progress-file phase token reads as itself in English; an unknown one shows as written")
+  @Test(
+    "each progress-file phase token reads as itself in English; an unknown one shows as written")
   func phaseTokensReadAsThemselves() {
     let tokens = [
       "Checking speech model files...", "Downloading speech model...", "Verifying download...",
@@ -139,7 +140,9 @@ struct OnboardingSetupCopyProjectionTests {
     #expect(OnboardingV2ViewModel.displayPhase("Some new phase...") == "Some new phase...")
   }
 
-  @Test("each whole progress line keeps its English bytes; an unknown form shows the phase and the detail as written")
+  @Test(
+    "each whole progress line keeps its English bytes; an unknown form shows the phase and the detail as written"
+  )
   func progressLinesKeepTheirEnglish() {
     #expect(
       OnboardingV2ViewModel.displayProgress(
@@ -154,7 +157,8 @@ struct OnboardingSetupCopyProjectionTests {
         phase: ModelLoadStallPolicy.installPhase, detail: "parakeet-tdt-0.6b-v3")
         == "Installing model... parakeet-tdt-0.6b-v3")
     #expect(
-      OnboardingV2ViewModel.displayProgress(phase: ModelLoadStallPolicy.verifyingDownloadPhase, detail: "")
+      OnboardingV2ViewModel.displayProgress(
+        phase: ModelLoadStallPolicy.verifyingDownloadPhase, detail: "")
         == "Verifying download...")
     #expect(
       OnboardingV2ViewModel.displayProgress(phase: "Some new phase...", detail: "3 of 9")
@@ -164,17 +168,22 @@ struct OnboardingSetupCopyProjectionTests {
   @Test("a download error is recognised by its type even when its description is not English")
   func downloadErrorsAreRecognisedByType() {
     func error(_ domain: String, _ code: Int) -> NSError {
-      NSError(domain: domain, code: code, userInfo: [NSLocalizedDescriptionKey: "Ein Fehler ist aufgetreten."])
+      NSError(
+        domain: domain, code: code,
+        userInfo: [NSLocalizedDescriptionKey: "Ein Fehler ist aufgetreten."])
     }
     #expect(
       OnboardingV2ViewModel.friendlyError(error(NSURLErrorDomain, URLError.timedOut.rawValue))
         == "The download timed out. Please check your internet connection and try again.")
     #expect(
-      OnboardingV2ViewModel.friendlyError(error(NSURLErrorDomain, URLError.notConnectedToInternet.rawValue))
+      OnboardingV2ViewModel.friendlyError(
+        error(NSURLErrorDomain, URLError.notConnectedToInternet.rawValue))
         == "No internet connection. Please connect to the internet and try again.")
     #expect(
-      OnboardingV2ViewModel.friendlyError(error(NSURLErrorDomain, URLError.cannotConnectToHost.rawValue))
-        == "Couldn't reach the download server. Please check your internet connection and try again.")
+      OnboardingV2ViewModel.friendlyError(
+        error(NSURLErrorDomain, URLError.cannotConnectToHost.rawValue))
+        == "Couldn't reach the download server. Please check your internet connection and try again."
+    )
     #expect(
       OnboardingV2ViewModel.friendlyError(error(NSPOSIXErrorDomain, Int(ENOSPC)))
         == "Not enough disk space. Please free up space and try again.")

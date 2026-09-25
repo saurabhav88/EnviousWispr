@@ -906,15 +906,25 @@ final class OnboardingV2ViewModel {
   static func displayPhase(_ phase: String) -> String {
     switch phase {
     case ModelLoadStallPolicy.validatingCachePhase:
-      return String(localized: "Checking speech model files...", comment: "Setup progress: checking already-downloaded speech model files.")
+      return String(
+        localized: "Checking speech model files...",
+        comment: "Setup progress: checking already-downloaded speech model files.")
     case ModelLoadStallPolicy.downloadingPhase:
-      return String(localized: "Downloading speech model...", comment: "Setup progress: the speech model is downloading.")
+      return String(
+        localized: "Downloading speech model...",
+        comment: "Setup progress: the speech model is downloading.")
     case ModelLoadStallPolicy.verifyingDownloadPhase:
-      return String(localized: "Verifying download...", comment: "Setup progress: checking the downloaded speech model.")
+      return String(
+        localized: "Verifying download...",
+        comment: "Setup progress: checking the downloaded speech model.")
     case ModelLoadStallPolicy.installPhase:
-      return String(localized: "Installing model...", comment: "Setup progress: the speech model is being installed.")
+      return String(
+        localized: "Installing model...",
+        comment: "Setup progress: the speech model is being installed.")
     case Self.legacyDownloadingPhase:
-      return String(localized: "Downloading model files...", comment: "Setup progress: the speech model is downloading.")
+      return String(
+        localized: "Downloading model files...",
+        comment: "Setup progress: the speech model is downloading.")
     default:
       return phase
     }
@@ -1221,20 +1231,34 @@ private struct WelcomeScreenV2: View {
 
   private static let features: [(icon: String, title: String, subtitle: String)] = [
     (
-      "shield.fill", String(localized: "On-Device", comment: "Welcome screen feature title: dictation runs on this Mac."),
-      String(localized: "Your voice never leaves your Mac.", comment: "Welcome screen feature line under On-Device.")
+      "shield.fill",
+      String(
+        localized: "On-Device", comment: "Welcome screen feature title: dictation runs on this Mac."
+      ),
+      String(
+        localized: "Your voice never leaves your Mac.",
+        comment: "Welcome screen feature line under On-Device.")
     ),
     (
-      "wifi.slash", String(localized: "Offline-Ready", comment: "Welcome screen feature title: works without internet."),
-      String(localized: "Works without internet.", comment: "Welcome screen feature line under Offline-Ready.")
+      "wifi.slash",
+      String(
+        localized: "Offline-Ready", comment: "Welcome screen feature title: works without internet."
+      ),
+      String(
+        localized: "Works without internet.",
+        comment: "Welcome screen feature line under Offline-Ready.")
     ),
     (
       "bolt.fill", String(localized: "Native Speed", comment: "Welcome screen feature title."),
-      String(localized: "Built for Apple Silicon.", comment: "Welcome screen feature line under Native Speed.")
+      String(
+        localized: "Built for Apple Silicon.",
+        comment: "Welcome screen feature line under Native Speed.")
     ),
     (
       "person.fill", String(localized: "Free & Private", comment: "Welcome screen feature title."),
-      String(localized: "No account required. Anonymous analytics only.", comment: "Welcome screen feature line under Free & Private.")
+      String(
+        localized: "No account required. Anonymous analytics only.",
+        comment: "Welcome screen feature line under Free & Private.")
     ),
   ]
 
@@ -1333,13 +1357,19 @@ private struct ChecklistPhaseView: View {
   private static let items: [(title: String, subtitle: String)] = [
     (
       String(localized: "Setting up speech model", comment: "Setup checklist step."),
-      String(localized: "One-time setup", comment: "Setup checklist: note under the speech model step.")
+      String(
+        localized: "One-time setup", comment: "Setup checklist: note under the speech model step.")
     ),
     // #2650: the provider's display name has one owner.
-    (String(localized: "Configuring on-device AI", comment: "Setup checklist step."), LLMProvider.appleIntelligence.displayName),
+    (
+      String(localized: "Configuring on-device AI", comment: "Setup checklist step."),
+      LLMProvider.appleIntelligence.displayName
+    ),
     (
       String(localized: "Setting your keybind", comment: "Setup checklist step."),
-      String(localized: "Default: ⌥ Option", comment: "Setup checklist: the default dictation key. ⌥ is the Option key symbol.")
+      String(
+        localized: "Default: ⌥ Option",
+        comment: "Setup checklist: the default dictation key. ⌥ is the Option key symbol.")
     ),
   ]
 
@@ -1481,9 +1511,13 @@ private struct ChecklistPhaseView: View {
     // visibly escalate so the screen never reads as frozen.
     if phase == ModelLoadStallPolicy.listingPhase {
       if let since = viewModel.listingPhaseSince, Date().timeIntervalSince(since) > 10 {
-        return String(localized: "Still working: checking download source…", comment: "Setup: shown when preparing the download takes more than 10 seconds.")
+        return String(
+          localized: "Still working: checking download source…",
+          comment: "Setup: shown when preparing the download takes more than 10 seconds.")
       }
-      return String(localized: "Preparing speech model…", comment: "Setup: shown while the speech model download is being prepared.")
+      return String(
+        localized: "Preparing speech model…",
+        comment: "Setup: shown while the speech model download is being prepared.")
     }
     return OnboardingV2ViewModel.displayProgress(phase: phase, detail: detail)
   }
@@ -1621,8 +1655,12 @@ private struct PermissionsPhaseView: View {
       VStack(spacing: 10) {
         PermissionRow(
           icon: "mic.fill",
-          title: String(localized: "Microphone", comment: "Setup permissions: title of the microphone permission row."),
-          subtitle: String(localized: "To hear your voice for transcription.", comment: "Setup permissions: why the microphone is needed."),
+          title: String(
+            localized: "Microphone",
+            comment: "Setup permissions: title of the microphone permission row."),
+          subtitle: String(
+            localized: "To hear your voice for transcription.",
+            comment: "Setup permissions: why the microphone is needed."),
           isGranted: viewModel.micGranted,
           onGrant: {
             Task { await viewModel.requestMicPermission(permissions: permissions) }
@@ -1631,8 +1669,12 @@ private struct PermissionsPhaseView: View {
 
         PermissionRow(
           icon: "accessibility",
-          title: String(localized: "Accessibility", comment: "Setup permissions: title of the macOS Accessibility permission row."),
-          subtitle: String(localized: "To paste your transcribed text into any app.", comment: "Setup permissions: why Accessibility is needed."),
+          title: String(
+            localized: "Accessibility",
+            comment: "Setup permissions: title of the macOS Accessibility permission row."),
+          subtitle: String(
+            localized: "To paste your transcribed text into any app.",
+            comment: "Setup permissions: why Accessibility is needed."),
           isGranted: viewModel.accessibilityGranted,
           onGrant: { viewModel.openAccessibilitySettings(permissions: permissions) }
         )
@@ -1855,9 +1897,13 @@ private struct AIPolishNoticeSection: View {
   private var title: String {
     switch notice {
     case .enableInSettings:
-      return String(localized: "Apple Intelligence is turned off", comment: "Setup notice title when Apple Intelligence is off in System Settings.")
+      return String(
+        localized: "Apple Intelligence is turned off",
+        comment: "Setup notice title when Apple Intelligence is off in System Settings.")
     case .updateMacOS:
-      return String(localized: "AI polish needs macOS 26", comment: "Setup notice title on Macs older than macOS 26.")
+      return String(
+        localized: "AI polish needs macOS 26",
+        comment: "Setup notice title on Macs older than macOS 26.")
     }
   }
 
@@ -1865,7 +1911,8 @@ private struct AIPolishNoticeSection: View {
     switch notice {
     case .enableInSettings:
       return String(
-        localized: "Turn it on to enable free, on-device AI polish. Dictation works fine without it.",
+        localized:
+          "Turn it on to enable free, on-device AI polish. Dictation works fine without it.",
         comment: "Setup notice when Apple Intelligence is off in System Settings.")
     case .updateMacOS:
       return String(
@@ -2136,7 +2183,8 @@ private struct KeycapHotkeyView: View {
             isRecording
               ? String(
                 localized: "Recording, press a key combination",
-                comment: "VoiceOver value of the keybind field while it waits for a key combination.")
+                comment:
+                  "VoiceOver value of the keybind field while it waits for a key combination.")
               // Spoken projection, not the visible keycap text (#1987). Visible
               // display is unchanged.
               : KeySymbols.accessibilityDescription(keyCode: keyCode, modifiers: modifiers)
@@ -2167,14 +2215,15 @@ private struct KeycapHotkeyView: View {
           ? String(
             localized: "Listening for input",
             comment: "Label under the keybind field while it waits for a key combination.")
-          : keyNameLabel)
-        .font(.system(size: 11, weight: .semibold))
-        .kerning(0.55)
-        .foregroundStyle(
-          isRecording ? Color.obAccent.opacity(0.7) : Color.obTextTertiary
-        )
-        .padding(.top, 7)
-        .padding(.bottom, 14)
+          : keyNameLabel
+      )
+      .font(.system(size: 11, weight: .semibold))
+      .kerning(0.55)
+      .foregroundStyle(
+        isRecording ? Color.obAccent.opacity(0.7) : Color.obTextTertiary
+      )
+      .padding(.top, 7)
+      .padding(.bottom, 14)
 
       // Divider
       Rectangle()
