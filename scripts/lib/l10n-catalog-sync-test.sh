@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYNC="$SCRIPT_DIR/l10n-catalog-sync.sh"
 
 exec python3 - "$SYNC" <<'PY'
-import json, os, pathlib, re, shutil, subprocess, sys, tempfile
+import copy, json, os, pathlib, re, shutil, subprocess, sys, tempfile
 
 SYNC = sys.argv[1]
 TARGETS = [
@@ -30,6 +30,31 @@ MANUAL = {
 # fixture pass while the real run refuses (or the reverse).
 listed = re.search(r"PRODUCTION_TARGETS = \[(.*?)\]", pathlib.Path(SYNC).read_text(), re.S).group(1)
 assert re.findall(r'"([A-Za-z]+)"', listed) == TARGETS, "self-test target list differs from the script's"
+
+# What's New fixture source (#3142 PR 2E): read by the REAL renderer through the sync.
+def whats_new(alpha_bullets=("One", "Two"), alpha_title="Alpha", alpha_desc="Alpha paragraph.", duplicate=False):
+    bullets = ", ".join(f'"{b}"' for b in alpha_bullets)
+    second_id = "alpha" if duplicate else "beta"
+    return f'''
+  static let entries: [Entry] = [
+    Entry(
+      id: "alpha",
+      icon: "sparkles",
+      title: "{alpha_title}",
+      description: "{alpha_desc}",
+      bullets: [{bullets}],
+      version: "9.9.9"
+    ),
+    Entry(
+      id: "{second_id}",
+      icon: "sparkles",
+      title: "Beta",
+      description: "Beta paragraph.",
+      version: "9.9.8"
+    ),
+  ]
+'''
+
 
 def stringsdata(entries):
     return json.dumps({"source": "/fixture.swift", "tables": {"Localizable": entries}, "version": 1})
@@ -88,9 +113,13 @@ def committed_catalog(path):
     path.write_text(json.dumps({"sourceLanguage": "en", "strings": strings, "version": "1.0"}, indent=2) + "\n")
 
 
-def run(*args, env=None):
-    p = subprocess.run([SYNC, *args], capture_output=True, text=True, env=env)
-    return p.returncode, p.stdout + p.stderr
+def run(*args, env=None, whats_new_source=None):
+    with tempfile.TemporaryDirectory() as tmp:
+        if whats_new_source is None:
+            whats_new_source = pathlib.Path(tmp) / "WhatsNewContent.swift"
+            whats_new_source.write_text(whats_new())
+        p = subprocess.run([SYNC, *args, "--whats-new-source", str(whats_new_source)], capture_output=True, text=True, env=env)
+        return p.returncode, p.stdout + p.stderr
 
 
 failures, cases = [], 0
@@ -106,7 +135,7 @@ def expect(name, code, out, want_code, want_text):
         print(out)
 
 
-def case(name, want_code, want_text, *, mode="--check", configuration="Release", prepare_update=True, fake_xcode_build=None, remove_catalog=False, edit_committed=None, verify=None, **fx):
+def case(name, want_code, want_text, *, mode="--check", configuration="Release", prepare_update=True, fake_xcode_build=None, remove_catalog=False, edit_committed=None, verify=None, whats_new_source=None, **fx):
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         catalog = root / "Localizable.xcstrings"
@@ -115,6 +144,10 @@ def case(name, want_code, want_text, *, mode="--check", configuration="Release",
             clean = fixture(root / "clean")
             code, out = run("--update", "--derived-data", str(clean), "--configuration", "Release", "--catalog", str(catalog))
             assert code == 0, out
+        wn = None
+        if whats_new_source is not None:
+            wn = root / "WhatsNewContent.swift"
+            wn.write_text(whats_new_source)
         dd = fixture(root / "case", **fx)
         env = None
         if fake_xcode_build:
@@ -132,7 +165,8 @@ def case(name, want_code, want_text, *, mode="--check", configuration="Release",
             data = json.loads(catalog.read_text())
             edit_committed(data["strings"])
             catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
-        code, out = run(mode, "--derived-data", str(dd), "--configuration", configuration, "--catalog", str(catalog), env=env)
+        code, out = run(mode, "--derived-data", str(dd), "--configuration", configuration, "--catalog", str(catalog), env=env,
+                        whats_new_source=wn)
         expect(name, code, out, want_code, want_text)
         if verify:
             problem = verify(json.loads(catalog.read_text())["strings"])
@@ -223,6 +257,85 @@ case("update restores the code's English", 0, "updated", mode="--update", edit_c
      else f"English left as {s['fixture.value.key']['localizations']['en']['stringUnit']['value']!r}")
 # Debug extracts #if DEBUG copy that never ships; only Release is an authority.
 case("Debug configuration refuses", 2, "invalid choice", configuration="Debug")
+
+# --- What's New seed (#3142 PR 2E) ---
+WN = "whatsNew."
+
+
+def seeded_ok(s):
+    want = {"whatsNew.alpha.title": "Alpha", "whatsNew.alpha.description": "Alpha paragraph.",
+            "whatsNew.alpha.bullet.0": "One", "whatsNew.alpha.bullet.1": "Two",
+            "whatsNew.beta.title": "Beta", "whatsNew.beta.description": "Beta paragraph."}
+    got = {k: v["localizations"]["en"]["stringUnit"]["value"] for k, v in s.items() if k.startswith(WN)}
+    if got != want:
+        return f"seeded {got!r}"
+    for k in want:
+        e = s[k]
+        if e["extractionState"] != "manual" or e["localizations"]["en"]["stringUnit"]["state"] != "translated" or "What's New" not in e["comment"]:
+            return f"{k} is {e!r}"
+    if s["whatsNew.alpha.bullet.1"]["comment"] != "Settings > What's New: point 2 of the list under one feature announcement (entry alpha).":
+        return f"bullet comment {s['whatsNew.alpha.bullet.1']['comment']!r}"
+    return None
+
+
+# The clean case above already checks after an update that seeded the fixture; this one
+# writes from a catalog with NO What's New keys and inspects every seeded object.
+case("update seeds every What's New field as a manual translated entry", 0, "updated", mode="--update",
+     edit_committed=lambda s: [s.pop(k) for k in [k for k in s if k.startswith(WN)]], verify=seeded_ok)
+case("changed What's New title is drift", 1, "changed: 'whatsNew.alpha.title'", whats_new_source=whats_new(alpha_title="Alpha, renamed"))
+case("changed What's New description is drift", 1, "changed: 'whatsNew.alpha.description'", whats_new_source=whats_new(alpha_desc="New paragraph."))
+case("changed bullet is drift", 1, "changed: 'whatsNew.alpha.bullet.1'", whats_new_source=whats_new(alpha_bullets=("One", "Two, reworded")))
+case("inserted bullet shifts the later ones and adds a key", 1, "added: 'whatsNew.alpha.bullet.2'", whats_new_source=whats_new(alpha_bullets=("One", "New", "Two")))
+case("inserted bullet reports the moved English as changed", 1, "changed: 'whatsNew.alpha.bullet.1'", whats_new_source=whats_new(alpha_bullets=("One", "New", "Two")))
+case("removed bullet is drift", 1, "removed: 'whatsNew.alpha.bullet.1'", whats_new_source=whats_new(alpha_bullets=("One",)))
+case("reordered bullets are drift", 1, "changed: 'whatsNew.alpha.bullet.0'", whats_new_source=whats_new(alpha_bullets=("Two", "One")))
+case("a What's New key missing from the catalog is drift", 1, "added: 'whatsNew.beta.title'",
+     edit_committed=lambda s: s.pop("whatsNew.beta.title"))
+case("a What's New key the source no longer has is drift", 1, "removed: 'whatsNew.gone.title'",
+     edit_committed=lambda s: s.__setitem__("whatsNew.gone.title", copy.deepcopy(s["whatsNew.beta.title"])))
+
+
+def add_german_to_whats_new(strings):
+    for key, value in (("whatsNew.alpha.bullet.0", "Eins"), ("whatsNew.alpha.bullet.1", "Zwei"), ("whatsNew.beta.title", "Beta")):
+        strings[key]["localizations"]["de"] = {"stringUnit": {"state": "translated", "value": value}}
+    strings["whatsNew.alpha.bullet.0"]["comment"] = "curated note"
+
+
+def review_after_reorder(s):
+    de = {k: s[k]["localizations"]["de"]["stringUnit"] for k in ("whatsNew.alpha.bullet.0", "whatsNew.alpha.bullet.1", "whatsNew.beta.title")}
+    if [de["whatsNew.alpha.bullet.0"]["state"], de["whatsNew.alpha.bullet.1"]["state"], de["whatsNew.beta.title"]["state"]] != ["needs_review", "needs_review", "translated"]:
+        return f"German states {de!r}"
+    if s["whatsNew.alpha.bullet.0"]["comment"] != "curated note":
+        return f"comment {s['whatsNew.alpha.bullet.0']['comment']!r}"
+    if s["whatsNew.alpha.bullet.0"]["localizations"]["en"]["stringUnit"]["value"] != "Two":
+        return "English not taken from the source"
+    return None
+
+
+case("reorder keeps translations and comments but flags the moved ones for review", 0, "updated", mode="--update",
+     whats_new_source=whats_new(alpha_bullets=("Two", "One")), edit_committed=add_german_to_whats_new, verify=review_after_reorder)
+
+
+def translated_then_check():
+    # Translations the sync did not write must survive a clean check: a German value beside
+    # unchanged English is not drift.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        dd = fixture(root / "clean")
+        assert run("--update", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))[0] == 0
+        data = json.loads(catalog.read_text())
+        add_german_to_whats_new(data["strings"])
+        catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        code, out = run("--check", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))
+        expect("an unchanged What's New translation is not drift", code, out, 0, "catalog in sync")
+
+
+translated_then_check()
+case("a What's New source the renderer refuses stops the run", 2, "What's New seed refused by the renderer",
+     whats_new_source=whats_new(duplicate=True))
+case("an extracted key in the What's New namespace stops the run", 2, "use the What's New prefix", extra_keys=["whatsNew.alpha.title"])
 
 print(f"{cases} cases, {len(failures)} failed" + (f": {failures}" if failures else ""))
 sys.exit(1 if failures else 0)

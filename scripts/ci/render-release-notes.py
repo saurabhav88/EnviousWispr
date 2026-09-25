@@ -33,6 +33,17 @@ between `[` and `]` that is not a string literal, a comma or whitespace (a named
 turns into a hard failure. A partial read would be the silent failure this file exists
 to prevent: a list one item shorter than the one the app shows, with every count green.
 
+The in-app screen is translated through the String Catalog (#3142). `--catalog-seed-json`
+gives every entry field its catalog key and English value, in source order:
+`whatsNew.<id>.title`, `whatsNew.<id>.description` and `whatsNew.<id>.bullet.<n>` (n counts
+from 0). A bullet's key is its POSITION, not its text: editing a bullet keeps its key and
+changes its English, which is what lets the catalog sync mark an existing translation for
+review. The entry `id:` must be a direct literal of lowercase words joined by hyphens,
+written before `title:`, and unique; the seed refuses any entry it cannot key, and any entry
+`--self-test` would refuse. Entries are read only inside the `static let entries = [...]`
+array, outside comments and string literals of every Swift form (ordinary, multiline and
+raw); the parse contract still requires ordinary literals for the entry fields themselves.
+
 Used by .github/workflows/release.yml. Designed to fail SAFELY: if it cannot produce
 notes for the requested version, it exits non-zero and the workflow falls back to
 GitHub's auto-generated notes, so a release is never blocked or shipped blank.
@@ -41,6 +52,7 @@ Usage:
   render-release-notes.py --version 2.1.4 [--swift-file PATH] [--out FILE]
   render-release-notes.py --list
   render-release-notes.py --self-test   # parse + assert currentContentVersion renders
+  render-release-notes.py --catalog-seed-json   # catalog key -> English, source order
 """
 import argparse
 import collections
@@ -65,11 +77,21 @@ def parse_entries(swift_path):
     # between version sections (a previous lookahead-based regex over-extended
     # across those comments and silently swallowed the first entry of each older
     # version section).
+    #
+    # Every boundary and label is found in the MASKED text (string literals and comments
+    # blanked, positions kept), so an `Entry(`, `title:` or `version: "1.2.3"` inside a
+    # comment or a string is never read as the entry's own; each value is then read from
+    # the original text right after its label.
+    masked_text = mask_literals_and_comments(text)
+    first, last = entries_region(masked_text)
+    calls = list(re.compile(r"Entry\(").finditer(masked_text, first, last))
     entries = []
-    for chunk in text.split("Entry(")[1:]:
-        t = re.search(r'title:\s*\n?\s*"((?:[^"\\]|\\.)*)"', chunk, re.DOTALL)
-        d = re.search(r'description:\s*\n?\s*"((?:[^"\\]|\\.)*)"', chunk, re.DOTALL)
-        v = re.search(r'version:\s*"([\d.]+)"', chunk)
+    for n, call in enumerate(calls):
+        end = calls[n + 1].start() if n + 1 < len(calls) else last
+        chunk, masked = text[call.end():end], masked_text[call.end():end]
+        t = labelled_literal(chunk, masked, "title", FIELD_LITERAL)
+        d = labelled_literal(chunk, masked, "description", FIELD_LITERAL)
+        v = labelled_literal(chunk, masked, "version", VERSION_LITERAL)
         if not (t and d and v):
             continue
         # `bullets:` is looked for only BEFORE `version:`. That is where the Swift
@@ -77,12 +99,18 @@ def parse_entries(swift_path):
         # the entry's own argument list: the chunk runs on to the next `Entry(`, so
         # it also holds the comments above the NEXT entry, and a comment that merely
         # mentions `bullets: [...]` must not become a phantom list on this one.
-        bullets = parse_bullets(chunk[: v.start()])
+        bullets = parse_bullets(chunk[: v[0]])
+        # `id:` is looked for only BEFORE `title:`, where the initialiser puts it, for
+        # the same reason: the chunk also holds the comments above the next entry.
+        entry_id = parse_id(chunk[: t[0]])
         entries.append(
             {
-                "title": normalise_literal(t.group(1)),
-                "desc": normalise_literal(d.group(1)),
-                "version": v.group(1),
+                # Parser state for the catalog seed only; `public_values` leaves it out,
+                # so `--dump-json` and the release notes are unchanged.
+                "id": entry_id,
+                "title": normalise_literal(t[1]),
+                "desc": normalise_literal(d[1]),
+                "version": v[1],
                 # Absent in source is the same as `bullets: []`, so every entry
                 # written before #2484 parses and renders exactly as it did.
                 "bullets": bullets if bullets is not None else [],
@@ -93,6 +121,43 @@ def parse_entries(swift_path):
             }
         )
     return entries
+
+
+FIELD_LITERAL = re.compile(r'\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
+VERSION_LITERAL = re.compile(r'\s*"([\d.]+)"')
+
+
+ENTRIES_DECLARATION = re.compile(r"\bstatic\s+let\s+entries\b[^=\n]*=\s*\[")
+
+
+def entries_region(masked):
+    """(start, end) of the `static let entries = [ ... ]` array in the masked source, so an
+    `Entry(` or `version:` elsewhere in the file (a helper, an example) is never read as a
+    What's New entry. A source with no such declaration (the parser fixtures) is read whole."""
+    declaration = ENTRIES_DECLARATION.search(masked)
+    if not declaration:
+        return 0, len(masked)
+    depth = 1
+    for i in range(declaration.end(), len(masked)):
+        if masked[i] == "[":
+            depth += 1
+        elif masked[i] == "]":
+            depth -= 1
+            if depth == 0:
+                return declaration.end(), i
+    return declaration.end(), len(masked)
+
+
+def labelled_literal(chunk, masked, name, literal):
+    """The entry's own `name:` argument: its label found in `masked` (comments and strings
+    blanked), its value the literal right after that label in `chunk`, as (label start,
+    value). None when the label is missing or not followed by a readable literal. The label
+    start bounds the id and bullets searches."""
+    label = re.search(rf"\b{name}:", masked)
+    if not label:
+        return None
+    value = literal.match(chunk, label.end())
+    return (label.start(), value.group(1)) if value else None
 
 
 def normalise_literal(raw):
@@ -106,22 +171,92 @@ def normalise_literal(raw):
 
 BULLETS_OPEN = re.compile(r"bullets:\s*\[")
 STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"', re.DOTALL)
-LINE_COMMENT = re.compile(r"//[^\n]*")
 
 
-def blank_out(match):
-    """The matched text as spaces of the same length, so positions found in the masked
-    text index the original."""
-    return " " * (match.end() - match.start())
+def string_end(fields, quote, hashes):
+    """Index just past the Swift string literal whose opening quote is at `quote`, with
+    `hashes` `#` marks before it: three quote marks open a multiline string, the terminator
+    repeats the opening quotes and the same number of `#`, and an escape is a backslash
+    followed by those `#` (none for an ordinary string), which also skips the character it
+    escapes."""
+    n = len(fields)
+    multiline = fields.startswith('"""', quote)
+    close = ('"""' if multiline else '"') + "#" * hashes
+    escape = "\\" + "#" * hashes
+    k = quote + (3 if multiline else 1)
+    while k < n:
+        if fields.startswith(escape, k):
+            k += len(escape) + 1
+        elif fields.startswith(close, k):
+            return k + len(close)
+        else:
+            k += 1
+    return n
 
 
 def mask_literals_and_comments(fields):
-    """`fields` with every string literal and `//` comment replaced by spaces, so a
-    search over it sees only the entry's own argument syntax. Literals go first: a
-    `//` inside a description is prose, not a comment, and blanking the literal
-    removes it before the comment pass looks."""
-    masked = STRING_LITERAL.sub(blank_out, fields)
-    return LINE_COMMENT.sub(blank_out, masked)
+    """`fields` with every string literal, `//` comment and `/* */` comment replaced by
+    spaces (newlines kept, so positions and line anchors still index the original), so a
+    search over it sees only the entry's own argument syntax. One left-to-right scan, so
+    each form is read in its own context: a `//` or `/*` inside a string is prose, a quote
+    inside a comment is not a string, and block comments nest as Swift nests them. Strings
+    are read in every Swift form (ordinary, multiline with three quote marks, and raw with
+    any number of `#` on each side), each to its own terminator."""
+    out = list(fields)
+    i, n = 0, len(fields)
+
+    def blank(a, b):
+        for k in range(a, b):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < n:
+        hashes = 0
+        while i + hashes < n and fields[i + hashes] == "#":
+            hashes += 1
+        if i + hashes < n and fields[i + hashes] == '"':
+            j = string_end(fields, i + hashes, hashes)
+            blank(i, j)
+            i = j
+        elif hashes:
+            i += hashes
+        elif fields.startswith("//", i):
+            j = fields.find("\n", i)
+            j = n if j < 0 else j
+            blank(i, j)
+            i = j
+        elif fields.startswith("/*", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                if fields.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif fields.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            blank(i, j)
+            i = j
+        else:
+            i += 1
+    return "".join(out)
+
+
+# No trailing `\s*` on the label: in the masked text the literal itself is spaces, and
+# the literal is matched in the ORIGINAL text from the label's end.
+ID_FIELD = re.compile(r"\bid:")
+ID_LITERAL = re.compile(r'\s*"((?:[^"\\]|\\.)*)"\s*,')
+
+
+def parse_id(fields):
+    """The entry's `id:` when it is ONE direct literal ending its argument, else None.
+    The label is found in the masked text, so an `id:` inside a comment or a string is
+    never the entry's own; the literal must then be followed by the argument comma, so
+    `"short" + "suffix"` or a named constant reads as no id rather than a wrong one."""
+    label = ID_FIELD.search(mask_literals_and_comments(fields))
+    if not label:
+        return None
+    literal = ID_LITERAL.match(fields, label.end())
+    return literal.group(1) if literal else None
 
 
 def parse_bullets(fields):
@@ -235,6 +370,77 @@ def public_values(entries):
     emits and what `WhatsNewContentTests` compares against `WhatsNewContent.entries`
     field by field. Parser state such as `bullets_unreadable` stays out."""
     return [{k: e[k] for k in ("title", "desc", "version", "bullets")} for e in entries]
+
+
+ENTRY_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+
+
+def dropped_entries(entries, swift_path):
+    """An error message when the parse dropped entries, else None. The parsed count must
+    equal BOTH the literal `version:` fields and the `Entry(` calls: an entry whose version
+    is not a literal drops out of the parse AND the version count together, so only the
+    call count still sees it."""
+    with open(swift_path, encoding="utf-8") as fh:
+        source = fh.read()
+    # Both counted in the masked source: a `version: "1.2.3"` or `Entry(` inside a comment
+    # or a string is not an entry's. A version label counts when a literal follows it.
+    # Both read only inside the entries array, where `parse_entries` reads.
+    masked = mask_literals_and_comments(source)
+    first, last = entries_region(masked)
+    field_count = sum(
+        1 for label in re.compile(r"\bversion:").finditer(masked, first, last)
+        if VERSION_LITERAL.match(source, label.end())
+    )
+    call_count = len(re.compile(r"(?m)^[ \t]*Entry\(").findall(masked, first, last))
+    if len(entries) != field_count or len(entries) != call_count:
+        return (
+            f"error: parsed {len(entries)} entries but the source has {field_count} "
+            f"version fields and {call_count} Entry( calls; the parser dropped entries (drift)"
+        )
+    return None
+
+
+def seed_for_catalog(swift_path):
+    """(seed, error): the complete catalog seed for a source file, or the refusal message.
+    What `--catalog-seed-json` runs, so its fixtures exercise the real refusal path."""
+    entries = parse_entries(swift_path)
+    if not entries:
+        return None, "error: parsed 0 entries from What's New source"
+    dropped = dropped_entries(entries, swift_path)
+    if dropped:
+        return None, dropped
+    seed, problems = catalog_seed(entries)
+    if problems:
+        return None, seed_problems_message(problems)
+    return seed, None
+
+
+def catalog_seed(entries):
+    """(seed, problems): each field's catalog key and English value in source order, and
+    one line per entry that cannot be keyed. A seed is usable only when problems is empty;
+    a partial seed would drop fields from the catalog with every check green."""
+    seed = {}
+    problems = []
+    seen = set()
+    for e in entries:
+        label = f"{e['version']}: {e['title'][:60] or '(no title)'}"
+        entry_id = e["id"]
+        if entry_id is None:
+            problems.append(f"{label}: no readable `id:` literal before `title:`")
+            continue
+        if not ENTRY_ID.match(entry_id):
+            problems.append(f"{label}: id {entry_id!r} is not lowercase words joined by hyphens")
+            continue
+        if entry_id in seen:
+            problems.append(f"{label}: id {entry_id!r} is used by an earlier entry")
+            continue
+        seen.add(entry_id)
+        seed[f"whatsNew.{entry_id}.title"] = e["title"]
+        seed[f"whatsNew.{entry_id}.description"] = e["desc"]
+        for n, bullet in enumerate(e["bullets"]):
+            seed[f"whatsNew.{entry_id}.bullet.{n}"] = bullet
+    problems.extend(f"{line}: empty or unreadable field" for line in empty_fields(entries))
+    return seed, problems
 
 
 # Two-way controls for the parser, run by `--self-test` before the real content.
@@ -499,8 +705,344 @@ FIXTURE_CASES = [
 ]
 
 
+# Whole-file outcomes through `seed_for_catalog`, the path `--catalog-seed-json` runs:
+# (label, Swift source text, expected start of the refusal message, or None for a seed).
+SEED_REFUSALS = [
+    (
+        "a raw string holding a fake entries array is masked, and the real array is read",
+        '''
+enum WhatsNewContent {
+  static let example = #"""
+    Say "hello
+    static let entries = [Entry(id: "fake", icon: "x", title: "Fake", description: "Fake.", version: "1.0.0")]
+    """#
+
+  static let entries: [Entry] = [
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      title: "Real title",
+      description: "Real paragraph.",
+      version: "9.9.9"
+    ),
+  ]
+}
+''',
+        None,
+    ),
+    (
+        "a one-line raw string ends only at its own quote-and-hash terminator",
+        '''
+enum WhatsNewContent {
+  static let example = #"x " static let entries = [Entry(id: "fake", version: "1.0.0")] "#
+
+  static let entries: [Entry] = [
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      title: "Real title",
+      description: "Real paragraph.",
+      version: "9.9.9"
+    ),
+  ]
+}
+''',
+        None,
+    ),
+    (
+        "an ordinary multiline string with a quote and a # inside is masked, not refused",
+        '''
+enum WhatsNewContent {
+  static let example = """
+    Say " #"
+    """
+
+  static let entries: [Entry] = [
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      title: "Real title",
+      description: "Real paragraph.",
+      version: "9.9.9"
+    ),
+  ]
+}
+''',
+        None,
+    ),
+    (
+        "an Entry( outside the entries array is not a What's New entry",
+        '''
+enum WhatsNewContent {
+  static let entries: [Entry] = [
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      title: "Real title",
+      description: "Real paragraph.",
+      bullets: ["Point [one]"],
+      version: "9.9.9"
+    ),
+  ]
+
+  static let demo = Entry(
+    id: "demo", icon: "sparkles", title: "Demo", description: "Not shipped.",
+    version: "1.0.0")
+}
+''',
+        None,
+    ),
+    (
+        "a version or title example inside comments is not an entry's field",
+        '''
+    // An entry reads like this: version: "1.2.3", title: "Example"
+    /* Another example: version: "4.5.6" */
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      // title: "Commented title",
+      title: "Real title",
+      description: "Real paragraph.",
+      version: "9.9.9"
+    ),
+''',
+        None,
+    ),
+    (
+        "an Entry( inside a block comment is not counted as an entry",
+        '''
+    Entry(
+      id: "only",
+      icon: "sparkles",
+      title: "Only",
+      description: "The one real entry.",
+      version: "9.9.9"
+    ),
+    /*
+    Entry(
+    */
+''',
+        None,
+    ),
+    (
+        "an entry whose version is not a literal drops out, and the seed refuses the file",
+        '''
+    Entry(
+      id: "kept",
+      icon: "sparkles",
+      title: "Kept",
+      description: "Literal version.",
+      version: "9.9.9"
+    ),
+    Entry(
+      id: "computed",
+      icon: "sparkles",
+      title: "Computed",
+      description: "Named-constant version.",
+      version: Copy.version
+    ),
+''',
+        "error: parsed 1 entries but the source has 1 version fields and 2 Entry( calls",
+    ),
+]
+
+
+def seed_problems_message(problems):
+    return "error: %d What's New entr%s cannot be given catalog keys:\n  %s" % (
+        len(problems),
+        "y" if len(problems) == 1 else "ies",
+        "\n  ".join(problems),
+    )
+
+
+# Two-way controls for `catalog_seed`. Each case is (label, Swift source text, expected
+# seed, expected problems). The expected seed pins every key AND value, in order.
+SEED_CASES = [
+    (
+        "an entry with two bullets keys its title, description and each bullet by position",
+        '''
+    Entry(
+      id: "two-points",
+      icon: "sparkles",
+      title: "Two points",
+      description: "Has a list.",
+      bullets: ["First point", "Second point"],
+      version: "9.9.9"
+    ),
+''',
+        {
+            "whatsNew.two-points.title": "Two points",
+            "whatsNew.two-points.description": "Has a list.",
+            "whatsNew.two-points.bullet.0": "First point",
+            "whatsNew.two-points.bullet.1": "Second point",
+        },
+        [],
+    ),
+    (
+        "an edited second bullet keeps its key and carries the new English",
+        '''
+    Entry(
+      id: "two-points",
+      icon: "sparkles",
+      title: "Two points",
+      description: "Has a list.",
+      bullets: ["First point", "Second point, reworded"],
+      version: "9.9.9"
+    ),
+''',
+        {
+            "whatsNew.two-points.title": "Two points",
+            "whatsNew.two-points.description": "Has a list.",
+            "whatsNew.two-points.bullet.0": "First point",
+            "whatsNew.two-points.bullet.1": "Second point, reworded",
+        },
+        [],
+    ),
+    (
+        "a second entry reusing an id is refused, the first is still keyed",
+        '''
+    Entry(
+      id: "same",
+      icon: "sparkles",
+      title: "First",
+      description: "One.",
+      version: "9.9.9"
+    ),
+    Entry(
+      id: "same",
+      icon: "sparkles",
+      title: "Second",
+      description: "Two.",
+      version: "9.9.9"
+    ),
+''',
+        {"whatsNew.same.title": "First", "whatsNew.same.description": "One."},
+        ["9.9.9: Second: id 'same' is used by an earlier entry"],
+    ),
+    (
+        "an entry with no id is refused, and a later entry's comment cannot lend it one",
+        '''
+    Entry(
+      icon: "sparkles",
+      title: "Nameless",
+      description: "No id.",
+      version: "9.9.9"
+    ),
+
+    // The next entry, id: "borrowed", is documented here.
+    Entry(
+      id: "next",
+      icon: "sparkles",
+      title: "Next",
+      description: "Keyed.",
+      version: "9.9.9"
+    ),
+''',
+        {"whatsNew.next.title": "Next", "whatsNew.next.description": "Keyed."},
+        ["9.9.9: Nameless: no readable `id:` literal before `title:`"],
+    ),
+    (
+        "an id that is not lowercase words joined by hyphens is refused",
+        '''
+    Entry(
+      id: "Bad.ID",
+      icon: "sparkles",
+      title: "Odd id",
+      description: "Refused.",
+      version: "9.9.9"
+    ),
+''',
+        {},
+        ["9.9.9: Odd id: id 'Bad.ID' is not lowercase words joined by hyphens"],
+    ),
+    (
+        "an id in a comment is not the entry's id, and a named constant is no id",
+        '''
+    Entry(
+      // was id: "borrowed", before the rename
+      id: Copy.entryID,
+      icon: "sparkles",
+      title: "Constant id",
+      description: "Refused.",
+      version: "9.9.9"
+    ),
+''',
+        {},
+        ["9.9.9: Constant id: no readable `id:` literal before `title:`"],
+    ),
+    (
+        "an id inside a block comment is not the entry's id",
+        '''
+    Entry(
+      /* id: "old", */
+      id: "actual",
+      icon: "sparkles",
+      title: "Block comment",
+      description: "Keyed by its real id.",
+      version: "9.9.9"
+    ),
+''',
+        {
+            "whatsNew.actual.title": "Block comment",
+            "whatsNew.actual.description": "Keyed by its real id.",
+        },
+        [],
+    ),
+    (
+        "an id inside a nested block comment is not the entry's id",
+        '''
+    Entry(
+      /* outer /* inner */ id: "old", */
+      id: "actual",
+      icon: "sparkles",
+      title: "Nested comment",
+      description: "Keyed by its real id.",
+      version: "9.9.9"
+    ),
+''',
+        {
+            "whatsNew.actual.title": "Nested comment",
+            "whatsNew.actual.description": "Keyed by its real id.",
+        },
+        [],
+    ),
+    (
+        "a concatenated id is refused rather than read as its first piece",
+        '''
+    Entry(
+      id: "short" + "suffix",
+      icon: "sparkles",
+      title: "Joined id",
+      description: "Refused.",
+      version: "9.9.9"
+    ),
+''',
+        {},
+        ["9.9.9: Joined id: no readable `id:` literal before `title:`"],
+    ),
+    (
+        "an entry the release notes would refuse is refused by the seed too",
+        '''
+    Entry(
+      id: "unreadable",
+      icon: "sparkles",
+      title: "Unreadable list",
+      description: "Has a constant.",
+      bullets: ["Readable", Copy.second],
+      version: "9.9.9"
+    ),
+''',
+        {
+            "whatsNew.unreadable.title": "Unreadable list",
+            "whatsNew.unreadable.description": "Has a constant.",
+        },
+        ["9.9.9: Unreadable list: empty or unreadable field"],
+    ),
+]
+
+
 def self_test_fixtures():
-    """Run FIXTURE_CASES; one line per failed assertion, empty when all pass."""
+    """Run FIXTURE_CASES and SEED_CASES; one line per failed assertion, empty when all pass."""
     import tempfile
 
     failures = []
@@ -519,14 +1061,40 @@ def self_test_fixtures():
             empty = empty_fields(entries)
             if empty != want_empty:
                 failures.append(f"[{label}] empty_fields {empty!r}, wanted {want_empty!r}")
+        for label, source, want_seed, want_problems in SEED_CASES:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(source)
+            seed, problems = catalog_seed(parse_entries(path))
+            if list(seed.items()) != list(want_seed.items()):
+                failures.append(f"[{label}] seed {seed!r}, wanted {want_seed!r}")
+            if problems != want_problems:
+                failures.append(f"[{label}] problems {problems!r}, wanted {want_problems!r}")
+        for label, source, want_error in SEED_REFUSALS:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(source)
+            seed, error = seed_for_catalog(path)
+            if want_error is None:
+                if error is not None or not seed:
+                    failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted a seed")
+                elif seed.get("whatsNew.real.title", "Real title") != "Real title":
+                    failures.append(f"[{label}] title {seed['whatsNew.real.title']!r}, wanted 'Real title'")
+                elif any(".demo." in k or ".fake." in k for k in seed) or (
+                    'id: "real"' in source and "whatsNew.real.title" not in seed
+                ):
+                    failures.append(f"[{label}] seeded an entry outside the array: {sorted(seed)!r}")
+            elif seed is not None or not (error or "").startswith(want_error):
+                failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted {want_error!r}")
     return failures
 
 
 def current_content_version():
     try:
         with open(CONSTANTS_SWIFT, encoding="utf-8") as fh:
-            m = re.search(r'currentContentVersion\s*=\s*"([\d.]+)"', fh.read())
-            return m.group(1) if m else None
+            source = fh.read()
+        # The declaration is found outside comments and strings, its literal read after it.
+        label = re.search(r"\bcurrentContentVersion\s*=", mask_literals_and_comments(source))
+        value = VERSION_LITERAL.match(source, label.end()) if label else None
+        return value.group(1) if value else None
     except OSError:
         return None
 
@@ -543,6 +1111,11 @@ def main():
         action="store_true",
         help="emit parsed entry values for the compiled-value Swift test",
     )
+    ap.add_argument(
+        "--catalog-seed-json",
+        action="store_true",
+        help="emit each field's String Catalog key and English value, in source order",
+    )
     args = ap.parse_args()
 
     entries = parse_entries(args.swift_file)
@@ -558,6 +1131,17 @@ def main():
         json.dump(
             public_values(entries), sys.stdout, ensure_ascii=False, separators=(",", ":")
         )
+        sys.stdout.write("\n")
+        return 0
+
+    if args.catalog_seed_json:
+        # Refuses rather than emitting a partial seed: the catalog sync treats this
+        # output as the complete set of What's New keys.
+        seed, error = seed_for_catalog(args.swift_file)
+        if error:
+            print(error, file=sys.stderr)
+            return 2
+        json.dump(seed, sys.stdout, ensure_ascii=False, indent=1)
         sys.stdout.write("\n")
         return 0
 
@@ -585,14 +1169,9 @@ def main():
         # number of parsed entries must equal the number of version fields in the
         # source. A mismatch means the parser dropped entries (e.g. the MARK-comment
         # swallowing bug), even if individual versions still render.
-        with open(args.swift_file, encoding="utf-8") as fh:
-            field_count = len(re.findall(r'version:\s*"[\d.]+"', fh.read()))
-        if len(entries) != field_count:
-            print(
-                f"error: parsed {len(entries)} entries but the source has {field_count} "
-                "version fields; the parser dropped entries (drift)",
-                file=sys.stderr,
-            )
+        dropped = dropped_entries(entries, args.swift_file)
+        if dropped:
+            print(dropped, file=sys.stderr)
             return 2
         # PER-ENTRY completeness, not just per-VERSION presence (#2234).
         # Shared with the RENDER path below — cloud review r1 P2: this check only
@@ -601,6 +1180,12 @@ def main():
         empty = empty_fields(entries)
         if empty:
             print(empty_fields_message(empty), file=sys.stderr)
+            return 2
+        # Every real entry must also be keyable for the catalog (#3142), so a bad or
+        # repeated id fails here as well as in the catalog sync.
+        _, problems = catalog_seed(entries)
+        if problems:
+            print(seed_problems_message(problems), file=sys.stderr)
             return 2
 
         cv = current_content_version()
@@ -617,8 +1202,9 @@ def main():
             return 2
         print(
             f"self-test OK: {len(entries)} entries parsed (matches source); "
-            f"{cv} renders {body.count('- **')} item(s); "
-            f"{len(FIXTURE_CASES)} fixture cases pass"
+            f"{cv} renders {sum(e['version'] == cv for e in entries)} item(s); "
+            f"{len(FIXTURE_CASES)} fixture cases, {len(SEED_CASES)} seed cases and "
+            f"{len(SEED_REFUSALS)} whole-file seed cases pass"
         )
         return 0
 
@@ -658,7 +1244,10 @@ def main():
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(text)
-        print(f"wrote {args.out} ({body.count('- **')} item(s))", file=sys.stderr)
+        print(
+            f"wrote {args.out} ({sum(e['version'] == args.version for e in entries)} item(s))",
+            file=sys.stderr,
+        )
     else:
         sys.stdout.write(text)
     return 0
