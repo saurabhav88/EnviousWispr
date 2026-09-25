@@ -71,6 +71,16 @@ public struct PromptBuildInput: Sendable {
   /// health probe) genuinely want the default.
   public let s1Control: S1ControlSettings
 
+  // MARK: - EG-1 named language (#3111)
+
+  /// A base language code EG-1 may be TOLD the dictation is in, or nil. Read by exactly one
+  /// builder, `EGOneNamedLanguagePromptBuilder`; every other family ignores it, and the
+  /// lock-only `language` field above keeps its own contract. Set by `LLMPolishStep` only
+  /// for native EG-1 when the dictation text itself confidently identifies a language that
+  /// no lock or engine answer contradicts: naming the WRONG language makes EG-1 translate
+  /// into it, so nil is the safe default and every other producer passes nil.
+  public let namedLanguage: String?
+
   public init(
     transcript: String,
     provider: LLMProvider,
@@ -83,7 +93,8 @@ public struct PromptBuildInput: Sendable {
     languageDetection: LanguageDetectionResult? = nil,
     backend: ASRBackendType? = nil,
     ollamaIsRemote: Bool? = nil,
-    s1Control: S1ControlSettings = .default
+    s1Control: S1ControlSettings = .default,
+    namedLanguage: String? = nil
   ) {
     self.transcript = transcript
     self.provider = provider
@@ -100,6 +111,7 @@ public struct PromptBuildInput: Sendable {
     self.backend = backend
     self.ollamaIsRemote = ollamaIsRemote
     self.s1Control = s1Control
+    self.namedLanguage = namedLanguage
   }
 
   /// Returns a copy of this input with `polishVocabulary` replaced. Used by
@@ -122,7 +134,8 @@ public struct PromptBuildInput: Sendable {
       languageDetection: languageDetection,
       backend: backend,
       ollamaIsRemote: ollamaIsRemote,
-      s1Control: s1Control
+      s1Control: s1Control,
+      namedLanguage: namedLanguage
     )
   }
 }

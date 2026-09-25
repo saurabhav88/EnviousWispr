@@ -46,11 +46,20 @@ struct EGOneEnvelopePromptBuilder: PromptBuilder {
     // `mode` is intentionally unused: EG-1's formatting behavior is in the weights.
     _ = mode
 
+    return PromptEnvelope(messages: [
+      PromptMessage(role: .system, content: Self.systemPrompt),
+      PromptMessage(role: .user, content: Self.userMessage(for: input.transcript)),
+    ])
+  }
+
+  /// The training-faithful user message, shared with `EGOneNamedLanguagePromptBuilder`
+  /// (#3111) so the two 1.2 builders cannot drift in the wrapper or its neutralisation.
+  static func userMessage(for transcript: String) -> String {
     // Neutralize embedded wrapper tags so dictated text can never close/reopen the
     // quoted-transcript boundary. Same treatment as `EGOnePromptBuilder`; see its
     // comment for why this is the only builder that wraps the transcript at all, and
     // for the `OllamaConnector` cleanup that is keyed off the same wrapper.
-    let safeTranscript = input.transcript
+    let safeTranscript = transcript
       .replacingOccurrences(of: "</TRANSCRIPT>", with: "<\u{200C}/TRANSCRIPT>")
       .replacingOccurrences(of: "<TRANSCRIPT>", with: "<\u{200C}TRANSCRIPT>")
       .replacingOccurrences(of: "</transcript>", with: "<\u{200C}/transcript>")
@@ -59,11 +68,6 @@ struct EGOneEnvelopePromptBuilder: PromptBuilder {
     // Training-faithful user message: the transcript inside the exact wrapper the
     // model was tuned on. No app-context, language, or vocabulary sections — the
     // training distribution had none, and additions would shift it off-distribution.
-    let userMessage = "<TRANSCRIPT>\n\(safeTranscript)\n</TRANSCRIPT>"
-
-    return PromptEnvelope(messages: [
-      PromptMessage(role: .system, content: Self.systemPrompt),
-      PromptMessage(role: .user, content: userMessage),
-    ])
+    return "<TRANSCRIPT>\n\(safeTranscript)\n</TRANSCRIPT>"
   }
 }
