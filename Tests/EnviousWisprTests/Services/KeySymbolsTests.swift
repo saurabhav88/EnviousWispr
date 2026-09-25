@@ -123,4 +123,37 @@ import Testing
       #expect(spoken == visible, "key code \(code) diverged between spoken and visible")
     }
   }
+
+  @Test("key names keep their English (#3142: now translatable)")
+  func keyNamesKeepTheirEnglish() {
+    let expected: [UInt16: String] = [
+      36: "Return", 48: "Tab", 49: "Space", 51: "Delete", 53: "Escape", 119: "End",
+      121: "Page Down",
+    ]
+    for (code, name) in expected {
+      #expect(KeySymbols.nameForKeyCode(code) == name)
+    }
+    #expect(KeySymbols.formatModifierOnly([], keyCode: 54) == "Right ⌘")
+    #expect(KeySymbols.formatModifierOnly([], keyCode: 56) == "Left ⇧")
+    #expect(KeySymbols.formatModifierOnly([], keyCode: 60) == "Right ⇧")
+    #expect(KeySymbols.formatModifierOnly([], keyCode: 59) == "Left ⌃")
+    #expect(KeySymbols.formatModifierOnly([], keyCode: 62) == "Right ⌃")
+    #expect(KeySymbols.formatModifierOnly(.option) == "⌥ Option")
+    #expect(KeySymbols.formatModifierOnly(.command) == "⌘ Command")
+    #expect(KeySymbols.formatModifierOnly(.control) == "⌃ Control")
+    #expect(KeySymbols.formatModifierOnly(.shift) == "⇧ Shift")
+    #expect(KeySymbols.nameForKeyCode(999) == "Key 999")
+  }
+
+  @Test("the push-to-talk keybind reads Hold and the key, as before")
+  @MainActor
+  func pushToTalkDescription() {
+    let service = HotkeyService(effects: RecordingDesktopHotkeyEffects())
+    service.toggleKeyCode = 61
+    service.toggleModifiers = []
+    service.recordingMode = .pushToTalk
+    #expect(service.hotkeyDescription == "Hold Right ⌥")
+    service.recordingMode = .toggle
+    #expect(service.hotkeyDescription == "Right ⌥")
+  }
 }

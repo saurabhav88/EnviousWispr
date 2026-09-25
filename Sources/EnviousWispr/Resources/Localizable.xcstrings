@@ -1761,6 +1761,9 @@
     "History" : {
       "comment" : "Settings sidebar: a page name."
     },
+    "Hold %@" : {
+      "comment" : "Main window: the push-to-talk keybind. %@ is the key or chord, such as Right ⌥."
+    },
     "Hold %@ and say something.\nLet go when you are done." : {
       "comment" : "Practice screen before the first try. %@ is the dictation shortcut. Keep the line break."
     },
@@ -3033,6 +3036,9 @@
     },
     "Setting your keybind" : {
       "comment" : "Setup checklist step."
+    },
+    "Setup" : {
+      "comment" : "Title of the first-run setup window."
     },
     "Setup didn't finish. Try again, and if it keeps happening, restart the app." : {
       "comment" : "Setup error: the speech model setup made no progress."
@@ -4381,6 +4387,270 @@
     },
     "in progress, %@" : {
       "comment" : "VoiceOver, Transcribe a File: a Working row with no progress bar. %@ is the time spent, such as 36 s."
+    },
+    "keyName.command" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Command key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⌘ Command"
+          }
+        }
+      }
+    },
+    "keyName.control" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Control key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⌃ Control"
+          }
+        }
+      }
+    },
+    "keyName.delete" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Delete (backspace) key, not the action.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete"
+          }
+        }
+      }
+    },
+    "keyName.end" : {
+      "comment" : "Keyboard key name shown in keybind labels. The End key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "End"
+          }
+        }
+      }
+    },
+    "keyName.escape" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Escape key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Escape"
+          }
+        }
+      }
+    },
+    "keyName.globe" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Globe key, also labelled Fn; keep the emoji and Fn.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "🌐 Globe (Fn)"
+          }
+        }
+      }
+    },
+    "keyName.globe.spoken" : {
+      "comment" : "VoiceOver name of the Globe (Fn) key; no symbols.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Globe or Function key"
+          }
+        }
+      }
+    },
+    "keyName.leftCommand" : {
+      "comment" : "Keyboard key name shown in keybind labels. The left Command key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Left ⌘"
+          }
+        }
+      }
+    },
+    "keyName.leftControl" : {
+      "comment" : "Keyboard key name shown in keybind labels. The left Control key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Left ⌃"
+          }
+        }
+      }
+    },
+    "keyName.leftOption" : {
+      "comment" : "Keyboard key name shown in keybind labels. The left Option key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Left ⌥"
+          }
+        }
+      }
+    },
+    "keyName.leftShift" : {
+      "comment" : "Keyboard key name shown in keybind labels. The left Shift key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Left ⇧"
+          }
+        }
+      }
+    },
+    "keyName.option" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Option key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⌥ Option"
+          }
+        }
+      }
+    },
+    "keyName.pageDown" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Page Down key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Page Down"
+          }
+        }
+      }
+    },
+    "keyName.return" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Return (Enter) key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Return"
+          }
+        }
+      }
+    },
+    "keyName.rightCommand" : {
+      "comment" : "Keyboard key name shown in keybind labels. The right Command key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Right ⌘"
+          }
+        }
+      }
+    },
+    "keyName.rightControl" : {
+      "comment" : "Keyboard key name shown in keybind labels. The right Control key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Right ⌃"
+          }
+        }
+      }
+    },
+    "keyName.rightOption" : {
+      "comment" : "Keyboard key name shown in keybind labels. The right Option key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Right ⌥"
+          }
+        }
+      }
+    },
+    "keyName.rightShift" : {
+      "comment" : "Keyboard key name shown in keybind labels. The right Shift key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Right ⇧"
+          }
+        }
+      }
+    },
+    "keyName.shift" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Shift key; keep the symbol.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⇧ Shift"
+          }
+        }
+      }
+    },
+    "keyName.space" : {
+      "comment" : "Keyboard key name shown in keybind labels. The space bar.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Space"
+          }
+        }
+      }
+    },
+    "keyName.tab" : {
+      "comment" : "Keyboard key name shown in keybind labels. The Tab key.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Tab"
+          }
+        }
+      }
+    },
+    "keyName.unknown" : {
+      "comment" : "Last-resort keyboard key name. %@ is the numeric key code.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Key %@"
+          }
+        }
+      }
     },
     "language.picker.spellingAccessibility" : {
       "comment" : "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses.",

@@ -192,9 +192,17 @@ struct AppWindowCoordinatorTests {
     translated.title = "Einrichtung"
     #expect(OnboardingWindowIdentity.matches(translated))
 
+    // Another scene's window never matches, even titled like Setup.
     let lookalike = NSWindow(
       contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
-    lookalike.title = "Setup"
+    lookalike.identifier = NSUserInterfaceItemIdentifier("main")
+    lookalike.title = AppConstants.onboardingWindowTitle
     #expect(!OnboardingWindowIdentity.matches(lookalike))
+
+    // A window with no identifier never matches, whatever its title says.
+    let untagged = NSWindow(
+      contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+    untagged.title = AppConstants.onboardingWindowTitle
+    #expect(!OnboardingWindowIdentity.matches(untagged))
   }
 }

@@ -67,7 +67,11 @@ public enum KeySymbols {
 
   /// Convert key code to readable name
   public static func nameForKeyCode(_ keyCode: UInt16) -> String {
-    knownName(for: keyCode) ?? "Key \(keyCode)"
+    if let name = knownName(for: keyCode) { return name }
+    return String(
+      localized: "keyName.unknown",
+      defaultValue: "Key \(String(keyCode))",
+      comment: "Last-resort keyboard key name. %@ is the numeric key code.")
   }
 
   /// The key's name, or nil for a key code this table does not know. Callers decide on this,
@@ -109,7 +113,10 @@ public enum KeySymbols {
     case 33: return "["
     case 34: return "I"
     case 35: return "P"
-    case 36: return "Return"
+    case 36:
+      return String(
+        localized: "keyName.return", defaultValue: "Return",
+        comment: "Keyboard key name shown in keybind labels. The Return (Enter) key.")
     case 37: return "L"
     case 38: return "J"
     case 39: return "'"
@@ -121,11 +128,24 @@ public enum KeySymbols {
     case 45: return "N"
     case 46: return "M"
     case 47: return "."
-    case 48: return "Tab"
-    case 49: return "Space"
+    case 48:
+      return String(
+        localized: "keyName.tab", defaultValue: "Tab",
+        comment: "Keyboard key name shown in keybind labels. The Tab key.")
+    case 49:
+      return String(
+        localized: "keyName.space", defaultValue: "Space",
+        comment: "Keyboard key name shown in keybind labels. The space bar.")
     case 50: return "`"
-    case 51: return "Delete"
-    case 53: return "Escape"
+    case 51:
+      return String(
+        localized: "keyName.delete", defaultValue: "Delete",
+        comment:
+          "Keyboard key name shown in keybind labels. The Delete (backspace) key, not the action.")
+    case 53:
+      return String(
+        localized: "keyName.escape", defaultValue: "Escape",
+        comment: "Keyboard key name shown in keybind labels. The Escape key.")
     case 96: return "F5"
     case 97: return "F6"
     case 98: return "F7"
@@ -139,9 +159,15 @@ public enum KeySymbols {
     case 111: return "F12"
     case 113: return "F15"
     case 118: return "F4"
-    case 119: return "End"
+    case 119:
+      return String(
+        localized: "keyName.end", defaultValue: "End",
+        comment: "Keyboard key name shown in keybind labels. The End key.")
     case 120: return "F2"
-    case 121: return "Page Down"
+    case 121:
+      return String(
+        localized: "keyName.pageDown", defaultValue: "Page Down",
+        comment: "Keyboard key name shown in keybind labels. The Page Down key.")
     case 122: return "F1"
     case 123: return "←"
     case 124: return "→"
@@ -184,7 +210,9 @@ public enum KeySymbols {
     modifiers: NSEvent.ModifierFlags
   ) -> String {
     if keyCode == ModifierKeyCodes.globe {
-      return "Globe or Function key"
+      return String(
+        localized: "keyName.globe.spoken", defaultValue: "Globe or Function key",
+        comment: "VoiceOver name of the Globe (Fn) key; no symbols.")
     }
     return format(keyCode: keyCode, modifiers: modifiers)
   }
@@ -196,35 +224,80 @@ public enum KeySymbols {
   {
     if let kc = keyCode {
       switch kc {
-      case 55: return "Left ⌘"
-      case 54: return "Right ⌘"
-      case 58: return "Left ⌥"
-      case 61: return "Right ⌥"
-      case 56: return "Left ⇧"
-      case 60: return "Right ⇧"
-      case 59: return "Left ⌃"
-      case 62: return "Right ⌃"
+      case 55:
+        return String(
+          localized: "keyName.leftCommand", defaultValue: "Left ⌘",
+          comment:
+            "Keyboard key name shown in keybind labels. The left Command key; keep the symbol.")
+      case 54:
+        return String(
+          localized: "keyName.rightCommand", defaultValue: "Right ⌘",
+          comment:
+            "Keyboard key name shown in keybind labels. The right Command key; keep the symbol.")
+      case 58:
+        return String(
+          localized: "keyName.leftOption", defaultValue: "Left ⌥",
+          comment:
+            "Keyboard key name shown in keybind labels. The left Option key; keep the symbol.")
+      case 61:
+        return String(
+          localized: "keyName.rightOption", defaultValue: "Right ⌥",
+          comment:
+            "Keyboard key name shown in keybind labels. The right Option key; keep the symbol.")
+      case 56:
+        return String(
+          localized: "keyName.leftShift", defaultValue: "Left ⇧",
+          comment: "Keyboard key name shown in keybind labels. The left Shift key; keep the symbol."
+        )
+      case 60:
+        return String(
+          localized: "keyName.rightShift", defaultValue: "Right ⇧",
+          comment:
+            "Keyboard key name shown in keybind labels. The right Shift key; keep the symbol.")
+      case 59:
+        return String(
+          localized: "keyName.leftControl", defaultValue: "Left ⌃",
+          comment:
+            "Keyboard key name shown in keybind labels. The left Control key; keep the symbol.")
+      case 62:
+        return String(
+          localized: "keyName.rightControl", defaultValue: "Right ⌃",
+          comment:
+            "Keyboard key name shown in keybind labels. The right Control key; keep the symbol.")
       // The Globe key is a single physical key, so unlike the eight above it
       // carries no Left/Right qualifier. Both names are deliberate: macOS System
       // Settings calls it the globe key and draws 🌐, which is what our setup
       // guidance tells the user to look for, while "Fn" is what is printed on the
       // keyboard and what users arrive saying from other dictation apps.
-      case 63: return "🌐 Globe (Fn)"
+      case 63:
+        return String(
+          localized: "keyName.globe", defaultValue: "🌐 Globe (Fn)",
+          comment:
+            "Keyboard key name shown in keybind labels. The Globe key, also labelled Fn; keep the emoji and Fn."
+        )
       default: break
       }
     }
     // Fall through to side-blind display
     if flags.contains(.option) && flags.rawValue == NSEvent.ModifierFlags.option.rawValue {
-      return "⌥ Option"
+      return String(
+        localized: "keyName.option", defaultValue: "⌥ Option",
+        comment: "Keyboard key name shown in keybind labels. The Option key; keep the symbol.")
     }
     if flags.contains(.command) && flags.rawValue == NSEvent.ModifierFlags.command.rawValue {
-      return "⌘ Command"
+      return String(
+        localized: "keyName.command", defaultValue: "⌘ Command",
+        comment: "Keyboard key name shown in keybind labels. The Command key; keep the symbol.")
     }
     if flags.contains(.control) && flags.rawValue == NSEvent.ModifierFlags.control.rawValue {
-      return "⌃ Control"
+      return String(
+        localized: "keyName.control", defaultValue: "⌃ Control",
+        comment: "Keyboard key name shown in keybind labels. The Control key; keep the symbol.")
     }
     if flags.contains(.shift) && flags.rawValue == NSEvent.ModifierFlags.shift.rawValue {
-      return "⇧ Shift"
+      return String(
+        localized: "keyName.shift", defaultValue: "⇧ Shift",
+        comment: "Keyboard key name shown in keybind labels. The Shift key; keep the symbol.")
     }
     return symbolsForModifiers(flags)
   }
