@@ -20,6 +20,14 @@ package enum EGOneLanguageNaming {
     /// Send today's prompt, for this reason.
     case notNamed(Reason)
 
+    /// The closed telemetry vocabulary for `dictation.terminal` `polish_language_hint`.
+    package var hint: String {
+      switch self {
+      case .named: return "named"
+      case .notNamed(let reason): return reason.rawValue
+      }
+    }
+
     /// The code to put in `PromptBuildInput.namedLanguage`, or nil.
     package var namedLanguage: String? {
       if case .named(let code) = self { return code }

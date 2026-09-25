@@ -215,7 +215,8 @@ public final class TelemetryService {
   }
 
   /// #2958: per-take record-start summary, opened at `dictation.started`, written by the
-  /// VAD marker calls, consumed by `dictation.terminal`. Owner of the rules:
+  /// VAD marker calls and optional per-take facts (other-audio hold #1413, EG-1 prompt
+  /// selection #3111), consumed by `dictation.terminal`. Owner of the rules:
   /// `TakeStageLedger`.
   let takeStages: TakeStageLedger
 
@@ -1531,7 +1532,7 @@ public final class TelemetryService {
       for key in [
         "input_device_kind", "effective_transport", "selected_transport", "input_selection_mode",
         "delivery_disposition", "vad_conditioning_reason",
-        "vad_stage_reached", "vad_backend", "vad_input_route",
+        "vad_stage_reached", "vad_backend", "vad_input_route", "polish_language_hint",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
@@ -4536,6 +4537,17 @@ public final class TelemetryService {
       if let route { $0.otherAudio?.mediaRoute = route }
       if let adapterFailure { $0.otherAudio?.adapterFailure = adapterFailure }
     }
+  }
+
+  // MARK: - EG-1 language naming (#3111)
+
+  /// Records which instruction EG-1's named-language prompt selected for this take, onto the
+  /// take's terminal row. Zero new rows: it folds onto `dictation.terminal` through the take
+  /// ledger. A take with no open entry (closed, evicted, or never opened) records nothing. Closed
+  /// vocabulary, metadata only. Reader: the #3111 follow-up query, joined to
+  /// `dictation.completed` (cleanup language) and `llm.polish_*` (outcome) on `take_id`.
+  package func recordPolishLanguageHint(takeID: String, hint: String) {
+    takeStages.update(takeID: takeID) { $0.polishLanguageHint = hint }
   }
 
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)

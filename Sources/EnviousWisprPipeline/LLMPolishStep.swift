@@ -183,6 +183,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     /// `takeID` (#1846) is the LIVE in-flight take — polish runs before the session
     /// terminal, so the concluded key is not yet stamped.
     let recordPolishSkipped: @MainActor (String, String, String?) -> Void
+    /// #3111: which instruction EG-1's named-language prompt selected, for the take's
+    /// terminal row. `(takeID, hint)`. Silenced for recovery and file import like the rest.
+    let recordPolishLanguageHint: @MainActor (String, String) -> Void
 
     static let live = TelemetrySeams(
       limbFailureObserved: { limb, op, result, cat, dur in
@@ -203,6 +206,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       },
       recordPolishSkipped: { provider, reason, takeID in
         TelemetryService.shared.polishSkipped(provider: provider, reason: reason, takeID: takeID)
+      },
+      recordPolishLanguageHint: { takeID, hint in
+        TelemetryService.shared.recordPolishLanguageHint(takeID: takeID, hint: hint)
       })
 
     /// Returns a seam that discards every signal unconditionally — `seams` is
@@ -221,7 +227,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         captureProviderInitError: { _ in },
         captureAFMPolishError: { _ in },
         breadcrumbCompleted: { _, _ in },
-        recordPolishSkipped: { _, _, _ in })
+        recordPolishSkipped: { _, _, _ in },
+        recordPolishLanguageHint: { _, _ in })
     }
   }
 
@@ -947,11 +954,21 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // carry a field that means nothing to them.
     let controlReceipt =
       plan.family == .s1ControlLine ? ", control_line=\(s1Control.controlLine)" : ""
+    // #3111: the instruction EG-1's named-language family selected, recorded once the prompt
+    // is PLANNED and before the model is asked, so a timeout still reports it and an early
+    // exit (disabled, too short, server unavailable, preflight refused) never does. A closed
+    // vocabulary, never the language code or any text.
+    var languageHintReceipt = ""
+    if provider == .egOne, plan.family == .egOneEnvelopeNamedLanguage {
+      let hint = Self.egOneLanguageDecision(context).hint
+      languageHintReceipt = ", polish_language_hint=\(hint)"
+      if let takeID = context.takeID { telemetry.recordPolishLanguageHint(takeID, hint) }
+    }
     Task {
       await AppLogger.shared.log(
         "LLM prompt route: provider=\(provider.rawValue), model=\(model), "
           + "prompt_family=\(plan.family.rawValue), system_chars=\(systemChars)"
-          + controlReceipt,
+          + controlReceipt + languageHintReceipt,
         level: .info, category: "LLM"
       )
     }

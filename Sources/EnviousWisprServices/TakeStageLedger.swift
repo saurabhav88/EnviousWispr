@@ -36,6 +36,11 @@ struct TakeStageSummary: Equatable {
   var firstChunkShouldStop: Bool?
   /// #1413: what the other-audio hold did for this take, written at its restore.
   var otherAudio: OtherAudioTerminalFacts?
+  /// #3111: which instruction EG-1's named-language prompt family selected for this take
+  /// (`named`, `english`, `unsure`, `conflict`, `untested`). Written once the prompt is
+  /// PLANNED, before the model is asked, so it says what was chosen, never whether polish
+  /// succeeded or what language was delivered. Absent for every other provider and family.
+  var polishLanguageHint: String?
 
   /// The terminal-row projection. Keys are prefixed `vad_` beside the #2184 conditioning
   /// fields that already live on the same row; `vad_stage_reached` is always present when
@@ -50,6 +55,7 @@ struct TakeStageSummary: Equatable {
     if let firstChunkLatencyMs { out["vad_first_chunk_latency_ms"] = firstChunkLatencyMs }
     if let firstChunkShouldStop { out["vad_first_chunk_should_stop"] = firstChunkShouldStop }
     if let otherAudio { out.merge(otherAudio.terminalProperties) { current, _ in current } }
+    if let polishLanguageHint { out["polish_language_hint"] = polishLanguageHint }
     return out
   }
 }
@@ -110,7 +116,8 @@ public struct OtherAudioTerminalFacts: Equatable, Sendable {
 }
 
 /// In-memory, per-take, bounded. Opened at `dictation.started` (the acceptance seam),
-/// written by the three VAD marker calls, consumed once by `dictation.terminal`.
+/// written by the three VAD marker calls and by optional per-take facts (the other-audio
+/// hold, #1413; EG-1's prompt selection, #3111), consumed once by `dictation.terminal`.
 ///
 /// Rules, each of which a test names:
 /// - A marker for a take that was never opened, or already closed, writes nothing. A late

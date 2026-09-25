@@ -514,10 +514,11 @@ struct PromptPlannerTests {
   }
 }
 
-/// #3111: EG-1 1.2 with the dictation's language named. When this fails, a Polish or French
-/// user on EG-1 gets their dictation back in English again, or an English user's prompt
-/// changes from the one 1.2 was trained and benchmarked on.
-@Suite("EG-1 named-language prompt", .tags(.productOutcome))
+/// #3111: prompt-contract guard for EG-1 1.2's named-language family: the exact bytes it
+/// renders, which inputs get the plain 1.2 prompt, routing, and that the name survives the
+/// planner's vocabulary copy. It pins the instruction sent, not the model's output language;
+/// that was measured on the artifact (`docs/feature-requests/issue-3111-artifacts/`).
+@Suite("EG-1 named-language prompt", .tags(.driftGuard))
 struct EGOneNamedLanguagePromptTests {
 
   static func input(_ transcript: String, namedLanguage: String?) -> PromptBuildInput {
