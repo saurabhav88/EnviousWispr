@@ -75,11 +75,20 @@ def parse_entries(swift_path):
     # between version sections (a previous lookahead-based regex over-extended
     # across those comments and silently swallowed the first entry of each older
     # version section).
+    #
+    # Every boundary and label is found in the MASKED text (string literals and comments
+    # blanked, positions kept), so an `Entry(`, `title:` or `version: "1.2.3"` inside a
+    # comment or a string is never read as the entry's own; each value is then read from
+    # the original text right after its label.
+    masked_text = mask_literals_and_comments(text)
+    calls = list(re.finditer(r"Entry\(", masked_text))
     entries = []
-    for chunk in text.split("Entry(")[1:]:
-        t = re.search(r'title:\s*\n?\s*"((?:[^"\\]|\\.)*)"', chunk, re.DOTALL)
-        d = re.search(r'description:\s*\n?\s*"((?:[^"\\]|\\.)*)"', chunk, re.DOTALL)
-        v = re.search(r'version:\s*"([\d.]+)"', chunk)
+    for n, call in enumerate(calls):
+        end = calls[n + 1].start() if n + 1 < len(calls) else len(text)
+        chunk, masked = text[call.end():end], masked_text[call.end():end]
+        t = labelled_literal(chunk, masked, "title", FIELD_LITERAL)
+        d = labelled_literal(chunk, masked, "description", FIELD_LITERAL)
+        v = labelled_literal(chunk, masked, "version", VERSION_LITERAL)
         if not (t and d and v):
             continue
         # `bullets:` is looked for only BEFORE `version:`. That is where the Swift
@@ -87,18 +96,18 @@ def parse_entries(swift_path):
         # the entry's own argument list: the chunk runs on to the next `Entry(`, so
         # it also holds the comments above the NEXT entry, and a comment that merely
         # mentions `bullets: [...]` must not become a phantom list on this one.
-        bullets = parse_bullets(chunk[: v.start()])
+        bullets = parse_bullets(chunk[: v[0]])
         # `id:` is looked for only BEFORE `title:`, where the initialiser puts it, for
         # the same reason: the chunk also holds the comments above the next entry.
-        entry_id = parse_id(chunk[: t.start()])
+        entry_id = parse_id(chunk[: t[0]])
         entries.append(
             {
                 # Parser state for the catalog seed only; `public_values` leaves it out,
                 # so `--dump-json` and the release notes are unchanged.
                 "id": entry_id,
-                "title": normalise_literal(t.group(1)),
-                "desc": normalise_literal(d.group(1)),
-                "version": v.group(1),
+                "title": normalise_literal(t[1]),
+                "desc": normalise_literal(d[1]),
+                "version": v[1],
                 # Absent in source is the same as `bullets: []`, so every entry
                 # written before #2484 parses and renders exactly as it did.
                 "bullets": bullets if bullets is not None else [],
@@ -109,6 +118,22 @@ def parse_entries(swift_path):
             }
         )
     return entries
+
+
+FIELD_LITERAL = re.compile(r'\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
+VERSION_LITERAL = re.compile(r'\s*"([\d.]+)"')
+
+
+def labelled_literal(chunk, masked, name, literal):
+    """The entry's own `name:` argument: its label found in `masked` (comments and strings
+    blanked), its value the literal right after that label in `chunk`, as (label start,
+    value). None when the label is missing or not followed by a readable literal. The label
+    start bounds the id and bullets searches."""
+    label = re.search(rf"\b{name}:", masked)
+    if not label:
+        return None
+    value = literal.match(chunk, label.end())
+    return (label.start(), value.group(1)) if value else None
 
 
 def normalise_literal(raw):
@@ -308,9 +333,14 @@ def dropped_entries(entries, swift_path):
     call count still sees it."""
     with open(swift_path, encoding="utf-8") as fh:
         source = fh.read()
-    field_count = len(re.findall(r'version:\s*"[\d.]+"', source))
-    # Counted in the masked source: an `Entry(` inside a comment is not a call.
-    call_count = len(re.findall(r"(?m)^[ \t]*Entry\(", mask_literals_and_comments(source)))
+    # Both counted in the masked source: a `version: "1.2.3"` or `Entry(` inside a comment
+    # or a string is not an entry's. A version label counts when a literal follows it.
+    masked = mask_literals_and_comments(source)
+    field_count = sum(
+        1 for label in re.finditer(r"\bversion:", masked)
+        if VERSION_LITERAL.match(source, label.end())
+    )
+    call_count = len(re.findall(r"(?m)^[ \t]*Entry\(", masked))
     if len(entries) != field_count or len(entries) != call_count:
         return (
             f"error: parsed {len(entries)} entries but the source has {field_count} "
@@ -628,6 +658,22 @@ FIXTURE_CASES = [
 # (label, Swift source text, expected start of the refusal message, or None for a seed).
 SEED_REFUSALS = [
     (
+        "a version or title example inside comments is not an entry's field",
+        '''
+    // An entry reads like this: version: "1.2.3", title: "Example"
+    /* Another example: version: "4.5.6" */
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      // title: "Commented title",
+      title: "Real title",
+      description: "Real paragraph.",
+      version: "9.9.9"
+    ),
+''',
+        None,
+    ),
+    (
         "an Entry( inside a block comment is not counted as an entry",
         '''
     Entry(
@@ -895,6 +941,8 @@ def self_test_fixtures():
             if want_error is None:
                 if error is not None or not seed:
                     failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted a seed")
+                elif seed.get("whatsNew.real.title", "Real title") != "Real title":
+                    failures.append(f"[{label}] title {seed['whatsNew.real.title']!r}, wanted 'Real title'")
             elif seed is not None or not (error or "").startswith(want_error):
                 failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted {want_error!r}")
     return failures
