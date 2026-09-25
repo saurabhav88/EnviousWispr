@@ -47,6 +47,19 @@ struct FeedbackReporterTests {
     // A reply could never reach these (second-pass review): empty domain label, trailing comma.
     #expect(FeedbackDraft.issue(message: "hi", email: "a@b..co") == .invalidEmail)
     #expect(FeedbackDraft.issue(message: "hi", email: "a@b.co,") == .invalidEmail)
+    // Cloud review: dot and hyphen edges in either part.
+    for bad in ["a..b@example.com", ".a@example.com", "a.@example.com", "a@-example.com",
+      "a@example-.com", "a@example.c0m", "a@.example.com"]
+    {
+      #expect(FeedbackDraft.issue(message: "hi", email: bad) == .invalidEmail, "\(bad)")
+    }
+    // Local enumeration round: real internationalized addresses must be accepted.
+    for good in [
+      "a.b@example.com", "a_b-c@sub.example-site.co.uk", "o'neil@example.ie", "josé@example.com",
+      "a@bücher.de", "a@例子.中国", "a@b.xn--p1ai", "a@b.XN--P1AI",
+    ] {
+      #expect(FeedbackDraft.issue(message: "hi", email: good) == nil, "\(good)")
+    }
     #expect(FeedbackDraft(message: "hi", email: "first.last+tag@mail.example-site.io")?.email
       == "first.last+tag@mail.example-site.io")
     #expect(FeedbackDraft(message: "hi", email: "a@b") == nil)

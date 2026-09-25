@@ -26,6 +26,14 @@ public struct FeedbackDraft: Equatable, Sendable {
     self.email = trimmedEmail.isEmpty ? nil : trimmedEmail
   }
 
+  /// A plausible reply address: a typo guard, not a delivery check. A dot-atom local part (no
+  /// leading, trailing or doubled dot) and dot-separated domain labels that start and end with a
+  /// letter or digit, ending in a letters-only or `xn--` label. Letters from any script are
+  /// accepted (`josé@example.com`, `a@bücher.de`); quoted local parts, IP literals and length
+  /// limits are not checked.
+  static let emailPattern =
+    #"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~\p{L}\p{M}\p{Nd}-]+(\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~\p{L}\p{M}\p{Nd}-]+)*@([A-Za-z0-9\p{L}\p{Nd}]([A-Za-z0-9\p{L}\p{M}\p{Nd}-]*[A-Za-z0-9\p{L}\p{M}\p{Nd}])?\.)+([A-Za-z\p{L}][A-Za-z\p{L}\p{M}]+|[Xx][Nn]--[A-Za-z0-9-]+[A-Za-z0-9])$"#
+
   /// The single validity rule, shared by `init?` and the form.
   public static func issue(message: String, email: String) -> Issue? {
     let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -33,8 +41,7 @@ public struct FeedbackDraft: Equatable, Sendable {
     if trimmed.count > maxMessageLength { return .messageTooLong }
     let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
     if !trimmedEmail.isEmpty,
-      trimmedEmail.range(
-        of: #"^[^@\s]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$"#, options: .regularExpression) == nil
+      trimmedEmail.range(of: emailPattern, options: .regularExpression) == nil
     {
       return .invalidEmail
     }
