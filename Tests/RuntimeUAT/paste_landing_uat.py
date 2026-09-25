@@ -46,6 +46,7 @@ import wispr_eyes as w  # noqa: E402
 from escape_recovery_uat import screen_is_locked  # noqa: E402
 
 CHROME = "com.google.Chrome"
+TEXTEDIT = "com.apple.TextEdit"
 SENTENCE = u.SENTENCE
 # The arrival session's one line (#3106 PR A): observed is found / absent / no_target /
 # cannot_read / inconclusive; late_found_ms appears only on a late hit (empty group otherwise).
@@ -480,8 +481,23 @@ def phase_textedit():
     sentinel = "ew-uat-sentinel-landing-textedit"
     restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")  # before the take
     u.set_clipboard_text(sentinel)
+    # The same take as `u.phase_dictate`, but through `take()`: the run's one audio route and its
+    # stuck-take guard, never a second route that would overwrite the run's recovery file.
+    path = u.new_textedit_doc(f"3106-landing-{u.RUN_ID}")
+    u.require_front(TEXTEDIT, "textedit: document open")
+    for _ in range(4):  # other windows closed, so the hold's key goes to this document
+        if not w.close_window():
+            break
     base = u.log_size()
-    delivered = u.phase_dictate()  # the plan 1 driver's own take (speech: not metered)
+    take("textedit", base, bundle=TEXTEDIT, expect_landing=False)  # speech: not metered
+    ok = u.wait_for("the dictation to land in the document",
+                    lambda: u.sentence_overlap(u.doc_text(path)) >= 5, deadline=20.0)
+    delivered = u.doc_text(path)
+    u.check("textedit: the take landed in the document (5+ of the sentence's 7 words)", ok,
+            f"{u.sentence_overlap(delivered)}/7 {delivered[:80]!r}")
+    if not ok:
+        raise u.Aborted("textedit: no dictation landed")
+    delivered = delivered[:-1] if delivered.endswith(" ") else delivered
     quiet("textedit checks", verify_textedit, base, delivered, restore_on, sentinel)
 
 
