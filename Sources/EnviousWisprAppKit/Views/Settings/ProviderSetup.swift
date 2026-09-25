@@ -2080,7 +2080,9 @@ struct ProviderSetupSection: View {
       model.keyStoreStatus = .saved
       Task {
         try? await Task.sleep(for: .seconds(2))
-        model.keyStoreStatus = .none
+        // Only its own "Saved!": a failure from a later Save or Clear inside the two seconds
+        // must stay on screen.
+        if model.keyStoreStatus == .saved { model.keyStoreStatus = .none }
       }
       TelemetryService.shared.apiKeyChanged(
         provider: apiKeyProviderLabel(keychainId), action: "save", result: "success")
