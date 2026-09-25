@@ -7,11 +7,16 @@ import EnviousWisprLLM
 /// naming the language reduced English outputs from 41/480 to 0/480. Naming the WRONG
 /// language is worse than naming none: it translates the dictation INTO that language
 /// (Polish labelled German came back German on 31 of 40 sentences). So a name is given
-/// only on positive, agreeing evidence, and every doubt falls back to today's prompt.
+/// only on positive, agreeing evidence about the raw text, and doubt about that text falls
+/// back to today's prompt.
 ///
 /// Pure: every input is frozen in the context at resolution time, before any cleanup
 /// step runs, so the answer is about what the recogniser WROTE rather than what cleanup
-/// made of it.
+/// made of it. Known limit, accepted: a custom word whose replacement is in a DIFFERENT
+/// language than the dictation (an English phrase saved against a multi-word Polish alias)
+/// is not re-checked, so that take is still named Polish. Clearing the name whenever word
+/// correction changed the text would drop it for every Polish take where a custom word
+/// fixes a name, which is the common case.
 package enum EGOneLanguageNaming {
 
   package enum Decision: Equatable, Sendable {

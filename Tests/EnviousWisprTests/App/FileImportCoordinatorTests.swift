@@ -1252,14 +1252,24 @@ struct FileImportCoordinatorTests {
     let capture = NamedPromptCapture()
     let runner = FileImportRunner(
       keychainManager: KeychainManager(), egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
-      outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.97) },
+      // Polish only for the SAVED raw text: a second pass fed the first pass's cleaned output
+      // (which differs from the raw text) would read as English and name nothing.
+      outputClassifierHolder: nil,
+      languageIdentifier: { text in
+        text == FileImportRunnerTests.polishPart ? ("pl", 0.97) : ("en", 0.97)
+      },
       makeEGOnePolisher: { _ in PromptCapturingPolisher(capture: capture) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
     runner.freeze(settings: FileImportRunnerTests.egOneSnapshot, vocabulary: nil)
+    final class Parts: @unchecked Sendable { var seen: [String] = [] }
+    let parts = Parts()
     let coordinator = makeCoordinator(
       lease: EngineLease(),
       transcribe: { _ in FileImportRunnerTests.polishPart },
-      processPart: { part in try await runner.process(part: part) })
+      processPart: { part in
+        parts.seen.append(part)
+        return try await runner.process(part: part)
+      })
     coordinator.choose(url: Self.anyURL)
     await settleUntil { if case .ready = coordinator.state { return true } else { return false } }
     coordinator.start()
@@ -1271,6 +1281,9 @@ struct FileImportCoordinatorTests {
     await settleUntil { coordinator.state == .finished && capture.systemPrompts.count > firstPass }
     #expect(capture.systemPrompts.count > firstPass, "the second pass reached EG-1")
     #expect(capture.systemPrompts.allSatisfy { $0 == FileImportRunnerTests.namedPolishPrompt })
+    #expect(
+      parts.seen.allSatisfy { $0 == FileImportRunnerTests.polishPart },
+      "every pass, the re-clean included, ran on the saved raw text")
   }
 
   // MARK: - Changing the polisher
