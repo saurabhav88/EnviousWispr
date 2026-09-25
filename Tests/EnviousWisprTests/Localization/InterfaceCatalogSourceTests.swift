@@ -20,7 +20,7 @@ struct InterfaceCatalogSourceTests {
     "menu.sendFeedback": "Send Feedback…",
     "feedback.message.placeholder": "What happened, or what would you like to see?",
     "feedback.message.label": "Feedback message",
-    "feedback.email.placeholder": "Email (optional)",
+    "feedback.email.placeholder": "Email (optional, if you'd like a reply)",
     "feedback.send": "Send",
     "feedback.sent": "Sent",
     "feedback.unavailable": "Couldn't send. Email hello@enviouslabs.co",

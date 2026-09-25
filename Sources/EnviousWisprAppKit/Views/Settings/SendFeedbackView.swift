@@ -69,7 +69,7 @@ struct SendFeedbackView: View {
 
   private var emailField: some View {
     TextField(
-      String(localized: "feedback.email.placeholder", defaultValue: "Email (optional)"),
+      String(localized: "feedback.email.placeholder", defaultValue: "Email (optional, if you'd like a reply)"),
       text: $email
     )
     .focused($emailFocused)
