@@ -197,6 +197,16 @@ struct OnboardingSetupCopyProjectionTests {
       OnboardingV2ViewModel.friendlyError(wrapped)
         == "No internet connection. Please connect to the internet and try again.",
       "a wrapped download error is recognised by the type it wraps")
+    let diskOverTimeout = NSError(
+      domain: NSPOSIXErrorDomain, code: Int(ENOSPC),
+      userInfo: [
+        NSLocalizedDescriptionKey: "No space left on device",
+        NSUnderlyingErrorKey: error(NSURLErrorDomain, URLError.timedOut.rawValue),
+      ])
+    #expect(
+      OnboardingV2ViewModel.friendlyError(diskOverTimeout)
+        == "Not enough disk space. Please free up space and try again.",
+      "the nearest typed cause decides, not the first message branch")
     #expect(
       OnboardingV2ViewModel.friendlyError(error("Other", 1))
         == "Download failed: Ein Fehler ist aufgetreten.")

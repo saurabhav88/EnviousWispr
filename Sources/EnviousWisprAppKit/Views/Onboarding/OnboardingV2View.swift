@@ -831,6 +831,9 @@ final class OnboardingV2ViewModel {
   // MARK: - Friendly Error Messages
 
   /// Maps raw error descriptions to user-friendly messages.
+  /// The download failures `friendlyError` recognises by type rather than by wording.
+  enum DownloadFailureKind: Equatable { case timeout, noInternet, cannotConnect, noSpace }
+
   static func friendlyError(_ error: any Error) -> String {
     // #1348 Phase 2: typed delivery failures render the D6 state copy from
     // the single copy authority (ModelDeliveryCopy) — never inline strings.
@@ -862,27 +865,40 @@ final class OnboardingV2ViewModel {
       chain.append(current)
       next = current.userInfo[NSUnderlyingErrorKey] as? NSError
     }
-    let urlCodes = Set(
-      chain.compactMap { $0.domain == NSURLErrorDomain ? URLError.Code(rawValue: $0.code) : nil })
-    let outOfSpace = chain.contains {
-      ($0.domain == NSCocoaErrorDomain && $0.code == NSFileWriteOutOfSpaceError)
-        || ($0.domain == NSPOSIXErrorDomain && $0.code == Int(ENOSPC))
-    }
-    let desc = error.localizedDescription.lowercased()
+    // The NEAREST recognised typed cause decides: an out-of-space error wrapping a timeout
+    // is a disk problem. The English word checks below run only when no typed cause exists.
+    let typed: DownloadFailureKind? =
+      chain.lazy.compactMap { current -> DownloadFailureKind? in
+        if current.domain == NSURLErrorDomain {
+          switch URLError.Code(rawValue: current.code) {
+          case .timedOut: return .timeout
+          case .notConnectedToInternet, .networkConnectionLost: return .noInternet
+          case .cannotConnectToHost: return .cannotConnect
+          default: break
+          }
+        }
+        if (current.domain == NSCocoaErrorDomain && current.code == NSFileWriteOutOfSpaceError)
+          || (current.domain == NSPOSIXErrorDomain && current.code == Int(ENOSPC))
+        {
+          return .noSpace
+        }
+        return nil
+      }.first
+    let desc = typed == nil ? error.localizedDescription.lowercased() : ""
 
-    if urlCodes.contains(.timedOut) || desc.contains("timed out") || desc.contains("timeout") {
+    if typed == .timeout || desc.contains("timed out") || desc.contains("timeout") {
       return String(
         localized: "The download timed out. Please check your internet connection and try again.",
         comment: "Setup error: the speech model download timed out.")
     }
-    if urlCodes.contains(.notConnectedToInternet) || urlCodes.contains(.networkConnectionLost)
+    if typed == .noInternet
       || desc.contains("not connected") || desc.contains("network") || desc.contains("offline")
     {
       return String(
         localized: "No internet connection. Please connect to the internet and try again.",
         comment: "Setup error: no internet during the speech model download.")
     }
-    if urlCodes.contains(.cannotConnectToHost) || desc.contains("could not connect")
+    if typed == .cannotConnect || desc.contains("could not connect")
       || desc.contains("cannot connect")
     {
       return String(
@@ -895,7 +911,9 @@ final class OnboardingV2ViewModel {
         localized: "The download server is busy. Please wait a moment and try again.",
         comment: "Setup error: the download server refused because of too many requests.")
     }
-    if outOfSpace || desc.contains("disk") || desc.contains("space") || desc.contains("no space") {
+    if typed == .noSpace || desc.contains("disk") || desc.contains("space")
+      || desc.contains("no space")
+    {
       return String(
         localized: "Not enough disk space. Please free up space and try again.",
         comment: "Setup error: the disk filled up during the speech model download.")
