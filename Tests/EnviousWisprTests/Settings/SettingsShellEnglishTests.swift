@@ -27,7 +27,6 @@ struct SettingsShellEnglishTests {
     #expect(SettingsSection.snippets.label == "Snippets")
     #expect(SettingsSection.clipboard.label == "Clipboard")
     #expect(SettingsSection.permissions.label == "Permissions")
-    #expect(SettingsSection.sendFeedback.label == "Send Feedback")
     #expect(SettingsSection.checkForUpdates.label == "Check for Updates")
     #expect(SettingsSection.openSourceLicenses.label == "Open Source Licenses")
     #expect(
@@ -65,12 +64,10 @@ struct SettingsShellEnglishTests {
     #expect(
       SettingsSection.permissions.subtitle
         == "The microphone and accessibility access EnviousWispr needs.")
-    #expect(SettingsSection.sendFeedback.subtitle == "")
     #expect(SettingsSection.checkForUpdates.subtitle == "")
     #expect(
       SettingsSection.openSourceLicenses.subtitle
         == "EnviousWispr is GPLv3 open source. The license and third-party notices.")
-    #expect(SettingsSection.sendFeedback.subtitle == "")
     #expect(SettingsSection.checkForUpdates.subtitle == "")
     #expect(SettingsGroup.allCases.map(\.heading) == SettingsGroup.allCases.map(\.rawValue))
   }

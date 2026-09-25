@@ -1446,10 +1446,6 @@ package final class WisprBootstrapper {
           appWindowCoordinator.showWindow()
         },
         openPermissions: openPermissionsWindow,
-        openFeedback: {
-          navigationCoordinator.request(.sendFeedback)
-          appWindowCoordinator.showWindow()
-        },
         toggleRecording: { await dictationRuntime.toggleRecording(source: .menuBar) },
         quit: { NSApp.terminate(nil) },
         lastDictation: { [weak transcriptCoordinator] in

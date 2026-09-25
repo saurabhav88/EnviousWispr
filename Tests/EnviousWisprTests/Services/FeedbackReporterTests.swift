@@ -65,6 +65,32 @@ struct FeedbackReporterTests {
     #expect(FeedbackDraft(message: "hi", email: "a@b") == nil)
   }
 
+  // MARK: - Unsent draft
+
+  @Test("An unsent draft survives a new store (popover, window or app closed) until cleared")
+  func draftSurvivesUntilCleared() throws {
+    let suite = "FeedbackDraftStoreTests.\(UUID().uuidString)"
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let first = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    #expect(first.message == "")
+    #expect(first.email == "")
+    first.save(message: "it pasted twice in slack", email: "a@b.co")
+
+    // A fresh store over the same defaults is what a reopened popover or relaunched app sees.
+    let reopened = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    #expect(reopened.message == "it pasted twice in slack")
+    #expect(reopened.email == "a@b.co")
+
+    // An emptied field is removed, not stored as "".
+    reopened.save(message: "still here", email: "")
+    #expect(UserDefaults(suiteName: suite)!.object(forKey: "feedback.draft.email") == nil)
+    #expect(reopened.message == "still here")
+
+    reopened.clear()
+    #expect(FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! }).message == "")
+    #expect(UserDefaults(suiteName: suite)!.object(forKey: "feedback.draft.message") == nil)
+  }
+
   // MARK: - Send
 
   @Test("With Sentry not running, nothing is captured and the form is told so")

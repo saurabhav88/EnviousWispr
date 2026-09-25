@@ -69,6 +69,13 @@ struct UnifiedWindowView: View {
           }
           .sharedBackgroundVisibility(.hidden)
           ToolbarSpacer(.fixed, placement: .primaryAction)
+          // #3153: feedback lives beside Record (founder, 2026-09-25). Its own group, so the
+          // shared Liquid Glass capsule does not merge it into the record pill.
+          ToolbarItem(placement: .primaryAction) {
+            FeedbackToolbarButton()
+          }
+          .sharedBackgroundVisibility(.hidden)
+          ToolbarSpacer(.fixed, placement: .primaryAction)
           ToolbarItem(placement: .primaryAction) {
             RecordButton()
           }
@@ -76,6 +83,9 @@ struct UnifiedWindowView: View {
         } else {
           ToolbarItem(placement: .primaryAction) {
             StatusBadge()
+          }
+          ToolbarItem(placement: .primaryAction) {
+            FeedbackToolbarButton()
           }
           ToolbarItem(placement: .primaryAction) {
             RecordButton()
@@ -222,8 +232,6 @@ struct UnifiedWindowView: View {
       page(.clipboard) { ClipboardSettingsView() }
     case .permissions:
       page(.permissions) { PermissionsSettingsView() }
-    case .sendFeedback:
-      page(.sendFeedback) { SendFeedbackView() }
     case .checkForUpdates:
       // Issue #958: D1 action row never selects this case (no `.tag`), but the
       // exhaustive switch requires an arm.
