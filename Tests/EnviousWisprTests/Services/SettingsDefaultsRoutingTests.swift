@@ -56,6 +56,8 @@ struct SettingsDefaultsRoutingTests {
     // #1950: lock the exact shipped value here because a default change must update the settings
     // authority, Core fallback, canonical-defaults test, knowledge mirror, and What's New together.
     #expect(settings.ollamaModel == "qwen2.5:3b")
+    // #2480: a normal Dock app by default, so the window opens in front with the app menu.
+    #expect(settings.showInDock == true)
   }
 
   @Test("the Ollama default and the Core fallback cannot drift apart")

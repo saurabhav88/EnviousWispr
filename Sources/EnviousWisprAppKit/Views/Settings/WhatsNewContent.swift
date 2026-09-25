@@ -71,6 +71,19 @@ enum WhatsNewContent {
       version: "2.5.1"
     ),
 
+    // #2480: a Reddit user's report (window behind other apps, no app menu, no Cmd-Tab entry,
+    // could not find Settings) and the founder's Wispr Flow choice, 2026-09-24. Same unshipped
+    // 2.5.1 group. Existing users see a Dock icon appear and the menu bar icon move right, so
+    // the card says both are intended and where the switch lives.
+    Entry(
+      id: "dock-icon-and-window-in-front",
+      icon: "dock.rectangle",
+      title: "A Dock icon, and a window that opens in front",
+      description:
+        "EnviousWispr now shows in the Dock and in Command-Tab like any Mac app, and its window opens in front of what you were doing. The menu bar icon also starts next to the clock on a Mac where you never moved it. Prefer the menu bar alone? Switch off Show app in Dock in Settings, Appearance.",
+      version: "2.5.1"
+    ),
+
     // #3062: a clicking mouse wheel moved the page a few points per click in one frame
     // (reporter's video, discussion #3059). Same unshipped 2.5.1 group.
     Entry(

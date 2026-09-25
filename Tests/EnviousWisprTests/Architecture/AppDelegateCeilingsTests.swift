@@ -47,12 +47,13 @@ import Testing
       named: "AppDelegate", at: Self.sourcePath)
     let count = RouterCeilingParser.nonPrivateMethodCount(in: body)
     #expect(
-      count <= 6,
+      count <= 7,
       """
-      AppDelegate non-private method ceiling exceeded: \(count) > 6 \
+      AppDelegate non-private method ceiling exceeded: \(count) > 7 \
       non-private `func` declarations. PR-B.4 baseline: the five forced \
-      NSApplicationDelegate callbacks + `attach`. `assertAttached` is private \
-      and uncounted. New behavior belongs on AppLifecycleCoordinator.
+      NSApplicationDelegate callbacks + `attach`; #2480 added the Dock-icon \
+      reopen forward. `assertAttached` is private and uncounted. New behavior \
+      belongs on AppLifecycleCoordinator.
       """)
   }
 

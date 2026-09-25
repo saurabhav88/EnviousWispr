@@ -1,13 +1,13 @@
 ---
 title: "Sounds and Appearance"
-description: "Light and dark mode, where the recording bar sits and how it looks, recording sounds, and what happens to music while you dictate."
+description: "Light and dark mode, where the recording bar sits and how it looks, the Dock icon, recording sounds, and what happens to music while you dictate."
 category: "features"
 section: "Appearance and Sounds"
 order: 5
-keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "pill design", "recording pill", "overlay", "bar position", "move the bar", "menu bar icon", "other audio"]
-updated: 2026-09-16
+keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "pill design", "recording pill", "overlay", "bar position", "move the bar", "menu bar icon", "dock", "dock icon", "hide dock icon", "show in dock", "other audio"]
+updated: 2026-09-24
 ---
-Five settings change how EnviousWispr looks and sounds while you use it. The first four affect only looks and sounds, never what you dictate or how accurately it is transcribed. The fifth, Other audio while you dictate, can quiet the music around you, which keeps background sound out of your recording.
+Six settings change how EnviousWispr looks and sounds while you use it. The first five affect only looks and sounds, never what you dictate or how accurately it is transcribed. The sixth, Other audio while you dictate, can quiet the music around you, which keeps background sound out of your recording.
 
 ### Light or dark
 
@@ -24,6 +24,10 @@ You can also move the bar during a dictation.
 ### The look of the recording bar
 
 The same **Appearance** page has a **Recording Pill** row with three designs: **Capsule**, **Reading Well** and **Level Rail**. Click one to use it. Reading Well is the design that shows your words as you speak, so it goes together with [Live Preview](/help/live-preview-words-on-screen/). If a design is greyed out, the line under the row says why.
+
+### The Dock icon
+
+EnviousWispr shows in the Dock and in the app switcher (Command-Tab) like any Mac app, and its window opens in front of your other windows. If you would rather keep it in the menu bar alone, go to **Settings**, then select **Appearance**, and switch off **Show app in Dock**. With that off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays, so you can always reach Settings from it.
 
 ### Recording sounds
 

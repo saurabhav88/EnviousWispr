@@ -42,6 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     application?.applicationDidFinishLaunching()
   }
 
+  /// #2480: Dock-icon click or a double-click on the running app.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    application?.applicationShouldHandleReopen(hasVisibleWindows: flag) ?? true
+  }
+
   func applicationDidBecomeActive(_ notification: Notification) {
     application?.applicationDidBecomeActive()
   }
@@ -51,8 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    // Menu bar app — keep running when windows close.
-    // User quits via "Quit EnviousWispr" in the status bar menu.
+    // Keep running when windows close: dictation lives in the background, reached
+    // from the menu bar icon or the Dock icon. Quit is in both menus.
     return false
   }
 

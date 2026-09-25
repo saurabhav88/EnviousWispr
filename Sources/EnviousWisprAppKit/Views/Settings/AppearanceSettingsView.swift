@@ -69,6 +69,25 @@ struct AppearanceSettingsView: View {
 
       // #2376: which pill is drawn while dictating, per capability group.
       RecordingPillAppearancePanel()
+
+      // #2480: the Dock icon. The menu bar icon has no switch (founder, 2026-09-24),
+      // so the helper says it always stays: turning this off can never leave the
+      // app unreachable.
+      BrandedPanel(icon: "dock.rectangle", header: "Dock") {
+        Toggle(isOn: $settings.showInDock) {
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Show app in Dock").settingsRowLabel()
+            Text(
+              "When off, the Dock icon appears only while an EnviousWispr window is open. "
+                + "The menu bar icon always stays."
+            )
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+        .toggleStyle(BrandedToggleStyle())
+      }
     }
   }
 }

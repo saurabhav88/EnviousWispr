@@ -383,6 +383,8 @@ final class PipelineSettingsSync {
       break  // #2376: UI-only; read at the start of the next fresh recording.
     case .showBluetoothTips:
       break  // #1480: UI-only; read by BluetoothAwarenessPresenter, no pipeline sync.
+    case .showInDock:
+      break  // #2480: UI-only; the bootstrapper's settings onChange routes it to the Dock policy owner.
     case .playRecordingSounds, .recordingSoundPairing:
       break  // #1342: UI-only; read live by RecordingSoundCue, no pipeline sync.
     case .otherAudioWhileDictating:

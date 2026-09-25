@@ -20,7 +20,7 @@ import Testing
 /// `onOnboardingDismissed`, `pendingOpenOnboarding`), 6 non-private `func`s
 /// (`installOnLaunch`, `tearDown`, `showWindow`, `openOnboardingWindow`,
 /// `closeOnboardingWindow`, `consumePendingOpenOnboarding`; `init` is not a
-/// `func`). Line cap 300 (generous soft trip-wire — actual file ~200 lines).
+/// `func`). Line cap 300 (generous soft trip-wire — #2480 grew the file with the Dock policy it owns).
 @Suite struct AppWindowCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppWindowCoordinator.swift"
@@ -40,6 +40,10 @@ import Testing
     "dismissOnboardingAction",
     "onOnboardingDismissed",
     "pendingOpenOnboarding",
+    // #2480: the Dock policy owner's two inputs it cannot read from a window, the
+    // "Show app in Dock" setting and whether a Sparkle dialog is up.
+    "showInDock",
+    "updateDialogActive",
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {
@@ -50,8 +54,8 @@ import Testing
     #expect(
       extras.isEmpty && missing.isEmpty,
       """
-      AppWindowCoordinator stored-property set drifted from the PR-B.2 \
-      11-name allowlist. Unexpected: \(extras.sorted()). Missing: \
+      AppWindowCoordinator stored-property set drifted from its allowlist. \
+      Unexpected: \(extras.sorted()). Missing: \
       \(missing.sorted()). Adding a stored property is god-object drift — \
       raising the allowlist requires a Bible §30 entry. Removing one means \
       this test's allowlist must shrink in the same PR.
@@ -62,12 +66,14 @@ import Testing
     let body = try classBodyOfAppWindowCoordinator()
     let count = RouterCeilingParser.nonPrivateMethodCount(in: body)
     #expect(
-      count <= 10,
+      count <= 16,
       """
-      AppWindowCoordinator non-private method ceiling exceeded: \(count) > 10 \
+      AppWindowCoordinator non-private method ceiling exceeded: \(count) > 16 \
       non-private `func` declarations in the class body. PR-B.2 baseline: \
       installOnLaunch, tearDown, showWindow, openOnboardingWindow, \
-      closeOnboardingWindow, consumePendingOpenOnboarding.
+      closeOnboardingWindow, consumePendingOpenOnboarding. #2480 added the Dock \
+      policy it owns: beginLaunch, finishLaunch, refreshActivationPolicy, \
+      refreshAfterOnboardingDismissal, updateDialogWillShow, updateSessionDidEnd.
       """)
   }
 
@@ -131,7 +137,7 @@ private func classBodyOfAppWindowCoordinator() throws -> String {
   let source = try String(
     contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/AppWindowCoordinator.swift"),
     encoding: .utf8)
-  guard let openRange = source.range(of: "final class AppWindowCoordinator {") else {
+  guard let openRange = source.range(of: "final class AppWindowCoordinator: UpdateDialogPresenting {") else {
     Issue.record("AppWindowCoordinator declaration not found at expected path/shape")
     throw POSIXError(.ENOENT)
   }

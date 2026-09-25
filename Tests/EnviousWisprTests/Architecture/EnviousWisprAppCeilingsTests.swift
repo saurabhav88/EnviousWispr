@@ -224,23 +224,23 @@ import Testing
 
   /// Non-private method ceiling. #919: the relocated composition root
   /// (`WisprBootstrapper`) exposes EXACTLY the front-door surface the thin
-  /// `@main` shell needs — 4 lifecycle forwards (`applicationWillFinishLaunching`,
-  /// `applicationDidFinishLaunching`, `applicationDidBecomeActive`,
-  /// `applicationWillTerminate`) + 2 view factories (`mainWindowContent`,
-  /// `onboardingWindowContent`) = 6 public `func`s. The 2 window-title
+  /// `@main` shell needs — 5 lifecycle forwards (`applicationWillFinishLaunching`,
+  /// `applicationDidFinishLaunching`, `applicationShouldHandleReopen` (#2480),
+  /// `applicationDidBecomeActive`, `applicationWillTerminate`) + 2 view factories
+  /// (`mainWindowContent`, `onboardingWindowContent`) = 7 public `func`s. The 2 window-title
   /// accessors are computed `var`s (not counted). No DOMAIN methods are allowed
   /// beyond this front door — those belong on the individual homes. This cap is
-  /// the public-surface gate from the #919 plan (= 8 public decls overall:
-  /// these 6 funcs + the type + its `init`).
+  /// the public-surface gate from the #919 plan (= 9 public decls overall:
+  /// these 7 funcs + the type + its `init`).
   @Test func envWisprAppNonPrivateMethodCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelNonPrivateMethods(in: body)
     #expect(
-      count <= 6,
+      count <= 7,
       """
-      WisprBootstrapper non-private method ceiling exceeded: \(count) > 6. \
-      The bootstrapper's public surface is the 4 lifecycle forwards + 2 view \
-      factories. New domain methods belong on the individual homes \
+      WisprBootstrapper non-private method ceiling exceeded: \(count) > 7. \
+      The bootstrapper's public surface is the 5 lifecycle forwards (#2480 added \
+      the Dock-icon reopen) + 2 view factories. New domain methods belong on the individual homes \
       (NavigationCoordinator, DictationRuntime, ...), not the composition root.
       """)
   }

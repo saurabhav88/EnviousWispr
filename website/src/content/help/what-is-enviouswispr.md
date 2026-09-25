@@ -25,7 +25,7 @@ EnviousWispr gives you a full dictation setup on macOS without asking for paymen
 - **It costs nothing.** There is no subscription fee, no user account requirement, and no trial period. The entire application code is open source and licensed under the GPLv3.
 - **Your voice stays on your Mac.** Your speech is transcribed into text entirely on your own device. The audio recording never leaves your Mac.
 - **It works anywhere you can type.** You can dictate into Slack, Mail, Notion, VS Code, Google Docs, Terminal, or any other text field on your Mac.
-- **It lives in your menu bar.** The application runs quietly from your menu bar. There is no Dock icon and no separate window to keep open on your desktop.
+- **It stays out of your way.** EnviousWispr keeps running in the background with an icon in your menu bar, so there is no window to keep open while you dictate. It also shows in the Dock like any Mac app; turn that off in **Settings**, then **Appearance**, if you prefer the menu bar alone.
 - **AI can tidy up what you said.** An optional polish step cuts filler words like "um" and fixes grammar and punctuation. It is on from the start. You can choose an engine that runs on your Mac (EG-1, Apple Intelligence, or S1-mini by Superwhisper), your own Ollama setup, or OpenAI, Gemini or Claude with your own key, or turn the step off entirely. Read [_What Is AI Polish?_](/help/what-is-ai-polish/).
 
 ### What else it does

@@ -288,6 +288,11 @@ import Testing
         emitSnapshot()?.stringProps["escape_recovery"] == "off",
         "the baseline must track the setting, not report a constant")
 
+      // #2480: the Dock switch's baseline, default and changed, on the same real path.
+      #expect(atDefault?.stringProps["show_in_dock"] == "on")
+      settings.showInDock = false
+      #expect(emitSnapshot()?.stringProps["show_in_dock"] == "off")
+
       settings.toggleKeyCode = ModifierKeyCodes.globe
       let afterBind = emitSnapshot()
       #expect(afterBind?.stringProps["toggle_hotkey_identity"] == "globe")
@@ -395,6 +400,21 @@ import Testing
       #expect(
         SettingsProjection.value(for: .recordingSoundPairing, settings: settings)
           == "velvetTap")
+    }
+
+    @Test("Show app in Dock emits one on/off delta (#2480)")
+    func showInDockDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      // To the NON-default value: it ships ON, so writing `true` emits nothing.
+      settings.showInDock = false
+      telemetry.flush()
+
+      let d = deltas(box, setting: "show_in_dock")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "on")
+      #expect(d.first?.stringProps["to"] == "off")
+      #expect(d.first?.stringProps["source"] == "user")
     }
 
     @Test("Other audio while dictating emits one delta carrying only the mode (#1413)")

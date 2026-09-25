@@ -59,6 +59,8 @@ final class MenuBarController: NSObject {
   /// install the accessibility-change icon-refresh seam. Called once from
   /// `AppDelegate.applicationDidFinishLaunching` (was `setupStatusItem()`).
   func installStatusItem() {
+    // #2480: start next to the system icons on a Mac that has never placed ours.
+    StatusItemPlacement.seedPreferredPositionIfAbsent(in: .standard)
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     guard let button = statusItem?.button else { return }
 

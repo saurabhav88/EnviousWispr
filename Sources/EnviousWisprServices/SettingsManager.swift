@@ -72,6 +72,8 @@ public final class SettingsManager {
     case recordingPillDesignWithoutWords
     case recordingPillDesignWithWords
     case showBluetoothTips
+    /// #2480: keep the Dock icon for the whole run, or only while a window is open.
+    case showInDock
     case playRecordingSounds
     case recordingSoundPairing
     case otherAudioWhileDictating
@@ -121,7 +123,7 @@ public final class SettingsManager {
     "warmEnginePolicy", "appearancePreference",
     "overlayPillPosition",
     "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
-    "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
+    "showBluetoothTips", "showInDock", "playRecordingSounds", "recordingSoundPairing",
     "otherAudioWhileDictating", "learnFromEdits",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
@@ -864,6 +866,18 @@ public final class SettingsManager {
     }
   }
 
+  /// #2480: whether the app keeps its Dock icon (and app menu, Cmd-Tab entry) for
+  /// the whole run. Off: the Dock icon appears only while one of our windows is
+  /// open. The menu bar icon is always present either way. Applied by
+  /// `AppWindowCoordinator`, reached through the settings onChange route. Default:
+  /// `SettingsDefaultValues.showInDock`.
+  public var showInDock: Bool {
+    didSet {
+      defaults.set(showInDock, forKey: "showInDock")
+      onChange?(.showInDock)
+    }
+  }
+
   /// #1342: play a short sound when recording starts and stops. UI-only —
   /// no pipeline sync; read live by `RecordingSoundCue` at each cue moment.
   /// Default: `SettingsDefaultValues.playRecordingSounds`, named rather than
@@ -1378,6 +1392,10 @@ public final class SettingsManager {
     showBluetoothTips =
       defaults.object(forKey: "showBluetoothTips") as? Bool
       ?? SettingsDefaultValues.showBluetoothTips
+
+    showInDock =
+      defaults.object(forKey: "showInDock") as? Bool
+      ?? SettingsDefaultValues.showInDock
 
     playRecordingSounds =
       defaults.object(forKey: "playRecordingSounds") as? Bool

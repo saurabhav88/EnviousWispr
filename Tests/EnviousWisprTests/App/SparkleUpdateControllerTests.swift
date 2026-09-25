@@ -24,7 +24,7 @@ struct SparkleUpdateControllerTests {
     let holder = UpdateCoordinatorHolder()
     let controller = SparkleUpdateController(
       holder: holder,
-      application: RecordingDesktopPresentationEffects(),
+      updateDialogPresenter: RecordingUpdateDialogPresenter(),
       bundleVersionProvider: { "v-test-1.0" },
       updaterFactory: SparkleUpdaterFactory { _, _ in nil }
     )
@@ -40,6 +40,26 @@ struct SparkleUpdateControllerTests {
     #expect(
       holder.coordinator != nil,
       "startUpdater() must publish UpdateCoordinator into the holder synchronously.")
+  }
+
+  // MARK: - Dock policy reporting (#2480)
+
+  /// Sparkle reports its dialog and its session end to the Dock-policy owner and decides
+  /// nothing itself. When this fails, an update dialog opens behind other windows, or the Dock
+  /// icon vanishes after an update check for someone who chose to keep it.
+  @MainActor
+  @Test("the update dialog and session end are reported to the Dock-policy owner, in order")
+  func reportsDialogAndSessionEnd() {
+    let presenter = RecordingUpdateDialogPresenter()
+    let controller = SparkleUpdateController(
+      holder: UpdateCoordinatorHolder(),
+      updateDialogPresenter: presenter,
+      bundleVersionProvider: { "v-test-1.0" },
+      updaterFactory: SparkleUpdaterFactory { _, _ in nil }
+    )
+    controller.standardUserDriverWillShowModalAlert()
+    controller.standardUserDriverWillFinishUpdateSession()
+    #expect(presenter.calls == [.dialogWillShow, .sessionDidEnd])
   }
 
   // MARK: - Idempotency contract
@@ -62,7 +82,7 @@ struct SparkleUpdateControllerTests {
     let holder = UpdateCoordinatorHolder()
     let controller = SparkleUpdateController(
       holder: holder,
-      application: RecordingDesktopPresentationEffects(),
+      updateDialogPresenter: RecordingUpdateDialogPresenter(),
       bundleVersionProvider: { "v-test-1.0" },
       updaterFactory: SparkleUpdaterFactory { _, _ in nil }
     )
@@ -134,7 +154,7 @@ struct SparkleUpdateControllerTests {
       let holder = UpdateCoordinatorHolder()
       let controller = SparkleUpdateController(
         holder: holder,
-        application: RecordingDesktopPresentationEffects(),
+        updateDialogPresenter: RecordingUpdateDialogPresenter(),
         // Provider returns the SAME version as the persisted attempt.
         // `evaluateLastInstallAttempt` should resolve to `.completed` and
         // fire `update.install_completed`.
