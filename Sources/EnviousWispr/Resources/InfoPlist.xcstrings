@@ -1,0 +1,66 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSAppleEventsUsageDescription" : {
+      "comment" : "macOS permission prompt (NSAppleEventsUsageDescription), shown when the app first asks for this access. Say exactly what the app does with it, no more and no less.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr uses AppleScript to paste your dictated text into the active app when direct insertion is not available, and to pause Music or Spotify while you dictate if you choose that setting."
+          }
+        }
+      }
+    },
+    "NSContactsUsageDescription" : {
+      "comment" : "macOS permission prompt (NSContactsUsageDescription), shown when the app first asks for this access. Say exactly what the app does with it, no more and no less.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr reads the names in your contacts so dictation can spell the people you know correctly. Your address book is never uploaded."
+          }
+        }
+      }
+    },
+    "NSHumanReadableCopyright" : {
+      "comment" : "About box: the copyright line. Legal text: keep the company name and the years exactly.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2025–2026 Envious Labs LLC. All rights reserved."
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription" : {
+      "comment" : "macOS permission prompt (NSMicrophoneUsageDescription), shown when the app first asks for this access. Say exactly what the app does with it, no more and no less.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr needs microphone access for speech-to-text dictation."
+          }
+        }
+      }
+    },
+    "NSSpeechRecognitionUsageDescription" : {
+      "comment" : "macOS permission prompt (NSSpeechRecognitionUsageDescription), shown when the app first asks for this access. Say exactly what the app does with it, no more and no less.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr uses on-device speech recognition to show your words in the recording pill while you speak. This preview stays on your Mac and is never the text that gets pasted."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
