@@ -44,7 +44,7 @@ final class BackendMetadata {
   /// (#2650): this arm was one of four sites spelling the same string.
   var polishLabel: String {
     switch settings.llmProvider {
-    case .none: "Off"
+    case .none: String(localized: "Off", comment: "Main window sidebar: AI polish is turned off.")
     case .appleIntelligence: LLMProvider.appleIntelligence.displayName
     case .egOne: LLMProvider.egOne.displayName  // #1271: fixed name, like Apple Intelligence above
     // #2649 (cloud review): falling through to `llmLabel` rendered the model id
@@ -61,7 +61,10 @@ final class BackendMetadata {
   }
 
   var llmLabel: String {
-    guard settings.llmProvider != .none else { return "LLM Deactivated" }
+    guard settings.llmProvider != .none else {
+      return String(
+        localized: "LLM Deactivated", comment: "Sidebar and menu: no AI polish provider is chosen.")
+    }
     let model = settings.effectiveLLMModel  // #1173: single source of truth
     if model.isEmpty { return settings.llmProvider.displayName }
     if let info = llmDiscovery.discoveredModels.first(where: { $0.id == model }) {
@@ -88,7 +91,11 @@ final class BackendMetadata {
     // microphone sent nothing; the engine is fine. Kept distinct from `.error`
     // on purpose — do not collapse them.
     case .advisory, .idle, .complete:
-      return activeModelLoaded() ? "Loaded" : "Unloaded"
+      return activeModelLoaded()
+        ? String(
+          localized: "Loaded", comment: "Main window sidebar: the speech model is in memory.")
+        : String(
+          localized: "Unloaded", comment: "Main window sidebar: the speech model is not in memory.")
     }
   }
 }

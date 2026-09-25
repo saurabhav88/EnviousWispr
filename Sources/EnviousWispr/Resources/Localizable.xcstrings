@@ -5,6 +5,9 @@
     " to cancel without changing your keybind." : {},
     "\"%@\"" : {},
     "%@ by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {},
+    "%@ is warming up after a restart" : {
+      "comment" : "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name."
+    },
     "%@ isn't downloaded yet. Open Settings to download it." : {
       "comment" : "Pill: the chosen speech engine is not downloaded. %@ is the engine's name."
     },
@@ -119,6 +122,9 @@
     "Accessibility" : {
       "comment" : "Setup permissions: title of the macOS Accessibility permission row."
     },
+    "Accessibility permission needed for auto-paste" : {
+      "comment" : "VoiceOver announcement from the recording overlay: macOS Accessibility permission is needed to paste."
+    },
     "Accessibility permission required for paste" : {},
     "Activate to install and restart" : {},
     "Activates recording. Then press the key combination you want." : {},
@@ -150,6 +156,9 @@
       "comment" : "Pill: a dictation is already in progress."
     },
     "Always replace, even when the original might be right" : {},
+    "Anything saved lands in History" : {
+      "comment" : "Pill subtitle during recovery. History is the app's list of past dictations."
+    },
     "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {},
     "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {},
     "Apple Intelligence is turned off" : {
@@ -170,6 +179,9 @@
     "Auto" : {},
     "Auto-copy to clipboard" : {},
     "Auto-detect language" : {},
+    "Auto-paste needs Accessibility" : {
+      "comment" : "Pill: macOS Accessibility permission is needed to paste."
+    },
     "Auto-stop on silence is unavailable right now" : {
       "comment" : "Banner inside the recording panel: stopping automatically on silence is not available."
     },
@@ -182,6 +194,9 @@
     },
     "Bluetooth mic detected" : {
       "comment" : "Title of the tip card shown when a Bluetooth microphone is the input."
+    },
+    "Bluetooth microphone detected. Wait a moment before speaking on a cold start." : {
+      "comment" : "VoiceOver announcement from the recording overlay: the Bluetooth tip."
     },
     "Bluetooth microphones can take a moment on a cold start." : {
       "comment" : "First line of the Bluetooth tip card."
@@ -252,6 +267,9 @@
     "Convincing AI that you said 'duck'..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Copied. Press ⌘V to paste" : {
+      "comment" : "Pill when the text was copied instead of pasted. ⌘V is the paste shortcut."
+    },
     "Copy Log Path" : {},
     "Copy error details" : {},
     "Copy to clipboard" : {},
@@ -293,9 +311,21 @@
     "Delete all" : {},
     "Delete all history" : {},
     "Delete all history?" : {},
+    "Detected %@" : {
+      "comment" : "VoiceOver announcement from the recording overlay: a language was detected. %@ is the language name."
+    },
     "Dictation" : {},
+    "Dictation cancelled" : {
+      "comment" : "Pill title after the user pressed Escape during a dictation."
+    },
+    "Dictation cancelled. Press Undo to get it back, or find it in History." : {
+      "comment" : "VoiceOver announcement from the recording overlay: the user pressed Escape. Undo is a button; History is the app's list of past dictations."
+    },
     "Dictation keybind" : {},
     "Dictation language" : {},
+    "Dictation ready. Press to start." : {
+      "comment" : "VoiceOver announcement from the recording overlay: the speech engine finished loading."
+    },
     "Dictionary" : {},
     "Dictionary section" : {},
     "Discard" : {},
@@ -367,6 +397,12 @@
     "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead." : {
       "comment" : "Practice screen when microphone permission is off. Keep the line break."
     },
+    "Error" : {
+      "comment" : "Sidebar status and main window heading after a failed dictation."
+    },
+    "Error: %@" : {
+      "comment" : "VoiceOver announcement from the recording overlay: %@ is the error sentence shown on the pill."
+    },
     "Esc" : {},
     "Escape Recovery" : {},
     "Example" : {},
@@ -408,6 +444,12 @@
     "Get your free API key at aistudio.google.com" : {},
     "Get your free API key at platform.openai.com" : {},
     "Getting AI suggestions..." : {},
+    "Getting dictation ready, one moment" : {
+      "comment" : "VoiceOver announcement from the recording overlay: the speech engine is loading."
+    },
+    "Getting dictation ready…" : {
+      "comment" : "Pill title while the speech engine loads after a restart."
+    },
     "Getting the speech engine ready\nso your first go is instant." : {},
     "Go ahead. Let go of %@ when you are done." : {
       "comment" : "Practice screen while recording. %@ is the dictation shortcut, for example ⌥."
@@ -441,12 +483,18 @@
     },
     "Interrupted" : {},
     "Interrupted recording" : {},
+    "Interruption: %@" : {
+      "comment" : "VoiceOver announcement from the recording overlay: %@ is the interruption sentence shown on the pill."
+    },
     "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
     "Keep editing" : {},
     "Keep in sync on launch" : {},
     "Keep this recording permanently instead of letting it be deleted" : {},
     "Kept recovered recording" : {},
     "Keybind: %@" : {},
+    "LLM Deactivated" : {
+      "comment" : "Sidebar and menu: no AI polish provider is chosen."
+    },
     "Language" : {},
     "Language suggestions" : {},
     "License information isn't available in this build." : {},
@@ -458,9 +506,20 @@
       "comment" : "Practice screen headline. Shown while the key is held."
     },
     "Live" : {},
-    "Loaded" : {},
+    "Loaded" : {
+      "comment" : "Main window sidebar: the speech model is in memory."
+    },
+    "Loading Model" : {
+      "comment" : "Sidebar status row while the speech model loads. Title case, no ellipsis."
+    },
     "Loading all 50,000 words..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Loading model..." : {
+      "comment" : "Main window status while the speech model loads. Three ASCII periods."
+    },
+    "Loading model…" : {
+      "comment" : "Toolbar status badge while the speech model loads. One ellipsis character."
     },
     "Loading the speech model" : {},
     "Lock" : {},
@@ -556,7 +615,9 @@
     "Nothing has run yet. You can still change everything." : {},
     "Nothing here yet" : {},
     "OK" : {},
-    "Off" : {},
+    "Off" : {
+      "comment" : "Main window sidebar: AI polish is turned off."
+    },
     "Offline-Ready" : {
       "comment" : "Welcome screen feature title: works without internet."
     },
@@ -642,6 +703,9 @@
     "Preview is unavailable while a recording is in progress." : {},
     "Previous page" : {},
     "Pro Tip" : {},
+    "Processing transcription" : {
+      "comment" : "VoiceOver announcement from the recording overlay: speech is being turned into text."
+    },
     "RECENT" : {},
     "Re-check Ollama status" : {},
     "Re-check model status" : {},
@@ -652,11 +716,20 @@
     "Ready for import" : {},
     "Ready to Transcribe" : {},
     "Ready to Wispr!" : {},
+    "Ready — press to dictate" : {
+      "comment" : "Pill title when the speech engine finished loading."
+    },
     "Recommended" : {},
     "Recommended for cleanup" : {},
     "Record" : {},
+    "Recording" : {
+      "comment" : "Toolbar badge and sidebar status while recording."
+    },
     "Recording auto-stops in under a minute (60-minute cap)" : {
       "comment" : "Banner inside the recording panel in the last minute before the 60-minute limit."
+    },
+    "Recording complete" : {
+      "comment" : "VoiceOver announcement from the recording overlay: recording ended."
     },
     "Recording interrupted." : {
       "comment" : "Pill: recording stopped unexpectedly. The audio so far was saved."
@@ -667,12 +740,30 @@
     "Recording interrupted. Words may be missing." : {
       "comment" : "Pill: recording was interrupted; words may be missing."
     },
+    "Recording started" : {
+      "comment" : "VoiceOver announcement from the recording overlay: recording began."
+    },
     "Recording · %@" : {},
     "Recording, press a key combination" : {
       "comment" : "VoiceOver value of the keybind field while it waits for a key combination."
     },
     "Recovered" : {},
     "Recovered recording" : {},
+    "Recovered your last recording" : {
+      "comment" : "Pill title after a crash recovery succeeded."
+    },
+    "Recovered your last recording. Saved to History." : {
+      "comment" : "VoiceOver announcement after a crash recovery succeeded."
+    },
+    "Recovering your last recording" : {
+      "comment" : "VoiceOver label of the recovery pill."
+    },
+    "Recovering your last recording. Press Discard to skip." : {
+      "comment" : "VoiceOver announcement from the recording overlay: a recording interrupted by a crash is being recovered. Discard is a button."
+    },
+    "Recovering your last recording…" : {
+      "comment" : "Pill title while a recording interrupted by a crash is recovered."
+    },
     "Refresh available models" : {},
     "Remove Model" : {},
     "Remove all imported names" : {},
@@ -697,7 +788,9 @@
     "Running" : {},
     "Save as a text file" : {},
     "Save the text you type over and over. An email address, a signature, a link you always paste." : {},
-    "Saved to History" : {},
+    "Saved to History" : {
+      "comment" : "Pill subtitle after a crash recovery succeeded."
+    },
     "Saves and restores whatever was on your clipboard before pasting your dictation." : {},
     "Say" : {},
     "Say \"<phrase> emoji\" to get the glyph. Bare words never convert." : {},
@@ -778,6 +871,9 @@
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
     "Test that %@ is live" : {},
+    "Text copied to clipboard" : {
+      "comment" : "VoiceOver announcement from the recording overlay: the text was copied instead of pasted."
+    },
     "That did not work" : {
       "comment" : "Practice screen headline. The dictation failed on our side."
     },
@@ -856,14 +952,16 @@
     "Turn on the microphone" : {},
     "Unavailable" : {},
     "Undo" : {
-      "comment" : "Button on the pill shown after a word is added to the dictionary. Removes it again."
+      "comment" : "Button on the pill shown after a word is added to the dictionary. Removes it again.\nPill button after Escape: brings the cancelled dictation back."
     },
     "Undone" : {
       "comment" : "Pill result after the user pressed Undo: the word was removed again."
     },
     "Unknown" : {},
     "Unload model after" : {},
-    "Unloaded" : {},
+    "Unloaded" : {
+      "comment" : "Main window sidebar: the speech model is not in memory."
+    },
     "Update available" : {},
     "Update available, version %@" : {},
     "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it." : {
@@ -898,6 +996,9 @@
     "Warming up" : {},
     "Warming up Apple Silicon..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Warning: %@" : {
+      "comment" : "VoiceOver announcement from the recording overlay: %@ is the warning sentence shown on the pill."
     },
     "We cannot hear you" : {
       "comment" : "Practice screen headline. A permission is missing."
