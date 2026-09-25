@@ -452,6 +452,7 @@
     "Set how this word is recognized in what you dictate." : {},
     "Setup paused. Start it again whenever you're ready." : {},
     "Show" : {},
+    "Show app in Dock" : {},
     "Show in Finder" : {},
     "Shows the %@ Dictionary tab" : {},
     "Shows the reminder popover once per launch. This guide always stays." : {},
