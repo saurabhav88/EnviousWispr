@@ -18,9 +18,9 @@ package enum CustomWordsTransferError: LocalizedError, Sendable, Equatable {
     case .unsupportedVersion(let version):
       return String(
         localized:
-          "That file was exported by a newer version of EnviousWispr (format \(version)). Update the app, then try again.",
+          "That file was exported by a newer version of EnviousWispr (format \(String(version))). Update the app, then try again.",
         comment:
-          "Import: error. %lld is the file's format version number.")
+          "Import: error. %@ is the file's format version number.")
     case .malformed:
       return String(
         localized:

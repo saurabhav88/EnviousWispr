@@ -49,6 +49,15 @@ struct LargeNumberEnglishTests {
       CustomWordsImportValidationError.wordTooLong(limit: 1_000).errorDescription
         == "That contains an entry longer than 1000 characters, which is too long to be a word. Nothing was imported."
     )
+    // The format version comes from the file itself, so it can be any number.
+    #expect(
+      SnippetsTransferError.unsupportedVersion(1_234).errorDescription
+        == "That file was exported by a newer version of EnviousWispr (format 1234). Update the app, then try again."
+    )
+    #expect(
+      CustomWordsTransferError.unsupportedVersion(1_234).errorDescription
+        == "That file was exported by a newer version of EnviousWispr (format 1234). Update the app, then try again."
+    )
     #expect(
       SnippetImportSourceError.malformedCSV(line: 1_234).errorDescription
         == "That CSV has a quoting problem on line 1234. Nothing was imported.")

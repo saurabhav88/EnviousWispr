@@ -3318,8 +3318,8 @@
     "That file isn't an EnviousWispr snippets file." : {
       "comment" : "Snippets, import: error when the file is not a snippets export."
     },
-    "That file was exported by a newer version of EnviousWispr (format %lld). Update the app, then try again." : {
-      "comment" : "Import: error. %lld is the file's format version number.\nSnippets, import: error. %lld is the file's format version number."
+    "That file was exported by a newer version of EnviousWispr (format %@). Update the app, then try again." : {
+      "comment" : "Import: error. %@ is the file's format version number.\nSnippets, import: error. %@ is the file's format version number."
     },
     "That has more than %@ characters of snippet text in total, which is more than EnviousWispr can import at once. Nothing was imported." : {
       "comment" : "Snippets, import: error. %@ is a large limit (never 1)."
