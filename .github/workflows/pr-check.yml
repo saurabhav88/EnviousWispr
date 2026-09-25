@@ -111,6 +111,19 @@ jobs:
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64
 
+      # #3142: the committed String Catalog must equal what the compiler extracts
+      # from the Release build that just ran. Exit 1 prints the added, removed and
+      # changed keys; the fix is `scripts/lib/l10n-catalog-sync.sh --update` on a
+      # local Release build, then commit the catalog. Exit 2 means the check could
+      # not run (toolchain, missing inputs), never "in sync".
+      - name: Check String Catalog is in sync (release)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          scripts/lib/l10n-catalog-sync.sh --check \
+            --derived-data "$DERIVED_DATA_PATH" \
+            --configuration Release
+
       # Compiles (never runs) both Release-config test targets so a test file
       # that references a #if DEBUG-only Sources symbol without gating itself
       # fails HERE, on the PR, instead of post-merge in main-post-merge.yml

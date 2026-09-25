@@ -124,17 +124,40 @@ def english(entry):
     return unit.get("value")
 
 
-def sync(committed_path, files, work):
+def xcstringstool_sync(start, files, work):
+    """Run `xcstringstool sync` over a copy of `start` (a catalog object) and return the result."""
+    work.mkdir()
     scratch = work / "Localizable.xcstrings"  # sync matches the table by FILE NAME
-    shutil.copyfile(committed_path, scratch)
-    committed = json.loads(committed_path.read_text())
+    scratch.write_text(json.dumps(start))
     args = ["xcrun", "xcstringstool", "sync", str(scratch)]
     for f in files:
         args += ["--stringsdata", str(f)]
     run = subprocess.run(args, capture_output=True, text=True)
     if run.returncode != 0:
         raise Refused(f"xcstringstool sync failed: {run.stderr.strip() or run.stdout.strip()}")
-    synced = json.loads(scratch.read_text())
+    return json.loads(scratch.read_text())
+
+
+def sync(committed_path, files, work):
+    committed = json.loads(committed_path.read_text())
+    synced = xcstringstool_sync(committed, files, work / "incremental")
+    # An incremental sync KEEPS an English value already in the catalog when the
+    # code carries none (key-only literals) or when the entry is marked translated
+    # (measured 2026-09-24), so a hand-edited English value would pass as in sync.
+    # English for every extracted key therefore comes from a sync of an EMPTY
+    # catalog: the code alone decides it. The incremental result only contributes
+    # what a later phase adds beside English (translations).
+    fresh = xcstringstool_sync({k: v for k, v in committed.items() if k != "strings"} | {"strings": {}},
+                               files, work / "fresh")
+    for key, entry in fresh["strings"].items():
+        if key in MANUAL_KEYS:
+            continue
+        others = {lang: unit for lang, unit in synced["strings"].get(key, {}).get("localizations", {}).items()
+                  if lang != committed.get("sourceLanguage", "en")}
+        merged = dict(entry)
+        if others:
+            merged["localizations"] = dict(entry.get("localizations", {})) | others
+        synced["strings"][key] = merged
     extracted = extracted_defaults(files)
     for key, expected in MANUAL_KEYS.items():
         if key not in extracted:

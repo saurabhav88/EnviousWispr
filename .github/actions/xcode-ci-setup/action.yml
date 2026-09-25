@@ -99,17 +99,30 @@ runs:
         esac
         echo "derived-data-path: $DD"
 
+    # #3142: pinned, not `latest-stable`. The String Catalog's serialized form can
+    # change between Xcode builds, and pr-check.yml checks the committed catalog
+    # against what THIS toolchain extracts; a silent image bump would turn every
+    # PR red with drift nobody wrote. scripts/lib/l10n-catalog-sync.sh refuses any
+    # build but its PINNED_XCODE_BUILD; keep both values equal. Moving to a new
+    # Xcode is a deliberate PR: bump both, run the sync, commit the catalog.
     - name: Select Xcode
       uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
       with:
-        xcode-version: latest-stable
+        xcode-version: '26.6'
 
     - name: Verify environment
       shell: bash
+      env:
+        EXPECTED_XCODE_BUILD: 17F113
       run: |
         set -euo pipefail
         swift --version
         xcodebuild -version
+        XCODE_BUILD="$(xcodebuild -version | awk '/^Build version /{print $3}')"
+        if [ "$XCODE_BUILD" != "$EXPECTED_XCODE_BUILD" ]; then
+          echo "::error::Xcode build $XCODE_BUILD selected; pinned build is $EXPECTED_XCODE_BUILD (#3142)"
+          exit 1
+        fi
         SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
         echo "macOS SDK: $SDK_VER"
 

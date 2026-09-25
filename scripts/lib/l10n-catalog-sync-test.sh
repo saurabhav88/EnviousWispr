@@ -55,6 +55,9 @@ def fixture(root, extra_keys=(), drop_manual=None, manual_override=None, drop_ta
             continue
         entries = [entry(f"{t} plain copy")]
         if t == "EnviousWisprAppKit":
+            # A key-only format literal (sync writes a positional English value) and a
+            # semantic key with an English default: both are English the code owns.
+            entries += [entry("%@ · %@"), entry("fixture.value.key", "Value text")]
             for k, v in MANUAL.items():
                 if k == drop_manual:
                     continue
@@ -103,7 +106,7 @@ def expect(name, code, out, want_code, want_text):
         print(out)
 
 
-def case(name, want_code, want_text, *, mode="--check", configuration="Release", prepare_update=True, fake_xcode_build=None, remove_catalog=False, **fx):
+def case(name, want_code, want_text, *, mode="--check", configuration="Release", prepare_update=True, fake_xcode_build=None, remove_catalog=False, edit_committed=None, verify=None, **fx):
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         catalog = root / "Localizable.xcstrings"
@@ -125,8 +128,17 @@ def case(name, want_code, want_text, *, mode="--check", configuration="Release",
             env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
         if remove_catalog:
             catalog.unlink()
+        if edit_committed:
+            data = json.loads(catalog.read_text())
+            edit_committed(data["strings"])
+            catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
         code, out = run(mode, "--derived-data", str(dd), "--configuration", configuration, "--catalog", str(catalog), env=env)
         expect(name, code, out, want_code, want_text)
+        if verify:
+            problem = verify(json.loads(catalog.read_text())["strings"])
+            if problem:
+                failures.append(name)
+                print(f"FAIL  {name}: {problem}")
         if name == "clean sync passes":
             data = json.loads(catalog.read_text())
             assert "a string only a test uses" not in data["strings"], "test-target key leaked into the catalog"
@@ -154,6 +166,23 @@ case("unknown first-party target refuses", 2, "does not know", extra_target="Env
 case("wrong Xcode build refuses", 2, "is not the pinned", fake_xcode_build="00X000")
 case("metadata-only target refuses", 2, "no .stringsdata", metadata_only_target="EnviousWisprStorage")
 case("missing catalog refuses", 2, "REFUSED", remove_catalog=True)
+
+
+def edit_positional(strings):
+    strings["%@ · %@"]["localizations"]["en"]["stringUnit"]["value"] = "%1$@ / %2$@"
+
+
+def edit_translated_default(strings):
+    unit = strings["fixture.value.key"]["localizations"]["en"]["stringUnit"]
+    unit["value"], unit["state"] = "Hand-edited text", "translated"
+
+
+# An incremental sync keeps English already in the catalog in both shapes; the code must win.
+case("hand-edited positional English is drift", 1, "changed: '%@ · %@'", edit_committed=edit_positional)
+case("hand-edited translated English is drift", 1, "changed: 'fixture.value.key'", edit_committed=edit_translated_default)
+case("update restores the code's English", 0, "updated", mode="--update", edit_committed=edit_translated_default,
+     verify=lambda s: None if s["fixture.value.key"]["localizations"]["en"]["stringUnit"]["value"] == "Value text"
+     else f"English left as {s['fixture.value.key']['localizations']['en']['stringUnit']['value']!r}")
 # Debug extracts #if DEBUG copy that never ships; only Release is an authority.
 case("Debug configuration refuses", 2, "invalid choice", configuration="Debug")
 
