@@ -40,7 +40,11 @@ from 0). A bullet's key is its POSITION, not its text: editing a bullet keeps it
 changes its English, which is what lets the catalog sync mark an existing translation for
 review. The entry `id:` must be a direct literal of lowercase words joined by hyphens,
 written before `title:`, and unique; the seed refuses any entry it cannot key, and any entry
-`--self-test` would refuse.
+`--self-test` would refuse. Entries are read only inside the `static let entries = [...]`
+array, outside comments and ordinary string literals. Known limit: a Swift RAW string
+(a `#` before the opening quote, single-line or multiline) anywhere in the file can confuse the literal scanner; the parse
+contract already forbids raw strings in entries, and the failure is loud (a dropped-entry
+or count refusal), never a silently shorter seed.
 
 Used by .github/workflows/release.yml. Designed to fail SAFELY: if it cannot produce
 notes for the requested version, it exits non-zero and the workflow falls back to
@@ -81,10 +85,11 @@ def parse_entries(swift_path):
     # comment or a string is never read as the entry's own; each value is then read from
     # the original text right after its label.
     masked_text = mask_literals_and_comments(text)
-    calls = list(re.finditer(r"Entry\(", masked_text))
+    first, last = entries_region(masked_text)
+    calls = list(re.compile(r"Entry\(").finditer(masked_text, first, last))
     entries = []
     for n, call in enumerate(calls):
-        end = calls[n + 1].start() if n + 1 < len(calls) else len(text)
+        end = calls[n + 1].start() if n + 1 < len(calls) else last
         chunk, masked = text[call.end():end], masked_text[call.end():end]
         t = labelled_literal(chunk, masked, "title", FIELD_LITERAL)
         d = labelled_literal(chunk, masked, "description", FIELD_LITERAL)
@@ -122,6 +127,27 @@ def parse_entries(swift_path):
 
 FIELD_LITERAL = re.compile(r'\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
 VERSION_LITERAL = re.compile(r'\s*"([\d.]+)"')
+
+
+ENTRIES_DECLARATION = re.compile(r"\bstatic\s+let\s+entries\b[^=\n]*=\s*\[")
+
+
+def entries_region(masked):
+    """(start, end) of the `static let entries = [ ... ]` array in the masked source, so an
+    `Entry(` or `version:` elsewhere in the file (a helper, an example) is never read as a
+    What's New entry. A source with no such declaration (the parser fixtures) is read whole."""
+    declaration = ENTRIES_DECLARATION.search(masked)
+    if not declaration:
+        return 0, len(masked)
+    depth = 1
+    for i in range(declaration.end(), len(masked)):
+        if masked[i] == "[":
+            depth += 1
+        elif masked[i] == "]":
+            depth -= 1
+            if depth == 0:
+                return declaration.end(), i
+    return declaration.end(), len(masked)
 
 
 def labelled_literal(chunk, masked, name, literal):
@@ -335,12 +361,14 @@ def dropped_entries(entries, swift_path):
         source = fh.read()
     # Both counted in the masked source: a `version: "1.2.3"` or `Entry(` inside a comment
     # or a string is not an entry's. A version label counts when a literal follows it.
+    # Both read only inside the entries array, where `parse_entries` reads.
     masked = mask_literals_and_comments(source)
+    first, last = entries_region(masked)
     field_count = sum(
-        1 for label in re.finditer(r"\bversion:", masked)
+        1 for label in re.compile(r"\bversion:").finditer(masked, first, last)
         if VERSION_LITERAL.match(source, label.end())
     )
-    call_count = len(re.findall(r"(?m)^[ \t]*Entry\(", masked))
+    call_count = len(re.compile(r"(?m)^[ \t]*Entry\(").findall(masked, first, last))
     if len(entries) != field_count or len(entries) != call_count:
         return (
             f"error: parsed {len(entries)} entries but the source has {field_count} "
@@ -658,6 +686,28 @@ FIXTURE_CASES = [
 # (label, Swift source text, expected start of the refusal message, or None for a seed).
 SEED_REFUSALS = [
     (
+        "an Entry( outside the entries array is not a What's New entry",
+        '''
+enum WhatsNewContent {
+  static let entries: [Entry] = [
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      title: "Real title",
+      description: "Real paragraph.",
+      bullets: ["Point [one]"],
+      version: "9.9.9"
+    ),
+  ]
+
+  static let demo = Entry(
+    id: "demo", icon: "sparkles", title: "Demo", description: "Not shipped.",
+    version: "1.0.0")
+}
+''',
+        None,
+    ),
+    (
         "a version or title example inside comments is not an entry's field",
         '''
     // An entry reads like this: version: "1.2.3", title: "Example"
@@ -943,6 +993,8 @@ def self_test_fixtures():
                     failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted a seed")
                 elif seed.get("whatsNew.real.title", "Real title") != "Real title":
                     failures.append(f"[{label}] title {seed['whatsNew.real.title']!r}, wanted 'Real title'")
+                elif any(".demo." in k for k in seed):
+                    failures.append(f"[{label}] seeded an entry outside the array: {sorted(seed)!r}")
             elif seed is not None or not (error or "").startswith(want_error):
                 failures.append(f"[{label}] seed {seed!r} error {error!r}, wanted {want_error!r}")
     return failures
@@ -951,8 +1003,11 @@ def self_test_fixtures():
 def current_content_version():
     try:
         with open(CONSTANTS_SWIFT, encoding="utf-8") as fh:
-            m = re.search(r'currentContentVersion\s*=\s*"([\d.]+)"', fh.read())
-            return m.group(1) if m else None
+            source = fh.read()
+        # The declaration is found outside comments and strings, its literal read after it.
+        label = re.search(r"\bcurrentContentVersion\s*=", mask_literals_and_comments(source))
+        value = VERSION_LITERAL.match(source, label.end()) if label else None
+        return value.group(1) if value else None
     except OSError:
         return None
 
@@ -1060,7 +1115,7 @@ def main():
             return 2
         print(
             f"self-test OK: {len(entries)} entries parsed (matches source); "
-            f"{cv} renders {body.count('- **')} item(s); "
+            f"{cv} renders {sum(e['version'] == cv for e in entries)} item(s); "
             f"{len(FIXTURE_CASES)} fixture cases, {len(SEED_CASES)} seed cases and "
             f"{len(SEED_REFUSALS)} whole-file seed cases pass"
         )
@@ -1102,7 +1157,10 @@ def main():
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(text)
-        print(f"wrote {args.out} ({body.count('- **')} item(s))", file=sys.stderr)
+        print(
+            f"wrote {args.out} ({sum(e['version'] == args.version for e in entries)} item(s))",
+            file=sys.stderr,
+        )
     else:
         sys.stdout.write(text)
     return 0
