@@ -99,8 +99,11 @@ struct LocalEngineStatusCard: View {
     // now (#1286); this card is just the actionable status/download/remove.
     if engine.showsLowMemoryNote, isLowMemoryMac {
       Label(
-        "This Mac has 8 GB of memory. \(engine.name) may run slower here. "
-          + "Dictation always works, even when polish is unavailable.",
+        String(
+          localized:
+            "This Mac has 8 GB of memory. \(engine.name) may run slower here. Dictation always works, even when polish is unavailable.",
+          comment:
+            "AI Polish, local model card: low-memory note. %@ is the model name, such as EG-1."),
         systemImage: "exclamationmark.triangle"
       )
       .font(.stHelper)
@@ -128,7 +131,7 @@ struct LocalEngineStatusCard: View {
           Button(action) { runtime.startDownload() }
         }
       }
-    case .downloading(let fraction, _):
+    case .downloading(let fraction, let upgrade):
       VStack(alignment: .leading, spacing: 4) {
         ProgressView(value: max(0, min(1, fraction))) {
           // An UPGRADE says so and names the version arriving; a first install
@@ -142,8 +145,8 @@ struct LocalEngineStatusCard: View {
           // edit with no Swift change, so a hard-coded number would keep naming
           // the previous model after the real one moved on.
           Text(
-            presentation.versionLabel.map { "Upgrading to \($0) (\(engine.downloadSize))" }
-              ?? "Downloading \(engine.name) (\(engine.downloadSize))"
+            EGOneRowPresentation.downloadingLine(
+              engine: engine.name, upgrade: upgrade, downloadSize: engine.downloadSize)
           )
           .font(.stHelper)
         }
@@ -282,45 +285,80 @@ struct LocalEngineStatusCard: View {
       return nil
     case .yellow(let reason):
       switch reason {
-      case "starting": return "The model is starting up. This takes a few seconds."
+      case "starting":
+        return String(
+          localized: "The model is starting up. This takes a few seconds.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       case "paused_for_memory":
-        return "Paused to free memory for other apps. Use the refresh button to restart it."
-      case "probe_slow": return "Working, but responding slowly right now."
+        return String(
+          localized: "Paused to free memory for other apps. Use the refresh button to restart it.",
+          comment: "AI Polish, local model card: the reason under the health status.")
+      case "probe_slow":
+        return String(
+          localized: "Working, but responding slowly right now.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       case "probe_output_unexpected":
-        return "The model responded, but not as expected. Try re-downloading it."
+        return String(
+          localized: "The model responded, but not as expected. Try re-downloading it.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       case "downloading", "verifying": return nil
       // Installed, server not up. Ordinary and momentary — it is what every
       // switch to this engine looks like for a second. The default below
       // rendered "Something needs attention" for it, which reads as a fault,
       // and is what the founder saw after switching back to EG-1 (2026-09-04).
-      case "not_started": return "Starting the model. This takes a few seconds."
+      case "not_started":
+        return String(
+          localized: "Starting the model. This takes a few seconds.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       // The user paused their own download; their progress is kept.
-      case "download_paused": return "Download paused. Resume anytime."
+      case "download_paused":
+        return String(
+          localized: "Download paused. Resume anytime.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       // Reached only by a reason invented at runtime. Every reason the app
       // actually emits is named above, and `LocalEngineHealthCopyTests`
       // enumerates them from the producing code so a new one fails loudly
       // instead of landing here.
-      default: return "Something needs attention. Try the refresh button."
+      default:
+        return String(
+          localized: "Something needs attention. Try the refresh button.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       }
     case .red(let reason):
       switch reason {
-      case "download_required": return "Download the model to get started."
+      case "download_required":
+        return String(
+          localized: "Download the model to get started.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       // The emitted reason is `update_required`. This branch used to read
       // `app_update_required`, which nothing produces — so it was dead, and the
       // real reason fell through to the generic line below. Found by the
       // enumeration test, not by reading.
       case "update_required":
-        return "This model needs a newer version of EnviousWispr."
+        return String(
+          localized: "This model needs a newer version of EnviousWispr.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       case "crashed_twice":
-        return "The model stopped twice in a row. Use the refresh button to try again."
+        return String(
+          localized: "The model stopped twice in a row. Use the refresh button to try again.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       // The server is not up and nothing is starting it. Distinct from
       // `not_started`, which is yellow because something IS starting it.
-      case "not_running": return "Not running. Use the refresh button to start it."
+      case "not_running":
+        return String(
+          localized: "Not running. Use the refresh button to start it.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       // It answered the socket but failed a real inference probe, so a polish
       // request would fail too. Naming that beats the generic line.
       case "probe_failed":
-        return "The model did not answer a test request. Use the refresh button to try again."
-      default: return "Not running. Use the refresh button to try again."
+        return String(
+          localized:
+            "The model did not answer a test request. Use the refresh button to try again.",
+          comment: "AI Polish, local model card: the reason under the health status.")
+      default:
+        return String(
+          localized: "Not running. Use the refresh button to try again.",
+          comment: "AI Polish, local model card: the reason under the health status.")
       }
     }
   }
@@ -328,18 +366,35 @@ struct LocalEngineStatusCard: View {
   private func failureCopy(_ failure: EGOneDownloadFailure) -> String {
     switch failure {
     case .network:
-      return "Could not download the model from models.enviouslabs.co. "
-        + "Check your connection. On a managed network, ask IT to allow this domain."
+      return String(
+        localized:
+          "Could not download the model from models.enviouslabs.co. Check your connection. On a managed network, ask IT to allow this domain.",
+        comment:
+          "AI Polish, local model card: why the model download failed. Keep models.enviouslabs.co exactly; it is a web address."
+      )
     case .checksum:
-      return "The download did not verify correctly and was discarded. Please try again."
+      return String(
+        localized: "The download did not verify correctly and was discarded. Please try again.",
+        comment: "AI Polish, local model card: why the model download failed.")
     case .disk:
-      return "Not enough free disk space. The download needs about \(engine.installHeadroom) free during install."
+      return String(
+        localized:
+          "Not enough free disk space. The download needs about \(engine.installHeadroom) free during install.",
+        comment:
+          "AI Polish, local model card: why the model download failed. %@ is an amount of disk space, such as 6 GB."
+      )
     case .cancelled:
-      return "Download canceled. Your progress is saved."
+      return String(
+        localized: "Download canceled. Your progress is saved.",
+        comment: "AI Polish, local model card: why the model download failed.")
     case .rangeUnsupported, .http:
-      return "The download server had a problem. Please try again in a few minutes."
+      return String(
+        localized: "The download server had a problem. Please try again in a few minutes.",
+        comment: "AI Polish, local model card: why the model download failed.")
     case .stubURL:
-      return "This build has no download source configured."
+      return String(
+        localized: "This build has no download source configured.",
+        comment: "AI Polish, local model card: why the model download failed.")
     }
   }
 }

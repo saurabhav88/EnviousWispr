@@ -41,7 +41,7 @@ struct ContactsImportConfirm: View {
           SettingsActionButton(
             title: "Cancel", isEnabled: true, shortcut: .cancelAction, action: onCancel)
           SettingsActionButton(
-            title: addButtonTitle, isEnabled: true, emphasis: .filled,
+            verbatimTitle: addButtonTitle, isEnabled: true, emphasis: .filled,
             shortcut: .defaultAction, action: onConfirm)
         } else {
           SettingsActionButton(

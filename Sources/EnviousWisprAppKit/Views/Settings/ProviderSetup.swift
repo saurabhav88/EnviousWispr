@@ -425,7 +425,10 @@ struct ProviderSetupSection: View {
     case .detail:
       providerDetailPane
     case .manageModels:
-      BrandedSection(header: "Manage Models") {
+      BrandedSection(
+        header: LocalizedStringResource(
+          "Manage Models", comment: "AI Polish, Ollama: heading of the model download list.")
+      ) {
         BrandedRow(showDivider: false) {
           ollamaModelCatalogView
         }
@@ -551,7 +554,10 @@ struct ProviderSetupSection: View {
       }
 
       if showModelSection {
-        detailCard(label: "Model") {
+        detailCard(
+          label: String(
+            localized: "Model", comment: "AI Polish: card title above the model picker.")
+        ) {
           modelSelectorRow
           FrozenPerRecordingFootnote(text: frozenSettingsFootnote)
         }
@@ -756,8 +762,14 @@ struct ProviderSetupSection: View {
           Text(
             surfaceCloudModel.isEmpty
               ? (provider == .ollama
-                ? "No models found"
-                : "Save API key to discover models")
+                ? String(
+                  localized: "No models found",
+                  comment: "AI Polish model picker: Ollama has no models downloaded.")
+                : String(
+                  localized: "Save API key to discover models",
+                  comment:
+                    "AI Polish model picker: a cloud provider's models appear after its key is saved."
+                ))
               : surfaceCloudModel
           )
           .tag(surfaceCloudModel)
@@ -829,19 +841,36 @@ struct ProviderSetupSection: View {
     switch provider {
     case .openAI:
       return APIKeyDescriptor(
-        label: "OpenAI API Key", placeholder: "sk-proj-…",
+        label: String(
+          localized: "OpenAI API Key",
+          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        placeholder: "sk-proj-…",
         keychainId: KeychainManager.openAIKeyID,
-        accessibilityLabel: "OpenAI API Key",
-        privacySentence:
-          "OpenAI polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
+        accessibilityLabel: String(
+          localized: "OpenAI API Key",
+          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        privacySentence: String(
+          localized:
+            "OpenAI polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
+          comment:
+            "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
+        )
       )
     case .gemini:
       return APIKeyDescriptor(
-        label: "Google Gemini API Key", placeholder: "AI…",
+        label: String(
+          localized: "Google Gemini API Key",
+          comment: "AI Polish: label and VoiceOver name of the API key field."), placeholder: "AI…",
         keychainId: KeychainManager.geminiKeyID,
-        accessibilityLabel: "Google Gemini API Key",
-        privacySentence:
-          "Gemini polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
+        accessibilityLabel: String(
+          localized: "Google Gemini API Key",
+          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        privacySentence: String(
+          localized:
+            "Gemini polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
+          comment:
+            "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
+        )
       )
     case .claude:
       // Claude's privacy sentence does not reuse OpenAI/Gemini's "store:
@@ -853,11 +882,18 @@ struct ProviderSetupSection: View {
       // instead of claiming only the transcript leaves the Mac (#158,
       // Codex r5).
       return APIKeyDescriptor(
-        label: "Claude API Key", placeholder: "sk-ant-…",
+        label: String(
+          localized: "Claude API Key",
+          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        placeholder: "sk-ant-…",
         keychainId: KeychainManager.claudeKeyID,
-        accessibilityLabel: "Claude API Key",
-        privacySentence:
-          "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept."
+        accessibilityLabel: String(
+          localized: "Claude API Key",
+          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        privacySentence: String(
+          localized:
+            "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept.",
+          comment: "AI Polish: what a cloud provider receives, shown under its API key field.")
       )
     // #2651: enumerated rather than `default:`. The empty descriptor is only
     // safe because `apiKeyRow` renders for cloud providers alone, and that
@@ -931,7 +967,9 @@ struct ProviderSetupSection: View {
         validationBadge
 
         SettingsActionButton(
-          title: "Save", isEnabled: !activeKeyBinding.wrappedValue.isEmpty, emphasis: .filled
+          title: LocalizedStringResource(
+            "Save", comment: "AI Polish: button that saves the API key."),
+          isEnabled: !activeKeyBinding.wrappedValue.isEmpty, emphasis: .filled
         ) {
           let provider = provider
           let key = activeKeyBinding.wrappedValue
@@ -947,7 +985,11 @@ struct ProviderSetupSection: View {
         // key, and on this page the system styles drew both, plus the enabled
         // Save, in the same grey. The red `foregroundStyle` on Clear was the
         // only thing separating a destructive action from an inert one.
-        SettingsActionButton(title: "Clear", isEnabled: true, emphasis: .destructive) {
+        SettingsActionButton(
+          title: LocalizedStringResource(
+            "Clear", comment: "AI Polish: button that deletes the saved API key."),
+          isEnabled: true, emphasis: .destructive
+        ) {
           guard clearKey(keychainId: descriptor.keychainId) else { return }
           activeKeyBinding.wrappedValue = ""
           setKeySaved(false)
@@ -1099,15 +1141,27 @@ struct ProviderSetupSection: View {
     // own header, the same pattern Apple Intelligence/Ollama/EG-1 already
     // use, so `cloudProviderExplainerHeader`'s internal ternary never needs
     // a third arm (issue #158, plan §3).
-    case .claude: return "Why use Claude"
-    case .appleIntelligence: return "Why use Apple Intelligence"
+    case .claude:
+      return String(
+        localized: "Why use Claude", comment: "AI Polish: card title explaining a provider.")
+    case .appleIntelligence:
+      return String(
+        localized: "Why use Apple Intelligence",
+        comment: "AI Polish: card title explaining a provider.")
     // #1914: renamed with the rail row. "Local" became false the moment Ollama
     // could run a model on its own servers.
-    case .ollama: return "Why use Ollama"
-    case .egOne: return "Why use EG-1"
+    case .ollama:
+      return String(
+        localized: "Why use Ollama", comment: "AI Polish: card title explaining a provider.")
+    case .egOne:
+      return String(
+        localized: "Why use EG-1", comment: "AI Polish: card title explaining a provider.")
     // The exact name is licence-bound, so it comes from one place rather than
     // being retyped per surface.
-    case .s1Mini: return "Why use \(LLMProvider.s1Mini.displayName)"
+    case .s1Mini:
+      return String(
+        localized: "Why use \(LLMProvider.s1Mini.displayName)",
+        comment: "AI Polish: card title explaining a provider. %@ is the model name, S1-mini.")
     case .none: return ""
     }
   }
@@ -1262,7 +1316,9 @@ struct ProviderSetupSection: View {
   }
 
   private var cloudProviderExplainerHeader: String {
-    provider == .openAI ? "Why use OpenAI" : "Why use Gemini"
+    provider == .openAI
+      ? String(localized: "Why use OpenAI", comment: "AI Polish: card title explaining a provider.")
+      : String(localized: "Why use Gemini", comment: "AI Polish: card title explaining a provider.")
   }
 
   @ViewBuilder
@@ -1347,7 +1403,12 @@ struct ProviderSetupSection: View {
         .foregroundStyle(Color.stTextSecondary)
 
         HStack {
-          SettingsActionButton(title: "Download Ollama", isEnabled: true, emphasis: .filled) {
+          SettingsActionButton(
+            title: LocalizedStringResource(
+              "Download Ollama", comment: "AI Polish, Ollama setup: opens the Ollama download page."
+            ),
+            isEnabled: true, emphasis: .filled
+          ) {
             if let url = URL(string: "https://ollama.com/download") {
               NSWorkspace.shared.open(url)
             }
@@ -1370,7 +1431,11 @@ struct ProviderSetupSection: View {
           .foregroundStyle(Color.stTextSecondary)
 
         HStack {
-          SettingsActionButton(title: "Start Ollama", isEnabled: true, emphasis: .filled) {
+          SettingsActionButton(
+            title: LocalizedStringResource(
+              "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
+            isEnabled: true, emphasis: .filled
+          ) {
             setup.ollamaSetup.startServer()
           }
 
@@ -1792,7 +1857,7 @@ struct ProviderSetupSection: View {
   }
 
   @ViewBuilder
-  private func ollamaHostedNotice(_ message: String) -> some View {
+  private func ollamaHostedNotice(_ message: LocalizedStringResource) -> some View {
     Text(message)
       .font(.stHelper)
       .foregroundStyle(Color.stTextSecondary)
@@ -2086,7 +2151,12 @@ struct ProviderSetupSection: View {
           .font(.stHelper)
       }
 
-      let stepLabels = ["Install Ollama", "Start Ollama", "Download a Model"]
+      let stepLabels = [
+        String(localized: "Install Ollama", comment: "AI Polish, Ollama setup: the current step."),
+        String(localized: "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
+        String(
+          localized: "Download a Model", comment: "AI Polish, Ollama setup: the current step."),
+      ]
       let label = currentLabel ?? stepLabels[current - 1]
       Label(label, systemImage: "\(current).circle.fill")
         .foregroundStyle(Color.stAccent)

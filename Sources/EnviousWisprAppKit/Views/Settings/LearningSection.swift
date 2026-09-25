@@ -98,7 +98,7 @@ struct LearningSection: View {
               .fixedSize(horizontal: false, vertical: true)
             if let action = learnFromEdits.action {
               Spacer(minLength: 8)
-              SettingsActionButton(title: Self.actionTitle(action), isEnabled: true) {
+              SettingsActionButton(verbatimTitle: Self.actionTitle(action), isEnabled: true) {
                 availability.perform(action)
               }
             }

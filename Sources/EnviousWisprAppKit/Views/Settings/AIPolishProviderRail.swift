@@ -56,7 +56,10 @@ enum ProviderStatusMapping {
       // reach this arm.
       return localServer(install: s1MiniInstall, health: s1MiniHealth)
     case .none:
-      return ProviderStatus(label: "Off", tone: .unavailable)
+      return ProviderStatus(
+        label: String(
+          localized: "Off", comment: "AI Polish provider status chip: AI Polish is off."),
+        tone: .unavailable)
     }
   }
 
@@ -73,35 +76,54 @@ enum ProviderStatusMapping {
   ) -> ProviderStatus {
     switch install {
     case .notInstalled:
-      return ProviderStatus(label: "Not installed", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "Not installed", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     // #2109: an interrupted first install. The user chose to stop and their
     // progress is kept, so this is a setup state, never an error.
     case .paused:
-      return ProviderStatus(label: "Paused", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "Paused", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     // A working older model is on disk but the pinned one is not, so cleanup
     // is genuinely off. The chip must AGREE with the detailed row rather than
     // reassure — this is exactly the silently-off state #2109 exists to
     // surface, and a calm chip beside an alarmed row is worse than either.
     case .updatePaused:
-      return ProviderStatus(label: "Update paused", tone: .error)
+      return ProviderStatus(
+        label: String(localized: "Update paused", comment: "AI Polish provider status chip."),
+        tone: .error)
     // Same agreement rule as `updatePaused` above: when the detailed row says
     // "Upgrading to EG-1 V1.1", a chip reading "Downloading" describes a
     // different event beside it. The chip is narrower, not softer.
     case .downloading(_, let upgrade):
       return ProviderStatus(
-        label: upgrade == nil ? "Downloading" : "Upgrading", tone: .needsSetup)
+        label: upgrade == nil
+          ? String(localized: "Downloading", comment: "AI Polish provider status chip.")
+          : String(localized: "Upgrading", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     case .verifying:
-      return ProviderStatus(label: "Verifying", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "Verifying", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     case .failed:
-      return ProviderStatus(label: "Needs attention", tone: .error)
+      return ProviderStatus(
+        label: String(localized: "Needs attention", comment: "AI Polish provider status chip."),
+        tone: .error)
     case .installed:
       switch health {
       case .green:
-        return ProviderStatus(label: "Live", tone: .ready)
+        return ProviderStatus(
+          label: String(localized: "Live", comment: "AI Polish provider status chip."), tone: .ready
+        )
       case .yellow:
-        return ProviderStatus(label: "Starting", tone: .needsSetup)
+        return ProviderStatus(
+          label: String(localized: "Starting", comment: "AI Polish provider status chip."),
+          tone: .needsSetup)
       case .red:
-        return ProviderStatus(label: "Not working", tone: .error)
+        return ProviderStatus(
+          label: String(localized: "Not working", comment: "AI Polish provider status chip."),
+          tone: .error)
       }
     }
   }
@@ -111,15 +133,25 @@ enum ProviderStatusMapping {
   private static func apple(_ status: AIAvailabilityStatus?) -> ProviderStatus {
     switch status {
     case .available:
-      return ProviderStatus(label: "Available", tone: .ready)
+      return ProviderStatus(
+        label: String(localized: "Available", comment: "AI Polish provider status chip."),
+        tone: .ready)
     case .degraded:
-      return ProviderStatus(label: "Degraded", tone: .unavailable)
+      return ProviderStatus(
+        label: String(localized: "Degraded", comment: "AI Polish provider status chip."),
+        tone: .unavailable)
     case .unavailable:
-      return ProviderStatus(label: "Unavailable", tone: .unavailable)
+      return ProviderStatus(
+        label: String(localized: "Unavailable", comment: "AI Polish provider status chip."),
+        tone: .unavailable)
     case .unknown:
-      return ProviderStatus(label: "Unknown", tone: .unavailable)
+      return ProviderStatus(
+        label: String(localized: "Unknown", comment: "AI Polish provider status chip."),
+        tone: .unavailable)
     case nil:
-      return ProviderStatus(label: "Not checked", tone: .unavailable)
+      return ProviderStatus(
+        label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
+        tone: .unavailable)
     }
   }
 
@@ -136,14 +168,24 @@ enum ProviderStatusMapping {
     switch state {
     case .idle:
       return keyPresent
-        ? ProviderStatus(label: "Not checked", tone: .unavailable)
-        : ProviderStatus(label: "Key needed", tone: .needsSetup)
+        ? ProviderStatus(
+          label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
+          tone: .unavailable)
+        : ProviderStatus(
+          label: String(localized: "Key needed", comment: "AI Polish provider status chip."),
+          tone: .needsSetup)
     case .validating:
-      return ProviderStatus(label: "Validating", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "Validating", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     case .valid:
-      return ProviderStatus(label: "Key valid", tone: .ready)
+      return ProviderStatus(
+        label: String(localized: "Key valid", comment: "AI Polish provider status chip."),
+        tone: .ready)
     case .invalid:
-      return ProviderStatus(label: "Key needed", tone: .error)
+      return ProviderStatus(
+        label: String(localized: "Key needed", comment: "AI Polish provider status chip."),
+        tone: .error)
     }
   }
 
@@ -151,19 +193,32 @@ enum ProviderStatusMapping {
   private static func ollama(_ state: OllamaSetupState) -> ProviderStatus {
     switch state {
     case .detecting:
-      return ProviderStatus(label: "Checking", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "Checking", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     case .notInstalled:
-      return ProviderStatus(label: "Not installed", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "Not installed", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     case .installedNotRunning:
-      return ProviderStatus(label: "Not running", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "Not running", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     case .runningNoModels:
-      return ProviderStatus(label: "No model", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "No model", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     case .pullingModel:
-      return ProviderStatus(label: "Downloading", tone: .needsSetup)
+      return ProviderStatus(
+        label: String(localized: "Downloading", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
     case .ready:
-      return ProviderStatus(label: "Running", tone: .ready)
+      return ProviderStatus(
+        label: String(localized: "Running", comment: "AI Polish provider status chip."),
+        tone: .ready)
     case .error:
-      return ProviderStatus(label: "Error", tone: .error)
+      return ProviderStatus(
+        label: String(localized: "Error", comment: "AI Polish provider status chip."), tone: .error)
     }
   }
 }
@@ -186,18 +241,36 @@ enum PolishRailGroup: CaseIterable {
 
   var heading: String {
     switch self {
-    case .onThisMac: return "On this Mac"
-    case .yourOwnSetup: return "Your own setup"
-    case .cloud: return "Cloud"
+    case .onThisMac:
+      return String(localized: "On this Mac", comment: "AI Polish provider list: group heading.")
+    case .yourOwnSetup:
+      return String(localized: "Your own setup", comment: "AI Polish provider list: group heading.")
+    case .cloud:
+      return String(localized: "Cloud", comment: "AI Polish provider list: group heading.")
     }
   }
 
   /// Spoken after the row name by VoiceOver.
   var accessibilityPhrase: String {
     switch self {
-    case .onThisMac: return "on this Mac"
-    case .yourOwnSetup: return "your own setup"
-    case .cloud: return "cloud"
+    case .onThisMac:
+      return String(
+        localized: "on this Mac",
+        comment:
+          "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
+      )
+    case .yourOwnSetup:
+      return String(
+        localized: "your own setup",
+        comment:
+          "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
+      )
+    case .cloud:
+      return String(
+        localized: "cloud",
+        comment:
+          "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
+      )
     }
   }
 
@@ -214,9 +287,18 @@ enum PolishRailGroup: CaseIterable {
   /// 2026-08-01 doctrine correction this is accuracy, not a privacy warning.
   var privacyLine: String {
     switch self {
-    case .onThisMac: return "Nothing you dictate leaves this Mac"
-    case .yourOwnSetup: return "Uses your selected Ollama model, local or hosted"
-    case .cloud: return "Sends transcribed text, never audio"
+    case .onThisMac:
+      return String(
+        localized: "Nothing you dictate leaves this Mac",
+        comment: "AI Polish: privacy line under the selected provider.")
+    case .yourOwnSetup:
+      return String(
+        localized: "Uses your selected Ollama model, local or hosted",
+        comment: "AI Polish: privacy line under the selected provider.")
+    case .cloud:
+      return String(
+        localized: "Sends transcribed text, never audio",
+        comment: "AI Polish: privacy line under the selected provider.")
     }
   }
 }
@@ -241,11 +323,16 @@ enum PolishRailCatalog {
   /// whose name deliberately differs says so where it does.
   static let all: [PolishRailProvider] = [
     PolishRailProvider(
-      provider: .egOne, name: LLMProvider.egOne.displayName, tagline: "Our tuned model",
+      provider: .egOne, name: LLMProvider.egOne.displayName,
+      tagline: String(
+        localized: "Our tuned model",
+        comment: "AI Polish provider list: description under a provider name. EG-1, our own model."),
       group: .onThisMac, recommended: true),
     PolishRailProvider(
       provider: .appleIntelligence, name: LLMProvider.appleIntelligence.displayName,
-      tagline: "Built into macOS",
+      tagline: String(
+        localized: "Built into macOS",
+        comment: "AI Polish provider list: description under a provider name. Apple Intelligence."),
       group: .onThisMac, recommended: false),
     // #2649. Founder placement: beside EG-1 on this Mac, never above it. EG-1
     // keeps `recommended`; Apple Intelligence remains what a fresh install
@@ -259,23 +346,44 @@ enum PolishRailCatalog {
       // said in full on the detail pane; the attribution is what has to survive
       // here. Capitalisation is fixed by the ADDITIONAL TERM: "Superwhisper",
       // lower-case w, not "SuperWhisper".
-      tagline: "by Superwhisper",
+      tagline: String(
+        localized: "by Superwhisper",
+        comment:
+          "AI Polish provider list: description under a provider name. Required licence credit; keep Superwhisper as written."
+      ),
       group: .onThisMac, recommended: false),
     PolishRailProvider(
       provider: .ollama, name: LLMProvider.ollama.displayName,
-      tagline: "Any open model, local or hosted",
+      tagline: String(
+        localized: "Any open model, local or hosted",
+        comment: "AI Polish provider list: description under a provider name. Ollama."),
       group: .yourOwnSetup, recommended: false),
     PolishRailProvider(
-      provider: .openAI, name: LLMProvider.openAI.displayName, tagline: "Your API key",
+      provider: .openAI, name: LLMProvider.openAI.displayName,
+      tagline: String(
+        localized: "Your API key",
+        comment:
+          "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
+      ),
       group: .cloud, recommended: false),
     // Intentionally NOT `LLMProvider.gemini.displayName` ("Gemini"): the rail
     // carries the vendor so the row reads as a cloud service beside OpenAI and
     // Claude. `PolishRailCatalogTests` pins this exact copy.
     PolishRailProvider(
-      provider: .gemini, name: "Google Gemini", tagline: "Your API key",
+      provider: .gemini, name: "Google Gemini",
+      tagline: String(
+        localized: "Your API key",
+        comment:
+          "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
+      ),
       group: .cloud, recommended: false),
     PolishRailProvider(
-      provider: .claude, name: LLMProvider.claude.displayName, tagline: "Your API key",
+      provider: .claude, name: LLMProvider.claude.displayName,
+      tagline: String(
+        localized: "Your API key",
+        comment:
+          "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
+      ),
       group: .cloud, recommended: false),
   ]
 

@@ -229,16 +229,28 @@ struct SettingsContentView<Content: View>: View {
 
 /// White card with rounded corners and optional header/footer.
 struct BrandedSection<Content: View, Footer: View>: View {
+  /// Resolved heading. A literal goes to `header:`, which the catalog extracts by its type;
+  /// a heading that is already translated goes to `verbatimHeader:` (#3142).
   let header: String?
   @ViewBuilder let content: Content
   @ViewBuilder let footer: Footer
 
   init(
-    header: String? = nil,
+    header: LocalizedStringResource? = nil,
     @ViewBuilder content: () -> Content,
     @ViewBuilder footer: () -> Footer
   ) {
-    self.header = header
+    self.header = header.map { String(localized: $0) }
+    self.content = content()
+    self.footer = footer()
+  }
+
+  init(
+    verbatimHeader: String,
+    @ViewBuilder content: () -> Content,
+    @ViewBuilder footer: () -> Footer
+  ) {
+    self.header = verbatimHeader
     self.content = content()
     self.footer = footer()
   }
@@ -274,10 +286,19 @@ struct BrandedSection<Content: View, Footer: View>: View {
 
 extension BrandedSection where Footer == EmptyView {
   init(
-    header: String? = nil,
+    header: LocalizedStringResource? = nil,
     @ViewBuilder content: () -> Content
   ) {
-    self.header = header
+    self.header = header.map { String(localized: $0) }
+    self.content = content()
+    self.footer = EmptyView()
+  }
+
+  init(
+    verbatimHeader: String,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.header = verbatimHeader
     self.content = content()
     self.footer = EmptyView()
   }
@@ -293,6 +314,7 @@ extension BrandedSection where Footer == EmptyView {
 /// the card and footer below it.
 struct BrandedPanel<Content: View, Footnote: View>: View {
   let icon: String?
+  /// Resolved from the caller's literals, which the catalog extracts by type (#3142).
   let header: String
   let description: String?
   @ViewBuilder let content: Content
@@ -300,14 +322,14 @@ struct BrandedPanel<Content: View, Footnote: View>: View {
 
   init(
     icon: String? = nil,
-    header: String,
-    description: String? = nil,
+    header: LocalizedStringResource,
+    description: LocalizedStringResource? = nil,
     @ViewBuilder content: () -> Content,
     @ViewBuilder footnote: () -> Footnote
   ) {
     self.icon = icon
-    self.header = header
-    self.description = description
+    self.header = String(localized: header)
+    self.description = description.map { String(localized: $0) }
     self.content = content()
     self.footnote = footnote()
   }
@@ -350,13 +372,13 @@ struct BrandedPanel<Content: View, Footnote: View>: View {
 extension BrandedPanel where Footnote == EmptyView {
   init(
     icon: String? = nil,
-    header: String,
-    description: String? = nil,
+    header: LocalizedStringResource,
+    description: LocalizedStringResource? = nil,
     @ViewBuilder content: () -> Content
   ) {
     self.icon = icon
-    self.header = header
-    self.description = description
+    self.header = String(localized: header)
+    self.description = description.map { String(localized: $0) }
     self.content = content()
     self.footnote = EmptyView()
   }
@@ -366,9 +388,22 @@ extension BrandedPanel where Footnote == EmptyView {
 /// plus microcopy, on a recessed rounded surface. Used for the frozen-per-
 /// recording notice so it reads as owned by its card, not floating beneath it.
 struct InsetNotice: View {
+  /// Resolved text. A literal goes to `text:`, which the catalog extracts by its type; text
+  /// that is already translated goes to `verbatim:` (#3142).
   let text: String
   var systemImage: String = "info.circle"
   var tint: Color = .stAccent
+
+  init(text: LocalizedStringResource, systemImage: String = "info.circle", tint: Color = .stAccent)
+  {
+    self.init(verbatim: String(localized: text), systemImage: systemImage, tint: tint)
+  }
+
+  init(verbatim text: String, systemImage: String = "info.circle", tint: Color = .stAccent) {
+    self.text = text
+    self.systemImage = systemImage
+    self.tint = tint
+  }
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -758,7 +793,8 @@ struct BrandedStatusRow: View {
         // who came here because dictation stopped working. On the system style
         // it rendered as grey text beside a red X, which is a poor thing for
         // "Open System Settings" to look like.
-        SettingsActionButton(title: actionLabel, isEnabled: true, emphasis: .filled, action: action)
+        SettingsActionButton(
+          verbatimTitle: actionLabel, isEnabled: true, emphasis: .filled, action: action)
       }
     }
   }
@@ -1236,6 +1272,10 @@ struct SettingsActionButton: View {
   /// "visibly larger than shipped".
   enum Size { case regular, medium, large }
 
+  /// The label, already resolved. Callers pass a literal to `title:`, which the catalog
+  /// extracts by its type, or text that is already translated (or is the user's own) to
+  /// `verbatimTitle:`. There is deliberately no `String` `title:`: a literal would bind to it
+  /// and ship in English (#3142).
   let title: String
   let isEnabled: Bool
   var emphasis: Emphasis = .outlined
@@ -1278,6 +1318,33 @@ struct SettingsActionButton: View {
   /// the two disagree. See `SettingsHover.respondsToPointer`.
   @Environment(\.isEnabled) private var environmentEnabled
   @State private var pointerInside = false
+
+  init(
+    title: LocalizedStringResource, isEnabled: Bool, emphasis: Emphasis = .outlined,
+    shape: Shape = .capsule, size: Size = .regular, trailingSystemImage: String? = nil,
+    systemImage: String? = nil, shortcut: KeyboardShortcut? = nil, action: (() -> Void)? = nil
+  ) {
+    self.init(
+      verbatimTitle: String(localized: title), isEnabled: isEnabled, emphasis: emphasis,
+      shape: shape, size: size, trailingSystemImage: trailingSystemImage,
+      systemImage: systemImage, shortcut: shortcut, action: action)
+  }
+
+  init(
+    verbatimTitle: String, isEnabled: Bool, emphasis: Emphasis = .outlined,
+    shape: Shape = .capsule, size: Size = .regular, trailingSystemImage: String? = nil,
+    systemImage: String? = nil, shortcut: KeyboardShortcut? = nil, action: (() -> Void)? = nil
+  ) {
+    self.title = verbatimTitle
+    self.isEnabled = isEnabled
+    self.emphasis = emphasis
+    self.shape = shape
+    self.size = size
+    self.trailingSystemImage = trailingSystemImage
+    self.systemImage = systemImage
+    self.shortcut = shortcut
+    self.action = action
+  }
 
   /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
   private var hovering: Bool {

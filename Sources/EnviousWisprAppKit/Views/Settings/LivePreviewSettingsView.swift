@@ -401,7 +401,7 @@ struct LivePreviewSettingsView: View {
               // The last system-styled button left on this page after #2445
               // replaced the other three. Same fact, same fix.
               SettingsActionButton(
-                title: LivePreviewSettingsCopy.browseDownloadsButton,
+                verbatimTitle: LivePreviewSettingsCopy.browseDownloadsButton,
                 isEnabled: true,
                 emphasis: .filled
               ) {
@@ -533,7 +533,7 @@ struct LivePreviewSettingsView: View {
               // on Download and Browse. Outlined is the quiet-but-alive rung, and
               // it has a hover state, which the flat one did not.
               SettingsActionButton(
-                title: Self.label(for: action),
+                verbatimTitle: Self.label(for: action),
                 isEnabled: true,
                 emphasis: action == .remove ? .outlined : .filled
               ) {
@@ -656,7 +656,7 @@ struct LivePreviewSettingsView: View {
   @ViewBuilder
   private var packsSection: some View {
     if showsApplePacks {
-      BrandedSection(header: LivePreviewSettingsCopy.packsHeader) {
+      BrandedSection(verbatimHeader: LivePreviewSettingsCopy.packsHeader) {
         // **The ROW is the button, not a card containing one** (founder,
         // 2026-08-26). Everything here did one thing: the title named the action,
         // the paragraph explained it, and a separate `Browse` performed it — so

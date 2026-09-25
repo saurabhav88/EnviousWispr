@@ -35,7 +35,9 @@ enum OllamaCatalogPresentation {
   /// Heading for the hosted group. A statement of where the model runs, not a
   /// warning: per the founder's 2026-08-01 doctrine correction there is no
   /// interstitial and no discouragement of the hosted path.
-  static let hostedGroupTitle = "Runs on Ollama's servers"
+  static let hostedGroupTitle = String(
+    localized: "Runs on Ollama's servers",
+    comment: "AI Polish, Ollama model list: heading for models Ollama runs on its own servers.")
 
   static func groups(from catalog: [OllamaModelCatalogEntry]) -> Groups {
     Groups(
@@ -91,7 +93,14 @@ enum OllamaCatalogPresentation {
   /// Reads `isRemote` and nothing else, for the same reason as
   /// `showsDeleteAction`.
   static func actionLabel(for entry: OllamaModelCatalogEntry) -> String {
-    entry.isRemote ? "Add" : "Download"
+    entry.isRemote
+      ? String(
+        localized: "Add",
+        comment: "AI Polish, Ollama model list: button that adds a hosted model; nothing downloads."
+      )
+      : String(
+        localized: "Download",
+        comment: "AI Polish, Ollama model list: button that downloads a model to this Mac.")
   }
 
   /// #1956: whether THIS row is the one currently pulling.
@@ -111,7 +120,14 @@ enum OllamaCatalogPresentation {
   /// the r2 progress fix had routed hosted rows straight into the existing
   /// download branch.
   static func progressLabel(for entry: OllamaModelCatalogEntry, percent: Int) -> String {
-    entry.isRemote ? "Adding…" : "Downloading… \(percent)%"
+    entry.isRemote
+      ? String(
+        localized: "Adding…",
+        comment: "AI Polish, Ollama model list: a hosted model is being added.")
+      : String(
+        localized: "Downloading… \(percent)%",
+        comment:
+          "AI Polish, Ollama model list: download progress. %lld is a whole-number percentage.")
   }
 
   /// A hosted row matches on the advertised id the SERVICE recorded when it
@@ -200,8 +216,15 @@ enum OllamaCatalogPresentation {
   ///
   /// A model that turned paid on day 3 may remain in the first group until the
   /// snapshot expires, and the honest 403 at use time is already shipped (#1914).
-  static let freeVerifiedGroupTitle = "Try these first"
-  static let mayNeedPaidGroupTitle = "May need a paid Ollama plan"
+  static let freeVerifiedGroupTitle = String(
+    localized: "Try these first",
+    comment:
+      "AI Polish, Ollama model list: heading for hosted models that worked without a paid plan when last checked."
+  )
+  static let mayNeedPaidGroupTitle = String(
+    localized: "May need a paid Ollama plan",
+    comment:
+      "AI Polish, Ollama model list: heading for hosted models that may need a paid Ollama plan.")
 
   /// 2026-08-05T00:00:00Z. Stored as an absolute instant so neither the machine's
   /// time zone nor its locale can move it; `snapshotDateIsExactlyTheFifthOfAugust`
@@ -266,7 +289,10 @@ enum OllamaCatalogPresentation {
   }
 
   static func checkedOnText(_ checkedAt: Date, locale: Locale = .autoupdatingCurrent) -> String {
-    "Checked on \(checkedOnDateText(checkedAt, locale: locale))"
+    String(
+      localized: "Checked on \(checkedOnDateText(checkedAt, locale: locale))",
+      comment: "AI Polish, Ollama model list: when the hosted list was last verified. %@ is a date."
+    )
   }
 
   /// The tier decision itself, over anything that can name a model.

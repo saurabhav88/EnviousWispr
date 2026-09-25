@@ -199,7 +199,7 @@ struct CustomWordsImportSheet: View {
           requestCancel()
         }
         SettingsActionButton(
-          title: confirmTitle, isEnabled: true, emphasis: .filled, shortcut: .defaultAction
+          verbatimTitle: confirmTitle, isEnabled: true, emphasis: .filled, shortcut: .defaultAction
         ) {
           model.confirm()
         }
@@ -300,7 +300,7 @@ private struct ImportReviewScreen: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       if let staleNotice = model.staleNotice {
-        InsetNotice(text: staleNotice)
+        InsetNotice(verbatim: staleNotice)
       }
 
       Text(summary)
@@ -590,8 +590,10 @@ private struct ImportSmartAppPickerScreen: View {
         }
       } else if installed.isEmpty {
         InsetNotice(
-          text: "No supported dictation apps found on this Mac. "
-            + "EnviousWispr can read \(SmartImportSupportedAppsCopy.sentence(for: registry)).")
+          text: """
+            No supported dictation apps found on this Mac. \
+            EnviousWispr can read \(SmartImportSupportedAppsCopy.sentence(for: registry)).
+            """)
       } else {
         ForEach(registry.adapters.filter { installed.contains($0.identifier) }, id: \.identifier) {
           adapter in
@@ -642,7 +644,7 @@ private struct ImportPlaceholderScreen: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      InsetNotice(text: notice)
+      InsetNotice(verbatim: notice)
       #if DEBUG
         Button("Preview with sample words") {
           model.begin(with: CustomWordsImportFixtureSource())

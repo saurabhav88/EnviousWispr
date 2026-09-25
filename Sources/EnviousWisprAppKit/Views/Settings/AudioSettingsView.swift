@@ -320,7 +320,7 @@ private struct BluetoothGuidePopoverContent: View {
       }
 
       InsetNotice(
-        text: BluetoothTipsCopy.micOrder,
+        verbatim: BluetoothTipsCopy.micOrder,
         systemImage: "list.bullet",
         tint: .stAccent
       )

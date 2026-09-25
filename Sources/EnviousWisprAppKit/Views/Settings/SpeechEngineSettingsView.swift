@@ -294,7 +294,7 @@ struct SpeechEngineSettingsView: View {
                 }
               }
               if let action = row.actionLabel {
-                SettingsActionButton(title: action, isEnabled: true, emphasis: .filled) {
+                SettingsActionButton(verbatimTitle: action, isEnabled: true, emphasis: .filled) {
                   modelDelivery.resumeParakeetDownload()
                 }
               }

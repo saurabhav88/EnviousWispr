@@ -34,26 +34,93 @@ struct EGOneRowPresentation: Equatable {
   /// same fail-open shape removed from the health-probe spec earlier in #2649.
   /// For S1-mini the name is licence-bound and must arrive exactly as
   /// `LLMProvider.s1Mini.displayName` spells it.
+  /// The sentence above a download's progress bar, whole, chosen by what is arriving: a first
+  /// install, an upgrade to a named version, or an upgrade whose version is unknown (#3142).
+  static func downloadingLine(
+    engine: String, upgrade: EGOneUpgradeContext?, downloadSize: String
+  ) -> String {
+    switch upgrade {
+    case nil:
+      return String(
+        localized: "Downloading \(engine) (\(downloadSize))",
+        comment:
+          "Settings > AI Polish, local model row: first download. the first %@ is the model name, the second its size."
+      )
+    case .named(let version):
+      return String(
+        localized: "Upgrading to \(engine) V\(version) (\(downloadSize))",
+        comment:
+          "Settings > AI Polish, local model row: upgrade download. the %@ values are the model name, its version and the size, in order."
+      )
+    case .unnamed:
+      return String(
+        localized: "Upgrading to the new \(engine) (\(downloadSize))",
+        comment:
+          "Settings > AI Polish, local model row: upgrade download, version unknown. the first %@ is the model name, the second the size."
+      )
+    }
+  }
+
   static func forState(_ state: EGOneInstallState, engine: String) -> EGOneRowPresentation {
     switch state {
     case .notInstalled:
       return .init(
-        message: "", primaryAction: "Download \(engine)", showsRemove: false, versionLabel: nil)
+        message: "",
+        primaryAction: String(
+          localized: "Download \(engine)",
+          comment:
+            "Settings > AI Polish, local model row: button. %@ is the model name, such as EG-1."),
+        showsRemove: false, versionLabel: nil)
     case .paused:
       return .init(
-        message: "Download paused. Resume anytime.",
-        primaryAction: "Resume", showsRemove: false, versionLabel: nil)
+        message: String(
+          localized: "Download paused. Resume anytime.",
+          comment: "Settings > AI Polish, local model row: the user paused the model download."),
+        primaryAction: String(
+          localized: "Resume",
+          comment: "Settings > AI Polish, local model row: button that resumes the download."),
+        showsRemove: false, versionLabel: nil)
     case .updatePaused(let resumable, let targetVersion):
       // Composed from the manifest's version, never a literal. A new revision
       // ships as a manifest edit with no Swift change, so a hard-coded "V1.1"
       // would keep naming the previous model after the real one moved on —
       // confidently wrong, which is worse than saying nothing.
-      let target = targetVersion.map { "\(engine) V\($0)" } ?? "the new \(engine)"
+      // Four whole sentences, never a name phrase spliced into one (#3142).
+      let message: String
+      switch (resumable, targetVersion) {
+      case (true, let version?):
+        message = String(
+          localized:
+            "AI cleanup is paused. Your upgrade to \(engine) V\(version) stopped part-way.",
+          comment:
+            "Settings > AI Polish, local model row: an upgrade stopped. The first %@ is the model name, the second its version."
+        )
+      case (true, nil):
+        message = String(
+          localized: "AI cleanup is paused. Your upgrade to the new \(engine) stopped part-way.",
+          comment:
+            "Settings > AI Polish, local model row: an upgrade stopped. %@ is the model name; the version is unknown."
+        )
+      case (false, let version?):
+        message = String(
+          localized: "AI cleanup is paused until \(engine) V\(version) finishes installing.",
+          comment:
+            "Settings > AI Polish, local model row: an upgrade must finish. The first %@ is the model name, the second its version."
+        )
+      case (false, nil):
+        message = String(
+          localized: "AI cleanup is paused until the new \(engine) finishes installing.",
+          comment:
+            "Settings > AI Polish, local model row: an upgrade must finish. %@ is the model name; the version is unknown."
+        )
+      }
       return .init(
-        message: resumable
-          ? "AI cleanup is paused. Your upgrade to \(target) stopped part-way."
-          : "AI cleanup is paused until \(target) finishes installing.",
-        primaryAction: resumable ? "Resume upgrade" : "Finish upgrade",
+        message: message,
+        primaryAction: resumable
+          ? String(
+            localized: "Resume upgrade", comment: "Settings > AI Polish, local model row: button.")
+          : String(
+            localized: "Finish upgrade", comment: "Settings > AI Polish, local model row: button."),
         // NO Remove button here, and this reverses an earlier decision of mine.
         // I added it arguing the help centre promises users can remove models
         // to reclaim storage. That promise is real, but `remove()` deletes the
@@ -79,14 +146,28 @@ struct EGOneRowPresentation: Equatable {
       // other version decision, so one test covers "blank display version
       // renders nothing" for this state too rather than only for installed.
       return .init(
-        message: "", primaryAction: "Cancel", showsRemove: false,
+        message: "",
+        primaryAction: String(
+          localized: "Cancel",
+          comment: "Settings > AI Polish, local model row: button that stops the download."),
+        showsRemove: false,
         versionLabel: upgrade.map {
           // `.unnamed` reuses the SAME fallback the paused row uses rather than
           // degrading into the first-install sentence, which is what the P2
           // was: an upgrade that stopped looking like one.
           switch $0 {
-          case .named(let v): return "\(engine) V\(v)"
-          case .unnamed: return "the new \(engine)"
+          case .named(let v):
+            return String(
+              localized: "\(engine) V\(v)",
+              comment:
+                "{R}: the installed model and its version, as in \"EG-1 V1.1\". The first %@ is the model name, the second the version."
+            )
+          case .unnamed:
+            return String(
+              localized: "the new \(engine)",
+              comment:
+                "Settings > AI Polish, local model row: names an upgrade whose version is unknown. %@ is the model name."
+            )
           }
         })
     case .verifying:
@@ -94,9 +175,22 @@ struct EGOneRowPresentation: Equatable {
     case .installed(let version):
       return .init(
         message: "", primaryAction: nil, showsRemove: true,
-        versionLabel: version.flatMap { $0.isEmpty ? nil : "\(engine) V\($0)" })
+        versionLabel: version.flatMap {
+          $0.isEmpty
+            ? nil
+            : String(
+              localized: "\(engine) V\($0)",
+              comment:
+                "{R}: the installed model and its version, as in \"EG-1 V1.1\". The first %@ is the model name, the second the version."
+            )
+        })
     case .failed:
-      return .init(message: "", primaryAction: "Try Again", showsRemove: false, versionLabel: nil)
+      return .init(
+        message: "",
+        primaryAction: String(
+          localized: "Try Again",
+          comment: "Settings > AI Polish, local model row: button after a failed download."),
+        showsRemove: false, versionLabel: nil)
     }
   }
 }

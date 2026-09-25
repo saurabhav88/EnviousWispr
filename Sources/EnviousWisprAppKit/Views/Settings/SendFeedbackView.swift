@@ -106,7 +106,7 @@ struct SendFeedbackView: View {
   private var sendRow: some View {
     HStack(spacing: 10) {
       SettingsActionButton(
-        title: status == .sent
+        verbatimTitle: status == .sent
           ? String(localized: "feedback.sent", defaultValue: "Sent")
           : String(localized: "feedback.send", defaultValue: "Send"),
         isEnabled: issue == nil && status != .sent,
