@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYNC="$SCRIPT_DIR/l10n-catalog-sync.sh"
 
 exec python3 - "$SYNC" <<'PY'
-import copy, json, os, pathlib, re, shutil, subprocess, sys, tempfile
+import atexit, copy, json, os, pathlib, plistlib, re, shutil, subprocess, sys, tempfile
 
 SYNC = sys.argv[1]
 TARGETS = [
@@ -113,12 +113,58 @@ def committed_catalog(path):
     path.write_text(json.dumps({"sourceLanguage": "en", "strings": strings, "version": "1.0"}, indent=2) + "\n")
 
 
-def run(*args, env=None, whats_new_source=None):
+# Info.plist fixture (#3142 Phase 3) and its two catalogs, written already in sync so a case
+# that is not about them sees no drift from them. Each entry carries the fields the sync
+# writes; the comment is the fixture's own, which the sync keeps.
+PLIST = {
+    "CFBundleName": "EnviousWispr",
+    "NSMicrophoneUsageDescription": "Microphone for dictation.",
+    "NSContactsUsageDescription": "Contacts for names.",
+    "NSHumanReadableCopyright": "Copyright fixture.",
+    "AppUsageDescription": "Ignored: no NS prefix.",
+    "NSServices": [{"NSMenuItem": {"default": "Add to Words"}, "NSMessage": "quickAddWord"}],
+}
+
+
+def seeded(value):
+    return {"comment": "fixture", "extractionState": "manual",
+            "localizations": {"en": {"stringUnit": {"state": "translated", "value": value}}}}
+
+
+def plist_catalogs(plist):
+    info = {k: seeded(v) for k, v in plist.items()
+            if (k.startswith("NS") and k.endswith("UsageDescription")) or k == "NSHumanReadableCopyright"}
+    services = {i["NSMenuItem"]["default"]: seeded(i["NSMenuItem"]["default"]) for i in plist.get("NSServices", [])}
+    return ({"sourceLanguage": "en", "strings": info, "version": "1.0"},
+            {"sourceLanguage": "en", "strings": services, "version": "1.0"})
+
+
+def write_plist_fixture(root, plist=PLIST, catalogs_from=None):
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / "Info.plist", "wb") as fh:
+        plistlib.dump(plist, fh)
+    info, services = plist_catalogs(catalogs_from if catalogs_from is not None else plist)
+    (root / "InfoPlist.xcstrings").write_text(json.dumps(info, indent=2) + "\n")
+    (root / "ServicesMenu.xcstrings").write_text(json.dumps(services, indent=2) + "\n")
+    return root
+
+
+SHARED_PLIST = write_plist_fixture(pathlib.Path(tempfile.mkdtemp()))
+atexit.register(shutil.rmtree, SHARED_PLIST, True)
+
+
+def plist_args(root):
+    return ["--info-plist", str(root / "Info.plist"), "--infoplist-catalog", str(root / "InfoPlist.xcstrings"),
+            "--servicesmenu-catalog", str(root / "ServicesMenu.xcstrings")]
+
+
+def run(*args, env=None, whats_new_source=None, plist_root=None):
     with tempfile.TemporaryDirectory() as tmp:
         if whats_new_source is None:
             whats_new_source = pathlib.Path(tmp) / "WhatsNewContent.swift"
             whats_new_source.write_text(whats_new())
-        p = subprocess.run([SYNC, *args, "--whats-new-source", str(whats_new_source)], capture_output=True, text=True, env=env)
+        p = subprocess.run([SYNC, *args, "--whats-new-source", str(whats_new_source),
+                            *plist_args(plist_root or SHARED_PLIST)], capture_output=True, text=True, env=env)
         return p.returncode, p.stdout + p.stderr
 
 
@@ -336,6 +382,114 @@ translated_then_check()
 case("a What's New source the renderer refuses stops the run", 2, "What's New seed refused by the renderer",
      whats_new_source=whats_new(duplicate=True))
 case("an extracted key in the What's New namespace stops the run", 2, "use the What's New prefix", extra_keys=["whatsNew.alpha.title"])
+
+# --- Info.plist tables (#3142 Phase 3) ---
+def plist_case(name, want_code, want_texts, *, mode="--check", plist=PLIST, catalogs_from=None, edit_tables=None,
+               raw_plist=None, extra_keys=(), verify=None):
+    """Runs one mode against a case-owned Info.plist and its catalogs, after a clean update of the
+    main catalog. `want_texts` must all appear in the output."""
+    global cases
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        assert run("--update", "--derived-data", str(fixture(root / "clean")), "--configuration", "Release",
+                   "--catalog", str(catalog))[0] == 0
+        tables = write_plist_fixture(root / "plist", plist, catalogs_from)
+        if raw_plist is not None:
+            (tables / "Info.plist").write_bytes(raw_plist)
+        if edit_tables:
+            for file_name, edit in edit_tables.items():
+                data = json.loads((tables / file_name).read_text())
+                edit(data["strings"])
+                (tables / file_name).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        before = {f: (tables / f).read_bytes() for f in ("InfoPlist.xcstrings", "ServicesMenu.xcstrings")}
+        before["Localizable.xcstrings"] = catalog.read_bytes()
+        dd = fixture(root / "case", extra_keys=extra_keys)
+        code, out = run(mode, "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog),
+                        plist_root=tables)
+        cases += 1
+        ok = code == want_code and all(t in out for t in want_texts)
+        problem = None
+        if ok and verify:
+            after = {f: json.loads((tables / f).read_text())["strings"]
+                     for f in ("InfoPlist.xcstrings", "ServicesMenu.xcstrings")}
+            after["Localizable.xcstrings"] = catalog.read_bytes()
+            after["before"] = before
+            after["bytes"] = {f: (tables / f).read_bytes() for f in ("InfoPlist.xcstrings", "ServicesMenu.xcstrings")} | {
+                "Localizable.xcstrings": catalog.read_bytes()}
+            problem = verify(after)
+        print(f"{'PASS' if ok and not problem else 'FAIL'}  {name}: exit {code}")
+        if not ok or problem:
+            failures.append(name)
+            print(problem or out)
+
+
+def seeded_as_written(t):
+    info, services = t["InfoPlist.xcstrings"], t["ServicesMenu.xcstrings"]
+    if sorted(info) != ["NSContactsUsageDescription", "NSHumanReadableCopyright", "NSMicrophoneUsageDescription"]:
+        return f"InfoPlist keys {sorted(info)!r}"
+    if info["NSMicrophoneUsageDescription"]["localizations"]["en"]["stringUnit"] != {"state": "translated", "value": "Microphone for dictation."}:
+        return f"microphone entry {info['NSMicrophoneUsageDescription']!r}"
+    if info["NSMicrophoneUsageDescription"]["extractionState"] != "manual" or "permission prompt" not in info["NSMicrophoneUsageDescription"]["comment"]:
+        return f"microphone entry {info['NSMicrophoneUsageDescription']!r}"
+    if "About box" not in info["NSHumanReadableCopyright"]["comment"]:
+        return f"copyright comment {info['NSHumanReadableCopyright']['comment']!r}"
+    if list(services) != ["Add to Words"] or "Services menu" not in services["Add to Words"]["comment"]:
+        return f"ServicesMenu {services!r}"
+    return None
+
+
+EMPTY = {"CFBundleName": "x"}
+plist_case("update writes both Info.plist catalogs from the plist, ignoring non-prompt keys", 0,
+           ["updated", "InfoPlist.xcstrings", "ServicesMenu.xcstrings"], mode="--update", catalogs_from=EMPTY,
+           verify=seeded_as_written)
+plist_case("a changed permission prompt is drift", 1, ["changed: InfoPlist 'NSMicrophoneUsageDescription'"],
+           plist=dict(PLIST, NSMicrophoneUsageDescription="Microphone, reworded."), catalogs_from=PLIST)
+plist_case("a new permission prompt is drift", 1, ["added: InfoPlist 'NSCameraUsageDescription'"],
+           plist=dict(PLIST, NSCameraUsageDescription="Camera."), catalogs_from=PLIST)
+plist_case("a removed permission prompt is drift", 1, ["removed: InfoPlist 'NSContactsUsageDescription'"],
+           plist={k: v for k, v in PLIST.items() if k != "NSContactsUsageDescription"}, catalogs_from=PLIST)
+
+
+def german_on_microphone(strings):
+    strings["NSMicrophoneUsageDescription"]["localizations"]["de"] = {"stringUnit": {"state": "translated", "value": "Mikrofon."}}
+    strings["NSContactsUsageDescription"]["localizations"]["de"] = {"stringUnit": {"state": "translated", "value": "Kontakte."}}
+
+
+def microphone_under_review(t):
+    info = t["InfoPlist.xcstrings"]
+    mic, contacts = info["NSMicrophoneUsageDescription"], info["NSContactsUsageDescription"]
+    if mic["localizations"]["de"]["stringUnit"]["state"] != "needs_review" or mic["comment"] != "fixture":
+        return f"microphone {mic!r}"
+    if contacts["localizations"]["de"]["stringUnit"]["state"] != "translated":
+        return f"contacts {contacts!r}"
+    if mic["localizations"]["en"]["stringUnit"]["value"] != "Microphone, reworded.":
+        return "English not taken from the plist"
+    return None
+
+
+plist_case("a changed prompt keeps its translation and comment and flags it for review", 0, ["updated"], mode="--update",
+           plist=dict(PLIST, NSMicrophoneUsageDescription="Microphone, reworded."), catalogs_from=PLIST,
+           edit_tables={"InfoPlist.xcstrings": german_on_microphone}, verify=microphone_under_review)
+plist_case("a changed Services title removes the old entry and adds an untranslated one", 1,
+           ["removed: ServicesMenu 'Add to Words'", "added: ServicesMenu 'Add to My Words'"],
+           plist=dict(PLIST, NSServices=[{"NSMenuItem": {"default": "Add to My Words"}}]), catalogs_from=PLIST)
+plist_case("two Services items with one title stop the run", 2, ["two Services items titled 'Add to Words'"],
+           plist=dict(PLIST, NSServices=PLIST["NSServices"] * 2), catalogs_from=PLIST)
+plist_case("a plist with no permission prompts stops the run", 2, ["has no permission prompts"],
+           plist=EMPTY, catalogs_from=PLIST)
+
+
+def nothing_written(t):
+    for name, original in t["before"].items():
+        if t["bytes"][name] != original:
+            return f"{name} was written"
+    return None
+
+
+plist_case("a malformed plist stops an update before any catalog is written", 2, ["REFUSED"], mode="--update",
+           raw_plist=b"not a property list", extra_keys=["a label the update would add"], verify=nothing_written)
 
 print(f"{cases} cases, {len(failures)} failed" + (f": {failures}" if failures else ""))
 sys.exit(1 if failures else 0)

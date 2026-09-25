@@ -10,6 +10,11 @@ import Testing
 @Suite("Interface catalog source", .tags(.driftGuard))
 struct InterfaceCatalogSourceTests {
   private static let catalogPath = "Sources/EnviousWispr/Resources/Localizable.xcstrings"
+  /// #3142 Phase 3: permission prompts and the Services menu item, written from Info.plist.
+  private static let infoPlistCatalogs = [
+    "Sources/EnviousWispr/Resources/InfoPlist.xcstrings",
+    "Sources/EnviousWispr/Resources/ServicesMenu.xcstrings",
+  ]
 
   // Literal oracle, independent of the catalog.
   private static let expectedEnglish: [String: String] = [
@@ -39,9 +44,11 @@ struct InterfaceCatalogSourceTests {
     }
   }
 
-  @Test("No language other than English is in the catalog")
-  func onlyEnglishShips() throws {
-    let strings = try Self.strings()
+  @Test(
+    "No language other than English is in any catalog",
+    arguments: [catalogPath] + infoPlistCatalogs)
+  func onlyEnglishShips(catalog: String) throws {
+    let strings = try Self.strings(catalog)
     #expect(!strings.isEmpty, "catalog parsed to zero entries")
     var languages = Set<String>()
     for case let entry as [String: Any] in strings.values {
@@ -59,20 +66,8 @@ struct InterfaceCatalogSourceTests {
   /// catalog dropped from the app target (deleted, commented out, excluded) leaves no table.
   @Test("The built app ships the compiled English table with every translated entry")
   func builtAppShipsCompiledTable() throws {
-    let products = Bundle(for: BuildProductsMarker.self).bundleURL.deletingLastPathComponent()
-    // The product name is per configuration: Debug and Release build `EnviousWispr.app`, Dev
-    // builds `EnviousWispr Local.app` (Project.swift Dev settings). Exactly one lives beside the
-    // test bundle; zero or both means the products directory is not what this test assumes.
-    let apps = ["EnviousWispr.app", "EnviousWispr Local.app"]
-      .map { products.appendingPathComponent($0) }
-      .filter { FileManager.default.fileExists(atPath: $0.path) }
-    let app = try #require(apps.count == 1 ? apps.first : nil, "app products beside the tests: \(apps.map(\.lastPathComponent))")
-    let table = app.appendingPathComponent("Contents/Resources/en.lproj/Localizable.strings")
-    let data = try #require(
-      FileManager.default.contents(atPath: table.path),
-      "no compiled catalog at \(table.path)")
-    let compiled = try #require(
-      try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
+    let compiled = try Self.compiledTable(
+      in: try Self.builtApp(), language: "en", table: "Localizable")
     // Only entries in state `translated` are compiled into the English table. A key the
     // compiler extracted (state `new`, #3157's sync) is absent from it and resolves to the
     // `defaultValue` written beside it in the code, which is the same English (#3153, measured:
@@ -87,8 +82,61 @@ struct InterfaceCatalogSourceTests {
     }
   }
 
-  private static func strings() throws -> [String: Any] {
-    let url = repoRoot.appendingPathComponent(catalogPath)
+  /// The permission prompts, the About box line and the Services menu item compile from the two
+  /// Info.plist catalogs to exactly the English in Info.plist, read here from the plist itself.
+  /// No German table from them ships yet.
+  @Test("The built app's permission and Services tables equal Info.plist's English")
+  func builtAppShipsInfoPlistTables() throws {
+    let plistData = try Data(
+      contentsOf: Self.repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources/Info.plist"))
+    let plist = try #require(
+      try PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any])
+    let prompts = plist.filter { key, _ in
+      (key.hasPrefix("NS") && key.hasSuffix("UsageDescription"))
+        || key == "NSHumanReadableCopyright"
+    }
+    .compactMapValues { $0 as? String }
+    let services = (plist["NSServices"] as? [[String: Any]] ?? [])
+      .compactMap { ($0["NSMenuItem"] as? [String: Any])?["default"] as? String }
+    #expect(prompts.count >= 5, "Info.plist prompts read: \(prompts.keys.sorted())")
+    #expect(!services.isEmpty, "no Services titles read from Info.plist")
+
+    let app = try Self.builtApp()
+    #expect(try Self.compiledTable(in: app, language: "en", table: "InfoPlist") == prompts)
+    #expect(
+      try Self.compiledTable(in: app, language: "en", table: "ServicesMenu")
+        == Dictionary(uniqueKeysWithValues: services.map { ($0, $0) }))
+    for table in ["InfoPlist", "ServicesMenu"] {
+      let german = app.appendingPathComponent("Contents/Resources/de.lproj/\(table).strings")
+      #expect(!FileManager.default.fileExists(atPath: german.path), "\(table) ships German")
+    }
+  }
+
+  private static func builtApp() throws -> URL {
+    let products = Bundle(for: BuildProductsMarker.self).bundleURL.deletingLastPathComponent()
+    // The product name is per configuration: Debug and Release build `EnviousWispr.app`, Dev
+    // builds `EnviousWispr Local.app` (Project.swift Dev settings). Exactly one lives beside the
+    // test bundle; zero or both means the products directory is not what this test assumes.
+    let apps = ["EnviousWispr.app", "EnviousWispr Local.app"]
+      .map { products.appendingPathComponent($0) }
+      .filter { FileManager.default.fileExists(atPath: $0.path) }
+    return try #require(
+      apps.count == 1 ? apps.first : nil,
+      "app products beside the tests: \(apps.map(\.lastPathComponent))")
+  }
+
+  private static func compiledTable(in app: URL, language: String, table: String) throws
+    -> [String: String]
+  {
+    let path = app.appendingPathComponent("Contents/Resources/\(language).lproj/\(table).strings")
+    let data = try #require(
+      FileManager.default.contents(atPath: path.path), "no compiled table at \(path.path)")
+    return try #require(
+      try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
+  }
+
+  private static func strings(_ catalog: String = catalogPath) throws -> [String: Any] {
+    let url = repoRoot.appendingPathComponent(catalog)
     let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
     let root = try #require(object as? [String: Any])
     #expect(root["sourceLanguage"] as? String == "en")
