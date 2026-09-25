@@ -126,6 +126,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     EGOneConnector(endpoint: $0)
   }
 
+  /// #3111 test seam: the English-stretch scan EG-1 language naming runs on the text it is
+  /// about to send. Production reads the real recogniser.
+  var englishStretchScanner: @Sendable (String) -> DictationLanguageResolver.EnglishStretchScan =
+    DictationLanguageResolver.englishStretch
+
   /// #2649 test seam, mirroring `makeEGOnePolisher`. A separate factory rather
   /// than one that switches on provider: the two connectors differ in what an
   /// empty answer MEANS, and a single factory would put that decision in the
@@ -912,6 +917,22 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // custom words mid-polish. Migration default: all entries tagged global.
     let vocabularySnapshot = PromptVocabulary.fromLegacy(polishVocabulary.terms)
 
+    // #3111: decided ONCE per polish, for the prompt and the hint alike. The English-stretch
+    // scan reads the text EG-1 is about to receive, runs only when a name would otherwise be
+    // sent, and runs off the main actor.
+    var egOneDecision: EGOneLanguageNaming.Decision?
+    if provider == .egOne {
+      let preliminary = Self.egOneLanguageDecision(context)
+      if case .named = preliminary {
+        let scanner = englishStretchScanner
+        let text = context.text
+        let scan = await Task.detached(priority: .userInitiated) { scanner(text) }.value
+        egOneDecision = EGOneLanguageNaming.applying(scan, to: preliminary)
+      } else {
+        egOneDecision = preliminary
+      }
+    }
+
     let input = PromptBuildInput(
       transcript: context.text,
       provider: provider,
@@ -938,7 +959,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       s1Control: s1Control,
       // #3111: native EG-1 only, and only when the raw text itself names a measured
       // language that no lock or engine answer contradicts. Nil sends today's prompt.
-      namedLanguage: provider == .egOne ? Self.egOneLanguageDecision(context).namedLanguage : nil
+      namedLanguage: egOneDecision?.namedLanguage
     )
     let plan = promptPlanner.plan(input: input)
 
@@ -960,7 +981,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // vocabulary, never the language code or any text.
     var languageHintReceipt = ""
     if provider == .egOne, plan.family == .egOneEnvelopeNamedLanguage {
-      let hint = Self.egOneLanguageDecision(context).hint
+      let hint = (egOneDecision ?? Self.egOneLanguageDecision(context)).hint
       languageHintReceipt = ", polish_language_hint=\(hint)"
       if let takeID = context.takeID { telemetry.recordPolishLanguageHint(takeID, hint) }
     }

@@ -37,7 +37,7 @@ struct TakeStageSummary: Equatable {
   /// #1413: what the other-audio hold did for this take, written at its restore.
   var otherAudio: OtherAudioTerminalFacts?
   /// #3111: which instruction EG-1's named-language prompt family selected for this take
-  /// (`named`, `english`, `unsure`, `conflict`, `untested`). Written once the prompt is
+  /// (`named`, `english`, `unsure`, `conflict`, `untested`, `mixed`, `scanLimit`). Written once the prompt is
   /// PLANNED, before the model is asked, so it says what was chosen, never whether polish
   /// succeeded or what language was delivered. Absent for every other provider and family.
   var polishLanguageHint: String?

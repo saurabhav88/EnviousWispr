@@ -53,6 +53,71 @@ struct EGOneLanguageNamingDecisionTests {
   }
 }
 
+/// #3111 cloud review: a Polish dictation carrying an English clause must not be named Polish,
+/// because EG-1 then translated the clause (4 of 20 measured). When this fails, a Polish user
+/// quoting an English email gets the quote back in Polish.
+@Suite("EG-1 language naming: English stretches", .tags(.productOutcome))
+struct EGOneEnglishStretchTests {
+
+  /// The four measured sentences EG-1 translated when told "Polish".
+  static let translatedWhenNamed = [
+    "Klient napisał: please send the updated contract by Friday, więc musimy się pospieszyć.",
+    "W mailu było napisane the invoice is overdue, więc zadzwoniłem do księgowości.",
+    "Dostaliśmy odpowiedź we will get back to you shortly, i nic więcej.",
+    "Ona zawsze mówi it is what it is, kiedy coś nie wychodzi.",
+  ]
+  /// Single English product names: naming Polish made no net difference, so these stay named.
+  static let productNames = [
+    "Wrzuć ten plik na Google Drive i wyślij link na Slacku.",
+    "Nowy MacBook Pro przyszedł, trzeba go skonfigurować.",
+    "Sprawdź dashboard w PostHogu, czy spadł retention.",
+  ]
+  static let pure = [
+    "Daty płatności są późniejsze niż daty zakupu, prawdopodobnie różnica w rejestracji transakcji.",
+    "Die Zahlungsdaten liegen später als die Kaufdaten, wahrscheinlich ein Unterschied bei der Erfassung.",
+    "支払日が購入日より後になっているのは、おそらく取引の記録方法の違いによるものです。",
+    "Даты платежей позже дат покупки, вероятно, разница в регистрации транзакций.",
+  ]
+
+  @Test("The real recogniser finds the English stretch in every sentence EG-1 translated")
+  func translatedSentencesAreMixed() {
+    for sentence in Self.translatedWhenNamed {
+      #expect(DictationLanguageResolver.englishStretch(in: sentence) == .mixed, "\(sentence)")
+    }
+  }
+
+  @Test("Single product names and pure non-English text stay clear")
+  func productNamesAndPureTextAreClear() {
+    for sentence in Self.productNames + Self.pure {
+      #expect(DictationLanguageResolver.englishStretch(in: sentence) == .clear, "\(sentence)")
+    }
+  }
+
+  @Test("Past the word limit the answer is scanLimit, never clear")
+  func overLimitIsScanLimit() {
+    let words = DictationLanguageResolver.englishStretchWordLimit + 20
+    let text = Array(repeating: "tak", count: words).joined(separator: " ")
+    #expect(DictationLanguageResolver.englishStretch(in: text) == .scanLimit)
+  }
+
+  @Test(
+    "A preliminary name survives only a clear scan; other answers pass through",
+    arguments: [
+      (EGOneLanguageNaming.Decision.named("pl"), DictationLanguageResolver.EnglishStretchScan.clear,
+       EGOneLanguageNaming.Decision.named("pl")),
+      (.named("pl"), .mixed, .notNamed(.mixed)),
+      (.named("pl"), .scanLimit, .notNamed(.scanLimit)),
+      (.notNamed(.english), .mixed, .notNamed(.english)),
+      (.notNamed(.conflict), .clear, .notNamed(.conflict)),
+    ] as [(EGOneLanguageNaming.Decision, DictationLanguageResolver.EnglishStretchScan, EGOneLanguageNaming.Decision)])
+  func applying(
+    preliminary: EGOneLanguageNaming.Decision, scan: DictationLanguageResolver.EnglishStretchScan,
+    expected: EGOneLanguageNaming.Decision
+  ) {
+    #expect(EGOneLanguageNaming.applying(scan, to: preliminary) == expected)
+  }
+}
+
 /// #3111 end to end: a real `TextProcessingRunner` resolves the language from the raw text,
 /// a real `LLMPolishStep` plans the EG-1 prompt, and a fake EG-1 polisher records the system
 /// prompt it was sent.
@@ -110,7 +175,8 @@ struct EGOneLanguageNamingPipelineTests {
     evidence: LanguageEvidence,
     family: PromptFamily = .egOneEnvelopeNamedLanguage,
     identify: @escaping (String) -> (language: String, confidence: Double)?,
-    before: [any TextProcessingStep] = []
+    before: [any TextProcessingStep] = [],
+    scan: @escaping @Sendable (String) -> DictationLanguageResolver.EnglishStretchScan = { _ in .clear }
   ) async throws -> PromptCapture {
     let capture = PromptCapture()
     let step = LLMPolishStep(keychainManager: KeychainManager())
@@ -119,6 +185,7 @@ struct EGOneLanguageNamingPipelineTests {
     step.egOneRuntime = FakeRuntime()
     step.promptPlanner = DefaultPromptPlanner(egOneFamily: family)
     step.makeEGOnePolisher = { _ in CapturingPolisher(capture: capture) }
+    step.englishStretchScanner = scan
     let runner = TextProcessingRunner(
       telemetry: .silent, languageIdentifier: identify,
       timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run)
@@ -169,6 +236,24 @@ struct EGOneLanguageNamingPipelineTests {
       evidence: .none, identify: identify, before: [RewriteStep("payment dates are later")])
     #expect(capture.systemPrompt == Self.namedPolish)
     #expect(capture.userText?.contains("payment dates are later") == true)
+  }
+
+  @Test("An English stretch in the text EG-1 receives withholds the name", arguments: [
+    DictationLanguageResolver.EnglishStretchScan.mixed, .scanLimit,
+  ])
+  func englishStretchWithholdsTheName(scan: DictationLanguageResolver.EnglishStretchScan) async throws {
+    let capture = try await run(
+      evidence: .locked("pl"), identify: Self.fixed("pl", 0.97), scan: { _ in scan })
+    #expect(capture.systemPrompt == EGOneEnvelopePromptBuilder.systemPrompt)
+  }
+
+  @Test("The real scanner withholds the name for a Polish sentence quoting English")
+  func realScannerOnAQuote() async throws {
+    let capture = try await run(
+      evidence: .locked("pl"), identify: Self.fixed("pl", 0.97),
+      before: [RewriteStep(EGOneEnglishStretchTests.translatedWhenNamed[0])],
+      scan: DictationLanguageResolver.englishStretch)
+    #expect(capture.systemPrompt == EGOneEnvelopePromptBuilder.systemPrompt)
   }
 
   @Test("The 1.1 family never names a language")

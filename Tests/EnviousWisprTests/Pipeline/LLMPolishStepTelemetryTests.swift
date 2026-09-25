@@ -640,6 +640,7 @@ struct LLMPolishStepLanguageHintTests {
       ("pl", "de", .locked, "conflict"),
       ("fi", "fi", .dictation, "untested"),
     ] as [(String?, String?, DictationLanguageResolver.Resolution.Source, String)])
+
   func eachValue(
     text: String?, language: String?, source: DictationLanguageResolver.Resolution.Source,
     expected: String
@@ -661,6 +662,19 @@ struct LLMPolishStepLanguageHintTests {
     }
     Issue.record("expected a throw")
     throw CancellationError()
+  }
+
+  @Test("An English stretch reports mixed, and too long to check reports scanLimit")
+  func stretchHints() async throws {
+    for (scan, expected) in [
+      (DictationLanguageResolver.EnglishStretchScan.mixed, "mixed"), (.scanLimit, "scanLimit"),
+    ] {
+      let spy = LLMPolishStepTelemetryTests.Spy()
+      let step = step(spy: spy)
+      step.englishStretchScanner = { _ in scan }
+      _ = try await step.process(context(textLanguage: "pl", language: "pl", source: .dictation))
+      #expect(spy.hintCalls.map(\.hint) == [expected])
+    }
   }
 
   @Test("A failure after the prompt was planned still reports the hint")

@@ -192,6 +192,55 @@ package enum DictationLanguageResolver {
   /// rule 1 (`CursorInsertionRepair.swift:392`) adds the leading one and rule 3
   /// (`:487`) the trailing one, and both read that same field. Measured both
   /// ways; unconstrained also decouples this from which engine ran.
+  /// #3111: whether a mostly non-English text carries an English STRETCH. The whole-text
+  /// recogniser reads a Polish sentence with an English clause inside as Polish at 1.000, and
+  /// EG-1 told "Polish" then translates the clause (4 of 20 measured). This reads every run of
+  /// `englishStretchWindow` consecutive words and reports `.mixed` on the first run whose top
+  /// hypothesis is English at `englishStretchConfidence` or more.
+  ///
+  /// Measured on the #3111 sets: 19 of 20 Polish sentences with an English phrase flagged (all
+  /// four EG-1 translated), 0 of 20 with a single English product name, 0 of 561 pure
+  /// non-English sentences across 17 languages. Window 3 flagged product names; window 5 lost
+  /// recall. Cost about 0.23 ms per word, so `englishStretchWordLimit` bounds a pathological
+  /// input at about a second while EG-1's own cleanup runs about 25 ms per word; past the
+  /// limit the answer is `.scanLimit`, never a guess.
+  package enum EnglishStretchScan: Sendable, Equatable {
+    case clear, mixed, scanLimit
+  }
+
+  package static let englishStretchWindow = 4
+  package static let englishStretchConfidence = 0.8
+  package static let englishStretchWordLimit = 4000
+
+  package static func englishStretch(in text: String) -> EnglishStretchScan {
+    let tokenizer = NLTokenizer(unit: .word)
+    tokenizer.string = text
+    let recognizer = NLLanguageRecognizer()
+    var window: [String] = []
+    var words = 0
+    var result = EnglishStretchScan.clear
+    tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+      words += 1
+      guard words <= englishStretchWordLimit else {
+        result = .scanLimit
+        return false
+      }
+      window.append(String(text[range]))
+      if window.count > englishStretchWindow { window.removeFirst() }
+      guard window.count == englishStretchWindow else { return true }
+      recognizer.reset()
+      recognizer.processString(window.joined(separator: " "))
+      if let top = recognizer.languageHypotheses(withMaximum: 3).max(by: { $0.value < $1.value }),
+        top.key == .english, top.value >= englishStretchConfidence
+      {
+        result = .mixed
+        return false
+      }
+      return true
+    }
+    return result
+  }
+
   package static func identify(_ text: String) -> (language: String, confidence: Double)? {
     guard !text.isEmpty else { return nil }
     let recognizer = NLLanguageRecognizer()

@@ -12,11 +12,9 @@ import EnviousWisprLLM
 ///
 /// Pure: every input is frozen in the context at resolution time, before any cleanup
 /// step runs, so the answer is about what the recogniser WROTE rather than what cleanup
-/// made of it. Known limit, accepted: a custom word whose replacement is in a DIFFERENT
-/// language than the dictation (an English phrase saved against a multi-word Polish alias)
-/// is not re-checked, so that take is still named Polish. Clearing the name whenever word
-/// correction changed the text would drop it for every Polish take where a custom word
-/// fixes a name, which is the common case.
+/// made of it. A second check, `applying(_:to:)`, reads the text EG-1 will actually receive
+/// for an English stretch (a code-switched clause, or a custom word whose replacement is
+/// English) and withholds the name when it finds one.
 package enum EGOneLanguageNaming {
 
   package enum Decision: Equatable, Sendable {
@@ -50,6 +48,25 @@ package enum EGOneLanguageNaming {
     case conflict
     /// The text's language was never measured with the named prompt.
     case untested
+    /// The text EG-1 is about to receive carries an English stretch; naming the dominant
+    /// language translated such stretches (4 of 20 measured).
+    case mixed
+    /// The text was too long to check for an English stretch within the bound.
+    case scanLimit
+  }
+
+  /// The final decision: a preliminary `.named` survives only a clear English-stretch scan of
+  /// the text EG-1 will receive. Every other preliminary answer passes through unchanged, so
+  /// the scan runs only when a name was otherwise going to be sent.
+  package static func applying(
+    _ scan: DictationLanguageResolver.EnglishStretchScan, to preliminary: Decision
+  ) -> Decision {
+    guard case .named = preliminary else { return preliminary }
+    switch scan {
+    case .clear: return preliminary
+    case .mixed: return .notNamed(.mixed)
+    case .scanLimit: return .notNamed(.scanLimit)
+    }
   }
 
   /// - Parameters:
