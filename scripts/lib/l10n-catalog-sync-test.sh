@@ -167,7 +167,37 @@ case("update writes a changed manual default, keeps its comment", 0, "updated", 
                                and s["settings.aiPolish.enable.title"]["comment"] == "fixture manual"
                                and s["settings.aiPolish.enable.title"]["extractionState"] == "manual")
      else f"manual entry is {s['settings.aiPolish.enable.title']!r}")
+
+
+def add_german_to_manual(strings):
+    strings["settings.aiPolish.enable.title"]["localizations"]["de"] = {
+        "stringUnit": {"state": "translated", "value": "KI-Politur aktivieren"}}
+
+
+case("changed manual default flags its translation for review", 0, "updated", mode="--update",
+     manual_override="Enable AI Polishing", edit_committed=add_german_to_manual,
+     verify=lambda s: None if s["settings.aiPolish.enable.title"]["localizations"].get("de", {}).get("stringUnit", {}).get("state") == "needs_review"
+     else f"German entry is {s['settings.aiPolish.enable.title']['localizations'].get('de')!r}")
+
+
+def add_german_plural_to_manual(strings):
+    strings["settings.aiPolish.enable.title"]["localizations"]["de"] = {"variations": {"plural": {
+        "one": {"stringUnit": {"state": "translated", "value": "KI-Politur aktivieren"}},
+        "other": {"stringUnit": {"state": "translated", "value": "KI-Politur aktivieren"}}}}}
+
+
+case("changed manual default flags nested translations for review", 0, "updated", mode="--update",
+     manual_override="Enable AI Polishing", edit_committed=add_german_plural_to_manual,
+     verify=lambda s: None if {v["stringUnit"]["state"] for v in s["settings.aiPolish.enable.title"]["localizations"]["de"]["variations"]["plural"].values()} == {"needs_review"}
+     else f"German entry is {s['settings.aiPolish.enable.title']['localizations']['de']!r}")
 manual_override_key[0] = None
+
+
+def add_english_plural_to_manual(strings):
+    strings["menu.setupRequired.continue"]["localizations"]["en"]["variations"] = {"plural": {}}
+
+
+case("manual key with English variations refuses", 2, "plain stringUnit", edit_committed=add_english_plural_to_manual)
 case("missing production input refuses", 2, "no .stringsdata", drop_target="EnviousWisprPipeline")
 case("unknown first-party target refuses", 2, "do not know", extra_target="EnviousWisprNewModule")
 case("unknown target without the prefix refuses", 2, "do not know", extra_target="WisprNewModule")

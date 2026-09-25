@@ -139,6 +139,20 @@ def xcstringstool_sync(start, files, work):
     return json.loads(scratch.read_text())
 
 
+def flag_for_review(node):
+    """Mark every translated stringUnit under `node` (plural/device variations and
+    substitutions included) as needs_review."""
+    if isinstance(node, dict):
+        unit = node.get("stringUnit")
+        if isinstance(unit, dict) and unit.get("state") == "translated":
+            unit["state"] = "needs_review"
+        for value in node.values():
+            flag_for_review(value)
+    elif isinstance(node, list):
+        for value in node:
+            flag_for_review(value)
+
+
 def sync(committed_path, files, work):
     committed = json.loads(committed_path.read_text())
     synced = xcstringstool_sync(committed, files, work / "incremental")
@@ -168,11 +182,28 @@ def sync(committed_path, files, work):
             raise Refused(f"manual key {key!r} needs exactly one English default in code, found {sorted(map(str, defaults))}")
         if key not in committed["strings"] or english(committed["strings"][key]) is None:
             raise Refused(f"manual key {key!r} has no English entry in the committed catalog")
+        if set(committed["strings"][key]["localizations"]["en"]) != {"stringUnit"}:
+            # Plural/device variations or substitutions would describe English the
+            # code no longer extracts; nothing here could reconcile them.
+            raise Refused(f"manual key {key!r}: English must be a plain stringUnit (no variations or substitutions)")
+        # Keep the curated object (comment, manual state); English comes from the code.
         entry = copy.deepcopy(committed["strings"][key])
         entry["localizations"]["en"]["stringUnit"]["value"] = next(iter(defaults))
         synced["strings"][key] = entry
-    # English-only phase: a key no longer in code is removed, not kept as stale.
-    synced["strings"] = {k: v for k, v in synced["strings"].items() if v.get("extractionState") != "stale"}
+    # A translation of English that has since changed must not ship as current.
+    # xcstringstool flags this itself only for entries whose English it owns
+    # (measured: not for manual or `translated` English), so the rule lives here.
+    source = committed.get("sourceLanguage", "en")
+    for key, entry in synced["strings"].items():
+        before = english(committed["strings"].get(key, {}))
+        if before is None or before == english(entry):
+            continue
+        for lang, unit in entry.get("localizations", {}).items():
+            if lang != source:
+                flag_for_review(unit)
+    # The code decides which keys exist: exactly the fresh extraction (which
+    # includes the verified manual keys). A key gone from code is removed, never kept.
+    synced["strings"] = {k: synced["strings"][k] for k in fresh["strings"]}
     return committed, synced
 
 
