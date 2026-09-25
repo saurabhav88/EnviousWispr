@@ -378,6 +378,11 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// dismisses the window.
   func closeOnboardingWindow() {
     dismissOnboardingAction?()
+    // #3149: setup hid the main window, so bring it back now that setup is done;
+    // otherwise a new user finishes onboarding with no window at all. An ABORT (the
+    // Setup window's red X) goes through the close observer instead and leaves main
+    // hidden, because setup is still unfinished there.
+    showWindow()
     refreshAfterOnboardingDismissal()
     onOnboardingDismissed?()
   }
