@@ -41,10 +41,9 @@ changes its English, which is what lets the catalog sync mark an existing transl
 review. The entry `id:` must be a direct literal of lowercase words joined by hyphens,
 written before `title:`, and unique; the seed refuses any entry it cannot key, and any entry
 `--self-test` would refuse. Entries are read only inside the `static let entries = [...]`
-array, outside comments and ordinary string literals. Known limit: a Swift RAW string
-(a `#` before the opening quote, single-line or multiline) anywhere in the file can confuse the literal scanner; the parse
-contract already forbids raw strings in entries, and the failure is loud (a dropped-entry
-or count refusal), never a silently shorter seed.
+array, outside comments and ordinary string literals. The literal scanner does not read
+Swift RAW strings (a `#` before the opening quote), so the seed and `--self-test` refuse a
+source holding one anywhere; the parse contract already forbids them in entries.
 
 Used by .github/workflows/release.yml. Designed to fail SAFELY: if it cannot produce
 notes for the requested version, it exits non-zero and the workflow falls back to
@@ -129,6 +128,7 @@ FIELD_LITERAL = re.compile(r'\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
 VERSION_LITERAL = re.compile(r'\s*"([\d.]+)"')
 
 
+RAW_STRING_OPEN = re.compile(r'#+"')
 ENTRIES_DECLARATION = re.compile(r"\bstatic\s+let\s+entries\b[^=\n]*=\s*\[")
 
 
@@ -363,6 +363,15 @@ def dropped_entries(entries, swift_path):
     # or a string is not an entry's. A version label counts when a literal follows it.
     # Both read only inside the entries array, where `parse_entries` reads.
     masked = mask_literals_and_comments(source)
+    # A raw string would be scanned as ordinary quotes and could expose or hide an entry,
+    # so it is refused wherever it is (a `#` outside strings and comments opening a quote).
+    for hash_mark in re.finditer(r"#", masked):
+        if RAW_STRING_OPEN.match(source, hash_mark.start()):
+            line = source.count("\n", 0, hash_mark.start()) + 1
+            return (
+                f"error: line {line} holds a raw string literal; What's New is parsed from "
+                "ordinary double-quoted literals only, so rewrite it without the #"
+            )
     first, last = entries_region(masked)
     field_count = sum(
         1 for label in re.compile(r"\bversion:").finditer(masked, first, last)
@@ -685,6 +694,28 @@ FIXTURE_CASES = [
 # Whole-file outcomes through `seed_for_catalog`, the path `--catalog-seed-json` runs:
 # (label, Swift source text, expected start of the refusal message, or None for a seed).
 SEED_REFUSALS = [
+    (
+        "a raw string anywhere in the source is refused, even one hiding a fake entries array",
+        '''
+enum WhatsNewContent {
+  static let example = #"""
+    Say "hello
+    static let entries = [Entry(id: "fake", icon: "x", title: "Fake", description: "Fake.", version: "1.0.0")]
+    """#
+
+  static let entries: [Entry] = [
+    Entry(
+      id: "real",
+      icon: "sparkles",
+      title: "Real title",
+      description: "Real paragraph.",
+      version: "9.9.9"
+    ),
+  ]
+}
+''',
+        "error: line 3 holds a raw string literal",
+    ),
     (
         "an Entry( outside the entries array is not a What's New entry",
         '''
