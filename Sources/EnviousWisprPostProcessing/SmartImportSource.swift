@@ -23,23 +23,34 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
   package var errorDescription: String? {
     switch self {
     case .appNotFound(let app):
-      return "Couldn't find any \(app) words on this Mac."
+      return String(
+        localized: "Couldn't find any \(app) words on this Mac.",
+        comment: "Import from another dictation app: an error. %@ is that app's name.")
     case .unreadable(let app):
       // "can help", not "the cause": every reader failure lands here, including a store the
       // rival app is not touching (#3032 hit it with Wispr Flow quit), a malformed JSON file
       // and a schema drift. The remedy is kept for the one case it fits and is no longer
       // asserted as the reason. Shared by all eight word adapters; founder decision 2026-09-18.
-      return
-        "Couldn't read your \(app) words, so nothing was imported. If \(app) is running, "
-        + "quitting it and trying again can help."
+      return String(
+        localized:
+          "Couldn't read your \(app) words, so nothing was imported. If \(app) is running, quitting it and trying again can help.",
+        comment:
+          "Import from another dictation app: an error. %@ is that app's name; both %@ are the same name."
+      )
     case .legacyMigrationRequired(let app):
-      return
-        "\(app)'s older App Store data can't be imported directly yet. In \(app), choose "
-        + "Migrate Settings from App Store Version, then try again."
+      return String(
+        localized:
+          "\(app)'s older App Store data can't be imported directly yet. In \(app), choose Migrate Settings from App Store Version, then try again.",
+        comment:
+          "Import from another dictation app: an error. %@ is that app's name; both %@ are the same name. Migrate Settings from App Store Version is that app's own menu command; keep it in English."
+      )
     case .tooManySourceEntries(let app, let limit):
-      return
-        "\(app) has more than \(limit) dictionary entries, including entries it may hide or "
-        + "disable. EnviousWispr stopped without importing anything."
+      return String(
+        localized:
+          "\(app) has more than \(String(limit)) dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything.",
+        comment:
+          "Import from another dictation app: an error. the first %@ is that app's name, the second the entry limit."
+      )
     }
   }
 }

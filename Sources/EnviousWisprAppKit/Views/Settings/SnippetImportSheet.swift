@@ -187,29 +187,61 @@ struct SnippetImportSheet: View {
 
   /// Names the actual consequence, so Confirm is never a mystery button.
   private var confirmTitle: String {
-    let count = model.approvedRows.count
-    switch count {
-    case 0: return "Add nothing"
-    case 1: return "Add 1 snippet"
-    default: return "Add \(count) snippets"
-    }
+    SnippetImportResultCopy.confirmTitle(approvedCount: model.approvedRows.count)
   }
 
   private var title: String {
     switch model.step {
-    case .methodPicker: return "Import snippets"
-    case .paste: return "Paste snippets"
-    case .file: return "Open a file"
-    case .appPicker: return "From another app"
-    case .review: return "Review"
-    case .working(.loadingCandidates): return "Finding snippets"
-    case .working(.comparing): return "Checking your list"
-    case .working(.committing): return "Saving"
-    case .result(.completed): return "Import complete"
-    case .result(.nothingFound): return "Nothing to import"
-    case .result(.nothingCompatible): return "Nothing compatible"
-    case .result(.nothingApproved): return "Nothing added"
-    case .result(.failed): return "Import didn't finish"
+    case .methodPicker:
+      return String(
+        localized: "Import snippets",
+        comment: "Snippets, import snippets: sheet title, the sheet's first step.")
+    case .paste:
+      return String(
+        localized: "Paste snippets",
+        comment: "Snippets, import snippets: sheet title, pasting a list.")
+    case .file:
+      return String(
+        localized: "Open a file",
+        comment: "Snippets, import snippets: sheet title, choosing a file.")
+    case .appPicker:
+      return String(
+        localized: "From another app",
+        comment: "Snippets, import snippets: sheet title, choosing another dictation app.")
+    case .review:
+      return String(
+        localized: "Review",
+        comment: "Snippets, import snippets: sheet title, reviewing what will be added.")
+    case .working(.loadingCandidates):
+      return String(
+        localized: "Finding snippets",
+        comment: "Snippets, import snippets: sheet title while reading the source.")
+    case .working(.comparing):
+      return String(
+        localized: "Checking your list",
+        comment: "Snippets, import snippets: sheet title while comparing with your snippets.")
+    case .working(.committing):
+      return String(
+        localized: "Saving", comment: "Snippets, import snippets: sheet title while saving.")
+    case .result(.completed):
+      return String(
+        localized: "Import complete", comment: "Snippets, import snippets: sheet title, finished.")
+    case .result(.nothingFound):
+      return String(
+        localized: "Nothing to import",
+        comment: "Snippets, import snippets: sheet title, the source had no snippets.")
+    case .result(.nothingCompatible):
+      return String(
+        localized: "Nothing compatible",
+        comment: "Snippets, import snippets: sheet title, nothing could be imported.")
+    case .result(.nothingApproved):
+      return String(
+        localized: "Nothing added",
+        comment: "Snippets, import snippets: sheet title, the user skipped everything.")
+    case .result(.failed):
+      return String(
+        localized: "Import didn't finish",
+        comment: "Snippets, import snippets: sheet title, the import failed.")
     }
   }
 }
@@ -226,8 +258,11 @@ private struct SnippetImportMethodPickerScreen: View {
 
       ImportMethodCard(
         icon: "doc.on.clipboard",
-        title: "Paste snippets",
-        subtitle: "Paste a list from anywhere: plain lines, CSV, or exported JSON."
+        title: String(
+          localized: "Paste snippets", comment: "Snippets, import snippets: method card title."),
+        subtitle: String(
+          localized: "Paste a list from anywhere: plain lines, CSV, or exported JSON.",
+          comment: "Snippets, import snippets: method card.")
       ) {
         model.select(.paste)
       }
@@ -235,18 +270,24 @@ private struct SnippetImportMethodPickerScreen: View {
       // your keyword is not touched (plan §14 Q1: the keyword is yours to set, never imported).
       ImportMethodCard(
         icon: "square.and.arrow.down",
-        title: "Open a file",
-        subtitle:
-          "Moving Macs, or bringing your snippets back? Pick the "
-          + "\(SnippetsExportAction.defaultFilename) you exported, a CSV, or a plain list. "
-          + "Snippets you already have are left as they are."
+        title: String(
+          localized: "Open a file", comment: "Snippets, import snippets: method card title."),
+        subtitle: String(
+          localized:
+            "Moving Macs, or bringing your snippets back? Pick the \(SnippetsExportAction.defaultFilename) you exported, a CSV, or a plain list. Snippets you already have are left as they are.",
+          comment:
+            "Snippets, import snippets: method card. %@ is the exported file's name; keep it as is."
+        )
       ) {
         model.select(.file)
       }
       ImportMethodCard(
         icon: "sparkles",
-        title: "From another app",
-        subtitle: "Bring your snippets over from another dictation app."
+        title: String(
+          localized: "From another app", comment: "Snippets, import snippets: method card title."),
+        subtitle: String(
+          localized: "Bring your snippets over from another dictation app.",
+          comment: "Snippets, import snippets: method card.")
       ) {
         model.select(.app)
       }
@@ -287,7 +328,10 @@ private struct SnippetImportAppPickerScreen: View {
           ImportMethodCard(
             icon: "app.badge",
             title: adapter.displayName,
-            subtitle: "Read your snippets from \(adapter.displayName)."
+            subtitle: String(
+              localized: "Read your snippets from \(adapter.displayName).",
+              comment:
+                "Snippets, import snippets: an app's card. %@ is the other dictation app's name.")
           ) {
             model.begin(with: AppSnippetImportSource(adapter: adapter))
           }
@@ -299,9 +343,12 @@ private struct SnippetImportAppPickerScreen: View {
       // supported date, time or clipboard fill-ins can be imported (#3018); entries containing
       // unsupported fill-ins are counted on the review screen rather than silently dropped.
       Text(
-        "Snippets you already have are left as they are. TypeWhisper entries using supported "
-          + "date, time or clipboard fill-ins can be imported. Entries containing unsupported "
-          + "fill-ins are left out and counted."
+        String(
+          localized:
+            "Snippets you already have are left as they are. TypeWhisper entries using supported date, time or clipboard fill-ins can be imported. Entries containing unsupported fill-ins are left out and counted.",
+          comment:
+            "Snippets, import from another app: note under the list. TypeWhisper is an app name; keep it."
+        )
       )
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
@@ -468,15 +515,22 @@ private struct SnippetImportPasteScreen: View {
   }
 
   private var summary: String {
-    if isCounting { return "Counting…" }
+    if isCounting {
+      return String(
+        localized: "Counting…", comment: "Snippets, import snippets: paste count, while counting.")
+    }
     if let parseProblem { return parseProblem }
     if model.pasteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      return "Nothing pasted yet."
+      return String(
+        localized: "Nothing pasted yet.",
+        comment: "Snippets, import snippets: paste count, empty box.")
     }
-    if count == 0 { return "No snippets found. Each line needs a trigger and some text." }
-    var line = "\(count) \(count == 1 ? "snippet" : "snippets") found"
-    if skipped > 0 { line += ", \(skipped) \(skipped == 1 ? "line" : "lines") skipped" }
-    return line + "."
+    if count == 0 {
+      return String(
+        localized: "No snippets found. Each line needs a trigger and some text.",
+        comment: "Snippets, import snippets: paste count, none found.")
+    }
+    return SnippetImportResultCopy.pasteSummary(found: count, skipped: skipped)
   }
 }
 
@@ -590,7 +644,12 @@ private struct SnippetImportReviewRowView: View {
           )
         )
         .toggleStyle(.checkbox)
-        .accessibilityLabel("Add \(row.trigger)")
+        .accessibilityLabel(
+          String(
+            localized: "import.snippets.addRow", defaultValue: "Add \(row.trigger)",
+            comment:
+              "Snippets, import review, VoiceOver: the checkbox that adds a snippet. %@ is its trigger."
+          ))
       } else {
         Text(row.status == .duplicateInBatch ? "Skipped" : "You have this")
           .font(.stHelper)
@@ -620,9 +679,17 @@ private struct SnippetImportWorkingScreen: View {
 
   private var label: String {
     switch work {
-    case .loadingCandidates: return "Looking for snippets to import."
-    case .comparing: return "Comparing against your existing snippets."
-    case .committing: return "Saving your approved snippets."
+    case .loadingCandidates:
+      return String(
+        localized: "Looking for snippets to import.", comment: "Snippets, import snippets: working."
+      )
+    case .comparing:
+      return String(
+        localized: "Comparing against your existing snippets.",
+        comment: "Snippets, import snippets: working.")
+    case .committing:
+      return String(
+        localized: "Saving your approved snippets.", comment: "Snippets, import snippets: working.")
     }
   }
 }

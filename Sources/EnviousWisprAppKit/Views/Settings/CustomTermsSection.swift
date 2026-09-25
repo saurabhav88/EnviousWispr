@@ -326,7 +326,7 @@ struct CustomTermsSection<Actions: View>: View {
             .accessibilityLabel(CustomTermProvenanceCopy.learnedFromYourEdits)
         }
       }
-      Text(usageSubtitle(for: word))
+      Text(Self.usageSubtitle(category: word.category, frequencyUsed: word.frequencyUsed))
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
     }
@@ -335,8 +335,18 @@ struct CustomTermsSection<Actions: View>: View {
   /// The count, in the card's own eyebrow treatment — the same accent
   /// uppercase `BrandedSection` used to draw above the card, kept so moving it
   /// inside changed the POSITION and not the voice.
+  /// Whole phrases chosen by count, never "word" or "words" spliced in (#3142).
+  static func wordCountLabel(_ count: Int) -> String {
+    count == 1
+      ? String(localized: "1 word", comment: "Your Words: list heading, shown in capitals.")
+      : String(
+        localized: "\(String(count)) words",
+        comment:
+          "Your Words: list heading, shown in capitals. %@ is the number of words, never 1.")
+  }
+
   private var wordCountLabel: some View {
-    Text("\(filteredWords.count) \(filteredWords.count == 1 ? "word" : "words")".uppercased())
+    Text(Self.wordCountLabel(filteredWords.count).uppercased())
       .font(.stSectionHeader)
       .tracking(0.6)
       .foregroundStyle(.stAccent)
@@ -350,12 +360,15 @@ struct CustomTermsSection<Actions: View>: View {
   /// a scroll gesture.
   private var categoryFilterRow: some View {
     WrappingHStack(spacing: 6) {
-      categoryPill(title: "All categories", isSelected: selectedCategory == nil) {
+      categoryPill(
+        title: String(
+          localized: "All categories", comment: "Your Words: filter showing every category."),
+        isSelected: selectedCategory == nil
+      ) {
         selectedCategory = nil
       }
       ForEach(WordCategory.allCases, id: \.self) { category in
-        categoryPill(title: category.rawValue.capitalized, isSelected: selectedCategory == category)
-        {
+        categoryPill(title: category.displayName, isSelected: selectedCategory == category) {
           selectedCategory = category
         }
       }
@@ -432,10 +445,20 @@ struct CustomTermsSection<Actions: View>: View {
 
   /// "<Category> · used N times" when frequencyUsed > 0; just the category
   /// otherwise. Hides the "0 times" case to avoid looking like a bug.
-  private func usageSubtitle(for word: CustomWord) -> String {
-    let categoryLabel = word.category.rawValue.capitalized
-    if word.frequencyUsed > 0 {
-      return "\(categoryLabel) · used \(word.frequencyUsed) times"
+  static func usageSubtitle(category: WordCategory, frequencyUsed: Int) -> String {
+    let categoryLabel = category.displayName
+    if frequencyUsed > 0 {
+      return frequencyUsed == 1
+        ? String(
+          localized: "\(categoryLabel) · used 1 times",
+          comment:
+            "Your Words: under a word. %@ is its category. The English says 1 times; translate naturally for one use."
+        )
+        : String(
+          localized: "\(categoryLabel) · used \(String(frequencyUsed)) times",
+          comment:
+            "Your Words: under a word. the first %@ is its category, the second how many times it was used (never 1)."
+        )
     }
     return categoryLabel
   }

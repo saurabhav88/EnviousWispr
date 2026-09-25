@@ -134,8 +134,34 @@ struct VocabPacksSection: View {
   /// `ViewThatFits`, is 120 of them for a 30-pack list per render pass.
   private func rowDetail(for id: VocabularyPackID) -> String {
     let summary = packManager.summary(id)
-    let countText = "\(summary.termCount) \(summary.termCount == 1 ? "fix" : "fixes")"
-    guard !summary.examples.isEmpty else { return countText }
-    return "\(countText) · e.g. \(summary.examples.joined(separator: ", "))"
+    return Self.rowDetail(termCount: summary.termCount, examples: summary.examples)
+  }
+
+  /// Whole phrases chosen by count, never "fix" or "fixes" spliced in (#3142). The examples are
+  /// words from the pack, shown as they are.
+  static func rowDetail(termCount: Int, examples: [String]) -> String {
+    let list = examples.joined(separator: ", ")
+    switch (termCount == 1, examples.isEmpty) {
+    case (true, true):
+      return String(
+        localized: "1 fix", comment: "Your Words, vocabulary packs: under a pack with one fix.")
+    case (false, true):
+      return String(
+        localized: "\(String(termCount)) fixes",
+        comment: "Your Words, vocabulary packs: under a pack. %@ is its number of fixes, never 1."
+      )
+    case (true, false):
+      return String(
+        localized: "1 fix · e.g. \(list)",
+        comment:
+          "Your Words, vocabulary packs: under a pack. %@ is example words from it, separated by commas."
+      )
+    case (false, false):
+      return String(
+        localized: "\(String(termCount)) fixes · e.g. \(list)",
+        comment:
+          "Your Words, vocabulary packs: under a pack. the first %@ is its number of fixes (never 1), the second example words separated by commas."
+      )
+    }
   }
 }

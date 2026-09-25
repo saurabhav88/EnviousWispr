@@ -443,9 +443,11 @@ final class CustomWordsImportFlowModel {
   private func recompareAfterStaleCommit() {
     let runGeneration = advanceGeneration()
     let pending = candidates
-    staleNotice =
-      "Your word list changed while you were reviewing. "
-      + "Nothing was imported — here are the updated matches."
+    staleNotice = String(
+      localized:
+        "Your word list changed while you were reviewing. Nothing was imported — here are the updated matches.",
+      comment:
+        "Your Words, import review: the list changed during review, so the matches were redone.")
     beginWork(.comparing)
 
     activeTask = Task { [weak self] in

@@ -97,7 +97,9 @@ final class SnippetsCoordinator {
       errorMessage = Self.message(for: error)
       return false
     } catch {
-      errorMessage = "That could not be saved. \(error.localizedDescription)"
+      errorMessage = String(
+        localized: "That could not be saved. \(error.localizedDescription)",
+        comment: "Snippets: an error. %@ is the system's reason, already in the user's language.")
       return false
     }
   }
@@ -106,15 +108,25 @@ final class SnippetsCoordinator {
   static func message(for error: SnippetValidationError) -> String {
     switch error {
     case .triggerEmpty:
-      return "Give the snippet something to say. A trigger of only punctuation can never match."
+      return String(
+        localized:
+          "Give the snippet something to say. A trigger of only punctuation can never match.",
+        comment: "Snippets, edit: error when the trigger is empty.")
     case .expansionEmpty:
-      return
-        "Add the text this snippet should paste. An empty snippet would delete the words you said."
+      return String(
+        localized:
+          "Add the text this snippet should paste. An empty snippet would delete the words you said.",
+        comment: "Snippets, edit: error when the text to paste is empty.")
     case .duplicateTrigger(let existing):
-      return
-        "You already have a snippet for those words: \u{201C}\(existing)\u{201D}. Change one of them."
+      return String(
+        localized:
+          "You already have a snippet for those words: \u{201C}\(existing)\u{201D}. Change one of them.",
+        comment:
+          "Snippets, edit: error. %@ is the existing trigger; use this language's quotation marks.")
     case .keywordNotOneWord:
-      return "Your keyword has to be a single word. Pick one you would not say by accident."
+      return String(
+        localized: "Your keyword has to be a single word. Pick one you would not say by accident.",
+        comment: "Snippets: error when the keyword is more than one word.")
     }
   }
 
@@ -126,19 +138,29 @@ final class SnippetsCoordinator {
   static func message(for error: SnippetStoreError) -> String {
     switch error {
     case .existingFileUnreadable:
-      return
-        "Your saved snippets could not be read, so nothing was changed. They are still on disk. Restart EnviousWispr, and tell us if it keeps happening."
+      return String(
+        localized:
+          "Your saved snippets could not be read, so nothing was changed. They are still on disk. Restart EnviousWispr, and tell us if it keeps happening.",
+        comment: "Snippets: error when the saved list could not be read.")
     case .busy:
-      return "Another copy of EnviousWispr is editing snippets right now. Try that again."
+      return String(
+        localized: "Another copy of EnviousWispr is editing snippets right now. Try that again.",
+        comment: "Snippets: error when another copy of the app holds the file.")
     case .coordinationUnavailable:
-      return "Snippets could not be saved just now. Try that again."
+      return String(
+        localized: "Snippets could not be saved just now. Try that again.",
+        comment: "Snippets: error when saving is briefly unavailable.")
     case .writeFailed(let reason):
-      return "That could not be saved. \(reason)"
+      return String(
+        localized: "That could not be saved. \(reason)",
+        comment: "Snippets: an error. %@ is the system's reason, already in the user's language.")
     case .listChangedDuringReview:
       // Reached only if an import's stale refusal ever surfaces as a message; `commitImport`
       // maps it to `.stale` and the sheet recompares instead of showing this.
-      return
-        "Your snippets changed while you were reviewing. Nothing was imported. Review the updated list and try again."
+      return String(
+        localized:
+          "Your snippets changed while you were reviewing. Nothing was imported. Review the updated list and try again.",
+        comment: "Snippets, import: error when the list changed during review.")
     }
   }
 
@@ -166,7 +188,10 @@ final class SnippetsCoordinator {
       switch self {
       case .validation(let error): return SnippetsCoordinator.message(for: error)
       case .store(let error): return SnippetsCoordinator.message(for: error)
-      case .other(let description): return "That could not be saved. \(description)"
+      case .other(let description):
+        return String(
+          localized: "That could not be saved. \(description)",
+          comment: "Snippets: an error. %@ is the system's reason, already in the user's language.")
       }
     }
   }

@@ -608,7 +608,7 @@ struct SpeechEngineSettingsView: View {
           localized: "Downloading speech model...",
           comment: "Speech engine settings, speech model download: in progress."),
         String(
-          localized: "\(mb) MB of \(totalMB) MB",
+          localized: "\(String(mb)) MB of \(String(totalMB)) MB",
           comment:
             "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total."
         ),

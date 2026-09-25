@@ -192,32 +192,61 @@ public struct AppleIntelligenceAvailabilityReport: Sendable, Codable {
   /// User-facing message derived from failure reasons. NOT stored, always computed.
   public var userVisibleMessage: String {
     if failureReasons.isEmpty {
-      return "Apple Intelligence is available and ready to use."
+      return String(
+        localized: "Apple Intelligence is available and ready to use.",
+        comment:
+          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }
     if failureReasons.contains(.notCompiledIn) {
-      return "This build was compiled without Apple Intelligence support."
+      return String(
+        localized: "This build was compiled without Apple Intelligence support.",
+        comment:
+          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }
     if failureReasons.contains(.unsupportedOS) {
-      return "Apple Intelligence requires macOS 26 or later."
+      return String(
+        localized: "Apple Intelligence requires macOS 26 or later.",
+        comment:
+          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }
     if failureReasons.contains(.unsupportedHardware) || failureReasons.contains(.deviceNotEligible)
     {
-      return "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later)."
+      return String(
+        localized:
+          "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later).",
+        comment:
+          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }
     if failureReasons.contains(.appleIntelligenceDisabled) {
-      return
-        "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."
+      return String(
+        localized:
+          "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri.",
+        comment:
+          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }
     if failureReasons.contains(.modelNotReady) {
-      return "The on-device model is not ready — it may still be downloading. Try again later."
+      return String(
+        localized:
+          "The on-device model is not ready — it may still be downloading. Try again later.",
+        comment:
+          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }
     if failureReasons.contains(.modelAccessFailed) || failureReasons.contains(.sessionInitFailed) {
-      return "Apple Intelligence is available but model initialization failed."
+      return String(
+        localized: "Apple Intelligence is available but model initialization failed.",
+        comment:
+          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }
     if failureReasons.contains(.generationFailed) {
-      return "Apple Intelligence model access works but generation failed. Try again later."
+      return String(
+        localized: "Apple Intelligence model access works but generation failed. Try again later.",
+        comment:
+          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }
-    return "Apple Intelligence availability could not be determined."
+    return String(
+      localized: "Apple Intelligence availability could not be determined.",
+      comment: "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    )
   }
 
   /// What onboarding should surface about on-device polish, or nil to stay

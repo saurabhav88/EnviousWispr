@@ -10,13 +10,23 @@ package enum CustomWordsTransferError: LocalizedError, Sendable, Equatable {
   package var errorDescription: String? {
     switch self {
     case .notAnEnviousWisprBackup:
-      return "That file didn't come from EnviousWispr."
+      return String(
+        localized:
+          "That file didn't come from EnviousWispr.",
+        comment:
+          "Your Words, import: error. The file is not a words export.")
     case .unsupportedVersion(let version):
-      return
-        "That file was exported by a newer version of EnviousWispr (format \(version)). "
-        + "Update the app, then try again."
+      return String(
+        localized:
+          "That file was exported by a newer version of EnviousWispr (format \(String(version))). Update the app, then try again.",
+        comment:
+          "Import: error. %@ is the file's format version number.")
     case .malformed:
-      return "That file is damaged and can't be read."
+      return String(
+        localized:
+          "That file is damaged and can't be read.",
+        comment:
+          "Import: error when the file is damaged.")
     }
   }
 }

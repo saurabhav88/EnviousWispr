@@ -59,12 +59,23 @@ struct WorkingStepModel: Equatable {
   /// "Transcribing 12 of 100 minutes" once a fraction exists, else the bare word. Minutes
   /// are floored so the reached count never reads ahead of the total.
   static func transcribingTitle(fraction: Double?, fileSeconds: Double) -> String {
-    guard let fraction, fileSeconds > 0 else { return "Transcribing" }
+    guard let fraction, fileSeconds > 0 else { return transcribingWord }
     // The same whole minutes the summary's Length shows; under a minute there is no count.
     let total = FileImportCoordinator.wholeMinutes(fileSeconds)
-    guard total > 0 else { return "Transcribing" }
+    guard total > 0 else { return transcribingWord }
     let reached = min(total, Int(fraction * fileSeconds / 60))
-    return "Transcribing \(reached) of \(total) minutes"
+    return String(
+      localized: "Transcribing \(String(reached)) of \(String(total)) minutes",
+      comment:
+        "Transcribe a File, Working step: progress. The first %@ is minutes done, the second the file's length in minutes."
+    )
+  }
+
+  static var transcribingWord: String {
+    String(
+      localized: "Transcribing",
+      comment:
+        "Transcribe a File, Working step: the transcribing row, before its minutes are known.")
   }
 
   /// Precedence: cleaning (a count exists) > cleanup-preparing phases > finding who said what
@@ -107,14 +118,18 @@ struct WorkingStepModel: Equatable {
         fraction: fraction)
     case .polishing(let done, let total):
       guard total > 0 else {
-        return rows(activeKind: .cleaning, title: "Preparing cleanup", fraction: nil)
+        return rows(activeKind: .cleaning, title: displayPhase("Preparing cleanup"), fraction: nil)
       }
       let completed = min(max(done, 0), total)
       // The CURRENT section, `min(done + 1, total)`, so "section 14 of 14" is the last one
       // being cleaned, never a 15th.
       return rows(
         activeKind: .cleaning,
-        title: "Cleaning section \(min(completed + 1, total)) of \(total)",
+        title: String(
+          localized: "Cleaning section \(String(min(completed + 1, total))) of \(String(total))",
+          comment:
+            "Transcribe a File, Working step: cleanup progress. The first %@ is the section being cleaned, the second the number of sections."
+        ),
         fraction: Double(completed) / Double(total))
     case .idle, .reading, .ready, .finished, .rejected, .stopped:
       return nil
@@ -150,22 +165,115 @@ struct WorkingStepModel: Equatable {
   /// The resting title of a row that is done or not yet reached.
   static func doneTitle(_ kind: Kind) -> String {
     switch kind {
-    case .transcribing: return "Transcribing"
+    case .transcribing: return transcribingWord
     case .findingSpeakers: return displayPhase(speakerPhase)
-    case .cleaning: return "Cleaning"
+    case .cleaning:
+      return String(
+        localized: "Cleaning",
+        comment:
+          "Transcribe a File, Working step: the cleanup row's name when it is done or not yet reached."
+      )
     }
   }
 }
 
 /// The one spelling of an estimate, before the run ("Ready in about 3 minutes") and during it
 /// ("about 3 minutes left"): rounded to the nearest minute, "under a minute" below 30 s.
+///
+/// The estimate is TYPED and each place it appears has its own whole sentence (#3142): the
+/// phrase takes a different case in other languages ("in about a minute" versus "about a
+/// minute left"), so it is never spliced into a sentence.
 enum ImportEstimateWording {
-  static func text(seconds: Double) -> String {
+  enum Estimate: Equatable {
+    case underAMinute
+    case aboutAMinute
+    case aboutMinutes(Int)
+  }
+
+  static func estimate(seconds: Double) -> Estimate {
     let minutes = Int((seconds / 60).rounded())
     switch minutes {
-    case ..<1: return "under a minute"
-    case 1: return "about a minute"
-    default: return "about \(minutes) minutes"
+    case ..<1: return .underAMinute
+    case 1: return .aboutAMinute
+    default: return .aboutMinutes(minutes)
+    }
+  }
+
+  /// The phrase on its own, as the Working page's Estimate row shows it.
+  static func text(seconds: Double) -> String {
+    switch estimate(seconds: seconds) {
+    case .underAMinute:
+      return String(
+        localized: "under a minute",
+        comment: "Transcribe a File: an estimate shown on its own, in lowercase.")
+    case .aboutAMinute:
+      return String(
+        localized: "about a minute",
+        comment: "Transcribe a File: an estimate shown on its own, in lowercase.")
+    case .aboutMinutes(let minutes):
+      return String(
+        localized: "about \(String(minutes)) minutes",
+        comment:
+          "Transcribe a File: an estimate shown on its own, in lowercase. %@ is minutes, never 1.")
+    }
+  }
+
+  /// "Ready in about 3 minutes", under the chosen file.
+  static func readyIn(seconds: Double) -> String {
+    switch estimate(seconds: seconds) {
+    case .underAMinute:
+      return String(
+        localized: "Ready in under a minute",
+        comment: "Transcribe a File: how long the transcript will take.")
+    case .aboutAMinute:
+      return String(
+        localized: "Ready in about a minute",
+        comment: "Transcribe a File: how long the transcript will take.")
+    case .aboutMinutes(let minutes):
+      return String(
+        localized: "Ready in about \(String(minutes)) minutes",
+        comment: "Transcribe a File: how long the transcript will take. %@ is minutes, never 1.")
+    }
+  }
+
+  /// "about 3 minutes left", under the active Working row.
+  static func left(seconds: Double) -> String {
+    switch estimate(seconds: seconds) {
+    case .underAMinute:
+      return String(
+        localized: "under a minute left",
+        comment: "Transcribe a File, Working step: time left, in lowercase.")
+    case .aboutAMinute:
+      return String(
+        localized: "about a minute left",
+        comment: "Transcribe a File, Working step: time left, in lowercase.")
+    case .aboutMinutes(let minutes):
+      return String(
+        localized: "about \(String(minutes)) minutes left",
+        comment:
+          "Transcribe a File, Working step: time left, in lowercase. %@ is minutes, never 1.")
+    }
+  }
+
+  /// The Review step's warning that dictation stops for the length of the run.
+  static func dictationPauses(seconds: Double) -> String {
+    switch estimate(seconds: seconds) {
+    case .underAMinute:
+      return String(
+        localized:
+          "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in under a minute.",
+        comment: "Transcribe a File, Review step: warning before starting.")
+    case .aboutAMinute:
+      return String(
+        localized:
+          "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in about a minute.",
+        comment: "Transcribe a File, Review step: warning before starting.")
+    case .aboutMinutes(let minutes):
+      return String(
+        localized:
+          "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in about \(String(minutes)) minutes.",
+        comment:
+          "Transcribe a File, Review step: warning before starting. %@ is minutes, never 1.")
     }
   }
 }
@@ -230,7 +338,7 @@ struct SectionPace: Equatable {
   func remainingText(sectionsDone: Int, sectionsTotal: Int) -> String? {
     guard let perSection = secondsPerSection(), sectionsTotal > sectionsDone else { return nil }
     let seconds = Double(sectionsTotal - sectionsDone) * perSection
-    return "\(ImportEstimateWording.text(seconds: seconds)) left"
+    return ImportEstimateWording.left(seconds: seconds)
   }
 
   static func == (lhs: SectionPace, rhs: SectionPace) -> Bool {
@@ -318,7 +426,9 @@ struct TranscribeFileWorkingCard: View {
   /// fraction shows beside its title, so a 36-second wait reads as work, not a hang.
   static func elapsedText(since start: Date, now: Date) -> String {
     let seconds = max(0, Int(now.timeIntervalSince(start)))
-    return "\(seconds) s"
+    return String(
+      localized: "\(String(seconds)) s",
+      comment: "Transcribe a File, Working step: seconds spent on a step. s abbreviates seconds.")
   }
 
   /// One row: title (plus elapsed seconds while indeterminate), the time left, the bar.
@@ -368,13 +478,29 @@ struct TranscribeFileWorkingCard: View {
     func accessibilityText(now: Date) -> String {
       var parts = [row.title]
       switch row.state {
-      case .done: parts.append("done")
-      case .pending: parts.append("not started")
+      case .done:
+        parts.append(
+          String(
+            localized: "done", comment: "VoiceOver, Transcribe a File: a Working row is finished."))
+      case .pending:
+        parts.append(
+          String(
+            localized: "not started",
+            comment: "VoiceOver, Transcribe a File: a Working row has not started."))
       case .active:
         if let fraction = row.fraction {
-          parts.append("\(Int(fraction * 100)) percent")
+          parts.append(
+            String(
+              localized: "\(Int(fraction * 100)) percent",
+              comment: "VoiceOver, Transcribe a File: a Working row's progress. %lld is 0 to 100."))
         } else {
-          parts.append("in progress, \(TranscribeFileWorkingCard.elapsedText(since: stepStartedAt, now: now))")
+          parts.append(
+            String(
+              localized:
+                "in progress, \(TranscribeFileWorkingCard.elapsedText(since: stepStartedAt, now: now))",
+              comment:
+                "VoiceOver, Transcribe a File: a Working row with no progress bar. %@ is the time spent, such as 36 s."
+            ))
         }
         if let detail { parts.append(detail) }
       }

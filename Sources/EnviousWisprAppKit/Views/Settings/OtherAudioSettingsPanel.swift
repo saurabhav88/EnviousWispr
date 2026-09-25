@@ -45,9 +45,9 @@ struct OtherAudioSettingsPanel: View {
           options: [
             (
               String(
-                localized: "Continue",
+                localized: "otherAudio.option.continue", defaultValue: "Continue",
                 comment:
-                  "Microphone settings, media during dictation: option that leaves other audio playing."
+                  "Microphone settings, media during dictation: option that leaves other audio playing (keeps playing, not 'go on')."
               ), "play.fill", OtherAudioWhileDictating.nothing
             ),
             (

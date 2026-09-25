@@ -20,8 +20,10 @@ struct ContactsImportConfirm: View {
         Text(addCountMessage)
           .font(.body)
         Text(
-          "EnviousWispr never uploads your address book. These names are added to your "
-            + "word list on this Mac so dictation spells them right."
+          String(
+            localized:
+              "EnviousWispr never uploads your address book. These names are added to your word list on this Mac so dictation spells them right.",
+            comment: "Your Words, import from Contacts: the privacy note under the count.")
         )
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
@@ -55,20 +57,61 @@ struct ContactsImportConfirm: View {
   }
 
   private var addCountMessage: String {
-    let names = Self.pluralizedNames(preview.newContactCount)
-    if preview.alreadyPresentCount > 0 {
-      let already = preview.alreadyPresentCount
-      let verb = already == 1 ? "is" : "are"
-      return "We'll add \(names) from your contacts. \(already) \(verb) already in your list."
-    }
-    return "We'll add \(names) from your contacts."
+    Self.addCountMessage(
+      newCount: preview.newContactCount, alreadyCount: preview.alreadyPresentCount)
   }
 
   private var addButtonTitle: String {
-    "Add \(Self.pluralizedNames(preview.newContactCount))"
+    Self.addButtonTitle(newCount: preview.newContactCount)
   }
 
-  private static func pluralizedNames(_ count: Int) -> String {
-    count == 1 ? "1 name" : "\(count) names"
+  /// Whole sentences chosen by the two counts, never "name"/"names" or "is"/"are" spliced in
+  /// (#3142). The second sentence appears only when some names are already in the list.
+  static func addCountMessage(newCount: Int, alreadyCount: Int) -> String {
+    switch (newCount == 1, alreadyCount) {
+    case (true, 0):
+      return String(
+        localized: "We'll add 1 name from your contacts.",
+        comment: "Your Words, import from Contacts: one new name.")
+    case (false, 0):
+      return String(
+        localized: "We'll add \(String(newCount)) names from your contacts.",
+        comment: "Your Words, import from Contacts: %@ is the number of new names, never 1.")
+    case (true, 1):
+      return String(
+        localized: "We'll add 1 name from your contacts. 1 is already in your list.",
+        comment: "Your Words, import from Contacts: one new name, and one already in the word list."
+      )
+    case (true, _):
+      return String(
+        localized:
+          "We'll add 1 name from your contacts. \(String(alreadyCount)) are already in your list.",
+        comment:
+          "Your Words, import from Contacts: one new name. %@ is the number already in the word list, never 1."
+      )
+    case (false, 1):
+      return String(
+        localized:
+          "We'll add \(String(newCount)) names from your contacts. 1 is already in your list.",
+        comment:
+          "Your Words, import from Contacts: %@ is the number of new names, never 1; one is already in the word list."
+      )
+    case (false, _):
+      return String(
+        localized:
+          "We'll add \(String(newCount)) names from your contacts. \(String(alreadyCount)) are already in your list.",
+        comment:
+          "Your Words, import from Contacts: the first %@ is the number of new names, the second the number already in the word list; neither is 1."
+      )
+    }
+  }
+
+  static func addButtonTitle(newCount: Int) -> String {
+    newCount == 1
+      ? String(
+        localized: "Add 1 name", comment: "Your Words, import from Contacts: button for one name.")
+      : String(
+        localized: "Add \(String(newCount)) names",
+        comment: "Your Words, import from Contacts: button. %@ is the number of names, never 1.")
   }
 }

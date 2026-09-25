@@ -19,9 +19,32 @@ struct BulkDeleteConfirmSheet: View {
 
   private var isExporting: Bool { exportTask != nil }
 
+  /// Whole sentences chosen by count, never "word" or "words" spliced in (#3142). A language
+  /// with more plural forms adds variants to these entries in the catalog.
+  static func title(count: Int) -> String {
+    count == 1
+      ? String(
+        localized: "Delete 1 word?",
+        comment: "Your Words, delete selected words: sheet title for one word.")
+      : String(
+        localized: "Delete \(String(count)) words?",
+        comment:
+          "Your Words, delete selected words: sheet title. %@ is the number of words, never 1.")
+  }
+
+  static func deleteLabel(count: Int) -> String {
+    count == 1
+      ? String(
+        localized: "Delete 1 word",
+        comment: "Your Words, delete selected words: button for one word.")
+      : String(
+        localized: "Delete \(String(count)) words",
+        comment: "Your Words, delete selected words: button. %@ is the number of words, never 1.")
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("Delete \(ids.count) \(ids.count == 1 ? "word" : "words")?")
+      Text(Self.title(count: ids.count))
         .font(.title3)
         .bold()
 
@@ -65,7 +88,7 @@ struct BulkDeleteConfirmSheet: View {
         // a role that renders as red TEXT on macOS and disappears entirely
         // against this palette.
         SettingsActionButton(
-          title: "Delete \(ids.count) \(ids.count == 1 ? "word" : "words")",
+          verbatimTitle: Self.deleteLabel(count: ids.count),
           isEnabled: !isExporting,
           emphasis: .destructive
         ) {

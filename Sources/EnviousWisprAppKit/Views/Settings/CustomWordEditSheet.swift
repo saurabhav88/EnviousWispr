@@ -46,9 +46,15 @@ struct CustomWordEditSheet: View {
     )
   }
 
-  private var aliasCountLabel: String {
-    let count = word.aliases.count
-    return "\(count) \(count == 1 ? "mishearing" : "mishearings")"
+  private var aliasCountLabel: String { Self.mishearingCount(word.aliases.count) }
+
+  /// Whole phrases chosen by count, never "mishearing" or "mishearings" spliced in (#3142).
+  static func mishearingCount(_ count: Int) -> String {
+    count == 1
+      ? String(localized: "1 mishearing", comment: "Edit word sheet: one alternate spelling.")
+      : String(
+        localized: "\(String(count)) mishearings",
+        comment: "Edit word sheet: %@ is the number of alternate spellings, never 1.")
   }
 
   var body: some View {
@@ -71,7 +77,10 @@ struct CustomWordEditSheet: View {
 
       // Canonical
       VStack(alignment: .leading, spacing: 5) {
-        groupLabel("The correct word")
+        groupLabel(
+          LocalizedStringResource(
+            "The correct word",
+            comment: "Edit word sheet: section label for the word as it should be written."))
         TextField("How it should be written", text: $word.canonical)
           .focused($wordFieldFocused)
           .settingsFieldChrome(focused: $wordFieldFocused)
@@ -79,10 +88,12 @@ struct CustomWordEditSheet: View {
 
       // Category
       VStack(alignment: .leading, spacing: 5) {
-        groupLabel("Category")
+        groupLabel(
+          LocalizedStringResource(
+            "Category", comment: "Edit word sheet: section label for the word's category."))
         Picker("Category", selection: $word.category) {
           ForEach(WordCategory.allCases, id: \.self) { cat in
-            Text(cat.rawValue.capitalized).tag(cat)
+            Text(cat.displayName).tag(cat)
           }
         }
         .labelsHidden()
@@ -225,7 +236,7 @@ struct CustomWordEditSheet: View {
   // MARK: - Group label
 
   /// One label style for every group on this sheet, so nothing shouts.
-  private func groupLabel(_ text: String) -> some View {
+  private func groupLabel(_ text: LocalizedStringResource) -> some View {
     Text(text)
       .font(.stRowLabel)
       .foregroundStyle(.stTextSecondary)
@@ -258,7 +269,12 @@ struct CustomWordEditSheet: View {
   private var aliasesCard: some View {
     card {
       HStack(alignment: .firstTextBaseline) {
-        groupLabel("Aliases (aka the common mishearings)")
+        groupLabel(
+          LocalizedStringResource(
+            "Aliases (aka the common mishearings)",
+            comment:
+              "Edit word sheet: section label for the misheard forms that should become this word.")
+        )
         Spacer()
         Text(aliasCountLabel)
           .font(.stHelper)
@@ -369,7 +385,10 @@ struct CustomWordEditSheet: View {
 
   private var recognitionCard: some View {
     card {
-      groupLabel("Recognition behavior")
+      groupLabel(
+        LocalizedStringResource(
+          "Recognition behavior",
+          comment: "Edit word sheet: section label for how strictly a spoken word must match."))
 
       Text("Match strictness")
         .font(.stHelper)

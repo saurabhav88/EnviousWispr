@@ -133,9 +133,20 @@ struct SnippetEditSheet: View {
   /// fill-in is added rather than the button quietly going missing.
   private static func fillInTitle(for placeholder: SnippetPlaceholder) -> String {
     switch placeholder {
-    case .date: return "Today's date"
-    case .time: return "Time now"
-    case .clipboard: return "Last copied"
+    case .date:
+      return String(
+        localized: "Today's date",
+        comment: "Snippets, edit: button that inserts today's date into the snippet text.")
+    case .time:
+      return String(
+        localized: "Time now",
+        comment: "Snippets, edit: button that inserts the current time into the snippet text.")
+    case .clipboard:
+      return String(
+        localized: "Last copied",
+        comment:
+          "Snippets, edit: button that inserts whatever was last copied into the snippet text."
+      )
     }
   }
 

@@ -13,8 +13,14 @@ enum CustomWordsExportNotice: Equatable {
 
   var title: String {
     switch self {
-    case .failure: return "Export didn't finish"
-    case .info: return "Nothing was exported"
+    case .failure:
+      return String(
+        localized: "Export didn't finish",
+        comment: "Your Words, export: alert title after a failure.")
+    case .info:
+      return String(
+        localized: "Nothing was exported",
+        comment: "Your Words, export: alert title when there was nothing to export; not a failure.")
     }
   }
 
@@ -38,23 +44,29 @@ enum CustomWordsExportNotice: Equatable {
       return nil
     case .refusedUnsafeLibrary:
       return .failure(
-        "Your saved words couldn't be read this time, so there's nothing safe to export. "
-          + "Relaunch EnviousWispr and try again.")
+        String(
+          localized:
+            "Your saved words couldn't be read this time, so there's nothing safe to export. Relaunch EnviousWispr and try again.",
+          comment: "Your Words, export: the saved list could not be read."))
     // Neither of the next two is a failure, so neither wears the failure
     // title. A pack-only user pressing Export has done nothing wrong; they
     // need the reason their long word list produced no file (#1697).
     case .nothingToExport:
       return .info(
-        "There are no words of your own to export yet. "
-          + "Vocabulary packs are not included.")
+        String(
+          localized:
+            "There are no words of your own to export yet. Vocabulary packs are not included.",
+          comment: "Your Words, export: only vocabulary packs exist."))
     case .libraryChanged:
       return .info(
         // Says nothing about WHEN or WHERE the list moved, because two
         // different paths land here: the drift check after a folder was
         // chosen, and a stale empty count that never opened a dialog at
         // all (cloud review, #1715).
-        "Your word list changed, so nothing was exported. "
-          + "Try Export again.")
+        String(
+          localized: "Your word list changed, so nothing was exported. Try Export again.",
+          comment:
+            "Your Words, export: the list changed during export; Export is the button's name."))
     case .failed(let message):
       return .failure(message)
     }

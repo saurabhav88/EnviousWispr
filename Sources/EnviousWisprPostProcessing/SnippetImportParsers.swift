@@ -13,17 +13,32 @@ package enum SnippetImportSourceError: LocalizedError, Sendable, Equatable {
   package var errorDescription: String? {
     switch self {
     case .unreadable:
-      return "That couldn't be read."
+      return String(
+        localized:
+          "That couldn't be read.",
+        comment:
+          "Snippets, import: error when the source could not be read.")
     case .tooLarge:
-      return "That is too big to be a snippet list. Check you picked the right one."
+      return String(
+        localized:
+          "That is too big to be a snippet list. Check you picked the right one.",
+        comment:
+          "Snippets, import: error when the file is too large.")
     case .unsupportedType(let name):
       // The extension comes off a user's file name, so it is sanitised like any other
       // imported text before it is rendered into a sentence.
-      return
-        "EnviousWispr can't read \(CustomWordsImportValidationError.describe(name)) files yet. "
-        + "Try the EnviousWispr Snippets.json you exported, a CSV, or a plain list."
+      return String(
+        localized:
+          "EnviousWispr can't read \(CustomWordsImportValidationError.describe(name)) files yet. Try the EnviousWispr Snippets.json you exported, a CSV, or a plain list.",
+        comment:
+          "Snippets, import: error. %@ is the file's extension, already quoted. Keep the file name EnviousWispr Snippets.json as is."
+      )
     case .malformedCSV(let line):
-      return "That CSV has a quoting problem on line \(line). Nothing was imported."
+      return String(
+        localized:
+          "That CSV has a quoting problem on line \(String(line)). Nothing was imported.",
+        comment:
+          "Snippets, import: error. %@ is the line number in the file.")
     case .exportedSnippets(let underlying):
       return underlying.errorDescription
     }

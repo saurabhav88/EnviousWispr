@@ -111,10 +111,30 @@ struct LearningSection: View {
   /// The row's one verb per state (phase D); copy lives with the state table.
   static func actionTitle(_ action: LearnFromEditsSettingsPresentation.Action) -> String {
     switch action {
-    case .download: return "Download"
-    case .cancel: return "Cancel"
-    case .retryLoad: return "Try again"
-    case .removeAndDownload: return "Remove and download again"
+    case .download:
+      return String(
+        localized: "Download",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: button that downloads the correction model."
+      )
+    case .cancel:
+      return String(
+        localized: "Cancel",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: button that stops the download."
+      )
+    case .retryLoad:
+      return String(
+        localized: "Try again",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: button that retries loading the model."
+      )
+    case .removeAndDownload:
+      return String(
+        localized: "Remove and download again",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: button that replaces a wrong model."
+      )
     }
   }
 
@@ -163,7 +183,7 @@ struct LearningSection: View {
   /// the middle of the card's layout.
   @ViewBuilder private var contactsStatus: some View {
     if case .imported(let count) = contactsImport.phase {
-      Label(addedFeedback(count), systemImage: "checkmark.circle.fill")
+      Label(Self.addedFeedback(count), systemImage: "checkmark.circle.fill")
         .font(.stHelper)
         .foregroundStyle(.stSuccess)
     }
@@ -279,8 +299,16 @@ struct LearningSection: View {
       })
   }
 
-  private func addedFeedback(_ count: Int) -> String {
-    count == 1 ? "Added 1 name" : "Added \(count) names"
+  static func addedFeedback(_ count: Int) -> String {
+    count == 1
+      ? String(
+        localized: "Added 1 name",
+        comment: "Your Words, import from Contacts: result after adding names: one name added.")
+      : String(
+        localized: "Added \(String(count)) names",
+        comment:
+          "Your Words, import from Contacts: result after adding names: %@ is the number of names, never 1."
+      )
   }
 
   private func openContactsSettings() {

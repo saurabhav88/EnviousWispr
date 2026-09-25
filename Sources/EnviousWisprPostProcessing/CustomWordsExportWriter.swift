@@ -19,8 +19,10 @@ package enum CustomWordsExportWriter {
     case wouldOverwriteLiveWords
 
     package var errorDescription: String? {
-      "That's EnviousWispr's own words file. Choose a different name or folder, "
-        + "so your saved words aren't replaced by the export."
+      String(
+        localized:
+          "That's EnviousWispr's own words file. Choose a different name or folder, so your saved words aren't replaced by the export.",
+        comment: "Your Words, export: refusal when the chosen file is the app's own words file.")
     }
   }
 

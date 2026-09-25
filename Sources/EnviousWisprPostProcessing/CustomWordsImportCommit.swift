@@ -197,11 +197,17 @@ package enum CustomWordsImportCommitError: LocalizedError, Sendable, Equatable {
   package var errorDescription: String? {
     switch self {
     case .staleLibrary:
-      return "Your word list changed while you were reviewing. Nothing was imported."
+      return String(
+        localized: "Your word list changed while you were reviewing. Nothing was imported.",
+        comment: "Import: applying the import failed: the list changed during review.")
     case .invalidPlan:
-      return "This import could not be applied. Nothing was changed."
+      return String(
+        localized: "This import could not be applied. Nothing was changed.",
+        comment: "Import: applying the import failed.")
     case .unreadableLibrary:
-      return "Your saved words could not be read. Nothing was imported. Try again."
+      return String(
+        localized: "Your saved words could not be read. Nothing was imported. Try again.",
+        comment: "Import: applying the import failed: the saved list could not be read.")
     }
   }
 }

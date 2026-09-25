@@ -26,6 +26,20 @@
         }
       }
     },
+    "%@ MB of %@ MB" : {
+      "comment" : "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ MB of %2$@ MB"
+          }
+        }
+      }
+    },
+    "%@ Nothing was exported." : {
+      "comment" : "Your Words, export: refused: %@ is the reason the file could not be read back, one or more sentences."
+    },
     "%@ V%@" : {
       "comment" : "{R}: the installed model and its version, as in \"EG-1 V1.1\". The first %@ is the model name, the second the version.",
       "localizations" : {
@@ -37,7 +51,66 @@
         }
       }
     },
+    "%@ alternate spellings may not be added, because other words already use them." : {
+      "comment" : "Your Words, import review: a row's note. %@ is the number of misheard forms, never 1."
+    },
+    "%@ alternate spellings were skipped, because other words already use them." : {
+      "comment" : "Your Words, import result: %@ is the number of misheard forms not added, never 1."
+    },
     "%@ by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {},
+    "%@ channels" : {
+      "comment" : "Transcribe a File: a file's audio channels. %@ is the count, never 1 or 2."
+    },
+    "%@ entries were left out because EnviousWispr can't use them." : {
+      "comment" : "Snippets, import review: notice. %@ is the number of entries that could not be used, never 1."
+    },
+    "%@ fixes" : {
+      "comment" : "Your Words, vocabulary packs: under a pack. %@ is its number of fixes, never 1."
+    },
+    "%@ fixes · e.g. %@" : {
+      "comment" : "Your Words, vocabulary packs: under a pack. the first %@ is its number of fixes (never 1), the second example words separated by commas.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ fixes · e.g. %2$@"
+          }
+        }
+      }
+    },
+    "%@ has more than %@ dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything." : {
+      "comment" : "Import from another dictation app: an error. the first %@ is that app's name, the second the entry limit.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has more than %2$@ dictionary entries, including entries it may hide or disable. EnviousWispr stopped without importing anything."
+          }
+        }
+      }
+    },
+    "%@ has more than %@ entries where it keeps snippets, counting ones that can't be snippets here. EnviousWispr stopped without importing anything." : {
+      "comment" : "Snippets, import from another app: error. The first %@ is the other app's name, the second a large limit (never 1).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has more than %2$@ entries where it keeps snippets, counting ones that can't be snippets here. EnviousWispr stopped without importing anything."
+          }
+        }
+      }
+    },
+    "%@ hr %lld min" : {
+      "comment" : "Transcribe a File: a length of an hour or more. %@ is hours (hr), %lld minutes (min).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ hr %2$lld min"
+          }
+        }
+      }
+    },
     "%@ is warming up after a restart" : {
       "comment" : "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name."
     },
@@ -47,7 +120,34 @@
     "%@ isn't downloaded yet. Open Settings to download it." : {
       "comment" : "Pill: the chosen speech engine is not downloaded. %@ is the engine's name."
     },
+    "%@ lines skipped because they have no trigger and text." : {
+      "comment" : "Snippets, import review: notice. %@ is the number of unreadable lines, never 1."
+    },
+    "%@ listed twice" : {
+      "comment" : "Snippets, import review summary: one phrase of a list. %@ is how many appear twice (1 or more)."
+    },
+    "%@ mishearings" : {
+      "comment" : "Edit word sheet: %@ is the number of alternate spellings, never 1."
+    },
+    "%@ new snippets" : {
+      "comment" : "Snippets, import review summary: one phrase of a list. %@ is the number of new snippets, never 1."
+    },
+    "%@ new words found." : {
+      "comment" : "Your Words, import review: %@ is the number of new words, never 1."
+    },
+    "%@ new words found. %@ you already have." : {
+      "comment" : "Your Words, import review: the first %@ is the number of new words (never 1), the second the number already in the list.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ new words found. %2$@ you already have."
+          }
+        }
+      }
+    },
     "%@ now recognizes %@" : {
+      "comment" : "Your Words, VoiceOver: a word just learned. The first %@ is the word, the second the misheard forms it now fixes, separated by commas.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -56,6 +156,60 @@
           }
         }
       }
+    },
+    "%@ of %@" : {
+      "comment" : "Snippets: count while searching. The first %@ is shown, the second the total.\nTranscribe a File, Working page: sections cleaned. The first %@ is done, the second the total.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "%@ of %@ min" : {
+      "comment" : "Transcribe a File, Working page: minutes transcribed. The first %@ is done, the second the total; min abbreviates minutes.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@ min"
+          }
+        }
+      }
+    },
+    "%@ s" : {
+      "comment" : "Transcribe a File, Working step: seconds spent on a step. s abbreviates seconds."
+    },
+    "%@ snippets" : {
+      "comment" : "Snippets: count above the list. %@ is the number of snippets, never 1."
+    },
+    "%@ snippets found, %@ lines skipped." : {
+      "comment" : "Snippets, paste count. The first %@ is snippets, the second unreadable lines; neither is 1.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ snippets found, %2$@ lines skipped."
+          }
+        }
+      }
+    },
+    "%@ snippets found, 1 line skipped." : {
+      "comment" : "Snippets, paste count. %@ is the number of snippets, never 1; one unreadable line."
+    },
+    "%@ snippets found." : {
+      "comment" : "Snippets, paste count. %@ is the number of snippets, never 1."
+    },
+    "%@ words" : {
+      "comment" : "Transcribe a File, Done step: chip. %@ is the transcript's word count, never 1.\nYour Words: list heading, shown in capitals. %@ is the number of words, never 1."
+    },
+    "%@ words ready to review." : {
+      "comment" : "Your Words, import words: %@ is the number of words found in the pasted text, never 1."
+    },
+    "%@ you already have" : {
+      "comment" : "Snippets, import review summary: one phrase of a list. %@ is how many the user already has (1 or more)."
     },
     "%@ · %@" : {
       "localizations" : {
@@ -67,7 +221,33 @@
         }
       }
     },
+    "%@ · used %@ times" : {
+      "comment" : "Your Words: under a word. the first %@ is its category, the second how many times it was used (never 1).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · used %2$@ times"
+          }
+        }
+      }
+    },
+    "%@ · used 1 times" : {
+      "comment" : "Your Words: under a word. %@ is its category. The English says 1 times; translate naturally for one use."
+    },
+    "%@'s older App Store data can't be imported directly yet. In %@, choose Migrate Settings from App Store Version, then try again." : {
+      "comment" : "Import from another dictation app: an error. %@ is that app's name; both %@ are the same name. Migrate Settings from App Store Version is that app's own menu command; keep it in English.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@'s older App Store data can't be imported directly yet. In %2$@, choose Migrate Settings from App Store Version, then try again."
+          }
+        }
+      }
+    },
     "%@, %@" : {
+      "comment" : "VoiceOver, Transcribe a File: a live count. The first %@ is its label, the second its value.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -98,7 +278,9 @@
         }
       }
     },
-    "%@, not yet known" : {},
+    "%@, not yet known" : {
+      "comment" : "VoiceOver, Transcribe a File: a live count with no value yet. %@ is its label."
+    },
     "%@, pastes %@" : {
       "localizations" : {
         "en" : {
@@ -127,18 +309,10 @@
       "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced."
     },
     "%lld" : {},
-    "%lld MB of %lld MB" : {
-      "comment" : "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld MB of %2$lld MB"
-          }
-        }
-      }
-    },
     "%lld imported" : {},
+    "%lld min" : {
+      "comment" : "Transcribe a File: a length under an hour. %lld is minutes; min abbreviates minutes."
+    },
     "%lld of %lld processed" : {
       "localizations" : {
         "en" : {
@@ -149,11 +323,68 @@
         }
       }
     },
+    "%lld percent" : {
+      "comment" : "VoiceOver, Transcribe a File: a Working row's progress. %lld is 0 to 100."
+    },
+    "%lld sec" : {
+      "comment" : "Transcribe a File: a length under a minute. %lld is seconds; sec abbreviates seconds."
+    },
     "%lld selected" : {},
     "%lld words" : {},
     "%lld%%" : {},
     "%lld." : {},
     "(%@)" : {},
+    "1 alternate spelling may not be added, because other words already use them." : {
+      "comment" : "Your Words, import review: a row's note: one misheard form."
+    },
+    "1 alternate spelling was skipped, because other words already use them." : {
+      "comment" : "Your Words, import result: one misheard form was not added."
+    },
+    "1 entry was left out because EnviousWispr can't use it." : {
+      "comment" : "Snippets, import review: notice, one entry could not be used."
+    },
+    "1 fix" : {
+      "comment" : "Your Words, vocabulary packs: under a pack with one fix."
+    },
+    "1 fix · e.g. %@" : {
+      "comment" : "Your Words, vocabulary packs: under a pack. %@ is example words from it, separated by commas."
+    },
+    "1 line skipped because it has no trigger and text." : {
+      "comment" : "Snippets, import review: notice, one unreadable line."
+    },
+    "1 mishearing" : {
+      "comment" : "Edit word sheet: one alternate spelling."
+    },
+    "1 new snippet" : {
+      "comment" : "Snippets, import review summary: one phrase of a list, one new snippet."
+    },
+    "1 new word found." : {
+      "comment" : "Your Words, import review: one new word."
+    },
+    "1 new word found. %@ you already have." : {
+      "comment" : "Your Words, import review: one new word. %@ is the number already in the list."
+    },
+    "1 snippet" : {
+      "comment" : "Snippets: count above the list, one snippet."
+    },
+    "1 snippet found, %@ lines skipped." : {
+      "comment" : "Snippets, paste count: one snippet. %@ is the number of unreadable lines, never 1."
+    },
+    "1 snippet found, 1 line skipped." : {
+      "comment" : "Snippets, paste count: one snippet, one unreadable line."
+    },
+    "1 snippet found." : {
+      "comment" : "Snippets, paste count: one snippet, nothing skipped."
+    },
+    "1 word" : {
+      "comment" : "Your Words: list heading, shown in capitals."
+    },
+    "1 word ready to review." : {
+      "comment" : "Your Words, import words: one word found in the pasted text."
+    },
+    "1 words" : {
+      "comment" : "Transcribe a File, Done step: chip for a one-word transcript. Translate naturally for one word."
+    },
     "1. Choose recording mode" : {
       "comment" : "Keybinds settings: step 1 title."
     },
@@ -162,6 +393,9 @@
     },
     "2. Recording keybind" : {
       "comment" : "Keybinds settings: step 2 title."
+    },
+    "25 European" : {
+      "comment" : "Transcribe a File, Transcription step: the Fast engine's languages: 25 European languages."
     },
     "25 European languages" : {
       "comment" : "Speech engine settings, engine card: how many languages it covers."
@@ -179,6 +413,9 @@
       "comment" : "Speech engine settings, engine card: how many languages it covers."
     },
     "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {},
+    "A dictation is running. Try again when it finishes." : {
+      "comment" : "Transcribe a File: why the file was refused."
+    },
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere." : {},
     "A language download is in progress. This updates when it finishes." : {
       "comment" : "Live Preview settings: status install in flight detail."
@@ -244,6 +481,12 @@
       "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy."
     },
     "About 2 GB download. Runs entirely on your Mac." : {},
+    "About 2 minutes" : {
+      "comment" : "Transcribe a File, Transcription step: how long the All Languages engine takes for an hour of audio."
+    },
+    "About 7 seconds" : {
+      "comment" : "Transcribe a File, Transcription step: how long the Fast engine takes for an hour of audio."
+    },
     "Accessibility" : {
       "comment" : "Setup permissions: title of the macOS Accessibility permission row."
     },
@@ -263,6 +506,9 @@
     "Accuracy, measured" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading."
     },
+    "Acronym" : {
+      "comment" : "Your Words: a word category."
+    },
     "Activate to install and restart" : {},
     "Activated" : {
       "comment" : "Live Preview settings: status active label."
@@ -271,21 +517,82 @@
     "Add" : {
       "comment" : "AI Polish, Ollama model list: button that adds a hosted model; nothing downloads."
     },
-    "Add %@" : {},
+    "Add %@ names" : {
+      "comment" : "Your Words, import from Contacts: button. %@ is the number of names, never 1."
+    },
+    "Add %@ snippets" : {
+      "comment" : "Snippets, import snippets: confirm button. %@ is the number of snippets, never 1."
+    },
+    "Add %@ words" : {
+      "comment" : "Your Words, import words: confirm button. %@ is the number of words, never 1."
+    },
+    "Add 1 name" : {
+      "comment" : "Your Words, import from Contacts: button for one name."
+    },
+    "Add 1 snippet" : {
+      "comment" : "Snippets, import snippets: confirm button for one snippet."
+    },
+    "Add 1 word" : {
+      "comment" : "Your Words, import words: confirm button for one word."
+    },
     "Add Custom Word" : {},
     "Add a Word" : {
       "comment" : "Keybinds settings: section heading for the add-a-word keybind, shown in capitals."
     },
     "Add a mishearing (e.g. clawed)" : {},
+    "Add from any app" : {
+      "comment" : "Your Words: a tab in the side rail: the line under Quick Add. Keep it short, about 16 characters."
+    },
+    "Add nothing" : {
+      "comment" : "Snippets, import snippets: confirm button when no snippet is chosen.\nYour Words, import words: confirm button when no word is chosen."
+    },
     "Add snippet" : {},
     "Add the names of people you know to your word list, so dictation spells them right." : {},
+    "Add the text this snippet should paste. An empty snippet would delete the words you said." : {
+      "comment" : "Snippets, edit: error when the text to paste is empty."
+    },
     "Add word" : {},
     "Add your first snippet" : {},
     "Add-a-word keybind" : {
       "comment" : "Keybinds settings: the keybind that adds a selected word to Your Words."
     },
+    "Added %@ names" : {
+      "comment" : "Your Words, import from Contacts: result after adding names: %@ is the number of names, never 1."
+    },
+    "Added %@ snippets. Say your keyword, then the trigger, and it's pasted." : {
+      "comment" : "Snippets, import result. %@ is the number of snippets added, never 1."
+    },
+    "Added %@ words. Replaced %@. Your words are ready to use." : {
+      "comment" : "Your Words, import result: the first %@ is the number of words added (never 1), the second the number replaced.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Added %1$@ words. Replaced %2$@. Your words are ready to use."
+          }
+        }
+      }
+    },
+    "Added %@ words. Your words are ready to use." : {
+      "comment" : "Your Words, import result: %@ is the number of words added, never 1."
+    },
+    "Added 1 name" : {
+      "comment" : "Your Words, import from Contacts: result after adding names: one name added."
+    },
+    "Added 1 snippet. Say your keyword, then the trigger, and it's pasted." : {
+      "comment" : "Snippets, import result: one snippet added."
+    },
+    "Added 1 word. Replaced %@. Your words are ready to use." : {
+      "comment" : "Your Words, import result: one word added. %@ is the number of words replaced."
+    },
+    "Added 1 word. Your words are ready to use." : {
+      "comment" : "Your Words, import result: one word added."
+    },
     "Added “%@” to Dictionary" : {
       "comment" : "Pill after a correction taught the app a new word. %@ is that word."
+    },
+    "Added: %@." : {
+      "comment" : "VoiceOver, marked-up transcript: a word the cleanup added. %@ is the word."
     },
     "Adding the model was interrupted. Tap retry to try again." : {
       "comment" : "AI Polish, Ollama setup: adding a hosted model was interrupted."
@@ -328,11 +635,17 @@
     "Albanian" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Aliases (aka the common mishearings)" : {
+      "comment" : "Edit word sheet: section label for the misheard forms that should become this word."
+    },
     "All" : {
       "comment" : "History filter: show every row."
     },
     "All Languages" : {
-      "comment" : "Speech engine settings, engine card: the multilingual engine's name."
+      "comment" : "Speech engine settings, engine card: the multilingual engine's name.\nTranscribe a File: the WhisperKit transcription engine's name."
+    },
+    "All categories" : {
+      "comment" : "Your Words: filter showing every category."
     },
     "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {},
     "All quiet" : {
@@ -343,8 +656,14 @@
     "Almost there... pinky promise" : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Already listed above." : {
+      "comment" : "Snippets, import review: a row's note when the same trigger appears twice."
+    },
     "Already recording." : {
       "comment" : "Pill: a dictation is already in progress."
+    },
+    "Already transcribed. Only the cleanup runs again." : {
+      "comment" : "Transcribe a File, Review step: the note beside Clean it again."
     },
     "Always" : {
       "comment" : "Microphone settings: readiness option; the microphone stays ready."
@@ -357,8 +676,20 @@
     "Amharic" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "An hour of audio" : {
+      "comment" : "Transcribe a File, Transcription step: a row label in an engine card's spec table. How long an hour of audio takes."
+    },
     "Another app is using Ollama's port (11434). Close it and try again." : {
       "comment" : "AI Polish, Ollama setup: error. 11434 is a network port number."
+    },
+    "Another copy of EnviousWispr is editing snippets right now. Try that again." : {
+      "comment" : "Snippets: error when another copy of the app holds the file."
+    },
+    "Another file is being transcribed right now." : {
+      "comment" : "Transcribe a File: why the file was refused."
+    },
+    "Any model you run in Ollama." : {
+      "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. Ollama."
     },
     "Any open model, local or hosted" : {
       "comment" : "AI Polish provider list: description under a provider name. Ollama."
@@ -372,10 +703,28 @@
     "Apple GPU" : {
       "comment" : "Speech engine settings, engine card: the chip it runs on, the graphics processor."
     },
+    "Apple Intelligence availability could not be determined." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
     "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {},
     "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {},
+    "Apple Intelligence is available and ready to use." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "Apple Intelligence is available but model initialization failed." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
     "Apple Intelligence is turned off" : {
       "comment" : "Setup notice title when Apple Intelligence is off in System Settings."
+    },
+    "Apple Intelligence model access works but generation failed. Try again later." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
+    "Apple Intelligence requires macOS 26 or later." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
     },
     "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation." : {},
     "Apple Neural Engine" : {
@@ -389,6 +738,9 @@
     },
     "Apple's engine needs macOS 26" : {
       "comment" : "Live Preview settings: status needs mac os26 label. Apple's engine is the Apple speech engine."
+    },
+    "Apple's on-device model. Needs macOS 26 or later." : {
+      "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. Apple Intelligence."
     },
     "Applies after the current dictation finishes." : {
       "comment" : "Speech engine settings: an engine change waits until the dictation in progress ends."
@@ -407,11 +759,17 @@
       "comment" : "Pill after a failed dictation: the recording could not start or capture audio. The user should retry."
     },
     "Audio duration:" : {},
+    "Audio found" : {
+      "comment" : "Transcribe a File: a check under the chosen file."
+    },
     "Audio isn't capturing from %@. Try a different input under Settings > Microphone." : {
       "comment" : "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Microphone is a place in this app."
     },
     "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings." : {
       "comment" : "Pill when the microphone delivered only silence."
+    },
+    "Audio never leaves this Mac." : {
+      "comment" : "Transcribe a File, Upload step: a feature tile's detail."
     },
     "Auto" : {},
     "Auto-Stop" : {},
@@ -423,6 +781,9 @@
     "Auto-detect your language, or lock to one of 25 European languages. Locking helps stop the fast engine reaching for a different alphabet, like Greek or Cyrillic appearing in German. It cannot tell apart two languages written in the same alphabet." : {
       "comment" : "Speech engine settings, Language section: explanation for the fast engine."
     },
+    "Auto-learned" : {
+      "comment" : "Your Words: filter that shows only words learned automatically."
+    },
     "Auto-paste needs Accessibility" : {
       "comment" : "Pill: macOS Accessibility permission is needed to paste."
     },
@@ -431,6 +792,9 @@
     },
     "Automatic" : {
       "comment" : "Live Preview settings: language any language. Shown as the language when the preview follows automatic detection."
+    },
+    "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: what the feature does. Your Words is a page name."
     },
     "Automatically fix grammar, punctuation, and formatting." : {},
     "Available" : {
@@ -442,7 +806,9 @@
     "Azerbaijani" : {
       "comment" : "A language name (dictation language picker)."
     },
-    "Back" : {},
+    "Back" : {
+      "comment" : "Transcribe a File: button that returns to the previous step."
+    },
     "Barely-there tick." : {
       "comment" : "Sounds settings: describes how a recording sound sounds."
     },
@@ -462,6 +828,12 @@
     "Bengali" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Best for everyday English and European recordings." : {
+      "comment" : "Transcribe a File, Transcription step: the Fast engine's card."
+    },
+    "Best for other languages or the toughest audio." : {
+      "comment" : "Transcribe a File, Transcription step: the All Languages engine's card."
+    },
     "Bluetooth mic detected" : {
       "comment" : "Title of the tip card shown when a Bluetooth microphone is the input."
     },
@@ -480,14 +852,29 @@
     "Both" : {
       "comment" : "Transcript speaker label when two people spoke in a turn the app could not separate."
     },
+    "Both engines run entirely on this Mac." : {
+      "comment" : "Transcribe a File, Transcription step: the note beside Continue."
+    },
     "Bottom" : {
       "comment" : "Appearance settings, pill position: the bottom of the screen."
+    },
+    "Brand" : {
+      "comment" : "Your Words: a word category, a brand or product name."
+    },
+    "Brands" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name."
     },
     "Breton" : {
       "comment" : "A language name (dictation language picker)."
     },
     "Bring the words across from another dictation app you use." : {},
+    "Bring your dictionary over from another dictation app." : {
+      "comment" : "Your Words, import words: method card description."
+    },
     "Bring your snippets in from anywhere. Nothing is added until you review it." : {},
+    "Bring your snippets over from another dictation app." : {
+      "comment" : "Snippets, import snippets: method card."
+    },
     "Bring your words in from anywhere. Nothing is added until you review it." : {},
     "British spelling: colour, organise, centre" : {
       "comment" : "Dictation language picker: under English (UK). Keep the three example words in British spelling; they show the result."
@@ -524,7 +911,7 @@
       "comment" : "Live Preview settings: status build cannot run label."
     },
     "Cancel" : {
-      "comment" : "Live Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download."
+      "comment" : "Live Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download."
     },
     "Cancel Recording" : {
       "comment" : "Keybinds settings: section heading, shown in capitals."
@@ -545,7 +932,9 @@
     "Catalan" : {
       "comment" : "A language name (dictation language picker)."
     },
-    "Category" : {},
+    "Category" : {
+      "comment" : "Edit word sheet: section label for the word's category."
+    },
     "Change" : {},
     "Change dictation language: %@, %@" : {
       "localizations" : {
@@ -558,6 +947,9 @@
       }
     },
     "Change your AI model, keybind, and more in Settings." : {},
+    "Changed: %@." : {
+      "comment" : "VoiceOver, marked-up transcript: a word the cleanup changed. %@ is the word."
+    },
     "Changes made during a cleanup apply to the next file." : {
       "comment" : "Transcribe a File: notice that a change made during a cleanup takes effect on the next file."
     },
@@ -574,15 +966,27 @@
       "comment" : "AI Polish, Ollama model list: when the hosted list was last verified. %@ is a date."
     },
     "Checking" : {
-      "comment" : "AI Polish provider status chip.\nLive Preview settings: status checking label."
+      "comment" : "AI Polish provider status chip.\nLive Preview settings: status checking label.\nTranscribe a File, Polish step: the line under an engine's name."
     },
     "Checking Ollama installation..." : {},
     "Checking model status..." : {},
     "Checking speech model files..." : {
       "comment" : "Setup progress: checking already-downloaded speech model files.\nSpeech engine settings, speech model download: checking files already on disk."
     },
+    "Checking that engine. One moment." : {
+      "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked."
+    },
+    "Checking the correction model" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
+    "Checking whether that model runs here or on Ollama's servers. Start Ollama to find out." : {
+      "comment" : "Transcribe a File, Polish step: where the chosen Ollama model runs is not known yet."
+    },
     "Checking which languages are on this Mac" : {
       "comment" : "Live Preview settings: packs loading."
+    },
+    "Checking your list" : {
+      "comment" : "Snippets, import snippets: sheet title while comparing with your snippets.\nYour Words, import words: sheet title, working."
     },
     "Chinese" : {
       "comment" : "A language name (dictation language picker)."
@@ -590,7 +994,12 @@
     "Choose \"Do Nothing\"" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 3. Quote the option exactly as macOS labels it in this language."
     },
-    "Choose a file" : {},
+    "Choose a different file" : {
+      "comment" : "Transcribe a File, Upload step: button beside the chosen file."
+    },
+    "Choose a file" : {
+      "comment" : "Transcribe a File, Upload step: the button drawn inside the drop zone."
+    },
     "Choose a file you exported from EnviousWispr, or a plain text list of words." : {},
     "Choose and save" : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 3 title."
@@ -609,6 +1018,9 @@
     "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept." : {
       "comment" : "AI Polish: what a cloud provider receives, shown under its API key field."
     },
+    "Clean it again" : {
+      "comment" : "Transcribe a File, Review step: button that runs only the cleanup again."
+    },
     "Clean up and rewrite your dictation with AI." : {
       "comment" : "Settings: the one-line description under a page title."
     },
@@ -616,6 +1028,23 @@
       "comment" : "Sounds settings: describes how a recording sound sounds."
     },
     "Cleaned" : {},
+    "Cleaning" : {
+      "comment" : "Transcribe a File, Working step: the cleanup row's name when it is done or not yet reached."
+    },
+    "Cleaning section %@ of %@" : {
+      "comment" : "Transcribe a File, Working step: cleanup progress. The first %@ is the section being cleaned, the second the number of sections.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cleaning section %1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "Cleans it into readable text." : {
+      "comment" : "Transcribe a File, Review step: the cleanup engine's card in the processing path."
+    },
     "Cleanup" : {},
     "Cleanup summary: %@" : {},
     "Clear" : {
@@ -646,6 +1075,21 @@
     "Cloud Pop" : {
       "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
+    "Cloud based" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name."
+    },
+    "Common first names and surnames." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
+    "Company, product, and app names." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
+    "Comparing against your existing snippets." : {
+      "comment" : "Snippets, import snippets: working."
+    },
+    "Comparing against your existing words." : {
+      "comment" : "Your Words, import words: working."
+    },
     "Comparing words" : {},
     "Configure Live Preview" : {},
     "Configuring on-device AI" : {
@@ -656,7 +1100,7 @@
       "comment" : "AI Polish, S1-mini writing-style card: the context setting's name."
     },
     "Continue" : {
-      "comment" : "Microphone settings, media during dictation: option that leaves other audio playing."
+      "comment" : "Transcribe a File: button that goes to the next step."
     },
     "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)" : {},
     "Convert spoken punctuation" : {
@@ -664,6 +1108,9 @@
     },
     "Convincing AI that you said 'duck'..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
+    },
+    "Copied" : {
+      "comment" : "Transcribe a File: the Copy button's title for two seconds after a press.\nVoiceOver announcement after the transcript is copied."
     },
     "Copied. Press ⌘V to paste" : {
       "comment" : "Pill when the text was copied instead of pasted. ⌘V is the paste shortcut."
@@ -694,6 +1141,15 @@
     "Couldn't add the model. Check your internet connection and try again." : {
       "comment" : "AI Polish, Ollama setup: adding a hosted model failed."
     },
+    "Couldn't find any %@ snippets on this Mac." : {
+      "comment" : "Snippets, import from another app: error. %@ is the other app's name."
+    },
+    "Couldn't find any %@ words on this Mac." : {
+      "comment" : "Import from another dictation app: an error. %@ is that app's name."
+    },
+    "Couldn't finish the import, try again" : {
+      "comment" : "Your Words, import from Contacts: an error: the names were added but the import record was not saved."
+    },
     "Couldn't keep this recording. It was discarded." : {
       "comment" : "Pill after the user pressed Escape and the recording could not be kept for recovery."
     },
@@ -701,21 +1157,55 @@
     "Couldn't reach the download server. Please check your internet connection and try again." : {
       "comment" : "Setup error: the speech model download server could not be reached."
     },
+    "Couldn't read your %@ snippets, so nothing was imported. If %@ is running, quitting it and trying again can help." : {
+      "comment" : "Snippets, import from another app: error. Both %@ are the other app's name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Couldn't read your %1$@ snippets, so nothing was imported. If %2$@ is running, quitting it and trying again can help."
+          }
+        }
+      }
+    },
+    "Couldn't read your %@ words, so nothing was imported. If %@ is running, quitting it and trying again can help." : {
+      "comment" : "Import from another dictation app: an error. %@ is that app's name; both %@ are the same name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Couldn't read your %1$@ words, so nothing was imported. If %2$@ is running, quitting it and trying again can help."
+          }
+        }
+      }
+    },
     "Couldn't save the file" : {},
     "Couldn't save the name." : {
       "comment" : "Speaker rename popover: saving the new name failed."
     },
+    "Couldn't save this pack change. Nothing was changed. Try again." : {
+      "comment" : "Your Words, vocabulary packs: turning a pack or word on or off could not be saved."
+    },
     "Couldn't save to history: %@" : {
       "comment" : "Pill: the dictation could not be saved to History. %@ is the reason."
     },
+    "Couldn't save, try again" : {
+      "comment" : "Your Words, import from Contacts: an error: the names could not be saved."
+    },
     "Couldn't start Ollama automatically. Try running `ollama serve` in Terminal." : {
       "comment" : "AI Polish, Ollama setup: error. Keep `ollama serve` exactly; it is a command."
+    },
+    "Couldn't update the import list, try again" : {
+      "comment" : "Your Words, import from Contacts: an error: the list of pending names could not be updated."
     },
     "Couldn’t save “%@”" : {
       "comment" : "Pill when a word could not be saved to the dictionary. %@ is that word."
     },
     "Couldn’t undo" : {
       "comment" : "Pill result when removing the just-added word failed."
+    },
+    "Counting…" : {
+      "comment" : "Snippets, import snippets: paste count, while counting.\nYour Words, import words: pasted text is being counted."
     },
     "Croatian" : {
       "comment" : "A language name (dictation language picker)."
@@ -732,6 +1222,9 @@
     "Dark" : {
       "comment" : "Appearance settings: dark theme option."
     },
+    "Debug (all events)" : {
+      "comment" : "Diagnostics settings, debug mode: a log level in the Log Level picker."
+    },
     "Debug Mode" : {},
     "Default" : {},
     "Default: ⌥ Option" : {
@@ -742,25 +1235,17 @@
     },
     "Delete" : {},
     "Delete \"%@\"?" : {},
-    "Delete %lld %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Delete %1$lld %2$@"
-          }
-        }
-      }
+    "Delete %@ words" : {
+      "comment" : "Your Words, delete selected words: button. %@ is the number of words, never 1."
     },
-    "Delete %lld %@?" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Delete %1$lld %2$@?"
-          }
-        }
-      }
+    "Delete %@ words?" : {
+      "comment" : "Your Words, delete selected words: sheet title. %@ is the number of words, never 1."
+    },
+    "Delete 1 word" : {
+      "comment" : "Your Words, delete selected words: button for one word."
+    },
+    "Delete 1 word?" : {
+      "comment" : "Your Words, delete selected words: sheet title for one word."
     },
     "Delete all" : {},
     "Delete all history" : {},
@@ -811,7 +1296,15 @@
     },
     "Dictation keybind" : {},
     "Dictation language" : {},
-    "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in %@." : {},
+    "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in about %@ minutes." : {
+      "comment" : "Transcribe a File, Review step: warning before starting. %@ is minutes, never 1."
+    },
+    "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in about a minute." : {
+      "comment" : "Transcribe a File, Review step: warning before starting."
+    },
+    "Dictation pauses while this runs. Your keybind will not record until the transcript is finished, in under a minute." : {
+      "comment" : "Transcribe a File, Review step: warning before starting."
+    },
     "Dictation ready. Press to start." : {
       "comment" : "VoiceOver announcement from the recording overlay: the speech engine finished loading."
     },
@@ -844,13 +1337,16 @@
     },
     "Dock" : {},
     "Document" : {},
+    "Domain" : {
+      "comment" : "Your Words: a word category, a subject area's jargon."
+    },
     "Done" : {
-      "comment" : "Live Preview settings: catalog done button."
+      "comment" : "Live Preview settings: catalog done button.\nTranscribe a File: a step name in the step bar."
     },
     "Double-press to go hands-free." : {},
     "Double-press to lock it on. Triple-press to cancel." : {},
     "Download" : {
-      "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install."
+      "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install.\nYour Words, Learn from: the self-learning dictionary row: button that downloads the correction model."
     },
     "Download %@" : {
       "comment" : "Settings > AI Polish, local model row: button. %@ is the model name, such as EG-1."
@@ -917,13 +1413,13 @@
     "Downloading model files..." : {
       "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, WhisperKit model: download status line."
     },
-    "Downloading model files... %lld MB of %lld MB (%lld%%)" : {
+    "Downloading model files... %@ MB of %@ MB (%@%%)" : {
       "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Downloading model files... %1$lld MB of %2$lld MB (%3$lld%%)"
+            "value" : "Downloading model files... %1$@ MB of %2$@ MB (%3$@%%)"
           }
         }
       }
@@ -931,13 +1427,27 @@
     "Downloading speech model..." : {
       "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, speech model download: in progress."
     },
-    "Downloading speech model... %lld MB of %lld MB (%lld%%)" : {
+    "Downloading speech model... %@ MB of %@ MB (%@%%)" : {
       "comment" : "Setup download progress: megabytes downloaded, total megabytes, percent done.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Downloading speech model... %1$lld MB of %2$lld MB (%3$lld%%)"
+            "value" : "Downloading speech model... %1$@ MB of %2$@ MB (%3$@%%)"
+          }
+        }
+      }
+    },
+    "Downloading the correction model" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the download has no size yet."
+    },
+    "Downloading the correction model (%@ of %@ MB)" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: download progress. The first number is megabytes done, the second the total.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading the correction model (%1$@ of %2$@ MB)"
           }
         }
       }
@@ -978,6 +1488,12 @@
     "English (UK)" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "EnviousWispr can't read %@ files yet. Try a file you exported from EnviousWispr, or a plain text list." : {
+      "comment" : "Your Words, import: error. %@ is the file's type, such as a file extension."
+    },
+    "EnviousWispr can't read %@ files yet. Try the EnviousWispr Snippets.json you exported, a CSV, or a plain list." : {
+      "comment" : "Snippets, import: error. %@ is the file's extension, already quoted. Keep the file name EnviousWispr Snippets.json as is."
+    },
     "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment." : {
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; a hosted model's name could not be confirmed."
     },
@@ -990,6 +1506,12 @@
     "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead." : {
       "comment" : "Practice screen when microphone permission is off. Keep the line break."
     },
+    "EnviousWispr never uploads your address book. These names are added to your word list on this Mac so dictation spells them right." : {
+      "comment" : "Your Words, import from Contacts: the privacy note under the count."
+    },
+    "EnviousWispr words file" : {
+      "comment" : "Your Words: the name of an exported words file."
+    },
     "Error" : {
       "comment" : "AI Polish provider status chip.\nSidebar status and main window heading after a failed dictation."
     },
@@ -998,6 +1520,9 @@
     },
     "Esc" : {},
     "Escape Recovery" : {},
+    "Estimate" : {
+      "comment" : "Transcribe a File, Working page: a row label in the file summary. How long the run should take."
+    },
     "Estonian" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1008,6 +1533,9 @@
     "Expands to" : {},
     "Export" : {},
     "Export a copy first" : {},
+    "Export didn't finish" : {
+      "comment" : "Your Words, export: alert title after a failure."
+    },
     "Export your words" : {},
     "FINISH SETUP" : {},
     "Failed: A duplicate key is already saved. Clear it and try again." : {
@@ -1047,13 +1575,25 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Fast" : {
-      "comment" : "Speech engine settings, engine card: the fast engine's name."
+      "comment" : "Speech engine settings, engine card: the fast engine's name.\nTranscribe a File: the Parakeet transcription engine's name."
+    },
+    "Fast, or All Languages." : {
+      "comment" : "Transcribe a File, Upload step: a feature tile's detail. Fast and All Languages are the two engines' names."
     },
     "Faster Transcription" : {
       "comment" : "Speech engine settings, Faster Transcription: the toggle's name."
     },
     "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy." : {
       "comment" : "Speech engine settings, Faster Transcription: note under the toggle when the language is Auto-detect."
+    },
+    "File" : {
+      "comment" : "Transcribe a File, Working page: a row label in the file summary."
+    },
+    "Finding snippets" : {
+      "comment" : "Snippets, import snippets: sheet title while reading the source."
+    },
+    "Finding speakers" : {
+      "comment" : "Transcribe a File, Done step: speaker labels are still being worked out."
     },
     "Finding spoken variants… %lld of %lld" : {
       "localizations" : {
@@ -1068,12 +1608,21 @@
     "Finding who said what" : {
       "comment" : "Transcribe a File, Working step: the pass that labels speakers."
     },
+    "Finding words" : {
+      "comment" : "Your Words, import words: sheet title, working."
+    },
+    "Finish setting this one up, or pick another." : {
+      "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked."
+    },
     "Finish upgrade" : {
       "comment" : "Settings > AI Polish, local model row: button."
     },
     "Finish your current dictation first, then try again." : {},
     "Finishing a take. Please wait." : {
       "comment" : "Pill: a previous recording is being recovered, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+    },
+    "Finishing an earlier take. Try again in a moment." : {
+      "comment" : "Transcribe a File: why the file was refused. An interrupted dictation is being recovered."
     },
     "Finnish" : {
       "comment" : "A language name (dictation language picker)."
@@ -1092,6 +1641,18 @@
     "Formal" : {
       "comment" : "AI Polish, S1-mini writing-style card: tone option."
     },
+    "Found %@ entries, but none could be imported. Nothing was changed." : {
+      "comment" : "Snippets, import result: %@ is the number of entries found, never 1; none could be imported."
+    },
+    "Found %@ entries, but none were compatible. Nothing was changed." : {
+      "comment" : "Your Words, import result: %@ is the number of entries found, never 1; none could be imported."
+    },
+    "Found 1 entry, but none could be imported. Nothing was changed." : {
+      "comment" : "Snippets, import result: one entry found, and it could not be imported."
+    },
+    "Found 1 entry, but none were compatible. Nothing was changed." : {
+      "comment" : "Your Words, import result: one entry found, and it could not be imported."
+    },
     "Free & Private" : {
       "comment" : "Welcome screen feature title."
     },
@@ -1103,6 +1664,9 @@
     },
     "French" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "From another app" : {
+      "comment" : "Snippets, import snippets: method card title.\nSnippets, import snippets: sheet title, choosing another dictation app.\nYour Words, import words: method card title.\nYour Words, import words: sheet title, choosing another dictation app."
     },
     "GET STARTED!" : {},
     "Galician" : {
@@ -1148,6 +1712,9 @@
       "comment" : "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods."
     },
     "Getting the speech engine ready\nso your first go is instant." : {},
+    "Give the snippet something to say. A trigger of only punctuation can never match." : {
+      "comment" : "Snippets, edit: error when the trigger is empty."
+    },
     "Go ahead. Let go of %@ when you are done." : {
       "comment" : "Practice screen while recording. %@ is the dictation shortcut, for example ⌥."
     },
@@ -1224,7 +1791,19 @@
       "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
     },
     "Import" : {},
+    "Import complete" : {
+      "comment" : "Snippets, import snippets: sheet title, finished.\nYour Words, import words: sheet title, done."
+    },
+    "Import didn't finish" : {
+      "comment" : "Snippets, import snippets: sheet title, the import failed.\nYour Words, import words: sheet title, failed."
+    },
     "Import from Contacts" : {},
+    "Import snippets" : {
+      "comment" : "Snippets, import snippets: sheet title, the sheet's first step."
+    },
+    "Import words" : {
+      "comment" : "Your Words, import words: sheet title, the sheet's first step."
+    },
     "Imported from %@" : {},
     "Importing in progress" : {
       "comment" : "Settings sidebar: file import is running."
@@ -1236,6 +1815,9 @@
     "In a hurry? Skip ahead" : {},
     "Indonesian" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "Info (default)" : {
+      "comment" : "Diagnostics settings, debug mode: a log level in the Log Level picker."
     },
     "Input %lld" : {
       "comment" : "Microphone settings, input socket (for a device with several inputs): one input of the device. %lld is its number."
@@ -1314,6 +1896,12 @@
     "Key needed" : {
       "comment" : "AI Polish provider status chip."
     },
+    "Key not checked" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name."
+    },
+    "Key not saved" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name."
+    },
     "Key valid" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -1337,7 +1925,7 @@
     "Language" : {},
     "Language suggestions" : {},
     "Languages" : {
-      "comment" : "Live Preview settings: packs header.\nSpeech engine settings, engine card: a row label in the card's spec table."
+      "comment" : "Live Preview settings: packs header.\nSpeech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table."
     },
     "Lao" : {
       "comment" : "A language name (dictation language picker)."
@@ -1345,19 +1933,35 @@
     "Last Dictation" : {
       "comment" : "Keybinds settings: section heading for reusing the last dictation, shown in capitals."
     },
+    "Last copied" : {
+      "comment" : "Snippets, edit: button that inserts whatever was last copied into the snippet text."
+    },
     "Latin" : {
       "comment" : "A language name (dictation language picker)."
     },
     "Latvian" : {
       "comment" : "A language name (dictation language picker)."
     },
-    "Learn from..." : {},
-    "Learn more" : {},
+    "Learn as you go" : {
+      "comment" : "Your Words: a tab in the side rail: the line under Learn from. Keep it short, about 16 characters."
+    },
+    "Learn from..." : {
+      "comment" : "Your Words: a tab in the side rail, for learning words from contacts and edits."
+    },
+    "Learn more" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: link to the help article."
+    },
     "Learn more about engines" : {
       "comment" : "Live Preview settings, preview engine: learn more label."
     },
     "Leave this off. If you regularly dictate for five minutes or more in one go it may be worth the trade, and the risk of a lost ending is highest there too." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: recommendation."
+    },
+    "Legal" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name."
+    },
+    "Length" : {
+      "comment" : "Transcribe a File, Working page: a row label in the file summary."
     },
     "Let EnviousWispr pick up new words on its own, from things you already have." : {},
     "Level Rail" : {
@@ -1392,6 +1996,9 @@
     "Lithuanian" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Litigation, contract, and court terminology." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
     "Live" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -1414,7 +2021,16 @@
     "Loading model…" : {
       "comment" : "Toolbar status badge while the speech model loads. One ellipsis character."
     },
+    "Loading the correction model" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
     "Loading the speech model" : {},
+    "Loading the test judge from the UAT door" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch. Developer builds only."
+    },
+    "Location not checked" : {
+      "comment" : "Transcribe a File, Review step: where the cleanup runs is not known yet."
+    },
     "Lock" : {},
     "Locked models? Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status." : {},
     "Locked models? Those aren't blocked by EnviousWispr. Your OpenAI API key doesn't currently have access to them. OpenAI gates some models behind spend tier or organization verification." : {},
@@ -1422,6 +2038,12 @@
     "Log Level" : {},
     "Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained." : {},
     "Looking for apps on this Mac." : {},
+    "Looking for snippets to import." : {
+      "comment" : "Snippets, import snippets: working."
+    },
+    "Looking for words to import." : {
+      "comment" : "Your Words, import words: working."
+    },
     "Loose" : {},
     "Low" : {
       "comment" : "Settings slider: label at the low end."
@@ -1481,6 +2103,12 @@
     "Media during dictation" : {
       "comment" : "Microphone settings, media during dictation: row title for what happens to music and other audio."
     },
+    "Medical" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name."
+    },
+    "Medications, conditions, and clinical terms." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
     "Memory" : {},
     "Menu bar" : {
       "comment" : "Dictionary settings, Quick Add teaching card: label of the menu bar callout."
@@ -1522,13 +2150,19 @@
       "comment" : "Setup warm-up checklist item."
     },
     "Mishearings" : {},
+    "Mixed results" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+    },
     "Model" : {
-      "comment" : "AI Polish: card title above the model picker.\nSpeech engine settings, engine card: a row label in the card's spec table."
+      "comment" : "AI Polish: card title above the model picker.\nSpeech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table."
     },
     "Model Ready" : {
       "comment" : "Speech engine settings: the speech model is ready to use."
     },
     "Model Setup" : {},
+    "Model downloads are paused by Envious Labs" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
     "Model is freed after every transcription. Expect a reload delay on each recording." : {},
     "Model is ready" : {},
     "Model status:" : {},
@@ -1546,6 +2180,12 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Move EnviousWispr" : {},
+    "Moving Macs, or bringing your snippets back? Pick the %@ you exported, a CSV, or a plain list. Snippets you already have are left as they are." : {
+      "comment" : "Snippets, import snippets: method card. %@ is the exported file's name; keep it as is."
+    },
+    "Moving Macs, or bringing your words back? Pick the %@ you exported, or a plain list. Words you already have are left as they are." : {
+      "comment" : "Your Words, import words: method card description. %@ is the export file's name; keep it as written."
+    },
     "Music and other audio keep playing as they are." : {
       "comment" : "Microphone settings, media during dictation: what the Continue option does."
     },
@@ -1561,6 +2201,9 @@
     "Muted, compact tap." : {
       "comment" : "Sounds settings: describes how a recording sound sounds."
     },
+    "Names" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name. People's first names and surnames."
+    },
     "Native Speed" : {
       "comment" : "Welcome screen feature title."
     },
@@ -1568,11 +2211,20 @@
     "Needs a download" : {
       "comment" : "Live Preview settings: status needs download label."
     },
+    "Needs a key" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name. An API key is needed."
+    },
     "Needs attention" : {
       "comment" : "AI Polish provider status chip."
     },
     "Needs macOS 26 or later." : {
       "comment" : "Live Preview settings, preview engine: apple needs newer mac os."
+    },
+    "Needs setup" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name."
+    },
+    "Needs the app" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name. The Ollama app must be installed or started."
     },
     "Nepali" : {
       "comment" : "A language name (dictation language picker)."
@@ -1580,14 +2232,35 @@
     "Never" : {
       "comment" : "Speech engine settings: when an idle speech model is unloaded from memory."
     },
+    "Never overwritten." : {
+      "comment" : "Transcribe a File, Upload step: a feature tile's detail: the original words are never replaced."
+    },
     "New snippet" : {},
+    "New transcription" : {
+      "comment" : "Transcribe a File, Done step: button that clears this transcript and starts over."
+    },
     "New words come across with the alternate spellings you set up in the other app." : {},
     "Next page" : {},
+    "No AI polish" : {
+      "comment" : "Transcribe a File, Done step: chip: no cleanup engine was chosen."
+    },
+    "No AI polish applied" : {
+      "comment" : "Transcribe a File, Done step: chip: the cleanup engine ran but cleaned nothing."
+    },
     "No Ollama Cloud models are available right now." : {},
     "No account required. Anonymous analytics only." : {
       "comment" : "Welcome screen feature line under Free & Private."
     },
     "No audio captured" : {},
+    "No auto-learned words in this category." : {
+      "comment" : "Your Words: empty list with the Auto-learned filter and a category."
+    },
+    "No auto-learned words yet." : {
+      "comment" : "Your Words: empty list with the Auto-learned filter."
+    },
+    "No cleanup" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name.\nTranscribe a File, Review step: no cleanup engine was chosen."
+    },
     "No dictations yet" : {},
     "No internet connection. Please connect to the internet and try again." : {
       "comment" : "Setup error: no internet during the speech model download."
@@ -1595,7 +2268,9 @@
     "No language matches your search." : {
       "comment" : "Live Preview settings: packs no search match."
     },
-    "No matches for \"%@\"." : {},
+    "No matches for \"%@\"." : {
+      "comment" : "Your Words: empty search result. %@ is what the user typed; use this language's quotation marks."
+    },
     "No matching history." : {},
     "No microphone found. Please connect one." : {
       "comment" : "Pill: no input device is available."
@@ -1608,14 +2283,38 @@
     "No models found" : {
       "comment" : "AI Polish model picker: Ollama has no models downloaded."
     },
+    "No snippets found. Each line needs a trigger and some text." : {
+      "comment" : "Snippets, import snippets: paste count, none found."
+    },
     "No snippets match “%@”" : {},
+    "No snippets were found, and nothing was changed." : {
+      "comment" : "Snippets, import result: the source had no snippets."
+    },
     "No snippets yet" : {},
+    "No speech was found in that file." : {
+      "comment" : "Transcribe a File: why the file was refused."
+    },
     "No spoken variants" : {},
     "No suggestions available" : {},
     "No supported dictation apps found on this Mac. EnviousWispr can read %@." : {},
     "No supported dictation apps found on this Mac. EnviousWispr can read snippets from %@." : {},
     "No transcripts yet" : {},
     "No vocabulary packs available." : {},
+    "No words found in that text." : {
+      "comment" : "Your Words, import words: the pasted text had no words."
+    },
+    "No words in this category." : {
+      "comment" : "Your Words: empty list for a chosen category."
+    },
+    "No words were found, and nothing was changed." : {
+      "comment" : "Your Words, import result: the source had no words."
+    },
+    "No words yet. Add one with the button above." : {
+      "comment" : "Your Words: empty word list."
+    },
+    "None" : {
+      "comment" : "AI Polish: the choice of no cleanup engine, shown as its name."
+    },
     "Norwegian" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -1635,6 +2334,9 @@
     "Not active: the recording keybind (%@) uses these keys. Choose another." : {
       "comment" : "Keybinds settings: a conflict warning. %@ is a key combination, such as Right ⌘."
     },
+    "Not available on this version of macOS yet" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
     "Not available with your API key" : {},
     "Not checked" : {
       "comment" : "AI Polish provider status chip."
@@ -1642,8 +2344,8 @@
     "Not downloaded yet." : {
       "comment" : "Live Preview settings, preview engine: not downloaded yet."
     },
-    "Not enough disk space (%lld MB free). EnviousWispr needs about 1 GB to download and install the speech model." : {
-      "comment" : "Setup error before the speech model download. %lld is the free space in megabytes."
+    "Not enough disk space (%@ MB free). EnviousWispr needs about 1 GB to download and install the speech model." : {
+      "comment" : "Setup error before the speech model download. %@ is the free space in megabytes."
     },
     "Not enough disk space. Please free up space and try again." : {
       "comment" : "Setup error: the disk filled up during the speech model download."
@@ -1661,6 +2363,12 @@
     "Not installed" : {
       "comment" : "AI Polish provider status chip."
     },
+    "Not ready" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name."
+    },
+    "Not recommended" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+    },
     "Not running" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -1671,14 +2379,43 @@
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
     "Not saved. %@" : {},
-    "Not selected" : {},
+    "Not selected" : {
+      "comment" : "VoiceOver: the value of an option that is not chosen."
+    },
+    "Not tested by us" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+    },
     "Not working" : {
       "comment" : "AI Polish provider status chip."
     },
+    "Nothing added" : {
+      "comment" : "Snippets, import snippets: sheet title, the user skipped everything.\nYour Words, import words: sheet title, the user added none."
+    },
+    "Nothing compatible" : {
+      "comment" : "Snippets, import snippets: sheet title, nothing could be imported.\nYour Words, import words: sheet title, no word could be imported."
+    },
+    "Nothing has run yet." : {
+      "comment" : "Transcribe a File, Review step: the note beside Start transcription."
+    },
     "Nothing has run yet. You can still change everything." : {},
     "Nothing here yet" : {},
+    "Nothing pasted yet." : {
+      "comment" : "Snippets, import snippets: paste count, empty box.\nYour Words, import words: the paste box is empty."
+    },
+    "Nothing to import" : {
+      "comment" : "Snippets, import snippets: sheet title, the source had no snippets.\nYour Words, import words: sheet title, the source had no words."
+    },
+    "Nothing to review." : {
+      "comment" : "Snippets, import review summary: nothing in the source.\nYour Words, import review: the file had no words."
+    },
+    "Nothing was exported" : {
+      "comment" : "Your Words, export: alert title when there was nothing to export; not a failure."
+    },
     "Nothing you dictate leaves this Mac" : {
       "comment" : "AI Polish: privacy line under the selected provider."
+    },
+    "Numbers, dates, your saved words and filler removal run either way." : {
+      "comment" : "Transcribe a File, Polish step: the note beside Continue: what runs even without a cleanup engine."
     },
     "OK" : {},
     "OSLog" : {},
@@ -1706,8 +2443,17 @@
       "comment" : "AI Polish, Ollama model list: adding a hosted model failed; two names came back for a hosted model."
     },
     "Ollama runs AI models on your Mac. No API keys, completely free." : {},
+    "Ollama's servers" : {
+      "comment" : "Transcribe a File, Review step: where the cleanup runs."
+    },
     "On" : {
       "comment" : "VoiceOver: the value of a switch that is on."
+    },
+    "On device" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name."
+    },
+    "On device, or your own cloud key." : {
+      "comment" : "Transcribe a File, Upload step: a feature tile's detail."
     },
     "On dictations under a minute, both settings finish at about the same moment. The difference is smaller than you can feel. It only pulls ahead on recordings of roughly five minutes or longer." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: speed."
@@ -1762,6 +2508,9 @@
     "Open System Settings, then Keyboard" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 1. Use the names macOS shows in this language for System Settings and Keyboard."
     },
+    "Open a file" : {
+      "comment" : "Snippets, import snippets: method card title.\nSnippets, import snippets: sheet title, choosing a file.\nYour Words, import words: method card title.\nYour Words, import words: sheet title, choosing a file."
+    },
     "Open the EnviousWispr menu and choose the Add item." : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 2 when no keybind is set. Add is the first word of the menu item; use the same word as that menu item in this language."
     },
@@ -1778,7 +2527,16 @@
     "Original" : {
       "comment" : "History detail section title: the words as first transcribed."
     },
+    "Original kept" : {
+      "comment" : "Transcribe a File, Upload step: a feature tile's title."
+    },
     "Other available models" : {},
+    "Our best model for cleanup and list-making. On an imported recording it removes about four times more filler than Apple Intelligence." : {
+      "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. EG-1."
+    },
+    "Our own model" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
+    },
     "Our tuned model" : {
       "comment" : "AI Polish provider list: description under a provider name. EG-1, our own model."
     },
@@ -1807,6 +2565,12 @@
     "Paste" : {
       "comment" : "History detail button: pastes this row's text into the currently active app."
     },
+    "Paste a list from anywhere: plain lines, CSV, or exported JSON." : {
+      "comment" : "Snippets, import snippets: method card."
+    },
+    "Paste a list of words from anywhere." : {
+      "comment" : "Your Words, import words: method card description."
+    },
     "Paste into active app" : {},
     "Paste last dictation" : {
       "comment" : "Keybinds settings: the keybind that pastes the last dictation again."
@@ -1814,8 +2578,14 @@
     "Paste last dictation keybind" : {
       "comment" : "Keybinds settings: VoiceOver name of that keybind control."
     },
+    "Paste snippets" : {
+      "comment" : "Snippets, import snippets: method card title.\nSnippets, import snippets: sheet title, pasting a list."
+    },
     "Paste the last thing you dictated" : {},
     "Paste unavailable — Accessibility permission required" : {},
+    "Paste words" : {
+      "comment" : "Your Words, import words: method card title.\nYour Words, import words: sheet title, pasting a list."
+    },
     "Paste your snippets, then check the count before you continue." : {},
     "Paste your words, one per line or separated by commas." : {},
     "Pause" : {
@@ -1844,6 +2614,9 @@
       "comment" : "A language name (dictation language picker)."
     },
     "Persists across relaunches. Toggle with Cmd+Shift+D from anywhere." : {},
+    "Person" : {
+      "comment" : "Your Words: a word category, a person's name."
+    },
     "Pick the Universal engine below, which works on macOS 14 and later." : {
       "comment" : "Live Preview settings: status needs mac os26 detail. Universal is the name of the other preview engine."
     },
@@ -1870,6 +2643,9 @@
     },
     "Polished" : {
       "comment" : "History detail section title: the AI-polished text."
+    },
+    "Polished by %@" : {
+      "comment" : "Transcribe a File, Done step: chip. %@ is the cleanup engine's name."
     },
     "Polishing" : {
       "comment" : "Sidebar status chip while AI polish rewrites the text. Very short space, no ellipsis."
@@ -1910,6 +2686,9 @@
     "Press %@, or open the EnviousWispr menu and choose the Add item." : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 2. %@ is a key combination. Add is the first word of the menu item; use the same word as that menu item in this language."
     },
+    "Press Save key to finish, or pick another." : {
+      "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked. Save key is a button."
+    },
     "Press keys..." : {},
     "Press keys…" : {},
     "Press once to start recording. Press again to stop." : {},
@@ -1930,6 +2709,9 @@
     "Processing transcription" : {
       "comment" : "VoiceOver announcement from the recording overlay: speech is being turned into text."
     },
+    "Programming, cloud, and developer tools." : {
+      "comment" : "Your Words, vocabulary packs: the line under a pack's name."
+    },
     "Prose" : {
       "comment" : "AI Polish, S1-mini writing-style card: structure option: plain sentences."
     },
@@ -1939,7 +2721,9 @@
     "Push to Talk" : {
       "comment" : "Keybinds settings: recording mode card; hold the key to record."
     },
-    "Quick Add" : {},
+    "Quick Add" : {
+      "comment" : "Your Words: a tab in the side rail, the feature that adds a selected word from any app."
+    },
     "RECENT" : {},
     "RECORD" : {
       "comment" : "Settings sidebar: group heading, in capitals."
@@ -1950,6 +2734,12 @@
     "Re-scan" : {},
     "Read as" : {},
     "Read selections through the clipboard" : {},
+    "Read your snippets from %@." : {
+      "comment" : "Snippets, import snippets: an app's card. %@ is the other dictation app's name."
+    },
+    "Read your words from %@." : {
+      "comment" : "Your Words, import words: another app's card. %@ is that app's name."
+    },
     "Reading %@" : {},
     "Reading Well" : {
       "comment" : "Appearance settings: name of the recording pill style that shows your words as you speak."
@@ -1957,7 +2747,19 @@
     "Reading which languages are on this Mac." : {
       "comment" : "Live Preview settings: status checking detail."
     },
+    "Ready" : {
+      "comment" : "Transcribe a File, Polish step: the line under an engine's name."
+    },
     "Ready for import" : {},
+    "Ready in about %@ minutes" : {
+      "comment" : "Transcribe a File: how long the transcript will take. %@ is minutes, never 1."
+    },
+    "Ready in about a minute" : {
+      "comment" : "Transcribe a File: how long the transcript will take."
+    },
+    "Ready in under a minute" : {
+      "comment" : "Transcribe a File: how long the transcript will take."
+    },
     "Ready to Transcribe" : {},
     "Ready to Wispr!" : {},
     "Ready to show your words while you speak." : {
@@ -1966,9 +2768,15 @@
     "Ready — press to dictate" : {
       "comment" : "Pill title when the speech engine finished loading."
     },
+    "Ready-made lists" : {
+      "comment" : "Your Words: a tab in the side rail: the line under Vocabulary Packs. Keep it short, about 16 characters."
+    },
     "Ready-made word lists for a field. Turn one on and EnviousWispr starts fixing the words it already knows that field gets wrong." : {},
+    "Recognition behavior" : {
+      "comment" : "Edit word sheet: section label for how strictly a spoken word must match."
+    },
     "Recommended" : {
-      "comment" : "VoiceOver: the recommended AI Polish provider, not chosen."
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nTranscribe a File: badge on the recommended engine.\nVoiceOver: the recommended AI Polish provider, not chosen."
     },
     "Recommended for cleanup" : {},
     "Record" : {},
@@ -2027,9 +2835,15 @@
     },
     "Remove Model" : {},
     "Remove all imported names" : {},
+    "Remove and download again" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: button that replaces a wrong model."
+    },
     "Remove filler words (um, uh, hmm...)" : {},
     "Remove mishearing %@" : {},
     "Remove this file" : {},
+    "Removed: %@." : {
+      "comment" : "VoiceOver, marked-up transcript: a word the cleanup removed. %@ is the word."
+    },
     "Removes this word and its mishearings. Can't be undone." : {},
     "Removing model..." : {},
     "Rename speaker" : {},
@@ -2056,6 +2870,15 @@
     },
     "Retry" : {},
     "Retry preparing model" : {},
+    "Review" : {
+      "comment" : "Snippets, import snippets: sheet title, reviewing what will be added.\nTranscribe a File: a step name in the step bar."
+    },
+    "Review & Merge" : {
+      "comment" : "Your Words, import words: sheet title, reviewing what will be added."
+    },
+    "Review and start" : {
+      "comment" : "Transcribe a File, Review step: heading."
+    },
     "Romanian" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -2071,7 +2894,7 @@
       "comment" : "AI Polish provider status chip."
     },
     "Runs on" : {
-      "comment" : "Speech engine settings, engine card: a row label in the card's spec table."
+      "comment" : "Speech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table."
     },
     "Runs on Ollama's servers" : {
       "comment" : "AI Polish, Ollama model list: heading for models Ollama runs on its own servers."
@@ -2082,6 +2905,9 @@
     "SELECTED FILE" : {},
     "SYSTEM" : {
       "comment" : "Settings sidebar: group heading, in capitals."
+    },
+    "Safe to leave this page." : {
+      "comment" : "Transcribe a File: the footer while the run works."
     },
     "Same pitch both ways, plain." : {
       "comment" : "Sounds settings: describes how a recording sound sounds."
@@ -2106,6 +2932,9 @@
       "comment" : "Export button: save the cleaned text to a file (Marked Up view)."
     },
     "Save the text you type over and over. An email address, a signature, a link you always paste." : {},
+    "Saved to %@." : {
+      "comment" : "Transcribe a File: the transcript was saved. %@ is the file name."
+    },
     "Saved to History" : {
       "comment" : "Pill subtitle after a crash recovery succeeded."
     },
@@ -2113,6 +2942,15 @@
       "comment" : "Settings > AI Polish: the API key was saved."
     },
     "Saves and restores whatever was on your clipboard before pasting your dictation." : {},
+    "Saving" : {
+      "comment" : "Snippets, import snippets: sheet title while saving.\nYour Words, import words: sheet title, working."
+    },
+    "Saving your approved changes." : {
+      "comment" : "Your Words, import words: working."
+    },
+    "Saving your approved snippets." : {
+      "comment" : "Snippets, import snippets: working."
+    },
     "Say" : {},
     "Say \"<phrase> emoji\" to get the glyph. Bare words never convert." : {},
     "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it." : {
@@ -2133,6 +2971,12 @@
     "Search history" : {},
     "Search languages" : {},
     "Search snippets" : {},
+    "Sections cleaned" : {
+      "comment" : "Transcribe a File, Working page: a live count's label."
+    },
+    "Secure. Private. Local." : {
+      "comment" : "Transcribe a File: the footer's lead words."
+    },
     "See all" : {},
     "See all words in the %@ pack" : {},
     "See your words on screen while you are still speaking." : {
@@ -2142,8 +2986,14 @@
     "Select All" : {},
     "Select a misheard word anywhere, then press this to add it to Your Words. Terminal windows do not share their selection, so it will not work there." : {},
     "Select an item from the sidebar to view it." : {},
+    "Select polishing engine" : {
+      "comment" : "Transcribe a File, Polish step: heading."
+    },
     "Select the word you want to fix in an email, chat, or document." : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 1."
+    },
+    "Select transcription engine" : {
+      "comment" : "Transcribe a File, Transcription step: heading."
     },
     "Select which microphone to use for recording. \"Auto\" follows the input device selected in macOS. If that device turns out not to be a real microphone, recording uses an available microphone instead." : {
       "comment" : "Microphone settings: explains the input device choice. Auto is the name of the first option."
@@ -2156,6 +3006,9 @@
     },
     "Selected: %@" : {},
     "Selects %@ for AI polish" : {},
+    "Self-Learning Dictionary" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the feature's name."
+    },
     "Semi-casual" : {
       "comment" : "AI Polish, S1-mini writing-style card: tone option."
     },
@@ -2223,6 +3076,9 @@
     "Sinhala" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Six ways to polish" : {
+      "comment" : "Transcribe a File, Upload step: a feature tile's title."
+    },
     "Skip and finish setup" : {},
     "Skip this step" : {},
     "Skipped" : {},
@@ -2243,9 +3099,18 @@
     "Snippets" : {
       "comment" : "Settings sidebar: a page name."
     },
+    "Snippets could not be saved just now. Try that again." : {
+      "comment" : "Snippets: error when saving is briefly unavailable."
+    },
     "Snippets to import" : {},
+    "Snippets you already have are left as they are. TypeWhisper entries using supported date, time or clipboard fill-ins can be imported. Entries containing unsupported fill-ins are left out and counted." : {
+      "comment" : "Snippets, import from another app: note under the list. TypeWhisper is an app name; keep it."
+    },
     "Snippets you already have are left exactly as they are." : {},
     "Snippets you already saved in another dictation app, found on this Mac." : {},
+    "So far" : {
+      "comment" : "Transcribe a File, Working page: heading of the live counts, shown in capitals."
+    },
     "Soft Hush" : {
       "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
@@ -2266,14 +3131,23 @@
     "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere." : {
       "comment" : "Practice screen when the dictation failed on our side. Keep the line break."
     },
+    "Something went wrong reading that file. Try a different one." : {
+      "comment" : "Transcribe a File: why the file was refused."
+    },
     "Sounds" : {
       "comment" : "Settings sidebar: a page name."
     },
     "Spanish" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "Sparkled sound-alikes were learned from your edits." : {
+      "comment" : "Your Words: note under the list of mishearings. Sparkled means marked with a sparkle icon."
+    },
     "Speaker detection didn't finish for this recording." : {},
     "Speaker name" : {},
+    "Speakers found" : {
+      "comment" : "Transcribe a File, Working page: a live count's label."
+    },
     "Speech Model" : {},
     "Speech engine" : {
       "comment" : "Setup warm-up checklist item."
@@ -2289,6 +3163,9 @@
       "comment" : "AI Polish, Ollama setup: the current step."
     },
     "Start recording" : {},
+    "Start transcription" : {
+      "comment" : "Transcribe a File, Review step: button that starts the run."
+    },
     "Starting" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -2306,9 +3183,14 @@
     "Still working: checking download source…" : {
       "comment" : "Setup: shown when preparing the download takes more than 10 seconds."
     },
-    "Stop" : {},
+    "Stop" : {
+      "comment" : "Transcribe a File, Done step: button that stops the speaker labelling still running."
+    },
     "Stop recording" : {},
     "Stop recording on silence" : {},
+    "Stopped" : {
+      "comment" : "Transcribe a File, Done step: heading after the user stopped the run."
+    },
     "Streaming finalize:" : {},
     "Streaming vs Batch WER:" : {},
     "Strict" : {},
@@ -2355,6 +3237,9 @@
     "Teaching AI to listen politely..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs."
     },
+    "Tech" : {
+      "comment" : "Your Words, vocabulary packs: a pack's name. Technology terms."
+    },
     "Telugu" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -2365,18 +3250,140 @@
     "Thai" : {
       "comment" : "A language name (dictation language picker)."
     },
+    "That CSV has a quoting problem on line %@. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is the line number in the file."
+    },
+    "That contains a trigger EnviousWispr can't use (%@). Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is the trigger, already quoted."
+    },
+    "That contains a trigger longer than %@ characters, which is too long to say. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is the longest allowed trigger in characters (never 1)."
+    },
+    "That contains a word EnviousWispr can't store (%@). Nothing was imported." : {
+      "comment" : "Import: the words could not be imported. %@ is the word, already quoted."
+    },
+    "That contains an alternate spelling EnviousWispr can't store (%@, for %@). Nothing was imported." : {
+      "comment" : "Import: the words could not be imported. The first %@ is the misheard form, the second its word, each already quoted.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "That contains an alternate spelling EnviousWispr can't store (%1$@, for %2$@). Nothing was imported."
+          }
+        }
+      }
+    },
+    "That contains an entry longer than %@ characters, which is too long to be a word. Nothing was imported." : {
+      "comment" : "Import: the words could not be imported. %@ is the character limit."
+    },
+    "That could not be saved. %@" : {
+      "comment" : "Snippets: an error. %@ is the system's reason, already in the user's language."
+    },
+    "That couldn't be read." : {
+      "comment" : "Snippets, import: error when the source could not be read."
+    },
     "That did not work" : {
       "comment" : "Practice screen headline. The dictation failed on our side."
     },
     "That download did not finish. Check your connection and try again." : {
       "comment" : "Live Preview settings: pack install failed."
     },
+    "That engine is not ready. Check its status below, or pick another." : {
+      "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked."
+    },
+    "That file couldn't be opened. Try a different one." : {
+      "comment" : "Transcribe a File: why the file was refused."
+    },
+    "That file couldn't be read." : {
+      "comment" : "Your Words, import: error. The file could not be read."
+    },
+    "That file couldn't be saved. Your words are still here. Try another place." : {
+      "comment" : "Transcribe a File: saving the transcript failed."
+    },
+    "That file didn't come from EnviousWispr." : {
+      "comment" : "Your Words, import: error. The file is not a words export."
+    },
+    "That file has more than %@ words and alternate spellings combined, which is more than EnviousWispr can import at once." : {
+      "comment" : "Your Words, import: error. %@ is a large limit (never 1)."
+    },
+    "That file has more than %@ words, which is more than EnviousWispr can import at once. Try splitting it into smaller files." : {
+      "comment" : "Your Words, import: error. %@ is a large limit (never 1)."
+    },
+    "That file is damaged and can't be read." : {
+      "comment" : "Import: error when the file is damaged.\nSnippets, import: error when the file is damaged."
+    },
+    "That file is too big to be a word list. Check you picked the right one." : {
+      "comment" : "Your Words, import: error. The file is too large."
+    },
+    "That file isn't an EnviousWispr snippets file." : {
+      "comment" : "Snippets, import: error when the file is not a snippets export."
+    },
+    "That file was exported by a newer version of EnviousWispr (format %@). Update the app, then try again." : {
+      "comment" : "Import: error. %@ is the file's format version number.\nSnippets, import: error. %@ is the file's format version number."
+    },
+    "That has more than %@ characters of snippet text in total, which is more than EnviousWispr can import at once. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is a large limit (never 1)."
+    },
+    "That has more than %@ snippets, which is more than EnviousWispr can import at once. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is a large limit (never 1)."
+    },
+    "That is EnviousWispr's own snippets file. Pick somewhere else — saving over it would erase your snippets." : {
+      "comment" : "Snippets, export: refusal when the chosen file is the app's own snippet store."
+    },
     "That is it. You are set." : {
       "comment" : "Practice screen headline. The first dictation worked."
+    },
+    "That is too big to be a snippet list. Check you picked the right one." : {
+      "comment" : "Snippets, import: error when the file is too large."
+    },
+    "That model runs on this Mac, so nothing leaves it." : {
+      "comment" : "Transcribe a File, Polish step: where the chosen Ollama model runs."
+    },
+    "That transcription engine isn't downloaded yet. Get it in Transcription settings." : {
+      "comment" : "Transcribe a File: why the file was refused."
+    },
+    "That word is no longer where it was. Nothing was changed." : {
+      "comment" : "Your Words: error. A built-in word could not be restored."
+    },
+    "That word or spelling can't be saved. It may be too long, or contain characters that aren't part of a word." : {
+      "comment" : "Your Words: error. A word or misheard form could not be saved."
+    },
+    "That's EnviousWispr's own words file. Choose a different name or folder, so your saved words aren't replaced by the export." : {
+      "comment" : "Your Words, export: refusal when the chosen file is the app's own words file."
+    },
+    "That's more than %@ words, which is more than EnviousWispr can import at once. Try pasting a smaller batch." : {
+      "comment" : "Your Words, import words: error. %@ is a large limit (never 1)."
+    },
+    "That's more than %@ words. Paste a smaller batch." : {
+      "comment" : "Your Words, import words: the paste is too long. %@ is the limit."
     },
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {},
     "The Universal engine is being prepared." : {
       "comment" : "Live Preview settings: status getting ready detail. Universal is the name of the other preview engine."
+    },
+    "The cleanup engine didn't start. Your words are here. Clean it again to retry." : {
+      "comment" : "Transcribe a File: why the file was refused. Clean it again is a button."
+    },
+    "The correct word" : {
+      "comment" : "Edit word sheet: section label for the word as it should be written."
+    },
+    "The correction model could not be downloaded" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
+    "The correction model could not be fully removed" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
+    "The correction model could not be loaded" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
+    "The correction model downloads after setup finishes" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
+    "The correction model downloads after the speech model" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
+    "The correction model is not downloaded yet" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
     },
     "The download couldn't be verified. Try again, and if this keeps happening, contact support." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings."
@@ -2399,8 +3406,20 @@
     "The download timed out. Please check your internet connection and try again." : {
       "comment" : "Setup error: the speech model download timed out."
     },
+    "The download was cancelled" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
+    "The downloaded correction model is not the one this version was tested with" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
+    "The export did not finish. %@" : {
+      "comment" : "Snippets, export: error. %@ is the system's reason, already in the user's language."
+    },
     "The fast engine can't lock to this language, so it's detecting automatically. Choose one of its 25 European languages, or switch to the multilingual engine." : {
       "comment" : "Speech engine settings: the locked language is not one the fast engine supports."
+    },
+    "The last dictation is still transcribing. Restart the app, then try again." : {
+      "comment" : "Transcribe a File: why the file was refused."
     },
     "The latest improvements and fixes in this release." : {
       "comment" : "Settings: the one-line description under a page title."
@@ -2421,6 +3440,12 @@
     "The model stopped twice in a row. Use the refresh button to try again." : {
       "comment" : "AI Polish, local model card: the reason under the health status."
     },
+    "The model you picked runs on Ollama's servers, so the text is sent there." : {
+      "comment" : "Transcribe a File, Polish step: where the chosen Ollama model runs."
+    },
+    "The on-device model is not ready — it may still be downloading. Try again later." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
     "The preview detects your language as you speak." : {
       "comment" : "Live Preview settings: universal auto."
     },
@@ -2435,6 +3460,46 @@
     "The speech engine that turns your voice into text." : {
       "comment" : "Settings: the one-line description under a page title."
     },
+    "The spelling \"%@\" may not be added, because %@ already uses it." : {
+      "comment" : "Your Words, import review: a row's note. The first %@ is a misheard form, the second the word that has it; use this language's quotation marks.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The spelling \"%1$@\" may not be added, because %2$@ already uses it."
+          }
+        }
+      }
+    },
+    "The test judge from the UAT door failed to load" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch. Developer builds only."
+    },
+    "The text for %@ contains characters EnviousWispr can't store. Nothing was imported." : {
+      "comment" : "Snippets, import: error. %@ is the snippet's trigger, already quoted."
+    },
+    "The text for %@ is longer than %@ characters. Nothing was imported." : {
+      "comment" : "Snippets, import: error. the first %@ is the snippet's trigger, already quoted; the second a large limit (never 1).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The text for %1$@ is longer than %2$@ characters. Nothing was imported."
+          }
+        }
+      }
+    },
+    "The transcription engine didn't start. Try again." : {
+      "comment" : "Transcribe a File: why the file was refused."
+    },
+    "There are no snippets to export yet." : {
+      "comment" : "Snippets, export: notice when the list is empty."
+    },
+    "There are no words of your own to export yet. Vocabulary packs are not included." : {
+      "comment" : "Your Words, export: only vocabulary packs exist."
+    },
+    "There's no sound in that file." : {
+      "comment" : "Transcribe a File: why the file was refused."
+    },
     "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below." : {},
     "These let EnviousWispr listen and paste for you." : {},
     "These words are not saved to History. Copy or save them before you leave, or press Clean it again to retry." : {
@@ -2445,11 +3510,26 @@
       "comment" : "Speech engine settings, spoken punctuation: help panel footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly."
     },
     "They are still saved on your Mac. Nothing has been changed or deleted, and EnviousWispr will not write over them. Restart the app, and tell us if this keeps happening." : {},
+    "This Mac" : {
+      "comment" : "Transcribe a File, Review step: the cleanup runs on this Mac."
+    },
+    "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later)." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
+    },
     "This Mac has 8 GB of memory. %@ may run slower here. Dictation always works, even when polish is unavailable." : {
       "comment" : "AI Polish, local model card: low-memory note. %@ is the model name, such as EG-1."
     },
+    "This Mac · Apple GPU" : {
+      "comment" : "Transcribe a File: where the All Languages engine runs."
+    },
+    "This Mac · Neural Engine" : {
+      "comment" : "Transcribe a File: where the Fast engine runs. Neural Engine is Apple's chip name."
+    },
     "This build has no download source configured." : {
       "comment" : "AI Polish, local model card: why the model download failed."
+    },
+    "This build was compiled without Apple Intelligence support." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
     },
     "This can't be undone." : {},
     "This changes dictation too, not just the preview. On Automatic, dictation follows what you speak, but the preview must pick one language up front and uses your Mac's." : {
@@ -2465,7 +3545,19 @@
     "This engine transcribes differently from the Fast engine, so its behaviour and the advice here are not the same." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel footnote."
     },
+    "This file" : {
+      "comment" : "Transcribe a File, Working page: heading of the file summary, shown in capitals."
+    },
+    "This import could not be applied. Nothing was changed." : {
+      "comment" : "Import: applying the import failed."
+    },
     "This keybind starts and stops recording." : {},
+    "This looks like %@, which you already have." : {
+      "comment" : "Your Words, import review: a row's note. %@ is the existing word."
+    },
+    "This matches more than one word you already have." : {
+      "comment" : "Your Words, import review: a row's note."
+    },
     "This may take a moment on first run while the model loads." : {},
     "This may take a moment on first run." : {},
     "This model did not pass any of our cleanup tests." : {},
@@ -2488,8 +3580,8 @@
     "This version of EnviousWispr is missing that engine's files. Updating the app should restore it." : {
       "comment" : "Live Preview settings: status build cannot run detail no alternative."
     },
-    "This will permanently delete all %lld items in History, including any hidden by a filter or search. This action cannot be undone." : {
-      "comment" : "Delete All confirmation in History. %lld is how many rows will be deleted, including hidden ones. Never 1."
+    "This will permanently delete all %@ items in History, including any hidden by a filter or search. This action cannot be undone." : {
+      "comment" : "Delete All confirmation in History. %@ is how many rows will be deleted, including hidden ones. Never 1."
     },
     "This will permanently delete the only item in History, even if a filter or search is hiding it. This action cannot be undone." : {
       "comment" : "Delete All confirmation in History when exactly one row exists (it may be hidden by a filter)."
@@ -2503,6 +3595,9 @@
     "Time for your first dictation!" : {
       "comment" : "Practice screen headline. Before the first try."
     },
+    "Time now" : {
+      "comment" : "Snippets, edit: button that inserts the current time into the snippet text."
+    },
     "Times" : {},
     "Tiny filtered-air pop." : {
       "comment" : "Sounds settings: describes how a recording sound sounds."
@@ -2513,6 +3608,9 @@
     },
     "To paste your transcribed text into any app." : {
       "comment" : "Setup permissions: why Accessibility is needed."
+    },
+    "Today's date" : {
+      "comment" : "Snippets, edit: button that inserts today's date into the snippet text."
     },
     "Toggle" : {
       "comment" : "Keybinds settings: recording mode card; press once to start and again to stop."
@@ -2536,6 +3634,9 @@
     "Transcribe time" : {
       "comment" : "Speech engine settings, engine card: a row label in the card's spec table."
     },
+    "Transcribed" : {
+      "comment" : "Transcribe a File, Working page: a live count's label."
+    },
     "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It does not save time you can notice on most dictations, and it can drop your last few words." : {
       "comment" : "Speech engine settings, Faster Transcription: description under the toggle (fast engine)."
     },
@@ -2543,7 +3644,18 @@
       "comment" : "Speech engine settings, Faster Transcription: description under the toggle (multilingual engine)."
     },
     "Transcribing" : {
-      "comment" : "Sidebar status chip while speech is turned into text. Very short space, no ellipsis."
+      "comment" : "Sidebar status chip while speech is turned into text. Very short space, no ellipsis.\nTranscribe a File, Working step: the transcribing row, before its minutes are known."
+    },
+    "Transcribing %@ of %@ minutes" : {
+      "comment" : "Transcribe a File, Working step: progress. The first %@ is minutes done, the second the file's length in minutes.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Transcribing %1$@ of %2$@ minutes"
+          }
+        }
+      }
     },
     "Transcribing a file. Please wait." : {
       "comment" : "Pill: a file is being transcribed, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
@@ -2555,10 +3667,10 @@
       "comment" : "Toolbar status badge while speech is turned into text. One ellipsis character."
     },
     "Transcript" : {
-      "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it."
+      "comment" : "History detail title for a row made with Transcribe a File. Also the default file name when saving it.\nTranscribe a File, Done step: the document title when the file has no name."
     },
     "Transcription" : {
-      "comment" : "Settings sidebar: a page name."
+      "comment" : "Settings sidebar: a page name.\nTranscribe a File, Working page: a row label in the file summary. The transcription engine.\nTranscribe a File: a step name in the step bar."
     },
     "Transcription Complete" : {},
     "Transcription Engine" : {
@@ -2579,7 +3691,7 @@
     },
     "Try a different search, or another filter." : {},
     "Try again" : {
-      "comment" : "Live Preview settings: pack retry."
+      "comment" : "Live Preview settings: pack retry.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model."
     },
     "Try setup again" : {},
     "Try these first" : {
@@ -2604,9 +3716,15 @@
       "comment" : "Pill line under Microphone access needed."
     },
     "Turn on Accessibility" : {},
+    "Turn on Apple Intelligence in System Settings to get suggestions" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch."
+    },
     "Turn on the microphone" : {},
     "Two close tones, gentle warmth." : {
       "comment" : "Sounds settings: describes how a recording sound sounds."
+    },
+    "Two transcription engines" : {
+      "comment" : "Transcribe a File, Upload step: a feature tile's title."
     },
     "Ukrainian" : {
       "comment" : "A language name (dictation language picker)."
@@ -2635,6 +3753,9 @@
     "Unload model after" : {},
     "Unloaded" : {
       "comment" : "Main window sidebar: the speech model is not in memory."
+    },
+    "Unreliable" : {
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name."
     },
     "Update available" : {},
     "Update available, version %@" : {},
@@ -2668,6 +3789,9 @@
           }
         }
       }
+    },
+    "Upload" : {
+      "comment" : "Transcribe a File: a step name in the step bar."
     },
     "Upload an audio or video file, then EnviousWispr will transcribe it and polish it into clean, readable text." : {},
     "Urdu" : {
@@ -2711,6 +3835,9 @@
     "Velvet Tap" : {
       "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it."
     },
+    "Verbose" : {
+      "comment" : "Diagnostics settings, debug mode: a log level in the Log Level picker."
+    },
     "Verifying" : {
       "comment" : "AI Polish provider status chip."
     },
@@ -2726,7 +3853,9 @@
       "comment" : "A language name (dictation language picker)."
     },
     "View" : {},
-    "Vocabulary Packs" : {},
+    "Vocabulary Packs" : {
+      "comment" : "Your Words: a tab in the side rail."
+    },
     "Warming Up the AI..." : {},
     "Warming up" : {},
     "Warming up Apple Silicon..." : {
@@ -2739,10 +3868,39 @@
       "comment" : "Practice screen headline. A permission is missing."
     },
     "We could not check your saved key on this Mac." : {},
+    "We could not check your saved key. Try again, or pick another." : {
+      "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked."
+    },
     "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold %@ again." : {
       "comment" : "Practice screen when the text box was not selected. %@ is the dictation shortcut. Keep the line break."
     },
     "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {},
+    "We'll add %@ names from your contacts." : {
+      "comment" : "Your Words, import from Contacts: %@ is the number of new names, never 1."
+    },
+    "We'll add %@ names from your contacts. %@ are already in your list." : {
+      "comment" : "Your Words, import from Contacts: the first %@ is the number of new names, the second the number already in the word list; neither is 1.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "We'll add %1$@ names from your contacts. %2$@ are already in your list."
+          }
+        }
+      }
+    },
+    "We'll add %@ names from your contacts. 1 is already in your list." : {
+      "comment" : "Your Words, import from Contacts: %@ is the number of new names, never 1; one is already in the word list."
+    },
+    "We'll add 1 name from your contacts." : {
+      "comment" : "Your Words, import from Contacts: one new name."
+    },
+    "We'll add 1 name from your contacts. %@ are already in your list." : {
+      "comment" : "Your Words, import from Contacts: one new name. %@ is the number already in the word list, never 1."
+    },
+    "We'll add 1 name from your contacts. 1 is already in your list." : {
+      "comment" : "Your Words, import from Contacts: one new name, and one already in the word list."
+    },
     "Welsh" : {
       "comment" : "A language name (dictation language picker)."
     },
@@ -2811,12 +3969,24 @@
     "Word errors" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel table: a measured quantity."
     },
+    "Words so far" : {
+      "comment" : "Transcribe a File, Working page: a live count's label."
+    },
     "Words to import" : {},
+    "Words you added" : {
+      "comment" : "Your Words: a tab in the side rail: the line under Your Words. Keep it short, about 16 characters."
+    },
     "Words you already have are left exactly as they are." : {},
     "Words you can say" : {
       "comment" : "Speech engine settings, spoken punctuation: help panel title."
     },
     "Work out the language from what you say." : {},
+    "Working" : {
+      "comment" : "Transcribe a File: a step name in the step bar."
+    },
+    "Working on your transcript" : {
+      "comment" : "Transcribe a File, Working step: heading."
+    },
     "Working out what your new language needs. This updates when the download finishes." : {
       "comment" : "Live Preview settings: status language changed detail."
     },
@@ -2832,6 +4002,9 @@
     "Works without internet." : {
       "comment" : "Welcome screen feature line under Offline-Ready."
     },
+    "Writes down what was said." : {
+      "comment" : "Transcribe a File, Review step: the transcription engine's card in the processing path."
+    },
     "Writing style" : {
       "comment" : "AI Polish, S1-mini writing-style card: the card title."
     },
@@ -2841,6 +4014,18 @@
     },
     "Yoruba" : {
       "comment" : "A language name (dictation language picker)."
+    },
+    "You already have %@." : {
+      "comment" : "Your Words, import review: a row's note. %@ is the word."
+    },
+    "You already have a snippet for those words: “%@”. Change one of them." : {
+      "comment" : "Snippets, edit: error. %@ is the existing trigger; use this language's quotation marks."
+    },
+    "You already have all %@ of these." : {
+      "comment" : "Your Words, import review: every word in the file is already in the list. %@ is how many."
+    },
+    "You already have this, as another spelling of %@." : {
+      "comment" : "Your Words, import review: a row's note. %@ is the existing word."
     },
     "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
       "comment" : "Setup: shown when the speech engine did not finish warming up."
@@ -2852,6 +4037,12 @@
       "comment" : "Speech engine settings, spoken punctuation: help table column: what appears in the text."
     },
     "You have this" : {},
+    "You have this, as “%@”." : {
+      "comment" : "Snippets, import review: a row's note. %@ is the user's existing trigger; use this language's quotation marks."
+    },
+    "You skipped everything, so nothing was changed." : {
+      "comment" : "Snippets, import result: the user skipped every row.\nYour Words, import result: the user added nothing."
+    },
     "You're all set! Select a model above." : {},
     "You've entered snippets. This will discard them." : {},
     "You've entered words. This will discard them." : {},
@@ -2862,6 +4053,30 @@
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): closing reassurance."
     },
     "Your Voice, Instantly Captured." : {},
+    "Your Words" : {
+      "comment" : "Your Words: a tab in the side rail."
+    },
+    "Your audio and text both stay on this Mac." : {
+      "comment" : "Transcribe a File: the footer's privacy sentence: nothing leaves the Mac."
+    },
+    "Your audio never leaves this Mac. Only the text goes to %@, under your own key." : {
+      "comment" : "Transcribe a File: the footer's privacy sentence, before the run. %@ is the cloud provider, used with the user's own API key."
+    },
+    "Your audio never leaves this Mac. Only the text goes to %@." : {
+      "comment" : "Transcribe a File: the footer's privacy sentence, before the run. %@ is where the text will go, such as Ollama."
+    },
+    "Your audio never leaves this Mac. The text is going to %@, under your own key." : {
+      "comment" : "Transcribe a File: the footer's privacy sentence, while the run works. %@ is the cloud provider, used with the user's own API key."
+    },
+    "Your audio never leaves this Mac. The text is going to %@." : {
+      "comment" : "Transcribe a File: the footer's privacy sentence, while the run works. %@ is where the text goes, such as Ollama."
+    },
+    "Your audio stayed on this Mac. Only the text went to %@, under your own key." : {
+      "comment" : "Transcribe a File: the footer's privacy sentence, after the run. %@ is the cloud provider, used with the user's own API key."
+    },
+    "Your audio stayed on this Mac. Only the text went to %@." : {
+      "comment" : "Transcribe a File: the footer's privacy sentence, after the run. %@ is where the text went, such as Ollama."
+    },
     "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview." : {
       "comment" : "Live Preview settings: status paused detail."
     },
@@ -2869,12 +4084,27 @@
     "Your engine cannot show words on this Mac." : {
       "comment" : "Appearance settings, recording pill picker: why the word-showing pill designs are unavailable."
     },
+    "Your file is still here. Nothing needs reading again." : {
+      "comment" : "Transcribe a File, Review step: the note beside Try again after a refusal."
+    },
     "Your first dictation" : {},
+    "Your keyword has to be a single word. Pick one you would not say by accident." : {
+      "comment" : "Snippets: error when the keyword is more than one word."
+    },
     "Your microphone is working. We just did not hear anything.\nTry holding %@ and saying: tell grandma I will call Sunday." : {
       "comment" : "Practice screen when nothing was heard. %@ is the dictation shortcut. The sample sentence should be natural to say in the target language. Keep the line break."
     },
     "Your original words are saved to History. This cleaned version is not. Copy or save it before you leave." : {
       "comment" : "Transcribe a File: the original is in History but the cleaned version is not."
+    },
+    "Your own Anthropic key. Only the text is sent, never the audio." : {
+      "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. Anthropic Claude."
+    },
+    "Your own Google key. Only the text is sent, never the audio." : {
+      "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. Google Gemini."
+    },
+    "Your own OpenAI key. Only the text is sent, never the audio." : {
+      "comment" : "Transcribe a File, Polish step: the description of the selected cleanup engine. OpenAI."
     },
     "Your own setup" : {
       "comment" : "AI Polish provider list: group heading."
@@ -2885,16 +4115,73 @@
     "Your recording indicator appears while you hold the key." : {
       "comment" : "Practice screen footnote under the text box."
     },
+    "Your saved snippets could not be read, so nothing was changed. They are still on disk. Restart EnviousWispr, and tell us if it keeps happening." : {
+      "comment" : "Snippets: error when the saved list could not be read."
+    },
+    "Your saved words could not be read. Nothing was changed. Try again." : {
+      "comment" : "Your Words: error. The saved list could not be read."
+    },
+    "Your saved words could not be read. Nothing was imported. Try again." : {
+      "comment" : "Import: applying the import failed: the saved list could not be read."
+    },
+    "Your saved words could not be updated safely. Nothing was changed. Try again." : {
+      "comment" : "Your Words: error. Saving is briefly unavailable."
+    },
+    "Your saved words couldn't be read this time, so there's nothing safe to export. Relaunch EnviousWispr and try again." : {
+      "comment" : "Your Words, export: the saved list could not be read."
+    },
+    "Your saved words couldn't be read this time. Nothing was changed or deleted. Try relaunching." : {
+      "comment" : "Your Words: the saved list could not be read."
+    },
+    "Your saved words file was damaged and moved aside for recovery. EnviousWispr started with an empty saved list." : {
+      "comment" : "Your Words: the saved list was damaged and set aside."
+    },
+    "Your saved words file was damaged and moved aside for recovery. No edit or import was applied." : {
+      "comment" : "Your Words: error. The saved list was damaged."
+    },
     "Your shortcut is set" : {
       "comment" : "Setup warm-up checklist item."
     },
     "Your snippets" : {},
+    "Your snippets changed while you were reviewing. Nothing was imported. Here is the updated list." : {
+      "comment" : "Snippets, import review: notice after the list changed during review."
+    },
+    "Your snippets changed while you were reviewing. Nothing was imported. Review the updated list and try again." : {
+      "comment" : "Snippets, import: error when the list changed during review."
+    },
     "Your snippets could not be read" : {},
+    "Your transcript is ready" : {
+      "comment" : "Transcribe a File, Done step: heading."
+    },
+    "Your untouched words are kept beside this one." : {
+      "comment" : "Transcribe a File: the footer's privacy sentence, after a local run: the original words are kept."
+    },
     "Your voice never leaves your Mac." : {
       "comment" : "Welcome screen feature line under On-Device."
     },
+    "Your voice stays here" : {
+      "comment" : "Transcribe a File, Upload step: a feature tile's title."
+    },
+    "Your word list changed while you were reviewing. Nothing was imported — here are the updated matches." : {
+      "comment" : "Your Words, import review: the list changed during review, so the matches were redone."
+    },
+    "Your word list changed while you were reviewing. Nothing was imported." : {
+      "comment" : "Import: applying the import failed: the list changed during review."
+    },
+    "Your word list changed, so nothing was exported. Try Export again." : {
+      "comment" : "Your Words, export: the list changed during export; Export is the button's name."
+    },
+    "Your word list is being updated by another EnviousWispr window. Nothing was changed. Try again." : {
+      "comment" : "Your Words: error. Another window holds the list."
+    },
+    "Your words are too large to fit in one file EnviousWispr could read back. Nothing was exported." : {
+      "comment" : "Your Words, export: refused: the word list is too large for one file."
+    },
     "Your words will appear in %@." : {
       "comment" : "Live Preview settings: the preview's language. %@ is the language's name."
+    },
+    "a blank entry" : {
+      "comment" : "Import error: names an empty entry inside the message's brackets. Lowercase."
     },
     "a blank line" : {
       "comment" : "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
@@ -2902,11 +4189,26 @@
     "a line break" : {
       "comment" : "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
     },
+    "about %@ minutes" : {
+      "comment" : "Transcribe a File: an estimate shown on its own, in lowercase. %@ is minutes, never 1."
+    },
+    "about %@ minutes left" : {
+      "comment" : "Transcribe a File, Working step: time left, in lowercase. %@ is minutes, never 1."
+    },
+    "about a minute" : {
+      "comment" : "Transcribe a File: an estimate shown on its own, in lowercase."
+    },
+    "about a minute left" : {
+      "comment" : "Transcribe a File, Working step: time left, in lowercase."
+    },
     "by Superwhisper" : {
       "comment" : "AI Polish provider list: description under a provider name. Required licence credit; keep Superwhisper as written."
     },
     "cloud" : {
       "comment" : "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
+    },
+    "done" : {
+      "comment" : "VoiceOver, Transcribe a File: a Working row is finished."
     },
     "feedback.email.invalid" : {
       "extractionState" : "extracted_with_value",
@@ -2999,6 +4301,57 @@
     "from your Mac" : {
       "comment" : "Live Preview settings: language provenance from mac. A caption under the language: where it came from."
     },
+    "import.appList.more" : {
+      "comment" : "Import: three or more app names. The first %@ is the earlier names already separated by commas, the second the last name.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, and %2$@"
+          }
+        }
+      }
+    },
+    "import.appList.two" : {
+      "comment" : "Import: two app names in a sentence, as in A and B.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ and %2$@"
+          }
+        }
+      }
+    },
+    "import.snippets.addRow" : {
+      "comment" : "Snippets, import review, VoiceOver: the checkbox that adds a snippet. %@ is its trigger.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add %@"
+          }
+        }
+      }
+    },
+    "import.words.addRow" : {
+      "comment" : "Your Words, import review, VoiceOver: the checkbox that adds a word. %@ is the word.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add %@"
+          }
+        }
+      }
+    },
+    "in progress, %@" : {
+      "comment" : "VoiceOver, Transcribe a File: a Working row with no progress bar. %@ is the time spent, such as 36 s."
+    },
     "language.picker.spellingAccessibility" : {
       "comment" : "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses.",
       "extractionState" : "extracted_with_value",
@@ -3022,6 +4375,9 @@
           }
         }
       }
+    },
+    "learned from your edits" : {
+      "comment" : "Your Words, VoiceOver: said after a learned word or mishearing; lowercase, as a phrase."
     },
     "livePreview.languagePackNotDownloaded" : {
       "comment" : "Recording pill and Live Preview: a language pack is missing. %@ is the language's name.",
@@ -3062,9 +4418,18 @@
         }
       }
     },
+    "mono" : {
+      "comment" : "Transcribe a File: a file's audio has one channel."
+    },
     "my email address" : {},
+    "no apps yet" : {
+      "comment" : "Import: ends the sentence EnviousWispr can read …; used only when no app is supported. Lowercase."
+    },
     "no language pinned" : {
       "comment" : "Live Preview settings: language provenance detected. A caption under the language: where it came from."
+    },
+    "not started" : {
+      "comment" : "VoiceOver, Transcribe a File: a Working row has not started."
     },
     "notification.update.ready.body" : {
       "comment" : "Body of the macOS notification when an app update has downloaded. %@ is the version number, for example 2.6.0.",
@@ -3082,6 +4447,18 @@
       "comment" : "AI Polish provider list: VoiceOver reads it after a provider name (\"EG-1, on this Mac\")."
     },
     "or drag and drop here" : {},
+    "otherAudio.option.continue" : {
+      "comment" : "Microphone settings, media during dictation: option that leaves other audio playing (keeps playing, not 'go on').",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Continue"
+          }
+        }
+      }
+    },
     "selected" : {
       "comment" : "Dictation language picker, VoiceOver: the chosen row.\nVoiceOver: a chosen segmented option.\nVoiceOver: a chosen segmented option; here, the Auto-detect row of the dictation language picker."
     },
@@ -3097,11 +4474,95 @@
         }
       }
     },
+    "snippetImport.summary.one" : {
+      "comment" : "Snippets, import review summary: a sentence of one phrase. %@ is the phrase.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%@."
+          }
+        }
+      }
+    },
+    "snippetImport.summary.three" : {
+      "comment" : "Snippets, import review summary: a sentence listing three phrases.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@."
+          }
+        }
+      }
+    },
+    "snippetImport.summary.two" : {
+      "comment" : "Snippets, import review summary: a sentence listing two phrases.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@."
+          }
+        }
+      }
+    },
+    "stereo" : {
+      "comment" : "Transcribe a File: a file's audio has two channels."
+    },
     "the new %@" : {
       "comment" : "Settings > AI Polish, local model row: names an upgrade whose version is unknown. %@ is the model name."
     },
+    "the quarterly numbers came in" : {
+      "comment" : "Appearance settings, recording pill picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence."
+    },
     "then your snippet, and it expands." : {},
+    "transcribeFile.step.polish" : {
+      "comment" : "Transcribe a File: a step name in the step bar. Polish means the AI cleanup of the text (to polish it), never the Polish language.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Polish"
+          }
+        }
+      }
+    },
+    "transcribeFile.summary.polish" : {
+      "comment" : "Transcribe a File, Working page: a row label in the file summary: the AI cleanup engine. Polish means cleanup, never the Polish language.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Polish"
+          }
+        }
+      }
+    },
+    "under a minute" : {
+      "comment" : "Transcribe a File: an estimate shown on its own, in lowercase."
+    },
+    "under a minute left" : {
+      "comment" : "Transcribe a File, Working step: time left, in lowercase."
+    },
     "v%@" : {},
+    "wordCategory.general" : {
+      "comment" : "Your Words: the category for words without a specific field.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "General"
+          }
+        }
+      }
+    },
     "you picked this" : {
       "comment" : "Live Preview settings: language provenance user picked. A caption under the language: where it came from."
     },

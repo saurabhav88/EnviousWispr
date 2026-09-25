@@ -64,15 +64,27 @@ enum FileImportPolishBlock: Equatable {
     switch self {
     case .needsSetup:
       // Founder copy, from the approved prototype. Do not reword.
-      return "Finish setting this one up, or pick another."
+      return String(
+        localized: "Finish setting this one up, or pick another.",
+        comment: "Transcribe a File, Polish step: the note beside Continue when it is blocked.")
     case .checking:
-      return "Checking that engine. One moment."
+      return String(
+        localized: "Checking that engine. One moment.",
+        comment: "Transcribe a File, Polish step: the note beside Continue when it is blocked.")
     case .availabilityUnconfirmed:
-      return "That engine is not ready. Check its status below, or pick another."
+      return String(
+        localized: "That engine is not ready. Check its status below, or pick another.",
+        comment: "Transcribe a File, Polish step: the note beside Continue when it is blocked.")
     case .couldNotCheckKey:
-      return "We could not check your saved key. Try again, or pick another."
+      return String(
+        localized: "We could not check your saved key. Try again, or pick another.",
+        comment: "Transcribe a File, Polish step: the note beside Continue when it is blocked.")
     case .unsavedKey:
-      return "Press Save key to finish, or pick another."
+      return String(
+        localized: "Press Save key to finish, or pick another.",
+        comment:
+          "Transcribe a File, Polish step: the note beside Continue when it is blocked. Save key is a button."
+      )
     }
   }
 }
@@ -344,31 +356,71 @@ enum FileImportPolishSubtitle {
     switch readiness {
     case .ready:
       switch provider {
-      case .egOne, .s1Mini, .appleIntelligence: return "On device"
+      case .egOne, .s1Mini, .appleIntelligence:
+        return String(
+          localized: "On device",
+          comment: "Transcribe a File, Polish step: the line under an engine's name.")
       // NOT "On this Mac". Readiness does not decide LOCATION: the daemon proxies some
       // models to Ollama's own servers, and a card claiming local processing over one of
       // those is a false privacy claim on the screen where the user approves the choice.
       // Location is `coordinator.polishOllamaLocalityNow()`, which knows the model. Found
       // by Codex.
-      case .ollama: return "Ready"
-      case .openAI, .gemini, .claude: return "Cloud based"
-      case .none: return "No cleanup"
+      case .ollama:
+        return String(
+          localized: "Ready",
+          comment: "Transcribe a File, Polish step: the line under an engine's name.")
+      case .openAI, .gemini, .claude:
+        return String(
+          localized: "Cloud based",
+          comment: "Transcribe a File, Polish step: the line under an engine's name.")
+      case .none:
+        return String(
+          localized: "No cleanup",
+          comment: "Transcribe a File, Polish step: the line under an engine's name.")
       }
     case .blocked(.needsSetup):
       switch provider {
       // Every Ollama setup step happens in the Ollama app: install it, start it, or add a
       // model to it. One sentence covers all three honestly.
-      case .ollama: return "Needs the app"
-      case .openAI, .gemini, .claude: return "Needs a key"
-      case .egOne, .s1Mini: return "Needs setup"
+      case .ollama:
+        return String(
+          localized: "Needs the app",
+          comment:
+            "Transcribe a File, Polish step: the line under an engine's name. The Ollama app must be installed or started."
+        )
+      case .openAI, .gemini, .claude:
+        return String(
+          localized: "Needs a key",
+          comment:
+            "Transcribe a File, Polish step: the line under an engine's name. An API key is needed."
+        )
+      case .egOne, .s1Mini:
+        return String(
+          localized: "Needs setup",
+          comment: "Transcribe a File, Polish step: the line under an engine's name.")
       // Unreachable: `.appleIntelligence` never blocks with `.needsSetup` and `.none` never
       // blocks at all. Spelled out rather than defaulted so a new state has to be decided.
-      case .appleIntelligence, .none: return "Needs setup"
+      case .appleIntelligence, .none:
+        return String(
+          localized: "Needs setup",
+          comment: "Transcribe a File, Polish step: the line under an engine's name.")
       }
-    case .blocked(.unsavedKey): return "Key not saved"
-    case .blocked(.checking): return "Checking"
-    case .blocked(.availabilityUnconfirmed): return "Not ready"
-    case .blocked(.couldNotCheckKey): return "Key not checked"
+    case .blocked(.unsavedKey):
+      return String(
+        localized: "Key not saved",
+        comment: "Transcribe a File, Polish step: the line under an engine's name.")
+    case .blocked(.checking):
+      return String(
+        localized: "Checking",
+        comment: "Transcribe a File, Polish step: the line under an engine's name.")
+    case .blocked(.availabilityUnconfirmed):
+      return String(
+        localized: "Not ready",
+        comment: "Transcribe a File, Polish step: the line under an engine's name.")
+    case .blocked(.couldNotCheckKey):
+      return String(
+        localized: "Key not checked",
+        comment: "Transcribe a File, Polish step: the line under an engine's name.")
     }
   }
 }
