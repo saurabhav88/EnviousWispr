@@ -313,9 +313,7 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     application.setPolicy(.regular)
     application.activate(.ignoringOtherApps)
     // Hide the main window so only the onboarding window is visible during setup.
-    if let mainWin = self.mainWindow {
-      mainWin.orderOut(nil)
-    }
+    hideMainWindowForSetup()
 
     // Capture the onboarding NSWindow by identity on first open.
     // We defer one run-loop cycle so SwiftUI has time to create/order the window
@@ -333,6 +331,10 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
       // Ensure the window is visible — openWindow(id:) is a silent no-op when
       // reopening a single-instance Window scene that was previously dismissed.
       self.onboardingWindow?.makeKeyAndOrderFront(nil)
+      // #3149: again, one run-loop cycle later. On a first launch the main scene is
+      // still being ordered on screen when this method runs, so the first pass can
+      // find nothing to hide and the main window then appears behind Setup.
+      self.hideMainWindowForSetup()
     }
 
     // Monitor for user closing the onboarding window before completion.
@@ -359,6 +361,15 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
           }
         }
       }
+    }
+  }
+
+  /// #3149: hide every main-identity window, found by scanning `NSApp.windows`.
+  /// The weak `mainWindow` reference is captured only when the main window first
+  /// closes, so on a first launch it is nil and could not hide anything.
+  private func hideMainWindowForSetup() {
+    for window in NSApp.windows where isMainWindow(window) && window.isVisible {
+      window.orderOut(nil)
     }
   }
 
