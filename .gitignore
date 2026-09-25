@@ -424,6 +424,10 @@ routine-session-logs-*/
 
 # Codex scratch artifacts (local-only review prompts/outputs)
 .codex/
+.codex-out/
+
+# impeccable skill detector config and cache (local-only)
+.impeccable/
 
 # Local research workbenches (classifier retraining data, eval corpora) — never tracked
 /artifacts/
