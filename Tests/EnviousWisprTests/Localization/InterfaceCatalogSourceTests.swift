@@ -4,9 +4,9 @@ import Testing
 /// #3142: the interface String Catalog, as committed and as compiled into the app
 /// the same build produces beside this test bundle.
 ///
-/// No language beyond English ships until it is complete: a `de` value in this
-/// file makes the main bundle declare German, and macOS would then show a
-/// half-translated app to German Macs.
+/// #3142 Phase 5: English and German ship. A `de` value in a catalog makes the main bundle
+/// declare German, so German must stay on every key (completeness itself, per unit, is
+/// `l10n-catalog-sync.sh --check`); these tests keep that check from going vacuous.
 @Suite("Interface catalog source", .tags(.driftGuard))
 struct InterfaceCatalogSourceTests {
   private static let catalogPath = "Sources/EnviousWispr/Resources/Localizable.xcstrings"
@@ -35,6 +35,15 @@ struct InterfaceCatalogSourceTests {
     "feedback.sent.detail": "If you left your email, we'll reply there.",
   ]
 
+  // Literal oracle for the German, independent of the catalog (reviewed 2026-09-25).
+  private static let expectedGerman: [String: String] = [
+    "settings.aiPolish.enable.title": "KI-Nachbearbeitung aktivieren",
+    "menu.setupRequired.continue": "Einrichtung erforderlich: Einrichtung fortsetzen…",
+    "notification.update.ready.body": "Version %@ ist bereit. Klicke zum Installieren.",
+    "feedback.title": "Feedback senden",
+    "feedback.send": "Senden",
+  ]
+
   @Test("Semantic keys carry today's exact English")
   func semanticKeysCarryExactEnglish() throws {
     let strings = try Self.strings()
@@ -45,25 +54,36 @@ struct InterfaceCatalogSourceTests {
   }
 
   @Test(
-    "No language other than English is in any catalog",
+    "English and German only, and German on every key",
     arguments: [catalogPath] + infoPlistCatalogs)
-  func onlyEnglishShips(catalog: String) throws {
+  func englishAndGermanShip(catalog: String) throws {
     let strings = try Self.strings(catalog)
     #expect(!strings.isEmpty, "catalog parsed to zero entries")
     var languages = Set<String>()
-    for case let entry as [String: Any] in strings.values {
-      let localizations = entry["localizations"] as? [String: Any] ?? [:]
+    var withoutGerman: [String] = []
+    for (key, value) in strings {
+      let localizations = (value as? [String: Any])?["localizations"] as? [String: Any] ?? [:]
       languages.formUnion(localizations.keys)
+      // `Text("")` extracts an empty key with nothing to translate.
+      if !key.isEmpty, localizations["de"] == nil { withoutGerman.append(key) }
     }
-    #expect(
-      languages.isSubset(of: ["en"]), "non-English localizations present: \(languages.sorted())")
-    // Control: the check above can see a language, because English is present.
-    #expect(languages.contains("en"))
+    #expect(languages.isSubset(of: ["en", "de"]), "languages present: \(languages.sorted())")
+    #expect(languages.contains("de"), "German is gone from \(catalog)")
+    #expect(withoutGerman.isEmpty, "keys without German: \(withoutGerman.sorted().prefix(10))")
   }
 
   /// The unit-test process's `Bundle.main` is not the app, but the same build places the app
   /// beside the test bundle. Reading the COMPILED table there proves the catalog ships; a
   /// catalog dropped from the app target (deleted, commented out, excluded) leaves no table.
+  @Test("The built app ships the compiled German table")
+  func builtAppShipsCompiledGermanTable() throws {
+    let compiled = try Self.compiledTable(
+      in: try Self.builtApp(), language: "de", table: "Localizable")
+    for (key, german) in Self.expectedGerman {
+      #expect(compiled[key] == german, "\(key) in the shipped German table")
+    }
+  }
+
   @Test("The built app ships the compiled English table with every translated entry")
   func builtAppShipsCompiledTable() throws {
     let compiled = try Self.compiledTable(
@@ -84,7 +104,7 @@ struct InterfaceCatalogSourceTests {
 
   /// The permission prompts, the About box line and the Services menu item compile from the two
   /// Info.plist catalogs to exactly the English in Info.plist, read here from the plist itself.
-  /// No German table from them ships yet.
+  /// Their German tables carry exactly the same keys.
   @Test("The built app's permission and Services tables equal Info.plist's English")
   func builtAppShipsInfoPlistTables() throws {
     let plistData = try Data(
@@ -106,10 +126,14 @@ struct InterfaceCatalogSourceTests {
     #expect(
       try Self.compiledTable(in: app, language: "en", table: "ServicesMenu")
         == Dictionary(uniqueKeysWithValues: services.map { ($0, $0) }))
-    for table in ["InfoPlist", "ServicesMenu"] {
-      let german = app.appendingPathComponent("Contents/Resources/de.lproj/\(table).strings")
-      #expect(!FileManager.default.fileExists(atPath: german.path), "\(table) ships German")
-    }
+    let germanPrompts = try Self.compiledTable(in: app, language: "de", table: "InfoPlist")
+    #expect(Set(germanPrompts.keys) == Set(prompts.keys))
+    #expect(
+      germanPrompts["NSMicrophoneUsageDescription"]
+        == "EnviousWispr benötigt Zugriff auf dein Mikrofon, um deine Sprache in Text umzuwandeln.")
+    let germanServices = try Self.compiledTable(in: app, language: "de", table: "ServicesMenu")
+    #expect(Set(germanServices.keys) == Set(services))
+    #expect(germanServices["Add to EnviousWispr Words"] == "Zu EnviousWispr-Wörtern hinzufügen")
   }
 
   private static func builtApp() throws -> URL {

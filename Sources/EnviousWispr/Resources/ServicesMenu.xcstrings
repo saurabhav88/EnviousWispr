@@ -10,6 +10,12 @@
             "state" : "translated",
             "value" : "Add to EnviousWispr Words"
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu EnviousWispr-Wörtern hinzufügen"
+          }
         }
       }
     }
