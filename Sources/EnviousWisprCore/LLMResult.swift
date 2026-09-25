@@ -282,6 +282,61 @@ public struct LLMProviderConfig: Codable, Sendable {
   }
 }
 
+/// Why the Apple Intelligence row in the model picker says what it says (#3142).
+///
+/// Stored on the row so the label is translated when it is shown, never written into cached
+/// data in whatever language was active at discovery.
+public enum AppleIntelligenceModelStatus: String, Codable, Sendable, CaseIterable {
+  case onDevice
+  case deviceNotSupported
+  case notEnabled
+  case modelNotReady
+  case unavailable
+  case requiresMacOS26
+
+  /// The picker label, in the app's language.
+  public var displayName: String {
+    switch self {
+    case .onDevice:
+      return String(
+        localized: "Apple Intelligence (On-Device)",
+        comment:
+          "AI Polish model picker, Apple Intelligence: usable, runs on this Mac. Apple Intelligence is a product name; keep it."
+      )
+    case .deviceNotSupported:
+      return String(
+        localized: "Apple Intelligence (Device Not Supported)",
+        comment:
+          "AI Polish model picker, Apple Intelligence: this Mac can't run it. Apple Intelligence is a product name; keep it."
+      )
+    case .notEnabled:
+      return String(
+        localized: "Apple Intelligence (Not Enabled in Settings)",
+        comment:
+          "AI Polish model picker, Apple Intelligence: turned off in System Settings. Apple Intelligence is a product name; keep it."
+      )
+    case .modelNotReady:
+      return String(
+        localized: "Apple Intelligence (Model Not Ready)",
+        comment:
+          "AI Polish model picker, Apple Intelligence: the model is still downloading. Apple Intelligence is a product name; keep it."
+      )
+    case .unavailable:
+      return String(
+        localized: "Apple Intelligence (Unavailable)",
+        comment:
+          "AI Polish model picker, Apple Intelligence: unavailable for another reason. Apple Intelligence is a product name; keep it."
+      )
+    case .requiresMacOS26:
+      return String(
+        localized: "Apple Intelligence (Requires macOS 26+)",
+        comment:
+          "AI Polish model picker, Apple Intelligence: needs a newer macOS. Apple Intelligence and macOS are product names; keep them."
+      )
+    }
+  }
+}
+
 /// A discoverable LLM model with availability status.
 public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// Canonical Ollama model name: strips a `:latest` suffix, preserves every
@@ -329,6 +384,16 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// model, so they carry the same field name fed by the same decoder.
   public let isRemote: Bool
 
+  /// Apple Intelligence rows only (#3142): what the row's label means, so it is translated when
+  /// shown. `displayName` keeps the English it always had; every other provider leaves this nil.
+  public let appleIntelligenceStatus: AppleIntelligenceModelStatus?
+
+  /// The label a screen shows: the translated Apple Intelligence label when this row has a
+  /// status, otherwise `displayName` (a model name).
+  public var localizedDisplayName: String {
+    appleIntelligenceStatus?.displayName ?? displayName
+  }
+
   /// `isRemote` is deliberately REQUIRED, with no default. A default made
   /// "every production site states remoteness" a convention a future caller
   /// could quietly break, and an omitted Ollama fact would default to local and
@@ -337,13 +402,14 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// `LLMPolishStep`'s non-optional `ollamaThinks` binding uses.
   public init(
     id: String, displayName: String, provider: LLMProvider, isAvailable: Bool,
-    isRemote: Bool
+    isRemote: Bool, appleIntelligenceStatus: AppleIntelligenceModelStatus? = nil
   ) {
     self.id = id
     self.displayName = displayName
     self.provider = provider
     self.isAvailable = isAvailable
     self.isRemote = isRemote
+    self.appleIntelligenceStatus = appleIntelligenceStatus
   }
 
   /// #1914: hand-written because a property default does NOT rescue a missing
@@ -374,6 +440,9 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
     displayName = try container.decode(String.self, forKey: .displayName)
     provider = try container.decode(LLMProvider.self, forKey: .provider)
     isAvailable = try container.decode(Bool.self, forKey: .isAvailable)
+    // #3142: absent in caches written before the field existed; nil means "a model name".
+    appleIntelligenceStatus = try container.decodeIfPresent(
+      AppleIntelligenceModelStatus.self, forKey: .appleIntelligenceStatus)
     if let decoded = try container.decodeIfPresent(Bool.self, forKey: .isRemote) {
       isRemote = decoded
     } else if provider == .ollama {

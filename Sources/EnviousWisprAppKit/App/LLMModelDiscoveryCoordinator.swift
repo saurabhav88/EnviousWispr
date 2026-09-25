@@ -229,10 +229,12 @@ final class LLMModelDiscoveryCoordinator {
       comment: "AI Polish settings, checking the API key: the provider rejected the key.")
   }
 
-  /// #3142: what the key check shows for an error it has no specific wording for. An LLMError's
-  /// translated display message when it has one; otherwise the error's own description.
+  /// #3142: what the key check shows for an error it has no specific wording for. A discovery
+  /// failure the app describes itself, then an LLMError's translated display message when it has
+  /// one; otherwise the error's own description.
   nonisolated static func validationFailureMessage(for error: any Error) -> String {
-    (error as? LLMError)?.localizedDisplayMessage ?? error.localizedDescription
+    if let failure = error as? ModelDiscoveryFailure { return failure.displayMessage }
+    return (error as? LLMError)?.localizedDisplayMessage ?? error.localizedDescription
   }
 
   /// #1173: emit `api_key.validation_completed` for a terminal validation result.
@@ -271,6 +273,13 @@ final class LLMModelDiscoveryCoordinator {
     // a DIFFERENT provider's models and verdict through `stateProvider`'s `didSet`.
     invalidateInFlightDiscovery()
     stateProvider = provider
+    // #3142: Apple Intelligence's row comes from a local availability check, never the cache.
+    // Discovery stopped caching it, but a cache written by an older build can still hold a row
+    // whose status or language is stale; recomputing answers both, and parses no text.
+    if provider == .appleIntelligence {
+      discoveredModels = LLMModelDiscovery.appleIntelligenceModelInfo()
+      return
+    }
     let key = "cachedModels_\(provider.rawValue)"
     guard let data = cacheDefaults.data(forKey: key),
       let models = try? JSONDecoder().decode([LLMModelInfo].self, from: data)

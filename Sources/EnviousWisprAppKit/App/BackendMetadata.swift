@@ -73,7 +73,7 @@ final class BackendMetadata {
     let model = settings.effectiveLLMModel  // #1173: single source of truth
     if model.isEmpty { return settings.llmProvider.displayName }
     if let info = llmDiscovery.discoveredModels.first(where: { $0.id == model }) {
-      return info.displayName
+      return info.localizedDisplayName
     }
     return model
   }

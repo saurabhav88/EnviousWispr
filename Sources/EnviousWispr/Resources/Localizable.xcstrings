@@ -889,6 +889,24 @@
     "Apple GPU" : {
       "comment" : "Speech engine settings, engine card: the chip it runs on, the graphics processor."
     },
+    "Apple Intelligence (Device Not Supported)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: this Mac can't run it. Apple Intelligence is a product name; keep it."
+    },
+    "Apple Intelligence (Model Not Ready)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: the model is still downloading. Apple Intelligence is a product name; keep it."
+    },
+    "Apple Intelligence (Not Enabled in Settings)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: turned off in System Settings. Apple Intelligence is a product name; keep it."
+    },
+    "Apple Intelligence (On-Device)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: usable, runs on this Mac. Apple Intelligence is a product name; keep it."
+    },
+    "Apple Intelligence (Requires macOS 26+)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: needs a newer macOS. Apple Intelligence and macOS are product names; keep them."
+    },
+    "Apple Intelligence (Unavailable)" : {
+      "comment" : "AI Polish model picker, Apple Intelligence: unavailable for another reason. Apple Intelligence is a product name; keep it."
+    },
     "Apple Intelligence availability could not be determined." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac."
     },
@@ -2230,6 +2248,24 @@
     },
     "LLM request failed: %@" : {
       "comment" : "AI Polish settings: checking the API key failed. %@ is technical detail from the provider or the system, such as HTTP 500; keep it as is."
+    },
+    "LLM request failed: Claude model pagination returned a malformed cursor" : {
+      "comment" : "AI Polish settings, checking the API key: Claude's model list came back broken. Claude is a product name; keep it."
+    },
+    "LLM request failed: HTTP %@" : {
+      "comment" : "AI Polish settings, checking the API key: the provider answered with an error. %@ is an HTTP status code, such as 500."
+    },
+    "LLM request failed: Invalid Ollama URL" : {
+      "comment" : "AI Polish settings, checking the API key: the address of Ollama is invalid. Ollama is a product name; keep it."
+    },
+    "LLM request failed: Invalid URL" : {
+      "comment" : "AI Polish settings, checking the API key: the app built an invalid address."
+    },
+    "LLM request failed: Invalid response" : {
+      "comment" : "AI Polish settings, checking the API key: the provider's reply was not usable."
+    },
+    "LLM request failed: Network error: %@" : {
+      "comment" : "AI Polish settings, checking the API key: a network error. %@ is the system's description of it; keep it as is."
     },
     "LLM returned an empty response." : {
       "comment" : "AI polish error: the model returned no text. Shown after 'AI polish failed:'."
