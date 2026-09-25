@@ -9,18 +9,35 @@ import SwiftUI
 /// "more reliable". No em/en dashes (brand rule).
 enum BluetoothTipsCopy {
   // Overlay popover
-  static let cardTitle = "Bluetooth mic detected"
-  static let cardIntro = "Bluetooth microphones can take a moment on a cold start."
-  static let cardFootnote = "Shown once per launch when Bluetooth is your mic"
-  static let gotItButton = "Got it"
-  static let adjustSettingsButton = "Adjust settings"
-  static let closeAccessibilityLabel = "Dismiss Bluetooth tips"
+  static let cardTitle = String(
+    localized: "Bluetooth mic detected",
+    comment: "Title of the tip card shown when a Bluetooth microphone is the input.")
+  static let cardIntro = String(
+    localized: "Bluetooth microphones can take a moment on a cold start.",
+    comment: "First line of the Bluetooth tip card.")
+  static let cardFootnote = String(
+    localized: "Shown once per launch when Bluetooth is your mic",
+    comment: "Small print at the bottom of the Bluetooth tip card.")
+  static let gotItButton = String(
+    localized: "Got it",
+    comment: "Button that closes the Bluetooth tip card.")
+  static let adjustSettingsButton = String(
+    localized: "Adjust settings",
+    comment: "Button on the Bluetooth tip card that opens the Microphone settings.")
+  static let closeAccessibilityLabel = String(
+    localized: "Dismiss Bluetooth tips",
+    comment: "VoiceOver label for the close (x) button of the Bluetooth tip card.")
 
   // Shared tips (identical on both surfaces)
-  static let tipTiming = "After your mic has been idle, wait 1 to 2 seconds before speaking."
-  static let tipReadiness =
-    "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default)."
-  static let tipHeadphones = "Built-in or wired mics usually avoid this startup delay."
+  static let tipTiming = String(
+    localized: "After your mic has been idle, wait 1 to 2 seconds before speaking.",
+    comment: "Bluetooth tip, shown on the tip card and in Microphone settings.")
+  static let tipReadiness = String(
+    localized: "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default).",
+    comment: "Bluetooth tip, shown on the tip card and in Microphone settings. 'Microphone readiness' is the name of a setting.")
+  static let tipHeadphones = String(
+    localized: "Built-in or wired mics usually avoid this startup delay.",
+    comment: "Bluetooth tip, shown on the tip card and in Microphone settings.")
 
   // SF Symbols for the three tips (same icons on both surfaces).
   static let iconTiming = "clock"
@@ -28,13 +45,21 @@ enum BluetoothTipsCopy {
   static let iconHeadphones = "headphones"
 
   // Microphone-settings guide
-  static let settingsHeader = "Using a Bluetooth microphone?"
-  static let settingsIntro =
-    "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay."
-  static let micOrder = "Preferred mic order: Built-in or wired > USB > Bluetooth"
-  static let settingsPS =
-    "Built-in, wired, and USB mics do not have this Bluetooth startup delay."
-  static let showTipsToggle = "Show Bluetooth tips"
+  static let settingsHeader = String(
+    localized: "Using a Bluetooth microphone?",
+    comment: "Heading of the Bluetooth guide in Microphone settings.")
+  static let settingsIntro = String(
+    localized: "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay.",
+    comment: "First paragraph of the Bluetooth guide in Microphone settings.")
+  static let micOrder = String(
+    localized: "Preferred mic order: Built-in or wired > USB > Bluetooth",
+    comment: "Microphone settings: the recommended input types, best first. Keep the > signs.")
+  static let settingsPS = String(
+    localized: "Built-in, wired, and USB mics do not have this Bluetooth startup delay.",
+    comment: "Last line of the Bluetooth guide in Microphone settings.")
+  static let showTipsToggle = String(
+    localized: "Show Bluetooth tips",
+    comment: "Microphone settings: switch that turns the Bluetooth tip card on or off.")
 }
 
 // MARK: - BluetoothAwarenessCardView

@@ -115,7 +115,13 @@
     "Added “%@” to Dictionary" : {
       "comment" : "Pill after a correction taught the app a new word. %@ is that word."
     },
+    "Adjust settings" : {
+      "comment" : "Button on the Bluetooth tip card that opens the Microphone settings."
+    },
     "After installing, come back and click refresh." : {},
+    "After your mic has been idle, wait 1 to 2 seconds before speaking." : {
+      "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
+    },
     "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {},
     "All your contacts are already in your word list." : {},
     "Almost there. Just two permissions." : {},
@@ -132,9 +138,24 @@
     "Automatically fix grammar, punctuation, and formatting." : {},
     "Available" : {},
     "Batch ASR:" : {},
+    "Bluetooth mic detected" : {
+      "comment" : "Title of the tip card shown when a Bluetooth microphone is the input."
+    },
+    "Bluetooth microphones can take a moment on a cold start." : {
+      "comment" : "First line of the Bluetooth tip card."
+    },
+    "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay." : {
+      "comment" : "First paragraph of the Bluetooth guide in Microphone settings."
+    },
     "Bring the words across from another dictation app you use." : {},
     "Bring your snippets in from anywhere. Nothing is added until you review it." : {},
     "Bring your words in from anywhere. Nothing is added until you review it." : {},
+    "Built-in or wired mics usually avoid this startup delay." : {
+      "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings."
+    },
+    "Built-in, wired, and USB mics do not have this Bluetooth startup delay." : {
+      "comment" : "Last line of the Bluetooth guide in Microphone settings."
+    },
     "CSV" : {},
     "Cancel" : {},
     "Cancelling…" : {},
@@ -207,6 +228,9 @@
     "Dictionary section" : {},
     "Discard" : {},
     "Dismiss" : {},
+    "Dismiss Bluetooth tips" : {
+      "comment" : "VoiceOver label for the close (x) button of the Bluetooth tip card."
+    },
     "Document" : {},
     "Done" : {},
     "Double-press to go hands-free." : {},
@@ -270,6 +294,9 @@
     "Get your free API key at platform.openai.com" : {},
     "Getting AI suggestions..." : {},
     "Getting the speech engine ready\nso your first go is instant." : {},
+    "Got it" : {
+      "comment" : "Button that closes the Bluetooth tip card."
+    },
     "Grant" : {},
     "Granted" : {},
     "Hold to dictate. Release to transcribe." : {},
@@ -308,6 +335,9 @@
     "Match strictness" : {},
     "Matched word for word, and only after you say “%@”." : {},
     "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence." : {},
+    "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default)." : {
+      "comment" : "Bluetooth tip, shown on the tip card and in Microphone settings. 'Microphone readiness' is the name of a setting."
+    },
     "Mishearings" : {},
     "Model" : {},
     "Model is freed after every transcription. Expect a reload delay on each recording." : {},
@@ -392,6 +422,9 @@
     "Pipeline Benchmark Results" : {},
     "Play recording sounds" : {},
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {},
+    "Preferred mic order: Built-in or wired > USB > Bluetooth" : {
+      "comment" : "Microphone settings: the recommended input types, best first. Keep the > signs."
+    },
     "Prepare model" : {},
     "Preparing model for faster responses..." : {},
     "Press " : {},
@@ -464,8 +497,14 @@
     "Set how this word is recognized in what you dictate." : {},
     "Setup paused. Start it again whenever you're ready." : {},
     "Show" : {},
+    "Show Bluetooth tips" : {
+      "comment" : "Microphone settings: switch that turns the Bluetooth tip card on or off."
+    },
     "Show app in Dock" : {},
     "Show in Finder" : {},
+    "Shown once per launch when Bluetooth is your mic" : {
+      "comment" : "Small print at the bottom of the Bluetooth tip card."
+    },
     "Shows the %@ Dictionary tab" : {},
     "Shows the reminder popover once per launch. This guide always stays." : {},
     "Skip and finish setup" : {},
@@ -548,6 +587,9 @@
     "Upload an audio or video file, then EnviousWispr will transcribe it and polish it into clean, readable text." : {},
     "Use Transcribe a File to add one." : {},
     "Use dictation's polish settings" : {},
+    "Using a Bluetooth microphone?" : {
+      "comment" : "Heading of the Bluetooth guide in Microphone settings."
+    },
     "VAD: Active" : {},
     "Valid" : {},
     "Validating…" : {},
