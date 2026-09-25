@@ -24,26 +24,63 @@ enum CustomWordsImportResultCopy {
       // v1 can only add, so the replaced count is mentioned only if a later
       // flow (backup restore) actually produced one — a v1 user must never
       // read "replaced 0".
-      let addedPhrase = "Added \(added) \(added == 1 ? "word" : "words")."
-      guard replaced > 0 else { return "\(addedPhrase) Your words are ready to use." }
-      return "\(addedPhrase) Replaced \(replaced). Your words are ready to use."
+      // Whole sentences chosen by the counts, never "word" or "words" spliced in (#3142).
+      switch (added == 1, replaced > 0) {
+      case (true, false):
+        return String(
+          localized: "Added 1 word. Your words are ready to use.",
+          comment: "Your Words, import result: one word added.")
+      case (false, false):
+        return String(
+          localized: "Added \(added) words. Your words are ready to use.",
+          comment: "Your Words, import result: %lld is the number of words added, never 1.")
+      case (true, true):
+        return String(
+          localized: "Added 1 word. Replaced \(replaced). Your words are ready to use.",
+          comment:
+            "Your Words, import result: one word added. %lld is the number of words replaced.")
+      case (false, true):
+        return String(
+          localized: "Added \(added) words. Replaced \(replaced). Your words are ready to use.",
+          comment:
+            "Your Words, import result: the first %lld is the number of words added (never 1), the second the number replaced."
+        )
+      }
     case .nothingFound:
-      return "No words were found, and nothing was changed."
+      return String(
+        localized: "No words were found, and nothing was changed.",
+        comment: "Your Words, import result: the source had no words.")
     case .nothingCompatible(let found):
       // Names what was there and why it did not come across, instead of
       // claiming the source was empty when it plainly was not.
-      let entries = found == 1 ? "entry" : "entries"
-      return "Found \(found) \(entries), but none were compatible. Nothing was changed."
+      return found == 1
+        ? String(
+          localized: "Found 1 entry, but none were compatible. Nothing was changed.",
+          comment: "Your Words, import result: one entry found, and it could not be imported.")
+        : String(
+          localized: "Found \(found) entries, but none were compatible. Nothing was changed.",
+          comment:
+            "Your Words, import result: %lld is the number of entries found, never 1; none could be imported."
+        )
     case .nothingApproved:
-      return "You skipped everything, so nothing was changed."
+      return String(
+        localized: "You skipped everything, so nothing was changed.",
+        comment: "Your Words, import result: the user added nothing.")
     case .failed(let message):
       return message
     }
   }
 
   static func droppedCollisionMessage(count: Int) -> String {
-    let noun = count == 1 ? "spelling was" : "spellings were"
-    return "\(count) alternate \(noun) skipped, because other words already use them."
+    count == 1
+      ? String(
+        localized: "1 alternate spelling was skipped, because other words already use them.",
+        comment: "Your Words, import result: one misheard form was not added.")
+      : String(
+        localized:
+          "\(count) alternate spellings were skipped, because other words already use them.",
+        comment:
+          "Your Words, import result: %lld is the number of misheard forms not added, never 1.")
   }
 }
 
@@ -130,13 +167,21 @@ struct CustomWordsImportReviewRow: Identifiable, Sendable, Equatable {
     case .new:
       return nil
     case .exact(let existing):
-      return "You already have \(existing.canonical)."
+      return String(
+        localized: "You already have \(existing.canonical).",
+        comment: "Your Words, import review: a row's note. %@ is the word.")
     case .variant(let existing, _):
-      return "You already have this, as another spelling of \(existing.canonical)."
+      return String(
+        localized: "You already have this, as another spelling of \(existing.canonical).",
+        comment: "Your Words, import review: a row's note. %@ is the existing word.")
     case .fuzzy(let existing, _):
-      return "This looks like \(existing.canonical), which you already have."
+      return String(
+        localized: "This looks like \(existing.canonical), which you already have.",
+        comment: "Your Words, import review: a row's note. %@ is the existing word.")
     case .ambiguous:
-      return "This matches more than one word you already have."
+      return String(
+        localized: "This matches more than one word you already have.",
+        comment: "Your Words, import review: a row's note.")
     }
   }
 
@@ -156,7 +201,7 @@ struct CustomWordsImportReviewRow: Identifiable, Sendable, Equatable {
   /// be decision-aware display logic for a case v1 cannot produce; honest
   /// conditional copy is correct in every future instead. PR-F2b's receipt
   /// reports what was actually dropped, and the result screen shows that count.
-  private static func collisionNote(
+  static func collisionNote(
     for collisions: [CustomWordsImportAliasCollision],
     namesByID: [UUID: String]
   ) -> String? {
@@ -165,11 +210,22 @@ struct CustomWordsImportReviewRow: Identifiable, Sendable, Equatable {
     // candidate rather than an existing word, in which case there is no name
     // to look up and the honest line just states the outcome.
     if collisions.count == 1, let owner = namesByID[collisions[0].heldBy] {
-      return "The spelling \"\(collisions[0].alias)\" may not be added, "
-        + "because \(owner) already uses it."
+      return String(
+        localized:
+          "The spelling \"\(collisions[0].alias)\" may not be added, because \(owner) already uses it.",
+        comment:
+          "Your Words, import review: a row's note. The first %@ is a misheard form, the second the word that has it; use this language's quotation marks."
+      )
     }
     let count = collisions.count
-    let noun = count == 1 ? "spelling" : "spellings"
-    return "\(count) alternate \(noun) may not be added, because other words already use them."
+    return count == 1
+      ? String(
+        localized: "1 alternate spelling may not be added, because other words already use them.",
+        comment: "Your Words, import review: a row's note: one misheard form.")
+      : String(
+        localized:
+          "\(count) alternate spellings may not be added, because other words already use them.",
+        comment:
+          "Your Words, import review: a row's note. %lld is the number of misheard forms, never 1.")
   }
 }

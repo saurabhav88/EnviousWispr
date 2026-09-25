@@ -213,29 +213,57 @@ struct CustomWordsImportSheet: View {
 
   /// Names the actual consequence, so Confirm is never a mystery button.
   private var confirmTitle: String {
-    let count = model.approvedRows.count
-    switch count {
-    case 0: return "Add nothing"
-    case 1: return "Add 1 word"
-    default: return "Add \(count) words"
-    }
+    CustomWordsImportReviewCopy.confirmTitle(approvedCount: model.approvedRows.count)
   }
 
   private var title: String {
     switch model.step {
-    case .methodPicker: return "Import words"
-    case .paste: return "Paste words"
-    case .upload: return "Open a file"
-    case .smartImportAppPicker: return "From another app"
-    case .review: return "Review & Merge"
-    case .working(.loadingCandidates): return "Finding words"
-    case .working(.comparing): return "Checking your list"
-    case .working(.committing): return "Saving"
-    case .result(.completed): return "Import complete"
-    case .result(.nothingFound): return "Nothing to import"
-    case .result(.nothingCompatible): return "Nothing compatible"
-    case .result(.nothingApproved): return "Nothing added"
-    case .result(.failed): return "Import didn't finish"
+    case .methodPicker:
+      return String(
+        localized: "Import words",
+        comment: "Your Words, import words: sheet title, the sheet's first step.")
+    case .paste:
+      return String(
+        localized: "Paste words", comment: "Your Words, import words: sheet title, pasting a list.")
+    case .upload:
+      return String(
+        localized: "Open a file", comment: "Your Words, import words: sheet title, choosing a file."
+      )
+    case .smartImportAppPicker:
+      return String(
+        localized: "From another app",
+        comment: "Your Words, import words: sheet title, choosing another dictation app.")
+    case .review:
+      return String(
+        localized: "Review & Merge",
+        comment: "Your Words, import words: sheet title, reviewing what will be added.")
+    case .working(.loadingCandidates):
+      return String(
+        localized: "Finding words", comment: "Your Words, import words: sheet title, working.")
+    case .working(.comparing):
+      return String(
+        localized: "Checking your list", comment: "Your Words, import words: sheet title, working.")
+    case .working(.committing):
+      return String(localized: "Saving", comment: "Your Words, import words: sheet title, working.")
+    case .result(.completed):
+      return String(
+        localized: "Import complete", comment: "Your Words, import words: sheet title, done.")
+    case .result(.nothingFound):
+      return String(
+        localized: "Nothing to import",
+        comment: "Your Words, import words: sheet title, the source had no words.")
+    case .result(.nothingCompatible):
+      return String(
+        localized: "Nothing compatible",
+        comment: "Your Words, import words: sheet title, no word could be imported.")
+    case .result(.nothingApproved):
+      return String(
+        localized: "Nothing added",
+        comment: "Your Words, import words: sheet title, the user added none.")
+    case .result(.failed):
+      return String(
+        localized: "Import didn't finish", comment: "Your Words, import words: sheet title, failed."
+      )
     }
   }
 }
@@ -252,8 +280,11 @@ private struct ImportMethodPickerScreen: View {
 
       ImportMethodCard(
         icon: "doc.on.clipboard",
-        title: "Paste words",
-        subtitle: "Paste a list of words from anywhere."
+        title: String(
+          localized: "Paste words", comment: "Your Words, import words: method card title."),
+        subtitle: String(
+          localized: "Paste a list of words from anywhere.",
+          comment: "Your Words, import words: method card description.")
       ) {
         model.select(.paste)
       }
@@ -273,18 +304,24 @@ private struct ImportMethodPickerScreen: View {
       // limit rather than leaving the user to discover it.
       ImportMethodCard(
         icon: "square.and.arrow.down",
-        title: "Open a file",
-        subtitle:
-          "Moving Macs, or bringing your words back? Pick the "
-          + "\(CustomWordsExportPanel.defaultFilename) you exported, or a plain "
-          + "list. Words you already have are left as they are."
+        title: String(
+          localized: "Open a file", comment: "Your Words, import words: method card title."),
+        subtitle: String(
+          localized:
+            "Moving Macs, or bringing your words back? Pick the \(CustomWordsExportPanel.defaultFilename) you exported, or a plain list. Words you already have are left as they are.",
+          comment:
+            "Your Words, import words: method card description. %@ is the export file's name; keep it as written."
+        )
       ) {
         model.select(.upload)
       }
       ImportMethodCard(
         icon: "sparkles",
-        title: "From another app",
-        subtitle: "Bring your dictionary over from another dictation app."
+        title: String(
+          localized: "From another app", comment: "Your Words, import words: method card title."),
+        subtitle: String(
+          localized: "Bring your dictionary over from another dictation app.",
+          comment: "Your Words, import words: method card description.")
       ) {
         model.select(.smartImport)
       }
@@ -321,19 +358,10 @@ private struct ImportReviewScreen: View {
 
   private var summary: String {
     let addable = model.rows.filter(\.isAddable).count
-    let existing = model.rows.count - addable
-    switch (addable, existing) {
-    case (0, 0):
-      return "Nothing to review."
-    case (let new, 0):
-      return "\(new) new \(new == 1 ? "word" : "words") found."
-    case (0, let have):
-      return "You already have all \(have) of these."
-    case (let new, let have):
-      return "\(new) new \(new == 1 ? "word" : "words") found. "
-        + "\(have) you already have."
-    }
+    return CustomWordsImportReviewCopy.summary(
+      newCount: addable, existingCount: model.rows.count - addable)
   }
+
 }
 
 private struct ImportReviewRowView: View {
@@ -368,7 +396,12 @@ private struct ImportReviewRowView: View {
           )
         )
         .toggleStyle(.checkbox)
-        .accessibilityLabel("Add \(row.canonical)")
+        .accessibilityLabel(
+          String(
+            localized: "import.words.addRow", defaultValue: "Add \(row.canonical)",
+            comment:
+              "Your Words, import review, VoiceOver: the checkbox that adds a word. %@ is the word."
+          ))
       } else {
         Text("Skipped")
           .font(.stHelper)
@@ -505,26 +538,40 @@ private struct ImportPasteScreen: View {
   private var summary: String {
     // Says it is still working rather than reporting a stale number as
     // current, or flashing "no words found" at text nobody has counted yet.
-    if isCounting { return "Counting…" }
+    if isCounting {
+      return String(
+        localized: "Counting…", comment: "Your Words, import words: pasted text is being counted.")
+    }
     if let parseProblem { return parseProblem }
     let count = wordCount
     switch count {
     case 0 where model.pasteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
-      return "Nothing pasted yet."
+      return String(
+        localized: "Nothing pasted yet.",
+        comment: "Your Words, import words: the paste box is empty.")
     case 0:
-      return "No words found in that text."
+      return String(
+        localized: "No words found in that text.",
+        comment: "Your Words, import words: the pasted text had no words.")
     case 1:
-      return "1 word ready to review."
+      return String(
+        localized: "1 word ready to review.",
+        comment: "Your Words, import words: one word found in the pasted text.")
     case let n where n > CustomWordsImportLimits.maximumCandidates:
       // The scan stops one past the limit, so this count is a sentinel rather
       // than a total — and none of these words are "ready to review", because
       // Confirm will refuse the batch. Saying so here beats letting the user
       // find out at the end (Codex review, #1683).
-      return
-        "That's more than \(CustomWordsImportLimits.maximumCandidates) words. "
-        + "Paste a smaller batch."
+      return String(
+        localized:
+          "That's more than \(CustomWordsImportLimits.maximumCandidates) words. Paste a smaller batch.",
+        comment: "Your Words, import words: the paste is too long. %lld is the limit.")
     default:
-      return "\(count) words ready to review."
+      return String(
+        localized: "\(count) words ready to review.",
+        comment:
+          "Your Words, import words: %lld is the number of words found in the pasted text, never 1."
+      )
     }
   }
 }
@@ -600,7 +647,9 @@ private struct ImportSmartAppPickerScreen: View {
           ImportMethodCard(
             icon: "app.badge",
             title: adapter.displayName,
-            subtitle: "Read your words from \(adapter.displayName)."
+            subtitle: String(
+              localized: "Read your words from \(adapter.displayName).",
+              comment: "Your Words, import words: another app's card. %@ is that app's name.")
           ) {
             model.begin(with: SmartImportSource(adapter: adapter))
           }
@@ -661,9 +710,16 @@ private struct ImportWorkingScreen: View {
 
   private var label: String {
     switch work {
-    case .loadingCandidates: return "Looking for words to import."
-    case .comparing: return "Comparing against your existing words."
-    case .committing: return "Saving your approved changes."
+    case .loadingCandidates:
+      return String(
+        localized: "Looking for words to import.", comment: "Your Words, import words: working.")
+    case .comparing:
+      return String(
+        localized: "Comparing against your existing words.",
+        comment: "Your Words, import words: working.")
+    case .committing:
+      return String(
+        localized: "Saving your approved changes.", comment: "Your Words, import words: working.")
     }
   }
 }
@@ -740,6 +796,59 @@ private struct ImportResultScreen: View {
   }
 #endif
 
+/// The Review & Merge summary line (#3142), outside the private screen so tests can pin it.
+enum CustomWordsImportReviewCopy {
+  /// The confirm button, whole, by count (#3142).
+  static func confirmTitle(approvedCount count: Int) -> String {
+    switch count {
+    case 0:
+      return String(
+        localized: "Add nothing",
+        comment: "Your Words, import words: confirm button when no word is chosen.")
+    case 1:
+      return String(
+        localized: "Add 1 word", comment: "Your Words, import words: confirm button for one word.")
+    default:
+      return String(
+        localized: "Add \(count) words",
+        comment: "Your Words, import words: confirm button. %lld is the number of words, never 1.")
+    }
+  }
+
+  /// Whole sentences chosen by the two counts, never "word" or "words" spliced in (#3142).
+  static func summary(newCount: Int, existingCount: Int) -> String {
+    switch (newCount, existingCount) {
+    case (0, 0):
+      return String(
+        localized: "Nothing to review.",
+        comment: "Your Words, import review: the file had no words.")
+    case (1, 0):
+      return String(
+        localized: "1 new word found.", comment: "Your Words, import review: one new word.")
+    case (let new, 0):
+      return String(
+        localized: "\(new) new words found.",
+        comment: "Your Words, import review: %lld is the number of new words, never 1.")
+    case (0, let have):
+      return String(
+        localized: "You already have all \(have) of these.",
+        comment:
+          "Your Words, import review: every word in the file is already in the list. %lld is how many."
+      )
+    case (1, let have):
+      return String(
+        localized: "1 new word found. \(have) you already have.",
+        comment: "Your Words, import review: one new word. %lld is the number already in the list.")
+    case (let new, let have):
+      return String(
+        localized: "\(new) new words found. \(have) you already have.",
+        comment:
+          "Your Words, import review: the first %lld is the number of new words (never 1), the second the number already in the list."
+      )
+    }
+  }
+}
+
 /// The picker's "EnviousWispr can read …" list, built from the registry.
 ///
 /// The registry owns the NAMES and this owns the SENTENCE. Keeping the
@@ -761,10 +870,26 @@ package enum SmartImportSupportedAppsCopy {
   /// `SnippetImportAppRegistry.displayNames`.
   package static func sentence(joining names: [String]) -> String {
     switch names.count {
-    case 0: return "no apps yet"
+    // Localized list formats, each its own key (#3142). The comma between earlier names stays a
+    // comma; the format decides the joining word and the final punctuation.
+    case 0:
+      return String(
+        localized: "no apps yet",
+        comment:
+          "Import: ends the sentence EnviousWispr can read …; used only when no app is supported. Lowercase."
+      )
     case 1: return names[0]
-    case 2: return "\(names[0]) and \(names[1])"
-    default: return names.dropLast().joined(separator: ", ") + ", and \(names[names.count - 1])"
+    case 2:
+      return String(
+        localized: "import.appList.two", defaultValue: "\(names[0]) and \(names[1])",
+        comment: "Import: two app names in a sentence, as in A and B.")
+    default:
+      return String(
+        localized: "import.appList.more",
+        defaultValue: "\(names.dropLast().joined(separator: ", ")), and \(names[names.count - 1])",
+        comment:
+          "Import: three or more app names. The first %@ is the earlier names already separated by commas, the second the last name."
+      )
     }
   }
 }

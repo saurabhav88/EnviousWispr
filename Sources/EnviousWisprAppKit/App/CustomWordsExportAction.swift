@@ -156,20 +156,27 @@ enum CustomWordsExportAction {
     // The byte ceiling belongs to the READER, not the parser, so it is the one
     // check that has to be stated here. It mirrors FileImportSource.
     if encoded.count > CustomWordsImportLimits.maximumExportedFileBytes {
-      return
-        "Your words are too large to fit in one file EnviousWispr could read "
-        + "back. Nothing was exported."
+      return String(
+        localized:
+          "Your words are too large to fit in one file EnviousWispr could read back. Nothing was exported.",
+        comment: "Your Words, export: refused: the word list is too large for one file.")
     }
     do {
       let candidates = try ExportedWordsFileParser().parse(data: encoded)
       _ = try CustomWordsImportBatch(
         sourceID: "exported-words",
-        sourceDisplayName: "EnviousWispr words file",
+        sourceDisplayName: String(
+          localized: "EnviousWispr words file",
+          comment: "Your Words: the name of an exported words file."),
         candidates: candidates
       ).validated()
       return nil
     } catch {
-      return "\(error.localizedDescription) Nothing was exported."
+      return String(
+        localized: "\(error.localizedDescription) Nothing was exported.",
+        comment:
+          "Your Words, export: refused: %@ is the reason the file could not be read back, one or more sentences."
+      )
     }
   }
 }

@@ -60,11 +60,19 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
   /// what reaches a cloud polish provider live in the help article behind
   /// `learnMoreURL`, so the row never has to carry a privacy claim that a
   /// settings change elsewhere could make untrue.
-  static let rowTitle = "Self-Learning Dictionary"
+  static let rowTitle = String(
+    localized: "Self-Learning Dictionary",
+    comment: "Your Words, Learn from: the self-learning dictionary row: the feature's name.")
   static let rowCopy =
-    "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. "
-    + "Undo it from the notification, or remove it later in Your Words."
-  static let learnMoreLabel = "Learn more"
+    String(
+      localized:
+        "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.",
+      comment:
+        "Your Words, Learn from: the self-learning dictionary row: what the feature does. Your Words is a page name."
+    )
+  static let learnMoreLabel = String(
+    localized: "Learn more",
+    comment: "Your Words, Learn from: the self-learning dictionary row: link to the help article.")
   static let learnMoreURL = "https://enviouswispr.com/help/self-learning-dictionary/"
 
   init(selection: CorrectionJudgeArmSelection, judge: JudgePhase = .none) {
@@ -75,7 +83,10 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
       action = nil
     case (.unavailable, .notInstalled):
       isEnabled = false
-      secondaryLine = "The correction model is not downloaded yet"
+      secondaryLine = String(
+        localized: "The correction model is not downloaded yet",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .download
     case (.unavailable, .downloading(let fraction, let written, let total)):
       isEnabled = false
@@ -83,69 +94,122 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
       action = .cancel
     case (.unavailable, .verifying):
       isEnabled = false
-      secondaryLine = "Checking the correction model"
+      secondaryLine = String(
+        localized: "Checking the correction model",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
     case (.unavailable, .loading):
       isEnabled = false
-      secondaryLine = "Loading the correction model"
+      secondaryLine = String(
+        localized: "Loading the correction model",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
     case (.unavailable, .cancelled):
       isEnabled = false
-      secondaryLine = "The download was cancelled"
+      secondaryLine = String(
+        localized: "The download was cancelled",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .download
     case (.unavailable, .deliveryFailed):
       isEnabled = false
-      secondaryLine = "The correction model could not be downloaded"
+      secondaryLine = String(
+        localized: "The correction model could not be downloaded",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .download
     case (.unavailable, .loadFailed):
       isEnabled = false
-      secondaryLine = "The correction model could not be loaded"
+      secondaryLine = String(
+        localized: "The correction model could not be loaded",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .retryLoad
     case (.unavailable, .identityMismatch):
       isEnabled = false
-      secondaryLine = "The downloaded correction model is not the one this version was tested with"
+      secondaryLine = String(
+        localized: "The downloaded correction model is not the one this version was tested with",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .removeAndDownload
     case (.unavailable, .pausedByKillSwitch):
       isEnabled = false
-      secondaryLine = "Model downloads are paused by Envious Labs"
+      secondaryLine = String(
+        localized: "Model downloads are paused by Envious Labs",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
     case (.unavailable, .waitingForOnboarding):
       isEnabled = false
-      secondaryLine = "The correction model downloads after setup finishes"
+      secondaryLine = String(
+        localized: "The correction model downloads after setup finishes",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
     case (.unavailable, .waitingForSpeechModel):
       isEnabled = false
-      secondaryLine = "The correction model downloads after the speech model"
+      secondaryLine = String(
+        localized: "The correction model downloads after the speech model",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
     case (.unavailable, .debugLoading):
       isEnabled = false
-      secondaryLine = "Loading the test judge from the UAT door"
+      secondaryLine = String(
+        localized: "Loading the test judge from the UAT door",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch. Developer builds only."
+      )
       action = nil
     case (.unavailable, .debugFailed):
       isEnabled = false
-      secondaryLine = "The test judge from the UAT door failed to load"
+      secondaryLine = String(
+        localized: "The test judge from the UAT door failed to load",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch. Developer builds only."
+      )
       action = nil
     case (.unavailable, .removalFailed):
       isEnabled = false
-      secondaryLine = "The correction model could not be fully removed"
+      secondaryLine = String(
+        localized: "The correction model could not be fully removed",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .removeAndDownload
     case (.unavailable(.noQualifiedArm), .none), (.unavailable(.noQualifiedArm), .ready):
       // `.ready` with no arm: the loaded judge is not qualified for THIS macOS.
       isEnabled = false
-      secondaryLine = "Not available on this version of macOS yet"
+      secondaryLine = String(
+        localized: "Not available on this version of macOS yet",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
     case (.unavailable(.afmUnavailableNoRulesFallback), .none),
       (.unavailable(.afmUnavailableNoRulesFallback), .ready):
       isEnabled = false
-      secondaryLine = "Turn on Apple Intelligence in System Settings to get suggestions"
+      secondaryLine = String(
+        localized: "Turn on Apple Intelligence in System Settings to get suggestions",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
     }
   }
 
   static func downloadingLine(fraction: Double, written: Int64, total: Int64) -> String {
-    guard total > 0 else { return "Downloading the correction model" }
+    guard total > 0 else {
+      return String(
+        localized: "Downloading the correction model",
+        comment:
+          "Your Words, Learn from: the self-learning dictionary row: the download has no size yet.")
+    }
     let mb = { (b: Int64) in Int((Double(b) / 1_048_576).rounded()) }
-    return "Downloading the correction model (\(mb(written)) of \(mb(total)) MB)"
+    return String(
+      localized: "Downloading the correction model (\(mb(written)) of \(mb(total)) MB)",
+      comment:
+        "Your Words, Learn from: the self-learning dictionary row: download progress. The first number is megabytes done, the second the total."
+    )
   }
 
   /// Before the composition root supplies a selection, the row is disabled:

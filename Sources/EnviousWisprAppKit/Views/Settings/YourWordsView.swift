@@ -46,10 +46,19 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
 
   var label: String {
     switch self {
-    case .yourWords: return "Your Words"
-    case .vocabularyPacks: return "Vocabulary Packs"
-    case .learnFrom: return "Learn from..."
-    case .quickAdd: return "Quick Add"
+    case .yourWords:
+      return String(localized: "Your Words", comment: "Your Words: a tab in the side rail.")
+    case .vocabularyPacks:
+      return String(localized: "Vocabulary Packs", comment: "Your Words: a tab in the side rail.")
+    case .learnFrom:
+      return String(
+        localized: "Learn from...",
+        comment: "Your Words: a tab in the side rail, for learning words from contacts and edits.")
+    case .quickAdd:
+      return String(
+        localized: "Quick Add",
+        comment:
+          "Your Words: a tab in the side rail, the feature that adds a selected word from any app.")
     }
   }
 
@@ -77,10 +86,30 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
   /// shorter phrasing is just as true.
   var tagline: String {
     switch self {
-    case .yourWords: return "Words you added"
-    case .vocabularyPacks: return "Ready-made lists"
-    case .learnFrom: return "Learn as you go"
-    case .quickAdd: return "Add from any app"
+    case .yourWords:
+      return String(
+        localized: "Words you added",
+        comment:
+          "Your Words: a tab in the side rail: the line under Your Words. Keep it short, about 16 characters."
+      )
+    case .vocabularyPacks:
+      return String(
+        localized: "Ready-made lists",
+        comment:
+          "Your Words: a tab in the side rail: the line under Vocabulary Packs. Keep it short, about 16 characters."
+      )
+    case .learnFrom:
+      return String(
+        localized: "Learn as you go",
+        comment:
+          "Your Words: a tab in the side rail: the line under Learn from. Keep it short, about 16 characters."
+      )
+    case .quickAdd:
+      return String(
+        localized: "Add from any app",
+        comment:
+          "Your Words: a tab in the side rail: the line under Quick Add. Keep it short, about 16 characters."
+      )
     }
   }
 }
@@ -505,7 +534,13 @@ private struct DictionaryTabRow: View {
     .buttonStyle(.plain)
     .accessibilityElement(children: .combine)
     .accessibilityLabel(tab.label)
-    .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    .accessibilityValue(
+      isSelected
+        ? SettingsCopy.selectedValue
+        : String(
+          localized: "Not selected",
+          comment: "VoiceOver: the value of an option that is not chosen.")
+    )
     .accessibilityHint("Shows the \(tab.label) Dictionary tab")
     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
   }
@@ -519,11 +554,15 @@ private struct WordsLoadFailureBanner: View {
   private var message: String {
     switch failure {
     case .unreadable:
-      return
-        "Your saved words couldn't be read this time. Nothing was changed or deleted. Try relaunching."
+      return String(
+        localized:
+          "Your saved words couldn't be read this time. Nothing was changed or deleted. Try relaunching.",
+        comment: "Your Words: the saved list could not be read.")
     case .corrupted:
-      return
-        "Your saved words file was damaged and moved aside for recovery. EnviousWispr started with an empty saved list."
+      return String(
+        localized:
+          "Your saved words file was damaged and moved aside for recovery. EnviousWispr started with an empty saved list.",
+        comment: "Your Words: the saved list was damaged and set aside.")
     }
   }
 
@@ -610,7 +649,12 @@ private struct BulkImportEnrichmentProgressCard: View {
           .truncationMode(.tail)
           .accessibilityElement(children: .ignore)
           .accessibilityLabel(
-            "\(recent.canonical) now recognizes \(recent.generatedAliases.joined(separator: ", "))"
+            String(
+              localized:
+                "\(recent.canonical) now recognizes \(recent.generatedAliases.joined(separator: ", "))",
+              comment:
+                "Your Words, VoiceOver: a word just learned. The first %@ is the word, the second the misheard forms it now fixes, separated by commas."
+            )
           )
         }
       }

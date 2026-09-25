@@ -130,7 +130,11 @@ final class ContactsImportCoordinator {
     }
     phase = .importing
     guard let createdIDs = customWords.addBatch(preview.newWords) else {
-      phase = .failed(customWords.customWordError ?? "Couldn't save, try again")
+      phase = .failed(
+        customWords.customWordError
+          ?? String(
+            localized: "Couldn't save, try again",
+            comment: "Your Words, import from Contacts: an error: the names could not be saved."))
       return
     }
     do {
@@ -139,7 +143,12 @@ final class ContactsImportCoordinator {
       // Words were added but the import log didn't save. Surface it: the words
       // persist (removable by hand) but the pill can't track them. Telemetry
       // fires only on full success.
-      phase = .failed("Couldn't finish the import, try again")
+      phase = .failed(
+        String(
+          localized: "Couldn't finish the import, try again",
+          comment:
+            "Your Words, import from Contacts: an error: the names were added but the import record was not saved."
+        ))
       return
     }
     TelemetryService.shared.contactsImported(count: preview.newContactCount, trigger: "manual")
@@ -194,7 +203,12 @@ final class ContactsImportCoordinator {
     do {
       try stateStore.save(.empty)
     } catch {
-      phase = .failed("Couldn't update the import list, try again")
+      phase = .failed(
+        String(
+          localized: "Couldn't update the import list, try again",
+          comment:
+            "Your Words, import from Contacts: an error: the list of pending names could not be updated."
+        ))
       return
     }
     importedCount = 0

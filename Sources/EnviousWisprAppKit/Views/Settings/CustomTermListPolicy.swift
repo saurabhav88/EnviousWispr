@@ -58,14 +58,26 @@ enum CustomTermListPolicy {
   ) -> String {
     // The same trim `filtered` applies: a whitespace-only query is no search.
     let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !query.isEmpty { return "No matches for \"\(query)\"." }
+    if !query.isEmpty {
+      return String(
+        localized: "No matches for \"\(query)\".",
+        comment:
+          "Your Words: empty search result. %@ is what the user typed; use this language's quotation marks."
+      )
+    }
     if autoLearnedOnly {
       return category == nil
         ? CustomTermProvenanceCopy.noAutoLearnedWordsYet
         : CustomTermProvenanceCopy.noAutoLearnedWordsInCategory
     }
-    if category != nil { return "No words in this category." }
-    return "No words yet. Add one with the button above."
+    if category != nil {
+      return String(
+        localized: "No words in this category.",
+        comment: "Your Words: empty list for a chosen category.")
+    }
+    return String(
+      localized: "No words yet. Add one with the button above.",
+      comment: "Your Words: empty word list.")
   }
 
   /// Number of pages required to display `count` items.
@@ -132,10 +144,45 @@ enum MatchStrictness: String, CaseIterable {
 /// learned chips, and the helper line under the alias list. The views and
 /// the tests read this table; nothing restates it.
 enum CustomTermProvenanceCopy {
-  static let filterPill = "Auto-learned"
-  static let noAutoLearnedWordsYet = "No auto-learned words yet."
+  static let filterPill = String(
+    localized: "Auto-learned",
+    comment: "Your Words: filter that shows only words learned automatically.")
+  static let noAutoLearnedWordsYet = String(
+    localized: "No auto-learned words yet.",
+    comment: "Your Words: empty list with the Auto-learned filter.")
   /// The Auto-learned pill AND a category pill, with nothing in both.
-  static let noAutoLearnedWordsInCategory = "No auto-learned words in this category."
-  static let learnedFromYourEdits = "learned from your edits"
-  static let learnedAliasesHelper = "Sparkled sound-alikes were learned from your edits."
+  static let noAutoLearnedWordsInCategory = String(
+    localized: "No auto-learned words in this category.",
+    comment: "Your Words: empty list with the Auto-learned filter and a category.")
+  static let learnedFromYourEdits = String(
+    localized: "learned from your edits",
+    comment:
+      "Your Words, VoiceOver: said after a learned word or mishearing; lowercase, as a phrase.")
+  static let learnedAliasesHelper = String(
+    localized: "Sparkled sound-alikes were learned from your edits.",
+    comment:
+      "Your Words: note under the list of mishearings. Sparkled means marked with a sparkle icon.")
+}
+
+/// A category's name on screen (#3142). The raw value is the stored identity and stays English;
+/// the English name is the raw value capitalized, as before.
+extension WordCategory {
+  var displayName: String {
+    switch self {
+    // Its own key: "General" is also an S1-mini writing context, a different meaning (#3142).
+    case .general:
+      return String(
+        localized: "wordCategory.general", defaultValue: "General",
+        comment: "Your Words: the category for words without a specific field.")
+    case .person:
+      return String(localized: "Person", comment: "Your Words: a word category, a person's name.")
+    case .brand:
+      return String(
+        localized: "Brand", comment: "Your Words: a word category, a brand or product name.")
+    case .acronym: return String(localized: "Acronym", comment: "Your Words: a word category.")
+    case .domain:
+      return String(
+        localized: "Domain", comment: "Your Words: a word category, a subject area's jargon.")
+    }
+  }
 }

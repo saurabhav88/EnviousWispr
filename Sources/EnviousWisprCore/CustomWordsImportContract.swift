@@ -401,23 +401,30 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
     let hasSomethingToName = value.unicodeScalars.contains {
       !CharacterSet.whitespacesAndNewlines.contains($0)
     }
-    return hasSomethingToName ? "\"\(displayable(value))\"" : "a blank entry"
+    return hasSomethingToName
+      ? "\"\(displayable(value))\""
+      : String(
+        localized: "a blank entry",
+        comment: "Import error: names an empty entry inside the message's brackets. Lowercase.")
   }
 
   package var errorDescription: String? {
     switch self {
     case .wordTooLong(let limit):
-      return
-        "That contains an entry longer than \(limit) characters, which is too "
-        + "long to be a word. Nothing was imported."
+      return String(
+        localized:
+          "That contains an entry longer than \(limit) characters, which is too long to be a word. Nothing was imported.",
+        comment: "Import: the words could not be imported. %lld is the character limit.")
     case .unusableAlias(let alias, let canonical):
       // Names the ALIAS, not the word that owns it. Reporting the canonical
       // quoted an innocent value and hid the one that has to be fixed (Codex
       // review, #1683).
-      return
-        "That contains an alternate spelling EnviousWispr can't store "
-        + "(\(Self.describe(alias)), for \(Self.describe(canonical))). "
-        + "Nothing was imported."
+      return String(
+        localized:
+          "That contains an alternate spelling EnviousWispr can't store (\(Self.describe(alias)), for \(Self.describe(canonical))). Nothing was imported.",
+        comment:
+          "Import: the words could not be imported. The first %@ is the misheard form, the second its word, each already quoted."
+      )
     case .unusableWord(let canonical):
       // Source-neutral: this validator now runs for pasted text and files
       // alike, so naming a file was wrong half the time (Codex review, #1683).
@@ -428,9 +435,10 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
       // where it can reorder or break the error text itself. Naming the
       // offending scalar is more useful to the user than showing it.
       let shown = Self.describe(canonical)
-      return
-        "That contains a word EnviousWispr can't store (\(shown)). "
-        + "Nothing was imported."
+      return String(
+        localized:
+          "That contains a word EnviousWispr can't store (\(shown)). Nothing was imported.",
+        comment: "Import: the words could not be imported. %@ is the word, already quoted.")
     }
   }
 }
