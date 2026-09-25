@@ -960,22 +960,34 @@ public enum ModelDeliveryCopy {
   public static func message(reason: DeliveryFailureClass, detail: String?) -> String {
     switch reason {
     case .sourceUnreachable, .sourceTimeout, .source5xx, .source4xx:
-      return "Can't reach the download server. Check your connection and try again."
+      return String(
+        localized: "Can't reach the download server. Check your connection and try again.",
+        comment: "Speech model download: why it failed. Shown in setup and in Settings.")
     case .insufficientDisk:
-      return
-        "Not enough free space to install the speech model. Free up about 1 GB and try again."
+      return String(
+        localized:
+          "Not enough free space to install the speech model. Free up about 1 GB and try again.",
+        comment: "Speech model download: why it failed. Shown in setup and in Settings.")
     case .integrityMismatch, .cacheRepairFailed:
       if detail == "intercepted_network" {
-        return
-          "If you are on hotel or public Wi-Fi, finish signing in to the network, then try again."
+        return String(
+          localized:
+            "If you are on hotel or public Wi-Fi, finish signing in to the network, then try again.",
+          comment: "Speech model download: why it failed. Shown in setup and in Settings.")
       }
-      return
-        "The download couldn't be verified. Try again, and if this keeps happening, contact support."
+      return String(
+        localized:
+          "The download couldn't be verified. Try again, and if this keeps happening, contact support.",
+        comment: "Speech model download: why it failed. Shown in setup and in Settings.")
     case .cancelled:
-      return "Download paused. Resume anytime."
+      return String(
+        localized: "Download paused. Resume anytime.",
+        comment: "Speech model download: why it failed. Shown in setup and in Settings.")
     case .permissionDenied, .unknown:
-      return
-        "The download couldn't finish. Try again, and if this keeps happening, contact support."
+      return String(
+        localized:
+          "The download couldn't finish. Try again, and if this keeps happening, contact support.",
+        comment: "Speech model download: why it failed. Shown in setup and in Settings.")
     }
   }
 }

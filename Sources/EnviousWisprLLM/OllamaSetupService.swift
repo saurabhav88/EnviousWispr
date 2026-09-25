@@ -478,7 +478,10 @@ public final class OllamaSetupService {
         displayName: model.facts.isRemote
           ? Self.hostedDisplayName(from: model.exactName)
           : Self.inferDisplayName(from: model.exactName),
-        parameterCount: model.parameterSize ?? "Unknown",
+        parameterCount: model.parameterSize
+          ?? String(
+            localized: "Unknown",
+            comment: "AI Polish, Ollama model list: the model's size in parameters is unknown."),
         downloadSize: Self.formatFileSize(model.fileSizeBytes),
         isDownloaded: true,
         isRemote: model.facts.isRemote
@@ -701,8 +704,9 @@ public final class OllamaSetupService {
   }
 
   private static let backgroundTriggers: Set<String> = ["visible_poll", "app_active"]
-  private static let portConflictMessage =
-    "Another app is using Ollama's port (11434). Close it and try again."
+  private static let portConflictMessage = String(
+    localized: "Another app is using Ollama's port (11434). Close it and try again.",
+    comment: "AI Polish, Ollama setup: error. 11434 is a network port number.")
 
   private var detectionToken: UInt64 = 0
 
@@ -1090,17 +1094,29 @@ public final class OllamaSetupService {
     return String(decoding: canonical, as: UTF8.self)
   }
 
-  private static let hostedAddAmbiguousMessage =
-    "Ollama returned two valid names for this model. Add it in Ollama, then refresh this list."
+  private static let hostedAddAmbiguousMessage = String(
+    localized:
+      "Ollama returned two valid names for this model. Add it in Ollama, then refresh this list.",
+    comment:
+      "AI Polish, Ollama model list: adding a hosted model failed; two names came back for a hosted model."
+  )
 
-  private static let hostedAddNoUsableNameMessage =
-    "Ollama listed this model but did not return a name EnviousWispr can add. Try again after updating Ollama."
+  private static let hostedAddNoUsableNameMessage = String(
+    localized:
+      "Ollama listed this model but did not return a name EnviousWispr can add. Try again after updating Ollama.",
+    comment:
+      "AI Polish, Ollama model list: adding a hosted model failed; no usable name came back for a hosted model."
+  )
 
   /// Deliberately asserts no cause. Whether a signed-out user's `/api/show`
   /// succeeds is unverified (plan §2.5.5), so naming a cause here would risk a
   /// confident wrong claim in exactly the branch that exists to avoid one.
-  private static let hostedAddUnreachableMessage =
-    "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment."
+  private static let hostedAddUnreachableMessage = String(
+    localized:
+      "EnviousWispr could not confirm this model's name with Ollama. Try again in a moment.",
+    comment:
+      "AI Polish, Ollama model list: adding a hosted model failed; a hosted model's name could not be confirmed."
+  )
 
   /// #1956: abandon a hosted name resolution that is still probing.
   ///
@@ -1537,8 +1553,9 @@ public final class OllamaSetupService {
 
   // MARK: - Server Lifecycle
 
-  private static let autoStartFailureMessage =
-    "Couldn't start Ollama automatically. Try running `ollama serve` in Terminal."
+  private static let autoStartFailureMessage = String(
+    localized: "Couldn't start Ollama automatically. Try running `ollama serve` in Terminal.",
+    comment: "AI Polish, Ollama setup: error. Keep `ollama serve` exactly; it is a command.")
 
   /// Start the Ollama server, preferring the .app bundle, falling back to the CLI binary.
   public func startServer() {
@@ -1717,7 +1734,14 @@ public final class OllamaSetupService {
     pullProgress = 0
     // #1956: a hosted registration moves 0 bytes and takes ~0.5 s. Calling it a
     // download here is the same false framing the Add label exists to remove.
-    let opening = hostedAdvertisedID == nil ? "Starting download..." : "Adding..."
+    let opening =
+      hostedAdvertisedID == nil
+      ? String(
+        localized: "Starting download...",
+        comment: "AI Polish, Ollama setup: a model download is starting.")
+      : String(
+        localized: "Adding...",
+        comment: "AI Polish, Ollama setup: a hosted model is being added; nothing downloads.")
     pullStatusText = opening
     setupState = .pullingModel(progress: 0, status: opening)
 
@@ -1758,15 +1782,16 @@ public final class OllamaSetupService {
       } catch {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
-        let message = error.localizedDescription.lowercased()
         let hosted = self.pullOperationIsHostedRegistration
         // A hosted registration writes a manifest and nothing else, so it cannot
         // plausibly exhaust the disk. Keeping the disk branch local-only means a
         // hosted failure never blames the user's free space for something that
         // needed none.
-        if !hosted, message.contains("no space") || message.contains("errno 28") {
+        if !hosted, Self.isDiskFull(error) {
           self.setupState = .error(
-            "Not enough disk space. The model needs about 2 GB free."
+            String(
+              localized: "Not enough disk space. The model needs about 2 GB free.",
+              comment: "AI Polish, Ollama setup: the disk filled during a model download.")
           )
         } else {
           self.setupState = .error(self.failedMessage(hosted: hosted))
@@ -2027,7 +2052,11 @@ public final class OllamaSetupService {
 
   /// Format file size in bytes to human-readable string.
   nonisolated static func formatFileSize(_ bytes: Int64) -> String {
-    guard bytes > 0 else { return "Unknown" }
+    guard bytes > 0 else {
+      return String(
+        localized: "Unknown",
+        comment: "AI Polish, Ollama model list: the model's download size is unknown.")
+    }
     let gb = Double(bytes) / 1_073_741_824.0
     if gb >= 1.0 {
       return String(format: "%.1f GB", gb)
@@ -2052,22 +2081,52 @@ public final class OllamaSetupService {
 
   /// Step label for the setup panel while a pull runs.
   package var pullStepLabel: String {
-    pullOperationIsHostedRegistration ? "Adding..." : "Downloading..."
+    pullOperationIsHostedRegistration
+      ? String(
+        localized: "Adding...",
+        comment: "AI Polish, Ollama setup: a hosted model is being added; nothing downloads.")
+      : String(
+        localized: "Downloading...",
+        comment: "AI Polish, Ollama setup: step label while a model downloads.")
   }
 
   private func failedMessage(hosted: Bool) -> String {
     hosted
-      ? "Couldn't add the model. Check your internet connection and try again."
-      : "Download failed. Check your internet connection and try again."
+      ? String(
+        localized: "Couldn't add the model. Check your internet connection and try again.",
+        comment: "AI Polish, Ollama setup: adding a hosted model failed.")
+      : String(
+        localized: "Download failed. Check your internet connection and try again.",
+        comment: "AI Polish, Ollama setup: a model download failed.")
   }
 
   private func interruptedMessage(hosted: Bool) -> String {
     hosted
-      ? "Adding the model was interrupted. Tap retry to try again."
-      : "Download was interrupted. Tap retry to resume where you left off."
+      ? String(
+        localized: "Adding the model was interrupted. Tap retry to try again.",
+        comment: "AI Polish, Ollama setup: adding a hosted model was interrupted.")
+      : String(
+        localized: "Download was interrupted. Tap retry to resume where you left off.",
+        comment: "AI Polish, Ollama setup: a model download was interrupted.")
   }
 
   // MARK: - Error Mapping
+
+  /// Whether a failed pull ran out of disk. Reads the error's code, or Ollama's own
+  /// message carried in `LLMError.requestFailed`, never `localizedDescription`: system
+  /// text follows the app's language, so an English word match would miss it (#3142).
+  nonisolated static func isDiskFull(_ error: any Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(ENOSPC) { return true }
+    if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileWriteOutOfSpaceError {
+      return true
+    }
+    if case LLMError.requestFailed(let message) = error {
+      let lowered = message.lowercased()
+      return lowered.contains("no space") || lowered.contains("errno 28")
+    }
+    return false
+  }
 
   private func friendlyMessage(for urlError: URLError) -> String {
     let hosted = pullOperationIsHostedRegistration

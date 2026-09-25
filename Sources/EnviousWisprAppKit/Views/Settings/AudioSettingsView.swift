@@ -75,11 +75,13 @@ struct AudioSettingsView: View {
             // made the card contradict itself on exactly the machines the divert exists for.
             SettingsControlRow(
               icon: "waveform",
-              title: "Input device",
-              description:
-                "Select which microphone to use for recording. \"Auto\" follows the input "
-                + "device selected in macOS. If that device turns out not to be a real "
-                + "microphone, recording uses an available microphone instead."
+              title: String(localized: "Input device", comment: "Microphone settings: row title."),
+              description: String(
+                localized:
+                  "Select which microphone to use for recording. \"Auto\" follows the input device selected in macOS. If that device turns out not to be a real microphone, recording uses an available microphone instead.",
+                comment:
+                  "Microphone settings: explains the input device choice. Auto is the name of the first option."
+              )
             ) {
               HStack(spacing: 10) {
                 Picker("", selection: inputDeviceSelection) {
@@ -94,7 +96,11 @@ struct AudioSettingsView: View {
                 .frame(maxWidth: 220, alignment: .leading)
 
                 if settingsManager.preferredInputDeviceIDOverride.isEmpty, let socketDevice {
-                  StatusPill(text: "Using \(socketDevice.name)")
+                  StatusPill(
+                    text: String(
+                      localized: "Using \(socketDevice.name)",
+                      comment:
+                        "Microphone settings: the microphone in use with Auto. %@ is its name."))
                 }
               }
             }
@@ -155,17 +161,46 @@ struct AudioSettingsView: View {
           VStack(alignment: .leading, spacing: 8) {
             SettingsControlRow(
               icon: "timer",
-              title: "Microphone readiness",
-              description:
-                "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
+              title: String(
+                localized: "Microphone readiness", comment: "Microphone settings: row title."),
+              description: String(
+                localized:
+                  "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words.",
+                comment: "Microphone settings: explains microphone readiness.")
             ) {
               BrandedSegmentedPicker(
                 options: [
-                  ("Off", nil, WarmEnginePolicy.off),
-                  ("10 sec", nil, WarmEnginePolicy.seconds10),
-                  ("30 sec", nil, WarmEnginePolicy.seconds30),
-                  ("60 sec", nil, WarmEnginePolicy.seconds60),
-                  ("Always", nil, WarmEnginePolicy.always),
+                  (
+                    String(
+                      localized: "Off",
+                      comment:
+                        "Microphone settings: readiness option; the microphone is released at once."
+                    ), nil, WarmEnginePolicy.off
+                  ),
+                  (
+                    String(
+                      localized: "10 sec",
+                      comment: "Microphone settings: readiness option, 10 seconds."), nil,
+                    WarmEnginePolicy.seconds10
+                  ),
+                  (
+                    String(
+                      localized: "30 sec",
+                      comment: "Microphone settings: readiness option, 30 seconds."), nil,
+                    WarmEnginePolicy.seconds30
+                  ),
+                  (
+                    String(
+                      localized: "60 sec",
+                      comment: "Microphone settings: readiness option, 60 seconds."), nil,
+                    WarmEnginePolicy.seconds60
+                  ),
+                  (
+                    String(
+                      localized: "Always",
+                      comment: "Microphone settings: readiness option; the microphone stays ready."),
+                    nil, WarmEnginePolicy.always
+                  ),
                 ],
                 selection: $settings.warmEnginePolicy,
                 comfortable: true
@@ -320,7 +355,7 @@ private struct BluetoothGuidePopoverContent: View {
       }
 
       InsetNotice(
-        text: BluetoothTipsCopy.micOrder,
+        verbatim: BluetoothTipsCopy.micOrder,
         systemImage: "list.bullet",
         tint: .stAccent
       )

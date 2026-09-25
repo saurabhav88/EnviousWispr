@@ -229,16 +229,28 @@ struct SettingsContentView<Content: View>: View {
 
 /// White card with rounded corners and optional header/footer.
 struct BrandedSection<Content: View, Footer: View>: View {
+  /// Resolved heading. A literal goes to `header:`, which the catalog extracts by its type;
+  /// a heading that is already translated goes to `verbatimHeader:` (#3142).
   let header: String?
   @ViewBuilder let content: Content
   @ViewBuilder let footer: Footer
 
   init(
-    header: String? = nil,
+    header: LocalizedStringResource? = nil,
     @ViewBuilder content: () -> Content,
     @ViewBuilder footer: () -> Footer
   ) {
-    self.header = header
+    self.header = header.map { String(localized: $0) }
+    self.content = content()
+    self.footer = footer()
+  }
+
+  init(
+    verbatimHeader: String,
+    @ViewBuilder content: () -> Content,
+    @ViewBuilder footer: () -> Footer
+  ) {
+    self.header = verbatimHeader
     self.content = content()
     self.footer = footer()
   }
@@ -274,10 +286,19 @@ struct BrandedSection<Content: View, Footer: View>: View {
 
 extension BrandedSection where Footer == EmptyView {
   init(
-    header: String? = nil,
+    header: LocalizedStringResource? = nil,
     @ViewBuilder content: () -> Content
   ) {
-    self.header = header
+    self.header = header.map { String(localized: $0) }
+    self.content = content()
+    self.footer = EmptyView()
+  }
+
+  init(
+    verbatimHeader: String,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.header = verbatimHeader
     self.content = content()
     self.footer = EmptyView()
   }
@@ -293,6 +314,7 @@ extension BrandedSection where Footer == EmptyView {
 /// the card and footer below it.
 struct BrandedPanel<Content: View, Footnote: View>: View {
   let icon: String?
+  /// Resolved from the caller's literals, which the catalog extracts by type (#3142).
   let header: String
   let description: String?
   @ViewBuilder let content: Content
@@ -300,14 +322,14 @@ struct BrandedPanel<Content: View, Footnote: View>: View {
 
   init(
     icon: String? = nil,
-    header: String,
-    description: String? = nil,
+    header: LocalizedStringResource,
+    description: LocalizedStringResource? = nil,
     @ViewBuilder content: () -> Content,
     @ViewBuilder footnote: () -> Footnote
   ) {
     self.icon = icon
-    self.header = header
-    self.description = description
+    self.header = String(localized: header)
+    self.description = description.map { String(localized: $0) }
     self.content = content()
     self.footnote = footnote()
   }
@@ -350,13 +372,13 @@ struct BrandedPanel<Content: View, Footnote: View>: View {
 extension BrandedPanel where Footnote == EmptyView {
   init(
     icon: String? = nil,
-    header: String,
-    description: String? = nil,
+    header: LocalizedStringResource,
+    description: LocalizedStringResource? = nil,
     @ViewBuilder content: () -> Content
   ) {
     self.icon = icon
-    self.header = header
-    self.description = description
+    self.header = String(localized: header)
+    self.description = description.map { String(localized: $0) }
     self.content = content()
     self.footnote = EmptyView()
   }
@@ -366,9 +388,22 @@ extension BrandedPanel where Footnote == EmptyView {
 /// plus microcopy, on a recessed rounded surface. Used for the frozen-per-
 /// recording notice so it reads as owned by its card, not floating beneath it.
 struct InsetNotice: View {
+  /// Resolved text. A literal goes to `text:`, which the catalog extracts by its type; text
+  /// that is already translated goes to `verbatim:` (#3142).
   let text: String
   var systemImage: String = "info.circle"
   var tint: Color = .stAccent
+
+  init(text: LocalizedStringResource, systemImage: String = "info.circle", tint: Color = .stAccent)
+  {
+    self.init(verbatim: String(localized: text), systemImage: systemImage, tint: tint)
+  }
+
+  init(verbatim text: String, systemImage: String = "info.circle", tint: Color = .stAccent) {
+    self.text = text
+    self.systemImage = systemImage
+    self.tint = tint
+  }
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -395,12 +430,21 @@ struct InsetNotice: View {
 /// Canonical microcopy shared by the frozen-per-recording notices so the string
 /// lives in one place across the footer and inset-notice renderings.
 enum SettingsCopy {
-  static let frozenPerRecording =
-    "Changes made during a recording apply to the next recording."
+  /// What VoiceOver says as the VALUE of the chosen card or option. One owner for every picker
+  /// on these pages (#3142). The UI harness (`wispr_eyes.read_cards`) compares it in English
+  /// runs; a language-independent harness identity is tracked on #3142 for the German run.
+  static let selectedValue = String(
+    localized: "Selected", comment: "VoiceOver: the value spoken for the chosen card or option.")
+  static let frozenPerRecording = String(
+    localized: "Changes made during a recording apply to the next recording.",
+    comment: "Settings: notice that a change made while recording takes effect next time.")
   /// The same rule on the Transcribe a File page, where the run that freezes settings is a
   /// cleanup, not a recording (#2772). Found by the cloud review of PR #2786.
-  static let frozenPerImport =
-    "Changes made during a cleanup apply to the next file."
+  static let frozenPerImport = String(
+    localized: "Changes made during a cleanup apply to the next file.",
+    comment:
+      "Transcribe a File: notice that a change made during a cleanup takes effect on the next file."
+  )
 }
 
 /// Page-level banner stating that this page's settings freeze at recording start.
@@ -501,7 +545,11 @@ struct BrandedToggleStyle: ToggleStyle {
     // The style is a plain Button, so VoiceOver would otherwise announce only
     // "button" with no state. Surface on/off as an accessibility value + toggle
     // trait so the switch state is spoken (#1298; validate keyboard + VO in UAT).
-    .accessibilityValue(configuration.isOn ? "On" : "Off")
+    .accessibilityValue(
+      configuration.isOn
+        ? String(localized: "On", comment: "VoiceOver: the value of a switch that is on.")
+        : String(localized: "Off", comment: "VoiceOver: the value of a switch that is off.")
+    )
     .accessibilityAddTraits(.isToggle)
   }
 }
@@ -547,8 +595,8 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
     value: Binding<V>,
     in range: ClosedRange<V>,
     step: V.Stride = 0.1,
-    low: String = "Low",
-    high: String = "High",
+    low: String = String(localized: "Low", comment: "Settings slider: label at the low end."),
+    high: String = String(localized: "High", comment: "Settings slider: label at the high end."),
     format: String = "%.1f"
   ) {
     self.label = label
@@ -649,7 +697,9 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
             tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
         }
         .buttonStyle(.plain)
-        .accessibilityValue(isSelected ? "selected" : "")
+        .accessibilityValue(
+          isSelected
+            ? String(localized: "selected", comment: "VoiceOver: a chosen segmented option.") : "")
       }
     }
     .padding(3)
@@ -730,10 +780,11 @@ extension View {
 /// Green checkmark / red X status indicator for permission-style rows.
 struct BrandedStatusRow: View {
   let isGranted: Bool
-  let grantedText: String
-  let deniedText: String
-  var helperText: String? = nil
-  var actionLabel: String? = nil
+  /// Typed so a caller's literals are extracted into the catalog (#3142).
+  let grantedText: LocalizedStringResource
+  let deniedText: LocalizedStringResource
+  var helperText: LocalizedStringResource? = nil
+  var actionLabel: LocalizedStringResource? = nil
   var action: (() -> Void)? = nil
 
   var body: some View {
@@ -758,7 +809,8 @@ struct BrandedStatusRow: View {
         // who came here because dictation stopped working. On the system style
         // it rendered as grey text beside a red X, which is a poor thing for
         // "Open System Settings" to look like.
-        SettingsActionButton(title: actionLabel, isEnabled: true, emphasis: .filled, action: action)
+        SettingsActionButton(
+          title: actionLabel, isEnabled: true, emphasis: .filled, action: action)
       }
     }
   }
@@ -1023,7 +1075,7 @@ struct EngineCard<Footer: View>: View {
       // cannot be used — they select it and nothing happens. Same defect the
       // card's own footer separation exists to prevent, one sense over.
       .accessibilityHint(([tagline] + [unavailability].compactMap { $0 }).joined(separator: " "))
-      .accessibilityValue(isSelected ? "Selected" : "")
+      .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
       .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
 
       // EmptyView contributes no space in a VStack, so a caller that passes no
@@ -1144,7 +1196,10 @@ struct ProviderStatusChip: View {
         .foregroundStyle(isHeadline ? Color.stTextPrimary : status.tone.color)
     }
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("Status: \(status.label)")
+    .accessibilityLabel(
+      String(
+        localized: "Status: \(status.label)",
+        comment: "VoiceOver: a provider's status chip. %@ is the status, such as Live."))
   }
 }
 /// The close control in a settings sheet's title bar.
@@ -1236,6 +1291,10 @@ struct SettingsActionButton: View {
   /// "visibly larger than shipped".
   enum Size { case regular, medium, large }
 
+  /// The label, already resolved. Callers pass a literal to `title:`, which the catalog
+  /// extracts by its type, or text that is already translated (or is the user's own) to
+  /// `verbatimTitle:`. There is deliberately no `String` `title:`: a literal would bind to it
+  /// and ship in English (#3142).
   let title: String
   let isEnabled: Bool
   var emphasis: Emphasis = .outlined
@@ -1278,6 +1337,33 @@ struct SettingsActionButton: View {
   /// the two disagree. See `SettingsHover.respondsToPointer`.
   @Environment(\.isEnabled) private var environmentEnabled
   @State private var pointerInside = false
+
+  init(
+    title: LocalizedStringResource, isEnabled: Bool, emphasis: Emphasis = .outlined,
+    shape: Shape = .capsule, size: Size = .regular, trailingSystemImage: String? = nil,
+    systemImage: String? = nil, shortcut: KeyboardShortcut? = nil, action: (() -> Void)? = nil
+  ) {
+    self.init(
+      verbatimTitle: String(localized: title), isEnabled: isEnabled, emphasis: emphasis,
+      shape: shape, size: size, trailingSystemImage: trailingSystemImage,
+      systemImage: systemImage, shortcut: shortcut, action: action)
+  }
+
+  init(
+    verbatimTitle: String, isEnabled: Bool, emphasis: Emphasis = .outlined,
+    shape: Shape = .capsule, size: Size = .regular, trailingSystemImage: String? = nil,
+    systemImage: String? = nil, shortcut: KeyboardShortcut? = nil, action: (() -> Void)? = nil
+  ) {
+    self.title = verbatimTitle
+    self.isEnabled = isEnabled
+    self.emphasis = emphasis
+    self.shape = shape
+    self.size = size
+    self.trailingSystemImage = trailingSystemImage
+    self.systemImage = systemImage
+    self.shortcut = shortcut
+    self.action = action
+  }
 
   /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
   private var hovering: Bool {

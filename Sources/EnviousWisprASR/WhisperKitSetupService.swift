@@ -137,7 +137,11 @@ public final class WhisperKitSetupService {
   /// optimistic "Starting download..." up would stick forever (Codex 2b-r1 P2).
   public func downloadModel() {
     removeNotice = nil
-    setupState = .downloading(progress: 0, status: "Starting download...")
+    setupState = .downloading(
+      progress: 0,
+      status: String(
+        localized: "Starting download...",
+        comment: "Speech engine settings, WhisperKit model: download status line."))
     downloadIntentEpoch += 1
     let epoch = downloadIntentEpoch
     Task { [startDownload, weak self] in

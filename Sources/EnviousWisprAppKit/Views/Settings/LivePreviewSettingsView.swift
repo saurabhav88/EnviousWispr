@@ -401,7 +401,7 @@ struct LivePreviewSettingsView: View {
               // The last system-styled button left on this page after #2445
               // replaced the other three. Same fact, same fix.
               SettingsActionButton(
-                title: LivePreviewSettingsCopy.browseDownloadsButton,
+                verbatimTitle: LivePreviewSettingsCopy.browseDownloadsButton,
                 isEnabled: true,
                 emphasis: .filled
               ) {
@@ -533,7 +533,7 @@ struct LivePreviewSettingsView: View {
               // on Download and Browse. Outlined is the quiet-but-alive rung, and
               // it has a hover state, which the flat one did not.
               SettingsActionButton(
-                title: Self.label(for: action),
+                verbatimTitle: Self.label(for: action),
                 isEnabled: true,
                 emphasis: action == .remove ? .outlined : .filled
               ) {
@@ -549,11 +549,29 @@ struct LivePreviewSettingsView: View {
 
   private static func label(for action: LivePreviewEnginePresentation.Action) -> String {
     switch action {
-    case .download: return "Download"
-    case .cancelDownload: return "Cancel"
-    case .resumeDownload: return "Resume"
-    case .retryDownload: return "Try Again"
-    case .remove: return "Remove"
+    case .download:
+      return String(
+        localized: "Download",
+        comment:
+          "Live Preview settings, Universal engine card: button. It starts the engine download.")
+    case .cancelDownload:
+      return String(
+        localized: "Cancel",
+        comment: "Live Preview settings, Universal engine card: button. It stops the download.")
+    case .resumeDownload:
+      return String(
+        localized: "Resume",
+        comment: "Live Preview settings, Universal engine card: button. It resumes the download.")
+    case .retryDownload:
+      return String(
+        localized: "Try Again",
+        comment:
+          "Live Preview settings, Universal engine card: button. It retries a failed download.")
+    case .remove:
+      return String(
+        localized: "Remove",
+        comment:
+          "Live Preview settings, Universal engine card: button. It deletes the downloaded engine.")
     }
   }
 
@@ -656,7 +674,7 @@ struct LivePreviewSettingsView: View {
   @ViewBuilder
   private var packsSection: some View {
     if showsApplePacks {
-      BrandedSection(header: LivePreviewSettingsCopy.packsHeader) {
+      BrandedSection(verbatimHeader: LivePreviewSettingsCopy.packsHeader) {
         // **The ROW is the button, not a card containing one** (founder,
         // 2026-08-26). Everything here did one thing: the title named the action,
         // the paragraph explained it, and a separate `Browse` performed it — so

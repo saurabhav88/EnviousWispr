@@ -116,7 +116,11 @@ struct LanguageLockSheet: View {
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
-      SettingsSheetCloseButton(accessibilityTitle: "Close") { dismiss() }
+      SettingsSheetCloseButton(
+        accessibilityTitle: String(
+          localized: "Close",
+          comment: "Dictation language picker: VoiceOver name of the close button.")
+      ) { dismiss() }
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -224,7 +228,14 @@ struct LanguageLockSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Auto-detect language")
-        .accessibilityValue(isAuto ? "selected" : "")
+        .accessibilityValue(
+          isAuto
+            ? String(
+              localized: "selected",
+              comment:
+                "VoiceOver: a chosen segmented option; here, the Auto-detect row of the dictation language picker."
+            )
+            : "")
       }
       .background(Color.stSectionBg)
       .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -447,9 +458,23 @@ private struct LanguageLockRow: View {
     // #3124: the two English rows differ only by spelling, so VoiceOver says which.
     .accessibilityLabel(
       entry.spelling == nil
-        ? "\(entry.englishName), native \(entry.nativeName)"
-        : "\(entry.englishName), \(LanguageCatalog.pickerSubtitle(for: entry))")
-    .accessibilityValue(isSelected ? "selected" : "")
+        ? String(
+          localized: "\(entry.displayName), native \(entry.nativeName)",
+          comment:
+            "Dictation language picker, VoiceOver: a language row. The first %@ is the language's name, the second its name in its own language."
+        )
+        : String(
+          localized: "language.picker.spellingAccessibility",
+          defaultValue: "\(entry.displayName), \(LanguageCatalog.pickerSubtitle(for: entry))",
+          comment:
+            "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses."
+        )
+    )
+    .accessibilityValue(
+      isSelected
+        ? String(
+          localized: "selected", comment: "Dictation language picker, VoiceOver: the chosen row.")
+        : "")
   }
 }
 

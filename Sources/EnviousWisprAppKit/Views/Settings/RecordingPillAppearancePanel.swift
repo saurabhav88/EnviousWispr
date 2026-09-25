@@ -164,9 +164,15 @@ struct RecordingPillAppearancePanel: View {
       // go and do by hand.
       return nil
     case .engineUnsupported:
-      return "Your engine cannot show words on this Mac."
+      return String(
+        localized: "Your engine cannot show words on this Mac.",
+        comment:
+          "Appearance settings, recording pill picker: why the word-showing pill designs are unavailable."
+      )
     case .modelBeingRemoved:
-      return "Unavailable while a removed model finishes clearing."
+      return String(
+        localized: "Unavailable while a removed model finishes clearing.",
+        comment: "Appearance settings, recording pill picker: why a design is briefly unavailable.")
     }
   }
 }
@@ -200,7 +206,11 @@ struct RecordingPillPreviewTile: View {
   /// The cost is a longer announcement on every focus, which is accepted: the
   /// summaries are one short sentence each, which bounds it.
   static func accessibilityLabel(for design: RecordingPillDesign) -> String {
-    "\(design.displayName). \(design.summary)"
+    String(
+      localized: "\(design.displayName). \(design.summary)",
+      comment:
+        "Appearance settings, recording pill picker, VoiceOver: a design card. The first %@ is the design's name, the second one sentence about it."
+    )
   }
 
   /// What a card announces as its VALUE.
@@ -211,7 +221,7 @@ struct RecordingPillPreviewTile: View {
   /// the harness silently stops seeing selection and reports a working picker as
   /// broken. `theSelectedValueIsExactly` pins it.
   static func accessibilityValue(isSelected: Bool) -> String {
-    isSelected ? "Selected" : ""
+    isSelected ? SettingsCopy.selectedValue : ""
   }
 
   /// **Every card draws its pill into THIS box, each at its own scale.**

@@ -35,26 +35,55 @@ import Foundation
 ///
 /// Brand rule: no em-dashes or en-dashes.
 enum GlobeKeyCopy {
-  static let title = "Free up the Globe key"
+  static let title = String(
+    localized: "Free up the Globe key",
+    comment: "Globe key tip (a popover after choosing the Globe key as the keybind): title.")
 
   static let body =
-    "macOS may already use the Globe key to switch keyboard languages, open the "
-    + "emoji picker, or start its own dictation. If that happens while you dictate, "
-    + "you can turn it off:"
+    String(
+      localized:
+        "macOS may already use the Globe key to switch keyboard languages, open the emoji picker, or start its own dictation. If that happens while you dictate, you can turn it off:",
+      comment:
+        "Globe key tip (a popover after choosing the Globe key as the keybind): explains why macOS may also react to the Globe key."
+    )
 
   static let steps = [
-    "Open System Settings, then Keyboard",
-    "Click the \"Press 🌐 key to\" menu",
-    "Choose \"Do Nothing\"",
+    String(
+      localized: "Open System Settings, then Keyboard",
+      comment:
+        "Globe key tip (a popover after choosing the Globe key as the keybind): step 1. Use the names macOS shows in this language for System Settings and Keyboard."
+    ),
+    String(
+      localized: "Click the \"Press 🌐 key to\" menu",
+      comment:
+        "Globe key tip (a popover after choosing the Globe key as the keybind): step 2. Quote the menu exactly as macOS labels it in this language."
+    ),
+    String(
+      localized: "Choose \"Do Nothing\"",
+      comment:
+        "Globe key tip (a popover after choosing the Globe key as the keybind): step 3. Quote the option exactly as macOS labels it in this language."
+    ),
   ]
 
   static let reassurance =
-    "Your Globe key is set as your dictation keybind either way. This only stops "
-    + "macOS doing its own thing at the same time."
+    String(
+      localized:
+        "Your Globe key is set as your dictation keybind either way. This only stops macOS doing its own thing at the same time.",
+      comment:
+        "Globe key tip (a popover after choosing the Globe key as the keybind): closing reassurance."
+    )
 
-  static let dismissButton = "Got it"
+  static let dismissButton = String(
+    localized: "Got it",
+    comment:
+      "Globe key tip (a popover after choosing the Globe key as the keybind): button that closes the tip."
+  )
 
   /// Spoken container label. VoiceOver reads this before the body, so it must say
   /// what the popover IS rather than repeat the title verbatim.
-  static let accessibilityLabel = "Free up the Globe key. Setup tip."
+  static let accessibilityLabel = String(
+    localized: "Free up the Globe key. Setup tip.",
+    comment:
+      "Globe key tip (a popover after choosing the Globe key as the keybind): VoiceOver name of the tip."
+  )
 }

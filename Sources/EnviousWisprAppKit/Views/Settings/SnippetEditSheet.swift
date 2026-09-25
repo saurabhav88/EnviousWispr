@@ -121,7 +121,7 @@ struct SnippetEditSheet: View {
   private var fillInButtons: some View {
     HStack(spacing: 8) {
       ForEach(SnippetPlaceholder.allCases, id: \.self) { placeholder in
-        SettingsActionButton(title: Self.fillInTitle(for: placeholder), isEnabled: true) {
+        SettingsActionButton(verbatimTitle: Self.fillInTitle(for: placeholder), isEnabled: true) {
           expansion += placeholder.token
         }
       }

@@ -11,9 +11,13 @@ struct PermissionsSettingsView: View {
         BrandedRow(showDivider: false) {
           BrandedStatusRow(
             isGranted: permissions.hasMicrophonePermission,
-            grantedText: "Microphone access granted",
-            deniedText: "Microphone access denied",
-            actionLabel: "Request Access",
+            grantedText: LocalizedStringResource(
+              "Microphone access granted", comment: "Permissions settings: status when granted."),
+            deniedText: LocalizedStringResource(
+              "Microphone access denied", comment: "Permissions settings: status when denied."),
+            actionLabel: LocalizedStringResource(
+              "Request Access",
+              comment: "Permissions settings: button that asks macOS for microphone access."),
             action: {
               Task {
                 // #2549: `requestMicrophoneAccess()` is a guaranteed no-op once
@@ -31,10 +35,17 @@ struct PermissionsSettingsView: View {
         BrandedRow(showDivider: false) {
           BrandedStatusRow(
             isGranted: permissions.hasAccessibilityPermission,
-            grantedText: "Accessibility access granted",
-            deniedText: "Accessibility access required for paste",
+            grantedText: LocalizedStringResource(
+              "Accessibility access granted", comment: "Permissions settings: status when granted."),
+            deniedText: LocalizedStringResource(
+              "Accessibility access required for paste",
+              comment:
+                "Permissions settings: status when missing; pasting text needs Accessibility access."
+            ),
             helperText: "After rebuilding the app you may need to re-grant this permission.",
-            actionLabel: "Open System Settings",
+            actionLabel: LocalizedStringResource(
+              "Open System Settings",
+              comment: "Permissions settings: button that opens macOS System Settings."),
             action: {
               _ = permissions.requestAccessibilityAccess()
             }

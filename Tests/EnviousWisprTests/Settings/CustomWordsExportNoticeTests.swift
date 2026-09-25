@@ -53,4 +53,12 @@ struct CustomWordsExportNoticeTests {
     #expect(CustomWordsExportNotice.failure("x").title == "Export didn't finish")
     #expect(CustomWordsExportNotice.info("x").title == "Nothing was exported")
   }
+
+  /// The bulk-delete sheet colours the notice by kind. Its title is translatable text and
+  /// must not decide the colour (#3142).
+  @Test("only a failure notice reads as a failure")
+  func onlyAFailureReadsAsAFailure() {
+    #expect(CustomWordsExportNotice.failure("x").isFailure)
+    #expect(!CustomWordsExportNotice.info("x").isFailure)
+  }
 }

@@ -174,12 +174,26 @@ enum WhisperKitDeliveryWiring {
       let generation = applyGate.bump()
       switch state {
       case .preparing:
-        setupService.applyDeliveryState(.downloading(progress: 0, status: "Preparing..."))
+        setupService.applyDeliveryState(
+          .downloading(
+            progress: 0,
+            status: String(
+              localized: "Preparing...",
+              comment: "Speech engine settings, WhisperKit model: download status line.")))
       case .downloading(let fraction, _, _):
         setupService.applyDeliveryState(
-          .downloading(progress: fraction, status: "Downloading model files..."))
+          .downloading(
+            progress: fraction,
+            status: String(
+              localized: "Downloading model files...",
+              comment: "Speech engine settings, WhisperKit model: download status line.")))
       case .verifying:
-        setupService.applyDeliveryState(.downloading(progress: 1.0, status: "Verifying..."))
+        setupService.applyDeliveryState(
+          .downloading(
+            progress: 1.0,
+            status: String(
+              localized: "Verifying...",
+              comment: "Speech engine settings, WhisperKit model: download status line.")))
       case .admitted:
         setupService.applyDeliveryState(.ready)
       case .failed(let failure):

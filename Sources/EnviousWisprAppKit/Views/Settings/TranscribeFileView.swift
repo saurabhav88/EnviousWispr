@@ -310,7 +310,7 @@ struct TranscribeFileView: View {
     action: @escaping () -> Void
   ) -> some View {
     SettingsActionButton(
-      title: title, isEnabled: isEnabled, emphasis: .quiet, shape: .roundedRect,
+      verbatimTitle: title, isEnabled: isEnabled, emphasis: .quiet, shape: .roundedRect,
       size: .medium, systemImage: systemImage, action: action)
   }
 
@@ -325,7 +325,7 @@ struct TranscribeFileView: View {
     systemImage: String? = nil, showsArrow: Bool = true, action: (() -> Void)? = nil
   ) -> some View {
     SettingsActionButton(
-      title: title, isEnabled: isEnabled, emphasis: .filled, shape: .roundedRect,
+      verbatimTitle: title, isEnabled: isEnabled, emphasis: .filled, shape: .roundedRect,
       size: size, trailingSystemImage: showsArrow ? "arrow.right" : nil,
       systemImage: systemImage, action: action)
   }
@@ -371,7 +371,8 @@ struct TranscribeFileView: View {
       }
     case .rejected(let reason):
       InsetNotice(
-        text: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange)
+        verbatim: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange
+      )
       dropZone
     case .idle:
       dropZone
@@ -1057,7 +1058,8 @@ struct TranscribeFileView: View {
     stepHeading("Review and start")
     if case .rejected(let reason) = coordinator.state {
       InsetNotice(
-        text: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange)
+        verbatim: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange
+      )
     }
     HStack(alignment: .top, spacing: 14) {
       VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
@@ -1440,7 +1442,8 @@ struct TranscribeFileView: View {
     // sentence sits above the words it did not touch.
     if case .rejected(let reason) = coordinator.state {
       InsetNotice(
-        text: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange)
+        verbatim: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange
+      )
     }
     // #2772 finding 11, the failure half. The approved plan's table says a failed History
     // write must STOP before polish and show the raw words with Copy and Retry, and must
@@ -1450,7 +1453,7 @@ struct TranscribeFileView: View {
     // original words are safe or whether nothing was saved at all. A single sentence for both
     // would alarm the first user and under-warn the second. Found by Codex.
     if let notice = coordinator.historySaveNotice {
-      InsetNotice(text: notice, systemImage: "exclamationmark.triangle", tint: .orange)
+      InsetNotice(verbatim: notice, systemImage: "exclamationmark.triangle", tint: .orange)
     }
     // Background speaker work outlives the visible Working step (#2811 §3 Design correction)
     // and Done has no other Stop, so this one line carries its own. ONE line, saying what is
@@ -1950,7 +1953,7 @@ struct TranscribeFileView: View {
   private var shareButton: some View {
     ShareLink(item: coordinator.exportText) {
       SettingsActionButton(
-        title: coordinator.exportButtonLabels.share, isEnabled: coordinator.hasDocument,
+        verbatimTitle: coordinator.exportButtonLabels.share, isEnabled: coordinator.hasDocument,
         emphasis: .quiet, shape: .roundedRect, size: .medium,
         systemImage: "square.and.arrow.up")
     }

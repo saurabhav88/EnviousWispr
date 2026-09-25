@@ -92,6 +92,21 @@ struct TranscribeFileWorkingCardTests {
     #expect(make(.polishing(done: 0, total: 0))?.active?.title == "Preparing cleanup")
   }
 
+  /// The coordinator's phase tokens stay English and decide the active row; the card shows a
+  /// separate display string for each (#3142). English is pinned with literals here.
+  @Test("each displayed phase token has its own display sentence; an unknown token reads as itself")
+  func phaseTokensDisplayThroughTheProjection() {
+    #expect(WorkingStepModel.displayPhase("Getting the engine ready") == "Getting the engine ready")
+    #expect(WorkingStepModel.displayPhase("Finding who said what") == "Finding who said what")
+    #expect(WorkingStepModel.displayPhase("Preparing cleanup") == "Preparing cleanup")
+    #expect(WorkingStepModel.displayPhase("Dividing it up to clean") == "Dividing it up to clean")
+    #expect(WorkingStepModel.displayPhase("Some new phase") == "Some new phase")
+    #expect(WorkingStepModel.enginePhase == "Getting the engine ready")
+    #expect(WorkingStepModel.speakerPhase == "Finding who said what")
+    #expect(
+      WorkingStepModel.cleanupPreparingPhases == ["Preparing cleanup", "Dividing it up to clean"])
+  }
+
   @Test("cleaning names the CURRENT section and measures the completed ones")
   func cleaning() {
     let first = make(.polishing(done: 0, total: 14), speakers: .inProgress)

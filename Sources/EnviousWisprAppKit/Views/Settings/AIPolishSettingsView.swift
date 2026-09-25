@@ -21,13 +21,6 @@ import SwiftUI
 /// codes still log via Sentry/OSLog from the underlying call sites; the badge
 /// only needs to tell the user what to try next. Per #724 / PR #720 review.
 enum AIPolishKeychainFailureMessage {
-  /// Returns a single short sentence prefixed with `"Failed: "` so existing
-  /// `validationStatus.hasPrefix("Failed")` checks in the view still light up
-  /// the error styling.
-  static func text(for error: any Error, action: Action) -> String {
-    "Failed: " + body(for: error, action: action)
-  }
-
   /// The verb the message should suggest. `clear` is the Clear button path;
   /// `save` is the Save button path. The verb only matters for the generic
   /// fallback; specific OSStatus mappings are action-agnostic.
@@ -36,7 +29,9 @@ enum AIPolishKeychainFailureMessage {
     case clear
   }
 
-  private static func body(for error: any Error, action: Action) -> String {
+  /// Returns one whole sentence beginning "Failed: ". Each is localized whole, never glued
+  /// to a prefix; the badge's error styling comes from `KeyStoreStatus.failed`, not the text.
+  static func text(for error: any Error, action: Action) -> String {
     if let keyStoreError = error as? KeyStoreError {
       switch keyStoreError {
       case .storeFailed(let status), .retrieveFailed(let status), .deleteFailed(let status):
@@ -45,9 +40,13 @@ enum AIPolishKeychainFailureMessage {
         // Internal misuse — only the two supported keys ever pass the gate. If
         // a user-facing message ever appears here, it is an engineering bug,
         // not a Keychain state the user can fix.
-        return "This key store item is not supported. Please contact support."
+        return String(
+          localized: "Failed: This key store item is not supported. Please contact support.",
+          comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
       case .rollbackFailed:
-        return "We could not finish saving. Restart EnviousWispr and try again."
+        return String(
+          localized: "Failed: We could not finish saving. Restart EnviousWispr and try again.",
+          comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
       }
     }
     // Unexpected error type — generic fallback.
@@ -60,22 +59,37 @@ enum AIPolishKeychainFailureMessage {
   private static func message(for status: OSStatus, action: Action) -> String {
     switch status {
     case errSecUserCanceled:
-      return "Cancelled."
+      return String(
+        localized: "Failed: Cancelled.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecAuthFailed:
-      return "Could not access the Keychain. Unlock it from Keychain Access and try again."
+      return String(
+        localized:
+          "Failed: Could not access the Keychain. Unlock it from Keychain Access and try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecInteractionNotAllowed, errSecInteractionRequired:
-      return "Keychain is locked. Unlock it and try again."
+      return String(
+        localized: "Failed: Keychain is locked. Unlock it and try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecMissingEntitlement:
-      return "EnviousWispr is missing Keychain entitlements. Reinstall the app."
+      return String(
+        localized: "Failed: EnviousWispr is missing Keychain entitlements. Reinstall the app.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecNotAvailable:
-      return "Keychain is unavailable. Restart EnviousWispr and try again."
+      return String(
+        localized: "Failed: Keychain is unavailable. Restart EnviousWispr and try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecItemNotFound:
       // Hit only on Save (retrieve path during store's previous-value lookup);
       // the delete path treats not-found as success, so Clear cannot reach
       // here in normal flows.
-      return "Key not found. Try again."
+      return String(
+        localized: "Failed: Key not found. Try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case errSecDuplicateItem:
-      return "A duplicate key is already saved. Clear it and try again."
+      return String(
+        localized: "Failed: A duplicate key is already saved. Clear it and try again.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     default:
       return genericMessage(for: action)
     }
@@ -84,9 +98,13 @@ enum AIPolishKeychainFailureMessage {
   private static func genericMessage(for action: Action) -> String {
     switch action {
     case .save:
-      return "Could not save the key. Try again, or restart the app."
+      return String(
+        localized: "Failed: Could not save the key. Try again, or restart the app.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     case .clear:
-      return "Could not clear the saved key. Try again, or restart the app."
+      return String(
+        localized: "Failed: Could not clear the saved key. Try again, or restart the app.",
+        comment: "Settings > AI Polish: API key Save or Clear failed. Shown under the key field.")
     }
   }
 }
@@ -260,7 +278,11 @@ enum OllamaModelPickerPresentation {
     _ title: String, checkedAt: Date, locale: Locale = .autoupdatingCurrent
   ) -> String {
     let date = OllamaCatalogPresentation.checkedOnDateText(checkedAt, locale: locale)
-    return "\(title) (checked \(date))"
+    return String(
+      localized: "\(title) (checked \(date))",
+      comment:
+        "Ollama model picker: section heading. The first %@ is the group name, the second the date its list was checked."
+    )
   }
 
   static func groups(from models: [LLMModelInfo], provider: LLMProvider) -> Groups {
@@ -414,9 +436,14 @@ enum S1ControlCardVisibility {
 /// The option labels are a total function over each enum, so adding a trained
 /// value cannot leave a segment without a name.
 enum S1ControlCopy {
-  static let cardLabel = "Writing style"
-  static let intro =
-    "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. Change them any time; a new pick applies to your next dictation."
+  static let cardLabel = String(
+    localized: "Writing style", comment: "AI Polish, S1-mini writing-style card: the card title.")
+  static let intro = String(
+    localized:
+      "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. Change them any time; a new pick applies to your next dictation.",
+    comment:
+      "AI Polish, S1-mini writing-style card: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written."
+  )
   /// The three dials are ONE shared setting. On the Transcribe a File page a change reaches
   /// the next file and, because it is shared, the next dictation too; the dictation sentence
   /// named only the dictation (#2772). Found by the cloud review of PR #2786.
@@ -424,41 +451,79 @@ enum S1ControlCopy {
     switch surface {
     case .dictation: return intro
     case .fileImport:
-      return
-        "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. They are shared with dictation. Change them any time; a new pick applies to your next file and your next dictation."
+      return String(
+        localized:
+          "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. They are shared with dictation. Change them any time; a new pick applies to your next file and your next dictation.",
+        comment:
+          "AI Polish, S1-mini writing-style card on Transcribe a File: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written."
+      )
     }
   }
 
-  static let stylingLabel = "Tone"
-  static let stylingHint =
-    "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text."
-  static let structureLabel = "Structure"
-  static let structureHint =
-    "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences."
-  static let contextLabel = "Context"
-  static let contextHint =
-    "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else."
+  static let stylingLabel = String(
+    localized: "Tone", comment: "AI Polish, S1-mini writing-style card: the tone setting's name.")
+  static let stylingHint = String(
+    localized:
+      "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text.",
+    comment: "AI Polish, S1-mini writing-style card: explains the tone options.")
+  static let structureLabel = String(
+    localized: "Structure",
+    comment: "AI Polish, S1-mini writing-style card: the structure setting's name.")
+  static let structureHint = String(
+    localized:
+      "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences.",
+    comment:
+      "AI Polish, S1-mini writing-style card: explains the structure options. Lists and Prose are the option names."
+  )
+  static let contextLabel = String(
+    localized: "Context",
+    comment: "AI Polish, S1-mini writing-style card: the context setting's name.")
+  static let contextHint = String(
+    localized:
+      "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else.",
+    comment:
+      "AI Polish, S1-mini writing-style card: explains the context options. Email is an option name."
+  )
 
   static func label(for styling: S1Styling) -> String {
     switch styling {
-    case .casual: return "Casual"
-    case .semiCasual: return "Semi-casual"
-    case .semiFormal: return "Semi-formal"
-    case .formal: return "Formal"
+    case .casual:
+      return String(
+        localized: "Casual", comment: "AI Polish, S1-mini writing-style card: tone option.")
+    case .semiCasual:
+      return String(
+        localized: "Semi-casual", comment: "AI Polish, S1-mini writing-style card: tone option.")
+    case .semiFormal:
+      return String(
+        localized: "Semi-formal", comment: "AI Polish, S1-mini writing-style card: tone option.")
+    case .formal:
+      return String(
+        localized: "Formal", comment: "AI Polish, S1-mini writing-style card: tone option.")
     }
   }
 
   static func label(for structure: S1Structure) -> String {
     switch structure {
-    case .prose: return "Prose"
-    case .lists: return "Lists"
+    case .prose:
+      return String(
+        localized: "Prose",
+        comment: "AI Polish, S1-mini writing-style card: structure option: plain sentences.")
+    case .lists:
+      return String(
+        localized: "Lists",
+        comment: "AI Polish, S1-mini writing-style card: structure option: bullet points.")
     }
   }
 
   static func label(for context: S1Context) -> String {
     switch context {
-    case .general: return "General"
-    case .email: return "Email"
+    case .general:
+      return String(
+        localized: "General", comment: "AI Polish, S1-mini writing-style card: context option.")
+    case .email:
+      return String(
+        localized: "Email",
+        comment: "AI Polish, S1-mini writing-style card: context option: an email layout.")
     }
   }
 }

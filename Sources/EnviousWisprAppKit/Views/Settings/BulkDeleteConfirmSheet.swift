@@ -32,7 +32,7 @@ struct BulkDeleteConfirmSheet: View {
         Text(exportNotice.message)
           .font(.stHelper)
           .foregroundStyle(
-            exportNotice.title == "Export didn't finish" ? .stError : .stTextSecondary)
+            exportNotice.isFailure ? .stError : .stTextSecondary)
       }
 
       if let deleteFailureMessage {

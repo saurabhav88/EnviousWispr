@@ -34,15 +34,43 @@ struct OtherAudioSettingsPanel: View {
     VStack(alignment: .leading, spacing: 8) {
       SettingsControlRow(
         icon: "speaker.wave.2.fill",
-        title: "Media during dictation",
+        title: String(
+          localized: "Media during dictation",
+          comment:
+            "Microphone settings, media during dictation: row title for what happens to music and other audio."
+        ),
         description: Self.footnote(for: settings.otherAudioWhileDictating)
       ) {
         BrandedSegmentedPicker(
           options: [
-            ("Continue", "play.fill", OtherAudioWhileDictating.nothing),
-            ("Lower", "speaker.wave.1", OtherAudioWhileDictating.turnDown),
-            ("Mute", "speaker.slash", OtherAudioWhileDictating.mute),
-            ("Pause", "pause.circle", OtherAudioWhileDictating.pauseMusic),
+            (
+              String(
+                localized: "Continue",
+                comment:
+                  "Microphone settings, media during dictation: option that leaves other audio playing."
+              ), "play.fill", OtherAudioWhileDictating.nothing
+            ),
+            (
+              String(
+                localized: "Lower",
+                comment:
+                  "Microphone settings, media during dictation: option that turns other audio down."
+              ), "speaker.wave.1", OtherAudioWhileDictating.turnDown
+            ),
+            (
+              String(
+                localized: "Mute",
+                comment:
+                  "Microphone settings, media during dictation: option that silences other audio."),
+              "speaker.slash", OtherAudioWhileDictating.mute
+            ),
+            (
+              String(
+                localized: "Pause",
+                comment:
+                  "Microphone settings, media during dictation: option that pauses what is playing."
+              ), "pause.circle", OtherAudioWhileDictating.pauseMusic
+            ),
           ],
           selection: $settings.otherAudioWhileDictating,
           comfortable: true
@@ -77,23 +105,41 @@ struct OtherAudioSettingsPanel: View {
   static func footnote(for mode: OtherAudioWhileDictating) -> String {
     switch mode {
     case .nothing:
-      return "Music and other audio keep playing as they are."
+      return String(
+        localized: "Music and other audio keep playing as they are.",
+        comment: "Microphone settings, media during dictation: what the Continue option does.")
     case .turnDown:
-      return
-        "Lowers what plays through your current speakers or headphones to about half while you dictate, then puts it back. If you change the volume during a take, your new level stays."
+      return String(
+        localized:
+          "Lowers what plays through your current speakers or headphones to about half while you dictate, then puts it back. If you change the volume during a take, your new level stays.",
+        comment:
+          "Microphone settings, media during dictation: what the Lower option does. A take is one dictation."
+      )
     case .mute:
-      return
-        "Silences your current speakers or headphones while you dictate, including calls and spoken feedback, then puts the volume back. If you change the volume during a take, your new level stays."
+      return String(
+        localized:
+          "Silences your current speakers or headphones while you dictate, including calls and spoken feedback, then puts the volume back. If you change the volume during a take, your new level stays.",
+        comment:
+          "Microphone settings, media during dictation: what the Mute option does. A take is one dictation."
+      )
     case .pauseMusic:
-      return
-        "Pauses whatever is playing (music, a video, a podcast), then resumes it when you stop. If you switch to something else during a take, what we paused stays paused."
+      return String(
+        localized:
+          "Pauses whatever is playing (music, a video, a podcast), then resumes it when you stop. If you switch to something else during a take, what we paused stays paused.",
+        comment:
+          "Microphone settings, media during dictation: what the Pause option does. A take is one dictation."
+      )
     }
   }
 
   /// Shown under `Pause` when the system route cannot answer on this Mac
   /// (a macOS update closed it): only the two scriptable players remain.
-  static let pauseAnythingUnavailableNote =
-    "On this Mac only Music and Spotify can be paused. macOS may ask for permission the first time; a take that needs permission is not paused."
+  static let pauseAnythingUnavailableNote = String(
+    localized:
+      "On this Mac only Music and Spotify can be paused. macOS may ask for permission the first time; a take that needs permission is not paused.",
+    comment:
+      "Microphone settings, media during dictation: note under Pause when only some players can be paused. Music and Spotify are app names."
+  )
 
   // MARK: - Availability
 
@@ -139,9 +185,17 @@ struct OtherAudioSettingsPanel: View {
     }
     switch mode {
     case .turnDown:
-      unavailableNote = "Lower is not available on your current speakers or headphones."
+      unavailableNote = String(
+        localized: "Lower is not available on your current speakers or headphones.",
+        comment:
+          "Microphone settings, media during dictation: the Lower option cannot work on this output device."
+      )
     case .mute:
-      unavailableNote = "Mute is not available on your current speakers or headphones."
+      unavailableNote = String(
+        localized: "Mute is not available on your current speakers or headphones.",
+        comment:
+          "Microphone settings, media during dictation: the Mute option cannot work on this output device."
+      )
     case .nothing, .pauseMusic:
       unavailableNote = nil
     }

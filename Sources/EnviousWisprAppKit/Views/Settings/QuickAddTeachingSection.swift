@@ -62,9 +62,18 @@ struct QuickAddTeachingSection: View {
   /// sense as an ALTERNATIVE when one exists.
   private var triggerStepBody: String {
     if let shortcutDisplay {
-      return "Press \(shortcutDisplay), or open the EnviousWispr menu and choose the Add item."
+      return String(
+        localized:
+          "Press \(shortcutDisplay), or open the EnviousWispr menu and choose the Add item.",
+        comment:
+          "Dictionary settings, Quick Add teaching card: step 2. %@ is a key combination. Add is the first word of the menu item; use the same word as that menu item in this language."
+      )
     }
-    return "Open the EnviousWispr menu and choose the Add item."
+    return String(
+      localized: "Open the EnviousWispr menu and choose the Add item.",
+      comment:
+        "Dictionary settings, Quick Add teaching card: step 2 when no keybind is set. Add is the first word of the menu item; use the same word as that menu item in this language."
+    )
   }
 
   var body: some View {
@@ -91,13 +100,28 @@ struct QuickAddTeachingSection: View {
   @ViewBuilder
   private var stepCards: some View {
     stepCard(
-      1, title: "Highlight a word",
-      body: "Select the word you want to fix in an email, chat, or document.")
-    stepCard(2, title: "Trigger Quick Add", body: triggerStepBody)
+      1,
+      title: String(
+        localized: "Highlight a word",
+        comment: "Dictionary settings, Quick Add teaching card: step 1 title."),
+      body: String(
+        localized: "Select the word you want to fix in an email, chat, or document.",
+        comment: "Dictionary settings, Quick Add teaching card: step 1."))
     stepCard(
-      3, title: "Choose and save",
-      body:
-        "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary."
+      2,
+      title: String(
+        localized: "Trigger Quick Add",
+        comment: "Dictionary settings, Quick Add teaching card: step 2 title."),
+      body: triggerStepBody)
+    stepCard(
+      3,
+      title: String(
+        localized: "Choose and save",
+        comment: "Dictionary settings, Quick Add teaching card: step 3 title."),
+      body: String(
+        localized:
+          "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary.",
+        comment: "Dictionary settings, Quick Add teaching card: step 3.")
     )
   }
 
@@ -139,13 +163,25 @@ struct QuickAddTeachingSection: View {
     } label: {
       calloutContent(
         icon: "keyboard",
-        label: "Keyboard shortcut",
+        label: String(
+          localized: "Keyboard shortcut",
+          comment: "Dictionary settings, Quick Add teaching card: label of the shortcut callout."),
         // The LIVE configured shortcut, not the shipped default — this must
         // stay correct after someone rebinds Quick Add on Keybinds. When it
         // currently conflicts with Record or Cancel, say so rather than
         // showing a chord that will not fire.
-        value: shortcutDisplay.map { "\($0). Change it under Keybinds." }
-          ?? "Currently unavailable — set one under Keybinds."
+        value: shortcutDisplay.map {
+          String(
+            localized: "\($0). Change it under Keybinds.",
+            comment:
+              "Dictionary settings, Quick Add teaching card: the current shortcut. %@ is a key combination. Keybinds is a settings page name."
+          )
+        }
+          ?? String(
+            localized: "Currently unavailable — set one under Keybinds.",
+            comment:
+              "Dictionary settings, Quick Add teaching card: no shortcut is active. Keybinds is a settings page name."
+          )
       )
       // The button's own layout expands to full width and draws its own
       // background; without an explicit content shape the padding around
@@ -159,12 +195,18 @@ struct QuickAddTeachingSection: View {
   private var menuBarCallout: some View {
     calloutContent(
       icon: "circle.grid.2x2",
-      label: "Menu bar",
+      label: String(
+        localized: "Menu bar",
+        comment: "Dictionary settings, Quick Add teaching card: label of the menu bar callout."),
       // Verified against MenuBarController.swift: the item's real title is
       // "Add Selected Word" (nothing selected) or "Add "<word>"" — never
       // literally "Quick Add".
-      value:
-        "Click the EnviousWispr icon, then choose the item that starts with \u{201C}Add\u{201D}"
+      value: String(
+        localized:
+          "Click the EnviousWispr icon, then choose the item that starts with \u{201C}Add\u{201D}",
+        comment:
+          "Dictionary settings, Quick Add teaching card: how to reach it from the menu bar. Add is the first word of the menu item; use the same word as that menu item in this language, with this language's quotation marks."
+      )
     )
   }
 

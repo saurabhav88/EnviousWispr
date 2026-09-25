@@ -210,35 +210,62 @@ enum LivePreviewEnginePresentation {
 /// sentences are read while DECIDING, not while dictating, and the two audiences
 /// want different lengths.
 enum LivePreviewEngineCopy {
-  static let sectionHeader = "Preview engine"
+  static let sectionHeader = String(
+    localized: "Preview engine",
+    comment: "Live Preview settings, preview engine: section header.")
 
   /// #2154. The two engines differ in OS floor, language coverage and download
   /// size; a card cannot carry that comparison without becoming the article.
   /// This is the first link from a settings page to the Help Centre, so the
   /// destination has to exist before the link ships — it does, added in the same
   /// change (#2134).
-  static let learnMoreLabel = "Learn more about engines"
+  static let learnMoreLabel = String(
+    localized: "Learn more about engines",
+    comment: "Live Preview settings, preview engine: learn more label.")
   static let learnMoreURL = "https://enviouswispr.com/help/live-preview-words-on-screen/"
 
+  /// Apple's brand name, deliberately not localized.
   static let appleTitle = "Apple"
   static let appleDescription =
-    "Uses Apple's speech recognition. No separate preview-model download; some languages may "
-    + "need an Apple language download. Needs macOS 26."
-  static let appleNeedsNewerMacOS = "Needs macOS 26 or later."
+    String(
+      localized:
+        "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26.",
+      comment: "Live Preview settings, preview engine: apple description.")
+  static let appleNeedsNewerMacOS = String(
+    localized: "Needs macOS 26 or later.",
+    comment: "Live Preview settings, preview engine: apple needs newer mac os.")
 
-  static let universalTitle = "Universal"
+  static let universalTitle = String(
+    localized: "Universal",
+    comment:
+      "Live Preview settings, preview engine: universal title. Universal is the name of the preview engine that works on any macOS 14+ Mac."
+  )
   static let universalDescription =
-    "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download."
-  static let notDownloadedYet = "Not downloaded yet."
-  static let downloadFailed = "The download did not finish."
-  static let downloadCancelled = "Download paused. It will pick up where it stopped."
+    String(
+      localized:
+        "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download.",
+      comment:
+        "Live Preview settings, preview engine: universal description. 217 MB is a download size.")
+  static let notDownloadedYet = String(
+    localized: "Not downloaded yet.",
+    comment: "Live Preview settings, preview engine: not downloaded yet.")
+  static let downloadFailed = String(
+    localized: "The download did not finish.",
+    comment: "Live Preview settings, preview engine: download failed.")
+  static let downloadCancelled = String(
+    localized: "Download paused. It will pick up where it stopped.",
+    comment: "Live Preview settings, preview engine: download cancelled.")
   /// The other half of a cancel: nothing usable was kept, so the honest verb is
   /// "download" rather than "resume".
   /// Deliberately claims NOTHING about what was kept. `resumable: false` means no
   /// staged partials, not "nothing on disk" — verified components can survive and
   /// be skipped next time, so any promise about starting over would be false.
-  static let downloadStopped = "Download stopped."
+  static let downloadStopped = String(
+    localized: "Download stopped.",
+    comment: "Live Preview settings, preview engine: download stopped.")
   /// No remedy offered: a build shipped without the engine's files is ours to fix.
   static let unavailableInThisBuild =
-    "This version of EnviousWispr cannot run that preview engine."
+    String(
+      localized: "This version of EnviousWispr cannot run that preview engine.",
+      comment: "Live Preview settings, preview engine: unavailable in this build.")
 }

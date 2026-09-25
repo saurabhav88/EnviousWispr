@@ -135,7 +135,7 @@ struct UnifiedWindowView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 6)
             }
-            Text(group.rawValue)
+            Text(group.heading)
               .font(.stSectionHeader)
               .tracking(0.6)
               .foregroundStyle(.stTextSecondary)
@@ -396,7 +396,12 @@ private struct SidebarNavRow<Icon: View>: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel(label)
-    .accessibilityValue(showsBadge ? "Importing in progress" : "")
+    .accessibilityValue(
+      showsBadge
+        ? String(
+          localized: "Importing in progress", comment: "Settings sidebar: file import is running.")
+        : ""
+    )
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 }

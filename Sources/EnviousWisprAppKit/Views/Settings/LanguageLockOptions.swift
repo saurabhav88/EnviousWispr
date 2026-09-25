@@ -157,7 +157,8 @@ enum LanguageLockOptions {
   /// The picker's rows for an engine and a search. Filtered on `lockCode`, the code the engine
   /// receives, BEFORE the search, so a search can never surface a row the active engine cannot
   /// honour, and English (UK) is offered exactly where English is. `lockableCodes == nil` means
-  /// no restriction. Search matches the English name, native name or row code, case-insensitive.
+  /// no restriction. Search matches the shown name, the English name, native name or row code,
+  /// case-insensitive.
   ///
   /// `offersEnglishUK` is false only where the list must name what can run RIGHT NOW and the
   /// British variant cannot: the Live Preview page on Apple's engine without the en-GB pack
@@ -172,7 +173,8 @@ enum LanguageLockOptions {
     let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard !needle.isEmpty else { return offered }
     return offered.filter { entry in
-      entry.englishName.lowercased().contains(needle)
+      entry.displayName.lowercased().contains(needle)
+        || entry.englishName.lowercased().contains(needle)
         || entry.nativeName.lowercased().contains(needle)
         || entry.code.lowercased().contains(needle)
     }

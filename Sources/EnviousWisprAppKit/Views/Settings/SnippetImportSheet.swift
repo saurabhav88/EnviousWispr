@@ -173,7 +173,7 @@ struct SnippetImportSheet: View {
           requestCancel()
         }
         SettingsActionButton(
-          title: confirmTitle, isEnabled: true, emphasis: .filled, shortcut: .defaultAction
+          verbatimTitle: confirmTitle, isEnabled: true, emphasis: .filled, shortcut: .defaultAction
         ) {
           model.confirm()
         }
@@ -278,8 +278,8 @@ private struct SnippetImportAppPickerScreen: View {
         }
       } else if installed.isEmpty {
         InsetNotice(
-          text: "No supported dictation apps found on this Mac. EnviousWispr can read "
-            + "snippets from \(SmartImportSupportedAppsCopy.sentence(joining: registry.displayNames))."
+          text:
+            "No supported dictation apps found on this Mac. EnviousWispr can read snippets from \(SmartImportSupportedAppsCopy.sentence(joining: registry.displayNames))."
         )
       } else {
         ForEach(registry.adapters.filter { installed.contains($0.identifier) }, id: \.identifier) {
@@ -518,10 +518,10 @@ private struct SnippetImportReviewScreen: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       if let staleNotice = model.staleNotice {
-        InsetNotice(text: staleNotice)
+        InsetNotice(verbatim: staleNotice)
       }
       ForEach(Array(model.notices.enumerated()), id: \.offset) { _, notice in
-        InsetNotice(text: SnippetImportResultCopy.noticeMessage(for: notice))
+        InsetNotice(verbatim: SnippetImportResultCopy.noticeMessage(for: notice))
       }
 
       Text(summary)

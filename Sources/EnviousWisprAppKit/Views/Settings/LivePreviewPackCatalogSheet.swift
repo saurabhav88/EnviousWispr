@@ -136,7 +136,7 @@ struct LivePreviewPackCatalogSheet: View {
       // navigation toolbar and grey the moment it moved into a plain row — the
       // same container-dependence measured on `Browse`.
       SettingsActionButton(
-        title: LivePreviewSettingsCopy.catalogDoneButton,
+        verbatimTitle: LivePreviewSettingsCopy.catalogDoneButton,
         isEnabled: true,
         emphasis: .filled,
         shortcut: .defaultAction
@@ -336,7 +336,7 @@ struct LivePreviewPackCatalogSheet: View {
       // `SettingsActionButton` carries an accent tint, a hover fill, and a
       // disabled state that is visibly different from both.
       SettingsActionButton(
-        title: packs.failedTag == pack.tag
+        verbatimTitle: packs.failedTag == pack.tag
           ? LivePreviewSettingsCopy.packRetry
           : LivePreviewSettingsCopy.packInstall,
         isEnabled: packs.installingTag == nil
