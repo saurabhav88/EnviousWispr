@@ -139,7 +139,14 @@ struct KeybindRowDefaultsTests {
   /// moves to the WRONG row, which is the defect that puts one shortcut's controls on another's.
   private static func rowBlock(labelled label: String) throws -> String {
     let blocks = try executableSource().components(separatedBy: "ProminentHotkeyRow(").dropFirst()
-    guard let block = blocks.first(where: { $0.contains("accessibilityLabel: \"\(label)\"") }) else {
+    // The label is a literal, bare or as a `LocalizedStringResource` with a translator comment
+    // (#3142); either way it is the first string after `accessibilityLabel:`.
+    let pattern = #"accessibilityLabel:\s*(LocalizedStringResource\(\s*)?""# + label + #"""#
+    guard
+      let block = blocks.first(where: {
+        $0.range(of: pattern, options: .regularExpression) != nil
+      })
+    else {
       Issue.record(Comment(rawValue: "no ProminentHotkeyRow labelled '\(label)'"))
       return ""
     }
