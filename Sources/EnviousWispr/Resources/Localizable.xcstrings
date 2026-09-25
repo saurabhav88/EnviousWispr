@@ -346,6 +346,21 @@
     "Delete transcript" : {
       "comment" : "VoiceOver label of the History delete button for a transcript."
     },
+    "Deleted in %lldh" : {
+      "comment" : "History row badge: hours until a cancelled dictation is deleted. h abbreviates hours."
+    },
+    "Deleted in %lldm" : {
+      "comment" : "History row badge: minutes until a cancelled dictation is deleted. m abbreviates minutes."
+    },
+    "Deleted in under a minute" : {
+      "comment" : "History row badge: a cancelled dictation is deleted within a minute."
+    },
+    "Deleting" : {
+      "comment" : "History row badge: a cancelled dictation is being deleted now."
+    },
+    "Deleting now" : {
+      "comment" : "VoiceOver: a cancelled dictation in History is being deleted now."
+    },
     "Detected %@" : {
       "comment" : "VoiceOver announcement from the recording overlay: a language was detected. %@ is the language name."
     },
@@ -549,9 +564,30 @@
       "comment" : "VoiceOver announcement from the recording overlay: %@ is the interruption sentence shown on the pill."
     },
     "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {},
+    "Keep" : {
+      "comment" : "History row button: keeps a cancelled dictation instead of deleting it in 24 hours."
+    },
     "Keep editing" : {},
     "Keep in sync on launch" : {},
     "Keep this recording permanently instead of letting it be deleted" : {},
+    "Kept" : {
+      "comment" : "History row badge: a cancelled dictation the user chose to keep permanently."
+    },
+    "Kept for now, deleted in %lld hours" : {
+      "comment" : "VoiceOver: hours until a cancelled dictation in History is deleted. Never 1."
+    },
+    "Kept for now, deleted in %lld minutes" : {
+      "comment" : "VoiceOver: minutes until a cancelled dictation in History is deleted. Never 1."
+    },
+    "Kept for now, deleted in 1 hour" : {
+      "comment" : "VoiceOver: a cancelled dictation in History is deleted in one hour."
+    },
+    "Kept for now, deleted in 1 minute" : {
+      "comment" : "VoiceOver: a cancelled dictation in History is deleted in one minute."
+    },
+    "Kept for now, deleted in under a minute" : {
+      "comment" : "VoiceOver: a cancelled dictation in History is deleted within a minute."
+    },
     "Kept recovered recording" : {},
     "Keybind: %@" : {},
     "LLM Deactivated" : {
@@ -747,6 +783,9 @@
           }
         }
       }
+    },
+    "Paste" : {
+      "comment" : "History row button: pastes a cancelled dictation back where it was dictated."
     },
     "Paste into active app" : {},
     "Paste unavailable — Accessibility permission required" : {},
@@ -1023,6 +1062,12 @@
     "This version is not saved" : {},
     "This version of EnviousWispr cannot run that preview engine." : {
       "comment" : "On-screen preview status: this app build lacks the preview engine's files."
+    },
+    "This will permanently delete all %lld items in History, including any hidden by a filter or search. This action cannot be undone." : {
+      "comment" : "Delete All confirmation in History. %lld is how many rows will be deleted, including hidden ones. Never 1."
+    },
+    "This will permanently delete the only item in History, even if a filter or search is hiding it. This action cannot be undone." : {
+      "comment" : "Delete All confirmation in History when exactly one row exists (it may be hidden by a filter)."
     },
     "Those are your words, typed for you.\nIn any other app, click into a text box first." : {
       "comment" : "Practice screen, after the first dictation worked. Keep the line break."

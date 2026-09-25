@@ -234,11 +234,26 @@ final class TranscriptCoordinator {
     // #2807: Delete All is GLOBAL while the list can be filtered or searched, so the
     // sentence says that a hidden row goes too. The count is the global one for the same
     // reason: a confirmation must count what it is about to destroy, not what is on screen.
-    let subject =
-      count == 1
-      ? "the only item in History, even if a filter or search is hiding it"
-      : "all \(count) items in History, including any hidden by a filter or search"
-    return "This will permanently delete \(subject). This action cannot be undone."
+    //
+    //
+    // #3142: each branch is ONE whole localizable sentence. The count == 1 branch stays in
+    // code (not catalog plural forms) because unit tests run outside the app bundle and
+    // must still read the English a user sees; a language with more plural forms adds
+    // them to the counted sentence in the catalog.
+    guard count != 1 else {
+      return String(
+        localized:
+          "This will permanently delete the only item in History, even if a filter or search is hiding it. This action cannot be undone.",
+        comment:
+          "Delete All confirmation in History when exactly one row exists (it may be hidden by a filter)."
+      )
+    }
+    return String(
+      localized:
+        "This will permanently delete all \(count) items in History, including any hidden by a filter or search. This action cannot be undone.",
+      comment:
+        "Delete All confirmation in History. %lld is how many rows will be deleted, including hidden ones. Never 1."
+    )
   }
 
   /// What the list shows when it has no rows (#2807), or nil while it has some.

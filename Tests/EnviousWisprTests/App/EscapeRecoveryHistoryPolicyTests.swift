@@ -277,8 +277,8 @@ struct EscapeRecoveryHistoryPolicyTests {
     // #2807: History holds dictations AND transcripts, so the sentence says "item", and it
     // says a hidden row goes too, because Delete All is global while the list can be filtered.
     #expect(
-      coordinator.deleteAllConfirmationMessage.contains(
-        "delete the only item in History, even if a filter or search is hiding it."),
+      coordinator.deleteAllConfirmationMessage
+        == "This will permanently delete the only item in History, even if a filter or search is hiding it. This action cannot be undone.",
       "the dialog must not offer to delete 'all 0 items' and then delete one")
     #expect(
       coordinator.deleteAllConfirmationMessage.contains("items") == false,
@@ -295,8 +295,9 @@ struct EscapeRecoveryHistoryPolicyTests {
     await coordinator.waitForLoadForTesting()
 
     #expect(
-      coordinator.deleteAllConfirmationMessage.contains(
-        "all 2 items in History, including any hidden by a filter or search."))
+      coordinator.deleteAllConfirmationMessage
+        == "This will permanently delete all 2 items in History, including any hidden by a filter or search. This action cannot be undone."
+    )
   }
 
   @Test("the delete confirmation counts nothing when there is nothing")
@@ -305,7 +306,8 @@ struct EscapeRecoveryHistoryPolicyTests {
     let coordinator = TranscriptCoordinator(store: store)
 
     #expect(
-      coordinator.deleteAllConfirmationMessage.contains("all 0 items in History"),
+      coordinator.deleteAllConfirmationMessage
+        == "This will permanently delete all 0 items in History, including any hidden by a filter or search. This action cannot be undone.",
       "zero is plural, and the button is hidden at zero anyway")
   }
 

@@ -26,9 +26,15 @@ enum EscapeRecoveryRowPresentation {
     case kept
   }
 
-  static let keptLabel = "Kept"
-  static let pasteLabel = "Paste"
-  static let keepLabel = "Keep"
+  static let keptLabel = String(
+    localized: "Kept",
+    comment: "History row badge: a cancelled dictation the user chose to keep permanently.")
+  static let pasteLabel = String(
+    localized: "Paste",
+    comment: "History row button: pastes a cancelled dictation back where it was dictated.")
+  static let keepLabel = String(
+    localized: "Keep",
+    comment: "History row button: keeps a cancelled dictation instead of deleting it in 24 hours.")
 
   /// `Kept` is derived from the take id SURVIVING promotion, which is the only
   /// marker a promoted row keeps — `escapeRecoveredAt` is cleared by design.
@@ -96,24 +102,64 @@ enum EscapeRecoveryRowPresentation {
   /// not keep (#1897). The help text carries the full "within 24 hours, while
   /// the app is running or on next launch".
   static func countdown(remaining: TimeInterval) -> String {
-    guard remaining > 0 else { return "Deleting" }
-    if remaining >= 3600 { return "Deleted in \(Int(remaining / 3600))h" }
-    if remaining >= 60 { return "Deleted in \(Int(remaining / 60))m" }
-    return "Deleted in under a minute"
+    guard remaining > 0 else {
+      return String(
+        localized: "Deleting",
+        comment: "History row badge: a cancelled dictation is being deleted now.")
+    }
+    if remaining >= 3600 {
+      return String(
+        localized: "Deleted in \(Int(remaining / 3600))h",
+        comment:
+          "History row badge: hours until a cancelled dictation is deleted. h abbreviates hours.")
+    }
+    if remaining >= 60 {
+      return String(
+        localized: "Deleted in \(Int(remaining / 60))m",
+        comment:
+          "History row badge: minutes until a cancelled dictation is deleted. m abbreviates minutes."
+      )
+    }
+    return String(
+      localized: "Deleted in under a minute",
+      comment: "History row badge: a cancelled dictation is deleted within a minute.")
   }
 
   /// Spoken form. VoiceOver reads "23h" as an abbreviation, and a row whose
   /// whole point is a deadline should not need decoding.
   static func accessibilityLabel(remaining: TimeInterval) -> String {
-    guard remaining > 0 else { return "Deleting now" }
+    guard remaining > 0 else {
+      return String(
+        localized: "Deleting now",
+        comment: "VoiceOver: a cancelled dictation in History is being deleted now.")
+    }
+    // #3142: whole sentences only. The count == 1 case is its own sentence rather than an
+    // English "s" appended in code; a language with more plural forms adds them to the
+    // counted sentence in the catalog.
     if remaining >= 3600 {
       let hours = Int(remaining / 3600)
-      return "Kept for now, deleted in \(hours) hour\(hours == 1 ? "" : "s")"
+      guard hours != 1 else {
+        return String(
+          localized: "Kept for now, deleted in 1 hour",
+          comment: "VoiceOver: a cancelled dictation in History is deleted in one hour.")
+      }
+      return String(
+        localized: "Kept for now, deleted in \(hours) hours",
+        comment: "VoiceOver: hours until a cancelled dictation in History is deleted. Never 1.")
     }
     if remaining >= 60 {
       let minutes = Int(remaining / 60)
-      return "Kept for now, deleted in \(minutes) minute\(minutes == 1 ? "" : "s")"
+      guard minutes != 1 else {
+        return String(
+          localized: "Kept for now, deleted in 1 minute",
+          comment: "VoiceOver: a cancelled dictation in History is deleted in one minute.")
+      }
+      return String(
+        localized: "Kept for now, deleted in \(minutes) minutes",
+        comment: "VoiceOver: minutes until a cancelled dictation in History is deleted. Never 1.")
     }
-    return "Kept for now, deleted in under a minute"
+    return String(
+      localized: "Kept for now, deleted in under a minute",
+      comment: "VoiceOver: a cancelled dictation in History is deleted within a minute.")
   }
 }
