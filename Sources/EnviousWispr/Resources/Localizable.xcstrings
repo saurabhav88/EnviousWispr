@@ -5544,7 +5544,4075 @@
       "comment" : "Pill after a correction changed a word already in the dictionary. %@ is that word."
     },
     "•" : {},
-    "⏎" : {}
+    "⏎" : {},
+    "whatsNew.self-learning-dictionary.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry self-learning-dictionary).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Self-Learning Dictionary"
+          }
+        }
+      }
+    },
+    "whatsNew.self-learning-dictionary.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry self-learning-dictionary).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically detects when you correct a dictation, adds the corrected word to your dictionary, and shows Undo. The Self-Learning Dictionary help article covers which apps it works in and how the judge runs on your Mac."
+          }
+        }
+      }
+    },
+    "whatsNew.dock-icon-and-window-in-front.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry dock-icon-and-window-in-front).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Dock icon, and a window that opens in front"
+          }
+        }
+      }
+    },
+    "whatsNew.dock-icon-and-window-in-front.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry dock-icon-and-window-in-front).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now shows in the Dock and in Command-Tab like any Mac app, and its window opens in front of what you were doing. On a Mac where you never moved it, the menu bar icon also starts further right, closer to the system icons, where it is easier to find. Prefer the menu bar alone? Switch off Show app in Dock in Settings, Appearance."
+          }
+        }
+      }
+    },
+    "whatsNew.mouse-wheel-scrolling-glides.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry mouse-wheel-scrolling-glides).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mouse wheel scrolling glides"
+          }
+        }
+      }
+    },
+    "whatsNew.mouse-wheel-scrolling-glides.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry mouse-wheel-scrolling-glides).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mouse wheel scrolling now moves farther per notch with a short smooth glide, while trackpad scrolling stays unchanged."
+          }
+        }
+      }
+    },
+    "whatsNew.import-your-snippets.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry import-your-snippets).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import your snippets"
+          }
+        }
+      }
+    },
+    "whatsNew.import-your-snippets.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry import-your-snippets).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bring snippets in from the file you exported, a CSV, a list you paste, or straight from Wispr Flow or TypeWhisper. You review the list before anything is saved, snippets you already have are skipped, and your keyword stays as it is."
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Say slash, get a slash"
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slash works with the spoken punctuation setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol. Backslash still needs Convert spoken punctuation on. The Spoken punctuation and emoji help article has the details."
+          }
+        }
+      }
+    },
+    "whatsNew.transcribe-a-file.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry transcribe-a-file).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Transcribe a File\""
+          }
+        }
+      }
+    },
+    "whatsNew.transcribe-a-file.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry transcribe-a-file).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Historically, transcribing audio locally meant settling for messy, raw text full of filler words and false starts, unless you uploaded your private recordings to cloud servers. Transcribe a File changes that by running both speech transcription and intelligent AI polishing entirely offline. Drop in a single voice memo or queue up a massive archive of files to get back clean, structured text complete with speaker detection, automatic lists, and full edit history. You get publication-ready transcripts at scale without a single byte ever leaving your machine."
+          }
+        }
+      }
+    },
+    "whatsNew.apple-intelligence-macos-27.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry apple-intelligence-macos-27).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence polish improved on macOS 27"
+          }
+        }
+      }
+    },
+    "whatsNew.apple-intelligence-macos-27.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry apple-intelligence-macos-27).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On macOS 27, Apple Intelligence now removes the opening ums, lays out spoken lists and resolves more of your self-corrections. Long dictations that fit its larger model are no longer skipped. The Apple Intelligence card in Settings shows which model is running and its capacity. On macOS 26 nothing changes."
+          }
+        }
+      }
+    },
+    "whatsNew.capitalization-stays-on.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry capitalization-stays-on).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved capitalization when dictating into an existing sentence"
+          }
+        }
+      }
+    },
+    "whatsNew.capitalization-stays-on.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry capitalization-stays-on).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you dictate after words you already typed, EnviousWispr matches your capitalization. If the app was busy, that matching could switch itself off until you relaunched. It now stays on in far more cases."
+          }
+        }
+      }
+    },
+    "whatsNew.measurements-keep-their-unit.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry measurements-keep-their-unit).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictated measurements keep their unit"
+          }
+        }
+      }
+    },
+    "whatsNew.measurements-keep-their-unit.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry measurements-keep-their-unit).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Say \"the gap is 5 mm\" or \"120 mm Hg\" and the unit now comes through with the number."
+          }
+        }
+      }
+    },
+    "whatsNew.no-more-freeze-after-idle.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry no-more-freeze-after-idle).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more freeze after sitting idle"
+          }
+        }
+      }
+    },
+    "whatsNew.no-more-freeze-after-idle.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry no-more-freeze-after-idle).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If EnviousWispr sat idle for a while, pressing the dictate key could silently freeze for a few seconds before anything happened. The speech engine now runs directly inside EnviousWispr instead of a separate helper that macOS could shut down behind its back, so that freeze is gone."
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-addresses-more-languages.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry spoken-addresses-more-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spoken email addresses convert in more languages' own words"
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-addresses-more-languages.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry spoken-addresses-more-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you dictate in English and say an address with another language's words for at and dot, such as \"marco arroba esempio punto com\", it comes back as marco@esempio.com. Addresses ending in a country domain such as .de, .nl or .fr now convert too."
+          }
+        }
+      }
+    },
+    "whatsNew.pill-reduce-motion.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry pill-reduce-motion).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The recording pill honours Reduce Motion"
+          }
+        }
+      }
+    },
+    "whatsNew.pill-reduce-motion.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry pill-reduce-motion).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With Reduce Motion on in macOS, the recording pill no longer breathes, flashes or pulses. The colours stay so a warning still reads as a warning, and the lips still move with your voice."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Small things that now just work"
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eight fixes across dictation, paste and History."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stalled transcription recovery: Canceling a dictation that fails to finish now halts the process immediately while preserving your recorded audio."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Decimal formatting: Numbers spoken digit by digit around a decimal point (e.g., \"two four oh seven point one two three\") now format properly as a single decimal number."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quick Add persistence: Quick Add continues to display the heard phrase on screen even when nothing in your list matches it."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.bullet.3" : {
+      "comment" : "Settings > What's New: point 4 of the list under one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shortcut conflict priority: When the cancel shortcut shares a key combination with Quick Add, cancel now reliably takes priority."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.bullet.4" : {
+      "comment" : "Settings > What's New: point 5 of the list under one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste timeout protection: Bringing an unresponsive target app to the front before pasting now aborts after 500 ms instead of freezing the app."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.bullet.5" : {
+      "comment" : "Settings > What's New: point 6 of the list under one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Safer crash recovery: Crash recovery retains the key to a saved recording until the audio file itself is confirmed safely removed."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.bullet.6" : {
+      "comment" : "Settings > What's New: point 7 of the list under one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Process cleanup on launch: Any lingering background servers left over from an earlier session are automatically terminated on startup."
+          }
+        }
+      }
+    },
+    "whatsNew.small-things-that-now-just-work.bullet.7" : {
+      "comment" : "Settings > What's New: point 8 of the list under one feature announcement (entry small-things-that-now-just-work).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "History type filters: History now distinguishes between Dictations (live keybind speech) and Transcripts (imported files). A new filter switch at the top of the list lets you quickly toggle between All, Dictations, and Transcripts."
+          }
+        }
+      }
+    },
+    "whatsNew.model-lives-in-our-own-folder.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry model-lives-in-our-own-folder).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The speech model now lives in its own folder"
+          }
+        }
+      }
+    },
+    "whatsNew.model-lives-in-our-own-folder.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry model-lives-in-our-own-folder).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr keeps its speech model somewhere that belongs to it, and leaves every other app's files alone. If the model is already on your Mac it gets reused in seconds instead of downloaded again, even if you are offline."
+          }
+        }
+      }
+    },
+    "whatsNew.model-repairs-itself.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry model-repairs-itself).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A damaged speech model fixes itself"
+          }
+        }
+      }
+    },
+    "whatsNew.model-repairs-itself.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry model-repairs-itself).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If part of the speech model goes missing or gets corrupted, EnviousWispr repairs it on its own. Where a copy is already on your Mac it uses that one. Otherwise it fetches just the missing piece instead of the whole model."
+          }
+        }
+      }
+    },
+    "whatsNew.snippets.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry snippets).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Snippets\""
+          }
+        }
+      }
+    },
+    "whatsNew.snippets.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry snippets).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop retyping the same information. Save your email address, LinkedIn, Calendly link, or common email templates as snippets. Speak your keyword followed by your customizable trigger phrase, and the text drops straight into your active cursor field. New installs come preloaded with six examples to help you get started. To set it up: Settings > Snippets."
+          }
+        }
+      }
+    },
+    "whatsNew.eg1-1-2.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry eg1-1-2).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Email Formatting\" for EG-1"
+          }
+        }
+      }
+    },
+    "whatsNew.eg1-1-2.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry eg1-1-2).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With EG-1, you can now dictate emails aloud and have them automatically converted into clean, ready-to-send formats. The model retains all its standard text-polishing capabilities, too."
+          }
+        }
+      }
+    },
+    "whatsNew.s1-mini-local-polish.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry s1-mini-local-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"S1-mini by Superwhisper\""
+          }
+        }
+      }
+    },
+    "whatsNew.s1-mini-local-polish.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry s1-mini-local-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "S1-mini, Superwhisper's custom-tuned local model, is now available for offline polishing. It is completely free, downloads in just 484 MB, and gives you three quick dials to shape your text: Tone, Structure, and Context. EG-1 is still the go-to for maximum polish quality, but S1-mini delivers solid on-device results on a much smaller footprint."
+          }
+        }
+      }
+    },
+    "whatsNew.dictionary-page-rebuilt.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry dictionary-page-rebuilt).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Re-designed Your Words into Dictionary"
+          }
+        }
+      }
+    },
+    "whatsNew.dictionary-page-rebuilt.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry dictionary-page-rebuilt).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"Your Words\" is now \"Dictionary.\" Vocab packs are fully editable, and the interface has been overhauled to make managing your custom vocabulary smoother and more intuitive."
+          }
+        }
+      }
+    },
+    "whatsNew.input-channel-selection.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry input-channel-selection).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support for multi input devices"
+          }
+        }
+      }
+    },
+    "whatsNew.input-channel-selection.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry input-channel-selection).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multi-input audio interfaces like the Focusrite Scarlett are now properly supported. Select your specific mic input channel in microphone settings to route your audio cleanly, with no more input error messages."
+          }
+        }
+      }
+    },
+    "whatsNew.better-out-of-the-box-defaults.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry better-out-of-the-box-defaults).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing New Default Settings"
+          }
+        }
+      }
+    },
+    "whatsNew.better-out-of-the-box-defaults.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry better-out-of-the-box-defaults).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We're making some key functionalities on by default. They can still be toggled off in settings."
+          }
+        }
+      }
+    },
+    "whatsNew.language-aware-cleanup.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry language-aware-cleanup).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved International Polishing"
+          }
+        }
+      }
+    },
+    "whatsNew.language-aware-cleanup.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry language-aware-cleanup).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We've taught our polishing systems to better recognize when to remove filler words depending on the language spoken."
+          }
+        }
+      }
+    },
+    "whatsNew.five-smaller-fixes-2-4-7.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry five-smaller-fixes-2-4-7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Five smaller fixes"
+          }
+        }
+      }
+    },
+    "whatsNew.five-smaller-fixes-2-4-7.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry five-smaller-fixes-2-4-7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The rest of what changed:"
+          }
+        }
+      }
+    },
+    "whatsNew.five-smaller-fixes-2-4-7.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry five-smaller-fixes-2-4-7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moved Quick Add to Ctrl + Shift + W."
+          }
+        }
+      }
+    },
+    "whatsNew.five-smaller-fixes-2-4-7.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry five-smaller-fixes-2-4-7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added clearer microphone error handling: if access is blocked, you will see an alert with a direct shortcut to your system settings."
+          }
+        }
+      }
+    },
+    "whatsNew.five-smaller-fixes-2-4-7.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry five-smaller-fixes-2-4-7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upgraded the shortcut recorder to reliably capture entire key combos."
+          }
+        }
+      }
+    },
+    "whatsNew.five-smaller-fixes-2-4-7.bullet.3" : {
+      "comment" : "Settings > What's New: point 4 of the list under one feature announcement (entry five-smaller-fixes-2-4-7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bumped the OpenAI and Gemini request timeout from 5 seconds to 15 seconds to give complex polishing more room to finish."
+          }
+        }
+      }
+    },
+    "whatsNew.five-smaller-fixes-2-4-7.bullet.4" : {
+      "comment" : "Settings > What's New: point 5 of the list under one feature announcement (entry five-smaller-fixes-2-4-7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved speech parsing so saying \"two B\" outputs as \"2B\"."
+          }
+        }
+      }
+    },
+    "whatsNew.quick-add.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry quick-add).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a custom word to your dictionary with a click of a button"
+          }
+        }
+      }
+    },
+    "whatsNew.quick-add.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry quick-add).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Highlight a misheard word anywhere on macOS, press your Quick Add keybind, and save the right spelling without opening settings. A small panel ranks that spelling against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu, which reads whatever you have highlighted at the moment you open it. Some apps will not tell us what you have selected, such as messaging apps built for iPad and some terminals. There, Quick Add copies your selection, reads it, and puts your clipboard back. Your clipboard history will show both, which we do not try to hide. There is a fraction of a second where a copy you make yourself can be read as the app answering. If that happens the panel shows the wrong word, and that copy of yours is lost when your clipboard is put back. A switch in Clipboard settings turns all of this off, and it turns itself off in common remote desktop and virtual machine apps. The keybind is yours to change in Keybinds settings."
+          }
+        }
+      }
+    },
+    "whatsNew.recording-pill-designs.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry recording-pill-designs).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A new pill design for recording"
+          }
+        }
+      }
+    },
+    "whatsNew.recording-pill-designs.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry recording-pill-designs).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We have now added a new pill design for recording, and you can toggle between these options in the appearance section."
+          }
+        }
+      }
+    },
+    "whatsNew.onboarding-practice-dictation.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry onboarding-practice-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try dictation during setup"
+          }
+        }
+      }
+    },
+    "whatsNew.onboarding-practice-dictation.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry onboarding-practice-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved the onboarding experience so that users can test dictation during the onboarding process."
+          }
+        }
+      }
+    },
+    "whatsNew.live-preview-settings-decluttered.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry live-preview-settings-decluttered).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A less cluttered Live Preview settings screen"
+          }
+        }
+      }
+    },
+    "whatsNew.live-preview-settings-decluttered.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry live-preview-settings-decluttered).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved the Live Preview settings screen to be less cluttered."
+          }
+        }
+      }
+    },
+    "whatsNew.settings-hover-states.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry settings-hover-states).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings respond as your pointer moves"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-hover-states.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry settings-hover-states).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rows, cards, the sidebar and the History list respond to your pointer across the settings window, so it is clearer what is a control and what is only text."
+          }
+        }
+      }
+    },
+    "whatsNew.deep-reasoning-retired.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry deep-reasoning-retired).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One less switch to think about"
+          }
+        }
+      }
+    },
+    "whatsNew.deep-reasoning-retired.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry deep-reasoning-retired).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The AI Polish page used to carry a Deep reasoning switch, which asked cloud models to think harder before polishing your text. We finally measured it, on the hundred hardest dictations we test with, using the Gemini model the app ships with. Thinking harder did not produce a difference we could tell apart from chance, and it made polishing take close to three times as long on the slower dictations. So the switch is gone. Every model now always uses the setting it was already using for virtually everyone, because it shipped off and stayed off for practically all of you. If you were one of the few who turned it on, polishing will finish noticeably sooner. Nothing else about polishing changes, and no other setting moves."
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-web-addresses.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry spoken-web-addresses).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictated web addresses come out ready to use"
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-web-addresses.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry spoken-web-addresses).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saying a web address out loud used to leave you something to fix by hand. A stray period at the end of a bare address is now dropped, while a real sentence period is kept. A leftover dot word sitting beside an address we already joined up is folded into the address. A garbled h slash slash from a half heard https is repaired before polish ever sees it. Dictating into the address bar of Safari, Chrome, Brave or Edge no longer adds a trailing space you have to delete. And in Chrome and Brave, pressing Return after dictating an address now goes there, which it did not before."
+          }
+        }
+      }
+    },
+    "whatsNew.saved-words-keep-address-endings.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry saved-words-keep-address-endings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your saved words no longer eat the end of an address"
+          }
+        }
+      }
+    },
+    "whatsNew.saved-words-keep-address-endings.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry saved-words-keep-address-endings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you had saved a word or phrase that looked like the start of a web address, correcting it could swallow the ending, so a company name with dot com stuck on it came back as the company name alone. Both places that could happen are fixed, and the ending now survives the correction."
+          }
+        }
+      }
+    },
+    "whatsNew.filler-removal-respects-language.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry filler-removal-respects-language).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Real German, Dutch, Danish and Norwegian words are no longer deleted"
+          }
+        }
+      }
+    },
+    "whatsNew.filler-removal-respects-language.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry filler-removal-respects-language).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The step that strips out ums and uhs used an English list, and it ran whatever language you were dictating in. That deleted real, common words: er means he in German, there in Dutch, and is in Danish and Norwegian, and um is an ordinary German word too. Filler removal now reads the language you are dictating in and leaves those words alone. Every other word and every other language is unchanged."
+          }
+        }
+      }
+    },
+    "whatsNew.smaller-wins-2-4-6.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smaller-wins-2-4-6).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The smaller wins"
+          }
+        }
+      }
+    },
+    "whatsNew.smaller-wins-2-4-6.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smaller-wins-2-4-6).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete, Cancel and Save stay visible in the custom word panel however many spellings you have saved against a word, and a long spelling wraps instead of pushing them off. Cancelling a model download you started yourself no longer stops the next automatic upgrade being offered. And if the speech engine was not ready when you finished speaking, your recording is kept and given another go rather than lost."
+          }
+        }
+      }
+    },
+    "whatsNew.escape-recovery-cancelled-dictations.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry escape-recovery-cancelled-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelled dictations are now recoverable!"
+          }
+        }
+      }
+    },
+    "whatsNew.escape-recovery-cancelled-dictations.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry escape-recovery-cancelled-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pressing your cancel keybind used to discard your recording instantly. Turn on Escape Recovery, and your dictation is preserved instead. The app finishes transcribing and polishing, then displays a small pill offering an Undo button for three seconds, staying visible as long as your pointer rests on it. If you let it fade, the text waits in your History for 24 hours, where a Keep button makes it permanent. Only the text transcript is retained, never the audio. Escape Recovery is disabled by default. You can enable it in the Keybinds settings menu."
+          }
+        }
+      }
+    },
+    "whatsNew.live-preview-words-while-you-speak.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry live-preview-words-while-you-speak).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You asked for this: see your words as you speak"
+          }
+        }
+      }
+    },
+    "whatsNew.live-preview-words-while-you-speak.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry live-preview-words-while-you-speak).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is the one you have been asking for. The recording pill now shows your words as you speak them. The box starts compact and grows to five lines, then scrolls so the newest thing you said is always in view, and the pill has been rebuilt around it with a live meter, a cleaner header and the hands-free timer back where you can see it. Choose the engine that suits your Mac: Apple's is built into macOS 26 and needs no preview model, though some languages ask macOS for a language pack first, or take the universal one, a 217 MB download that runs on macOS 14 and later and covers far more languages. You pick your language on the Live Preview page, and you can switch the whole thing on or off whenever you like. Your finished text is as good as ever: when you stop, Parakeet or WhisperKit transcribes the whole recording from the very first word, then your custom words and polish run on top. So there is no need to let the preview catch up before you stop talking. Everything you said is already captured."
+          }
+        }
+      }
+    },
+    "whatsNew.parakeet-language-selection.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry parakeet-language-selection).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language selection now available on Parakeet"
+          }
+        }
+      }
+    },
+    "whatsNew.parakeet-language-selection.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry parakeet-language-selection).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you dictate in a language other than English, telling the app which language you speak now actually does something on Parakeet, the engine most people dictate with. It could not before: Parakeet has no language detection and no way of being told, so it worked purely from the sounds. Setting your language narrows what it produces to your own alphabet, so a German dictation stops coming back with stray Greek or Cyrillic characters in it. It cannot separate languages that share an alphabet, so it will not tell German from Dutch. If you use WhisperKit you could already set this, and nothing changes for you."
+          }
+        }
+      }
+    },
+    "whatsNew.smart-import-five-more-apps.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smart-import-five-more-apps).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bring your words across from five more dictation apps"
+          }
+        }
+      }
+    },
+    "whatsNew.smart-import-five-more-apps.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smart-import-five-more-apps).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switching from another dictation app used to mean retyping your vocabulary one word at a time. EnviousWispr can now read custom words out of Vox, TypeWhisper, Spokenly, Juno and Handy, on top of FluidVoice, Superwhisper and Wispr Flow. Eight apps in all. It reads their files without changing them, and shows you every word it found before anything joins your library."
+          }
+        }
+      }
+    },
+    "whatsNew.eg1-retrained-on-weakest-spots.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry eg1-retrained-on-weakest-spots).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EG-1 has been retrained on its two weakest spots"
+          }
+        }
+      }
+    },
+    "whatsNew.eg1-retrained-on-weakest-spots.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry eg1-retrained-on-weakest-spots).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We spent this cycle retraining our built-in AI cleanup on the two things it was worst at, and both moved a long way. When you announce a list out loud, EG-1 used to hand you one long line almost every time: in our testing it built a real list under 1% of the time, and it now does it 83% of the time. When you change your mind mid-sentence, saying something like \"send it to Marcus, sorry, to Priya\", it keeps what you meant and drops what you took back 78% of the time, up from 71%, which puts it level with the frontier cloud models we measure ourselves against. It is also around 14% faster than the version it replaces. Those figures come from our own testing, on cases the model never trained on. Nothing changes about how you dictate. If you already use EG-1 the new version updates itself in the background the next time you open the app, with dictation working normally throughout, and you can pause that download and pick it up later from AI Polish settings, which now also shows which version you are on."
+          }
+        }
+      }
+    },
+    "whatsNew.cloud-polish-prompt-v7.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry cloud-polish-prompt-v7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloud AI polish got a better set of instructions"
+          }
+        }
+      }
+    },
+    "whatsNew.cloud-polish-prompt-v7.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry cloud-polish-prompt-v7).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you bring your own OpenAI, Claude or Gemini key, we rewrote the instructions we send along with your dictation, and it is the biggest gain we have measured on the cloud path. On our benchmark Claude went from 80% to 88%, OpenAI's newer models from 88% to 94%, and Gemini from 88% to 91%, with critical errors down by a third to a half across all three. Spoken lists moved furthest: on OpenAI, announcing a list out loud produced a real list 57% of the time before and 93% of the time now. New Gemini setups also start on 3.7 Flash, which scored highest of the three Gemini models we tested and costs about 29% less to run than the one it replaces. Nothing changes about how you dictate, and if you have already picked a model we leave your choice exactly as it is."
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-model-recommendations-from-tests.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ollama-model-recommendations-from-tests).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revised Ollama recommendations"
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-model-recommendations-from-tests.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ollama-model-recommendations-from-tests).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama model labels used to be based on model size, which did not show how well they cleaned up dictation. They now reflect our own cleanup tests and explain what went wrong. New Ollama setups now start with qwen2.5:3b, the best result among the local models we offer. There is also a new option, qwen3:0.6b, which earned a Recommended label from a download about a quarter the size, so a small download no longer means poor cleanup. Models that produced no acceptable result ask before downloading."
+          }
+        }
+      }
+    },
+    "whatsNew.virtual-microphone-silence-fixed.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry virtual-microphone-silence-fixed).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If dictation was recording silence, that is fixed"
+          }
+        }
+      }
+    },
+    "whatsNew.virtual-microphone-silence-fixed.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry virtual-microphone-silence-fixed).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If your Mac's default microphone was a virtual one, the kind that Krisp, Loopback, BlackHole, an aggregate device or a meeting app installs, EnviousWispr took it at its word and recorded digital silence. Not quieter audio, nothing at all, every single time. Across the four releases we have data for, not one dictation on a device like that ever succeeded. The app now reads what the device actually is before binding to it, and picks a real microphone over one of these whenever you have one. If a virtual device is genuinely the only input on your Mac, it is still used, because refusing it would leave you with nothing to record with at all. If you tried EnviousWispr, got nothing back, and assumed it was broken: it was, and it is worth another go."
+          }
+        }
+      }
+    },
+    "whatsNew.smaller-wins-2-4-5.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smaller-wins-2-4-5).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The smaller wins"
+          }
+        }
+      }
+    },
+    "whatsNew.smaller-wins-2-4-5.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smaller-wins-2-4-5).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A handful of smaller improvements. The Shortcuts page is now called Keybinds, and everywhere that used to say \"hotkey\" now says \"keybind\", so one thing has one name. Live transcription is now called Faster Transcription, because changing when your text lands is what it actually does. Noisy rooms no longer eat the start of your sentence, though if you use auto-stop its timing will move in those rooms: usually stopping sooner, and on the half-second setting sometimes waiting longer or not stopping on its own at all. Pasting is around four times quicker, down from roughly 265 milliseconds to under 60 in most apps, because your dictation no longer waits on the clipboard handover before counting itself done. Dictating into a terminal no longer quietly gives up part way through a session, where the only cure used to be quitting and reopening the app. Recordings are no longer cut short as though nothing was heard, which could happen when a quiet opening ate the app's patience before you had really started. Dragging a pill no longer leaves a ghost copy of it stranded on screen. Changing your dictation keybind can no longer set a recording going by accident. A single modifier key now works as your cancel keybind, where before it would save and display and then quietly do nothing. And if you run EnviousWispr straight from your Downloads folder, its offer to move itself into Applications now actually works."
+          }
+        }
+      }
+    },
+    "whatsNew.globe-key-dictation-hotkey.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry globe-key-dictation-hotkey).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use the Globe key, or Fn, as your dictation keybind"
+          }
+        }
+      }
+    },
+    "whatsNew.globe-key-dictation-hotkey.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry globe-key-dictation-hotkey).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can now use the Globe key, marked Fn on many Macs, as your dictation keybind. Right Option stays exactly as it is unless you choose Globe. If macOS also opens emoji, switches your keyboard language, or starts its own dictation when you press it, go to System Settings, then Keyboard, then Press 🌐 key to, and choose Do Nothing."
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-cloud-models-appear-automatically.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ollama-cloud-models-appear-automatically).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama Cloud models now appear automatically"
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-cloud-models-appear-automatically.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ollama-cloud-models-appear-automatically).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama Cloud models used to appear in Manage Models only after you added them on that Mac. The full lineup now appears there automatically on every install and after every update. The button now says Add instead of Download because nothing is downloading, and cloud models can no longer be deleted. For 30 days after the August 5, 2026 check, the models available without a paid Ollama plan are listed first. After that the list returns to a neutral order."
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-cloud-supported-end-to-end.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ollama-cloud-supported-end-to-end).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama Cloud models are now properly supported end to end"
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-cloud-supported-end-to-end.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ollama-cloud-supported-end-to-end).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you polish with an Ollama Cloud model, EnviousWispr used to treat it as a small model running on your Mac. It gave the model too little room to work, spent your cloud quota on warm-up calls it did not need, and when something failed it told you to start Ollama even though Ollama was already running. Cloud models are now recognised for what they are, and if you are signed out of Ollama the message says so. Models that run on your own Mac also get a prompt written for them, replacing one that was quietly working against itself on most dictations."
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-settings-stay-accurate.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ollama-settings-stay-accurate).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama settings and the model list now stay accurate"
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-settings-stay-accurate.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ollama-settings-stay-accurate).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Ollama status in Settings could get stuck: still saying it was starting after it was ready, or still saying ready after you had quit Ollama. It now keeps itself current while you have the panel open. The model picker also showed two different models under one identical name, so there was no way to tell them apart. Each one is now labelled so you can."
+          }
+        }
+      }
+    },
+    "whatsNew.continuation-casing-eleven-languages.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry continuation-casing-eleven-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictating into the middle of a sentence now works in eleven more languages"
+          }
+        }
+      }
+    },
+    "whatsNew.continuation-casing-eleven-languages.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry continuation-casing-eleven-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you type part of a sentence and dictate the rest, EnviousWispr matches the capitalisation you would have used yourself. Until now that only worked in English, so every other language got a capital letter dropped into the middle of your sentence. It now works in German, French, Italian, Spanish, Portuguese, Dutch, Danish, Swedish, Finnish, Russian and Turkish. Measured against real published writing, this went from right 7% of the time to right 94%. We also found several ways to make it more accurate everywhere, so it now works reliably in far more of the places you dictate."
+          }
+        }
+      }
+    },
+    "whatsNew.fewer-transcription-errors.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry fewer-transcription-errors).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fewer transcription errors"
+          }
+        }
+      }
+    },
+    "whatsNew.fewer-transcription-errors.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry fewer-transcription-errors).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A quick press with no dictation used to fire an error that had nothing to explain. No more. And a microphone that sent no audio at all now asks you to check your mic, instead of blaming transcription for something transcription never saw."
+          }
+        }
+      }
+    },
+    "whatsNew.fixes-you-should-never-notice.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry fixes-you-should-never-notice).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixes you should never notice"
+          }
+        }
+      }
+    },
+    "whatsNew.fixes-you-should-never-notice.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry fixes-you-should-never-notice).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Words saves are now much more resilient to an app crash or a power cut. After an update, a leftover model file can no longer be mistaken for a good one. And the speech engine has picked up newer transcription repairs from upstream. All real, all invisible unless something goes wrong."
+          }
+        }
+      }
+    },
+    "whatsNew.cursor-aware-capitalization.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry cursor-aware-capitalization).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictating after an incomplete sentence properly considers capitalization"
+          }
+        }
+      }
+    },
+    "whatsNew.cursor-aware-capitalization.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry cursor-aware-capitalization).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you type part of a sentence and then dictate the rest, EnviousWispr now looks at the words already there before it writes. It matches the capitalization and spacing you would have used, so you no longer get a capital letter in the middle of your own sentence. If the dictation repeats a word you just typed, the duplicate is removed. This also works in your terminal when Claude Code, Codex or Gemini CLI is running."
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-punctuation-is-now-a-choice.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry spoken-punctuation-is-now-a-choice).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added a toggle to control spoken punctuation"
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-punctuation-is-now-a-choice.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry spoken-punctuation-is-now-a-choice).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saying \"comma\" or \"period\" used to always insert the punctuation mark, even when you meant the word. There is now a toggle for it under Speech Engine, in the Cleanup section. It is off by default, because EnviousWispr already adds punctuation for you. Turn it on if you prefer to dictate punctuation out loud, and the help icon beside it lists every word you can say."
+          }
+        }
+      }
+    },
+    "whatsNew.parakeet-final-words.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry parakeet-final-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved how Parakeet hears the last few words of your dictation"
+          }
+        }
+      }
+    },
+    "whatsNew.parakeet-final-words.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry parakeet-final-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet, the default speech engine, would sometimes add a word you never said at the very end of a dictation. \"I was able to\" could come back as \"I was able to do that.\" That no longer happens. Your dictation ends where you stopped speaking."
+          }
+        }
+      }
+    },
+    "whatsNew.bluetooth-wake-grace.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry bluetooth-wake-grace).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Further improved Bluetooth performance"
+          }
+        }
+      }
+    },
+    "whatsNew.bluetooth-wake-grace.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry bluetooth-wake-grace).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth microphones take a moment to start listening after you press, and EnviousWispr was giving up too early. A first press on AirPods or a headset could come back with nothing at all. It now waits for the connection to wake up, so you can press and start talking."
+          }
+        }
+      }
+    },
+    "whatsNew.audio-error-reporting.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry audio-error-reporting).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved audio error reporting"
+          }
+        }
+      }
+    },
+    "whatsNew.audio-error-reporting.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry audio-error-reporting).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When your microphone sent nothing usable, EnviousWispr showed a generic error with a Try Again button that would fail the same way. In one case it said nothing at all. You now get a plain sentence asking you to check your microphone. And if macOS loses track of your default microphone, EnviousWispr finds another connected one and carries on."
+          }
+        }
+      }
+    },
+    "whatsNew.help-icons-introduced.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry help-icons-introduced).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Began introducing help icons within the application"
+          }
+        }
+      }
+    },
+    "whatsNew.help-icons-introduced.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry help-icons-introduced).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We've recognized there's a lot of nuance to how our software works. You might start noticing help icons next to some toggles so you can better understand the features and capabilities."
+          }
+        }
+      }
+    },
+    "whatsNew.gemini-latest-models.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry gemini-latest-models).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updated Gemini API to support latest models"
+          }
+        }
+      }
+    },
+    "whatsNew.gemini-latest-models.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry gemini-latest-models).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google changed how its newer Gemini models accept requests, and several models in the picker had stopped working for cloud polish. They all work now. The default Gemini model has also been updated, since Google retired the previous one."
+          }
+        }
+      }
+    },
+    "whatsNew.smaller-repairs-recording-settings.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smaller-repairs-recording-settings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A handful of smaller repairs across recording and settings"
+          }
+        }
+      }
+    },
+    "whatsNew.smaller-repairs-recording-settings.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smaller-repairs-recording-settings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With Live transcription switched on, the last words you said could go missing while the transcript still looked complete. Settings could say your speech engine was ready before it actually was, so recording would not start. Hands-free mode could get stuck, leaving your keybind doing nothing. Recovering a recording that was interrupted is more dependable. And the app runs more steadily on the newest Macs."
+          }
+        }
+      }
+    },
+    "whatsNew.import-words-from-another-app.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry import-words-from-another-app).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bring your words over from another dictation app"
+          }
+        }
+      }
+    },
+    "whatsNew.import-words-from-another-app.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry import-words-from-another-app).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switching no longer means retyping your vocabulary. Pick the app you used before and your words come across, including the misspellings you had it watch for. FluidVoice, Superwhisper and Wispr Flow are supported today, with more on the way, and only apps actually installed on your Mac are offered. Nothing on your disk is touched until you choose one, and nothing is added to your words until you review and approve it. On Macs where Apple Intelligence is available, EnviousWispr also suggests sound-alike spellings for your new words automatically, so dictation picks them up without a second pass by hand."
+          }
+        }
+      }
+    },
+    "whatsNew.import-words-from-file-or-paste.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry import-words-from-file-or-paste).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import words from a file, or just paste a list"
+          }
+        }
+      }
+    },
+    "whatsNew.import-words-from-file-or-paste.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry import-words-from-file-or-paste).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upload a words file or a plain text file, or paste a list straight in. Every route lands on the same review screen, so you see exactly what will be added, what is already yours, and what clashes, before anything changes. On Macs where Apple Intelligence is available, new words can also get automatic sound-alike suggestions."
+          }
+        }
+      }
+    },
+    "whatsNew.export-words-backup.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry export-words-backup).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export your words to a backup you own"
+          }
+        }
+      }
+    },
+    "whatsNew.export-words-backup.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry export-words-backup).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save your whole vocabulary to a file. Useful for a backup, for moving to a new Mac, or for sharing a set of words with someone else."
+          }
+        }
+      }
+    },
+    "whatsNew.claude-cloud-polish-provider.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry claude-cloud-polish-provider).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude joins OpenAI and Gemini for cloud polish"
+          }
+        }
+      }
+    },
+    "whatsNew.claude-cloud-polish-provider.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry claude-cloud-polish-provider).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bring your own Anthropic key and let Claude clean up your dictation, with ten models to choose from. As always, it is your key and your account, and the app tells you exactly what gets sent."
+          }
+        }
+      }
+    },
+    "whatsNew.bulk-select-delete-words.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry bulk-select-delete-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select and delete many words at once"
+          }
+        }
+      }
+    },
+    "whatsNew.bulk-select-delete-words.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry bulk-select-delete-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidy up your list without deleting one word at a time. If you are about to remove a lot, EnviousWispr offers to export them first so nothing disappears by accident."
+          }
+        }
+      }
+    },
+    "whatsNew.revamped-crash-recovery.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry revamped-crash-recovery).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revamped crash recovery"
+          }
+        }
+      }
+    },
+    "whatsNew.revamped-crash-recovery.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry revamped-crash-recovery).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Our crash recovery system is smarter now. It actively tries to rescue a failed dictation wherever it can while the app is still running, not only after a crash. If the speech engine stops responding while you are still talking, EnviousWispr keeps the audio it already captured and transcribes it rather than losing the dictation."
+          }
+        }
+      }
+    },
+    "whatsNew.cloud-polish-longer-dictations.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry cloud-polish-longer-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Better cloud polishing for long dictations"
+          }
+        }
+      }
+    },
+    "whatsNew.cloud-polish-longer-dictations.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry cloud-polish-longer-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We reworked the output limits across all three cloud AI providers, so even a very long dictation has the room it needs to be polished in full."
+          }
+        }
+      }
+    },
+    "whatsNew.two-copies-share-words-safely.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry two-copies-share-words-safely).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed: a rare issue when the app was running twice"
+          }
+        }
+      }
+    },
+    "whatsNew.two-copies-share-words-safely.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry two-copies-share-words-safely).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you happened to have two copies of EnviousWispr running at the same time, your custom words could be affected. That is now handled properly."
+          }
+        }
+      }
+    },
+    "whatsNew.model-download-improvements.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry model-download-improvements).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download improvements"
+          }
+        }
+      }
+    },
+    "whatsNew.model-download-improvements.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry model-download-improvements).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We revamped how the speech and polish models download, and where they are stored on disk. Downloads are faster, resume on their own if your connection drops, and can be cancelled if they stall."
+          }
+        }
+      }
+    },
+    "whatsNew.bluetooth-usb-audio-support.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry bluetooth-usb-audio-support).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proper Bluetooth and USB audio support"
+          }
+        }
+      }
+    },
+    "whatsNew.bluetooth-usb-audio-support.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry bluetooth-usb-audio-support).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now properly supports Bluetooth and USB microphones, including on Mac mini. We also rebuilt the entire infrastructure around our sound capture engine to be far more robust, so recording no longer fails quietly when a microphone misbehaves."
+          }
+        }
+      }
+    },
+    "whatsNew.recording-sound-cues.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry recording-sound-cues).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Customizable sound cues"
+          }
+        }
+      }
+    },
+    "whatsNew.recording-sound-cues.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry recording-sound-cues).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional chimes when recording starts and stops. Twelve to choose from, soft to loud. Off by default."
+          }
+        }
+      }
+    },
+    "whatsNew.recording-pill-position.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry recording-pill-position).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose your recording pill location"
+          }
+        }
+      }
+    },
+    "whatsNew.recording-pill-position.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry recording-pill-position).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move the recording pill to the top or bottom of your screen and it remembers."
+          }
+        }
+      }
+    },
+    "whatsNew.larger-menu-bar-icon.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry larger-menu-bar-icon).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Larger menu bar icon"
+          }
+        }
+      }
+    },
+    "whatsNew.larger-menu-bar-icon.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry larger-menu-bar-icon).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The menu bar icon is now larger and easier to spot."
+          }
+        }
+      }
+    },
+    "whatsNew.open-source-licenses.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry open-source-licenses).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Source Licenses"
+          }
+        }
+      }
+    },
+    "whatsNew.open-source-licenses.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry open-source-licenses).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A new screen in Settings so the open source licenses EnviousWispr is built on are always available to read in the app."
+          }
+        }
+      }
+    },
+    "whatsNew.openai-model-support.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry openai-model-support).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All OpenAI models now properly supported"
+          }
+        }
+      }
+    },
+    "whatsNew.openai-model-support.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry openai-model-support).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI changed how its API calls work. We fixed them so their full library of models can be used for cloud polishing. This also includes smaller fixes, such as making sure you are notified if you forget to enter your API key."
+          }
+        }
+      }
+    },
+    "whatsNew.recording-timer-reset.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry recording-timer-reset).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Timer bug addressed"
+          }
+        }
+      }
+    },
+    "whatsNew.recording-timer-reset.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry recording-timer-reset).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The timer no longer resets when you swap between screens."
+          }
+        }
+      }
+    },
+    "whatsNew.chosen-microphone-recording-failure.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry chosen-microphone-recording-failure).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed: recording could fail every time on a specific microphone"
+          }
+        }
+      }
+    },
+    "whatsNew.chosen-microphone-recording-failure.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry chosen-microphone-recording-failure).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you picked a microphone by name instead of leaving it on Automatic, and that microphone was running at a sample rate other than the usual one, EnviousWispr could fail to record with the message \"XPC audio service is unreachable.\" It did not clear up on its own, and reinstalling or updating the app did not help, because the setting that caused it lives in macOS rather than in EnviousWispr. The app now reads the microphone's real settings before it starts listening, so recording works whatever rate your microphone is set to. If you have been stuck on this, updating is enough to fix it."
+          }
+        }
+      }
+    },
+    "whatsNew.reliable-first-run-download.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry reliable-first-run-download).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "First-run setup downloads are far more reliable"
+          }
+        }
+      }
+    },
+    "whatsNew.reliable-first-run-download.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry reliable-first-run-download).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setting up EnviousWispr downloads a speech model, and on some networks that download could stall and leave you stuck before you ever got to dictate. We rebuilt how the app fetches it: the download now resumes on its own if your connection drops, falls back to a backup source when needed, and can no longer hang forever. If setup gets interrupted, reopening the app picks up right where it left off instead of starting over."
+          }
+        }
+      }
+    },
+    "whatsNew.eg1-native-polish.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry eg1-native-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meet EG-1, our new recommended polish engine"
+          }
+        }
+      }
+    },
+    "whatsNew.eg1-native-polish.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry eg1-native-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now ships its own AI polish model, trained specifically for dictation, and it is remarkably strong: a 94.7% pass rate across our 1,890-case benchmark, edging out the big cloud models. It shines exactly where built-in Apple Intelligence falls short: turning spoken lists into real lists, honoring your mid-sentence self-corrections, and breaking long dictations into clean paragraphs. It is fast, typically polishing a dictation in under a second, and completely offline: download it once and it runs entirely on your Mac, no account, no API key, no internet after setup. EG-1 is our recommended engine going forward."
+          }
+        }
+      }
+    },
+    "whatsNew.whisperkit-engine-redesign.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry whisperkit-engine-redesign).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The All Languages engine, redesigned"
+          }
+        }
+      }
+    },
+    "whatsNew.whisperkit-engine-redesign.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry whisperkit-engine-redesign).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We rebuilt the All Languages engine from the ground up to transcribe live while you speak as well as in one pass at the end of a recording. Your text now lands almost immediately when you stop, no matter how long you talked, first words come through quicker, and the redesign makes the engine more robust: fewer imagined phrases like a stray \"thank you\" during quiet moments, and no more text going missing or repeating in longer recordings. To stream live, pick a specific language in Settings; with Auto-detect on, the engine waits for the full recording so it can identify your language accurately."
+          }
+        }
+      }
+    },
+    "whatsNew.settings-redesign.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry settings-redesign).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings got a full visual refresh"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-redesign.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry settings-redesign).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We updated the Settings page to be easier to read and navigate. Settings and History now share one polished, unified look, with roomier spacing, easier-to-read text, and a redesigned AI Polish tab where each engine has its own card with everything you need to set it up."
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-misconfig-fix.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ollama-misconfig-fix).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smoother behavior when Ollama polish is not set up right"
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-misconfig-fix.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ollama-misconfig-fix).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If Ollama polish is selected but not properly set up, say the model is missing or Ollama is not running, the app no longer misbehaves. It tells you clearly what is wrong and delivers your unpolished text right away."
+          }
+        }
+      }
+    },
+    "whatsNew.ordinal-numbers-fix.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ordinal-numbers-fix).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smarter built-in number handling"
+          }
+        }
+      }
+    },
+    "whatsNew.ordinal-numbers-fix.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ordinal-numbers-fix).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We improved the always-on, non-AI part of the pipeline that formats spoken numbers. Phrases like \"two hundredth anniversary\" and \"third-largest city\" now come out exactly right instead of turning into odd digit mixes."
+          }
+        }
+      }
+    },
+    "whatsNew.tail-clip-recovery.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry tail-clip-recovery).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Long dictations keep every last word"
+          }
+        }
+      }
+    },
+    "whatsNew.tail-clip-recovery.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry tail-clip-recovery).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed a long-standing bug where the end of a longer dictation could go missing if you paused mid-sentence near the finish. The speech engine now catches and recovers those moments, so your closing words always land."
+          }
+        }
+      }
+    },
+    "whatsNew.cloud-polish-facelift.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry cloud-polish-facelift).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloud AI polish got a facelift"
+          }
+        }
+      }
+    },
+    "whatsNew.cloud-polish-facelift.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry cloud-polish-facelift).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you bring your own OpenAI or Gemini key, polish just got a major upgrade. We rewrote the prompt from the ground up and benchmarked it across 1,890 real dictation cases: pass rates jumped from about 70% to about 92%. You'll notice the difference most in paragraph breaks when you change topics, spoken lists becoming real lists, cleaner handling of mid-sentence self-corrections, grammar fixes, and emoji staying exactly where you put them."
+          }
+        }
+      }
+    },
+    "whatsNew.dark-mode.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry dark-mode).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dark mode has arrived"
+          }
+        }
+      }
+    },
+    "whatsNew.dark-mode.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry dark-mode).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now has a dark mode. Match your system automatically, or pick light or dark yourself in Settings. Easier on the eyes for late-night dictation."
+          }
+        }
+      }
+    },
+    "whatsNew.hour-long-recordings.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry hour-long-recordings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Record for up to an hour at a time"
+          }
+        }
+      }
+    },
+    "whatsNew.hour-long-recordings.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry hour-long-recordings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can now record for up to a full hour in one go. As you near the limit you get a gentle heads-up, and recording stops cleanly on its own so you never lose what you said."
+          }
+        }
+      }
+    },
+    "whatsNew.sharper-on-device-polish.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry sharper-on-device-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sharper on-device polish"
+          }
+        }
+      }
+    },
+    "whatsNew.sharper-on-device-polish.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry sharper-on-device-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The built-in, fully on-device polish got a real tune-up. It cleans up filler and phrasing more reliably, keeps the natural way you start a sentence, and leaves your wording alone when it should."
+          }
+        }
+      }
+    },
+    "whatsNew.emoji-stay-put.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry emoji-stay-put).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your emoji stay put"
+          }
+        }
+      }
+    },
+    "whatsNew.emoji-stay-put.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry emoji-stay-put).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate an emoji and it now stays exactly where you placed it after polish runs. No more emoji going missing or landing in the wrong spot."
+          }
+        }
+      }
+    },
+    "whatsNew.clearer-polish-failure-reasons.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry clearer-polish-failure-reasons).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clearer reasons when polish can't finish"
+          }
+        }
+      }
+    },
+    "whatsNew.clearer-polish-failure-reasons.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry clearer-polish-failure-reasons).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If cloud or on-device AI polish ever cannot finish, EnviousWispr now tells you specifically what happened and what to do, instead of a vague notice. Either way, your clean transcription is always delivered."
+          }
+        }
+      }
+    },
+    "whatsNew.crash-recovery.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry crash-recovery).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your words survive an unexpected quit"
+          }
+        }
+      }
+    },
+    "whatsNew.crash-recovery.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry crash-recovery).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If the app ever closes in the middle of a dictation, your recording is no longer lost. When you reopen EnviousWispr it quietly picks up where it left off and finishes turning your words into text."
+          }
+        }
+      }
+    },
+    "whatsNew.ap-style-numbers.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ap-style-numbers).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Numbers written the way you would write them"
+          }
+        }
+      }
+    },
+    "whatsNew.ap-style-numbers.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ap-style-numbers).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Numbers now come out the way you would actually type them: small ones spelled out, larger ones as digits, following the same style most newsrooms use. That means less cleanup for you."
+          }
+        }
+      }
+    },
+    "whatsNew.no-clipped-last-words.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry no-clipped-last-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more clipped last words"
+          }
+        }
+      }
+    },
+    "whatsNew.no-clipped-last-words.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry no-clipped-last-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We fixed a case where a quick, energetic word or two at the very end of a dictation could get trimmed off. Your full sentence now makes it through."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-never-waits-on-history.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry paste-never-waits-on-history).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasting never waits on saving"
+          }
+        }
+      }
+    },
+    "whatsNew.paste-never-waits-on-history.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry paste-never-waits-on-history).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Even if saving a dictation to your History runs into a snag, your words still land where you are typing. Delivery no longer waits on the archive."
+          }
+        }
+      }
+    },
+    "whatsNew.voiceover-and-keyboard.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry voiceover-and-keyboard).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Built for VoiceOver and keyboard navigation"
+          }
+        }
+      }
+    },
+    "whatsNew.voiceover-and-keyboard.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry voiceover-and-keyboard).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now reads cleanly with VoiceOver and is fully operable from the keyboard. Its keybind recorders, buttons, and update prompts announce themselves clearly and respond to keyboard control."
+          }
+        }
+      }
+    },
+    "whatsNew.clearer-polish-on-older-macs.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry clearer-polish-on-older-macs).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clearer polish on older Macs"
+          }
+        }
+      }
+    },
+    "whatsNew.clearer-polish-on-older-macs.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry clearer-polish-on-older-macs).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On Macs that cannot run Apple's on-device polish, EnviousWispr no longer shows a confusing \"polish failed\" note. It simply hands you your clean transcription, and onboarding now explains your polish options up front."
+          }
+        }
+      }
+    },
+    "whatsNew.words-stay-out-of-diagnostics.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry words-stay-out-of-diagnostics).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your words stay out of diagnostics"
+          }
+        }
+      }
+    },
+    "whatsNew.words-stay-out-of-diagnostics.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry words-stay-out-of-diagnostics).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We added another layer to make sure your dictated words can never end up in crash reports or diagnostics. What you say stays yours."
+          }
+        }
+      }
+    },
+    "whatsNew.open-source-and-verifiable.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry open-source-and-verifiable).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open source, and easy to verify"
+          }
+        }
+      }
+    },
+    "whatsNew.open-source-and-verifiable.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry open-source-and-verifiable).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr is open source under the GPLv3 license, and every download now points you straight to the full source. You can see exactly what the app does."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-works-in-word-excel-pages.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry paste-works-in-word-excel-pages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasting now lands in Word, Excel, and more"
+          }
+        }
+      }
+    },
+    "whatsNew.paste-works-in-word-excel-pages.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry paste-works-in-word-excel-pages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We fixed an issue where in some apps (Word, Excel, Pages, Numbers, OneNote, Sublime Text, Firefox) your dictation would say \"Copied\" but never actually paste. Your words now land in the document like everywhere else."
+          }
+        }
+      }
+    },
+    "whatsNew.small-ui-tweaks.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry small-ui-tweaks).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Small UI tweaks for a cleaner experience"
+          }
+        }
+      }
+    },
+    "whatsNew.small-ui-tweaks.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry small-ui-tweaks).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tidier sidebar status card, History columns that stay readable in small windows, more reliable update delivery, and an AI badge that only appears when AI actually ran."
+          }
+        }
+      }
+    },
+    "whatsNew.import-names-from-contacts.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry import-names-from-contacts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bring in the names of people you know"
+          }
+        }
+      }
+    },
+    "whatsNew.import-names-from-contacts.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry import-names-from-contacts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One tap on \"Import from Contacts\" adds the people in your address book to your custom words, so a coworker's or friend's hard-to-spell name comes out right the first time. Everything stays on your Mac. Your contacts are never uploaded. EnviousWispr also quietly learns the common ways each name gets misheard, so it catches those too."
+          }
+        }
+      }
+    },
+    "whatsNew.vocabulary-packs.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry vocabulary-packs).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vocabulary packs for brands and jargon"
+          }
+        }
+      }
+    },
+    "whatsNew.vocabulary-packs.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry vocabulary-packs).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on a pack and EnviousWispr recognizes those words and capitalizes them the way they're meant to be written (AngularJS, Nivea, Acosta). Each pack has a searchable list, so you can see every word it covers and the spoken variants it catches."
+          }
+        }
+      }
+    },
+    "whatsNew.no-swallowed-press-after-idle.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry no-swallowed-press-after-idle).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more swallowed first press after a break"
+          }
+        }
+      }
+    },
+    "whatsNew.no-swallowed-press-after-idle.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry no-swallowed-press-after-idle).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you left the app idle for a while, your next recording could get eaten while it flashed a \"warming up\" notice, even though it was basically ready. It now quietly re-wakes in a fraction of a second and captures your words, including the very first one."
+          }
+        }
+      }
+    },
+    "whatsNew.simpler-settings-performance.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry simpler-settings-performance).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One less Settings tab to hunt through"
+          }
+        }
+      }
+    },
+    "whatsNew.simpler-settings-performance.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry simpler-settings-performance).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The \"Performance\" tab held just one control: how long to keep the engine loaded between recordings. It now sits at the bottom of the Transcription screen, right where it belongs, so Settings has one less place to look."
+          }
+        }
+      }
+    },
+    "whatsNew.automatic-update-checks.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry automatic-update-checks).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr keeps itself current"
+          }
+        }
+      }
+    },
+    "whatsNew.automatic-update-checks.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry automatic-update-checks).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The app now looks for new versions on its own: when you open it, when you come back to it, and quietly in the background. So a waiting improvement finds you instead of you having to go looking. There's also a clear \"Check for Updates\" control in Settings if you ever want to look right now."
+          }
+        }
+      }
+    },
+    "whatsNew.soft-and-distant-speech-captured.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry soft-and-distant-speech-captured).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soft and distant speech no longer gets dropped"
+          }
+        }
+      }
+    },
+    "whatsNew.soft-and-distant-speech-captured.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry soft-and-distant-speech-captured).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you spoke quietly, whispered, or sat back from your mic, EnviousWispr would sometimes capture nothing at all. It now hears those faint and far-away words and writes them down, including a soft first word that used to get clipped off the start."
+          }
+        }
+      }
+    },
+    "whatsNew.no-false-warming-up-notice.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry no-false-warming-up-notice).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more false \"warming up\" notice"
+          }
+        }
+      }
+    },
+    "whatsNew.no-false-warming-up-notice.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry no-false-warming-up-notice).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tapping record again right after a quick tap or a \"changed my mind\" cancel could flash the \"warming up\" notice as if the app were starting cold, even though it was already warm and ready. That stray notice is gone: a warm app just records."
+          }
+        }
+      }
+    },
+    "whatsNew.removed-recording-environment-picker.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry removed-recording-environment-picker).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Removed a setting that promised something it didn't do"
+          }
+        }
+      }
+    },
+    "whatsNew.removed-recording-environment-picker.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry removed-recording-environment-picker).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The \"Recording Environment\" choice (Quiet, Normal, Noisy) sounded like it changed how well the app hears you in different surroundings. It never did that. We removed it so Settings only shows controls that actually do what they say."
+          }
+        }
+      }
+    },
+    "whatsNew.speak-naturally-see-it-written.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry speak-naturally-see-it-written).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speak it naturally, see it written"
+          }
+        }
+      }
+    },
+    "whatsNew.speak-naturally-see-it-written.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry speak-naturally-see-it-written).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now formats what you dictate the way you actually mean it, automatically: phone numbers, money, percentages, years, dates, times, ordinals, decimals, number ranges, emails, and web addresses. Say \"five five five, one two three, four five six seven\" and you get 555-123-4567; \"eighty million dollars\" becomes $80 million; \"nineteen eighty seven\" becomes 1987. It even works when AI polish is turned off."
+          }
+        }
+      }
+    },
+    "whatsNew.more-reliable-updates.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry more-reliable-updates).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More reliable updates"
+          }
+        }
+      }
+    },
+    "whatsNew.more-reliable-updates.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry more-reliable-updates).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We improved how EnviousWispr installs new versions, so updates land cleanly instead of getting stuck partway. And if an update ever has trouble, the copy you already have keeps working."
+          }
+        }
+      }
+    },
+    "whatsNew.polish-keeps-your-words.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry polish-keeps-your-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Polish keeps your words, not your commands"
+          }
+        }
+      }
+    },
+    "whatsNew.polish-keeps-your-words.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry polish-keeps-your-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate something that sounds like an instruction, like \"draft a Slack to Matt about the launch\", and on-device polish used to sometimes go write that message instead of cleaning up what you said. It now recognizes the difference and keeps your actual words."
+          }
+        }
+      }
+    },
+    "whatsNew.honest-warm-up-then-instant.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry honest-warm-up-then-instant).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An honest warm-up, then instant presses"
+          }
+        }
+      }
+    },
+    "whatsNew.honest-warm-up-then-instant.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry honest-warm-up-then-instant).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Right after launch the speech engine takes a moment to warm up. You now see a clear indicator while that happens, instead of a start that looks frozen. Once it is warm, every press begins instantly with no flicker."
+          }
+        }
+      }
+    },
+    "whatsNew.whisperkit-on-gpu.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry whisperkit-on-gpu).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faster WhisperKit transcription"
+          }
+        }
+      }
+    },
+    "whatsNew.whisperkit-on-gpu.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry whisperkit-on-gpu).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We moved the WhisperKit speech engine from your Mac's Neural Engine onto its GPU. In our testing that is the faster path for WhisperKit, so transcription warms up and finishes quicker."
+          }
+        }
+      }
+    },
+    "whatsNew.steadier-under-the-hood-2-1.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry steadier-under-the-hood-2-1).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A steadier app under the hood"
+          }
+        }
+      }
+    },
+    "whatsNew.steadier-under-the-hood-2-1.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry steadier-under-the-hood-2-1).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We finished a major rebuild of how EnviousWispr is assembled and packaged. You won't see it directly, but it makes the app sturdier and lets us ship improvements to you faster and more safely."
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-emoji.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry spoken-emoji).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speak an emoji"
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-emoji.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry spoken-emoji).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Say the emoji's name followed by the word \"emoji\" while you dictate, like \"smiley face emoji\" or \"thumbs up emoji\", and EnviousWispr drops the glyph right in."
+          }
+        }
+      }
+    },
+    "whatsNew.smart-language-detection.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smart-language-detection).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smarter language detection"
+          }
+        }
+      }
+    },
+    "whatsNew.smart-language-detection.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smart-language-detection).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On the Multi-Language speech engine, EnviousWispr now notices when you keep dictating in the same non-English language and offers to lock it in. A fixed language makes transcription both faster and more accurate."
+          }
+        }
+      }
+    },
+    "whatsNew.newer-ai-polish-models.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry newer-ai-polish-models).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Newer AI Polish models"
+          }
+        }
+      }
+    },
+    "whatsNew.newer-ai-polish-models.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry newer-ai-polish-models).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI Polish now works with the latest models. We recommend Gemini 3.5 Flash, or OpenAI 5.4 mini or nano, for the best balance of speed and quality."
+          }
+        }
+      }
+    },
+    "whatsNew.steadier-under-the-hood.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry steadier-under-the-hood).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A steadier app under the hood"
+          }
+        }
+      }
+    },
+    "whatsNew.steadier-under-the-hood.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry steadier-under-the-hood).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We continued a major rebuild of how the app manages itself internally. You won't see it directly, but it makes EnviousWispr more stable and quicker for us to improve."
+          }
+        }
+      }
+    },
+    "whatsNew.right-option-push-to-talk.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry right-option-push-to-talk).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One key to talk"
+          }
+        }
+      }
+    },
+    "whatsNew.right-option-push-to-talk.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry right-option-push-to-talk).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-to-talk now defaults to a single tap of Right Option. Faster to reach than a two-key combo, and easier to remember. You can still remap it in Settings."
+          }
+        }
+      }
+    },
+    "whatsNew.ai-polish-keys-in-keychain.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ai-polish-keys-in-keychain).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI Polish keys live in your keychain"
+          }
+        }
+      }
+    },
+    "whatsNew.ai-polish-keys-in-keychain.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ai-polish-keys-in-keychain).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your API keys for AI Polish are now stored in your Mac's keychain, the same secure place your other passwords live. Existing keys were moved over automatically."
+          }
+        }
+      }
+    },
+    "whatsNew.cleaner-audio-settings.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry cleaner-audio-settings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cleaner audio settings"
+          }
+        }
+      }
+    },
+    "whatsNew.cleaner-audio-settings.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry cleaner-audio-settings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Removed the noise suppression toggle. It wasn't doing what its name suggested, and a quieter settings panel is one less thing to wonder about."
+          }
+        }
+      }
+    },
+    "whatsNew.update-banner-stays-put.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry update-banner-stays-put).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update reminder stays put"
+          }
+        }
+      }
+    },
+    "whatsNew.update-banner-stays-put.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry update-banner-stays-put).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When a new version is ready, the in-app banner now stays visible until you install. No more dismissing it and forgetting it was there."
+          }
+        }
+      }
+    },
+    "whatsNew.better-error-logging.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry better-error-logging).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Better error logging"
+          }
+        }
+      }
+    },
+    "whatsNew.better-error-logging.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry better-error-logging).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved our error logging so we can spot issues and enhance your experience faster."
+          }
+        }
+      }
+    },
+    "whatsNew.welcome-to-2-0.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry welcome-to-2-0).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welcome to EnviousWispr 2.0"
+          }
+        }
+      }
+    },
+    "whatsNew.welcome-to-2-0.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry welcome-to-2-0).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr 2.0 is about trust. Better text on the first try, sharper memory for your words, and fewer moments where you have to step in."
+          }
+        }
+      }
+    },
+    "whatsNew.your-words-has-a-real-home.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry your-words-has-a-real-home).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"Your Words\" has a real home now"
+          }
+        }
+      }
+    },
+    "whatsNew.your-words-has-a-real-home.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry your-words-has-a-real-home).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Learning, Vocab Packs, and Custom Terms each have their own section in Settings. Easier to see what EnviousWispr remembers, what you added yourself, and where to tune it."
+          }
+        }
+      }
+    },
+    "whatsNew.afm-dual-mode-polish.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry afm-dual-mode-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence keeps your voice and your precision"
+          }
+        }
+      }
+    },
+    "whatsNew.afm-dual-mode-polish.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry afm-dual-mode-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On-device polish keeps your voice and your precision. Casual notes keep your tone. Code, jargon, and careful business writing keep their precision. Six months of tuning underpins this."
+          }
+        }
+      }
+    },
+    "whatsNew.custom-terms-survive-on-device-polish.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry custom-terms-survive-on-device-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your custom terms now survive on-device polish"
+          }
+        }
+      }
+    },
+    "whatsNew.custom-terms-survive-on-device-polish.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry custom-terms-survive-on-device-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Words you teach EnviousWispr now carry through to Apple Intelligence polish, not just cloud polish. Product names, client names, and domain terms are far less likely to get cleaned into the wrong thing."
+          }
+        }
+      }
+    },
+    "whatsNew.less-fiddling-better-polish.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry less-fiddling-better-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Less fiddling, better polished text"
+          }
+        }
+      }
+    },
+    "whatsNew.less-fiddling-better-polish.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry less-fiddling-better-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formal, Standard, and Friendly are gone. They rarely changed the result and could quietly bypass smart routing on Apple Intelligence. There is now one quality-tuned default that delivers more consistently."
+          }
+        }
+      }
+    },
+    "whatsNew.pick-polish-model-faster.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry pick-polish-model-faster).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick the right polish model faster"
+          }
+        }
+      }
+    },
+    "whatsNew.pick-polish-model-faster.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry pick-polish-model-faster).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Polish models are now grouped by provider with a short note on what each one is good at. Less hunting, better choices."
+          }
+        }
+      }
+    },
+    "whatsNew.smarter-new-word-suggestions.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smarter-new-word-suggestions).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adding a new word is smarter now"
+          }
+        }
+      }
+    },
+    "whatsNew.smarter-new-word-suggestions.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smarter-new-word-suggestions).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you add a custom term, EnviousWispr suggests likely spellings and pronunciations to catch. Repetitive or low-quality suggestions are filtered out more aggressively."
+          }
+        }
+      }
+    },
+    "whatsNew.cleaner-transcription-before-polish.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry cleaner-transcription-before-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cleaner transcription before polish"
+          }
+        }
+      }
+    },
+    "whatsNew.cleaner-transcription-before-polish.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry cleaner-transcription-before-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The speech engine is now faster and steadier, especially on longer recordings. Fewer odd substitutions and cleaner raw text before polish even runs."
+          }
+        }
+      }
+    },
+    "whatsNew.no-more-phantom-thank-you.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry no-more-phantom-thank-you).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more phantom \"Thank you\""
+          }
+        }
+      }
+    },
+    "whatsNew.no-more-phantom-thank-you.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry no-more-phantom-thank-you).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silent endings used to occasionally produce a fake \"Thank you.\" That hallucination is now suppressed at the source."
+          }
+        }
+      }
+    },
+    "whatsNew.first-word-stays.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry first-word-stays).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your first word stays in the transcript"
+          }
+        }
+      }
+    },
+    "whatsNew.first-word-stays.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry first-word-stays).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The opening word of a recording could sometimes disappear. Fixed. Dictation now starts where you start."
+          }
+        }
+      }
+    },
+    "whatsNew.auto-language-actually-works.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry auto-language-actually-works).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto language detection actually works"
+          }
+        }
+      }
+    },
+    "whatsNew.auto-language-actually-works.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry auto-language-actually-works).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leave language on Auto and EnviousWispr will detect what you spoke instead of assuming English. Short clips also decide faster, so quick commands feel snappier."
+          }
+        }
+      }
+    },
+    "whatsNew.stuck-model-loads-recover-sooner.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry stuck-model-loads-recover-sooner).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stuck model loads recover sooner"
+          }
+        }
+      }
+    },
+    "whatsNew.stuck-model-loads-recover-sooner.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry stuck-model-loads-recover-sooner).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If a speech model gets wedged while loading, EnviousWispr now notices earlier and recovers without the long wait. Slow but healthy loads are left alone."
+          }
+        }
+      }
+    },
+    "whatsNew.custom-words-fast-at-scale.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry custom-words-fast-at-scale).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Words stays fast at scale"
+          }
+        }
+      }
+    },
+    "whatsNew.custom-words-fast-at-scale.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry custom-words-fast-at-scale).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Even very large custom-word lists now stay responsive during polish. Long replacements that used to get dropped now apply correctly, and a failed save no longer throws away what you typed."
+          }
+        }
+      }
+    },
+    "whatsNew.auto-paste-clear-help.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry auto-paste-clear-help).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear help when auto-paste needs access"
+          }
+        }
+      }
+    },
+    "whatsNew.auto-paste-clear-help.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry auto-paste-clear-help).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If Accessibility permission is missing, EnviousWispr now tells you exactly why paste could not happen and gives you a quick path to fix it. No more silent fallback to the clipboard."
+          }
+        }
+      }
+    },
+    "whatsNew.update-when-ready.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry update-when-ready).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update when you are ready"
+          }
+        }
+      }
+    },
+    "whatsNew.update-when-ready.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry update-when-ready).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New versions show up as a quiet in-app banner instead of an interrupting popup. You stay in flow, then update on your schedule."
+          }
+        }
+      }
+    },
+    "whatsNew.stronger-privacy-by-default.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry stronger-privacy-by-default).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stronger privacy, by default"
+          }
+        }
+      }
+    },
+    "whatsNew.stronger-privacy-by-default.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry stronger-privacy-by-default).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloud polish now opts out of training storage where supported. Crash reports scrub sensitive details before they leave your Mac. Stored files have tighter permissions. Gemini request logging is off. The Privacy section explains what each cloud provider keeps."
+          }
+        }
+      }
+    },
+    "whatsNew.smoother-model-switching.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smoother-model-switching).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smoother model switching"
+          }
+        }
+      }
+    },
+    "whatsNew.smoother-model-switching.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smoother-model-switching).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switching between local AI polish models now frees up the previous model cleanly, so your Mac stays responsive and recordings keep working."
+          }
+        }
+      }
+    },
+    "whatsNew.more-reliable-recordings.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry more-reliable-recordings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More reliable recordings"
+          }
+        }
+      }
+    },
+    "whatsNew.more-reliable-recordings.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry more-reliable-recordings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fewer silent failures. The audio helper now recovers cleanly from a rare crash class, and the microphone bounces back better from bad states after long idle periods or audio interruptions."
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-download-progress.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ollama-download-progress).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama downloads show progress and can be cancelled"
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-download-progress.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ollama-download-progress).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Manage Models row now shows a live progress bar while an Ollama model downloads, plus a Cancel button. No more wondering whether the download is stuck or how big it is."
+          }
+        }
+      }
+    },
+    "whatsNew.faster-polish-after-pause.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry faster-polish-after-pause).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faster first polish after a pause"
+          }
+        }
+      }
+    },
+    "whatsNew.faster-polish-after-pause.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry faster-polish-after-pause).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your first dictation after a quiet stretch now gets polished faster. The pre-warm probe talks to the LLM the same way a real polish does, so the first real call doesn't pay a cold-start tax."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-chromium-electron.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry paste-chromium-electron).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste works in more apps"
+          }
+        }
+      }
+    },
+    "whatsNew.paste-chromium-electron.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry paste-chromium-electron).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictating into Chrome, Slack, Discord, VS Code, and other Electron-based apps now pastes cleanly even when the focused text field isn't fully reported. Previously the text would sometimes sit on the clipboard instead of landing in place."
+          }
+        }
+      }
+    },
+    "whatsNew.gemma-3-nano.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry gemma-3-nano).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 3 Nano joins the Ollama lineup"
+          }
+        }
+      }
+    },
+    "whatsNew.gemma-3-nano.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry gemma-3-nano).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google's 4B Gemma 3 Nano is now available in the Ollama model picker. A tight on-device option for AI polish when you want speed and privacy and don't need a large model."
+          }
+        }
+      }
+    },
+    "whatsNew.gemma4-polish-fixed.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry gemma4-polish-fixed).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 polish works again"
+          }
+        }
+      }
+    },
+    "whatsNew.gemma4-polish-fixed.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry gemma4-polish-fixed).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local AI polish with Gemma 4 was quietly falling back to the raw transcript on every dictation. It now produces cleaned-up output reliably. Fillers are removed, punctuation is added, and lists are formatted, all running offline on your Mac."
+          }
+        }
+      }
+    },
+    "whatsNew.thinking-models-supported.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry thinking-models-supported).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Better support for reasoning models"
+          }
+        }
+      }
+    },
+    "whatsNew.thinking-models-supported.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry thinking-models-supported).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thinking models like Gemma 4, Qwen 3, QwQ, DeepSeek R1, and gpt-oss now have enough room to finish reasoning and still produce a clean polished answer. Smaller local models still run on the tight budget that keeps them fast and reliable."
+          }
+        }
+      }
+    },
+    "whatsNew.multilingual-auto-detect.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry multilingual-auto-detect).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate in 99+ languages"
+          }
+        }
+      }
+    },
+    "whatsNew.multilingual-auto-detect.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry multilingual-auto-detect).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr now auto-detects the language you are speaking and transcribes accordingly. German, Japanese, Arabic, Tamil, Mandarin and 95 others work out of the box with no setting change needed."
+          }
+        }
+      }
+    },
+    "whatsNew.apple-intelligence-multilingual.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry apple-intelligence-multilingual).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence polish stays in your language"
+          }
+        }
+      }
+    },
+    "whatsNew.apple-intelligence-multilingual.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry apple-intelligence-multilingual).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI polish with Apple Intelligence now preserves the language you spoke in. German stays German, Korean stays Korean. Languages Apple Intelligence cannot handle are quietly skipped so you always get your raw transcript instead of a silent failure."
+          }
+        }
+      }
+    },
+    "whatsNew.whisperkit-full-capture.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry whisperkit-full-capture).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperKit captures every word"
+          }
+        }
+      }
+    },
+    "whatsNew.whisperkit-full-capture.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry whisperkit-full-capture).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed an issue where the last few words of a dictation could be silently dropped when using WhisperKit. Every word now reaches your clipboard."
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-long-dictation.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry ollama-long-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama handles long dictations"
+          }
+        }
+      }
+    },
+    "whatsNew.ollama-long-dictation.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry ollama-long-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local AI polish with large models like Gemma 4 no longer times out on longer recordings. Timeout budgets now adapt to your provider."
+          }
+        }
+      }
+    },
+    "whatsNew.whats-new-tab.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry whats-new-tab).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What's New tab"
+          }
+        }
+      }
+    },
+    "whatsNew.whats-new-tab.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry whats-new-tab).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "See what changed after every update, right here in Settings. The sidebar icon glows rainbow when there are unread notes."
+          }
+        }
+      }
+    },
+    "whatsNew.smarter-paste-detection.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smarter-paste-detection).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smarter paste detection"
+          }
+        }
+      }
+    },
+    "whatsNew.smarter-paste-detection.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smarter-paste-detection).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transcribed text now pastes correctly into Slack, Discord, and other Electron apps that were previously missed."
+          }
+        }
+      }
+    },
+    "whatsNew.clipboard-fallback-overlay.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry clipboard-fallback-overlay).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clipboard fallback overlay"
+          }
+        }
+      }
+    },
+    "whatsNew.clipboard-fallback-overlay.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry clipboard-fallback-overlay).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When no text field is selected, your transcription is copied to the clipboard and a notification tells you to press Cmd+V."
+          }
+        }
+      }
+    },
+    "whatsNew.context-aware-prompts.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry context-aware-prompts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Context-aware prompts"
+          }
+        }
+      }
+    },
+    "whatsNew.context-aware-prompts.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry context-aware-prompts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each AI provider now gets prompts optimized for its strengths, producing better polish results."
+          }
+        }
+      }
+    },
+    "whatsNew.apple-intelligence-guardrails.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry apple-intelligence-guardrails).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence guardrails"
+          }
+        }
+      }
+    },
+    "whatsNew.apple-intelligence-guardrails.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry apple-intelligence-guardrails).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI polish no longer over-edits your text or answers questions instead of polishing them. Five protective rules keep your words intact."
+          }
+        }
+      }
+    },
+    "whatsNew.repolish-from-history.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry repolish-from-history).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Re-polish from History"
+          }
+        }
+      }
+    },
+    "whatsNew.repolish-from-history.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry repolish-from-history).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Enhance button on existing transcripts now works correctly for all speech engine types."
+          }
+        }
+      }
+    },
+    "whatsNew.auto-discover-models.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry auto-discover-models).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-discover models"
+          }
+        }
+      }
+    },
+    "whatsNew.auto-discover-models.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry auto-discover-models).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Ollama models appear automatically once downloaded. No more hardcoded lists."
+          }
+        }
+      }
+    },
+    "whatsNew.warmup-indicator.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry warmup-indicator).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warm-up indicator"
+          }
+        }
+      }
+    },
+    "whatsNew.warmup-indicator.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry warmup-indicator).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "See when your Ollama model is loading into GPU memory with a live status spinner."
+          }
+        }
+      }
+    },
+    "whatsNew.native-ollama-api.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry native-ollama-api).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Native API"
+          }
+        }
+      }
+    },
+    "whatsNew.native-ollama-api.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry native-ollama-api).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switched to Ollama's native API for better compatibility with reasoning models like Gemma 4."
+          }
+        }
+      }
+    },
+    "whatsNew.instant-first-press.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry instant-first-press).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instant first press"
+          }
+        }
+      }
+    },
+    "whatsNew.instant-first-press.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry instant-first-press).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminated the delay on your very first recording. The speech engine warms up at launch."
+          }
+        }
+      }
+    },
+    "whatsNew.no-phantom-text.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry no-phantom-text).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No more phantom text"
+          }
+        }
+      }
+    },
+    "whatsNew.no-phantom-text.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry no-phantom-text).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed the #1 reported issue: holding the record button in silence no longer produces hallucinated words."
+          }
+        }
+      }
+    },
+    "whatsNew.whispered-speech.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry whispered-speech).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whispered speech captured"
+          }
+        }
+      }
+    },
+    "whatsNew.whispered-speech.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry whispered-speech).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved whispered-speech detection. Very quiet or clipped recordings may still be misheard."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-back-fix.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry paste-back-fix).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste-back fix"
+          }
+        }
+      }
+    },
+    "whatsNew.paste-back-fix.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry paste-back-fix).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed a macOS 14+ issue where transcribed text sometimes failed to paste into the target app."
+          }
+        }
+      }
+    },
+    "whatsNew.configurable-engine-timeout.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry configurable-engine-timeout).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurable engine timeout"
+          }
+        }
+      }
+    },
+    "whatsNew.configurable-engine-timeout.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry configurable-engine-timeout).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose how long to keep the microphone warm between recordings: 10s, 30s, 60s, or always."
+          }
+        }
+      }
+    },
+    "whatsNew.better-error-messages.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry better-error-messages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Better error messages"
+          }
+        }
+      }
+    },
+    "whatsNew.better-error-messages.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry better-error-messages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clearer notifications when something goes wrong, with distinct warnings for partial vs. complete failures."
+          }
+        }
+      }
+    }
   },
   "version" : "1.0"
 }
