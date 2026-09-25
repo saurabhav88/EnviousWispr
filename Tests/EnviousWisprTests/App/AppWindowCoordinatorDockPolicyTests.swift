@@ -62,6 +62,18 @@ struct AppWindowCoordinatorDockPolicyTests {
     #expect(effects.calls == [.setPolicy(.regular), .activate(.standard)])
   }
 
+  /// #3156 battery survivor (row 7): a fall that ignored the open update dialog passed every
+  /// other case. With the switch off and none of our windows open, only the dialog keeps the app
+  /// regular, so dropping that input turns this fall into accessory and strands the dialog.
+  @Test("with Show app in Dock off, a fall while an update dialog is up keeps the app regular")
+  func fallDuringUpdateDialogKeepsRegular() {
+    let effects = RecordingDesktopPresentationEffects()
+    let sut = coordinator(effects, showInDock: false)
+    sut.updateDialogWillShow()
+    sut.refreshActivationPolicy(excluding: nil)
+    #expect(effects.policies == [.regular, .regular])
+  }
+
   /// #1392's regression, now also guarded by the switch: an update session ending must not take
   /// the Dock icon away from someone who asked to keep it.
   @Test("with Show app in Dock on, an update session ending keeps the app regular")
