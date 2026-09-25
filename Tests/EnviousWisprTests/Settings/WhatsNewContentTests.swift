@@ -36,6 +36,18 @@ struct WhatsNewContentTests {
   }
 
   private static func parsedReleaseNoteEntries(from swiftFile: URL) throws -> [ReleaseNoteEntry] {
+    try JSONDecoder().decode(
+      [ReleaseNoteEntry].self, from: rendererOutput(swiftFile: swiftFile, mode: "--dump-json"))
+  }
+
+  /// `--catalog-seed-json`: every field's String Catalog key and English value (#3142).
+  private static func catalogSeed(from swiftFile: URL) throws -> [String: String] {
+    try JSONDecoder().decode(
+      [String: String].self,
+      from: rendererOutput(swiftFile: swiftFile, mode: "--catalog-seed-json"))
+  }
+
+  private static func rendererOutput(swiftFile: URL, mode: String) throws -> Data {
     let process = Process()
     let output = Pipe()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -43,7 +55,7 @@ struct WhatsNewContentTests {
       "python3",
       repoRoot.appendingPathComponent("scripts/ci/render-release-notes.py").path,
       "--swift-file", swiftFile.path,
-      "--dump-json",
+      mode,
     ]
     process.standardOutput = output
     process.standardError = output
@@ -57,7 +69,7 @@ struct WhatsNewContentTests {
       let message = String(data: data, encoding: .utf8) ?? ""
       throw ReleaseNoteDrift.rendererFailed(message)
     }
-    return try JSONDecoder().decode([ReleaseNoteEntry].self, from: data)
+    return data
   }
 
   private static func requireRendererEquivalence(
@@ -152,6 +164,55 @@ struct WhatsNewContentTests {
         title: $0.title, desc: $0.description, version: $0.version, bullets: $0.bullets)
     }
     try Self.requireRendererEquivalence(swiftFile: swiftFile, compiledEntries: compiled)
+  }
+
+  /// #3142: the catalog sync seeds the in-app translations from `--catalog-seed-json`, so
+  /// every compiled title, description and bullet must be there under its id-and-position
+  /// key with the English the app shows, and nothing else may be.
+  @Test("the catalog seed keys every compiled field with the app's English")
+  func catalogSeedMatchesCompiledValues() throws {
+    let swiftFile = Self.repoRoot.appendingPathComponent(
+      "Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift")
+    var expected: [String: String] = [:]
+    var fields = 0
+    for entry in WhatsNewContent.entries {
+      expected["whatsNew.\(entry.id).title"] = entry.title
+      expected["whatsNew.\(entry.id).description"] = entry.description
+      fields += 2
+      for (index, bullet) in entry.bullets.enumerated() {
+        expected["whatsNew.\(entry.id).bullet.\(index)"] = bullet
+        fields += 1
+      }
+    }
+    #expect(expected.count == fields, "two fields share a key")
+    #expect(try Self.catalogSeed(from: swiftFile) == expected)
+  }
+
+  /// The key format itself, pinned with literals rather than rebuilt from the entries.
+  @Test("the catalog seed names fields by entry id and bullet position")
+  func catalogSeedKeyFormat() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3142-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fixture = directory.appendingPathComponent("seed.swift")
+    try """
+    Entry(
+      id: "two-points",
+      icon: "sparkles",
+      title: "Headline",
+      description: "Paragraph",
+      bullets: ["First", "Second"],
+      version: "9.9.9"
+    )
+    """.write(to: fixture, atomically: true, encoding: .utf8)
+    #expect(
+      try Self.catalogSeed(from: fixture) == [
+        "whatsNew.two-points.title": "Headline",
+        "whatsNew.two-points.description": "Paragraph",
+        "whatsNew.two-points.bullet.0": "First",
+        "whatsNew.two-points.bullet.1": "Second",
+      ])
   }
 
   /// #2484: the same two-way control for `bullets`. The renderer reads the array
