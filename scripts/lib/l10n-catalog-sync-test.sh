@@ -375,13 +375,229 @@ def translated_then_check():
         add_german_to_whats_new(data["strings"])
         catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
         code, out = run("--check", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))
-        expect("an unchanged What's New translation is not drift", code, out, 0, "catalog in sync")
+        # Phase 4: German on three keys only is INCOMPLETE German, but still not drift.
+        expect("an unchanged What's New translation is not drift", code, out, 1, "INCOMPLETE")
+        if "DRIFT" in out:
+            failures.append("an unchanged What's New translation is not drift")
+            print("FAIL  a partial German translation was reported as drift")
 
 
 translated_then_check()
 case("a What's New source the renderer refuses stops the run", 2, "What's New seed refused by the renderer",
      whats_new_source=whats_new(duplicate=True))
 case("an extracted key in the What's New namespace stops the run", 2, "use the What's New prefix", extra_keys=["whatsNew.alpha.title"])
+
+# --- Completeness (#3142 Phase 4) ---
+def german_everywhere(strings, skip=(), value_for=None):
+    """German for every key, in state translated, equal to its English (so placeholders match),
+    except `skip`; `value_for(key, english)` may override one value."""
+    for key, entry in strings.items():
+        if key in skip:
+            continue
+        english = entry.get("localizations", {}).get("en", {}).get("stringUnit", {}).get("value", key)
+        value = value_for(key, english) if value_for else english
+        entry.setdefault("localizations", {})["de"] = {"stringUnit": {"state": "translated", "value": value}}
+
+
+def completeness_case(name, want_code, want_texts, *, mode="--check", edit=None, extra_keys=(), forbid=(),
+                      prepare_keys=None, verify=None):
+    """A clean update (with `prepare_keys` extracted, default `extra_keys`), then `edit` on the main
+    catalog, then `mode` with `extra_keys` extracted."""
+    global cases
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        keys = extra_keys if prepare_keys is None else prepare_keys
+        assert run("--update", "--derived-data", str(fixture(root / "clean", extra_keys=keys)), "--configuration",
+                   "Release", "--catalog", str(catalog))[0] == 0
+        if edit:
+            data = json.loads(catalog.read_text())
+            edit(data["strings"])
+            catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        # German in the main catalog must be in the two Info.plist catalogs too, so a case with
+        # German gets plist catalogs that carry it (value = English, placeholders equal).
+        tables = write_plist_fixture(root / "plist")
+        if any("de" in e.get("localizations", {}) for e in json.loads(catalog.read_text())["strings"].values()):
+            for table in ("InfoPlist.xcstrings", "ServicesMenu.xcstrings"):
+                data = json.loads((tables / table).read_text())
+                german_everywhere(data["strings"])
+                (tables / table).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        code, out = run(mode, "--derived-data", str(fixture(root / "case", extra_keys=extra_keys)), "--configuration",
+                        "Release", "--catalog", str(catalog), plist_root=tables)
+        cases += 1
+        ok = code == want_code and all(t in out for t in want_texts) and not any(t in out for t in forbid)
+        problem = verify(json.loads(catalog.read_text())["strings"]) if ok and verify else None
+        print(f"{'PASS' if ok and not problem else 'FAIL'}  {name}: exit {code}")
+        if not ok or problem:
+            failures.append(name)
+            print(problem or out)
+
+
+completeness_case("an English-only catalog has nothing to complete", 0, ["no language beyond English yet", "catalog in sync"])
+completeness_case("complete German passes", 0, ["translations complete: de", "catalog in sync"], edit=german_everywhere)
+completeness_case("a key without German fails", 1, ["INCOMPLETE: Localizable.xcstrings: de", "'fixture.value.key': missing"],
+                  edit=lambda s: german_everywhere(s, skip={"fixture.value.key"}), forbid=["DRIFT"])
+
+
+def german_state(state):
+    def edit(strings):
+        german_everywhere(strings)
+        strings["fixture.value.key"]["localizations"]["de"]["stringUnit"]["state"] = state
+    return edit
+
+
+completeness_case("German in state new fails", 1, ["'fixture.value.key': value is new"], edit=german_state("new"))
+completeness_case("German in state needs_review fails", 1, ["'fixture.value.key': value is needs_review"],
+                  edit=german_state("needs_review"))
+completeness_case("a German value missing a placeholder fails", 1, ["'%@ · %@': value placeholders differ from English"],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "%@" if k == "%@ · %@" else e))
+completeness_case("a translated German unit with no value fails", 1, ["'fixture.value.key': value has no value"],
+                  edit=lambda s: (german_everywhere(s), s["fixture.value.key"]["localizations"]["de"]["stringUnit"].pop("value")))
+completeness_case("a dynamic width is not the same placeholder as a plain one", 1, ["'%@ · %@': value placeholders differ from English"],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "%*@ · %@" if k == "%@ · %@" else e))
+completeness_case("a whitespace-only German value fails", 1, ["'fixture.value.key': value has no value"],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "   " if k == "fixture.value.key" else e))
+WIDTH = "%1$*2$lld words"
+completeness_case("a positional width that reads another argument fails", 1,
+                  [f"{WIDTH!r}: value placeholders differ from English"], extra_keys=[WIDTH],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "%1$*3$lld Wörter" if k == WIDTH else e))
+
+
+completeness_case("reordered positional placeholders of the same types pass", 0, ["translations complete: de"],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "%2$@ · %1$@" if k == "%@ · %@" else e))
+TYPED = "%1$@ has %2$lld words"
+completeness_case("a positional type swap fails", 1, [f"{TYPED!r}: value placeholders differ from English"],
+                  extra_keys=[TYPED],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "%2$@ hat %1$lld Wörter" if k == TYPED else e))
+def german_substitution(strings):
+    german_everywhere(strings, value_for=lambda k, e: "%#@count@" if k == TYPED else e)
+    strings[TYPED]["localizations"]["de"]["substitutions"] = {"count": {
+        "argNum": 1, "formatSpecifier": "lld",
+        "variations": {"plural": {"other": {"stringUnit": {"state": "translated", "value": "%arg Wörter"}}}}}}
+
+
+completeness_case("a German plural substitution, whose argument English cannot pin, fails", 1,
+                  [f"{TYPED!r}: value placeholders differ from English"], extra_keys=[TYPED], edit=german_substitution)
+ODD = "%10$k items"
+completeness_case("a placeholder the parser cannot read must match in full", 1,
+                  [f"{ODD!r}: value placeholders differ from English"], extra_keys=[ODD],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "%11$k Einträge" if k == ODD else e))
+PROSE = "Right 83% of the time, 5%. Up 2%, (9%), 50%-60% or 100%"
+completeness_case("percentages in prose are not placeholders", 0, ["translations complete: de"], extra_keys=[PROSE],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: (
+                      "83 % der Fälle richtig, eine 83%ige Quote, 5 %. Plus 2 %, (9 %), 50–60 % oder 100 %" if k == PROSE else e)))
+completeness_case("a placeholder added beside a prose percentage fails", 1,
+                  [f"{PROSE!r}: value placeholders differ from English"], extra_keys=[PROSE],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: (
+                      "%@ der Fälle, 5 %. Plus 2 %, (9 %), 50–60 % oder 100 %" if k == PROSE else e)))
+WORDS = "%lld words"
+completeness_case("a space-flagged placeholder with a width counts", 1,
+                  [f"{WORDS!r}: value placeholders differ from English"], extra_keys=[WORDS],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "%lld Wörter % 5d" if k == WORDS else e))
+ESCAPED = "%lld of 100%% done"
+completeness_case("a literal percent in a format string must be written %%", 1,
+                  [f"{ESCAPED!r}: value has a % that must be written %%"], extra_keys=[ESCAPED],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "%lld von 100 % fertig" if k == ESCAPED else e))
+AUDIO = "Your audio never leaves this Mac. Only the text goes to %@."
+completeness_case("a prose percent the format would read as an argument fails", 1,
+                  [f"{AUDIO!r}: value has a % that must be written %%"], extra_keys=[AUDIO],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: (
+                      "Deine Audiodaten bleiben zu 100 % auf diesem Mac. Nur der Text geht an %@." if k == AUDIO else e)))
+completeness_case("an escaped percent in a format string passes, and %% may become a word", 0, ["translations complete: de"],
+                  extra_keys=[AUDIO, ESCAPED],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: {
+                      AUDIO: "Deine Audiodaten bleiben zu 100 %% auf diesem Mac. Nur der Text geht an %@.",
+                      ESCAPED: "%lld von 100 Prozent fertig"}.get(k, e)))
+LEFT = "1 %@ left, 2 %lld, 3 %1$@"
+completeness_case("a placeholder after a number still counts", 1,
+                  [f"{LEFT!r}: value placeholders differ from English"], extra_keys=[LEFT],
+                  edit=lambda s: german_everywhere(s, value_for=lambda k, e: "1 übrig, 2 %lld, 3 %1$@" if k == LEFT else e))
+
+
+def german_word_plural(one, key=WORDS, other="%lld Wörter"):
+    def edit(strings):
+        german_everywhere(strings)
+        strings[key]["localizations"]["de"] = {"variations": {"plural": {
+            "one": {"stringUnit": {"state": "translated", "value": one}},
+            "other": {"stringUnit": {"state": "translated", "value": other}}}}}
+    return edit
+
+
+completeness_case("a German plural form may spell out its number", 0, ["translations complete: de"],
+                  extra_keys=[WORDS], edit=german_word_plural("ein Wort"))
+completeness_case("the other form may not drop the number", 1, [f"{WORDS!r}: variations/plural/other placeholders differ"],
+                  extra_keys=[WORDS], edit=german_word_plural("ein Wort", other="Wörter"))
+NAMED = "%@ has %lld words"
+completeness_case("a plural form may not drop a name", 1, [f"{NAMED!r}: variations/plural/one placeholders differ"],
+                  extra_keys=[NAMED], edit=german_word_plural("hat ein Wort", key=NAMED, other="%@ hat %lld Wörter"))
+PAGE = "Page %lld of %lld"
+completeness_case("with two numbers a plural form may drop neither", 1, [f"{PAGE!r}: variations/plural/one placeholders differ"],
+                  extra_keys=[PAGE], edit=german_word_plural("Seite %1$lld", key=PAGE, other="Seite %1$lld von %2$lld"))
+STEP = "Step 1 %d of 3"
+completeness_case("a placeholder after a number in English still counts", 1, [f"{STEP!r}: value placeholders differ"],
+                  extra_keys=[STEP], edit=lambda s: german_everywhere(s, value_for=lambda k, e: "Schritt 1 von 3" if k == STEP else e))
+completeness_case("and German may keep it", 0, ["translations complete: de"],
+                  extra_keys=[STEP], edit=lambda s: german_everywhere(s, value_for=lambda k, e: "Schritt 1 %d von 3" if k == STEP else e))
+
+
+def german_substitutions_only(strings):
+    german_everywhere(strings)
+    strings["fixture.value.key"]["localizations"]["de"] = {"substitutions": {"count": {
+        "argNum": 1, "formatSpecifier": "lld",
+        "variations": {"plural": {"other": {"stringUnit": {"state": "translated", "value": "Wert"}}}}}}}
+
+
+completeness_case("German with only substitution forms is missing", 1, ["'fixture.value.key': missing"],
+                  edit=german_substitutions_only)
+
+
+def german_device(device):
+    def edit(strings):
+        german_everywhere(strings)
+        strings["fixture.value.key"]["localizations"]["de"] = {"variations": {"device": {
+            device: {"stringUnit": {"state": "translated", "value": "Wert"}}}}}
+    return edit
+
+
+completeness_case("German only for iPhone is missing on the Mac", 1, ["'fixture.value.key': missing"],
+                  edit=german_device("iphone"))
+completeness_case("German for the Mac counts", 0, ["translations complete: de"], edit=german_device("mac"))
+completeness_case("the empty key needs no German", 0, ["translations complete: de"], extra_keys=[""],
+                  edit=lambda s: german_everywhere(s, skip={""}))
+
+
+def german_plural(strings, forms=("one", "other")):
+    german_everywhere(strings)
+    strings["fixture.value.key"]["localizations"]["de"] = {"variations": {"plural": {
+        form: {"stringUnit": {"state": "translated", "value": "Wert"}} for form in forms}}}
+
+
+completeness_case("German plural forms, all translated, pass", 0, ["translations complete: de"], edit=german_plural)
+
+
+def german_plural_one_new(strings):
+    german_plural(strings)
+    strings["fixture.value.key"]["localizations"]["de"]["variations"]["plural"]["other"]["stringUnit"]["state"] = "new"
+
+
+completeness_case("a German plural without its other form fails", 1, ["'fixture.value.key': missing variations/plural/other"],
+                  edit=lambda s: german_plural(s, forms=("one",)))
+completeness_case("one German plural form not translated fails", 1, ["'fixture.value.key': variations/plural/other is new"],
+                  edit=german_plural_one_new)
+completeness_case("changed English flags nested German forms for review, and the next check fails", 0,
+                  ["updated", "variations/plural/one is needs_review", "never supplies them"], mode="--update",
+                  edit=lambda s: (german_plural(s), s["fixture.value.key"]["localizations"]["en"]["stringUnit"].__setitem__("value", "Old text")),
+                  verify=lambda s: None if {u["stringUnit"]["state"] for u in s["fixture.value.key"]["localizations"]["de"]["variations"]["plural"].values()} == {"needs_review"}
+                  else f"German plural is {s['fixture.value.key']['localizations']['de']!r}")
+completeness_case("drift and missing German are both reported", 1, ["DRIFT", "INCOMPLETE", "'a label with no German yet': missing"],
+                  prepare_keys=(), extra_keys=["a label with no German yet"], edit=german_everywhere)
+completeness_case("update writes drift and reports missing German without supplying it", 0,
+                  ["updated", "INCOMPLETE", "never supplies them"], mode="--update", prepare_keys=(),
+                  extra_keys=["a label with no German yet"], edit=german_everywhere,
+                  verify=lambda s: None if "de" not in s["a label with no German yet"].get("localizations", {})
+                  else "the update supplied a translation")
+
 
 # --- Info.plist tables (#3142 Phase 3) ---
 def plist_case(name, want_code, want_texts, *, mode="--check", plist=PLIST, catalogs_from=None, edit_tables=None,
@@ -490,6 +706,24 @@ def nothing_written(t):
 
 plist_case("a malformed plist stops an update before any catalog is written", 2, ["REFUSED"], mode="--update",
            raw_plist=b"not a property list", extra_keys=["a label the update would add"], verify=nothing_written)
+
+def german_on_one_prompt(strings):
+    strings["NSMicrophoneUsageDescription"]["localizations"]["de"] = {"stringUnit": {"state": "translated", "value": "Mikrofon."}}
+
+
+def german_moved_width(strings):
+    strings["NSMicrophoneUsageDescription"]["localizations"]["de"] = {
+        "stringUnit": {"state": "translated", "value": "%@ %*d"}}
+
+
+plist_case("a dynamic-width placeholder moved past another argument fails", 1,
+           ["'NSMicrophoneUsageDescription': value placeholders differ from English"],
+           plist=dict(PLIST, NSMicrophoneUsageDescription="%*d %@"), catalogs_from=dict(PLIST, NSMicrophoneUsageDescription="%*d %@"),
+           edit_tables={"InfoPlist.xcstrings": german_moved_width})
+plist_case("German in the permission catalog requires it in all three catalogs", 1,
+           ["INCOMPLETE: InfoPlist.xcstrings: de", "'NSContactsUsageDescription': missing",
+            "INCOMPLETE: Localizable.xcstrings: de", "INCOMPLETE: ServicesMenu.xcstrings: de"], catalogs_from=PLIST,
+           edit_tables={"InfoPlist.xcstrings": german_on_one_prompt})
 
 print(f"{cases} cases, {len(failures)} failed" + (f": {failures}" if failures else ""))
 sys.exit(1 if failures else 0)

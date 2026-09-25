@@ -44,6 +44,12 @@
 # NSServices item's default title, keyed by that title, so a changed title starts untranslated).
 # All three catalogs are computed and validated before --update writes any of them.
 #
+# Completeness (#3142 Phase 4): every language other than English present in the three
+# catalogs must be complete. Each key has a value in it, every string unit is `translated`
+# (not `new` or `needs_review`), and each carries the English placeholders (position and type;
+# reordering is fine). --check fails on it (INCOMPLETE); --update reports it and never supplies
+# a translation. With English only there is nothing to check. Key "" is exempt.
+#
 # Toolchain: catalog serialization can change between Xcode builds, so the script
 # refuses to run under any build but the pinned one (CI pins the same build in
 # .github/actions/xcode-ci-setup/action.yml).
@@ -53,7 +59,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 exec python3 - "$REPO_ROOT" "$@" <<'PY'
-import argparse, copy, json, pathlib, plistlib, subprocess, sys, tempfile
+import argparse, copy, json, pathlib, plistlib, re, subprocess, sys, tempfile
 
 REPO = pathlib.Path(sys.argv[1])
 PINNED_XCODE_BUILD = "17F113"  # Xcode 26.6; keep equal to .github/actions/xcode-ci-setup/action.yml
@@ -246,8 +252,8 @@ def flag_changed_translations(committed_strings, synced_strings, source_language
     xcstringstool flags this itself only for entries whose English it owns (measured: not for
     manual or `translated` English), so the rule lives here."""
     for key, entry in synced_strings.items():
-        before = english(committed_strings.get(key, {}))
-        if before is None or before == english(entry):
+        before = english_units(committed_strings.get(key, {}), source_language)
+        if not before or before == english_units(entry, source_language):
             continue
         for lang, unit in entry.get("localizations", {}).items():
             if lang != source_language:
@@ -281,18 +287,191 @@ def xcstringstool_sync(start, files, work):
     return json.loads(scratch.read_text())
 
 
+def string_units(node, path=()):
+    """(path, stringUnit) for every stringUnit under `node`, one language's localization;
+    `path` is the chain of keys from that root (variations, plural forms, substitutions).
+    The one traversal the review flag and the completeness check both use."""
+    if isinstance(node, dict):
+        unit = node.get("stringUnit")
+        if isinstance(unit, dict):
+            yield path, unit
+        for key, value in node.items():
+            if key != "stringUnit":
+                yield from string_units(value, path + (key,))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from string_units(value, path + (str(index),))
+
+
 def flag_for_review(node):
     """Mark every translated stringUnit under `node` (plural/device variations and
     substitutions included) as needs_review."""
-    if isinstance(node, dict):
-        unit = node.get("stringUnit")
-        if isinstance(unit, dict) and unit.get("state") == "translated":
+    for _, unit in string_units(node):
+        if unit.get("state") == "translated":
             unit["state"] = "needs_review"
-        for value in node.values():
-            flag_for_review(value)
-    elif isinstance(node, list):
-        for value in node:
-            flag_for_review(value)
+
+
+def english_units(entry, source_language):
+    """path -> English value for every English stringUnit of `entry`, so a reworded plural
+    form counts as changed English even when the top-level value is the same."""
+    return {path: unit.get("value")
+            for path, unit in string_units(entry.get("localizations", {}).get(source_language, {}))}
+
+
+# --- Completeness (#3142 Phase 4) ---
+# Every language other than English that the catalogs contain must be complete: each key
+# has a value in that language, every one of its string units is `translated`, and each
+# unit carries the same placeholders as the English it translates. With no such language
+# (English only) there is nothing to check.
+FORMAT_SPEC = re.compile(
+    r"%(?:(\d+)\$)?(?:[-+0#' ]*(?=[\d*.])|[-+0#']*)(?:\d+|\*(?:\d+\$)?)?(?:\.(?:\d+|\*(?:\d+\$)?))?(hh|h|ll|l|q|L|z|t|j)?([@dDiuUxXoOfFeEgGcCsSpaA])")
+SUBSTITUTION = re.compile(r"%#@([A-Za-z0-9_]+)@")
+# The space flag counts only before a width or precision (`% 5d`): a bare `% d` reads the same
+# as German prose ("83 % der"). A spec-like run ending in a letter the parser cannot read
+# (`%10$k`) is compared as written. A % that starts neither is a percentage in prose ("83% of",
+# "83 % der", "50%-60%"): text, not a placeholder.
+UNREADABLE = re.compile(r"%[-+0-9#'$*.]*[A-Za-z@]")
+# A single % right after a number, with at most one space between, is a percentage (German
+# "83%ige") unless what follows can only be a placeholder: %@, a position (%1$) or a length
+# (%lld), as in "1 %@ left". An escaped %% is read first.
+INTEGER = re.compile(r"(?:hh|h|ll|l|q|z|t|j)?[dDiuU]")
+AFTER_A_NUMBER = re.compile(r"[0-9][ \u00a0\u202f]?$")
+
+
+def placeholders(text, prose_after_numbers=True):
+    """Sorted placeholders of a format string: ("arg", position, type) with implicit positions
+    counted in order, ("sub", name) for %#@name@, ("pct",) for %%, and ("lit", text) for a %
+    this parser cannot read, which must then match exactly (fails closed); ("prose",) for a
+    percentage in prose. `arguments` drops the last two kinds for comparison. Without
+    `prose_after_numbers` a % after a number is read like any other (for a line that is
+    formatted, whose every literal percent is %%)."""
+    tokens, implicit, i = [], 0, 0
+    while True:
+        j = text.find("%", i)
+        if j < 0:
+            break
+        if text.startswith("%%", j):
+            tokens.append(("pct",))
+            i = j + 2
+            continue
+        spec = FORMAT_SPEC.match(text, j)
+        unambiguous = spec and (spec.group(1) or spec.group(2) or spec.group(3) == "@")
+        if prose_after_numbers and AFTER_A_NUMBER.search(text, 0, j) and not unambiguous:
+            tokens.append(("prose",))  # "83%ige", "83 % der": a percentage
+            i = j + 1
+            continue
+        sub = SUBSTITUTION.match(text, j)
+        if sub:
+            tokens.append(("sub", sub.group(1)))
+            i = sub.end()
+            continue
+        spec = FORMAT_SPEC.match(text, j)
+        if spec:
+            if "*" in spec.group(0):
+                # A dynamic width or precision (`*` or `*2$`) consumes an argument of its own,
+                # which this parser does not model; kept as written, at its position, so it must
+                # match exactly and cannot move past another argument.
+                tokens.append(("unsupported", implicit + 1, spec.group(0)))
+                implicit += spec.group(0).count("*") + (0 if spec.group(1) else 1)
+                i = spec.end()
+                continue
+            if spec.group(1):
+                position = int(spec.group(1))
+            else:
+                implicit += 1
+                position = implicit
+            tokens.append(("arg", position, (spec.group(2) or "") + spec.group(3)))
+            i = spec.end()
+            continue
+        lit = UNREADABLE.match(text, j)
+        if lit:
+            tokens.append(("lit", lit.group(0)))
+            i = lit.end()
+        else:
+            tokens.append(("prose",))
+            i = j + 1
+    return sorted(tokens, key=repr)
+
+
+def shown_on_mac(path):
+    """Whether a unit at `path` is text the Mac app can display: not a substitution's form, and
+    not another device's (`variations/device/iphone`); plain, plural, and device `mac` or
+    `other` all are."""
+    if path[:1] == ("substitutions",):
+        return False
+    if "device" in path:
+        index = path.index("device") + 1
+        return index < len(path) and path[index] in ("mac", "other")
+    return True
+
+
+def spells_out_a_count(german, english):
+    """True when `german` is `english` less its one integer argument: a plural form other than
+    `other` may write its number as a word ("ein Wort" for "%lld words"). With two integers
+    ("Page %lld of %lld") the counted one is unknown, so nothing may go; nor may anything else."""
+    integers = [t for t in english if t[0] == "arg" and INTEGER.fullmatch(t[2])]
+    return len(integers) == 1 and sorted(german + integers, key=repr) == english
+
+
+def arguments(tokens):
+    """The tokens that consume or name a format argument (not %% or a prose %)."""
+    return [t for t in tokens if t[0] not in ("pct", "prose")]
+
+
+def incompleteness(strings, source_language, languages):
+    """{language: [(key, reason)]} for `strings`, checking every language in `languages`: the
+    non-English languages present in ANY of the three catalogs, so German in one catalog
+    requires it in all three."""
+    languages = sorted(languages)
+    report = {}
+    for lang in languages:
+        problems = []
+        for key, entry in strings.items():
+            if key == "":  # Text("") extracts an empty key with nothing to translate
+                continue
+            english = english_units(entry, source_language) or {(): key}  # key-only: the key is the English
+            translated = dict(string_units(entry.get("localizations", {}).get(lang, {})))
+            if not any(shown_on_mac(path) for path in translated):
+                # Substitution forms alone, or another device's text alone, leave the Mac app
+                # nothing to display in this language.
+                problems.append((key, "missing"))
+                continue
+            # English here is always one plain value (fresh extraction, seeded entries and manual
+            # keys all write it that way), so German forms are checked against it; a German plural
+            # must still include `other`, the form every language requires. The same plain English
+            # means a German substitution (%#@name@, with its own argument number) never matches it.
+            for path in translated:
+                if "plural" in path:
+                    group = path[:path.index("plural") + 1]
+                    if group + ("other",) not in translated:
+                        problems.append((key, f"missing {'/'.join(group + ('other',))}"))
+            for path, unit in translated.items():
+                where = "/".join(path) or "value"
+                if unit.get("state") != "translated":
+                    problems.append((key, f"{where} is {unit.get('state')}"))
+                reference = english.get(path, english.get(()))
+                if reference is None:
+                    reference = next(iter(english.values()))
+                value = unit.get("value")
+                if not isinstance(value, str) or not value.strip():
+                    problems.append((key, f"{where} has no value"))
+                    continue
+                # English comes from the compiler, so it is read strictly ("Step 1 %d of 3"); a
+                # line with arguments is formatted whole, so its German is read strictly too, and
+                # only a line without them reads "83%ige" as a percentage.
+                source = placeholders(reference or "", prose_after_numbers=False)
+                german = placeholders(value, prose_after_numbers=not arguments(source))
+                if arguments(german) != arguments(source) and not (
+                        "plural" in path and path[-1] != "other"
+                        and spells_out_a_count(arguments(german), arguments(source))):
+                    problems.append((key, f"{where} placeholders differ from English"))
+                elif arguments(source) and ("prose",) in german:
+                    # With arguments the whole line is formatted, so a lone % would be read as
+                    # one ("100 % auf" is `% a`); a literal percent there must be written %%.
+                    problems.append((key, f"{where} has a % that must be written %%"))
+        if problems:
+            report[lang] = problems
+    return report
 
 
 def sync(committed_path, files, work, seed):
@@ -409,19 +588,44 @@ def main(argv):
             added += a
             removed += r
             changed += c
+        # Completeness is judged on the synced catalogs, before either mode returns: --update
+        # reports it (it never supplies a translation), --check fails on it.
+        incomplete = False
+        languages = sorted({lang for _, _, after in tables for entry in after["strings"].values()
+                            for lang in entry.get("localizations", {}) if lang != after.get("sourceLanguage", "en")})
+        for path, _, after in tables:
+            report = incompleteness(after["strings"], after.get("sourceLanguage", "en"), languages)
+            for lang, problems in report.items():
+                incomplete = True
+                print(f"INCOMPLETE: {path.name}: {lang}: {len(problems)} problem(s)")
+                for key, reason in problems[:50]:
+                    print(f"  {lang} {key!r}: {reason}")
+                if len(problems) > 50:
+                    print(f"  ... and {len(problems) - 50} more")
+        if not languages:
+            print("translations: no language beyond English yet")
+        elif not incomplete:
+            print(f"translations complete: {', '.join(sorted(languages))}")
         if args.update:
             for path, after in drifted:
                 write_catalog(path, after)
                 print(f"updated {path}")
             if not drifted:
                 print("catalog already in sync")
+            if incomplete:
+                print("the translations above are incomplete; --update never supplies them, and --check fails until they are added")
             return 0
+        if incomplete:
+            print("INCOMPLETE: add or review the translations listed above and mark them translated "
+                  "(interface-localization.md RULE: new-or-changed-ui-text-updates-the-catalog).")
         if drifted:
             print(f"DRIFT: {len(added)} added, {len(removed)} removed, {len(changed)} changed. To fix, on Xcode "
                   f"{PINNED_XCODE_BUILD}: xcodebuild build -project EnviousWispr.xcodeproj -scheme EnviousWispr-Release "
                   "-configuration Release -derivedDataPath .derivedData/L10n -destination 'generic/platform=macOS', "
                   "then scripts/lib/l10n-catalog-sync.sh --update --derived-data .derivedData/L10n "
                   "--configuration Release, and commit the changed catalogs in Sources/EnviousWispr/Resources/.")
+            return 1
+        if incomplete:
             return 1
         print("catalog in sync")
         return 0
