@@ -382,6 +382,13 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     // otherwise a new user finishes onboarding with no window at all. An ABORT (the
     // Setup window's red X) goes through the close observer instead and leaves main
     // hidden, because setup is still unfinished there.
+    // The hidden main window is retained, so order it front HERE, synchronously:
+    // `showWindow()` goes through SwiftUI's `openWindow`, which may not have put it
+    // on screen yet when the Dock policy is re-decided below, and with "Show app in
+    // Dock" off that read would drop the app to accessory under a visible window.
+    for window in NSApp.windows where isMainWindow(window) {
+      window.makeKeyAndOrderFront(nil)
+    }
     showWindow()
     refreshAfterOnboardingDismissal()
     onOnboardingDismissed?()
