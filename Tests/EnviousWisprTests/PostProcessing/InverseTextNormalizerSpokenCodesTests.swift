@@ -117,6 +117,8 @@ struct InverseTextNormalizerSpokenCodesTests {
     // a literal URL or path segment is left exactly as written
     ("see https://example.com/2026-9-26 today", "see https://example.com/2026-9-26 today"),
     ("see https://example.com?date=2026-9-26 today", "see https://example.com?date=2026-9-26 today"),
+    ("write to 2026-9-26@example.com today", "write to 2026-9-26@example.com today"),
+    ("open 2026-9-26.com today", "open 2026-9-26.com today"),
     ("filed 2026-2-31", "filed 2026-2-31"),
     ("filed 2028-2-29", "filed 2028-02-29"),
     // a chain the English path refuses (a foreign dot-word beside number words) stays whole

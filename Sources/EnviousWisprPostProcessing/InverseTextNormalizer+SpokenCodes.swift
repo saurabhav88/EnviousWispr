@@ -243,9 +243,10 @@ extension InverseTextNormalizer {
         return "\(year)-\(pad2(mon))-\(pad2(day))"
       }
     }
-    // Not inside a URL path, query or fragment ("example.com/2026-9-26", "?date=2026-9-26"): a
-    // written address is literal text.
-    return reSub(#"(?<![\w./=#?&:-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\w-]|\.\d)"#, t) { m in
+    // Not inside a written address: a URL path, query or fragment ("example.com/2026-9-26",
+    // "?date=2026-9-26"), an email local part or a host/file name ("2026-9-26@example.com",
+    // "2026-9-26.com"). A written address is literal text.
+    return reSub(#"(?<![\w./=#?&:@-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\w@-]|\.\w)"#, t) { m in
       guard !identifierContinues(m, connectorAlt: Self.dashWordAlt) else { return nil }
       guard let year = Int(m.g(1) ?? ""), let mon = Int(m.g(2) ?? ""), let day = Int(m.g(3) ?? ""),
         Self.isCalendarDate(year: year, month: mon, day: day),
