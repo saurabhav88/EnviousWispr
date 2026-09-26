@@ -263,9 +263,10 @@ extension InverseTextNormalizer {
   /// The written form of a matched host: a spoken `www` becomes `www`, labels join with `.`,
   /// `localhost <colon> 3000` becomes `localhost:3000`. Nil for a port outside 1...65535.
   static func neutralCanonicalHost(_ raw: String, _ w: SpokenURLWords) -> String? {
-    if let local = firstMatch(#"^localhost\b"#, raw) {
-      let rest = (raw as NSString).substring(from: (local as NSString).length)
-      guard let digits = firstMatch(#"\d+$"#, rest) else { return "localhost" }
+    // Standalone `localhost`, with an optional port: `localhost punto com` is a domain whose
+    // first label happens to be the word (local Codex diff review r4).
+    if firstMatch(#"^localhost(?:\s+(?:"# + phraseAlt(w.colon) + #")\s+\d{1,5})?$"#, raw) != nil {
+      guard let digits = firstMatch(#"\d+$"#, raw) else { return "localhost" }
       guard let port = Int(digits), (1...65535).contains(port) else { return nil }
       return "localhost:\(port)"
     }
@@ -309,7 +310,7 @@ extension InverseTextNormalizer {
   func neutralSpokenHostEndingAllowed(_ host: String, _ w: SpokenURLWords) -> Bool {
     let spoken = firstMatch(#"\s+(?:"# + Self.phraseAlt(w.dot) + #")\s+"#, host) != nil
     guard spoken, firstMatch(#"^"# + Self.neutralWWWAlias, host) == nil,
-      firstMatch(#"^localhost\b"#, host) == nil,
+      firstMatch(#"^localhost(?:\s+(?:"# + Self.phraseAlt(w.colon) + #")\s+\d{1,5})?$"#, host) == nil,
       let last = Self.neutralHostLabels(host, w).last?.lowercased()
     else { return true }
     return !["ai", "app", "xyz"].contains(last)

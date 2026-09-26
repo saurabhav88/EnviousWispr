@@ -116,6 +116,8 @@ struct InverseTextNormalizerNeutralAddressesTests {
     ("http dos puntos barra barra 192 punto 168 punto 1 punto 1 barra api", "http://192.168.1.1/api"),
     // the recogniser joined `www` to the next label and left the last dot spoken (diff review r3)
     ("ga naar www.voorbeeld punt nl vandaag", "ga naar www.voorbeeld.nl vandaag"),
+    // `localhost` is a host only on its own: a domain starting with the word keeps its ending (r4)
+    ("http dos puntos barra barra localhost punto com", "http://localhost.com"),
     // German borrowed "at"; a Unicode name
     ("schreib an müller at beispiel punkt de bitte", "schreib an müller@beispiel.de bitte"),
     // recogniser output, verbatim
