@@ -242,6 +242,9 @@ struct InverseTextNormalizerNeutralAddressesTests {
     // a joined domain needs a real mailbox before it (diff review r6)
     "El símbolo arroba gmail.com",
     "Escribe arroba gmail.com",
+    // a bare one-word name before a joined domain reads exactly like the line above, so it stays
+    // too (diff review r8, declined: converting it would reopen "Escribe arroba gmail.com")
+    "recepción arroba empresa.es",
     // a written ending the link pass does not read leaves the link whole (diff review r6)
     "https dos puntos barra barra ejemplo punto es.foo barra ayuda",
     "https dos puntos barra barra ejemplo punto es:8080",

@@ -101,7 +101,9 @@ extension InverseTextNormalizer {
   }
 
   /// `maría punto lópez arroba gmail punto com` → `maría.lópez@gmail.com`,
-  /// `recepción arroba empresa.es` → `recepción@empresa.es`,
+  /// `un correo a recepción arroba empresa.es` → `un correo a recepción@empresa.es` (a joined
+  /// domain needs a dotted name or an address word before it; a bare `recepción arroba empresa.es`
+  /// reads exactly like `Escribe arroba gmail.com` and stays as said),
   /// `łukasz małpa przykład kropka pl` → `łukasz@przykład.pl`.
   ///
   /// The ASCII frame in `emails` stays the English route's; this one reads Unicode labels and a
