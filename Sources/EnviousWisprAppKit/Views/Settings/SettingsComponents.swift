@@ -613,7 +613,7 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
       HStack {
         Text(label)
         Spacer()
-        Text(String(format: format, Double(value)))
+        Text(String(format: format, locale: .current, Double(value)))  // #3142: decimal comma in German
           .font(.stHelper)
           .fontWeight(.semibold)
           .foregroundStyle(.stAccent)

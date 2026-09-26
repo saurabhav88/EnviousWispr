@@ -2051,7 +2051,7 @@ public final class OllamaSetupService {
   // size it was standing in for is still on the row as `parameterCount · downloadSize`.
 
   /// Format file size in bytes to human-readable string.
-  nonisolated static func formatFileSize(_ bytes: Int64) -> String {
+  nonisolated static func formatFileSize(_ bytes: Int64, locale: Locale = .current) -> String {
     guard bytes > 0 else {
       return String(
         localized: "Unknown",
@@ -2059,10 +2059,10 @@ public final class OllamaSetupService {
     }
     let gb = Double(bytes) / 1_073_741_824.0
     if gb >= 1.0 {
-      return String(format: "%.1f GB", gb)
+      return String(format: "%.1f GB", locale: locale, gb)  // #3142: "4,7 GB" in German
     }
     let mb = Double(bytes) / 1_048_576.0
-    return String(format: "%.0f MB", mb)
+    return String(format: "%.0f MB", locale: locale, mb)
   }
 
   // MARK: - Operation wording (#1956)
