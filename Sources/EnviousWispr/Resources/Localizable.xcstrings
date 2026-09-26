@@ -2460,16 +2460,6 @@
         }
       }
     },
-    "All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle Protokolleinträge gehen auch an das einheitliche Protokollsystem von macOS. Du findest sie in Console.app mit dem Filter „subsystem: com.enviouswispr.app“."
-          }
-        }
-      }
-    },
     "All quiet" : {
       "comment" : "Practice screen headline. Nothing was heard.",
       "localizations" : {
@@ -3078,16 +3068,6 @@
         }
       }
     },
-    "Audio duration:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Audiodauer:"
-          }
-        }
-      }
-    },
     "Audio found" : {
       "comment" : "Transcribe a File: a check under the chosen file.",
       "localizations" : {
@@ -3365,16 +3345,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Baskisch"
-          }
-        }
-      }
-    },
-    "Batch ASR:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stapel-ASR:"
           }
         }
       }
@@ -4424,16 +4394,6 @@
         }
       }
     },
-    "Clear Logs" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokolle löschen"
-          }
-        }
-      }
-    },
     "Clear search" : {
       "localizations" : {
         "de" : {
@@ -4710,16 +4670,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kopiert. Zum Einfügen ⌘V drücken"
-          }
-        }
-      }
-    },
-    "Copy Log Path" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokollpfad kopieren"
           }
         }
       }
@@ -5166,16 +5116,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Debug (alle Ereignisse)"
-          }
-        }
-      }
-    },
-    "Debug Mode" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Debug-Modus"
           }
         }
       }
@@ -6226,16 +6166,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wörterbuch aktivieren"
-          }
-        }
-      }
-    },
-    "Enable debug mode" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Debugmodus aktivieren"
           }
         }
       }
@@ -8918,36 +8848,6 @@
         }
       }
     },
-    "Log Files" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokolldateien"
-          }
-        }
-      }
-    },
-    "Log Level" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokollstufe"
-          }
-        }
-      }
-    },
-    "Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokolle liegen unter ~/Library/Logs/EnviousWispr/. Pro Datei sind höchstens 10 MB möglich; 5 Dateien werden aufbewahrt."
-          }
-        }
-      }
-    },
     "Looking for apps on this Mac." : {
       "localizations" : {
         "de" : {
@@ -9494,16 +9394,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell ist bereit"
-          }
-        }
-      }
-    },
-    "Model status:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modellstatus:"
           }
         }
       }
@@ -10690,16 +10580,6 @@
         }
       }
     },
-    "OSLog" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OSLog"
-          }
-        }
-      }
-    },
     "OUTPUT" : {
       "comment" : "Settings sidebar: group heading, in capitals.",
       "localizations" : {
@@ -11039,26 +10919,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einmalige Einrichtung"
-          }
-        }
-      }
-    },
-    "Open Console.app" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Console.app öffnen"
-          }
-        }
-      }
-    },
-    "Open Log Directory" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokollordner öffnen"
           }
         }
       }
@@ -11561,16 +11421,6 @@
         }
       }
     },
-    "Performance" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Leistung"
-          }
-        }
-      }
-    },
     "Permissions" : {
       "comment" : "Settings sidebar: a page name.",
       "localizations" : {
@@ -11589,16 +11439,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Persisch"
-          }
-        }
-      }
-    },
-    "Persists across relaunches. Toggle with Cmd+Shift+D from anywhere." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bleibt auch nach erneutem Öffnen der App erhalten. Mit Cmd+Shift+D kannst du es von überall umschalten."
           }
         }
       }
@@ -11673,16 +11513,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Position der Aufnahmeanzeige"
-          }
-        }
-      }
-    },
-    "Pipeline Benchmark Results" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ergebnisse des Pipeline-Benchmarks"
           }
         }
       }
@@ -12204,16 +12034,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modellstatus erneut prüfen"
-          }
-        }
-      }
-    },
-    "Re-runs the onboarding flow without wiping app state. Disabled during recording." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Startet die Einführung erneut, ohne App-Daten zu löschen. Während einer Aufnahme deaktiviert."
           }
         }
       }
@@ -12896,16 +12716,6 @@
         }
       }
     },
-    "Restart Onboarding…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einführung neu starten…"
-          }
-        }
-      }
-    },
     "Restore" : {
       "localizations" : {
         "de" : {
@@ -13030,26 +12840,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Rund und weich."
-          }
-        }
-      }
-    },
-    "Run ASR Benchmark" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ASR-Benchmark ausführen"
-          }
-        }
-      }
-    },
-    "Run Pipeline Benchmark" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pipeline-Benchmark ausführen"
           }
         }
       }
@@ -14534,26 +14324,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gestoppt"
-          }
-        }
-      }
-    },
-    "Streaming finalize:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Streaming-Abschluss:"
-          }
-        }
-      }
-    },
-    "Streaming vs Batch WER:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Streaming- vs. Batch-WER:"
           }
         }
       }
@@ -18925,6 +18695,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "erstellen"
+          }
+        }
+      }
+    },
+    "d MMMM yyyy" : {
+      "comment" : "Transcribe a File: date pattern under the document title (Unicode date symbols, not words: d = day, MMMM = month name, yyyy = year). Translate only the order and punctuation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "d. MMMM yyyy"
           }
         }
       }

@@ -46,9 +46,14 @@ enum TranscribeFileExport {
     return joined.prefix(1).uppercased() + joined.dropFirst()
   }
 
+  /// "4 September 2026" (#2772); the pattern is translated because German writes the day with
+  /// a period ("4. September 2026"). Month names follow the interface language.
   static let documentDateFormatter: DateFormatter = {
     let formatter = DateFormatter()
-    formatter.dateFormat = "d MMMM yyyy"
+    formatter.dateFormat = String(
+      localized: "d MMMM yyyy",
+      comment:
+        "Transcribe a File: date pattern under the document title (Unicode date symbols, not words: d = day, MMMM = month name, yyyy = year). Translate only the order and punctuation.")
     return formatter
   }()
 

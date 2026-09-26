@@ -654,10 +654,13 @@ struct ProviderRailRow: View {
                 .foregroundStyle(Color.stAccent)
             }
           }
+          // Up to three lines: German taglines ("Jedes offene Modell, lokal oder gehostet") do not
+          // fit the fixed rail width on one or two (#3142 5C walkthrough).
           Text(entry.tagline)
             .font(.stHelper)
             .foregroundStyle(Color.stTextSecondary)
-            .lineLimit(1)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
         }
         Spacer(minLength: 0)
       }

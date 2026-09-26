@@ -3,6 +3,10 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
+// Debug builds only, like its sidebar entry (`SettingsSection.diagnostics`): a developer page, so
+// the Release build the String Catalog is extracted from carries none of its text and it stays
+// English (founder, 2026-09-25, #3142).
+#if DEBUG
 struct DiagnosticsSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(\.asrManager) private var asrManagerEnv
@@ -307,3 +311,4 @@ struct DiagnosticsSettingsView: View {
     }
   }
 }
+#endif
