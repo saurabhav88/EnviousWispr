@@ -107,6 +107,13 @@ struct InverseTextNormalizerNeutralAddressesTests {
     ("http dos puntos barra barra localhost dos puntos 3000", "http://localhost:3000"),
     ("localhost dwukropek 3000 ukośnik api ukośnik v1", "localhost:3000/api/v1"),
     ("triple w punto ejemplo punto es", "www.ejemplo.es"),
+    // a spoken hyphen joins a name or domain; an IP address is a link host (local Codex class
+    // enumeration, run against the branch)
+    ("écris à jean trait d'union dupont arobase gmail point com", "écris à jean-dupont@gmail.com"),
+    ("escribe a juan guion pérez arroba gmail punto com", "escribe a juan-pérez@gmail.com"),
+    ("mail naar jan streepje jansen apenstaartje gmail punt com", "mail naar jan-jansen@gmail.com"),
+    ("escribe a info arroba mi guion empresa punto es hoy", "escribe a info@mi-empresa.es hoy"),
+    ("http dos puntos barra barra 192 punto 168 punto 1 punto 1 barra api", "http://192.168.1.1/api"),
     // German borrowed "at"; a Unicode name
     ("schreib an müller at beispiel punkt de bitte", "schreib an müller@beispiel.de bitte"),
     // recogniser output, verbatim
@@ -215,6 +222,11 @@ struct InverseTextNormalizerNeutralAddressesTests {
     "jan arroba ejemplo punto es barra ayuda",
     "ejemplo punto es dos puntos 8080 barra api",
     "https dos puntos barra barra ejemplo punto es dos puntos 8080",
+    // a link that goes on in a way no pass reads stays whole, numbers inside it included
+    "jan arroba ejemplo punto es barra 2 punto 5 punto 0",
+    "http dos puntos barra barra ejemplo punto es barra api guion v2",
+    "http dos puntos barra barra ejemplo punto es / ayuda",
+    "Escribe un guion entre A y 2.",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",

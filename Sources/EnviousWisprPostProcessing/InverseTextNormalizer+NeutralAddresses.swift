@@ -111,7 +111,10 @@ extension InverseTextNormalizer {
   /// the already-dotted shape stays closed for `at` (#2770).
   func neutralUnicodeEmails(_ t: String) -> String {
     let dot = #"\s+(?:"# + Self.addressDotAlt + #")\s+"#
-    let sep = #"(?:\.|"# + dot + #")"#
+    // A spoken hyphen joins labels too ("jean trait d'union dupont", "juan guion pérez";
+    // local Codex class enumeration), written `-`.
+    let dash = #"\s+(?:"# + Self.neutralDashWordAlt + #")\s+"#
+    let sep = #"(?:\.|"# + dot + "|" + dash + #")"#
     let label = Self.uLabel
     let pat =
       #"(?<![\p{L}\p{M}\p{N}_.@-])(?<name>"# + label + #"(?:"# + sep + label + #"){0,5})\s+(?<atw>"#
@@ -142,7 +145,8 @@ extension InverseTextNormalizer {
       // here needs a Unicode letter or a joined domain to be new (otherwise `emails` refused it
       // for a reason this frame must not override).
       let ascii = m.whole.unicodeScalars.allSatisfy { $0.isASCII }
-      if ascii, spokenDomainDot { return nil }
+      let spokenDash = firstMatch(dash, m.whole) != nil
+      if ascii, spokenDomainDot, !spokenDash { return nil }
       // `małpa` is also "monkey": beside a domain the recogniser already joined it needs an
       // address cue ("Ta małpa zoo.pl" stays).
       if atw == "małpa" || atw == "malpa", !spokenDomainDot, !hasAddressCue(m) { return nil }
@@ -161,9 +165,13 @@ extension InverseTextNormalizer {
       {
         return nil
       }
-      let domLabels = splitOnPattern(m.g("dom") ?? "", sep)
-      return nameLabels.joined(separator: ".").lowercased() + "@"
-        + (domLabels + [m.g("tld") ?? ""]).joined(separator: ".").lowercased()
+      let written: (String) -> String = { raw in
+        var out = raw.replacingOccurrences(of: dash, with: "-", options: [.regularExpression, .caseInsensitive])
+        out = out.replacingOccurrences(of: dot, with: ".", options: [.regularExpression, .caseInsensitive])
+        return out.lowercased()
+      }
+      return written(m.g("name") ?? "") + "@" + written(m.g("dom") ?? "") + "."
+        + (m.g("tld") ?? "").lowercased()
     }
   }
 
@@ -175,6 +183,14 @@ extension InverseTextNormalizer {
     let lead = min(r.location, 24)
     let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
     return firstMatch(#"(?:(?:^|\s)(?:"# + addressDotAlt + #")\s+|\.)$"#, before) != nil
+  }
+
+  /// True when a dash word stands right before the match (a hyphenated name began earlier).
+  static func startsAfterSpokenDash(_ m: Match) -> Bool {
+    let r = m.result.range
+    let lead = min(r.location, 24)
+    let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
+    return firstMatch(#"(?:^|\s)(?:"# + neutralDashWordAlt + #")\s+$"#, before) != nil
   }
 
   /// An address word shortly before the match, alone or inside a compound ("adres", "privéadres",
@@ -230,8 +246,10 @@ extension InverseTextNormalizer {
   /// around it reads as one link).
   static func neutralHostOrLocalPat(_ w: SpokenURLWords, portRequired: Bool) -> String {
     let port = #"\s+(?:"# + phraseAlt(w.colon) + #")\s+\d{1,5}"#
-    return #"(?:"# + neutralHostPat(w) + #"|localhost(?:"# + port + (portRequired ? ")" : ")?")
-      + #")"#
+    // An IPv4 host, digits joined by `.` or the dot word ("192 punto 168 punto 1 punto 1").
+    let ip = #"\d{1,3}(?:(?:\.|\s+(?:"# + phraseAlt(w.dot) + #")\s+)\d{1,3}){3}"#
+    return #"(?:"# + neutralHostPat(w) + "|" + ip + #"|localhost(?:"# + port
+      + (portRequired ? ")" : ")?") + #")"#
   }
 
   static func neutralHostLabels(_ host: String, _ w: SpokenURLWords) -> [String] {
@@ -295,8 +313,12 @@ extension InverseTextNormalizer {
 
   /// Spoken URL syntax right after a converted link means the link goes on past what reads.
   func neutralLinkContinues(_ rest: String, _ words: [SpokenURLWords]) -> Bool {
+    // A dash word or a written `/` after the link also means it goes on ("… barra api guion v2",
+    // "… punto es / ayuda"; local Codex class enumeration).
     let syntax = Self.phraseAlt(words.flatMap { $0.dot + $0.slash + $0.colon })
-    return firstMatch(#"^\s+(?:"# + syntax + #")(?:\s+|$)[\p{L}\p{N}]?"#, rest) != nil
+    return firstMatch(#"^\s+(?:"# + syntax + "|" + Self.neutralDashWordAlt + #")(?:\s+|$)"#, rest)
+      != nil
+      || firstMatch(#"^\s*/"#, rest) != nil
       || firstMatch(#"^[\p{L}\p{M}\p{N}_@-]"#, rest) != nil
   }
 

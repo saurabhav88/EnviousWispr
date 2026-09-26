@@ -1014,6 +1014,9 @@ public struct InverseTextNormalizer: Sendable {
       guard !hasFurtherSpokenLabel(m) else { return nil }
       // #3226: on a non-English take a slash phrase after the address means a path follows.
       if neutral, neutralEmailFollowedBySlash(m) { return nil }
+      // A spoken hyphen right before the name: the name began earlier ("jean trait d'union dupont
+      // arobase …"); `neutralUnicodeEmails` reads the whole hyphenated name.
+      if neutral, Self.startsAfterSpokenDash(m) { return nil }
       // "report.pdf at example dot com": a dotted name that ends in a file or domain suffix is a
       // name of a thing, not a mailbox.
       if nameLabels.count > 1,

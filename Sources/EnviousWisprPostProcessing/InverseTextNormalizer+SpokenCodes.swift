@@ -108,6 +108,15 @@ extension InverseTextNormalizer {
       if identifierContinues(m, connectorAlt: dotAlt + "|double|triple") {
         return nil
       }
+      // #3226: on the neutral route a chain inside a link or address the passes before this one
+      // refused ("… barra barra 192 punto 168 …", "… barra 2 punto 5 punto 0") stays whole.
+      if !englishWords, neutralLinkStartsEarlier(m, Self.spokenURLWords)
+        || neutralLinkContinues(
+          m.ns.substring(from: m.result.range.location + m.result.range.length),
+          Self.spokenURLWords.map { SpokenURLWords(dot: [], slash: $0.slash, colon: $0.colon, glueSlash: false) })
+      {
+        return nil
+      }
       // The first part must be the whole first component: a number word, digit or "and" just
       // before means it began earlier in a shape this pass cannot read ("one hundred and two dot
       // three dot four", "1 2 Punkt 3 Punkt 4"; confirming diff review).
