@@ -1181,15 +1181,18 @@ def _apple_polish_subprocess(
             file=sys.stderr,
         )
         raise SystemExit(2)
+    # The shipping-recipe arm: every EW_AFM_* recipe seam is cleared, so a variable
+    # left exported from prompt experimentation cannot change what this bench
+    # measures (cloud review on PR #3207; same isolation as the tier-bench arms).
+    env, extra = _afm_arm_env(dict(os.environ), system_prompt_path, None)
     cmd = [
         str(APPLE_RUNNER_BIN),
         "--corpus", str(corpus_path),
         "--out", str(out_path),
-        "--system-prompt-file", str(system_prompt_path),
-    ]
+    ] + extra
     if sleep_seconds > 0:
         cmd += ["--sleep-seconds", str(sleep_seconds)]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     # Swift runner prints progress to stderr; forward it so Python driver logs it.
     if result.stderr:
         sys.stderr.write(result.stderr)
