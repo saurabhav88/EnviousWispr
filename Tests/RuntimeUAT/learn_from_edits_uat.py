@@ -276,12 +276,27 @@ def defaults_restore(snap):
 
 
 CHECK_ENV_KEY = "EW_LEARNED_CHECK_UAT_APPROVE"
+# The real EG-1 checker's Debug doors (#3105). This run cleared them so its no-checker
+# cases see no checker, whatever the founder's dev build is testing, and restores them.
+EG1_DOOR_KEYS = ("EW_LEARNED_CHECK_EG1_ADAPTER", "EW_LEARNED_CHECK_EG1_THRESHOLD")
+
+
+def env_get(key):
+    # A failed read raises: it must never look like an unset door. An unset key
+    # exits 0 with empty output (measured 2026-09-26).
+    v = subprocess.run(["launchctl", "getenv", key], capture_output=True, text=True, check=True).stdout.strip()
+    return v or None
+
+
+def env_set(key, value):
+    if value is None:
+        subprocess.run(["launchctl", "unsetenv", key], check=True)
+    else:
+        subprocess.run(["launchctl", "setenv", key, value], check=True)
 
 
 def check_door_get():
-    r = subprocess.run(["launchctl", "getenv", CHECK_ENV_KEY], capture_output=True, text=True)
-    v = r.stdout.strip()
-    return v if v else None
+    return env_get(CHECK_ENV_KEY)
 
 
 def check_door_set(value):
@@ -292,9 +307,7 @@ def check_door_set(value):
 
 
 def launchctl_get():
-    r = subprocess.run(["launchctl", "getenv", ENV_KEY], capture_output=True, text=True)
-    v = r.stdout.strip()
-    return v if v else None
+    return env_get(ENV_KEY)
 
 
 def launchctl_set(value):
@@ -399,14 +412,23 @@ def seeded_words_like(snapshot, canonical):
     return {"exists": True, "bytes": raw, "mode": 0o600, "sha256": hashlib.sha256(raw).hexdigest(), "parsed": parsed}
 
 
+# The misspellings a user would already have fixed for the learned-check word:
+# the check asks only where one of them reappears (founder 2026-09-25, known
+# aliases only). "twist" and "Twoist" are hearings of Tuist from the founder's own
+# dictionary; "toast" is the unit tests' twin. A take whose hearing is none of them
+# aborts as an instrument result, never a failure.
+LEARNED_ALIASES = ["toast", "twist", "Twoist"]
+
+
 def learned_word_seed(snapshot, canonical):
-    """One word the app LEARNED (#3105): `learnedAt` set, no sound-alikes. Its
-    uses go through the learned-word check only."""
+    """One word the app LEARNED (#3105): `learnedAt` set, with the misspellings
+    it was learned from. Its uses go through the learned-word check only."""
     base = empty_words_like(snapshot)
     parsed = dict(base["parsed"])
     parsed["words"] = [{"id": "00000000-0000-4000-8000-0000000000bb", "canonical": canonical,
-                        "aliases": [], "category": "general", "source": "user", "isEnabled": True,
-                        "learnedAliases": [], "learnedAt": 780000000}]
+                        "aliases": list(LEARNED_ALIASES), "category": "general", "source": "user",
+                        "isEnabled": True, "learnedAliases": list(LEARNED_ALIASES),
+                        "learnedAt": 780000000}]
     raw = json.dumps(parsed).encode("utf-8")
     return {"exists": True, "bytes": raw, "mode": 0o600, "sha256": hashlib.sha256(raw).hexdigest(), "parsed": parsed}
 
@@ -590,15 +612,28 @@ def finish_restore(snaps, initially_running, app_stopped, audio_restored):
     """The one restore receipt both drills print: files, defaults, launchctl,
     audio route, and the app's initial running state (relaunched AND seen
     running, never an unchecked `open`). Returns (restored, receipt)."""
-    launchctl_set(snaps["launchctl"])
+    # Each step runs whatever an earlier one raised; the readbacks decide.
+    env_restored = True
+    try:
+        launchctl_set(snaps["launchctl"])
+    except Exception as error:
+        env_restored = False
+        print(f"LAUNCHCTL RESTORE FAILED: {error}")
     if app_stopped:
-        file_restore(WORDS, snaps["words"])
-        defaults_restore(snaps["defaults"])
+        try:
+            file_restore(WORDS, snaps["words"])
+            defaults_restore(snaps["defaults"])
+        except Exception as error:
+            print(f"FILE RESTORE FAILED: {error}")
         ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
     else:
         ok_w, why_w = False, "not restored: the app did not stop"
     ok_d = defaults_snapshot() == snaps["defaults"]
-    ok_e = launchctl_get() == snaps["launchctl"]
+    try:
+        ok_e = env_restored and launchctl_get() == snaps["launchctl"]
+    except Exception as error:
+        ok_e = False
+        print(f"LAUNCHCTL READBACK FAILED: {error}")
     running_restored = not initially_running
     if initially_running and app_stopped and ok_w:
         launched = subprocess.run(["open", "-n", APP], capture_output=True, text=True).returncode == 0
@@ -1039,8 +1074,9 @@ CHECK_LINE = re.compile(
 def case_learned_check(path):
     """#3105 wiring, end to end in the real app with the Debug door's scripted
     checker (approves every question whose listed word is Tuist): the step runs
-    after Word Correction, asks about the sound-alike spots, writes Tuist at
-    the approved ones, and logs its counts. Proves the chain, not model quality."""
+    after Word Correction, asks where a seeded misspelling reappears, writes
+    Tuist at the approved spots, and logs its counts. Proves the chain, not
+    model quality."""
     pair = PAIRS["learned-check"]
     mark, text, _ = dictate(path, "learned-check", pair, need_heard=False)
     line = wait_for("the LearnedWordCheck line", lambda: CHECK_LINE.search(log_since(mark)), deadline=15.0)
@@ -1048,24 +1084,28 @@ def case_learned_check(path):
         return check("learned-check", False, "no LearnedWordCheck line (the step did not run)")
     flagged, applied, arm = int(line.group(1)), int(line.group(3)), line.group(6)
     if flagged == 0:
-        # The recogniser wrote nothing that sounds like Tuist (or wrote Tuist
+        # The recogniser wrote none of the seeded misspellings (or wrote Tuist
         # itself): nothing to ask, so the take proves nothing about the step.
-        raise Aborted(f"learned-check: no sound-alike to flag (line={line.group(0)} delivered={text!r})")
+        raise Aborted(f"learned-check: no seeded misspelling to flag (line={line.group(0)} delivered={text!r})")
     ok = arm == "uat_scripted" and applied >= 1 and "tuist" in (text or "").lower()
     return check("learned-check", ok, f"line={line.group(0)} delivered={text!r}")
 
 
 def case_learned_check_door_off(path):
     """The control: the same learned word and sentence with NO checker installed
-    (the production state until a model qualifies): the step is off, so no
-    LearnedWordCheck line, and the learned word never swaps by itself."""
+    (the production state until a model qualifies): the step still runs, records
+    `arm=none reason=no_checker`, and the learned word never swaps by itself."""
     pair = PAIRS["learned-check"]
     mark, text, _ = dictate(path, "learned-check-off", pair, need_heard=False)
     reached = wait_for("the take's terminal", lambda: has(mark, "Pipeline timing TOTAL"), deadline=20.0)
     if not reached:
         raise Aborted("learned-check-off: the take never completed")
-    return check("learned-check-door-off", CHECK_LINE.search(log_since(mark)) is None,
-                 f"delivered={text!r}")
+    line = CHECK_LINE.search(log_since(mark))
+    if not line:
+        return check("learned-check-door-off", False, f"no LearnedWordCheck line delivered={text!r}")
+    applied, arm, reason = int(line.group(3)), line.group(6), line.group(7)
+    ok = arm == "none" and reason == "no_checker" and applied == 0
+    return check("learned-check-door-off", ok, f"line={line.group(0)} delivered={text!r}")
 
 
 # --- audio ------------------------------------------------------------------
@@ -1109,10 +1149,11 @@ def main():
 
     head = subprocess.run(["git", "-C", WORKTREE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     snaps = {"words": file_snapshot(WORDS), "defaults": defaults_snapshot(), "launchctl": launchctl_get(),
-             "checkdoor": check_door_get()}
+             "checkdoor": check_door_get(), "eg1": {key: env_get(key) for key in EG1_DOOR_KEYS}}
     save("before-custom-words.json", {k: v for k, v in snaps["words"].items() if k != "bytes"})
     save("before-legacy-ledger.json", {"present": legacy_ledger_present(), "path": LEGACY_LEDGER, "note": "read only; the app deletes it at launch; this script never writes it"})
-    save("before-defaults-and-launchctl.json", {"defaults": snaps["defaults"], "launchctl": snaps["launchctl"]})
+    save("before-defaults-and-launchctl.json", {"defaults": snaps["defaults"], "launchctl": snaps["launchctl"],
+                                                "eg1_doors": snaps["eg1"]})
     with open(APP_BIN, "rb") as fh:
         bin_sha = hashlib.sha256(fh.read()).hexdigest()
     save("subject.json", {"head": head, "app": APP_BIN, "bin_sha256": bin_sha,
@@ -1123,6 +1164,8 @@ def main():
     doc = None
     route = None
     try:
+        for key in EG1_DOOR_KEYS:
+            env_set(key, None)
         # Inaudible: BlackHole for BOTH system output and input, and the app's
         # own mic picker set through the UI (uat-testing.md RULE:
         # silent-uat-via-blackhole-and-select-the-mic-in-the-UI). The proven
@@ -1207,25 +1250,42 @@ def main():
         try:
             stop_app()
             app_stopped = True
-        except Aborted as error:
+        except Exception as error:
             record("app-stop", "FAIL", str(error))
         # The launch environment is safe to restore whether or not the app is
         # down (launchd state, not the app's files); the rest waits for a stop.
-        launchctl_set(snaps["launchctl"])
-        check_door_set(snaps["checkdoor"])
+        # Each step runs whatever an earlier one raised; the verification below
+        # decides the verdict.
+        env_restored = True
+        for key, value in [(ENV_KEY, snaps["launchctl"]), (CHECK_ENV_KEY, snaps["checkdoor"])] + list(snaps["eg1"].items()):
+            try:
+                env_set(key, value)
+            except Exception as error:
+                env_restored = False
+                record("env-restore", "FAIL", f"{key}: {error}")
         if app_stopped:
-            file_restore(WORDS, snaps["words"])
-            defaults_restore(snaps["defaults"])
+            try:
+                file_restore(WORDS, snaps["words"])
+                defaults_restore(snaps["defaults"])
+            except Exception as error:
+                record("file-restore", "FAIL", str(error))
             ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
         else:
             ok_w, why_w = False, "not restored: the app did not stop"
         after_defaults = defaults_snapshot()
         ok_d = after_defaults == snaps["defaults"]
-        ok_e = launchctl_get() == snaps["launchctl"] and check_door_get() == snaps["checkdoor"]
+        after_launchctl = None
+        try:
+            after_launchctl = launchctl_get()
+            ok_e = env_restored and after_launchctl == snaps["launchctl"] and check_door_get() == snaps["checkdoor"] \
+                and all(env_get(key) == value for key, value in snaps["eg1"].items())
+        except Exception as error:
+            ok_e = False
+            record("env-readback", "FAIL", str(error))
         save("restore-verification.json", {"audio": audio_restored, "app_stopped": app_stopped,
                                            "words": [ok_w, why_w],
                                            "legacy_ledger_present_after": legacy_ledger_present(),
-                                           "defaults": [ok_d, after_defaults], "launchctl": [ok_e, launchctl_get()]})
+                                           "defaults": [ok_d, after_defaults], "launchctl": [ok_e, after_launchctl]})
         restored = audio_restored and app_stopped and ok_w and ok_d and ok_e
         record("restore", "PASS" if restored else "FAIL",
                f"audio={audio_restored}; app_stopped={app_stopped}; words={why_w}; legacy_ledger_present={legacy_ledger_present()}; defaults={ok_d}; launchctl={ok_e}")
