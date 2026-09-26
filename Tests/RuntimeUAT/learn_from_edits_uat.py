@@ -1136,24 +1136,40 @@ def case_learned_check(path):
 # base's). With every adapter door cleared, the selected engine runs its delivered
 # checker when one is admitted, and none otherwise.
 DELIVERED_CHECKER = {
-    "egOne": ("eg_one_checker-eg1c-", "eg1_lora"),
-    "s1Mini": ("s1_mini_checker-s1c-", "s1_lora"),
+    "egOne": ("eg1-checker-delivery-manifest", "eg1_lora"),
+    "s1Mini": ("s1-checker-delivery-manifest", "s1_lora"),
 }
 
 
 def delivered_checker_arm():
     """The arm the selected engine's delivered checker runs as, or None when the
-    selected engine has none admitted. Reads the provider and the admission
-    markers; never writes either."""
+    selected engine has none admitted. Admitted means what the app checks: a
+    marker whose manifestDigest is THIS build's bundled checker manifest, and
+    every file it names present with its size. A marker from an older manifest
+    or beside deleted bytes is not admitted. Reads only; never writes."""
     provider = subprocess.run(["defaults", "read", "com.enviouswispr.app", "llmProvider"],
                               capture_output=True, text=True).stdout.strip()
-    prefix, arm = DELIVERED_CHECKER.get(provider, (None, None))
-    if prefix is None:
+    resource, arm = DELIVERED_CHECKER.get(provider, (None, None))
+    if resource is None:
         return None
-    meta = os.path.expanduser("~/Library/Application Support/EnviousWispr/ModelDelivery")
-    admitted = [n for n in os.listdir(meta) if n.startswith(prefix) and n.endswith(".admission.json")] \
-        if os.path.isdir(meta) else []
-    return arm if admitted else None
+    with open(os.path.join(WORKTREE, "Sources/EnviousWispr/Resources", resource + ".json")) as fh:
+        manifest = json.load(fh)
+    ident = manifest["identity"]
+    variant = f"-{ident['variant']}" if ident["variant"] else ""
+    support = os.path.expanduser("~/Library/Application Support/EnviousWispr")
+    marker = os.path.join(support, "ModelDelivery",
+                          f"{ident['family']}-{ident['name']}-{ident['revision']}{variant}.admission.json")
+    if not os.path.exists(marker):
+        return None
+    with open(marker) as fh:
+        if json.load(fh).get("manifestDigest") != manifest["manifestDigest"]:
+            return None
+    folder = {"egOne": "Models/eg-1-checker", "s1Mini": "Models/s1-mini-checker"}[provider]
+    for f in manifest["files"]:
+        p = os.path.join(support, folder, f.get("installPath") or f["path"])
+        if not os.path.isfile(p) or os.path.getsize(p) != f["sizeBytes"]:
+            return None
+    return arm
 
 
 def case_learned_check_door_off(path):
