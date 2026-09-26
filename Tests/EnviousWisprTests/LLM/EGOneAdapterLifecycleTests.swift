@@ -80,7 +80,7 @@ struct EGOneAdapterLifecycleTests {
   }
 
   @MainActor
-  @Test("provider is read for every boot configuration; S1 never reads it")
+  @Test("each runtime reads its own adapter provider on every boot configuration")
   func providerPerBoot() async {
     var calls = 0
     var available: URL? = nil
@@ -100,16 +100,22 @@ struct EGOneAdapterLifecycleTests {
     #expect(calls == 2)
     #expect(first.learnedWordAdapterURL == nil)
     #expect(second.learnedWordAdapterURL == available)
+    // #3105: S1-mini boots with its own D5 adapter from its own provider.
+    let d5 = URL(fileURLWithPath: "/fake/s1-d5.gguf")
     let s1 = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini,
-      learnedWordAdapterProvider: {
-        Issue.record("S1 consulted EG-1 adapter provider")
-        return available
-      })
+      learnedWordAdapterProvider: { d5 })
     let s1Config = await s1.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
-    #expect(s1Config.learnedWordAdapterURL == nil)
+    #expect(s1Config.learnedWordAdapterURL == d5)
     #expect(s1Config.extraArguments == EGOneRuntime.engineArguments(for: .s1Mini))
+    // A runtime built without a provider boots bare.
+    let bare = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini)
+    let bareConfig = await bare.makeServerConfiguration(
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
+    #expect(bareConfig.learnedWordAdapterURL == nil)
+    #expect(bareConfig.learnedWordAdapterArguments.isEmpty)
   }
 
   @Test("adapter-free polish bodies keep the original bytes across inputs")

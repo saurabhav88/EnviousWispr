@@ -16,12 +16,17 @@ final class EGOneCheckerEligibility {
   private let promptTemplateID: String?
   private let runtime: EGOneRuntime
   private let debugThreshold: Double?
+  /// S1-mini's word check (D5, #3105). Until its delivery ships it exists only
+  /// through the Debug adapter door, whose threshold arrives here.
+  private let s1Runtime: EGOneRuntime?
+  private let s1DebugThreshold: Double?
   #if DEBUG
     private let debugScriptedChecker: (any LearnedWordChecking)?
   #endif
 
   init(delivery: ModelDeliveryHome, base: DeliveryRegistration?,
     promptTemplateID: String?, runtime: EGOneRuntime, debugThreshold: Double? = nil,
+    s1Runtime: EGOneRuntime? = nil, s1DebugThreshold: Double? = nil,
     debugScriptedChecker: (any LearnedWordChecking)? = nil
   ) {
     self.delivery = delivery
@@ -29,6 +34,8 @@ final class EGOneCheckerEligibility {
     self.promptTemplateID = promptTemplateID
     self.runtime = runtime
     self.debugThreshold = debugThreshold
+    self.s1Runtime = s1Runtime
+    self.s1DebugThreshold = s1DebugThreshold
     #if DEBUG
       self.debugScriptedChecker = debugScriptedChecker
     #endif
@@ -53,12 +60,45 @@ final class EGOneCheckerEligibility {
           checker: debugScriptedChecker, identity: debugScriptedChecker.armName)
       }
     #endif
-    guard provider == .egOne else { return .init(absence: .notEGOne) }
-    let judge = LearnedWordJudge(
-      displayName: LLMProvider.egOne.displayName,
-      qualifiedLanguages:
-        delivery.egOneCheckerRegistration?.manifest.checkerContract?.qualifiedLanguages ?? [])
-    return await egOneSelection(language: language).naming(judge)
+    // Founder 2026-09-26 (#3105): every dictation language, every engine. The
+    // judge names no language list, so the status line claims none.
+    switch provider {
+    case .egOne:
+      let judge = LearnedWordJudge(
+        displayName: LLMProvider.egOne.displayName, qualifiedLanguages: [])
+      return await egOneSelection(language: language).naming(judge)
+    case .s1Mini:
+      let judge = LearnedWordJudge(
+        displayName: LLMProvider.s1Mini.displayName, qualifiedLanguages: [])
+      return await s1MiniSelection(language: language).naming(judge)
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
+      return .init(absence: .notEGOne)
+    }
+  }
+
+  /// S1-mini runs its D5 adapter on the same local server, one engine at a time.
+  /// Only the Debug door supplies it today: without the door there is no S1-mini
+  /// word check, and the row says so.
+  private func s1MiniSelection(language: String?) async -> LearnedWordCheckerSelection {
+    #if DEBUG
+      guard let s1Runtime, let threshold = s1DebugThreshold else {
+        return .init(absence: .notEGOne)
+      }
+      guard let endpoint = await s1Runtime.activeEndpoint() else {
+        return .init(absence: .serverUnavailable)
+      }
+      guard endpoint.hasLearnedWordAdapter else {
+        let reason = await s1Runtime.checkerFailureReason()?.rawValue
+        return .init(absence: .serverWithoutAdapter(
+          reason ?? EGOneServerManager.CheckerFailureReason.adapterMissing.rawValue))
+      }
+      let checker = EGOneLearnedWordChecker(
+        threshold: threshold, style: .s1Mini(language: language),
+        hold: { [s1Runtime] in await EGOneLearnedWordChecker.hold(on: s1Runtime) })
+      return .init(checker: checker, identity: "uat_adapter_s1")
+    #else
+      return .init(absence: .notEGOne)
+    #endif
   }
 
   private func egOneSelection(language: String?) async -> LearnedWordCheckerSelection {
@@ -134,9 +174,6 @@ final class EGOneCheckerEligibility {
         return absent(.adapterDownloading)
       }
     }
-    guard let language,
-      contract.qualifiedLanguages.contains(where: { $0.caseInsensitiveCompare(language) == .orderedSame })
-    else { return absent(.unqualifiedLanguage) }
     guard let endpoint else { return absent(.serverUnavailable) }
     guard endpoint.hasLearnedWordAdapter else {
       return absent(.serverWithoutAdapter(

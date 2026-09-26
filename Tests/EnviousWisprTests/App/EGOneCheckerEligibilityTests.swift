@@ -79,7 +79,7 @@ struct EGOneCheckerEligibilityTests {
     )
   }
 
-  @Test("ready, loading, mismatch, absent, and language refusal use one owner")
+  @Test("ready, loading, mismatch and absent use one owner; every dictation language is eligible")
   func decisionMatrix() throws {
     let (contract, base) = try pins()
     let ready = EGOneEndpoint(
@@ -144,8 +144,11 @@ struct EGOneCheckerEligibilityTests {
     #expect(
       select(admittedBase: try mismatchedBase()).absence
         == .baseMismatch("prompt_template"))
-    #expect(select(language: "de").absence == .unqualifiedLanguage)
-    #expect(select(language: nil).absence == .unqualifiedLanguage)
+    // Founder 2026-09-26 (#3105): no language gate. German, a language the exam
+    // never measured, and an unresolved language all get the check.
+    #expect(select(language: "de").checker != nil)
+    #expect(select(language: "ja").checker != nil)
+    #expect(select(language: nil).checker != nil)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: true,

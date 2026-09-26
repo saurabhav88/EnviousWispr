@@ -846,7 +846,11 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     for provider: LLMProvider, learnedWordAdapterURL: URL?
   ) -> [String] {
     let engine = engineArguments(for: provider)
-    guard provider == .egOne, let learnedWordAdapterURL else { return engine }
+    guard let learnedWordAdapterURL else { return engine }
+    switch provider {
+    case .egOne, .s1Mini: break
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: return engine
+    }
     return engine + [
       "--lora", learnedWordAdapterURL.path, "--lora-init-without-apply",
       "-np", String(EGOneSlots.totalCount), "--kv-unified", "--no-cache-idle-slots",
@@ -875,12 +879,9 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   func makeServerConfiguration(
     serverBinaryURL: URL, modelURL: URL, contextTokens: Int
   ) async -> EGOneServerManager.Configuration {
-    let adapterURL: URL?
-    if provider == .egOne {
-      adapterURL = await learnedWordAdapterProvider()
-    } else {
-      adapterURL = nil
-    }
+    // Each bundled engine's runtime owns its own adapter provider (#3105: EG-1's
+    // eg1c, S1-mini's D5); a runtime built without one boots without an adapter.
+    let adapterURL = await learnedWordAdapterProvider()
     let baseArguments = Self.engineArguments(for: provider)
     let adapterArguments = Self.launchArguments(
       for: provider, learnedWordAdapterURL: adapterURL).dropFirst(baseArguments.count)
