@@ -1,3 +1,17 @@
+/* Each example owns its illustration and app; leave room for the desktop fade. */
+.case-carousel {
+  margin: -16px;
+  padding: 16px;
+}
+.case-frame {
+  padding: 0;
+}
+@media (max-width: 600px) {
+  .case-carousel {
+    margin: 0;
+    padding: 0 0 12px;
+  }
+}
 .audience-choices {
   align-items: center;
   display: flex;
@@ -125,9 +139,6 @@ html[data-theme='dark'] .audience-choices button[aria-pressed='true'] {
   line-height: 19px;
   max-height: 120px;
   padding: 10px 12px;
-}
-.case-stage.is-changing .case-screen {
-  animation: app-arrival 0.4s ease both;
 }
 .case-controls {
   align-items: center;
@@ -573,9 +584,6 @@ main > #people .section-heading {
 .case-screen .clinical-notes {
   overflow: auto;
 }
-.case-stage.is-changing .case-screen {
-  animation: none;
-}
 .case-controls {
   margin-top: 17px;
 }
@@ -655,12 +663,12 @@ main > #people .section-heading {
   .case-screen > .host-app {
     overflow-y: auto;
   }
-  #people[data-enhancement='ready'] .case-swipe-hint {
+  #people .case-swipe-hint {
     color: var(--eg-body);
     display: block;
     font-size: 13px;
     margin: 0;
-    padding: 0 16px 16px;
+    padding: 12px 16px 0;
     text-align: center;
   }
   .case-screen .clinical-notes .illustrated-result {

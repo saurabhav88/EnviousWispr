@@ -544,22 +544,6 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
 .section-heading h2 .accent-ink {
   font-weight: 700;
 }
-@keyframes polish-nudge {
-  0%,
-  70%,
-  to {
-    transform: none;
-  }
-  78% {
-    transform: translateX(4px);
-  }
-  86% {
-    transform: none;
-  }
-  94% {
-    transform: translateX(4px);
-  }
-}
 @media (max-width: 600px) {
   .brand {
     min-height: 44px;
@@ -626,27 +610,113 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
-[data-swipeable] {
-  touch-action: pan-y pinch-zoom;
+
+/* Real sibling cards use the same native scrolling as the engine/provider rails. Desktop shows one
+   whole card with side arrows; below 1000px (touch tablets and phones) the next card peeks in
+   instead, because the use-case previews leave no clear edge for an arrow there (founder UAT, #2768). */
+.home-carousel {
+  display: grid;
+  gap: 14px;
+  grid-auto-columns: 100%;
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
 }
-[data-swipeable].is-swiping {
-  -webkit-user-select: none;
-  user-select: none;
+.home-carousel > * {
+  min-width: 0;
+  scroll-snap-align: start;
 }
-@media (max-width: 600px) {
-  [data-swipeable] {
-    cursor: grab;
-    transform: translateX(var(--swipe-offset, 0px));
-    transition: transform 0.16s ease;
+.home-carousel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 999px) {
+  .home-carousel {
+    grid-auto-columns: 86%;
   }
-  [data-swipeable].is-swiping {
-    cursor: grabbing;
-    transition: none;
+}
+/* Without JavaScript there are no arrows, so desktop keeps the peek as the cue. `scripting`, not the
+   section's enhancement marker, so a JavaScript visitor never sees the cards widen as it loads. */
+@media (scripting: none) and (min-width: 1000px) {
+  .home-carousel {
+    grid-auto-columns: 88%;
+  }
+}
+/* Side arrows sit on the rail's edges. One with nowhere to go is marked aria-disabled and hidden, but
+   stays visible, dimmed, while it holds keyboard focus. Below 1000px the peek and a swipe take over;
+   without JavaScript the arrows keep their server-rendered `disabled`, so hidden. */
+.carousel-frame {
+  position: relative;
+}
+.carousel-side {
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 50%;
+  box-shadow: 0 8px 24px #1a0f2a2e;
+  color: var(--accent);
+  cursor: pointer;
+  display: grid;
+  height: 52px;
+  padding: 0;
+  place-items: center;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  transition:
+    opacity 0.2s,
+    background 0.2s,
+    border-color 0.2s;
+  width: 52px;
+  z-index: 5;
+}
+.carousel-side.is-prev {
+  left: 10px;
+}
+.carousel-side.is-next {
+  right: 10px;
+}
+.carousel-side:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border-color: var(--accent);
+}
+.carousel-side:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.carousel-side[disabled],
+.carousel-side[aria-disabled='true']:not(:focus-visible) {
+  opacity: 0;
+  pointer-events: none;
+}
+.carousel-side[aria-disabled='true']:focus-visible {
+  cursor: default;
+  opacity: 0.45;
+}
+.carousel-side svg {
+  fill: none;
+  height: 22px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+  width: 22px;
+}
+@media (max-width: 999px) {
+  .carousel-side {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-swipeable] {
-    transform: none;
+  .carousel-side {
     transition: none;
   }
+}
+#polish:not([data-enhancement='ready']) .polish-count,
+#people:not([data-enhancement='ready']) #case-count {
+  visibility: hidden;
 }
