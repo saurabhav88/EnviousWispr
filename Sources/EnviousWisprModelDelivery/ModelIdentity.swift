@@ -23,6 +23,19 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
   /// `CoreMLCorrectionJudge` loads; nothing about it is an ASR or polish
   /// engine, so it shares no other family's marker, folder or kill switch.
   case editJudge = "edit_judge"
+  /// #3105: S1-mini's learned-word checker (D5), a LoRA adapter admitted on
+  /// its own like `egOneChecker`, never a member of S1-mini's shard set.
+  case s1MiniChecker = "s1_mini_checker"
+
+  /// The base family a checker adapter runs on; nil for a family that is not
+  /// a checker. Exhaustive, so a new family must say whether it is one.
+  public var checkerBaseFamily: ModelFamily? {
+    switch self {
+    case .egOneChecker: .egOne
+    case .s1MiniChecker: .s1Mini
+    case .parakeet, .whisperKit, .egOne, .s1Mini, .editJudge: nil
+    }
+  }
 }
 
 /// Canonical identity of one deliverable model (contract §3, D2 §1).

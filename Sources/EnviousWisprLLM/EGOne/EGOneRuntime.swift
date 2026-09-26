@@ -180,6 +180,13 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// stop the server and delete the artifact underneath a recording that
   /// still needs it.
   public var isPinnedInFlight: (@MainActor () -> Bool)?
+
+  /// Deletes this engine's learned-word checker adapter (#3105), set by the
+  /// composition root. Remove Model calls it inside the same removal
+  /// exclusion as the base, after the server stopped; the delivery layer
+  /// drains an in-flight adapter fetch before deleting.
+  public var removeLearnedWordAdapter:
+    (@MainActor () async -> ModelDeliveryController.RemoveOutcome)?
   /// Live "did an in-flight recording freeze the OTHER local engine?" read,
   /// set by the composition root (#2649, cloud review P1). Two engines share
   /// one server, so starting this one evicts whichever is resident, and a
@@ -592,7 +599,20 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // running server and the bytes stay.
       guard claimed else { return }
       if self.isActiveProvider?() != true {
-        _ = await delivery.remove()
+        let base = await delivery.remove()
+        // The adapter runs only on this base, so it goes with it, whether or
+        // not the base's own deletion succeeded; each failure is its own line.
+        let adapter = await self.removeLearnedWordAdapter?()
+        let parts: [(String, ModelDeliveryController.RemoveOutcome?)] = [
+          ("model", base), ("learned-word checker", adapter),
+        ]
+        for (part, outcome) in parts {
+          if case .failed(let failure)? = outcome {
+            await AppLogger.shared.log(
+              "\(self.provider.displayName) Remove Model: \(part) removal failed: \(failure)",
+              level: .info, category: "LLM")
+          }
+        }
       } else {
         // Reselection while the removal waited on a lease keeps the bytes.
         // Re-issue activation because the exclusive stop may have won after
@@ -730,8 +750,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// new boot request with the resident process and defers if a take pins it.
   @discardableResult
   public func adapterAvailabilityDidChange() -> Task<Void, Never>? {
-    guard provider == .egOne,
-      isActiveProvider?() == true || isPinnedInFlight?() == true
+    guard isActiveProvider?() == true || isPinnedInFlight?() == true
     else { return nil }
     return activateAndProbe(retriesAdapterFallback: true)
   }
@@ -742,7 +761,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   }
 
   public func checkerFailureReason() async -> EGOneServerManager.CheckerFailureReason? {
-    await server.checkerFailureReason()
+    await server.checkerFailureReason(for: provider)
   }
 
   /// App-quit path (#1271 Codex r1 P1): `applicationWillTerminate` cannot

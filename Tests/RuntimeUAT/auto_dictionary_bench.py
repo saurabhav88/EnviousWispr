@@ -44,7 +44,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import learn_from_edits_uat as lfe  # noqa: E402  (shared helpers: audio route, snapshots, TextEdit)
 
-# Each local engine's checker door (Swift: `LearnedWordCheckAdapterDoor.Engine`) and the label its
+# Each local engine's checker door (Swift: `LearnedWordCheckerEngine`, Debug door keys) and the label its
 # ACTIVE line uses ("learned-check <label> door ACTIVE").
 ENGINES = {
     "egOne": {"adapter": "EW_LEARNED_CHECK_EG1_ADAPTER", "threshold": "EW_LEARNED_CHECK_EG1_THRESHOLD", "label": "EG-1",
@@ -142,7 +142,10 @@ def take(doc, arm, idx, sentence, expect, checker_arm):
     # An on door that logged ACTIVE but fell back to no_checker must not produce a summary.
     want = checker_arm if arm == "on" else "none"
     if not check or check.group(6) != want:
-        raise lfe.Aborted(f"{arm}-{idx}: expected checker arm {want!r}, got {check.group(0) if check else None!r}")
+        raise lfe.Aborted(
+            f"{arm}-{idx}: expected checker arm {want!r}, got {check.group(0) if check else None!r}"
+            + ("; a build that delivers checkers runs its own with the doors cleared, so time the off "
+               "arm on a build without checker delivery" if arm == "off" and check else ""))
     return {"arm": arm, "idx": idx, "sentence": sentence, "trigger": idx % len(SENTENCES) in TRIGGER_IDX,
             "total_ms": round(float(total.group(1)) * 1000), "asr_ms": round(float(total.group(2)) * 1000),
             # The kernel's TOTAL line calls this span "polish", but it is every text step

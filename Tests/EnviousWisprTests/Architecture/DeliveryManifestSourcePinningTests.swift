@@ -2,8 +2,7 @@ import Foundation
 import Testing
 
 /// Every active delivery source URL is our mirror or an immutable Hugging Face
-/// commit. The #3105 checker has one exact, unroutable placeholder until its
-/// R2 object is uploaded; its ensure door refuses before network I/O.
+/// commit.
 ///
 /// #2693: `parakeet-delivery-manifest.json` pinned revision `aed0274…` and pointed its
 /// backup source at `.../resolve/main/`, a moving branch. On a FIRST INSTALL every
@@ -27,9 +26,7 @@ import Testing
 /// The first three were the pattern; the fourth was the TRIGGER, which is the same defect
 /// one level up — deciding whether a rule APPLIES is as open-ended as the rule itself. So
 /// there is no trigger any more. **Every active source must match one of two anchored patterns
-/// over its literal bytes, and anything else FAILS.** The one exact pending-host
-/// sentinel below is tied to the checker manifest and is refused by its ensure door.
-/// A new host, a percent-encoded one,
+/// over its literal bytes, and anything else FAILS.** A new host, a percent-encoded one,
 /// a homoglyph, an unpinned Hugging Face URL: none of them need to be recognised, because
 /// none of them match. Adding a genuinely new CDN is a deliberate edit here, which is the
 /// point rather than a cost.
@@ -44,7 +41,7 @@ import Testing
 /// bytes a source serves. Byte verification belongs in the PR that changes a revision.
 ///
 /// Fails closed: no manifests found, a manifest with no `sources`, an empty `sources`, a
-/// source matching neither pattern nor the one pending-host sentinel, and zero
+/// source matching neither pattern, and zero
 /// Hugging Face sources in the whole folder.
 @Suite("Delivery manifests pin every Hugging Face source (#2693)", .tags(.driftGuard))
 struct DeliveryManifestSourcePinningTests {
@@ -127,13 +124,6 @@ struct DeliveryManifestSourcePinningTests {
       try #require(!sources.isEmpty, "\(path): declares an empty sources list")
 
       for source in sources {
-        // #3105 chunk 1: a signed, byte-pinned checker contract exists before
-        // its R2 object. This exact unroutable sentinel is the sole temporary
-        // exception; ModelDeliveryHome refuses before starting a fetch.
-        if path.hasSuffix("/eg1-checker-delivery-manifest.json"),
-          source.id == "our_copy",
-          source.baseURL == "https://adapter-host-pending.invalid/eg1-checker/"
-        { continue }
         if Self.matches(Self.mirrorPattern, source.baseURL) { continue }
 
         // Everything that is not our mirror must be a pinned Hugging Face URL. There is

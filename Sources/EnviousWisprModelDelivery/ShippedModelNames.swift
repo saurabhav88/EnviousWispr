@@ -32,6 +32,7 @@ enum ShippedModelNames {
     .egOneChecker: ["eg1c"],
     .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
     .s1Mini: ["s1-mini"],
+    .s1MiniChecker: ["s1c"],
     .whisperKit: ["whisperkit-coreml"],
   ]
 
@@ -69,6 +70,7 @@ enum ShippedModelNames {
     "eg_one_checker|eg1c": ["f16"],
     "parakeet|parakeet-tdt-0.6b-v3-coreml": ["int8"],
     "s1_mini|s1-mini": ["q4km"],
+    "s1_mini_checker|s1c": ["f16"],
     "whisper_kit|whisperkit-coreml": [
       "openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB",
     ],

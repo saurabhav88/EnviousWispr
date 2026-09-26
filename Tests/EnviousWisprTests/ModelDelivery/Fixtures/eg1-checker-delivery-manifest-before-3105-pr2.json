@@ -20,7 +20,7 @@
   "sources": [
     {
       "id": "our_copy",
-      "baseURL": "https://models.enviouslabs.co/eg1/checker/eg1c-v2/"
+      "baseURL": "https://adapter-host-pending.invalid/eg1-checker/"
     }
   ],
   "admission": {
@@ -36,7 +36,10 @@
     "adapterSizeBytes": 66094912,
     "adapterSHA256": "c36e831adb4d35ccbde46fb15567de2fe42d343859a20a78402bd1ffa6a24e83",
     "format": "gguf-lora",
-    "qualifiedThreshold": "0.481",
+    "qualifiedThreshold": "0.7",
+    "qualifiedLanguages": [
+      "en"
+    ],
     "base": {
       "revision": "eg1-1.2-c003",
       "variant": "q5km",
@@ -54,5 +57,5 @@
       "runtimeABI": "llamacpp-eg1-v1"
     }
   },
-  "manifestDigest": "d513891ad8724243dce3d139410a97bb44f7104aac57cea3f19c80fe0e3f6fb0"
+  "manifestDigest": "d0dc89505a065298ad13df38c6e34073a345e5aa6ccf8a2eace4bd732ba851c3"
 }

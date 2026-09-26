@@ -91,7 +91,7 @@ struct LearnedWordCheckStepTests {
   @Test("the absence vocabulary is closed and content-free")
   func absenceCodes() {
     let values: [(LearnedWordCheckerAbsence, String)] = [
-      (.notEGOne, "not_eg_one"), (.baseNotAdmitted, "base_not_admitted"),
+      (.engineHasNoChecker, "engine_has_no_checker"), (.baseNotAdmitted, "base_not_admitted"),
       (.adapterDownloading, "adapter_downloading"),
       (.adapterDeliveryFailed, "adapter_delivery_failed"),
       (.deliveryDisabled, "delivery_disabled"),
@@ -212,7 +212,7 @@ struct LearnedWordCheckStepTests {
     s.selectionDeadline = .milliseconds(100)
     s.selectionProvider = { _, _ in
       await withCheckedContinuation { gate.parked = $0 }
-      return LearnedWordCheckerSelection(absence: .notEGOne)
+      return LearnedWordCheckerSelection(absence: .engineHasNoChecker)
     }
     let start = ContinuousClock.now
     let stalled = await s.boundedSelection(for: .egOne, language: "en")

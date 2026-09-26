@@ -4,9 +4,9 @@ import Testing
 
 @testable import EnviousWisprModelDelivery
 
-/// #3105 PR 4 chunk 1: signed contract and separate admission only.
-@Suite("EG-1 checker companion delivery", .tags(.driftGuard))
-struct EGOneCheckerDeliveryTests {
+/// #3105: each engine's signed checker contract and its separate admission.
+@Suite("Learned-word checker delivery (#3105)", .tags(.driftGuard))
+struct LearnedWordCheckerDeliveryTests {
   private static var root: URL {
     URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
@@ -41,37 +41,67 @@ struct EGOneCheckerDeliveryTests {
     return try DeliveryManifest.load(from: data)
   }
 
-  @Test func bundledContractAndAppSignaturePin() throws {
-    let data = try Data(contentsOf: Self.resource("eg1-checker-delivery-manifest"))
+  /// Each engine's shipped checker, pinned by value: the engine's own base,
+  /// runtime manifest, hosted object and qualified threshold.
+  struct Shipped: Sendable, CustomTestStringConvertible {
+    let checker, base, runtime: String
+    let family: ModelFamily
+    let digest, sha256: String
+    let size: Int64
+    let threshold: String
+    var testDescription: String { checker }
+  }
+
+  static let shipped = [
+    Shipped(
+      checker: "eg1-checker-delivery-manifest", base: "eg1-delivery-manifest",
+      runtime: "eg1-manifest", family: .egOneChecker,
+      digest: "d513891ad8724243dce3d139410a97bb44f7104aac57cea3f19c80fe0e3f6fb0",
+      sha256: "c36e831adb4d35ccbde46fb15567de2fe42d343859a20a78402bd1ffa6a24e83",
+      size: 66_094_912, threshold: "0.481"),
+    Shipped(
+      checker: "s1-checker-delivery-manifest", base: "s1-delivery-manifest",
+      runtime: "s1-manifest", family: .s1MiniChecker,
+      digest: "e8c33bc88ee58300731f2143f8708de6eca4f6d6750b2bee5c617e90ab984cb4",
+      sha256: "43da0f1ceda643a26a20898e3577476d4eedace5ff8b0f1ab03e9ff84f54f825",
+      size: 80_767_264, threshold: "0.858"),
+  ]
+
+  @Test(arguments: shipped)
+  func bundledContractAndAppSignaturePin(_ pin: Shipped) throws {
+    let data = try Data(contentsOf: Self.resource(pin.checker))
     let checker = try DeliveryManifest.load(from: data)
-    let base = try Self.manifest("eg1-delivery-manifest")
+    let base = try Self.manifest(pin.base)
     let runtime =
       try JSONSerialization.jsonObject(
-        with: Data(contentsOf: Self.resource("eg1-manifest"))) as! [String: Any]
+        with: Data(contentsOf: Self.resource(pin.runtime))) as! [String: Any]
     let contract = try #require(checker.checkerContract)
 
-    #expect(
-      checker.manifestDigest == "d0dc89505a065298ad13df38c6e34073a345e5aa6ccf8a2eace4bd732ba851c3")
-    #expect(checker.identity.family == .egOneChecker)
+    #expect(checker.manifestDigest == pin.digest)
+    #expect(checker.identity.family == pin.family)
+    #expect(pin.family.checkerBaseFamily == base.identity.family)
     #expect(checker.identity.cacheKey != base.identity.cacheKey)
     #expect(checker.files.count == 1)
-    #expect(
-      checker.files[0].sha256 == "c36e831adb4d35ccbde46fb15567de2fe42d343859a20a78402bd1ffa6a24e83")
-    #expect(checker.files[0].sizeBytes == 66_094_912)
+    #expect(checker.files[0].sha256 == pin.sha256)
+    #expect(checker.files[0].sizeBytes == pin.size)
     #expect(contract.adapterFileName == checker.files[0].resolvedInstallPath)
     #expect(contract.format == "gguf-lora")
-    #expect(contract.qualifiedThreshold == "0.7")
-    #expect(contract.qualifiedLanguages == ["en"])
+    #expect(contract.qualifiedThreshold == pin.threshold)
     #expect(contract.base.revision == base.identity.revision)
     #expect(contract.base.variant == base.identity.variant)
     #expect(contract.base.shardSHA256 == base.files.map(\.sha256))
     #expect(contract.base.promptTemplateID == runtime["promptTemplateID"] as? String)
     #expect(contract.base.runtimeABI == base.identity.runtimeABI)
+    // Hosted beside the base on our own mirror; the digest pins the URL too.
+    #expect(checker.sources.map(\.id) == ["our_copy"])
+    #expect(checker.sources[0].baseURL.host == "models.enviouslabs.co")
+    #expect(
+      checker.sources[0].baseURL.path.hasPrefix(
+        base.sources[0].baseURL.path.split(separator: "/").first.map { "/\($0)/" } ?? "?"))
 
     let project = try String(
       contentsOf: Self.root.appendingPathComponent("Project.swift"), encoding: .utf8)
-    #expect(
-      project.contains("\"Sources/EnviousWispr/Resources/eg1-checker-delivery-manifest.json\","))
+    #expect(project.contains("\"Sources/EnviousWispr/Resources/\(pin.checker).json\","))
     var tampered = try JSONSerialization.jsonObject(with: data) as! [String: Any]
     var changedContract = tampered["checkerContract"] as! [String: Any]
     changedContract["qualifiedThreshold"] = "0.8"
@@ -81,28 +111,81 @@ struct EGOneCheckerDeliveryTests {
     }
   }
 
-  @Test func signedContractOwnsQualifiedLanguagesAndThreshold() throws {
-    func load(threshold: String, languages: [String]) throws -> DeliveryManifest {
+  @Test func signedContractOwnsThreshold() throws {
+    func load(threshold: String) throws -> DeliveryManifest {
       try DeliveryManifest.load(
         from: Self.signedJSON(
-          Self.resource("eg1-checker-delivery-manifest")
+          Self.resource("s1-checker-delivery-manifest")
         ) { object in
           var contract = object["checkerContract"] as! [String: Any]
           contract["qualifiedThreshold"] = threshold
-          contract["qualifiedLanguages"] = languages
           object["checkerContract"] = contract
         })
     }
-    let widened = try #require(
-      try load(threshold: "0.7", languages: ["en", "de", "fil"]).checkerContract)
-    #expect(widened.qualifiedThreshold == "0.7")
-    #expect(widened.qualifiedLanguages == ["en", "de", "fil"])
-    for (threshold, languages) in [
-      ("0", ["en"]), ("1.5", ["en"]), ("nan", ["en"]), ("high", ["en"]), ("0.9", []),
-      ("0.9", ["en", "en"]), ("0.9", ["EN"]), ("0.9", ["english"]), ("0.9", ["e"]),
-    ] {
-      #expect(throws: (any Error).self) { try load(threshold: threshold, languages: languages) }
+    #expect(try #require(try load(threshold: "0.7").checkerContract).qualifiedThreshold == "0.7")
+    for threshold in ["0", "1.5", "nan", "high", "-0.2"] {
+      #expect(throws: (any Error).self) { try load(threshold: threshold) }
     }
+  }
+
+  /// Founder 2026-09-26: every language. The contract no longer carries a
+  /// language list, and a manifest signed before that change (it still names
+  /// `qualifiedLanguages`) decodes; its admitted bytes re-admit under the new
+  /// manifest's digest without a download or a deletion.
+  @Test func checkerAdmittedBeforeTheLanguageListReAdmitsWithoutDownload() async throws {
+    let fixture = Self.root.appendingPathComponent(
+      "Tests/EnviousWisprTests/ModelDelivery/Fixtures/eg1-checker-delivery-manifest-before-3105-pr2.json")
+    let before = try DeliveryManifest.load(from: Data(contentsOf: fixture))
+    let after = try Self.manifest("eg1-checker-delivery-manifest")
+    #expect(before.identity == after.identity)
+    #expect(before.files == after.files)
+    #expect(before.manifestDigest != after.manifestDigest)
+    #expect(
+      try String(contentsOf: fixture, encoding: .utf8).contains("qualifiedLanguages"),
+      "the fixture is the pre-change manifest")
+
+    // Tiny stand-in bytes under both manifests, so the test needs no 66 MB file.
+    let bytes = Data("adapter".utf8)
+    func tiny(_ source: URL) throws -> DeliveryManifest {
+      try DeliveryManifest.load(
+        from: Self.signedJSON(source) { object in
+          var files = object["files"] as! [[String: Any]]
+          let hash = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+          files[0]["sizeBytes"] = bytes.count
+          files[0]["sha256"] = hash
+          object["files"] = files
+          object["totalBytes"] = bytes.count
+          var contract = object["checkerContract"] as! [String: Any]
+          contract["adapterSizeBytes"] = bytes.count
+          contract["adapterSHA256"] = hash
+          object["checkerContract"] = contract
+        })
+    }
+    let old = try tiny(fixture)
+    let new = try tiny(Self.resource("eg1-checker-delivery-manifest"))
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let install = root.appendingPathComponent("Models/eg-1-checker")
+    let metadata = root.appendingPathComponent("ModelDelivery")
+    let staging = root.appendingPathComponent("staging")
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+    let filename = try #require(new.resolvedEntrypointPath)
+    let artifact = install.appendingPathComponent(filename)
+    try bytes.write(to: artifact)
+    let oldGate = CacheAdmission(manifest: old, installDirectory: install, metadataDirectory: metadata)
+    #expect((await oldGate.validateExistingCache()).verifiedComponents == [filename])
+    try oldGate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: staging, untouchedComponents: [filename])
+    #expect(oldGate.isAdmitted())
+
+    let newGate = CacheAdmission(manifest: new, installDirectory: install, metadataDirectory: metadata)
+    #expect(newGate.isAdmitted() == false, "a new digest is not admitted by an old marker")
+    #expect((await newGate.validateExistingCache()).verifiedComponents == [filename])
+    try newGate.promoteAndAdmit(
+      stagedComponents: [], stagingDirectory: staging, untouchedComponents: [filename])
+    #expect(newGate.isAdmitted())
+    #expect(try Data(contentsOf: artifact) == bytes, "the admitted bytes were kept, not refetched")
   }
 
   @Test func compatibilityIsClosedAndOrderSensitive() throws {
@@ -110,11 +193,11 @@ struct EGOneCheckerDeliveryTests {
     let contract = try #require(checker.checkerContract)
     let base = try Self.manifest("eg1-delivery-manifest")
     func verdict(_ manifest: DeliveryManifest, prompt: String = "eg1-v2-named-language")
-      -> EGOneCheckerCompatibility
+      -> LearnedWordCheckerCompatibility
     {
       compatibility(
-        contract: contract,
-        admittedBase: AdmittedEGOneBase(manifest: manifest, promptTemplateID: prompt))
+        contract: contract, checkerFamily: .egOneChecker,
+        admittedBase: AdmittedCheckerBase(manifest: manifest, promptTemplateID: prompt))
     }
     #expect(verdict(base) == .compatible)
     #expect(verdict(base, prompt: "other") == .refused(.promptTemplateMismatch))

@@ -413,19 +413,18 @@ enum ManifestFixture {
   }
 }
 
-/// #996 phase D: the correction judge's delivery manifest. The golden digest
-/// and every byte-level constant were measured from the STAGED folder
-/// (`scripts/build-edit-judge-delivery-manifest.py`, export
-/// `20260921T132135Z-ec68ad6e` of run `20260920T170356Z-3b376fbc`, fp16), the
-/// same bytes the mirror receives. The package's own tree digest (what
+/// #996 phase D, #3105: the correction judge's delivery manifest, Judge 1 v31.
+/// The golden digest and every byte-level constant were measured from the
+/// STAGED folder (`scripts/build-edit-judge-delivery-manifest.py`, export
+/// `20260925T232551Z-668f45b8` of run `20260925T221706Z-dbc928ac`, fp16), the
+/// same bytes the mirror receives (every hosted object verified by download). The package's own tree digest (what
 /// `CoreMLCorrectionJudge` binds at load) is asserted through the weights
 /// file's SHA-256, which is the one file whose bytes decide the model.
 ///
-/// QUALIFIED (2026-09-21/22): exam v2 receipts on macOS 14, 15, 26 and 27
-/// (PASS on each, 1012/1064 recall; 18/2498 false proposals on the two
-/// Neural Engine runs, macOS 27 and the bare-metal macOS 14 M1, 19/2498 on
-/// the hosted CPU runs), all under the half-precision decision-parity bar. `CorrectionJudgeArmSelection.qualified`
-/// binds every receipt to this manifest's `runtimeIdentityDigest`, which is
+/// QUALIFIED (2026-09-26) on founder decisions, not exam v2 (see
+/// `CorrectionJudgeArmSelection.qualified`): macOS 27 by its conversion
+/// receipt, 14/15/26 by the founder's "no need to test the judge on older
+/// versions". Every row binds this manifest's `runtimeIdentityDigest`, which is
 /// what turns the download on.
 /// A re-export mints a new package digest even over identical weights (the
 /// package carries a fresh model id), so the identity, the revision and the
@@ -436,8 +435,8 @@ enum ManifestFixture {
       "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json")
   }
 
-  static let goldenDigest = "7eea3796526f5f0e3a5009fa1c13398a855822a1b08378faae98f3b9ba3872c1"
-  static let weightsSHA256 = "d2e8504dbeff5fc1a295faa06986a2c92ef4f9e661a15d9da1729634dccdf156"
+  static let goldenDigest = "9e7558a65ec7a47bc546c84206e6fc9b50c4a03a7032ee0723af45ca31dfcd78"
+  static let weightsSHA256 = "b43396668bcf616113fe2ecd4b2e2a6186a8105e0345c9c20f94d878683c65a9"
 
   @Test func editJudgeManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.manifestURL)
@@ -447,11 +446,11 @@ enum ManifestFixture {
 
     #expect(manifest.identity.family == .editJudge)
     #expect(manifest.identity.name == "xenc-mmbert-small")
-    #expect(manifest.identity.revision == "3b376fbc-ec68ad6e")
+    #expect(manifest.identity.revision == "dbc928ac-668f45b8")
     #expect(manifest.identity.variant == "fp16")
     #expect(manifest.identity.runtimeABI == "coreml-edit-judge-v1")
     #expect(manifest.files.count == 9)
-    #expect(manifest.totalBytes == 319_284_836)
+    #expect(manifest.totalBytes == 319_801_618)
     #expect(manifest.optionalFiles.isEmpty)
     // The runtime identity the fetch policy checks a qualification against
     // BEFORE downloading: the loader's composite digest, computed from the
@@ -459,17 +458,17 @@ enum ManifestFixture {
     #expect(
       manifest.runtimeIdentityDigest
         == CoreMLCorrectionJudge.classifierIdentityDigest(
-          packageSHA256: "c730e378c4283522075bc559800eefd555f24a08546bdb94f1f8212ab2d023da",
+          packageSHA256: "984ac8f85c749e30ccebb1ecfc1170b7fd94d1c90d9ba80f4d3c02c09106013e",
           tokenizerSHA256: "a068687ff92c2c7d59523d2582f39ded9d12c02a0c0e6d34be29eef9ca93dfdd",
-          configSHA256: "b1824a981ecf4106f38a1d08a70cc8b7ec1c1587127ec7aeac66b73d40805b7b"))
-    #expect(manifest.runtimeIdentityDigest == "eb570c8044d8a769e4719a429560430cd96be204759fe3c783fde80b5468038d")
-    // Qualified (2026-09-21): the shipped table names exactly this digest, so
+          configSHA256: "abd9df99745c60dcfe982fda982b25bd486966129893ae4a5f6f249439223f44"))
+    #expect(manifest.runtimeIdentityDigest == "73d1c5147945dff0b7aa8ba0bd5de8669750955eaf4f51895c1741b4575adb2a")
+    // Qualified (2026-09-26): the shipped table names exactly this digest, so
     // the fetch policy may start the download; the bundled manifest and the
     // qualification row cannot drift apart without this line going red.
     #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: manifest.runtimeIdentityDigest) == true)
-    // One row per examined major, every row naming the delivered bytes and
-    // its own receipt (2026-09-21: 27 on the founder's Neural Engine, 26 and
-    // 15 on hosted CPU runners; 2026-09-22: 14 on a bare-metal AWS M1).
+    // One row per supported major, every row naming the delivered bytes and
+    // its own receipt (27: the conversion receipt on the founder's Mac; 26, 15
+    // and 14: the founder's 2026-09-26 decision not to run older macOS).
     // Every classifier row is validated BEFORE any filtering, so a stray row
     // with a wrong digest or a second major cannot hide behind the good ones.
     let classifierRows = CorrectionJudgeArmSelection.qualified.filter { $0.arm == .classifier }
@@ -480,10 +479,10 @@ enum ManifestFixture {
       })
     #expect(Set(classifierRows.compactMap { $0.osMajors.first }) == [14, 15, 26, 27])
     #expect(Set(classifierRows.map(\.receipt)).count == classifierRows.count, "each major cites its own receipt")
-    #expect(classifierRows.first { $0.osMajors == [27] }?.receipt == "2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2")
-    #expect(classifierRows.first { $0.osMajors == [26] }?.receipt == "2026-09-21T18-34-51Z-xenc-mmbert-small-exam-v2-macos26")
-    #expect(classifierRows.first { $0.osMajors == [15] }?.receipt == "2026-09-21T18-34-55Z-xenc-mmbert-small-exam-v2-macos15")
-    #expect(classifierRows.first { $0.osMajors == [14] }?.receipt == "2026-09-22T02-18-33Z-xenc-mmbert-small-exam-v2-macos14")
+    #expect(classifierRows.first { $0.osMajors == [27] }?.receipt == "2026-09-25T23-25-51Z-xenc-mmbert-small-v31-spell-fp16-conversion-macos27")
+    #expect(classifierRows.first { $0.osMajors == [26] }?.receipt == "founder-2026-09-26-no-older-macos-runs-v31-macos26")
+    #expect(classifierRows.first { $0.osMajors == [15] }?.receipt == "founder-2026-09-26-no-older-macos-runs-v31-macos15")
+    #expect(classifierRows.first { $0.osMajors == [14] }?.receipt == "founder-2026-09-26-no-older-macos-runs-v31-macos14")
 
     let byPath = Dictionary(uniqueKeysWithValues: manifest.files.map { ($0.path, $0) })
     // Everything `CoreMLCorrectionJudge.load` reads from a delivered folder.
@@ -518,7 +517,7 @@ enum ManifestFixture {
     #expect(manifest.sources.first?.id == "our_copy")
     #expect(
       manifest.sources.first?.baseURL.absoluteString
-        == "https://models.enviouslabs.co/edit-judge/3b376fbc-ec68ad6e/")
+        == "https://models.enviouslabs.co/edit-judge/dbc928ac-668f45b8/")
   }
 
   @Test func editJudgeManifestIsDeclaredAsAppResource() throws {

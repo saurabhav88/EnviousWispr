@@ -289,7 +289,7 @@ struct EGOneAdapterLifecycleTests {
     await coordinator.transition(to: .run(signalled), intent: coordinator.claimIntent())
     #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == true)
     #expect(try fixture.launches().count == 3)
-    #expect(await coordinator.checkerFailureReason() == nil)
+    #expect(await coordinator.checkerFailureReason(for: .egOne) == nil)
 
     // Once the adapter is live, the same signal is an ordinary restatement.
     await coordinator.transition(to: .run(signalled), intent: coordinator.claimIntent())

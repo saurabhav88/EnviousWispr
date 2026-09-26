@@ -11,47 +11,97 @@ import Testing
 @Suite("ModelDeliveryHome — engine mutation gate refusal")
 struct ModelDeliveryHomeTests {
 
-  @Test("EG-1 checker has a sibling registration and the future trigger refuses absent base")
-  func checkerRegistrationAndAutomaticTriggerGate() async throws {
+  @Test(
+    "each engine's checker has its own registration, host rule and removal; an unadmitted base fetches nothing",
+    arguments: LearnedWordCheckerEngine.allCases)
+  func checkerRegistrationAndTriggerGate(engine: LearnedWordCheckerEngine) async throws {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
       manifestBundle: try Self.manifestBundle(),
       appSupportOverride: try Self.tempAppSupport())
-    let checker = try #require(home.egOneCheckerRegistration)
-    #expect(checker.installDirectory.lastPathComponent == "eg-1-checker")
-    #expect(checker.manifest.identity.family == .egOneChecker)
-    #expect(checker.manifest.sources.first?.baseURL.absoluteString
-      == ModelDeliveryHome.TODOCheckerAdapterHostBaseURL)
-    #expect(ModelDeliveryHome.checkerHostIsConfigured(checker.manifest) == false)
-    let hostedManifest = DeliveryManifest(
-      schemaVersion: checker.manifest.schemaVersion,
-      identity: checker.manifest.identity,
-      files: checker.manifest.files,
-      optionalFiles: checker.manifest.optionalFiles,
-      totalBytes: checker.manifest.totalBytes,
-      sources: [.init(
-        id: "our_copy", baseURL: try #require(URL(string: "https://models.enviouslabs.co/eg1/checker/")))],
-      admission: checker.manifest.admission,
-      runtimeIdentityDigest: checker.manifest.runtimeIdentityDigest,
-      checkerContract: checker.manifest.checkerContract,
-      manifestDigest: checker.manifest.manifestDigest)
-    #expect(ModelDeliveryHome.checkerHostIsConfigured(hostedManifest))
+    let checker = try #require(home.checkerRegistrations[engine])
+    #expect(
+      checker.installDirectory.path.hasSuffix(engine.installFolder),
+      "\(checker.installDirectory.path) is not under \(engine.installFolder)")
+    #expect(checker.manifest.identity.family == engine.checkerFamily)
+    #expect(ModelDeliveryHome.checkerHostIsConfigured(checker.manifest, engine: engine))
+    let other: LearnedWordCheckerEngine = engine == .egOne ? .s1Mini : .egOne
+    #expect(
+      ModelDeliveryHome.checkerHostIsConfigured(checker.manifest, engine: other) == false,
+      "a manifest is hosted only for its own engine")
+    func hosted(_ url: String, id: String = "our_copy") throws -> DeliveryManifest {
+      DeliveryManifest(
+        schemaVersion: checker.manifest.schemaVersion,
+        identity: checker.manifest.identity,
+        files: checker.manifest.files,
+        optionalFiles: checker.manifest.optionalFiles,
+        totalBytes: checker.manifest.totalBytes,
+        sources: [.init(id: id, baseURL: try #require(URL(string: url)))],
+        admission: checker.manifest.admission,
+        runtimeIdentityDigest: checker.manifest.runtimeIdentityDigest,
+        checkerContract: checker.manifest.checkerContract,
+        manifestDigest: checker.manifest.manifestDigest)
+    }
+    let prefix = engine.hostPathPrefix
+    #expect(ModelDeliveryHome.checkerHostIsConfigured(
+      try hosted("https://models.enviouslabs.co\(prefix)checker/next/"), engine: engine))
+    for refused in [
+      "https://models.enviouslabs.co/edit-judge/x/", "http://models.enviouslabs.co\(prefix)x/",
+      "https://models.enviouslabs.co.evil.test\(prefix)x/", "https://adapter-host-pending.invalid\(prefix)",
+    ] {
+      #expect(
+        ModelDeliveryHome.checkerHostIsConfigured(try hosted(refused), engine: engine) == false,
+        "\(refused)")
+    }
+    #expect(ModelDeliveryHome.checkerHostIsConfigured(
+      try hosted("https://models.enviouslabs.co\(prefix)x/", id: "backup"), engine: engine) == false)
+
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
+    let baseName = engine == .egOne ? "eg1-delivery-manifest" : "s1-delivery-manifest"
     let baseManifest = try DeliveryManifest.load(from: Data(contentsOf: root.appendingPathComponent(
-      "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json")))
+      "Sources/EnviousWispr/Resources/\(baseName).json")))
     let base = DeliveryRegistration(
       manifest: baseManifest,
       installDirectory: checker.installDirectory.deletingLastPathComponent()
-        .appendingPathComponent("eg-1"),
+        .appendingPathComponent("base"),
       metadataDirectory: checker.metadataDirectory)
-    #expect(await home.ensureCheckerAdapterIfEGOneSelected(
-      selected: false, baseRegistration: base, promptTemplateID: "eg1-v2") == .notSelected)
-    #expect(await home.ensureCheckerAdapterIfEGOneSelected(
-      selected: true, baseRegistration: base, promptTemplateID: "eg1-v2") == .baseNotAdmitted)
+    let prompt = try #require(checker.manifest.checkerContract?.base.promptTemplateID)
+    #expect(await home.ensureCheckerAdapter(
+      engine: engine, baseRegistration: base, promptTemplateID: prompt) == .baseNotAdmitted)
+    #expect(await home.admittedCompatibleCheckerURL(
+      engine: engine, baseRegistration: base, promptTemplateID: prompt) == nil)
     #expect(FileManager.default.fileExists(atPath: checker.installDirectory.path) == false)
+    #expect(await home.removeCheckerAdapter(engine) == .removed, "nothing on disk removes cleanly")
+  }
+
+  /// The family's delivery switch gates every mutation, deletion included, as
+  /// `EGOneDeliveryAdapter.remove` does for the base (cloud review of #3227).
+  @Test("a switched-off checker family refuses removal and leaves its bytes", arguments: LearnedWordCheckerEngine.allCases)
+  func checkerRemovalHonoursTheDeliverySwitch(engine: LearnedWordCheckerEngine) async throws {
+    let suite = try #require(UserDefaults(suiteName: "ew-3105-checker-switch-\(UUID().uuidString)"))
+    suite.set(false, forKey: "modelDelivery.\(engine.checkerFamily.rawValue).enabled")
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport(),
+      deliveryFlagDefaults: suite)
+    let checker = try #require(home.checkerRegistrations[engine])
+    try FileManager.default.createDirectory(at: checker.installDirectory, withIntermediateDirectories: true)
+    let adapter = checker.installDirectory.appendingPathComponent(
+      try #require(checker.manifest.checkerContract?.adapterFileName))
+    try Data("adapter".utf8).write(to: adapter)
+    #expect(home.checkerDeliveryEnabled(engine) == false)
+    #expect(
+      await home.removeCheckerAdapter(engine)
+        == .failed(DeliveryFailure(reason: .unknown, detail: "delivery_disabled")))
+    #expect(FileManager.default.fileExists(atPath: adapter.path), "switched off, nothing is deleted")
+    suite.set(true, forKey: "modelDelivery.\(engine.checkerFamily.rawValue).enabled")
+    #expect(await home.removeCheckerAdapter(engine) == .removed)
+    #expect(FileManager.default.fileExists(atPath: adapter.path) == false, "switched on, removal proceeds")
   }
 
   /// Production's trust root is the signed app's own `Bundle.main` (contract

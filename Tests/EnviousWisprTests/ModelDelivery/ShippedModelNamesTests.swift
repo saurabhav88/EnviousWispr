@@ -61,7 +61,8 @@ import Testing
 
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
-      "s1-delivery-manifest", "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
+      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
+      "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let manifest = try DeliveryManifest.load(from: try Data(contentsOf: url))
@@ -86,6 +87,7 @@ import Testing
       .egOneChecker: ["eg1c"],
       .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
       .s1Mini: ["s1-mini"],
+      .s1MiniChecker: ["s1c"],
       .whisperKit: ["whisperkit-coreml"],
     ]
     // EXACT equality, not containment. Containment would let the registry GROW
@@ -146,7 +148,8 @@ import Testing
     var keys: [String] = []
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
-      "s1-delivery-manifest", "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
+      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
+      "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
@@ -156,7 +159,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 7, "expected seven bundled registrations, got \(keys.count)")
+    #expect(keys.count == 8, "expected eight bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
@@ -241,7 +244,8 @@ import Testing
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
-      "s1-delivery-manifest", "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
+      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
+      "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity

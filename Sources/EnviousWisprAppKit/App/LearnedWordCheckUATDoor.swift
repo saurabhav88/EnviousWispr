@@ -28,7 +28,7 @@
       }
       let checker = ScriptedLearnedWordChecker(approvedWords: words)
       log("learned-check UAT door ACTIVE: words=\(words.count)")
-      for engine in LearnedWordCheckAdapterDoor.Engine.allCases
+      for engine in LearnedWordCheckerEngine.allCases
       where environment[engine.adapterKey] != nil || environment[engine.thresholdKey] != nil {
         log("learned-check UAT door WINS over \(engine.label) adapter door")
       }
@@ -57,37 +57,11 @@
   }
 
   /// Launch-only adapter bench for each bundled engine's word check (#3105: EG-1's
-  /// eg1c, S1-mini's D5). The adapter is deliberately outside the production
-  /// model-delivery path until its measured gate passes.
+  /// eg1c, S1-mini's D5): a local adapter file in place of the delivered one.
   @MainActor
   enum LearnedWordCheckAdapterDoor {
-    enum Engine: CaseIterable {
-      case egOne, s1Mini
-
-      var adapterKey: String {
-        switch self {
-        case .egOne: "EW_LEARNED_CHECK_EG1_ADAPTER"
-        case .s1Mini: "EW_LEARNED_CHECK_S1_ADAPTER"
-        }
-      }
-      var thresholdKey: String {
-        switch self {
-        case .egOne: "EW_LEARNED_CHECK_EG1_THRESHOLD"
-        case .s1Mini: "EW_LEARNED_CHECK_S1_THRESHOLD"
-        }
-      }
-      /// The drills wait for this name in the ACTIVE line; it is the provider's
-      /// own display name (#2650 freeze), never a restatement.
-      var label: String {
-        switch self {
-        case .egOne: LLMProvider.egOne.displayName
-        case .s1Mini: LLMProvider.s1Mini.displayName
-        }
-      }
-    }
-
     static func configuration(
-      _ engine: Engine, environment: [String: String] = ProcessInfo.processInfo.environment
+      _ engine: LearnedWordCheckerEngine, environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> (url: URL, threshold: Double)? {
       let path = environment[engine.adapterKey]
       let rawThreshold = environment[engine.thresholdKey]
@@ -117,6 +91,35 @@
 
     private static func log(_ line: String) {
       Task { await AppLogger.shared.log(line, category: "Pipeline") }
+    }
+  }
+
+  /// The Debug door's keys per engine. The drills set and clear exactly these
+  /// (`CHECKER_DOOR_KEYS` in `learn_from_edits_uat.py`, `ENGINES` in
+  /// `auto_dictionary_bench.py`).
+  extension LearnedWordCheckerEngine {
+    var adapterKey: String {
+      switch self {
+      case .egOne: "EW_LEARNED_CHECK_EG1_ADAPTER"
+      case .s1Mini: "EW_LEARNED_CHECK_S1_ADAPTER"
+      }
+    }
+    var thresholdKey: String {
+      switch self {
+      case .egOne: "EW_LEARNED_CHECK_EG1_THRESHOLD"
+      case .s1Mini: "EW_LEARNED_CHECK_S1_THRESHOLD"
+      }
+    }
+    /// The drills wait for this name in the ACTIVE line; it is the provider's
+    /// own display name (#2650 freeze), never a restatement.
+    var label: String { provider.displayName }
+    /// `learned_check_checker_identity` for a door-supplied adapter; the values
+    /// PR 1 shipped, so dev analytics keep one vocabulary.
+    var debugDoorIdentity: String {
+      switch self {
+      case .egOne: "uat_adapter"
+      case .s1Mini: "uat_adapter_s1"
+      }
     }
   }
 #endif

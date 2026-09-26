@@ -1,8 +1,10 @@
 import Foundation
 
-/// Version 1 is pinned inside the bundled delivery manifest and its digest.
-/// Shard order matters because llama.cpp loads the first shard as entrypoint.
-public struct EGOneCheckerContract: Codable, Sendable, Equatable {
+/// A learned-word checker adapter's signed pin (#3105), one shape for every
+/// checker family (`ModelFamily.checkerBaseFamily`). Version 1 is pinned
+/// inside the bundled delivery manifest and its digest. Shard order matters
+/// because llama.cpp loads the first shard as entrypoint.
+public struct LearnedWordCheckerContract: Codable, Sendable, Equatable {
   public struct Base: Codable, Sendable, Equatable {
     public let revision: String
     public let variant: String
@@ -18,14 +20,13 @@ public struct EGOneCheckerContract: Codable, Sendable, Equatable {
   public let format: String
   /// String keeps manifest canonicalization exact across Swift and authoring tools.
   public let qualifiedThreshold: String
-  public let qualifiedLanguages: [String]
   public let base: Base
 }
 
 /// Construct only after the caller has proved `baseManifest` admitted through
 /// `ModelDeliveryController.isAdmitted`. This value carries the admitted pin,
 /// not an independently discovered set of files.
-public struct AdmittedEGOneBase: Sendable, Equatable {
+public struct AdmittedCheckerBase: Sendable, Equatable {
   public let family: ModelFamily
   public let revision: String
   public let variant: String
@@ -43,7 +44,7 @@ public struct AdmittedEGOneBase: Sendable, Equatable {
   }
 }
 
-public enum EGOneCheckerRefusal: Sendable, Equatable {
+public enum LearnedWordCheckerRefusal: Sendable, Equatable {
   case baseFamilyMismatch
   case baseRevisionMismatch
   case baseVariantMismatch
@@ -52,17 +53,22 @@ public enum EGOneCheckerRefusal: Sendable, Equatable {
   case runtimeMismatch
 }
 
-public enum EGOneCheckerCompatibility: Sendable, Equatable {
+public enum LearnedWordCheckerCompatibility: Sendable, Equatable {
   case compatible
-  case refused(EGOneCheckerRefusal)
+  case refused(LearnedWordCheckerRefusal)
 }
 
 /// Pure qualification gate. Delivery admission and runtime readiness are
-/// separate checks and cannot be inferred from this answer.
+/// separate checks and cannot be inferred from this answer. A checker runs
+/// only on the base family its own family maps to: an EG-1 adapter is never
+/// pinned to S1-mini, or the reverse.
 public func compatibility(
-  contract: EGOneCheckerContract, admittedBase: AdmittedEGOneBase
-) -> EGOneCheckerCompatibility {
-  guard admittedBase.family == .egOne else { return .refused(.baseFamilyMismatch) }
+  contract: LearnedWordCheckerContract, checkerFamily: ModelFamily,
+  admittedBase: AdmittedCheckerBase
+) -> LearnedWordCheckerCompatibility {
+  guard let required = checkerFamily.checkerBaseFamily, admittedBase.family == required else {
+    return .refused(.baseFamilyMismatch)
+  }
   guard admittedBase.revision == contract.base.revision else {
     return .refused(.baseRevisionMismatch)
   }

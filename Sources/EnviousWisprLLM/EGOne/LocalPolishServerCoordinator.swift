@@ -106,7 +106,9 @@ public actor LocalPolishServerCoordinator {
   private var leases: [UUID: LLMProvider] = [:]
   private var changing = false
   private var removalWaiters: [CheckedContinuation<Void, Never>] = []
-  private var recordedCheckerFailure: EGOneServerManager.CheckerFailureReason?
+  /// #3105: per engine, because each local engine boots its own checker adapter
+  /// and one engine's fallback must not describe the other's.
+  private var recordedCheckerFailures: [LLMProvider: EGOneServerManager.CheckerFailureReason] = [:]
   /// The resident process was asked for an adapter and runs the bare base.
   private var residentAdapterFellBack = false
 
@@ -307,16 +309,17 @@ public actor LocalPolishServerCoordinator {
     changing = false
     wakeRemovalWaiters()
     await retryDeferredReconfiguration()
-    if target.provider == .egOne, resident == .egOne {
+    let provider = target.provider
+    if resident == provider {
       let reason = await manager.checkerFailureReason
-      guard resident == .egOne,
+      guard resident == provider,
         residentTarget?.configuration.learnedWordAdapterURL
           == target.configuration.learnedWordAdapterURL
       else { return }
       if let reason {
-        recordedCheckerFailure = reason
+        recordedCheckerFailures[provider] = reason
       } else if target.configuration.learnedWordAdapterURL != nil {
-        recordedCheckerFailure = nil
+        recordedCheckerFailures[provider] = nil
       }
       // Every manager failure reason is a bare-base fallback of an adapter boot.
       residentAdapterFellBack = reason != nil && target.configuration.learnedWordAdapterURL != nil
@@ -330,8 +333,8 @@ public actor LocalPolishServerCoordinator {
     await transition(to: deferredRequest.request, intent: deferredRequest.intent)
   }
 
-  public func checkerFailureReason() -> EGOneServerManager.CheckerFailureReason? {
-    recordedCheckerFailure
+  public func checkerFailureReason(for provider: LLMProvider) -> EGOneServerManager.CheckerFailureReason? {
+    recordedCheckerFailures[provider]
   }
 
   public func currentBootCheckerFailureReason() async -> EGOneServerManager.CheckerFailureReason? {

@@ -213,8 +213,8 @@ import Testing
       // Held here because the coordinator and the paste registry hold their
       // collaborators WEAKLY: without an app-lifetime owner the presenter and
       // the watcher would be released the moment `init` returned.
-      // #3105: 45 -> 46. `checkerEligibility` (`EGOneCheckerEligibility`), the one
-      // owner of whether EG-1's learned-word check may run: it observes the base
+      // #3105: 45 -> 46. `checkerEligibility` (`LearnedWordCheckerEligibility`), the one
+      // owner of whether a local engine's learned-word check may run: it observes the base
       // and add-on deliveries for the whole run and every path (live, recovery,
       // file import) asks it. Not inside `learnFromEdits`: that slot owns
       // learning a word (Judge 1); this owns using one (Judge 2), and the

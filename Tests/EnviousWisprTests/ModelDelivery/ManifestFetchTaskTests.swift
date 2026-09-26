@@ -165,7 +165,7 @@ final class DeliveryStubProtocol: URLProtocol {
 
   @Test func checkerCancelDuringRetryThenAdmitsOnRetry() async throws {
     let bytes = Data("adapter".utf8)
-    let manifest = try EGOneCheckerDeliveryTests.tinyChecker(bytes)
+    let manifest = try LearnedWordCheckerDeliveryTests.tinyChecker(bytes)
     let staging = try makeStaging()
     let install = staging.deletingLastPathComponent().appendingPathComponent(
       "checker-install-\(UUID().uuidString)")

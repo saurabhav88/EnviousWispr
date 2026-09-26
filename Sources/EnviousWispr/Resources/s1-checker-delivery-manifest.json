@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "family": "s1_mini_checker",
+    "name": "s1c",
+    "revision": "s1c-d5",
+    "variant": "f16",
+    "runtimeABI": "llamacpp-eg1-v1"
+  },
+  "files": [
+    {
+      "path": "s1c-d5-f16.gguf",
+      "sizeBytes": 80767264,
+      "sha256": "43da0f1ceda643a26a20898e3577476d4eedace5ff8b0f1ab03e9ff84f54f825",
+      "component": "s1c-d5-f16.gguf"
+    }
+  ],
+  "optionalFiles": [],
+  "totalBytes": 80767264,
+  "sources": [
+    {
+      "id": "our_copy",
+      "baseURL": "https://models.enviouslabs.co/s1/checker/s1c-d5/"
+    }
+  ],
+  "admission": {
+    "layout": "componentSet",
+    "installLocation": "s1MiniCheckerCache",
+    "diskHeadroomFactor": "2.2",
+    "evictPreviousRevisions": true,
+    "entrypointFile": "s1c-d5-f16.gguf"
+  },
+  "checkerContract": {
+    "version": 1,
+    "adapterFileName": "s1c-d5-f16.gguf",
+    "adapterSizeBytes": 80767264,
+    "adapterSHA256": "43da0f1ceda643a26a20898e3577476d4eedace5ff8b0f1ab03e9ff84f54f825",
+    "format": "gguf-lora",
+    "qualifiedThreshold": "0.858",
+    "base": {
+      "revision": "34add00a48a2e5d24e5a4ee5405a99620a3a240c",
+      "variant": "q4km",
+      "shardSHA256": [
+        "3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634"
+      ],
+      "promptTemplateID": "s1-control-line-v1",
+      "runtimeABI": "llamacpp-eg1-v1"
+    }
+  },
+  "manifestDigest": "e8c33bc88ee58300731f2143f8708de6eca4f6d6750b2bee5c617e90ab984cb4"
+}

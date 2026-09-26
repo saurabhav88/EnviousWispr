@@ -36,7 +36,7 @@ struct LearnedCheckTerminalTelemetryTests {
 
   @Test("each closed absence value reaches the terminal row without content",
     arguments: [
-      "not_eg_one", "base_not_admitted", "adapter_downloading", "adapter_delivery_failed", "delivery_disabled",
+      "engine_has_no_checker", "base_not_admitted", "adapter_downloading", "adapter_delivery_failed", "delivery_disabled",
       "base_mismatch_family", "base_mismatch_revision", "base_mismatch_variant",
       "base_mismatch_shard_hash", "base_mismatch_prompt_template", "base_mismatch_runtime",
       "server_without_adapter_adapter_missing",
