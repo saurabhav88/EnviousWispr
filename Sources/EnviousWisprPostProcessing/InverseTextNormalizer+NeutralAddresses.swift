@@ -223,7 +223,11 @@ extension InverseTextNormalizer {
         !Self.isRefusedNeutralName([name])
       else { return nil }
       if (m.g("gap") ?? "").isEmpty, dom.lowercased().hasPrefix("s") { return nil }
-      guard hasAddressCue(m), !neutralEmailFollowedBySlash(m) else { return nil }
+      // A spoken dot or dash before the glued name: it began earlier ("jan punt
+      // jansenapenstaartje…"; local Codex diff review r3); leave it whole.
+      guard hasAddressCue(m), !neutralEmailFollowedBySlash(m), !Self.startsAfterSpokenDot(m),
+        !Self.startsAfterSpokenDash(m)
+      else { return nil }
       return name.lowercased() + "@" + dom.lowercased() + "." + (m.g("tld") ?? "").lowercased()
     }
   }
@@ -387,7 +391,8 @@ extension InverseTextNormalizer {
     for w in Self.spokenURLWords {
       let dot = #"\s+(?:"# + Self.phraseAlt(w.dot) + #")\s+"#
       let pat =
-        #"(?<![\p{L}\p{M}\p{N}_.@/-])(?<host>"# + Self.neutralWWWAlias + dot + Self.uLabel
+        #"(?<![\p{L}\p{M}\p{N}_.@/-])(?<host>"# + Self.neutralWWWAlias + #"(?:\.|"# + dot + #")"#
+        + Self.uLabel
         + #"(?:(?:\.|"# + dot + #")"# + Self.uLabel + #"){0,5}(?:\.|"# + dot + #")(?:"#
         + Self.neutralTLDAlt + #"))"#
       t = reSub(pat, t) { m in

@@ -114,6 +114,8 @@ struct InverseTextNormalizerNeutralAddressesTests {
     ("mail naar jan streepje jansen apenstaartje gmail punt com", "mail naar jan-jansen@gmail.com"),
     ("escribe a info arroba mi guion empresa punto es hoy", "escribe a info@mi-empresa.es hoy"),
     ("http dos puntos barra barra 192 punto 168 punto 1 punto 1 barra api", "http://192.168.1.1/api"),
+    // the recogniser joined `www` to the next label and left the last dot spoken (diff review r3)
+    ("ga naar www.voorbeeld punt nl vandaag", "ga naar www.voorbeeld.nl vandaag"),
     // German borrowed "at"; a Unicode name
     ("schreib an müller at beispiel punkt de bitte", "schreib an müller@beispiel.de bitte"),
     // recogniser output, verbatim
@@ -227,6 +229,9 @@ struct InverseTextNormalizerNeutralAddressesTests {
     "http dos puntos barra barra ejemplo punto es barra api guion v2",
     "http dos puntos barra barra ejemplo punto es / ayuda",
     "Escribe un guion entre A y 2.",
+    // a glued Dutch address whose name began with a spoken dot or dash stays whole
+    "mail naar jan punt jansenapenstaartjebedrijf.nl",
+    "mail naar jan streepje jansenapenstaartjebedrijf.nl",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",
