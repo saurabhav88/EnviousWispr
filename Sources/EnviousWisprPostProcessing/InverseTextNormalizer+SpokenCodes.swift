@@ -93,7 +93,9 @@ extension InverseTextNormalizer {
   /// conversion also prevents.
   func dottedNumberChains(_ t: String, englishWords: Bool) -> String {
     let part = englishWords ? Self.identifierPartPat : #"\d+"#
-    let sep = #"\s+(?:"# + Self.numberDotWordAlt + #")\s+"#
+    // #3226: the neutral route also reads Polish `kropka` and Dutch `punt` between digits.
+    let dotAlt = englishWords ? Self.numberDotWordAlt : Self.neutralNumberDotWordAlt
+    let sep = #"\s+(?:"# + dotAlt + #")\s+"#
     let pat =
       #"(?<![\w.])(?:\d+(?:\.\d+)+(?:"# + sep + part + #")+|"# + part + #"(?:"# + sep + part
       + #"){2,})(?![\w]|\.\d)"#
@@ -103,7 +105,16 @@ extension InverseTextNormalizer {
       // part this pass cannot read ("two two five dot double five dot o dot four o"), and
       // converting the readable tail is the half-conversion this pass exists to end. Refused
       // here, it is shielded whole by the caller.
-      if identifierContinues(m, connectorAlt: Self.numberDotWordAlt + "|double|triple") {
+      if identifierContinues(m, connectorAlt: dotAlt + "|double|triple") {
+        return nil
+      }
+      // #3226: on the neutral route a chain inside a link or address the passes before this one
+      // refused ("… barra barra 192 punto 168 …", "… barra 2 punto 5 punto 0") stays whole.
+      if !englishWords, neutralLinkStartsEarlier(m, Self.spokenURLWords)
+        || neutralLinkContinues(
+          m.ns.substring(from: m.result.range.location + m.result.range.length),
+          Self.spokenURLWords.map { SpokenURLWords(dot: [], slash: $0.slash, colon: $0.colon, glueSlash: false) })
+      {
         return nil
       }
       // The first part must be the whole first component: a number word, digit or "and" just
@@ -119,8 +130,8 @@ extension InverseTextNormalizer {
         return nil
       }
       // Split on the spoken separators; an already-dotted first part splits on its dots.
-      let pieces = splitOnPattern(m.whole, #"\s+(?:"# + Self.numberDotWordAlt + #")\s+"#)
-      let seps = allMatches(#"\s+("# + Self.numberDotWordAlt + #")\s+"#, m.whole).map {
+      let pieces = splitOnPattern(m.whole, #"\s+(?:"# + dotAlt + #")\s+"#)
+      let seps = allMatches(#"\s+("# + dotAlt + #")\s+"#, m.whole).map {
         $0.lowercased()
       }
       let englishOnly = seps.allSatisfy { Self.englishNumberDotWords.contains($0) }
@@ -184,13 +195,19 @@ extension InverseTextNormalizer {
   func dashedCodes(_ t: String, englishWords: Bool) -> String {
     // "S dash one hundred and two": the number may carry an internal "and" after "hundred" or
     // "thousand" only, so "S dash 12 and 3" keeps its separate 3 (local Codex r1, diff review).
+    // #3226: on the neutral route the Polish, Dutch and French dash phrases join too
+    // (`GPT łącznik 4`, `S streepje 1`), the recogniser's `B-koppelteken 2` reads as one code,
+    // and a Dutch digit word is the number after a Dutch dash word (`GPT streepje vier`).
+    let dashAlt = englishWords ? Self.dashWordAlt : Self.neutralDashWordAlt
     let number =
       englishWords
       ? Self.identifierPartPat + #"(?:(?<=hundred|thousand)\s+and\s+"# + Self.identifierPartPat
-        + #")*"# : #"\d+"#
+        + #")*"# : #"\d+|"# + Self.alt(Array(Self.dutchDigitWords.keys))
+    let glued = englishWords ? "" : #"|(?<gcode>[A-Z]{1,5}|[b-hj-z])-(?<gdw>(?i:"# + dashAlt + #"))\s+"#
     let pat =
-      #"(?<![\w/-])(?:(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5}|[b-hj-z])\s+(?<dw>(?i:"# + Self.dashWordAlt
-      + #"))\s+|(?<hcode>[A-Z]{1,5}|[a-z])-[ \t]+)(?<num>(?i:"# + number + #"))(?![\w-])"#
+      #"(?<![\w/-])(?:(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5}|[b-hj-z])\s+(?<dw>(?i:"# + dashAlt
+      + #"))\s+|(?<hcode>[A-Z]{1,5}|[a-z])-[ \t]+"# + glued + #")(?<num>(?i:"# + number
+      + #"))(?![\w-])"#
     return reSub(pat, t, caseInsensitive: false) { m in
       // A spelled acronym arrives as separate capitals ("E G dash one", founder log); the code
       // is the letters joined, as the recogniser writes the unspoken form ("EG-1").
@@ -199,7 +216,7 @@ extension InverseTextNormalizer {
       // Parakeet lower-cases a spelled letter mid-sentence ("The part number is s dash one.",
       // Live UAT); a lone letter is a spelled capital in either form.
       let hcode = m.g("hcode")
-      let raw = hcode ?? (m.g("code") ?? "").filter { !$0.isWhitespace }
+      let raw = hcode ?? m.g("gcode") ?? (m.g("code") ?? "").filter { !$0.isWhitespace }
       // A lower-case letter that ends a spelled-out word ("l i s t dash o f", "s d d dash three",
       // parity holdout) is not a code: refuse it when another lone letter stands just before.
       if raw.count == 1, raw == raw.lowercased() {
@@ -218,8 +235,18 @@ extension InverseTextNormalizer {
       let code = raw.count == 1 ? raw.uppercased() : raw
       guard code != "I", hcode?.lowercased() != "a", hcode != "i" else { return nil }
       // "A dash B dash one", "S dash one dash x": the code goes on past what reads.
-      guard !identifierContinues(m, connectorAlt: Self.dashWordAlt) else { return nil }
-      let dw = (m.g("dw") ?? "").lowercased()
+      guard !identifierContinues(m, connectorAlt: dashAlt) else { return nil }
+      // #3226: on the neutral route a code inside a link the passes before this one refused
+      // ("… ukośnik GPT łącznik 4"; local Codex r14) stays whole, as the number chains do.
+      if !englishWords, neutralLinkStartsEarlier(m, Self.spokenURLWords) { return nil }
+      let dw = (m.g("dw") ?? m.g("gdw") ?? "").lowercased()
+        .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+      let num = (m.g("num") ?? "").lowercased()
+      if !englishWords, let word = Self.dutchDigitWords[num] {
+        // A Dutch digit word only after a Dutch dash word.
+        guard Self.dutchDashWords.contains(dw) else { return nil }
+        return "\(code)-\(word)"
+      }
       let allowWords = englishWords && (hcode != nil || Self.englishDashWords.contains(dw))
       guard let digits = Self.identifierPartDigits(m.g("num") ?? "", allowWords: allowWords)
       else { return nil }
@@ -367,7 +394,14 @@ extension InverseTextNormalizer {
   public func normalizeLanguageNeutral(_ text: String) -> String {
     // No padding and no whitespace cleanup: none of these passes emits padding, so a take with
     // nothing to convert comes back byte-identical.
+    // Order (Codex plan r3 P2): addresses first, each refusing text an earlier pass wrote.
     var t = emails(text, neutral: true)
+    t = neutralUnicodeEmails(t)
+    t = neutralGluedDutchEmails(t)
+    t = neutralURLSchemes(t)
+    t = neutralURLPaths(t)
+    t = neutralWWWHosts(t)
+    t = neutralLocalhostPorts(t)
     t = dottedNumberChains(t, englishWords: false)
     t = dashedCodes(t, englishWords: false)
     return dashedDates(t, englishWords: false)

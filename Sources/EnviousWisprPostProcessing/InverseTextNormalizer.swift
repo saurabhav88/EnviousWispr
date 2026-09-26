@@ -962,13 +962,17 @@ public struct InverseTextNormalizer: Sendable {
     // dot com", "john at mail dot example dot com"). The single-label form converted only its
     // tail ("john dot smith@gmail.com"). The DOMAIN must still carry at least one SPOKEN dot-word:
     // a domain the recogniser already joined is the already-dotted shape the doc comment above
-    // closes, and nothing here reopens it.
+    // closes, and this frame never reopens it. On a non-English take only, after a NON-English
+    // at-word, `neutralUnicodeEmails` reads that shape (#3226); `at` stays closed there too.
     let sep = #"(?:\.|\s+(?:"# + Self.addressDotAlt + #")\s+)"#
     let pat =
-      #"(?<![\w.@])(?<name>[a-z][a-z0-9_]*(?:"# + sep + #"[a-z0-9_]+)*)\s+(?<atw>"#
-      + Self.addressAtAlt + #")\s+(?<dom>[a-z][a-z0-9-]*(?:"# + sep + #"[a-z0-9][a-z0-9-]*)*)"#
+      #"(?<![\w.@])(?<name>[a-z][a-z0-9_]*(?:"# + sep + #"[a-z0-9_]+){0,5})\s+(?<atw>"#
+      + Self.addressAtAlt + #")\s+(?<dom>[a-z][a-z0-9-]*(?:"# + sep + #"[a-z0-9][a-z0-9-]*){0,5})"#
       + sep + #"(?<tld>"# + Self.emailTLDAlt + #")\b(?!\.[a-z0-9])"#
     return reSub(pat, t) { m in
+      // Chains are bounded (six labels a side) so a long run of dot-words stays linear; a name
+      // that began before the bound, right after a dot-word, is refused whole.
+      guard !Self.startsAfterSpokenDot(m) else { return nil }
       let atw = (m.g("atw") ?? "").lowercased()
       let name = m.g("name") ?? ""
       let domChain = m.g("dom") ?? ""
@@ -989,6 +993,9 @@ public struct InverseTextNormalizer: Sendable {
       guard allDots.allSatisfy({ Self.isPairedAddressWording(atw, $0) }) else { return nil }
       let nameLabels = splitOnPattern(name, sep)
       let domLabels = splitOnPattern(domChain, sep)
+      // #3226: on a non-English take a function word before the at-word is where the NAME was
+      // not heard ("envía a arroba gmail punto com"); converting it invents an address.
+      if neutral, Self.isRefusedNeutralName(nameLabels) { return nil }
       // "Read the docs at docs dot example dot com": after the English "at", a one-word name
       // before a MULTI-label domain is a website in prose far more often than an address; the
       // URL pass takes it (confirming diff review). A dotted name still says address.
@@ -1005,6 +1012,11 @@ public struct InverseTextNormalizer: Sendable {
         return nil
       }
       guard !hasFurtherSpokenLabel(m) else { return nil }
+      // #3226: on a non-English take a slash phrase after the address means a path follows.
+      if neutral, neutralEmailFollowedBySlash(m) { return nil }
+      // A spoken hyphen right before the name: the name began earlier ("jean trait d'union dupont
+      // arobase …"); `neutralUnicodeEmails` reads the whole hyphenated name.
+      if neutral, Self.startsAfterSpokenDash(m) { return nil }
       // "report.pdf at example dot com": a dotted name that ends in a file or domain suffix is a
       // name of a thing, not a mailbox.
       if nameLabels.count > 1,

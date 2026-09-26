@@ -43,4 +43,12 @@ Some phrases carry more than one meaning depending on the context. "Meet at one 
 
 ### Other languages
 
-Spoken number words are converted only in English. In other languages the speech engine usually writes numbers as digits itself, and EnviousWispr then tidies what it can without reading any words: an email address said with the local words for "at" and "dot" in the languages EnviousWispr knows them for (such as Spanish "arroba" and "punto"), a code with a spoken dash between letters and digits ("S trattino 1" becomes S-1), a version number with a spoken dot between digits ("2 Punkt 5 Punkt 0" becomes 2.5.0), and a date the engine wrote without leading zeros. Other wording is left as you spoke it.
+Spoken number words are converted only in English. When you dictate in another language, the speech engine usually writes numbers as digits itself, and EnviousWispr then tidies addresses, links and codes said with that language's own words:
+
+- An email address with the local words for "at" and "dot", including names with accents: "maría punto lópez arroba gmail punto com" becomes maría.lópez@gmail.com, and "łukasz małpa przykład kropka pl" becomes łukasz@przykład.pl.
+- A web address with the local words for "dot", "slash" and "colon" in French, Spanish, Polish and Dutch: "ejemplo punto es barra ayuda" becomes ejemplo.es/ayuda, "www punt voorbeeld punt nl" becomes www.voorbeeld.nl, "https deux points barre oblique barre oblique exemple point fr" becomes https://exemple.fr, and "localhost dos puntos 3000" becomes localhost:3000.
+- A code with a spoken dash between letters and a number: "S trattino 1" and "S myślnik 1" become S-1, and "GPT streepje vier" becomes GPT-4 (a Dutch digit after a Dutch dash word is the only number word read outside English).
+- A version number or IP address with a spoken dot between digits: "2 Punkt 5 Punkt 0" and "2 kropka 5 kropka 0" become 2.5.0.
+- A date the engine wrote without leading zeros.
+
+Set your dictation language in Speech Engine settings so EnviousWispr knows the language. A word the speech engine misheard is left as it is; add the right word to your custom words and it formats from then on. Other wording is left as you spoke it.

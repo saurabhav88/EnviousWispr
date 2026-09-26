@@ -146,6 +146,20 @@ enum WhatsNewContent {
       version: "2.5.1"
     ),
 
+    // #3226. SCOPE: these convert on a take the app resolves as another language (a
+    // dictation language set in Speech Engine settings, or WhisperKit detecting it), never on
+    // an English take; the copy names the setting. Measured on 120 Azure clips per language
+    // set (#3226 baseline v3 and the PR): perfect-hearing transcripts 54/120 before, 120/120
+    // after; a word the speech engine lost is never guessed.
+    Entry(
+      id: "addresses-links-codes-in-four-languages",
+      icon: "globe",
+      title: "Addresses, links and codes in French, Spanish, Polish and Dutch",
+      description:
+        "With your dictation language set to French, Spanish, Polish or Dutch, addresses, links and codes said in your own words now come out written. \"maría punto lópez arroba gmail punto com\" becomes maría.lópez@gmail.com, \"ejemplo punto es barra ayuda\" becomes ejemplo.es/ayuda, and \"GPT łącznik 4\" becomes GPT-4.",
+      version: "2.5.1"
+    ),
+
     // MARK: - v2.5.0
 
     // Cut by the founder on the 2.5.0 notes page (2026-09-14): custom-word-mishearings-easier, history-dictations-and-transcripts.
