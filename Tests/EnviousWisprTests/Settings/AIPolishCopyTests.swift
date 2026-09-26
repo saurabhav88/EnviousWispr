@@ -202,6 +202,12 @@ struct AIPolishCopyTests {
     #expect(OllamaCatalogPresentation.progressLabel(for: local, percent: 42) == "Downloading… 42%")
     #expect(OllamaCatalogPresentation.progressLabel(for: hosted, percent: 42) == "Adding…")
     #expect(OllamaSetupService.formatFileSize(0) == "Unknown")
+    // #3142: the decimal follows the user's REGION, as macOS formats numbers (measured: a German
+    // interface on a US-region Mac is de_US and keeps "."). English is unchanged.
+    let fourPointSevenGB: Int64 = 5_046_586_573  // 4.7 GiB
+    #expect(OllamaSetupService.formatFileSize(fourPointSevenGB, locale: Locale(identifier: "en_US")) == "4.7 GB")
+    #expect(OllamaSetupService.formatFileSize(fourPointSevenGB, locale: Locale(identifier: "de_DE")) == "4,7 GB")
+    #expect(OllamaSetupService.formatFileSize(fourPointSevenGB, locale: Locale(identifier: "de_US")) == "4.7 GB")
   }
 
   /// #3142: the two cases converted in Chunk 7 have translated display copy with the same

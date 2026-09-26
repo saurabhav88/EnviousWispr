@@ -431,8 +431,8 @@ struct InsetNotice: View {
 /// lives in one place across the footer and inset-notice renderings.
 enum SettingsCopy {
   /// What VoiceOver says as the VALUE of the chosen card or option. One owner for every picker
-  /// on these pages (#3142). The UI harness (`wispr_eyes.read_cards`) compares it in English
-  /// runs; a language-independent harness identity is tracked on #3142 for the German run.
+  /// on these pages (#3142). The UI harness (`wispr_eyes._is_selected`) compares it in every
+  /// shipped language, reading the translation from the app's own bundle (#3142 5D).
   static let selectedValue = String(
     localized: "Selected", comment: "VoiceOver: the value spoken for the chosen card or option.")
   static let frozenPerRecording = String(
@@ -613,7 +613,7 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
       HStack {
         Text(label)
         Spacer()
-        Text(String(format: format, Double(value)))
+        Text(String(format: format, locale: .current, Double(value)))  // #3142: decimal comma in German
           .font(.stHelper)
           .fontWeight(.semibold)
           .foregroundStyle(.stAccent)

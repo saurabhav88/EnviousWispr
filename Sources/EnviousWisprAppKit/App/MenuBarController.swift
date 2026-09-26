@@ -519,7 +519,7 @@ final class MenuBarController: NSObject {
         isRecording
         ? String(
           localized:
-            "Auto-stop: Active (\(String(format: "%.1fs", state.vadSilenceTimeout)) silence)",
+            "Auto-stop: Active (\(String(format: "%.1fs", locale: .current, state.vadSilenceTimeout)) silence)",
           comment:
             "Menu bar menu: auto-stop is watching this recording. %@ is the silence length, such as 1.5s."
         )

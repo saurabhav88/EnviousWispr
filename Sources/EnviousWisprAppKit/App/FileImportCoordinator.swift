@@ -102,7 +102,7 @@ final class FileImportCoordinator {
         FileImportCoordinator.durationText(seconds),
         ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file),
         codec,
-        String(format: "%.1f kHz", sampleRate / 1000),
+        String(format: "%.1f kHz", locale: .current, sampleRate / 1000),
         FileImportCoordinator.channelsText(channelCount),
       ].joined(separator: " · ")
     }
