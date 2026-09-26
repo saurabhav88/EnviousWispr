@@ -856,18 +856,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       )
     }
 
-    // Apple Intelligence: own prompt path (unchanged, out of scope for planner).
+    // Apple Intelligence: own prompt path (out of scope for the planner). The
+    // connector builds its whole on-device prompt itself and reads no caller
+    // prompt text (#3195), so the dictation always travels as `text`: a
+    // `${transcript}` template substituted into the instructions would reach
+    // the model as an empty transcript.
     if provider == .appleIntelligence {
-      var resolvedInstructions = polishInstructions
-      var userText = context.text
-      if polishInstructions.systemPrompt.contains("${transcript}") {
-        resolvedInstructions = PolishInstructions(
-          systemPrompt: polishInstructions.systemPrompt.replacingOccurrences(
-            of: "${transcript}", with: context.text
-          )
-        )
-        userText = ""
-      }
+      let userText = context.text
+      let resolvedInstructions = polishInstructions
       // Let `LLMError.unsupportedInputLanguage` and
       // `LLMError.outputLanguageDrift` propagate. The live dictation
       // path (TextProcessingRunner) treats them as silent skips; standalone
