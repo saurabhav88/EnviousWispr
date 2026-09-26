@@ -5,6 +5,7 @@ import { createCarousel } from './carousel.js';
 export function init(root, motion, scope) {
   const viewport = root.querySelector('.case-carousel'),
     screens = [...root.querySelectorAll('.case-screen')],
+    previews = screens.map((screen) => screen.querySelector('.host-app[tabindex]')),
     choices = root.querySelector('.audience-choices'),
     buttons = [...choices.querySelectorAll('button')],
     tour = root.querySelector('#case-tour'),
@@ -38,6 +39,9 @@ export function init(root, motion, scope) {
   }
   function sync(index) {
     buttons.forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
+    // Each preview is focusable so a keyboard can scroll its text; only the card in view keeps a
+    // tab stop, or Tab walks through nine offscreen cards and drags the rail with it.
+    previews.forEach((preview, i) => (preview.tabIndex = i === index ? 0 : -1));
     const selected = buttons[index];
     if (choices.scrollWidth > choices.clientWidth) {
       const left = selected.offsetLeft,
@@ -80,6 +84,7 @@ export function init(root, motion, scope) {
       clock?.wake({ allowFocused: auto });
     },
   });
+  sync(carousel.index);
   function render() {
     const index = carousel.index,
       item = cases[index],
