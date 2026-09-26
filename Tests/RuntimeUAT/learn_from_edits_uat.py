@@ -1173,6 +1173,12 @@ def case_learned_check_door_off(path):
     return check("learned-check-door-off", ok, f"heard={heard!r} line={line.group(0)} delivered={text!r}")
 
 
+# --- audio ------------------------------------------------------------------
+
+BAND_SCRIPT = os.path.expanduser(
+    "~/Developer/EnviousLabs/EnviousWispr/docs/feature-requests/issue-1946-artifacts/2026-09-08-live-uat-background-band.py")
+
+
 def audio_route():
     """`AudioRoute` from the #1946 artifact (main checkout, gitignored): apply
     BlackHole to output + input and pick it in Settings → Microphone by AX;
