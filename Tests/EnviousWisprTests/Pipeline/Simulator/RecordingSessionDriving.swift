@@ -298,7 +298,11 @@ final class KernelRecordingSession: RecordingSessionDriving {
     onRetryDeadlineResolved: @escaping @MainActor (
       String, String, Int, ASRRetryDeadlineResolution, ASRRetryDeadlineDisposition, Int?, Int,
       Bool
-    ) -> Void = { _, _, _, _, _, _, _, _ in }
+    ) -> Void = { _, _, _, _, _, _, _, _ in },
+    /// #3195 PR B: the key-up Apple session hooks. Defaulted no-ops so every existing
+    /// scenario is unchanged; `KernelAFMPrewarmHookTests` passes recorders.
+    onAFMPrepare: @escaping @MainActor (String, String?) -> Void = { _, _ in },
+    onAFMClear: @escaping @MainActor (String?) -> Void = { _ in }
   ) {
     self.vad = vad
     let limb = self.limb
@@ -376,7 +380,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
       sessionTerminalTelemetry: onTerminalSnapshot,
       markASRTimingEnd: { [asrTimingLog] in asrTimingLog.count += 1 },
       telemetryState: telemetryState,
-      microphonePermissionIsDenied: microphonePermissionIsDenied)
+      microphonePermissionIsDenied: microphonePermissionIsDenied,
+      prepareAFMSessionAtStop: onAFMPrepare,
+      clearAFMSession: onAFMClear)
   }
 
   // MARK: RecordingSessionDriving — observation

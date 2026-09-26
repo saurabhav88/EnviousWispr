@@ -534,6 +534,93 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     )
   }
 
+  // MARK: - Apple session prepared at key-up (#3195)
+
+  /// Builds and prewarms the Apple session for an expected language. Returns the
+  /// connector's `AFMPreparedSession` (typed `any Sendable` because the carrier is
+  /// macOS 26 only and this step is not), or nil where Apple polish cannot run.
+  /// `internal` so tests can control its timing without the on-device model.
+  typealias AFMSessionPreparer = @Sendable (String?) async throws -> (any Sendable)?
+  var prepareAFMSession: AFMSessionPreparer = { language in
+    #if canImport(FoundationModels)
+      guard #available(macOS 26.0, *) else { return nil }
+      return try await AppleIntelligenceConnector().prepareSession(detectedLanguage: language)
+    #else
+      return nil
+    #endif
+  }
+
+  /// The one take the slot belongs to, the prepared session once ready, the
+  /// preparation still running, and a generation that invalidates late completions.
+  private var afmPrewarmTakeID: String?
+  private var afmPrewarmPrepared: (any Sendable)?
+  private(set) var afmPrewarmTask: Task<Void, Never>?
+  private var afmPrewarmGeneration = 0
+
+  /// Start preparing the Apple session for `takeID` (called at key-up, B3). Replaces
+  /// any earlier slot. Does nothing unless Apple Intelligence is the provider. Never
+  /// suspends the caller: preparation runs in a task, and its result is installed only
+  /// if the same take and request are still current. `expectedDetectedLanguage` is the
+  /// locked language code, or nil for automatic (English, no language clause).
+  package func beginAFMPrewarm(takeID: String, expectedDetectedLanguage: String?) {
+    clearAFMPrewarm()
+    guard llmProvider == .appleIntelligence else { return }
+    afmPrewarmGeneration += 1
+    let generation = afmPrewarmGeneration
+    afmPrewarmTakeID = takeID
+    let prepare = prepareAFMSession
+    afmPrewarmTask = Task { [weak self] in
+      let prepared = try? await prepare(expectedDetectedLanguage)
+      guard let self, !Task.isCancelled, self.afmPrewarmGeneration == generation,
+        self.afmPrewarmTakeID == takeID
+      else { return }
+      self.afmPrewarmPrepared = prepared
+      self.afmPrewarmTask = nil
+    }
+  }
+
+  /// Drop the slot and cancel a preparation still running. With a `takeID`, only
+  /// that take's slot is dropped, so an old take can never clear a newer one.
+  package func clearAFMPrewarm(for takeID: String? = nil) {
+    if let takeID, takeID != afmPrewarmTakeID { return }
+    afmPrewarmTask?.cancel()
+    afmPrewarmTask = nil
+    afmPrewarmPrepared = nil
+    afmPrewarmTakeID = nil
+    afmPrewarmGeneration += 1
+  }
+
+  /// Take the slot for this take: synchronous, so it happens before `process()`
+  /// first suspends and no second call can claim the same session. Only an exact,
+  /// non-nil take id matches; a file import (nil id) or another take leaves the slot
+  /// alone. A preparation still running is cancelled and polish builds fresh.
+  func claimAFMPrewarm(takeID: String?) -> (any Sendable)? {
+    guard let takeID, takeID == afmPrewarmTakeID else { return nil }
+    let prepared = afmPrewarmPrepared
+    clearAFMPrewarm()
+    return prepared
+  }
+
+  /// The Apple polish call: the concrete connector gets the claimed session through
+  /// its package overload; an injected test polisher keeps the protocol method.
+  private static func polishApple(
+    _ polisher: any TranscriptPolisher, text: String, instructions: PolishInstructions,
+    config: LLMProviderConfig, onToken: (@Sendable (String) -> Void)?,
+    claimed: (any Sendable)?
+  ) async throws -> (LLMResult, AppleIntelligenceConnector.AFMPrewarmOutcome?) {
+    #if canImport(FoundationModels)
+      if #available(macOS 26.0, *), let apple = polisher as? AppleIntelligenceConnector {
+        let out = try await apple.polish(
+          text: text, instructions: instructions, config: config, onToken: onToken,
+          prepared: claimed as? AppleIntelligenceConnector.AFMPreparedSession)
+        return (out.result, out.prewarm)
+      }
+    #endif
+    let result = try await polisher.polish(
+      text: text, instructions: instructions, config: config, onToken: onToken)
+    return (result, nil)
+  }
+
   /// Minimum word count to send to the LLM (Latin/Cyrillic/Indic/Arabic etc).
   /// Transcripts at or below this threshold are passed through verbatim — LLMs
   /// hallucinate on ultra-short input (e.g., "Yeah" → a full essay). See ew-zr4.
@@ -570,6 +657,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // #1948: same reasoning for the route receipt. A stale family riding a bypass would tell
     // `EmojiRestoreStep` that a polish it never saw used the local prompt.
     ctx.promptFamily = nil
+    // #3195: nothing was polished, so no prewarm outcome either.
+    ctx.afmPrewarmOutcome = nil
     return ctx
   }
 
@@ -596,6 +685,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let provider = llmProvider
     let model = llmModel
     let s1Control = s1Control
+    // #3195: claimed here, before the first suspension, so the session prepared for
+    // this take is used at most once. A `${transcript}` template never uses it.
+    let claimedAFMSession: (any Sendable)? = {
+      let claimed = claimAFMPrewarm(takeID: context.takeID)
+      guard provider == .appleIntelligence,
+        !polishInstructions.systemPrompt.contains("${transcript}")
+      else { return nil }
+      return claimed
+    }()
     telemetry.breadcrumbStarted(
       "LLM polish started",
       [
@@ -871,17 +969,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // back to raw. Either way the transcript is never mislabeled AI-polished.
       let llmStart = CFAbsoluteTimeGetCurrent()
       let result: LLMResult
+      let prewarmOutcome: AppleIntelligenceConnector.AFMPrewarmOutcome?
       do {
-        result = try await polisher.polish(
-          text: userText,
-          instructions: resolvedInstructions,
-          config: config,
-          onToken: onToken
-        )
+        (result, prewarmOutcome) = try await Self.polishApple(
+          polisher, text: userText, instructions: resolvedInstructions, config: config,
+          onToken: onToken, claimed: claimedAFMSession)
       } catch let afmErr as AFMPolishError {
         // #1448/#1461: some AFM errors classified silent by TextProcessingRunner
         // (outputLanguageDrift always; frameworkUnavailable when it reaches this
-        // wrapped path via AppleIntelligenceConnector.makeSession's defensive
+        // wrapped path via AppleIntelligenceConnector.resolveAssembly's defensive
         // re-check) were STILL raising a live alerting Sentry event here,
         // unconditionally, contradicting their own "silent" classification. Same
         // check the runner uses (PolishSkipReason.init?(silentLLMError:)) — one
@@ -897,7 +993,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       }
       let llmEnd = CFAbsoluteTimeGetCurrent()
       logPolishCompletion(
-        result: result, duration: llmEnd - llmStart, provider: provider, model: model)
+        result: result, duration: llmEnd - llmStart, provider: provider, model: model,
+        afmPrewarm: context.takeID == nil ? nil : prewarmOutcome?.rawValue)
       let validation = validatePolishOutput(
         polished: result.polishedText, original: context.text, mode: .message,
         provider: provider, model: model
@@ -910,6 +1007,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       ctx.llmProvider = provider.rawValue
       ctx.llmModel = model
       ctx.polishMetadata = result.polishMetadata
+      ctx.afmPrewarmOutcome = context.takeID == nil ? nil : prewarmOutcome
       ctx.pipelineFellBackToRaw =
         (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
       // #1050: honest disaggregation of the boolean above. Invariant:
@@ -1062,6 +1160,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     ctx.symbolTokens = validation.symbolTokens
     ctx.llmProvider = provider.rawValue
     ctx.llmModel = model
+    // #3195: the prewarm outcome belongs to Apple polish only.
+    ctx.afmPrewarmOutcome = nil
     ctx.polishMetadata = result.polishMetadata
     ctx.pipelineFellBackToRaw =
       (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
@@ -1333,7 +1433,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   private func logPolishCompletion(
     result: LLMResult, duration: Double,
     provider: LLMProvider, model: String,
-    extraData: [String: String] = [:]
+    extraData: [String: String] = [:],
+    /// #3195: app.log only (content-free), for Live UAT; not the Sentry breadcrumb.
+    afmPrewarm: String? = nil
   ) {
     var data: [String: String] = [
       "provider": provider.rawValue,
@@ -1347,7 +1449,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     Task {
       await AppLogger.shared.log(
         "LLM polish complete: \(result.polishedText.count) chars in \(String(format: "%.3f", duration))s "
-          + "(provider=\(provider.rawValue), model=\(model))",
+          + "(provider=\(provider.rawValue), model=\(model)"
+          + (afmPrewarm.map { ", afm_prewarm=\($0)" } ?? "") + ")",
         level: .info, category: "PipelineTiming"
       )
     }

@@ -272,7 +272,10 @@ public final class TelemetryService {
     /// #1846: which dictation this completion belongs to. Forwarded to both
     /// events this function fans out to, so one argument covers
     /// `dictation.completed` and `llm.polish_completed`.
-    takeID: String? = nil
+    takeID: String? = nil,
+    /// #3195: `hit` / `miss_key` / `none` for a completed live Apple polish. Rides
+    /// `llm.polish_completed` only; nil omits.
+    afmPrewarm: String? = nil
   ) {
     let m = t.metrics
     // #2958 phase 2: the ASR and paste facts ride the terminal row. Each block
@@ -396,7 +399,11 @@ public final class TelemetryService {
         ollamaRemote: m?.polishRanRemote,
         validatorGuard: m?.polishValidatorGuard,
         symbolTokens: m?.symbolTokens,
-        takeID: takeID
+        takeID: takeID,
+        // #3195: only on an accepted Apple polish with a take; `result="skipped"`
+        // rows never carry it.
+        afmPrewarm: t.polishedText != nil && takeID != nil && t.llmProvider == "appleIntelligence"
+          ? afmPrewarm : nil
       )
     }
   }
@@ -2365,7 +2372,10 @@ public final class TelemetryService {
     validatorGuard: String? = nil,
     symbolTokens: Int? = nil,
     /// #1846: which dictation this event belongs to. Omit-when-nil.
-    takeID: String? = nil
+    takeID: String? = nil,
+    /// #3195: whether the Apple session prepared at key-up was used (`hit`), refused
+    /// for a different assembly (`miss_key`) or absent (`none`). Omit-when-nil.
+    afmPrewarm: String? = nil
   ) {
     var props: [String: Any] = [
       "provider": provider,
@@ -2381,10 +2391,13 @@ public final class TelemetryService {
     if let validatorGuard { props["polish_validator_guard"] = validatorGuard }
     if let symbolTokens { props["symbol_tokens"] = symbolTokens }
     if let takeID { props["take_id"] = takeID }
+    if let afmPrewarm { props["afm_prewarm"] = afmPrewarm }
     #if DEBUG
       var stringProps: [String: String] = [
         "provider": provider, "result": result,
       ]
+      // #3195: read BACK OUT of `props`, like `take_id`.
+      if let emitted = props["afm_prewarm"] as? String { stringProps["afm_prewarm"] = emitted }
       if let m = model { stringProps["model"] = m }
       if let ft = filterTripped { stringProps["filter_tripped"] = ft }
       if let fr = fallbackReason { stringProps["fallback_reason"] = fr }

@@ -54,6 +54,11 @@ final class KernelFinalizationOutcome {
   /// #1914: carried straight through from the context, never re-derived here.
   /// Nil unless an Ollama polish completed. See `TextProcessingContext`.
   var polishRanRemote: Bool?
+  /// #3195: whether a completed live Apple polish used the session prepared at
+  /// key-up, and the take it belongs to (the driver reports it only when that take
+  /// is the concluded one). Carried straight through from the context.
+  var afmPrewarmOutcome: AppleIntelligenceConnector.AFMPrewarmOutcome?
+  var afmPrewarmTakeID: String?
   var pipelineStartedAtSeconds: Double?
   var pipelineEndedAtSeconds: Double?
   var asrStartedAtSeconds: Double?
@@ -502,6 +507,8 @@ struct KernelFinalizationWiring {
       outcome.polishValidatorGuard = ctx.polishValidatorGuard
       outcome.symbolTokens = ctx.symbolTokens
       outcome.polishRanRemote = ctx.polishRanRemote
+      outcome.afmPrewarmOutcome = ctx.afmPrewarmOutcome
+      outcome.afmPrewarmTakeID = ctx.afmPrewarmOutcome == nil ? nil : ctx.takeID
       outcome.polishNotice = result.polishNotice
       outcome.polishDurationSeconds = CFAbsoluteTimeGetCurrent() - start
 
@@ -530,6 +537,9 @@ struct KernelFinalizationWiring {
         // `polishedText != nil`; leaving remoteness set would emit
         // `result: "skipped"` together with `ollama_remote`.
         outcome.polishRanRemote = nil
+        // #3195: same reason; the rejected polish reports no prewarm outcome.
+        outcome.afmPrewarmOutcome = nil
+        outcome.afmPrewarmTakeID = nil
         // Preserve the invariant `(polishFallbackReason != nil) == pipelineFellBackToRaw`
         // (`TextProcessingStep.swift`). `llmProvider`/`llmModel`/`polishMetadata`
         // are retained — honest facts that a polish was attempted.

@@ -162,7 +162,7 @@ struct LLMPolishStepTelemetryTests {
   }
 
   @Test(
-    "frameworkUnavailable, wrapped as AFMPolishError (the rarer makeSession re-check path), no longer alerts"
+    "frameworkUnavailable, wrapped as AFMPolishError (the rarer resolveAssembly re-check path), no longer alerts"
   )
   func wrappedFrameworkUnavailableDoesNotAlert() async throws {
     let spy = Spy()

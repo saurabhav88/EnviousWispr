@@ -455,6 +455,15 @@ final class RecordingSessionKernel {
   /// model-load or capture-start failure could be raised before the tag existed.
   /// Defaulted to a no-op: only the production composition root wires it.
   private let sessionAcceptedTelemetry: @MainActor (_ takeID: String) -> Void
+  /// #3195 PR B: start preparing the Apple polish session for this take the moment
+  /// it leaves `.live` for finalization (see the one call site before `.stopping`).
+  /// Synchronous and non-suspending; the factory wires it to the driver's retained
+  /// `LLMPolishStep.beginAFMPrewarm`. Defaulted no-op for every other construction.
+  private let prepareAFMSessionAtStop:
+    @MainActor (_ takeID: String, _ expectedDetectedLanguage: String?) -> Void
+  /// #3195 PR B: drop a prepared or pending Apple session. Nil clears whatever is
+  /// held (record start); a take id clears only that take (its terminal).
+  private let clearAFMSession: @MainActor (_ takeID: String?) -> Void
 
   /// #1884: called exactly once per ACCEPTED terminal, with an immutable snapshot
   /// frozen at the moment the take ended.
@@ -1023,7 +1032,10 @@ final class RecordingSessionKernel {
     // timestamp-recording class) — only its actual fault-actuating methods
     // are `#if DEBUG`-gated, and release builds never construct/wire a real
     // instance, so this stays a no-op in production.
-    batchDecodeFaultController: BatchDecodeFaultController? = nil
+    batchDecodeFaultController: BatchDecodeFaultController? = nil,
+    prepareAFMSessionAtStop: @escaping @MainActor (_ takeID: String, _ expectedDetectedLanguage: String?)
+      -> Void = { _, _ in },
+    clearAFMSession: @escaping @MainActor (_ takeID: String?) -> Void = { _ in }
   ) {
     self.adapter = adapter
     self.audioCapture = audioCapture
@@ -1092,6 +1104,8 @@ final class RecordingSessionKernel {
     self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
     self.microphonePermissionIsDenied = microphonePermissionIsDenied
     self.batchDecodeFaultController = batchDecodeFaultController
+    self.prepareAFMSessionAtStop = prepareAFMSessionAtStop
+    self.clearAFMSession = clearAFMSession
   }
 
   // MARK: Driver entry points (PR-1 §A.2 trigger vocabulary)
@@ -1111,6 +1125,8 @@ final class RecordingSessionKernel {
     let sid = SessionID()
     currentSessionID = sid
     resetSessionState()
+    // #3195: an Apple session prepared for an earlier take never reaches this one.
+    clearAFMSession(nil)
     sessionConfig = config
     // #1846: project the session id just minted above. No second identity is
     // created; `transcriptID` keeps its own independent mint.
@@ -1947,6 +1963,16 @@ final class RecordingSessionKernel {
     case .userStop, .vadAutoStop, .maxDuration:
       break
     }
+
+    // #3195 PR B: every exit that reaches here finalizes this take (user stop, VAD
+    // auto-stop, max duration, a salvaged audio or ASR interruption, both zero-signal
+    // modes that fall through, an accepted Escape Recovery). Ordinary cancel, capture
+    // stall, `.noBuffers`, an unrecoverable interruption and a refused recovery all
+    // returned above, so they never prepare. Starting here, rather than when polish
+    // begins, overlaps the Apple session's load with ASR (measured ~300 ms p50 saved).
+    // Synchronous: nothing between here and `.stopping` may suspend. The expected
+    // language is the frozen lock, or nil for automatic (English, no language clause).
+    prepareAFMSessionAtStop(sid.raw.uuidString, sessionConfig?.lockedLanguageCode)
 
     // PR-5 Rung 4.5 (#827): LID perf signpost `t_release` — fires on every
     // accepted-stop reason (manual, VAD-auto-stop, max-duration cap) so
@@ -4347,6 +4373,9 @@ final class RecordingSessionKernel {
     // `isCurrent(sid)` guard above already proved they match, and `sid` is
     // unambiguously the session being concluded.
     lastTakeID = sid.raw.uuidString
+    // #3195: a prepared Apple session this take did not use is dropped at its one
+    // accepted terminal (cancel included). Take-scoped, so it cannot clear a newer take.
+    clearAFMSession(sid.raw.uuidString)
 
     // #1884: freeze this take's outcome NOW, inside the set-once barrier, and
     // register delivery with `defer`.

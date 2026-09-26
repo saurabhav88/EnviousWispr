@@ -697,6 +697,15 @@ import Testing
       file: "Sources/EnviousWisprPipeline/CaptureVADSignalSource.swift", matcher: "prepare",
       text: "try await detector.prepare()", classification: .unrelatedDomain),
 
+    // MARK: LLMPolishStep (#3195) — the key-up Apple Intelligence POLISH session, not
+    // the ASR engine. `prepare` is the step's `AFMSessionPreparer` closure, which builds
+    // and prewarms a FoundationModels session; it holds no adapter, audio or engine.
+    // Matched only by name coincidence; classified rather than renamed, as above.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/LLMPolishStep.swift", matcher: "prepare",
+      text: "let prepared = try? await prepare(expectedDetectedLanguage)",
+      classification: .unrelatedDomain),
+
     // MARK: LivePreviewCoordinator (#1988) — Apple's `SpeechAnalyzer`, used for
     // DISPLAY ONLY. Not an ASR engine and not on the transcription path: nothing
     // it produces reaches the clipboard, and it holds no `ASREngineAdapter`.

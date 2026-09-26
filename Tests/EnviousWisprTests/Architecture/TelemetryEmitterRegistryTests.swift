@@ -93,8 +93,12 @@ struct TelemetryEmitterRegistryTests {
   /// already emitted; no new row/month, same take_id, content-free enums and signed revision;
   /// the Auto Dictionary readiness query reads it. That site did not move, so sitesFingerprint
   /// stays unchanged; its registry row is now graded as the folded terminal summary.
+  /// #3195 PR B: `llmPolishCompleted` gains `afmPrewarm:` (closed hit/miss_key/none) on the
+  /// existing `llm.polish_completed` site. Checklist: per_take, only on a completed live Apple
+  /// polish, no new row/month, same take_id, content-free enum; reader is Apple polish
+  /// latency by `afm_prewarm` at release. The site did not move; its function signature did.
   static let sitesFingerprint =
-    "4ca611cad8d49363711644b457264a01294410afc7e4bea573f56fdf39b18fa7"
+    "95f2a05ac67980a8e2dfd6ccf447fdca4b86dc8bb3a8d4a6fb33f6c6ee1aa1b4"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
