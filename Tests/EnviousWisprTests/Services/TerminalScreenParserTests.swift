@@ -567,6 +567,48 @@ struct TerminalScreenParserTests {
     #expect(located.leftWasCut == false)
   }
 
+  // #3203. Claude Code later started drawing the title with ONE trailing glyph,
+  // and every named session silently lost continuation casing: 14 of 14 titled
+  // rows decoded from the founder's debug log on 2026-09-26 end in one glyph
+  // (49/1 at 67 columns, 45/1 at 68, 119/1 at 137), none in two.
+
+  @Test("#3203: a title followed by ONE rule glyph is still the top of the box")
+  func titledOpeningRuleWithOneTrailingGlyphIsFound() throws {
+    // Copied from the 2026-09-26 capture: 49 glyphs, the padded title, 1 glyph,
+    // 67 columns; the marker padded with a non-breaking space; a plain closing
+    // rule of the same width; the status rows Claude Code draws beneath, whose
+    // block glyphs must not read as a border.
+    let screen = """
+      some earlier output
+      \(String(repeating: "\u{2500}", count: 49)) Auto Dictionary \u{2500}
+      \u{276F}\u{00A0}So I'll wait for you to\u{0020}
+      \(String(repeating: "\u{2500}", count: 67))
+        \u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591} 87% | 5h:4%
+        \u{23F5}\u{23F5} auto mode on (shift+tab to cycle)
+      """
+    let located = try #require(TerminalScreenParser.locate(inScreenTail: screen))
+    #expect(located.cli == .claudeCode)
+    #expect(located.inputLine == "So I'll wait for you to ")
+    #expect(located.leftWasCut == false)
+    #expect(located.boxOpeningKind == .titled)
+  }
+
+  @Test("#3203: the trailing run is a CLOSED set of 1 or 2, never 0 or 3")
+  func titledOpeningTrailingRunOutsideTheMeasuredSetRefuses() {
+    // 0 is a title flush right, which is how Python Rich's right-aligned rule
+    // ends. 3 has never been measured. Widening to "any" run is the ratio
+    // mistake #1932 rejected: it lets right-heavy program output pass as a box.
+    for trailing in [0, 3] {
+      let opening =
+        String(repeating: "\u{2500}", count: 36) + " session-title"
+        + (trailing == 0 ? "" : " " + String(repeating: "\u{2500}", count: trailing))
+      #expect(
+        TerminalScreenParser.locate(
+          inScreenTail: Self.boxWithOpening(opening, input: "rendered output")) == nil,
+        "trailing run \(trailing) must refuse")
+    }
+  }
+
   @Test("#1932: the title's own content is never read, whatever it contains")
   func titledRuleContentIsIrrelevant() throws {
     // The title is Claude Code's AI-generated session name, so it can be any
@@ -784,7 +826,8 @@ struct TerminalScreenParserTests {
     // Grounded review's counterexample, reproduced against the real parser
     // before it was accepted: 24 glyphs, a title, 6 glyphs satisfies a
     // `trailing * 4 <= leading` ratio EXACTLY. Ordinary program output can
-    // reproduce any ratio, so the matcher takes only the measured suffix of two.
+    // reproduce any ratio, so the matcher takes only the measured suffixes (one
+    // or two since #3203), never a proportion.
     let opening =
       String(repeating: "\u{2500}", count: 24) + " report "
       + String(repeating: "\u{2500}", count: 6)
