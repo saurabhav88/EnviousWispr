@@ -418,9 +418,9 @@ struct EmojiRestorerTests {
   /// #1948 EXTENDED ITS SCOPE, and cloud review on PR #1971 independently rediscovered it
   /// (`send 👍, no actually send 👎` → `Send 👍 👎.`, reproduced against this restorer). The
   /// acceptance now covers local Ollama as well as Apple Intelligence. It was never
-  /// AFM-specific in the first place: the AFM prompt's rule 7 ("delete the abandoned words",
-  /// `scripts/eval/prompts/single-v38.txt`) and L3's SPEECH REPAIR rule ask for the same
-  /// deletion, so the interaction is identical on both paths.
+  /// AFM-specific in the first place: the AFM prompt ("keep the corrected version and drop
+  /// the marker", `scripts/eval/prompts/single-v56.txt`) and L3's SPEECH REPAIR rule ask for
+  /// the same deletion, so the interaction is identical on both paths.
   ///
   /// The trade that justifies extending it, measured on the 98 emoji-bearing corpus cases:
   /// without the guard, local Ollama loses emoji outright on 45 of 98 (`qwen2.5:3b`) and 92

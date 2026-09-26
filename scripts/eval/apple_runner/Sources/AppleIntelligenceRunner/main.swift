@@ -214,10 +214,9 @@ struct RunnerMain {
       detectedLanguage: args.detectedLanguage.isEmpty ? nil : args.detectedLanguage
     )
     // System prompt resolution: explicit --system-prompt > --system-prompt-file
-    // > built-in enrichment fallback. Python bench driver normally passes the
-    // full enriched prompt (default + false-start) via --system-prompt-file so
-    // the runner mirrors LLMPolishStep.appleIntelligenceInstructions exactly
-    // (custom vocab dropped from the Apple path in #1084).
+    // > the default, which is what LLMPolishStep passes the Apple connector in
+    // production (#3195). The connector builds its own on-device prompt and does
+    // not read this text; it is kept so the runner calls the real `polish` API.
     let systemPrompt: String
     if let explicit = args.systemPrompt {
       systemPrompt = explicit
@@ -229,11 +228,7 @@ struct RunnerMain {
       }
       systemPrompt = text
     } else {
-      systemPrompt =
-        PolishInstructions.default.systemPrompt
-        + "\nThis is speech-to-text output. Remove false starts. "
-        + "Preserve the speaker's tone and formality level. "
-        + "If unsure about a correction, leave unchanged."
+      systemPrompt = PolishInstructions.default.systemPrompt
     }
     let instructions = PolishInstructions(systemPrompt: systemPrompt)
 

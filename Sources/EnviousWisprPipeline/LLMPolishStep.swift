@@ -858,12 +858,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     // Apple Intelligence: own prompt path (unchanged, out of scope for planner).
     if provider == .appleIntelligence {
-      let enriched = appleIntelligenceInstructions(polishInstructions)
-      var resolvedInstructions = enriched
+      var resolvedInstructions = polishInstructions
       var userText = context.text
-      if enriched.systemPrompt.contains("${transcript}") {
+      if polishInstructions.systemPrompt.contains("${transcript}") {
         resolvedInstructions = PolishInstructions(
-          systemPrompt: enriched.systemPrompt.replacingOccurrences(
+          systemPrompt: polishInstructions.systemPrompt.replacingOccurrences(
             of: "${transcript}", with: context.text
           )
         )
@@ -1332,32 +1331,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   }
 
   // MARK: - Apple Intelligence Prompt (Compressed Enrichment)
-
-  /// Apple Intelligence uses a simplified on-device prompt (set in makeSession()).
-  /// We append compressed enrichment (ASR awareness, tone preservation); full
-  /// cloud-style enrichment is too verbose for the small on-device model.
-  ///
-  /// Custom words are deliberately NOT injected here (#1084). The deterministic
-  /// `WordCorrector` lane runs BEFORE polish and already applies the user's terms,
-  /// and an eval (ci151 tier-bench, reps=3) showed the on-device vocab block was
-  /// net-negative — it distracted the small model into dropping sentence openers
-  /// and capitalization for no reliable gain. The cloud planner path (see
-  /// `process()` building `PromptBuildInput.polishVocabulary`) still injects vocab;
-  /// this drop is on-device only. `internal` (not `private`) so the regression test
-  /// can assert the assembled prompt stays vocab-free.
-  func appleIntelligenceInstructions(
-    _ base: PolishInstructions
-  ) -> PolishInstructions {
-    var systemPrompt = base.systemPrompt
-
-    // Compressed enrichment for on-device model: key behavioral rules only.
-    // Targets eval failures: false starts (#17), formality downgrade (#19).
-    systemPrompt +=
-      "\nThis is speech-to-text output. Remove false starts. "
-      + "Preserve the speaker's tone and formality level. If unsure about a correction, leave unchanged."
-
-    return PolishInstructions(systemPrompt: systemPrompt)
-  }
 
   // MARK: - Telemetry
 
