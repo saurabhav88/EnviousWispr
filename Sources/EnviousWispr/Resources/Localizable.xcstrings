@@ -2368,7 +2368,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Komm nach der Installation zurück und klicke auf „Aktualisieren“."
+            "value" : "Komm nach der Installation zurück und klicke auf das Symbol ↻."
           }
         }
       }
@@ -4433,7 +4433,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Klicke auf das EnviousWispr-Symbol und wähle dann den Eintrag, der mit „Hinzufügen“ beginnt"
+            "value" : "Klicke auf das EnviousWispr-Symbol und wähle dann den Eintrag, der mit „hinzufügen“ endet"
           }
         }
       }
@@ -10351,7 +10351,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Läuft nicht. Klicke zum Starten auf „Aktualisieren“."
+            "value" : "Läuft nicht. Klicke zum Starten auf das Symbol ↻."
           }
         }
       }
@@ -10362,7 +10362,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Läuft nicht. Klicke auf „Aktualisieren“, um es erneut zu versuchen."
+            "value" : "Läuft nicht. Klicke auf das Symbol ↻, um es erneut zu versuchen."
           }
         }
       }
@@ -11008,7 +11008,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Öffne das EnviousWispr-Menü und wähle den Eintrag „Hinzufügen“."
+            "value" : "Öffne das EnviousWispr-Menü und wähle den Eintrag, der mit „hinzufügen“ endet."
           }
         }
       }
@@ -11418,7 +11418,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pausiert, um Arbeitsspeicher für andere Apps freizugeben. Klicke zum Neustarten auf „Aktualisieren“."
+            "value" : "Pausiert, um Arbeitsspeicher für andere Apps freizugeben. Klicke zum Neustarten auf das Symbol ↻."
           }
         }
       }
@@ -11814,7 +11814,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drücke %@ oder öffne das EnviousWispr-Menü und wähle „Hinzufügen“."
+            "value" : "Drücke %@ oder öffne das EnviousWispr-Menü und wähle den Eintrag, der mit „hinzufügen“ endet."
           }
         }
       }
@@ -11825,7 +11825,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Klicke zum Abschließen auf „Schlüssel speichern“ oder wähle eine andere Engine."
+            "value" : "Klicke zum Abschließen auf „Sichern“ oder wähle eine andere Engine."
           }
         }
       }
@@ -11876,7 +11876,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drücke die Taste, um die aktuelle Aufnahme abzubrechen. „Escape-Wiederherstellung“ unten gilt ab deiner nächsten Aufnahme."
+            "value" : "Drücke die Taste, um die aktuelle Aufnahme abzubrechen. „Wiederherstellung bei Escape“ unten gilt ab deiner nächsten Aufnahme."
           }
         }
       }
@@ -14086,7 +14086,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Etwas braucht deine Aufmerksamkeit. Versuch es mit „Aktualisieren“."
+            "value" : "Etwas braucht deine Aufmerksamkeit. Versuch es mit dem Symbol ↻."
           }
         }
       }
@@ -14597,7 +14597,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Klicke auf das Tastensymbol, um dein Tastenkürzel zu ändern,\nund dann auf „LOS GEHT’S!“."
+            "value" : "Klicke auf das Tastensymbol, um dein Tastenkürzel zu ändern,\nund dann auf „LOS GEHT'S!“."
           }
         }
       }
@@ -15458,7 +15458,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Modell hat nicht auf eine Testanfrage geantwortet. Klicke auf „Aktualisieren“, um es erneut zu versuchen."
+            "value" : "Das Modell hat nicht auf eine Testanfrage geantwortet. Klicke auf das Symbol ↻, um es erneut zu versuchen."
           }
         }
       }
@@ -15491,7 +15491,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Modell ist zweimal hintereinander ausgefallen. Klicke auf „Aktualisieren“, um es erneut zu versuchen."
+            "value" : "Das Modell ist zweimal hintereinander ausgefallen. Klicke auf das Symbol ↻, um es erneut zu versuchen."
           }
         }
       }
@@ -15891,7 +15891,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Engine muss vor dem Start eine Sprache festlegen. Wenn „Automatisch erkennen“ eingestellt ist, ignoriert EnviousWispr diese Einstellung und transkribiert erst nach dem Stoppen. Eine frühe Schätzung der Sprache liegt zu oft daneben."
+            "value" : "Diese Engine muss vor dem Start eine Sprache festlegen. Wenn „Sprache automatisch erkennen“ eingeschaltet ist, ignoriert EnviousWispr diese Einstellung und transkribiert erst nach dem Stoppen. Eine frühe Schätzung der Sprache liegt zu oft daneben."
           }
         }
       }
@@ -25396,7 +25396,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unter „Modelle verwalten“ siehst du beim Download eines Ollama-Modells jetzt einen Fortschrittsbalken und eine Taste zum Abbrechen. So erkennst du, wie weit der Download ist und ob er noch läuft."
+            "value" : "Unter „Modelle verwalten“ siehst du beim Download eines Ollama-Modells jetzt einen Fortschrittsbalken und eine Schaltfläche zum Abbrechen. So erkennst du, wie weit der Download ist und ob er noch läuft."
           }
         }
       }
@@ -25936,7 +25936,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Taste „Verbessern“ funktioniert bei vorhandenen Transkripten jetzt mit allen Arten der Spracherkennung."
+            "value" : "Die Schaltfläche „Verbessern“ funktioniert bei vorhandenen Transkripten jetzt mit allen Arten der Spracherkennung."
           }
         }
       }
