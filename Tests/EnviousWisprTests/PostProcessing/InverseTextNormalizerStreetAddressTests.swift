@@ -180,6 +180,15 @@ struct InverseTextNormalizerStreetAddressTests {
       "Log 9 Main Street Hartford Connecticut zero six four eight four 1 today.",
       "Log 9 Main Street Hartford Connecticut 064841 today."
     ),
+    // Codex diff review r6: a ZIP+4 cut short, and a year after "during"
+    (
+      "Send it to 9 Main Street Hartford Connecticut 02108 dash one two today.",
+      "Send it to 9 Main Street Hartford Connecticut 02108 dash one two today."
+    ),
+    (
+      "During 2019 Main Street Bank Denver Colorado 80203 opened.",
+      "During 2019 Main Street Bank Denver Colorado 80203 opened."
+    ),
     // Codex diff review r4: a written house number after spoken number words is the tail of one number
     (
       "one hundred and 23 Main Street Hartford Connecticut 06103",

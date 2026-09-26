@@ -82,7 +82,7 @@ extension InverseTextNormalizer {
       + digitWord + #"(?:\s+"# + digitWord + #"){3}))?)"#
     return #"(?<![\p{L}\d'’-])(?<!\d[,.])"# + house + #"\s+(?:(?:"# + streetDirections.joined(separator: "|")
       + #")\s+)?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*\n?[^\S\n]*|[^\S\n]*\n[^\S\n]*|[^\S\n]+))"# + zip
-      + #"(?![\p{L}\d-])(?!\s+(?:"# + digitWord + #"(?![\p{L}])|\d))"#
+      + #"(?![\p{L}\d-])(?!\s+(?:"# + digitWord + #"(?![\p{L}])|\d|(?i:dash|hyphen)\b))"#
   }()
 
   /// Groups of `streetAddressPattern`: 1 house, 2 street (with type), 3 street/unit separator,
@@ -124,7 +124,7 @@ extension InverseTextNormalizer {
       // Street Bank", "In twenty twenty Main Street Bank"): read on the parsed value.
       if house.count == 4, let y = Int(house), (1900...2099).contains(y),
         before.range(
-          of: #"(?i)\b(?:in|since|by|from|until|before|after)\s+$"#, options: .regularExpression)
+          of: #"(?i)\b(?:in|since|by|from|until|till|before|after|during|around|circa|through|throughout|between|of)\s+$"#, options: .regularExpression)
           != nil
       {
         return nil
