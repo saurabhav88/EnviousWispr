@@ -20270,6 +20270,42 @@
         }
       }
     },
+    "whatsNew.addresses-links-codes-in-four-languages.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry addresses-links-codes-in-four-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adressen, Links und Codes auf Französisch, Spanisch, Polnisch und Niederländisch"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Addresses, links and codes in French, Spanish, Polish and Dutch"
+          }
+        }
+      }
+    },
+    "whatsNew.addresses-links-codes-in-four-languages.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry addresses-links-codes-in-four-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn deine Diktiersprache auf Französisch, Spanisch, Polnisch oder Niederländisch eingestellt ist, werden Adressen, Links und Codes, die du in eigenen Worten einsprichst, jetzt mit den passenden Zeichen geschrieben. Aus „maría punto lópez arroba gmail punto com“ wird maría.lópez@gmail.com, aus „ejemplo punto es barra ayuda“ wird ejemplo.es/ayuda und aus „GPT łącznik 4“ wird GPT-4."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With your dictation language set to French, Spanish, Polish or Dutch, addresses, links and codes said in your own words now come out written. \"maría punto lópez arroba gmail punto com\" becomes maría.lópez@gmail.com, \"ejemplo punto es barra ayuda\" becomes ejemplo.es/ayuda, and \"GPT łącznik 4\" becomes GPT-4."
+          }
+        }
+      }
+    },
     "whatsNew.transcribe-a-file.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry transcribe-a-file).",
       "extractionState" : "manual",

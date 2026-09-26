@@ -200,6 +200,8 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("Escribe a juan.perez arroba gmail punto com", "Escribe a juan.perez@gmail.com"),
     ("Escribe a juan arroba gmail punto com", "Escribe a juan@gmail.com"),
     ("Das Datum ist 2026-9-26.", "Das Datum ist 2026-09-26."),
+    // #3226: a domain the recogniser already joined converts after a NON-English at-word
+    ("Escribe a juan.perez arroba gmail.com", "Escribe a juan.perez@gmail.com"),
   ]
 
   @Test("non-English identifiers convert", arguments: neutralRows)
@@ -219,7 +221,6 @@ struct InverseTextNormalizerSpokenCodesTests {
     "Schreib an max.mustermann at gmail.com",
     "version 1 2 Punkt 3 Punkt 4",
     "Ich arbeite at example dot com",
-    "Escribe a juan.perez arroba gmail.com",
     "Ich wohne in der Straße 12, zweiter Stock.",
     "  Zwei  Leerzeichen\nund eine neue Zeile  ",
   ]

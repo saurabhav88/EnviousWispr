@@ -962,13 +962,17 @@ public struct InverseTextNormalizer: Sendable {
     // dot com", "john at mail dot example dot com"). The single-label form converted only its
     // tail ("john dot smith@gmail.com"). The DOMAIN must still carry at least one SPOKEN dot-word:
     // a domain the recogniser already joined is the already-dotted shape the doc comment above
-    // closes, and nothing here reopens it.
+    // closes, and this frame never reopens it. On a non-English take only, after a NON-English
+    // at-word, `neutralUnicodeEmails` reads that shape (#3226); `at` stays closed there too.
     let sep = #"(?:\.|\s+(?:"# + Self.addressDotAlt + #")\s+)"#
     let pat =
-      #"(?<![\w.@])(?<name>[a-z][a-z0-9_]*(?:"# + sep + #"[a-z0-9_]+)*)\s+(?<atw>"#
-      + Self.addressAtAlt + #")\s+(?<dom>[a-z][a-z0-9-]*(?:"# + sep + #"[a-z0-9][a-z0-9-]*)*)"#
+      #"(?<![\w.@])(?<name>[a-z][a-z0-9_]*(?:"# + sep + #"[a-z0-9_]+){0,5})\s+(?<atw>"#
+      + Self.addressAtAlt + #")\s+(?<dom>[a-z][a-z0-9-]*(?:"# + sep + #"[a-z0-9][a-z0-9-]*){0,5})"#
       + sep + #"(?<tld>"# + Self.emailTLDAlt + #")\b(?!\.[a-z0-9])"#
     return reSub(pat, t) { m in
+      // Chains are bounded (six labels a side) so a long run of dot-words stays linear; a name
+      // that began before the bound, right after a dot-word, is refused whole.
+      guard !Self.startsAfterSpokenDot(m) else { return nil }
       let atw = (m.g("atw") ?? "").lowercased()
       let name = m.g("name") ?? ""
       let domChain = m.g("dom") ?? ""
