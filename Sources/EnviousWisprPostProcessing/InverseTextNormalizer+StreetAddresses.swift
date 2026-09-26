@@ -101,13 +101,16 @@ extension InverseTextNormalizer {
         let zipWords = m.g(10)
       else { return nil }
       // The house number must be the whole number said: a match that begins after another number
-      // word would format only the tail ("one hundred and 23 Main Street").
-      let before = m.ns.substring(to: m.result.range.location)
-      let spelled = houseWords.first?.isNumber == false
+      // word, alone or before "and", would format only the tail ("one hundred and 23 Main
+      // Street"). A plain "and" is a conjunction ("the documents and nine High Plains Road").
+      // Only the nearby text is read: copying all of it per match made a long transcript of many
+      // addresses quadratic (Codex diff review r5: 300 addresses, 1.54 s).
+      let location = m.result.range.location
+      let windowStart = max(0, location - 48)
+      let before = m.ns.substring(
+        with: NSRange(location: windowStart, length: location - windowStart))
       let partOfLonger =
-        spelled
-        ? #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand|and)|\d)[^\S\n]*$"#
-        : #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand)(?:[^\S\n]+and)?|\d)[^\S\n]*$"#
+        #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand)(?:[^\S\n]+and)?|\d)[^\S\n]*$"#
       if before.range(of: partOfLonger, options: .regularExpression) != nil { return nil }
       // The city run must not hold a second street type: that split is ambiguous.
       let cityTokens = city.split(separator: " ").map(String.init)

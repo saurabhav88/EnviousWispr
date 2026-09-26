@@ -95,6 +95,11 @@ struct InverseTextNormalizerStreetAddressTests {
       "nine Main Street\nHartford\nConnecticut\nzero six one zero three",
       "9 Main Street\nHartford\nConnecticut\n06103"
     ),
+    // Codex diff review r5: a conjunction before a spoken house number
+    (
+      "Mail the documents and nine High Plains Road Shelton Connecticut 06484",
+      "Mail the documents and 9 High Plains Road, Shelton, Connecticut 06484"
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."
