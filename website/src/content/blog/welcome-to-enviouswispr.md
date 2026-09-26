@@ -3,7 +3,7 @@ title: "EnviousWispr: Free Private AI Dictation for macOS"
 description: "Meet EnviousWispr, a free dictation app for your Mac."
 topic: getting-started
 pubDate: 2026-03-25
-updatedDate: 2026-04-04
+updatedDate: 2026-09-26
 tags: ["announcement", "privacy", "dictation"]
 author: "Saurabh Vaish"
 ---

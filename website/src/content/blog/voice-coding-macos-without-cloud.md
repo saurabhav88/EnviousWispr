@@ -3,7 +3,7 @@ title: "Voice Coding on macOS Without Cloud APIs"
 description: "A practical look at voice input in a developer’s Mac workflow."
 topic: writing-productivity
 pubDate: 2026-03-16
-updatedDate: 2026-04-04
+updatedDate: 2026-09-26
 tags: ["voice-coding", "privacy", "developer", "macos", "dictation"]
 draft: false
 author: "Saurabh Vaish"
@@ -46,7 +46,7 @@ Getting started takes about five minutes:
 
 3. **Set your keybind.** Pick a key combination that doesn't collide with your IDE shortcuts. Hold to record, release to transcribe; the cycle completes in a second or two.
 
-4. **Leave the polish step on.** EnviousWispr's polish removes filler words, fixes punctuation, and keeps your voice. It works well across most developer writing (PRs, review comments, docs, Slack). A one-line Slack reply stays a line; with Ollama, OpenAI, or Gemini polish on, a longer explanation with cues like "first... then... finally" comes back as a structured list, while the Apple Intelligence default keeps it as clean prose.
+4. **Leave the polish step on.** EnviousWispr's polish removes filler words, fixes punctuation, and keeps your voice. It works well across most developer writing (PRs, review comments, docs, Slack). A one-line Slack reply stays a line; with Ollama, OpenAI, or Gemini polish on, a longer explanation with cues like "first... then... finally" comes back as a structured list, and the Apple Intelligence default usually lays out a counted list ("first... second... third...") as simple bullets too, keeping the rest as clean prose.
 
 ## Real examples: where voice dictation fits a dev workflow
 

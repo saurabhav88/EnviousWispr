@@ -3,7 +3,7 @@ title: "Dictating Podcast Scripts on macOS Without Losing Flow"
 description: "Keep a spoken idea moving as you shape it into an episode script."
 topic: writing-productivity
 pubDate: 2026-03-21
-updatedDate: 2026-04-04
+updatedDate: 2026-09-26
 tags: ["podcasting", "dictation", "workflow", "post-processing", "hands-free"]
 author: "Saurabh Vaish"
 ---

@@ -3,7 +3,7 @@ title: "Turn Podcast Show Notes Into Blog Posts with Dictation"
 description: "Find a reusable writing workflow around the ideas in your episodes."
 topic: writing-productivity
 pubDate: 2026-03-22
-updatedDate: 2026-04-04
+updatedDate: 2026-09-26
 tags: ["podcasting", "workflow", "dictation", "content-creation"]
 author: "Saurabh Vaish"
 ---

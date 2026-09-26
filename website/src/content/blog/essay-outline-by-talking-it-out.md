@@ -3,7 +3,7 @@ title: "Write Your Essay Outline by Talking It Out on Mac"
 description: "Speak through an argument before turning it into an outline."
 topic: writing-productivity
 pubDate: 2026-03-17
-updatedDate: 2026-04-04
+updatedDate: 2026-09-26
 tags: ["students", "essays", "dictation", "writing-style", "study-hack"]
 keywords: ["essay outline voice dictation", "dictate essay outline mac", "voice to outline", "speech to text essay", "writing outline by speaking", "mac dictation students", "free dictation app essays"]
 draft: false
