@@ -81,7 +81,7 @@ extension InverseTextNormalizer {
       + digitWord + #"(?:\s+"# + digitWord + #"){3}))?)"#
     return #"(?<![\p{L}\d'’-])(?<!\d[,.])"# + house + #"\s+(?:(?:"# + streetDirections.joined(separator: "|")
       + #")\s+)?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*|[^\S\n]+))"# + zip
-      + #"(?![\p{L}\d-])(?!\s+"# + digitWord + #"(?![\p{L}]))"#
+      + #"(?![\p{L}\d-])(?!\s+(?:"# + digitWord + #"(?![\p{L}])|\d))"#
   }()
 
   /// Groups of `streetAddressPattern`: 1 house, 2 street (with type), 3 street/unit separator,
@@ -108,21 +108,21 @@ extension InverseTextNormalizer {
         ? #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand|and)|\d)[^\S\n]*$"#
         : #"\d[^\S\n]*$"#
       if before.range(of: partOfLonger, options: .regularExpression) != nil { return nil }
-      // A written year after a time word is a date, not a house number ("In 2019 Main Street Bank").
-      if houseWords.count == 4, let y = Int(houseWords), (1900...2099).contains(y) {
-        if before.range(
-          of: #"(?i)\b(?:in|since|by|from|until|before|after)\s+$"#, options: .regularExpression)
-          != nil
-        {
-          return nil
-        }
-      }
       // The city run must not hold a second street type: that split is ambiguous.
       let cityTokens = city.split(separator: " ").map(String.init)
       // A lone capital opening the city is a unit letter the unit pattern did not take.
       if cityTokens.first?.count == 1 { return nil }
       if cityTokens.contains(where: { Self.streetTypes.contains($0) }) { return nil }
       guard let house = Self.addressNumber(houseWords), let zip = Self.zipCode(zipWords) else {
+        return nil
+      }
+      // A year after a time word is a date, not a house number, written or spoken ("In 2019 Main
+      // Street Bank", "In twenty twenty Main Street Bank"): read on the parsed value.
+      if house.count == 4, let y = Int(house), (1900...2099).contains(y),
+        before.range(
+          of: #"(?i)\b(?:in|since|by|from|until|before|after)\s+$"#, options: .regularExpression)
+          != nil
+      {
         return nil
       }
       // A street name that begins with the house number's own spelling ("Nine" read as a name)

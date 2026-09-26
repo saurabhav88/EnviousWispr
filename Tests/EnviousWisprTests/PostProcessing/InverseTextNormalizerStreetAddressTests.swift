@@ -155,6 +155,24 @@ struct InverseTextNormalizerStreetAddressTests {
     #expect(english(out) == out)
   }
 
+  /// Codex diff review r3: a spoken year after a time word, and a spoken ZIP running into a written
+  /// digit, are not addresses. The year and digit-read passes still write their numbers, as on main.
+  nonisolated static let notAddresses: [(dictated: String, expected: String)] = [
+    (
+      "In twenty twenty Main Street Bank Denver Colorado 80203 opened.",
+      "In 2020 Main Street Bank Denver Colorado 80203 opened."
+    ),
+    (
+      "Log 9 Main Street Hartford Connecticut zero six four eight four 1 today.",
+      "Log 9 Main Street Hartford Connecticut 064841 today."
+    ),
+  ]
+
+  @Test("a year or a longer digit run is not read as an address", arguments: notAddresses)
+  func notAddress(row: (dictated: String, expected: String)) {
+    #expect(english(row.dictated) == row.expected)
+  }
+
   @Test("a formatted address is not changed again", arguments: rows)
   func idempotent(row: (dictated: String, expected: String)) {
     #expect(english(row.expected) == row.expected)
