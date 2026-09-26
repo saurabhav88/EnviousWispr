@@ -137,8 +137,13 @@ package enum TerminalScreenParser {
   /// nothing. MEASURED over 4,397 accessibility frames captured from the
   /// founder's own window: 15 refused this way, against 43 that located.
   ///
-  /// The trailing run must be EXACTLY two, which is the only invariant the
-  /// capture actually shows — both measured rows are 36/2 and 20/2. An earlier
+  /// The trailing run must be ONE or TWO: a closed set of the geometries
+  /// actually measured, never an open-ended range or a ratio. The 2026-08-04 capture showed
+  /// only two (36/2 and 20/2). By 2026-09-26 Claude Code drew one (49/1 at 67
+  /// columns, 45/1 at 68, 119/1 at 137; 14 of 14 titled rows in the founder's
+  /// debug log), so the two-only rule refused every named session and casing
+  /// was silently gone for at least twelve days (#3203). Admitting one changed
+  /// no verdict across the 4,397 frames and located all 14 new rows. An earlier
   /// draft used the ratio `trailing * 4 <= leading` to mean "right-aligned",
   /// reasoning that a fixed suffix would break the day Claude Code changed its
   /// margin. Grounded review killed it with a counterexample that was then
@@ -148,7 +153,10 @@ package enum TerminalScreenParser {
   /// user's own sentence. The two failure directions are not symmetric — a
   /// margin change under the fixed suffix refuses, which is merely today's
   /// behaviour, while the ratio accepts and PERMITS A REPAIR on text nobody
-  /// typed. Widen this only when a different geometry is actually observed.
+  /// typed. Widen this only when a different geometry is actually observed, and
+  /// then by adding that measured run, not by loosening the test: 0 is how a
+  /// flush-right title such as Python Rich's right-aligned rule ends, and 3 or
+  /// more has never been measured.
   ///
   /// The title is Claude Code's own AI-generated session name, so nothing is
   /// assumed about its language, characters or length — it is never read.
@@ -185,7 +193,9 @@ package enum TerminalScreenParser {
 
     let leading = trimmed.prefix(while: { $0 == glyph }).count
     let trailing = trimmed.reversed().prefix(while: { $0 == glyph }).count
-    guard leading >= 4, trailing == 2, leading + trailing < trimmed.count else { return nil }
+    guard leading >= 4, (1...2).contains(trailing), leading + trailing < trimmed.count else {
+      return nil
+    }
 
     let middle = trimmed.dropFirst(leading).dropLast(trailing)
 
