@@ -75,7 +75,7 @@ These are repetitive and formulaic, perfect for dictation. You know what you wor
 
 EnviousWispr's polish step cleans up your dictation by stripping filler words, fixing punctuation, and tightening structure without flattening your voice. The default is calibrated to handle most remote-work writing well, so the same workflow handles a Slack reply, a ticket comment, and a status update.
 
-When you need a specific shape (a more structured client email, a formatted standup, a postmortem timeline), the way you talk sets it. With Ollama, OpenAI, or Gemini polish on, it formats what you said; on the Apple Intelligence default, you get the same content as clean prose:
+When you need a specific shape (a more structured client email, a formatted standup, a postmortem timeline), the way you talk sets it. With Ollama, OpenAI, or Gemini polish on, it formats what you said; the Apple Intelligence default usually lays out a counted or announced list too and keeps the rest as clean prose:
 
 - A quick, casual aside for Slack and team threads stays concise, filler stripped but not over-formalized.
 - A longer, deliberate message for client-facing email and docs comes back polished, with proper grammar and structured paragraphs.

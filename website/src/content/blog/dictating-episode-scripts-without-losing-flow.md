@@ -48,7 +48,7 @@ Here's what that looks like in practice, dictating a cold open for an episode ab
 
 That's a usable cold open. It sounds like you because it literally is you, just without the filler words and with proper punctuation. Read that back into the mic and it works immediately. The idea made it from your head to the page before it had a chance to evaporate.
 
-By how you speak, you can shape output for different show formats. With Ollama, OpenAI, or Gemini polish on, run through your interview questions or show notes as a list and they come back as bullet points. On the Apple Intelligence default, you get the same words cleaned up as prose, and cold opens stay short and punchy on any engine.
+By how you speak, you can shape output for different show formats. With Ollama, OpenAI, or Gemini polish on, run through your interview questions or show notes as a list and they come back as bullet points. On the Apple Intelligence default, count them off ("first... second...") and they usually come back as a list too; otherwise you get the same words cleaned up as prose. Cold opens stay short and punchy on any engine.
 
 Check [how EnviousWispr's pipeline works](/features/) for the full picture on how transcription and post-processing fit together.
 

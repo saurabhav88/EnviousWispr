@@ -34,7 +34,7 @@ A few things that make it worth using day-to-day:
 
 - **Hands-free mode.** Double-press your keybind to lock recording for longer dictation sessions. Triple-press to cancel.
 - **AI polish that keeps your voice.** The default polish step removes filler words, fixes punctuation, and tightens structure without flattening your phrasing.
-- **Polish that adapts to you.** No prompts to write. It cleans up filler and keeps your voice; speak a quick line and it stays a line. With Ollama, OpenAI, or Gemini polish on, rattle off a list and it comes back as bullet points, while the Apple Intelligence default keeps the same content as clean prose.
+- **Polish that adapts to you.** No prompts to write. It cleans up filler and keeps your voice; speak a quick line and it stays a line. With Ollama, OpenAI, or Gemini polish on, rattle off a list and it comes back as bullet points; on the Apple Intelligence default, count the items off or announce them ("three things") and they usually land as a list too.
 - **Custom word dictionary.** Add names, technical terms, and jargon so the app gets your words right every time.
 
 ## Getting started
