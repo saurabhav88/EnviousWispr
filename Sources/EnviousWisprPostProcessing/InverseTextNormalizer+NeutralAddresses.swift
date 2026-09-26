@@ -156,7 +156,8 @@ extension InverseTextNormalizer {
       // hyphenated mailbox ("maria.lopez") or an address word precedes it ("un correo a
       // recepción arroba empresa.es"). This also keeps Polish `małpa`, "monkey", as prose.
       if !spokenDomainDot {
-        let nameIsCompound = splitOnPattern(m.g("name") ?? "", sep).count > 1
+        // A written hyphen counts too ("juan-perez arroba gmail.com"; local Codex r11).
+        let nameIsCompound = splitOnPattern(m.g("name") ?? "", sep + "|-").count > 1
         guard nameIsCompound || hasAddressCue(m) else { return nil }
       }
       // A comma after the at-word: Polish `małpa` only, and only after an address cue
@@ -297,6 +298,13 @@ extension InverseTextNormalizer {
     return (#"(?:\s+"# + slash + gap + uLabel + #")"#, #"\s+"# + slash + gap)
   }
 
+  /// Dutch glues `streep` to the next word, but `streepje`, `streepjes` and `strepen` are
+  /// ordinary words ("schuine streepjes"; local Codex r11): a glued segment that is only a Dutch
+  /// word ending is not a path.
+  static func neutralGluedSlashIsWord(_ raw: String, _ w: SpokenURLWords) -> Bool {
+    w.glueSlash && firstMatch(#"streep(?:je|jes|en|e|s)(?![\p{L}\p{M}\p{N}])"#, raw) != nil
+  }
+
   static func neutralPathSegments(_ raw: String, _ w: SpokenURLWords) -> [String] {
     splitOnPattern(raw, neutralPathPat(w).split)
       .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -368,6 +376,7 @@ extension InverseTextNormalizer {
         guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
           let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
         else { return nil }
+        guard !Self.neutralGluedSlashIsWord(m.g("path") ?? "", w) else { return nil }
         let segs = Self.neutralPathSegments(m.g("path") ?? "", w)
         return (m.g("p") ?? "https") + "://" + host + segs.map { "/" + $0 }.joined()
       }
@@ -392,6 +401,7 @@ extension InverseTextNormalizer {
           neutralSpokenHostEndingAllowed(m.g("host") ?? "", w),
           let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
         else { return nil }
+        guard !Self.neutralGluedSlashIsWord(m.g("path") ?? "", w) else { return nil }
         let segs = Self.neutralPathSegments(m.g("path") ?? "", w)
         guard !segs.isEmpty else { return nil }
         return host + segs.map { "/" + $0 }.joined()
