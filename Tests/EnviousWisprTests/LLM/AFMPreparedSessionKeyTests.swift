@@ -205,6 +205,25 @@ struct AFMPreparedSessionKeyTests {
       #expect(try await AppleIntelligenceConnector.awaitPreparedCount(nil) == nil)
     }
 
+    @Test("dropping the last holder of a prepared count cancels it, whatever the exit")
+    func droppedCarrierCancelsItsCount() async throws {
+      guard #available(macOS 26.0, *) else { return }
+      let gate = Gate()
+      let count = Task<Int, Error> {
+        await gate.wait()
+        try Task.checkCancellation()
+        return 1
+      }
+      var holder: AppleIntelligenceConnector.AFMCountLifetime? =
+        AppleIntelligenceConnector.AFMCountLifetime(count)
+      #expect(!count.isCancelled, "control: alive while held")
+      holder = nil
+      #expect(holder == nil)
+      #expect(count.isCancelled, "released with its last holder")
+      await gate.release()
+      _ = try? await count.value
+    }
+
     @Test("cancelling the waiting polish cancels the count and still ends polish")
     func callerCancellationPropagates() async throws {
       guard #available(macOS 26.0, *) else { return }

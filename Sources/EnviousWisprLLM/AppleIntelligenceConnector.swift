@@ -788,13 +788,18 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       package let key: AFMSessionKey
       /// The #1055 preflight count of `prepared.systemPrompt`, started at preparation and
       /// finished in the background, so handing the session over never waits for it.
-      let systemPromptTokens: Task<Int, Error>
+      /// Owned by `countLifetime`: dropping the last copy of this carrier, on ANY path
+      /// (unused slot, key mismatch, a preflight throw, an injected polisher), cancels it.
+      let countLifetime: AFMCountLifetime
+      var systemPromptTokens: Task<Int, Error> { countLifetime.task }
+    }
 
-      /// Stop the background count of a session nobody will use (an unused slot, a key
-      /// mismatch), so it cannot keep the model busy during the next take.
-      package func discard() {
-        systemPromptTokens.cancel()
-      }
+    /// Cancels a background count when the last carrier holding it goes away, so no exit
+    /// has to remember to do it (two review rounds found exits that did not).
+    final class AFMCountLifetime: Sendable {
+      let task: Task<Int, Error>
+      init(_ task: Task<Int, Error>) { self.task = task }
+      deinit { task.cancel() }
     }
 
     /// The prepared instruction count, awaited on behalf of `polish`: the caller's
@@ -830,7 +835,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let model = prepared.model
       let text = prepared.systemPrompt
       let tokens = Task { try await Self.estimateAFMTokens(model: model, text: text, lang: nil) }
-      return AFMPreparedSession(prepared: prepared, key: assembly.key, systemPromptTokens: tokens)
+      return AFMPreparedSession(
+        prepared: prepared, key: assembly.key, countLifetime: AFMCountLifetime(tokens))
     }
 
     /// `polish`, optionally with a session prepared ahead of time. The prepared session
@@ -1050,7 +1056,6 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let assembly = try resolveAssembly(detectedLanguage: detectedLanguage)
       guard let offered else { return (Self.buildSession(assembly), nil, .none) }
       guard Self.reusesPrepared(offered.key, for: assembly.key) else {
-        offered.discard()
         return (Self.buildSession(assembly), nil, .missKey)
       }
       return (offered.prepared, offered.systemPromptTokens, .hit)
