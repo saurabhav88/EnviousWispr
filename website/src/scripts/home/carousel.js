@@ -1,5 +1,9 @@
-/** Native scrolling owns movement; this adapter synchronizes settled selection. */
-export function createCarousel(viewport, scope, motion, { onManual, onSettle }) {
+/**
+ * Native scrolling owns movement; this adapter synchronizes selection. onPreview names the card the
+ * rail is heading to or passing while it moves, so controls never lag the cards; onSettle stays the
+ * only place that commits a selection.
+ */
+export function createCarousel(viewport, scope, motion, { onManual, onSettle, onPreview }) {
   const slides = [...viewport.children],
     doc = viewport.ownerDocument,
     win = doc.defaultView,
@@ -14,6 +18,8 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     touches = 0,
     timer,
     resizeFrame,
+    previewFrame,
+    shown = 0,
     lastLeft = viewport.scrollLeft;
   const listen = (target, event, handler, options = {}) =>
     target.addEventListener(event, handler, { ...options, signal: scope.signal });
@@ -47,9 +53,20 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     pending = undefined;
     moving = false;
     lastLeft = viewport.scrollLeft;
-    const wasManual = manual;
+    const wasManual = manual,
+      stale = shown !== index;
     manual = false;
+    shown = index;
+    win.cancelAnimationFrame(previewFrame);
+    previewFrame = undefined;
     if (wasMoving || changed) onSettle(index, { changed, manual: wasManual });
+    else if (stale) onPreview?.(index);
+  }
+  function preview() {
+    const next = pending ?? nearest();
+    if (next === shown) return;
+    shown = next;
+    onPreview?.(next);
   }
   function fallback() {
     clearTimeout(timer);
@@ -78,6 +95,7 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     pending = target;
     ended = false;
     moving = true;
+    preview();
     if (Math.abs(left - viewport.scrollLeft) < 1) {
       viewport.scrollTo({ left, behavior: 'instant' });
       finish(true);
@@ -105,6 +123,10 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
       lastLeft = left;
       moving = true;
       if (pending === undefined) takeControl();
+      previewFrame ??= win.requestAnimationFrame(() => {
+        previewFrame = undefined;
+        if (moving) preview();
+      });
       if (!hasScrollEnd) fallback();
     },
     { passive: true },
@@ -185,11 +207,12 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     resizeFrame = win.requestAnimationFrame(() => goTo(pending ?? index, { instant: true }));
   });
   observer.observe(viewport);
-  index = nearest();
+  index = shown = nearest();
   scope.defer(() => {
     observer.disconnect();
     clearTimeout(timer);
     win.cancelAnimationFrame(resizeFrame);
+    win.cancelAnimationFrame(previewFrame);
   });
   return {
     slides,

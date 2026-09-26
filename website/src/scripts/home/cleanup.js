@@ -30,6 +30,7 @@ export function init(root, motion, scope) {
       finishExamples();
       root.querySelector('.polish-nav').classList.add('is-used');
     },
+    onPreview: sync,
     onSettle(index, { manual }) {
       if (prepared === index && !pinned && !motion.paused && !motion.reduced.matches) {
         reveal = 340;

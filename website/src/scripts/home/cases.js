@@ -65,6 +65,7 @@ export function init(root, motion, scope) {
       finishExamples();
       tour.textContent = 'Play tour';
     },
+    onPreview: sync,
     onSettle(index, { manual, changed }) {
       if (!changed && !manual && prepared === undefined) {
         sync(index);

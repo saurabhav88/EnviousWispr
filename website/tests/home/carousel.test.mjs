@@ -7,12 +7,15 @@ function fixture(t, nativeEnd = true) {
   const win = new EventTarget(),
     doc = new EventTarget(),
     rail = new EventTarget();
+  const frames = [];
+  win.requestAnimationFrame = (fn) => frames.push(fn);
   win.cancelAnimationFrame = () => {};
   doc.defaultView = win;
   const controller = new AbortController(),
     disposers = [],
     calls = [],
-    settled = [];
+    settled = [],
+    previews = [];
   Object.assign(rail, {
     ownerDocument: doc,
     scrollLeft: 0,
@@ -42,6 +45,9 @@ function fixture(t, nativeEnd = true) {
       onSettle(index, detail) {
         settled.push({ index, ...detail });
       },
+      onPreview(index) {
+        previews.push(index);
+      },
     },
   );
   t.after(() => {
@@ -58,6 +64,8 @@ function fixture(t, nativeEnd = true) {
     carousel,
     calls,
     settled,
+    previews,
+    flushFrames: () => frames.splice(0).forEach((fn) => fn()),
     emit,
     get manual() {
       return manual;
@@ -153,5 +161,37 @@ test('focus that interrupts an automatic slide still settles it as the visitorâ€
   f.carousel.goTo(1);
   f.emit(f.rail, 'focusin');
   assert.equal(f.manual, 1);
+  assert.deepEqual(f.settled, [{ index: 0, changed: false, manual: true }]);
+});
+
+// Founder UAT 2026-09-25: the category highlight waited for the scroll to finish.
+test('a picked card is shown at once, before the rail arrives', (t) => {
+  const f = fixture(t);
+  f.carousel.goTo(2, { user: true });
+  assert.deepEqual(f.previews, [2]);
+  assert.equal(f.settled.length, 0);
+});
+
+test('a free swipe shows each card it passes while still moving', (t) => {
+  const f = fixture(t);
+  for (const left of [100, 200, 480, 640]) {
+    f.rail.scrollLeft = left;
+    f.emit(f.rail, 'scroll');
+    f.flushFrames();
+  }
+  assert.deepEqual(f.previews, [1, 2]);
+  assert.equal(f.settled.length, 0);
+  f.emit(f.rail, 'scrollend');
+  assert.deepEqual(f.settled.map((s) => s.index), [2]);
+});
+
+test('a swipe that springs back restores the shown card', (t) => {
+  const f = fixture(t);
+  f.rail.scrollLeft = 200;
+  f.emit(f.rail, 'scroll');
+  f.flushFrames();
+  f.rail.scrollLeft = 0;
+  f.emit(f.rail, 'scrollend');
+  assert.deepEqual(f.previews, [1]);
   assert.deepEqual(f.settled, [{ index: 0, changed: false, manual: true }]);
 });
