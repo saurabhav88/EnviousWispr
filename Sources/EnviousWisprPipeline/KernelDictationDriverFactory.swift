@@ -794,7 +794,15 @@ public enum KernelDictationDriverFactory {
       telemetryState: telemetryState,
       dictationAudioArchiveOptInProvider: dictationAudioArchiveOptInProvider,
       microphonePermissionIsDenied: microphonePermissionIsDenied,
-      batchDecodeFaultController: batchDecodeFaultController
+      batchDecodeFaultController: batchDecodeFaultController,
+      // #3195 PR B: key-up Apple session preparation on the SAME retained step the
+      // driver polishes with. Weak: the kernel must not keep the step alive.
+      prepareAFMSessionAtStop: { [weak llmPolish] takeID, language in
+        llmPolish?.beginAFMPrewarm(takeID: takeID, expectedDetectedLanguage: language)
+      },
+      clearAFMSession: { [weak llmPolish] takeID in
+        llmPolish?.clearAFMPrewarm(for: takeID)
+      }
     )
     telemetryRelay.kernel = kernel
 
