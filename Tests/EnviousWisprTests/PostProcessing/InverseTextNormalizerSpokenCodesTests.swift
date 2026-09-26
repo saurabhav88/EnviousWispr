@@ -55,6 +55,8 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("Part S dash one hundred and two failed.", "Part S-102 failed."),
     ("Install Python three Point twelve.", "Install Python 3.12."),
     ("Install Python 3 point 12.", "Install Python 3.12."),
+    // cloud review: a separate numeric field after a spoken version is not a split digit
+    ("Use version one point two point three 64 bit", "Use version 1.2.3 64 bit"),
     ("The date is twenty twenty six dash nine dash twenty six.", "The date is 2026-09-26."),
     ("Open localhost colon three thousand.", "Open localhost:3000."),
     ("Open localhost colon three thousand and one.", "Open localhost:3001."),
@@ -83,9 +85,12 @@ struct InverseTextNormalizerSpokenCodesTests {
   /// identifier with a part the passes cannot read, which must stay whole rather than half.
   nonisolated static let controls: [(dictated: String, expected: String)] = [
     // one "point" is still a decimal, and a trailing non-number is not a chain
-    ("at one point two point guards", "at 1.2 point guards"),
+    ("at one point two point guards", "at one point two point guards"),
+    ("The build is still at one point six oh.", "The build is still at 1.60."),
     // a cardinal minor version needs a name before it, not a sentence-start function word
     ("At one point twelve people left.", "At one point 12 people left."),
+    // cloud review: the idiom "at one point" never starts a version
+    ("At one point two point three million people left", "At one point 2.3 million people left"),
     // "dash" as prose, and the pronoun
     ("Make a dash for it.", "Make a dash for it."),
     ("It was a- one of a kind", "It was a- one of a kind"),

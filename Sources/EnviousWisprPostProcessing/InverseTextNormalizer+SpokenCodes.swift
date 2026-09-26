@@ -70,10 +70,13 @@ extension InverseTextNormalizer {
     let end = r.location + r.length
     let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
     let after = m.ns.substring(with: NSRange(location: end, length: min(m.ns.length - end, 24)))
-    // A digit right after means the recogniser split one number ("S dash 1 2", diff review).
+    // A digit right after a match that itself ENDS in a digit means the recogniser split one
+    // number ("S dash 1 2", diff review). After a spoken number word it is a separate field
+    // ("version one point two point three 64 bit", cloud review), so it does not count there.
+    let endsInDigit = m.whole.last?.isNumber == true
     return firstMatch(#"(?:^|\s)(?:"# + connectorAlt + #")\s+$"#, before) != nil
       || firstMatch(#"^\s+(?:"# + connectorAlt + #")\s+\S"#, after) != nil
-      || firstMatch(#"^\s+\d"#, after) != nil
+      || (endsInDigit && firstMatch(#"^\s+\d"#, after) != nil)
   }
 
   // MARK: - Dotted numbers: versions and IP addresses

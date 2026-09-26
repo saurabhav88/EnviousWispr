@@ -322,6 +322,14 @@ public struct InverseTextNormalizer: Sendable {
     t = urls(t)
     // #3210: dotted numbers of three or more parts (versions, IP addresses) convert whole,
     // BEFORE the decimal pass can read the first pair as a decimal and strand the rest.
+    // #3210 cloud review: "at one point" followed by another "<number> point" is the idiom, not
+    // the start of a version ("At one point two point three million people left"). Shielded
+    // before the chain pass so the rest reads on its own. Only that shape: "still at one point
+    // six oh" is a decimal (founder history, 1.60) and keeps reading as one.
+    t = reSub(
+      #"\bat\s+one\s+point\b(?=\s+(?:"# + Self.identifierNumberWordAlt + #")(?:\s+(?:"#
+        + Self.identifierNumberWordAlt + #"))*\s+point\b)"#, t
+    ) { protect($0) }
     t = dottedNumberChains(t, englishWords: true)
     // protect spoken dotted chains (versions / IP-like: "one dot two dot three", >=2 dots) so the
     // 'dot'-decimal path can't partly convert them ("1.2 dot three"). #3210: a chain whose every
