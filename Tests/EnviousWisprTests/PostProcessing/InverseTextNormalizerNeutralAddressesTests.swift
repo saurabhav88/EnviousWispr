@@ -131,6 +131,8 @@ struct InverseTextNormalizerNeutralAddressesTests {
       "Le colis porte la référence B-Trait d'Union 2, donc", "Le colis porte la référence B-2, donc"
     ),
     ("wybrałem silnik korekty S-myślnik 1, bo", "wybrałem silnik korekty S-1, bo"),
+    // a lower-case spelled letter glued to the dash word reads like the separate form (r7)
+    ("de motor s-streepje vier is snel", "de motor S-4 is snel"),
     (
       "Si el programa no arranca, abre ejemplo.es barra ayuda y",
       "Si el programa no arranca, abre ejemplo.es/ayuda y"
@@ -200,6 +202,8 @@ struct InverseTextNormalizerNeutralAddressesTests {
     "Er staat een schuine streep op het bord.",
     // a Dutch digit word is read only after a Dutch dash word
     "Het model GPT tiret vier.",
+    // the article or pronoun is never a glued code
+    "Het is a-streepje 4.",
     // codes without a number
     "Het lied heet S streepje.",
     "Wstaw tu myślnik.",

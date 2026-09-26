@@ -203,7 +203,7 @@ extension InverseTextNormalizer {
       englishWords
       ? Self.identifierPartPat + #"(?:(?<=hundred|thousand)\s+and\s+"# + Self.identifierPartPat
         + #")*"# : #"\d+|"# + Self.alt(Array(Self.dutchDigitWords.keys))
-    let glued = englishWords ? "" : #"|(?<gcode>[A-Z]{1,5})-(?<gdw>(?i:"# + dashAlt + #"))\s+"#
+    let glued = englishWords ? "" : #"|(?<gcode>[A-Z]{1,5}|[b-hj-z])-(?<gdw>(?i:"# + dashAlt + #"))\s+"#
     let pat =
       #"(?<![\w/-])(?:(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5}|[b-hj-z])\s+(?<dw>(?i:"# + dashAlt
       + #"))\s+|(?<hcode>[A-Z]{1,5}|[a-z])-[ \t]+"# + glued + #")(?<num>(?i:"# + number
