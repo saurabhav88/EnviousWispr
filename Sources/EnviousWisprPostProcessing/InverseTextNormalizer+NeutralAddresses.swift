@@ -84,6 +84,22 @@ extension InverseTextNormalizer {
 
   // MARK: - Emails with Unicode names, or a domain the recogniser already dotted
 
+  /// Short function words that stand right before an at-word when the NAME was not heard
+  /// ("envía a arroba gmail punto com", "stuur een bericht naar apenstaartje gmail punt com";
+  /// local Codex diff review). A one-label name from this set is never a mailbox on the neutral
+  /// route: converting it would invent an address the speaker did not say.
+  static let neutralNameRefusedWords: Set<String> = [
+    "a", "al", "de", "del", "en", "para", "por", "con", "y", "o", "e", "u", "es", "la", "el", "los", "las", "un", "una",  // es
+    "à", "au", "aux", "du", "des", "pour", "par", "avec", "et", "ou", "le", "les", "une", "chez",  // fr
+    "do", "na", "w", "z", "i", "dla", "od", "to", "jest", "ze", "we",  // pl
+    "naar", "aan", "voor", "van", "met", "of", "het", "een", "op", "in", "bij", "is",  // nl
+    "an", "zu", "für", "und", "oder", "der", "die", "das", "ein", "eine", "mit", "bei",  // de
+  ]
+
+  static func isRefusedNeutralName(_ labels: [String]) -> Bool {
+    labels.count == 1 && neutralNameRefusedWords.contains(labels[0].lowercased())
+  }
+
   /// `maría punto lópez arroba gmail punto com` → `maría.lópez@gmail.com`,
   /// `recepción arroba empresa.es` → `recepción@empresa.es`,
   /// `łukasz małpa przykład kropka pl` → `łukasz@przykład.pl`.
@@ -109,18 +125,22 @@ extension InverseTextNormalizer {
         $0.lowercased()
       }
       guard dots.allSatisfy({ Self.isPairedAddressWording(atw, $0) }) else { return nil }
-      if atw == "at" {
-        // German only: `at` with `punkt`, and at least one spoken dot in the domain.
-        guard !dots.isEmpty, dots.allSatisfy({ $0 == "punkt" }) else { return nil }
-      }
-      // The ASCII frame already converted every all-ASCII fully spoken address; what reaches
-      // here needs a Unicode letter or a joined domain to be new (otherwise `emails` refused it
-      // for a reason this frame must not override).
+      // A spoken dot-word inside the domain half (not only in the name).
       let spokenDomainDot =
         firstMatch(dot, " " + (m.g("dom") ?? "") + " ") != nil
         || firstMatch(
           #"(?:"# + Self.addressDotAlt + #")\s+(?:"# + Self.emailTLDAlt + #")$"#,
           m.whole) != nil
+      if atw == "at" {
+        // German only: `at` with `punkt`, spoken IN THE DOMAIN, so the already-dotted shape
+        // stays closed for `at` ("john punkt smith at example.com" stays; local Codex diff review).
+        guard !dots.isEmpty, dots.allSatisfy({ $0 == "punkt" }), spokenDomainDot else {
+          return nil
+        }
+      }
+      // The ASCII frame already converted every all-ASCII fully spoken address; what reaches
+      // here needs a Unicode letter or a joined domain to be new (otherwise `emails` refused it
+      // for a reason this frame must not override).
       let ascii = m.whole.unicodeScalars.allSatisfy { $0.isASCII }
       if ascii, spokenDomainDot { return nil }
       // `małpa` is also "monkey": beside a domain the recogniser already joined it needs an
@@ -134,6 +154,7 @@ extension InverseTextNormalizer {
       // The address goes on past what reads ("… kropka pl kropka xyz").
       guard !hasFurtherSpokenLabel(m) else { return nil }
       let nameLabels = splitOnPattern(m.g("name") ?? "", sep)
+      guard !Self.isRefusedNeutralName(nameLabels) else { return nil }
       if nameLabels.count > 1, let last = nameLabels.last?.lowercased(),
         Self.dottedNameRefusedSuffixes.contains(last)
       {
@@ -181,7 +202,9 @@ extension InverseTextNormalizer {
     return reSub(pat, t) { m in
       let name = m.g("name") ?? ""
       let dom = m.g("dom") ?? ""
-      guard !name.isEmpty, !name.hasSuffix("."), !name.hasSuffix("-") else { return nil }
+      guard !name.isEmpty, !name.hasSuffix("."), !name.hasSuffix("-"),
+        !Self.isRefusedNeutralName([name])
+      else { return nil }
       if (m.g("gap") ?? "").isEmpty, dom.lowercased().hasPrefix("s") { return nil }
       guard hasAddressCue(m) else { return nil }
       return name.lowercased() + "@" + dom.lowercased() + "." + (m.g("tld") ?? "").lowercased()

@@ -170,6 +170,8 @@ struct InverseTextNormalizerNeutralAddressesTests {
     "Tomamos algo en la barra.",
     "Il tient la barre du bateau.",
     "Er staat een schuine streep op het bord.",
+    // a Dutch digit word is read only after a Dutch dash word
+    "Het model GPT tiret vier.",
     // codes without a number
     "Het lied heet S streepje.",
     "Wstaw tu myślnik.",
@@ -183,6 +185,15 @@ struct InverseTextNormalizerNeutralAddressesTests {
     // a link that goes on past what reads: nothing converts
     "https dos puntos barra barra ejemplo punto es barra",
     "abre ejemplo punto es barra ayuda punto html",
+    // a name longer than the pattern reads is refused whole, never converted from its tail
+    "a punto b punto c punto d punto e punto f punto g punto h arroba gmail punto com",
+    // a missing name is never invented from the word before the at-word (local Codex diff review)
+    "envía a arroba gmail punto com",
+    "envía a arroba gmail.com",
+    "stuur een bericht naar apenstaartje gmail punt com",
+    "écris à arobase gmail point com",
+    // German `at` beside a joined domain stays closed even with `punkt` in the name
+    "john punkt smith at example.com",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",
