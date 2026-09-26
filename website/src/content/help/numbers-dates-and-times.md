@@ -45,10 +45,10 @@ Some phrases carry more than one meaning depending on the context. "Meet at one 
 
 Spoken number words are converted only in English. When you dictate in another language, the speech engine usually writes numbers as digits itself, and EnviousWispr then tidies addresses, links and codes said with that language's own words:
 
-- An email address with the local words for "at" and "dot", including names with accents: "maría punto lópez arroba gmail punto com" becomes maría.lópez@gmail.com, and "łukasz małpa przykład kropka pl" becomes łukasz@przykład.pl.
-- A web address with the local words for "dot", "slash" and "colon" in French, Spanish, Polish and Dutch: "ejemplo punto es barra ayuda" becomes ejemplo.es/ayuda, "www punt voorbeeld punt nl" becomes www.voorbeeld.nl, "https deux points barre oblique barre oblique exemple point fr" becomes https://exemple.fr, and "localhost dos puntos 3000" becomes localhost:3000.
-- A code with a spoken dash between letters and a number: "S trattino 1" and "S myślnik 1" become S-1, and "GPT streepje vier" becomes GPT-4 (a Dutch digit after a Dutch dash word is the only number word read outside English).
-- A version number or IP address with a spoken dot between digits: "2 Punkt 5 Punkt 0" and "2 kropka 5 kropka 0" become 2.5.0.
+- An email address with the local words for "at" and "dot", including names with accents: "maría punto lópez arroba gmail punto com" becomes maría.lópez@gmail.com, "łukasz małpa przykład kropka pl" becomes łukasz@przykład.pl, "info собака yandex точка ру" becomes info@yandex.ru, and "contato arroba empresa ponto com ponto br" becomes contato@empresa.com.br.
+- A web address with the local words for "dot", "slash" and "colon" in French, Spanish, Polish, Dutch, German, Russian, Portuguese and Italian: "ejemplo punto es barra ayuda" becomes ejemplo.es/ayuda, "beispiel Punkt de Schrägstrich hilfe" becomes beispiel.de/hilfe, "https due punti barra barra esempio punto it" becomes https://esempio.it, "www punt voorbeeld punt nl" becomes www.voorbeeld.nl, "https deux points barre oblique barre oblique exemple point fr" becomes https://exemple.fr, and "localhost dos puntos 3000" becomes localhost:3000.
+- A code with a spoken dash between letters and a number: "S trattino 1", "S myślnik 1" and "S дефис 1" become S-1, and "GPT streepje vier" becomes GPT-4 (a Dutch digit after a Dutch dash word is the only number word read outside English).
+- A version number or IP address with a spoken dot between digits: "2 Punkt 5 Punkt 0", "2 kropka 5 kropka 0" and "2 точка 5 точка 0" become 2.5.0.
 - A date the engine wrote without leading zeros.
 
 Set your dictation language in Speech Engine settings so EnviousWispr knows the language. A word the speech engine misheard is left as it is; add the right word to your custom words and it formats from then on. Other wording is left as you spoke it.

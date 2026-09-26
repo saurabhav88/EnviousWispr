@@ -150,13 +150,15 @@ enum WhatsNewContent {
     // dictation language set in Speech Engine settings, or WhisperKit detecting it), never on
     // an English take; the copy names the setting. Measured on 120 Azure clips per language
     // set (#3226 baseline v3 and the PR): perfect-hearing transcripts 54/120 before, 120/120
-    // after; a word the speech engine lost is never guessed.
+    // after; a word the speech engine lost is never guessed. #3233 added German, Russian,
+    // Portuguese and Italian the same way (baseline v1: 68/120 before, 120/120 after). The id
+    // keeps its #3226 name so the translation key is unchanged (2.5.1 not yet released).
     Entry(
       id: "addresses-links-codes-in-four-languages",
       icon: "globe",
-      title: "Addresses, links and codes in French, Spanish, Polish and Dutch",
+      title: "Addresses, links and codes in eight languages",
       description:
-        "With your dictation language set to French, Spanish, Polish or Dutch, addresses, links and codes said in your own words now come out written. \"maría punto lópez arroba gmail punto com\" becomes maría.lópez@gmail.com, \"ejemplo punto es barra ayuda\" becomes ejemplo.es/ayuda, and \"GPT łącznik 4\" becomes GPT-4.",
+        "With your dictation language set to French, Spanish, Polish, Dutch, German, Russian, Portuguese or Italian, addresses, links and codes said in your own words now come out written. \"maría punto lópez arroba gmail punto com\" becomes maría.lópez@gmail.com, \"beispiel Punkt de Schrägstrich hilfe\" becomes beispiel.de/hilfe, and \"GPT łącznik 4\" becomes GPT-4.",
       version: "2.5.1"
     ),
 

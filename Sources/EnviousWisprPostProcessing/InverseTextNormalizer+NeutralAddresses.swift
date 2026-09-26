@@ -1,7 +1,8 @@
 import Foundation
 
 /// #3226: spoken addresses, links and codes in French, Spanish, Polish and Dutch, on a take the
-/// app resolved as non-English (`normalizeLanguageNeutral`).
+/// app resolved as non-English (`normalizeLanguageNeutral`). #3233 adds German, Russian,
+/// Portuguese and Italian (perfect-hearing baseline 68/120 before, same method; #3233 baseline v1).
 ///
 /// Target is the CORRECTLY HEARD sentence: a speaker of these languages uses WhisperKit with the
 /// language set and repairs a misheard word with the custom dictionary, which runs before this
@@ -18,11 +19,14 @@ extension InverseTextNormalizer {
 
   /// One language's spoken URL syntax. Multi-word phrases match with any whitespace between
   /// their words; `glueSlash` lets the recogniser's `schuine streephelp` read as slash + segment.
+  /// A row groups one language's words; every row runs on every neutral take (#3233 plan G1).
   struct SpokenURLWords {
     let dot: [String]
     let slash: [String]
     let colon: [String]
     let glueSlash: Bool
+    /// This language's spoken question mark, checked only after a link this row read (#3233).
+    var query: [String] = []
   }
 
   static let spokenURLWords: [SpokenURLWords] = [
@@ -34,6 +38,21 @@ extension InverseTextNormalizer {
     SpokenURLWords(dot: ["kropka"], slash: ["ukośnik"], colon: ["dwukropek"], glueSlash: false),
     SpokenURLWords(
       dot: ["punt"], slash: ["schuine streep"], colon: ["dubbele punt"], glueSlash: true),
+    // #3233. German nouns arrive capitalised (`Punkt`); every pattern here is case-insensitive.
+    SpokenURLWords(
+      dot: ["punkt"], slash: ["schrägstrich"], colon: ["doppelpunkt"], glueSlash: false,
+      query: ["fragezeichen"]),
+    SpokenURLWords(
+      dot: ["точка"], slash: ["слэш", "слеш", "косая черта"], colon: ["двоеточие"],
+      glueSlash: false, query: ["вопросительный знак"]),
+    SpokenURLWords(
+      dot: ["ponto"], slash: ["barra"], colon: ["dois pontos"], glueSlash: false,
+      query: ["ponto de interrogação"]),
+    // Italian shares `punto` and `barra` with Spanish; `barra obliqua` is the full name, and the
+    // Spanish row's `barra` never reads its first word alone (`neutralSlashAlt`).
+    SpokenURLWords(
+      dot: ["punto"], slash: ["barra obliqua", "barra"], colon: ["due punti"], glueSlash: false,
+      query: ["punto interrogativo"]),
   ]
 
   /// `alt` for phrases: whitespace inside a phrase matches any run of whitespace, and a straight
@@ -55,7 +74,31 @@ extension InverseTextNormalizer {
   static let neutralTLDAlt = alt(
     Set(
       ["com", "org", "io", "co", "dev", "me", "net", "edu", "gov", "ai", "app", "xyz"]
-        + countryCodeTLDs))
+        + countryCodeTLDs + neutralExtraTLDs + Array(spokenTLDWords.keys)))
+
+  /// #3233: endings the neutral route reads and the shared `countryCodeTLDs` refuses. `it` is
+  /// refused there because the ENGLISH frame would read "at the dot it" (#2763 D2); here it needs a
+  /// written dot or a non-English dot word (`neutralTLDSeparatorAllowed`). `br` is Brazil.
+  static let neutralExtraTLDs = ["br", "it"]
+  /// A country ending said as a word: Russian `точка ру` is `.ru` (Gramota). Read only after
+  /// `точка` (`neutralTLDSeparatorAllowed`) and written as the ASCII ending.
+  static let spokenTLDWords: [String: String] = ["ру": "ru"]
+  /// The email ending alternation on the neutral route: the shared one plus the two above.
+  static let neutralEmailTLDAlt = alt(
+    ["com", "org", "io", "co", "dev", "me", "net", "edu", "gov"] + countryCodeTLDs
+      + neutralExtraTLDs + Array(spokenTLDWords.keys))
+
+  /// May this ending follow this separator? `before` is the text up to the ending. `it` never after
+  /// the English `dot`; a spoken ending word only after its own language's dot word.
+  static func neutralTLDSeparatorAllowed(_ tld: String, before: String) -> Bool {
+    switch tld.lowercased() {
+    case "it": return firstMatch(#"(?:^|\s)dot\s+$"#, before) == nil
+    case "ру": return firstMatch(#"(?:^|\s)точка\s+$"#, before) != nil
+    default: return true
+    }
+  }
+
+  static func writtenTLD(_ tld: String) -> String { spokenTLDWords[tld.lowercased()] ?? tld }
 
   // MARK: - Dash words (neutral route only)
 
@@ -65,6 +108,7 @@ extension InverseTextNormalizer {
     "łącznik", "myślnik", "kreska",  // Polish
     "streepje", "koppelteken", "koppel teken",  // Dutch
     "trait d'union",  // French
+    "дефис", "тире",  // Russian (#3233)
   ]
   static let dutchDashWords: Set<String> = ["streepje", "koppelteken", "koppel teken"]
   static let neutralDashWordAlt =
@@ -78,9 +122,9 @@ extension InverseTextNormalizer {
 
   // MARK: - Number dot words (neutral route only)
 
-  /// Polish `kropka` and Dutch `punt` between DIGITS (`2 kropka 5 kropka 0`). Neutral route only:
-  /// the English route's `numberDotWordAlt` is unchanged.
-  static let neutralNumberDotWordAlt = numberDotWordAlt + "|kropka|punt"
+  /// Polish `kropka`, Dutch `punt` and Russian `точка` between DIGITS (`2 kropka 5 kropka 0`).
+  /// Neutral route only: the English route's `numberDotWordAlt` is unchanged.
+  static let neutralNumberDotWordAlt = numberDotWordAlt + "|kropka|punt|точка"
 
   // MARK: - Emails with Unicode names, or a domain the recogniser already dotted
 
@@ -89,7 +133,8 @@ extension InverseTextNormalizer {
   /// local Codex diff review). A one-label name from this set is never a mailbox on the neutral
   /// route: converting it would invent an address the speaker did not say.
   static let neutralNameRefusedWords: Set<String> = [
-    "a", "al", "de", "del", "en", "para", "por", "con", "y", "o", "e", "u", "es", "la", "el", "los", "las", "un", "una",  // es
+    "a", "al", "de", "del", "en", "para", "por", "con", "y", "o", "e", "u", "es", "la", "el", "los",
+    "las", "un", "una",  // es
     "à", "au", "aux", "du", "des", "pour", "par", "avec", "et", "ou", "le", "les", "une", "chez",  // fr
     "do", "na", "w", "z", "i", "dla", "od", "to", "jest", "ze", "we",  // pl
     "naar", "aan", "voor", "van", "met", "of", "het", "een", "op", "in", "bij", "is",  // nl
@@ -98,6 +143,28 @@ extension InverseTextNormalizer {
 
   static func isRefusedNeutralName(_ labels: [String]) -> Bool {
     labels.count == 1 && neutralNameRefusedWords.contains(labels[0].lowercased())
+  }
+
+  /// #3233: the same missing-name refusal for Russian, Portuguese and Italian, applied ONLY to that
+  /// language's address (Codex plan r3): kept out of the shared set above so a one-word mailbox in
+  /// another language is never refused. Portuguese `arroba` is also Spanish, so the Portuguese words
+  /// apply only when `ponto` marks the address as Portuguese, or in the glued Portuguese shape.
+  static let russianNameRefusedWords: Set<String> = ["на", "и", "в", "это", "к", "для"]
+  static let portugueseNameRefusedWords: Set<String> = ["ao", "aos", "à", "que", "em", "o", "os"]
+  static let italianNameRefusedWords: Set<String> = [
+    "ai", "alla", "allo", "alle", "il", "lo", "di", "della",
+  ]
+
+  /// `dots` are the spoken dot-words of the address, lower-cased.
+  static func isRefusedLanguageName(_ labels: [String], atWord: String, dots: [String]) -> Bool {
+    guard labels.count == 1 else { return false }
+    let name = labels[0].lowercased()
+    switch atWord.lowercased() {
+    case "собака", "sobaka": return russianNameRefusedWords.contains(name)
+    case "chiocciola": return italianNameRefusedWords.contains(name)
+    case "arroba": return dots.contains("ponto") && portugueseNameRefusedWords.contains(name)
+    default: return false
+    }
   }
 
   /// `maría punto lópez arroba gmail punto com` → `maría.lópez@gmail.com`,
@@ -121,7 +188,8 @@ extension InverseTextNormalizer {
     let pat =
       #"(?<![\p{L}\p{M}\p{N}_.@-])(?<name>"# + label + #"(?:"# + sep + label + #"){0,5})\s+(?<atw>"#
       + Self.addressAtAlt + #")(?<comma>,)?\s+(?<dom>"# + label + #"(?:"# + sep + label
-      + #"){0,5})"# + sep + #"(?<tld>"# + Self.emailTLDAlt + #")(?![\p{L}\p{M}\p{N}_-]|\.[\p{L}\p{N}])"#
+      + #"){0,5})"# + sep + #"(?<tld>"# + Self.neutralEmailTLDAlt
+      + #")(?![\p{L}\p{M}\p{N}_-]|\.[\p{L}\p{N}])"#
     return reSub(pat, t) { m in
       // A name longer than the bounded chain began earlier, after a spoken dot or hyphen.
       guard !Self.startsAfterSpokenDot(m), !Self.startsAfterSpokenDash(m) else { return nil }
@@ -135,7 +203,7 @@ extension InverseTextNormalizer {
       let spokenDomainDot =
         firstMatch(dot, " " + (m.g("dom") ?? "") + " ") != nil
         || firstMatch(
-          #"(?:"# + Self.addressDotAlt + #")\s+(?:"# + Self.emailTLDAlt + #")$"#,
+          #"(?:"# + Self.addressDotAlt + #")\s+(?:"# + Self.neutralEmailTLDAlt + #")$"#,
           m.whole) != nil
       if atw == "at" {
         // German only: `at` with `punkt`, spoken IN THE DOMAIN, so the already-dotted shape
@@ -147,7 +215,11 @@ extension InverseTextNormalizer {
       // The ASCII frame already converted every all-ASCII fully spoken address; what reaches
       // here needs a Unicode letter or a joined domain to be new (otherwise `emails` refused it
       // for a reason this frame must not override).
-      let ascii = m.whole.unicodeScalars.allSatisfy { $0.isASCII }
+      // A spoken ending word (`ру`) counts as its ASCII ending here: `emails` read that address.
+      let tld = m.g("tld") ?? ""
+      let ascii = (m.whole.dropLast(tld.count) + Self.writtenTLD(tld)).unicodeScalars.allSatisfy {
+        $0.isASCII
+      }
       let spokenDash = firstMatch(dash, m.whole) != nil
       if ascii, spokenDomainDot, !spokenDash { return nil }
       // A domain the recogniser already joined says little on its own: the word before the
@@ -169,19 +241,28 @@ extension InverseTextNormalizer {
       guard !hasFurtherSpokenLabel(m) else { return nil }
       guard !neutralEmailFollowedBySlash(m) else { return nil }
       let nameLabels = splitOnPattern(m.g("name") ?? "", sep)
-      guard !Self.isRefusedNeutralName(nameLabels) else { return nil }
+      guard !Self.isRefusedNeutralName(nameLabels),
+        !Self.isRefusedLanguageName(nameLabels, atWord: atw, dots: dots)
+      else { return nil }
+      let tldRange = m.result.range(withName: "tld")
+      let beforeTLD = m.ns.substring(
+        with: NSRange(
+          location: m.result.range.location, length: tldRange.location - m.result.range.location))
+      guard Self.neutralTLDSeparatorAllowed(tld, before: beforeTLD) else { return nil }
       if nameLabels.count > 1, let last = nameLabels.last?.lowercased(),
         Self.dottedNameRefusedSuffixes.contains(last)
       {
         return nil
       }
       let written: (String) -> String = { raw in
-        var out = raw.replacingOccurrences(of: dash, with: "-", options: [.regularExpression, .caseInsensitive])
-        out = out.replacingOccurrences(of: dot, with: ".", options: [.regularExpression, .caseInsensitive])
+        var out = raw.replacingOccurrences(
+          of: dash, with: "-", options: [.regularExpression, .caseInsensitive])
+        out = out.replacingOccurrences(
+          of: dot, with: ".", options: [.regularExpression, .caseInsensitive])
         return out
       }
       return written(m.g("name") ?? "") + "@" + written(m.g("dom") ?? "") + "."
-        + (m.g("tld") ?? "")
+        + Self.writtenTLD(tld)
     }
   }
 
@@ -225,10 +306,12 @@ extension InverseTextNormalizer {
   /// Needs an address cue before it, and a glued domain may not start with `s` (the plural
   /// `apenstaartjes`; Codex plan r2 N1). Polish `małpa` is never split out of a word: it is also
   /// "monkey" and sits inside inflected forms.
-  func neutralGluedDutchEmails(_ t: String) -> String {
+  /// #3233: the name is bounded to 64 characters (a mailbox name's limit); unbounded,
+  /// `apenstaartje` x 1700 took 0.77 s of a 1.01 s deadline on main 825c4fc8.
+  private func neutralGluedDutchEmails(_ t: String) -> String {
     let label = Self.uLabel
     let pat =
-      #"(?<![\p{L}\p{M}\p{N}_.@-])(?<name>[\p{L}\p{N}][\p{L}\p{M}\p{N}_.-]*?)(?<atw>apenstaartje|apestaartje)(?<gap>\s?)(?<dom>"#
+      #"(?<![\p{L}\p{M}\p{N}_.@-])(?<name>[\p{L}\p{N}][\p{L}\p{M}\p{N}_.-]{0,63}?)(?<atw>apenstaartje|apestaartje)(?<gap>\s?)(?<dom>"#
       + label + #"(?:\."# + label + #")*)\.(?<tld>"# + Self.emailTLDAlt
       + #")(?![\p{L}\p{M}\p{N}_-]|\.[\p{L}\p{N}])"#
     return reSub(pat, t) { m in
@@ -247,11 +330,78 @@ extension InverseTextNormalizer {
     }
   }
 
+  /// #3233: the glued at-word pass. Dutch keeps its exact #3226 shape (above, unchanged); Italian,
+  /// Portuguese and Russian read the shapes WhisperKit writes with the language set (#3233 baseline
+  /// v1): `infochiocciolaazienda.it` → `info@azienda.it`, `marco.rossichiocciolagmail.com` →
+  /// `marco.rossi@gmail.com`, `contato arrobaempresa.com.br` → `contato@empresa.com.br`,
+  /// `info.собака.yandex.ru` → `info@yandex.ru`. Polish `małpa` is never split out of a word.
+  func neutralGluedAtWordEmails(_ t: String) -> String {
+    let label = Self.uLabel
+    let end =
+      #"\.(?<tld>"# + Self.neutralEmailTLDAlt + #")(?![\p{L}\p{M}\p{N}_-]|\.[\p{L}\p{N}])"#
+    let dom = #"(?<dom>"# + label + #"(?:\."# + label + #"){0,5})"#
+    let start = #"(?<![\p{L}\p{M}\p{N}_.@-])"#
+    let dotted = label + #"(?:\."# + label + #"){0,5}"#
+    var out = neutralGluedDutchEmails(t)
+    // Italian: `chiocciola` inside the token; the name and the host each whole. A `c` right before
+    // it makes the split a guess (`niccolocchiocciolaesempio.it`, #3233 baseline v1, is `niccolò`
+    // plus a doubled `c`): an address with a wrong name looks finished, so that shape stays.
+    // The name is at most 64 characters (a mailbox name's limit), so a long run of the word stays
+    // linear: unbounded, `chiocciola` x 2000 took 0.87 s of a 1.00 s deadline.
+    out = gluedAtWord(
+      out,
+      start + #"(?<name>[\p{L}\p{N}][\p{L}\p{M}\p{N}_.-]{0,63}?)(?<![cC])(?<atw>chiocciola)\s?"# + dom
+        + end,
+      refused: Self.italianNameRefusedWords)
+    // Portuguese (and Spanish): a separate name, `arroba` glued to the host. `arrobas` (the old
+    // weight unit, plural) is prose.
+    out = gluedAtWord(
+      out, start + #"(?<name>"# + dotted + #")\s+(?<atw>arroba)"# + dom + end,
+      refused: Self.portugueseNameRefusedWords, pluralS: true)
+    // Russian: `собака` as a dotted label between the name and the host.
+    out = gluedAtWord(
+      out, start + #"(?<name>"# + dotted + #")\.(?<atw>собака)\."# + dom + end,
+      refused: Self.russianNameRefusedWords)
+    return out
+  }
+
+  /// One glued at-word shape; converts the whole address or nothing.
+  private func gluedAtWord(
+    _ t: String, _ pat: String, refused: Set<String>, pluralS: Bool = false
+  ) -> String {
+    reSub(pat, t) { m in
+      let name = m.g("name") ?? ""
+      let dom = m.g("dom") ?? ""
+      let tld = m.g("tld") ?? ""
+      guard !name.isEmpty, !name.hasSuffix("."), !name.hasSuffix("-"),
+        !Self.isRefusedNeutralName([name]), !refused.contains(name.lowercased())
+      else { return nil }
+      if pluralS, dom.lowercased().hasPrefix("s") { return nil }
+      guard hasAddressCue(m) || hasGluedAtWordCue(m), !neutralEmailFollowedBySlash(m),
+        !Self.startsAfterSpokenDot(m), !Self.startsAfterSpokenDash(m), !hasFurtherSpokenLabel(m)
+      else { return nil }
+      return name + "@" + dom + "." + Self.writtenTLD(tld)
+    }
+  }
+
+  /// Address words for the Italian, Portuguese and Russian glued shapes only (Codex plan r2): kept
+  /// out of `hasAddressCue`, which licenses the #3226 passes.
+  func hasGluedAtWordCue(_ m: Match) -> Bool {
+    let r = m.result.range
+    let lead = min(r.location, 48)
+    let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
+    return firstMatch(
+      #"\p{L}*(?:indirizzo|endereço|mensagem|адрес|письм|почт)\p{L}*|(?:^|[^\p{L}])(?:scrivi|manda)(?:[^\p{L}]|$)"#,
+      before) != nil
+  }
+
   // MARK: - Links: protocol, path, www, localhost
 
   /// Spoken `www`: the word, or the letters as each language says them.
   static let neutralWWWAlias =
-    #"(?:www|w\s+w\s+w|wu\s+wu\s+wu|uve\s+doble\s+uve\s+doble\s+uve\s+doble|triple\s+w)"#
+    #"(?:www|w\s+w\s+w|wu\s+wu\s+wu|uve\s+doble\s+uve\s+doble\s+uve\s+doble|triple\s+w"#
+    // #3233: German, Russian, Portuguese and Italian letter names.
+    + #"|we\s+we\s+we|вэ\s+вэ\s+вэ|dáblio\s+dáblio\s+dáblio|vu\s+vu\s+vu)"#
 
   /// A host: an optional spoken `www`, labels joined by `.` or this language's dot word, ending
   /// in an allowed TLD.
@@ -292,13 +442,35 @@ extension InverseTextNormalizer {
     }
     // Only the spoken separators change; every word keeps the case the recogniser wrote, as the
     // English email pass does (cloud review, PR #3232, and its local class enumeration).
-    return neutralHostLabels(host, w).joined(separator: ".")
+    var labels = neutralHostLabels(host, w)
+    // #3233: `it` never after the English `dot`, `ру` only after `точка`, written as `ru`.
+    if let tld = labels.last {
+      guard neutralTLDSeparatorAllowed(tld, before: String(host.dropLast(tld.count))) else {
+        return nil
+      }
+      labels[labels.count - 1] = writtenTLD(tld)
+    }
+    return labels.joined(separator: ".")
+  }
+
+  /// This row's slash phrases, never as the first words of a LONGER slash phrase of any row:
+  /// Spanish `barra` does not read the `barra` of Italian `barra obliqua` and leave `obliqua` as a
+  /// path segment (Codex plan r4).
+  static func neutralSlashAlt(_ w: SpokenURLWords) -> String {
+    let longerTails = spokenURLWords.flatMap { $0.slash }.compactMap { q -> String? in
+      guard let p = w.slash.first(where: { q.lowercased().hasPrefix($0.lowercased() + " ") })
+      else { return nil }
+      return String(q.dropFirst(p.count + 1))
+    }
+    let base = #"(?:"# + phraseAlt(w.slash) + #")"#
+    guard !longerTails.isEmpty else { return base }
+    return base + #"(?!\s+(?:"# + phraseAlt(longerTails) + #")(?![\p{L}\p{M}\p{N}]))"#
   }
 
   /// Path segments after a host: each language's slash phrase, then one segment; Dutch may
   /// glue `streep` to the segment (`schuine streephelp`).
   static func neutralPathPat(_ w: SpokenURLWords) -> (pattern: String, split: String) {
-    let slash = #"(?:"# + phraseAlt(w.slash) + #")"#
+    let slash = neutralSlashAlt(w)
     let gap = w.glueSlash ? #"\s*"# : #"\s+"#
     return (#"(?:\s+"# + slash + gap + uLabel + #")"#, #"\s+"# + slash + gap)
   }
@@ -338,7 +510,8 @@ extension InverseTextNormalizer {
   func neutralSpokenHostEndingAllowed(_ host: String, _ w: SpokenURLWords) -> Bool {
     let spoken = firstMatch(#"\s+(?:"# + Self.phraseAlt(w.dot) + #")\s+"#, host) != nil
     guard spoken, firstMatch(#"^"# + Self.neutralWWWAlias, host) == nil,
-      firstMatch(#"^localhost(?:\s+(?:"# + Self.phraseAlt(w.colon) + #")\s+\d{1,5})?$"#, host) == nil,
+      firstMatch(#"^localhost(?:\s+(?:"# + Self.phraseAlt(w.colon) + #")\s+\d{1,5})?$"#, host)
+        == nil,
       let last = Self.neutralHostLabels(host, w).last?.lowercased()
     else { return true }
     return !["ai", "app", "xyz"].contains(last)
@@ -351,12 +524,15 @@ extension InverseTextNormalizer {
   ]
 
   /// Spoken URL syntax right after a converted link means the link goes on past what reads.
-  func neutralLinkContinues(_ rest: String, _ words: [SpokenURLWords]) -> Bool {
+  /// `row` is the language row that read the link: its own spoken question mark counts too.
+  func neutralLinkContinues(
+    _ rest: String, _ words: [SpokenURLWords], row: SpokenURLWords? = nil
+  ) -> Bool {
     // A dash word or a written `/` after the link also means it goes on ("… barra api guion v2",
     // "… punto es / ayuda"; local Codex class enumeration).
     // A spoken query mark too ("… barra ayuda signo de interrogación q"; local Codex r13).
     let syntax = Self.phraseAlt(
-      words.flatMap { $0.dot + $0.slash + $0.colon } + Self.spokenQueryWords)
+      words.flatMap { $0.dot + $0.slash + $0.colon } + Self.spokenQueryWords + (row?.query ?? []))
     // So does a written `.label` or `:port` the pass did not read ("… punto es.foo", "…:8080").
     return firstMatch(#"^\s+(?:"# + syntax + "|" + Self.neutralDashWordAlt + #")(?:\s+|$)"#, rest)
       != nil
@@ -381,17 +557,18 @@ extension InverseTextNormalizer {
   func neutralURLSchemes(_ t: String) -> String {
     var t = t
     for w in Self.spokenURLWords {
-      let slash = #"(?:"# + Self.phraseAlt(w.slash) + #")"#
+      let slash = Self.neutralSlashAlt(w)
       let path = Self.neutralPathPat(w).pattern
       let pat =
         // The scheme spoken, or already written by the recogniser ("https://ejemplo punto es
         // barra ayuda"; local Codex r12).
         #"(?<![\p{L}\p{N}])(?<p>https?)(?:\s+(?:"# + Self.phraseAlt(w.colon) + #")\s+"# + slash
-        + #"\s+"# + slash + #"\s+|://\s*)(?<host>"# + Self.neutralHostOrLocalPat(w, portRequired: false)
+        + #"\s+"# + slash + #"\s+|://\s*)(?<host>"#
+        + Self.neutralHostOrLocalPat(w, portRequired: false)
         + #")(?<path>"# + path + #"*)(?![\p{L}\p{M}\p{N}_@-])"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
-        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
+        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords, row: w),
           let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
         else { return nil }
         guard !Self.neutralGluedSlashIsWord(m.g("path") ?? "", w) else { return nil }
@@ -422,7 +599,7 @@ extension InverseTextNormalizer {
         + #")(?<path>"# + Self.neutralPathPat(w).pattern + #"+)(?![\p{L}\p{M}\p{N}_@-])"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
-        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
+        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords, row: w),
           !neutralLinkStartsEarlier(m, Self.spokenURLWords),
           neutralSpokenHostEndingAllowed(m.g("host") ?? "", w),
           let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
@@ -451,9 +628,10 @@ extension InverseTextNormalizer {
         let end = m.result.range.location + m.result.range.length
         // Only a host with something SPOKEN in it: a fully written `WWW.Example.COM` is the
         // user's own text and is left byte-identical (cloud review, PR #3232).
-        guard firstMatch(dot, m.g("host") ?? "") != nil
+        guard
+          firstMatch(dot, m.g("host") ?? "") != nil
             || firstMatch(#"^(?!www)"# + Self.neutralWWWAlias, m.g("host") ?? "") != nil,
-          !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
+          !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords, row: w),
           !neutralLinkStartsEarlier(m, Self.spokenURLWords)
         else { return nil }
         return Self.neutralCanonicalHost(m.g("host") ?? "", w)

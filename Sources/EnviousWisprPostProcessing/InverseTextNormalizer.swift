@@ -965,10 +965,13 @@ public struct InverseTextNormalizer: Sendable {
     // closes, and this frame never reopens it. On a non-English take only, after a NON-English
     // at-word, `neutralUnicodeEmails` reads that shape (#3226); `at` stays closed there too.
     let sep = #"(?:\.|\s+(?:"# + Self.addressDotAlt + #")\s+)"#
+    // #3233: the neutral route also reads `br`, `it` and the spoken `ру` (guarded below); the
+    // English route's ending list is unchanged.
+    let tldAlt = neutral ? Self.neutralEmailTLDAlt : Self.emailTLDAlt
     let pat =
       #"(?<![\w.@])(?<name>[a-z][a-z0-9_]*(?:"# + sep + #"[a-z0-9_]+){0,5})\s+(?<atw>"#
       + Self.addressAtAlt + #")\s+(?<dom>[a-z][a-z0-9-]*(?:"# + sep + #"[a-z0-9][a-z0-9-]*){0,5})"#
-      + sep + #"(?<tld>"# + Self.emailTLDAlt + #")\b(?!\.[a-z0-9])"#
+      + sep + #"(?<tld>"# + tldAlt + #")\b(?!\.[a-z0-9])"#
     return reSub(pat, t) { m in
       // Chains are bounded (six labels a side) so a long run of dot-words stays linear; a name
       // that began before the bound, right after a dot-word, is refused whole.
@@ -996,6 +999,20 @@ public struct InverseTextNormalizer: Sendable {
       // #3226: on a non-English take a function word before the at-word is where the NAME was
       // not heard ("envía a arroba gmail punto com"); converting it invents an address.
       if neutral, Self.isRefusedNeutralName(nameLabels) { return nil }
+      // #3233: the Russian, Portuguese and Italian function words, for that language's address.
+      if neutral,
+        Self.isRefusedLanguageName(
+          nameLabels, atWord: atw, dots: allDots.map { $0.lowercased() })
+      {
+        return nil
+      }
+      if neutral {
+        let tldRange = m.result.range(withName: "tld")
+        let beforeTLD = m.ns.substring(
+          with: NSRange(
+            location: m.result.range.location, length: tldRange.location - m.result.range.location))
+        guard Self.neutralTLDSeparatorAllowed(tld, before: beforeTLD) else { return nil }
+      }
       // "Read the docs at docs dot example dot com": after the English "at", a one-word name
       // before a MULTI-label domain is a website in prose far more often than an address; the
       // URL pass takes it (confirming diff review). A dotted name still says address.
@@ -1030,7 +1047,8 @@ public struct InverseTextNormalizer: Sendable {
       {
         return nil
       }
-      return nameLabels.joined(separator: ".") + "@" + (domLabels + [tld]).joined(separator: ".")
+      return nameLabels.joined(separator: ".") + "@"
+        + (domLabels + [neutral ? Self.writtenTLD(tld) : tld]).joined(separator: ".")
     }
   }
 

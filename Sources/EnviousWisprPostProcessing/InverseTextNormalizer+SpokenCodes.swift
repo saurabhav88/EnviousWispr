@@ -397,7 +397,7 @@ extension InverseTextNormalizer {
     // Order (Codex plan r3 P2): addresses first, each refusing text an earlier pass wrote.
     var t = emails(text, neutral: true)
     t = neutralUnicodeEmails(t)
-    t = neutralGluedDutchEmails(t)
+    t = neutralGluedAtWordEmails(t)
     t = neutralURLSchemes(t)
     t = neutralURLPaths(t)
     t = neutralWWWHosts(t)
