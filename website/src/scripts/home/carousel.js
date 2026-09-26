@@ -55,9 +55,11 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     clearTimeout(timer);
     if (!held()) timer = setTimeout(() => finish(), 180);
   }
-  function takeControl() {
+  // The owner always hears about a takeover; only a movement the visitor made or interrupted is
+  // marked manual, because finish() is the sole place that clears the marker.
+  function takeControl(moved = true) {
     pending = undefined;
-    manual = true;
+    if (moved) manual = true;
     onManual();
   }
   function goTo(next, { user = false, instant = false } = {}) {
@@ -151,7 +153,7 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     viewport,
     'wheel',
     (event) => {
-      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) takeControl();
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) takeControl(moving);
     },
     { passive: true },
   );
@@ -168,7 +170,7 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     if (moving && (!hasScrollEnd || ended)) fallback();
   });
   listen(viewport, 'focusin', () => {
-    takeControl();
+    takeControl(moving);
     if (moving) stop();
   });
   listen(win, 'blur', stop);

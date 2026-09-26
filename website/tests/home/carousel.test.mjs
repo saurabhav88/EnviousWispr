@@ -130,3 +130,28 @@ test('a new explicit selection notifies the tour owner even after stationary foc
   f.carousel.goTo(1, { user: true });
   assert.equal(f.manual, 2);
 });
+
+// Codex P2 on #2768: a stale marker made the first automatic slide after "Play tour" announce itself.
+for (const [name, takeover] of [
+  ['stationary focus', (f) => f.emit(f.rail, 'focusin')],
+  ['a sideways wheel that cannot scroll', (f) => f.emit(f.rail, 'wheel', { deltaX: 40, deltaY: 0 })],
+]) {
+  test(`${name} stops the tour without marking the next automatic slide manual`, (t) => {
+    const f = fixture(t);
+    takeover(f);
+    assert.equal(f.manual, 1);
+    f.carousel.goTo(1); // The visitor pressed "Play tour"; this is the tour's first move.
+    f.rail.scrollLeft = 320;
+    f.emit(f.rail, 'scroll');
+    f.emit(f.rail, 'scrollend');
+    assert.deepEqual(f.settled, [{ index: 1, changed: true, manual: false }]);
+  });
+}
+
+test('focus that interrupts an automatic slide still settles it as the visitor’s', (t) => {
+  const f = fixture(t);
+  f.carousel.goTo(1);
+  f.emit(f.rail, 'focusin');
+  assert.equal(f.manual, 1);
+  assert.deepEqual(f.settled, [{ index: 0, changed: false, manual: true }]);
+});
