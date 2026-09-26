@@ -205,6 +205,11 @@ extension InverseTextNormalizer {
 
   /// An address word shortly before the match, alone or inside a compound ("adres", "privéadres",
   /// "e-mail", "correo", "adresse").
+  ///
+  /// Known limit (local Codex r13, declined): the cue is read within 48 characters, not as the
+  /// word that introduces the name, so "El correo dice Escribe arroba gmail.com" converts. The
+  /// measured Polish take "Mój prywatny adres się zmienił. Teraz to Łukasz małpa, przykład.pl"
+  /// has its cue even farther from the name and must convert; no distance separates the two.
   func hasAddressCue(_ m: Match) -> Bool {
     let r = m.result.range
     let lead = min(r.location, 48)
@@ -323,7 +328,7 @@ extension InverseTextNormalizer {
     let syntax = Self.phraseAlt(words.flatMap { $0.dot + $0.slash + $0.colon })
     // An at-word before the host: an address the email passes refused is not a link either.
     return firstMatch(
-      #"(?:^|[^\p{L}])(?:https?|"# + syntax + "|" + Self.addressAtAlt + #")\s+$"#, before) != nil
+      #"(?:^|[^\p{L}])(?:https?|"# + syntax + "|" + Self.addressAtAlt + #"),?\s+$"#, before) != nil
       || firstMatch(#"/\s*$"#, before) != nil
   }
 
@@ -339,11 +344,19 @@ extension InverseTextNormalizer {
     return !["ai", "app", "xyz"].contains(last)
   }
 
+  /// Each language's spoken question mark, the start of a query no pass here reads.
+  static let spokenQueryWords = [
+    "point d'interrogation", "signo de interrogación", "signo de interrogacion", "znak zapytania",
+    "vraagteken", "question mark",
+  ]
+
   /// Spoken URL syntax right after a converted link means the link goes on past what reads.
   func neutralLinkContinues(_ rest: String, _ words: [SpokenURLWords]) -> Bool {
     // A dash word or a written `/` after the link also means it goes on ("… barra api guion v2",
     // "… punto es / ayuda"; local Codex class enumeration).
-    let syntax = Self.phraseAlt(words.flatMap { $0.dot + $0.slash + $0.colon })
+    // A spoken query mark too ("… barra ayuda signo de interrogación q"; local Codex r13).
+    let syntax = Self.phraseAlt(
+      words.flatMap { $0.dot + $0.slash + $0.colon } + Self.spokenQueryWords)
     // So does a written `.label` or `:port` the pass did not read ("… punto es.foo", "…:8080").
     return firstMatch(#"^\s+(?:"# + syntax + "|" + Self.neutralDashWordAlt + #")(?:\s+|$)"#, rest)
       != nil

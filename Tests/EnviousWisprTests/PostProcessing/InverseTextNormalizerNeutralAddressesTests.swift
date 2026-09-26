@@ -269,6 +269,9 @@ struct InverseTextNormalizerNeutralAddressesTests {
     "voorbeeld punt nl schuine streepje",
     // a fully written link keeps every byte, spacing included
     "https://  Ejemplo.ES ya",
+    // an address refused after a comma, or a link going on into a spoken query, stays whole (r13)
+    "Mój adres to Łukasz małpa, przykład.pl ukośnik pomoc",
+    "https dos puntos barra barra ejemplo punto es barra ayuda signo de interrogación q",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",
