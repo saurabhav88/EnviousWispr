@@ -585,6 +585,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     if let takeID, takeID != afmPrewarmTakeID { return }
     afmPrewarmTask?.cancel()
     afmPrewarmTask = nil
+    Self.discardPrepared(afmPrewarmPrepared)
     afmPrewarmPrepared = nil
     afmPrewarmTakeID = nil
     afmPrewarmGeneration += 1
@@ -597,8 +598,20 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   func claimAFMPrewarm(takeID: String?) -> (any Sendable)? {
     guard let takeID, takeID == afmPrewarmTakeID else { return nil }
     let prepared = afmPrewarmPrepared
+    afmPrewarmPrepared = nil  // handed over, so clearing below must not discard it
     clearAFMPrewarm()
     return prepared
+  }
+
+  /// Stop the background work of a prepared session nobody will use.
+  private static func discardPrepared(_ prepared: (any Sendable)?) {
+    #if canImport(FoundationModels)
+      if #available(macOS 26.0, *),
+        let session = prepared as? AppleIntelligenceConnector.AFMPreparedSession
+      {
+        session.discard()
+      }
+    #endif
   }
 
   /// The Apple polish call: the concrete connector gets the claimed session through
@@ -691,7 +704,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       let claimed = claimAFMPrewarm(takeID: context.takeID)
       guard provider == .appleIntelligence,
         !polishInstructions.systemPrompt.contains("${transcript}")
-      else { return nil }
+      else {
+        Self.discardPrepared(claimed)
+        return nil
+      }
       return claimed
     }()
     telemetry.breadcrumbStarted(

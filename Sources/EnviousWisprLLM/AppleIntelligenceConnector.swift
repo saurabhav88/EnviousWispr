@@ -601,7 +601,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let (prepared, promptTokenCount, prewarm) = try sessionForPolish(
         detectedLanguage: detectedLanguage, offered: offered)
       // The count started at preparation; a failed or cancelled one counts as before.
-      let cachedPromptTokens = try? await promptTokenCount?.value
+      let cachedPromptTokens = try await Self.awaitPreparedCount(promptTokenCount)
 
       // Plain-string output path (no @Generable schema). Schema-constrained
       // output was dropping terminal punctuation; plain-string + post-filter
@@ -675,7 +675,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let (prepared, promptTokenCount, prewarm) = try sessionForPolish(
         detectedLanguage: detectedLanguage, offered: offered)
       // The count started at preparation; a failed or cancelled one counts as before.
-      let cachedPromptTokens = try? await promptTokenCount?.value
+      let cachedPromptTokens = try await Self.awaitPreparedCount(promptTokenCount)
 
       // CLT-only fallback path: same plain-string + filter design as the
       // @Generable path so behavior is consistent across build flavors.
@@ -789,6 +789,27 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       /// The #1055 preflight count of `prepared.systemPrompt`, started at preparation and
       /// finished in the background, so handing the session over never waits for it.
       let systemPromptTokens: Task<Int, Error>
+
+      /// Stop the background count of a session nobody will use (an unused slot, a key
+      /// mismatch), so it cannot keep the model busy during the next take.
+      package func discard() {
+        systemPromptTokens.cancel()
+      }
+    }
+
+    /// The prepared instruction count, awaited on behalf of `polish`: the caller's
+    /// cancellation cancels the count and still ends polish; a count that failed or was
+    /// cancelled on its own returns nil, and polish counts as it always did.
+    @available(macOS 26.0, *)
+    static func awaitPreparedCount(_ count: Task<Int, Error>?) async throws -> Int? {
+      guard let count else { return nil }
+      let value = await withTaskCancellationHandler {
+        try? await count.value
+      } onCancel: {
+        count.cancel()
+      }
+      try Task.checkCancellation()
+      return value
     }
 
     /// Build the session a polish in `detectedLanguage` would build, start loading it
@@ -1029,6 +1050,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let assembly = try resolveAssembly(detectedLanguage: detectedLanguage)
       guard let offered else { return (Self.buildSession(assembly), nil, .none) }
       guard Self.reusesPrepared(offered.key, for: assembly.key) else {
+        offered.discard()
         return (Self.buildSession(assembly), nil, .missKey)
       }
       return (offered.prepared, offered.systemPromptTokens, .hit)

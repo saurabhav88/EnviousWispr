@@ -174,3 +174,51 @@ struct AFMPreparedSessionKeyTests {
     }
   }
 #endif
+
+#if canImport(FoundationModels)
+  /// #3195: the background instruction count a prepared session carries never outlives
+  /// the polish waiting on it, and never hides that polish's cancellation.
+  @Suite("Apple prepared-session count lifetime (#3195)", .tags(.productOutcome))
+  struct AFMPreparedCountLifetimeTests {
+    actor Gate {
+      private var waiters: [CheckedContinuation<Void, Never>] = []
+      private var open = false
+      func wait() async {
+        if open { return }
+        await withCheckedContinuation { waiters.append($0) }
+      }
+      func release() {
+        open = true
+        waiters.forEach { $0.resume() }
+        waiters = []
+      }
+    }
+
+    @Test("a finished count is returned; a failed one falls back to counting")
+    func valueOrNil() async throws {
+      guard #available(macOS 26.0, *) else { return }
+      let done = Task<Int, Error> { 812 }
+      #expect(try await AppleIntelligenceConnector.awaitPreparedCount(done) == 812)
+      struct Boom: Error {}
+      let failed = Task<Int, Error> { throw Boom() }
+      #expect(try await AppleIntelligenceConnector.awaitPreparedCount(failed) == nil)
+      #expect(try await AppleIntelligenceConnector.awaitPreparedCount(nil) == nil)
+    }
+
+    @Test("cancelling the waiting polish cancels the count and still ends polish")
+    func callerCancellationPropagates() async throws {
+      guard #available(macOS 26.0, *) else { return }
+      let gate = Gate()
+      let count = Task<Int, Error> {
+        await gate.wait()
+        try Task.checkCancellation()
+        return 1
+      }
+      let polish = Task { try await AppleIntelligenceConnector.awaitPreparedCount(count) }
+      polish.cancel()
+      await gate.release()
+      await #expect(throws: CancellationError.self) { _ = try await polish.value }
+      #expect(count.isCancelled, "the count was cancelled with the polish")
+    }
+  }
+#endif
