@@ -95,6 +95,10 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     ("abre ejemplo.es barra obliqua ayuda y", "abre ejemplo.es/ayuda y"),
     // a path segment that is itself the second word of the full slash name
     ("apri esempio.it barra obliqua obliqua oggi", "apri esempio.it/obliqua oggi"),
+    // a domain the recogniser already dotted, licensed by the language's own address word
+    ("manda un messaggio a info chiocciola azienda.it oggi", "manda un messaggio a info@azienda.it oggi"),
+    ("отправь письмо на info собака yandex.ru сегодня", "отправь письмо на info@yandex.ru сегодня"),
+    ("mande uma mensagem para contato arroba empresa.com.br hoje", "mande uma mensagem para contato@empresa.com.br hoje"),
     // WhisperKit, language set: verbatim (#3233 baseline v1)
     (
       "Se il programma non si avvia, apri la pagina esempio.it barra aiuto e segui i passaggi nella sezione dei problemi frequenti.",
@@ -185,6 +189,8 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     "напиши на собака gmail точка com",
     "scrivi alla chiocciola esempio punto it",
     "escreva ao arroba exemplo ponto pt",
+    "mande uma mensagem para que arrobaexemplo.pt",
+    "La chiocciola azienda.it era scritta sul muro.",
     // G7: a one-word mailbox in another language still converts (checked in `rows` of #3226)
   ]
 
@@ -198,6 +204,7 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
   nonisolated static let otherLanguageNames: [(dictated: String, expected: String)] = [
     ("escribe a que arroba ejemplo punto es", "escribe a que@ejemplo.es"),
     ("napisz do il małpa przykład kropka pl", "napisz do il@przykład.pl"),
+    ("mi correo es que arrobaejemplo.es", "mi correo es que@ejemplo.es"),
   ]
 
   @Test("a refusal in one language never refuses another's mailbox", arguments: otherLanguageNames)

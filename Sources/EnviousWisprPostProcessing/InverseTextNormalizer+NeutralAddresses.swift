@@ -238,7 +238,11 @@ extension InverseTextNormalizer {
       if !spokenDomainDot {
         // A written hyphen counts too ("juan-perez arroba gmail.com"; local Codex r11).
         let nameIsCompound = splitOnPattern(m.g("name") ?? "", sep + "|-").count > 1
-        guard nameIsCompound || hasAddressCue(m) else { return nil }
+        // #3233: the Italian, Portuguese and Russian address words license only their own
+        // at-words, so the #3226 languages' admission is unchanged (local Codex r4).
+        let newLanguageCue =
+          Self.gluedCueAtWords.contains(atw) && hasGluedAtWordCue(m)
+        guard nameIsCompound || hasAddressCue(m) || newLanguageCue else { return nil }
       }
       // A comma after the at-word: Polish `małpa` only, and only after an address cue
       // ("Teraz to Łukasz małpa, przykład.pl"; Codex plan r2 N2).
@@ -367,7 +371,10 @@ extension InverseTextNormalizer {
     // weight unit, plural) is prose.
     out = gluedAtWord(
       out, start + #"(?<name>"# + dotted + #")\s+(?<atw>arroba)"# + dom + end,
-      refused: Self.portugueseNameRefusedWords, pluralS: true)
+      refused: Self.portugueseNameRefusedWords, pluralS: true,
+      // `arroba` is Spanish too: the Portuguese words refuse only a Portuguese address
+      // (local Codex r4).
+      refusedOnlyAfter: #"\p{L}*(?:endereço|mensagem)\p{L}*"#)
     // Russian: `собака` as a dotted label between the name and the host.
     out = gluedAtWord(
       out, start + #"(?<name>"# + dotted + #")\.(?<atw>собака)\."# + dom + end,
@@ -377,15 +384,18 @@ extension InverseTextNormalizer {
 
   /// One glued at-word shape; converts the whole address or nothing.
   private func gluedAtWord(
-    _ t: String, _ pat: String, refused: Set<String>, pluralS: Bool = false
+    _ t: String, _ pat: String, refused: Set<String>, pluralS: Bool = false,
+    refusedOnlyAfter cue: String? = nil
   ) -> String {
     reSub(pat, t) { m in
       let name = m.g("name") ?? ""
       let dom = m.g("dom") ?? ""
       let tld = m.g("tld") ?? ""
       guard !name.isEmpty, !name.hasSuffix("."), !name.hasSuffix("-"),
-        !Self.isRefusedNeutralName([name]), !refused.contains(name.lowercased())
+        !Self.isRefusedNeutralName([name])
       else { return nil }
+      // `refused` belongs to one language; with `cue`, only when that language's cue precedes.
+      if refused.contains(name.lowercased()), cue.map({ hasCue($0, m) }) ?? true { return nil }
       if pluralS, dom.lowercased().hasPrefix("s") { return nil }
       // A spoken ending word only after its dot word, as in every other pass (local Codex r1).
       guard Self.neutralTLDSeparatorAllowed(tld, before: "."),
@@ -398,15 +408,23 @@ extension InverseTextNormalizer {
     }
   }
 
-  /// Address words for the Italian, Portuguese and Russian glued shapes only (Codex plan r2): kept
-  /// out of `hasAddressCue`, which licenses the #3226 passes.
+  /// The at-words whose address the Italian, Portuguese and Russian address words may license.
+  static let gluedCueAtWords: Set<String> = ["chiocciola", "arroba", "собака", "sobaka"]
+
+  /// Address words for Italian, Portuguese and Russian addresses only (Codex plan r2): kept out of
+  /// `hasAddressCue`, which licenses the #3226 passes.
   func hasGluedAtWordCue(_ m: Match) -> Bool {
+    hasCue(
+      #"\p{L}*(?:indirizzo|endereço|mensagem|адрес|письм|почт)\p{L}*|(?:^|[^\p{L}])(?:scrivi|manda)(?:[^\p{L}]|$)"#,
+      m)
+  }
+
+  /// `pattern` within 48 characters before the match.
+  func hasCue(_ pattern: String, _ m: Match) -> Bool {
     let r = m.result.range
     let lead = min(r.location, 48)
     let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
-    return firstMatch(
-      #"\p{L}*(?:indirizzo|endereço|mensagem|адрес|письм|почт)\p{L}*|(?:^|[^\p{L}])(?:scrivi|manda)(?:[^\p{L}]|$)"#,
-      before) != nil
+    return firstMatch(pattern, before) != nil
   }
 
   // MARK: - Links: protocol, path, www, localhost
