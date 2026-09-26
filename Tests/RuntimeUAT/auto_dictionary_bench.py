@@ -78,7 +78,8 @@ CHECK_RE = re.compile(r"LearnedWordCheck: flagged=(\d+) approved=(\d+) applied=(
 
 
 def door_get(key):
-    v = subprocess.run(["launchctl", "getenv", key], capture_output=True, text=True).stdout.strip()
+    # A failed read raises: it must never look like an unset door.
+    v = subprocess.run(["launchctl", "getenv", key], capture_output=True, text=True, check=True).stdout.strip()
     return v or None
 
 
@@ -230,10 +231,12 @@ def main():
         except Exception as error:
             stopped = False
             print(f"APP STOP FAILED: {error}")
+        doors_restored = True
         for key, value in ((ADAPTER_KEY, snaps["adapter"]), (THRESHOLD_KEY, snaps["threshold"])):
             try:
                 door_set(key, value)
             except Exception as error:
+                doors_restored = False
                 print(f"DOOR RESTORE FAILED for {key}: {error}")
         if stopped:
             try:
@@ -241,7 +244,12 @@ def main():
             except Exception as error:
                 print(f"WORDS RESTORE FAILED: {error}")
         ok_w, why = lfe.verify_restore(lfe.WORDS, snaps["words"], "words") if stopped else (False, "app did not stop")
-        ok_d = door_get(ADAPTER_KEY) == snaps["adapter"] and door_get(THRESHOLD_KEY) == snaps["threshold"]
+        try:
+            ok_d = doors_restored and door_get(ADAPTER_KEY) == snaps["adapter"] \
+                and door_get(THRESHOLD_KEY) == snaps["threshold"]
+        except Exception as error:
+            ok_d = False
+            print(f"DOOR READBACK FAILED: {error}")
         if initially_running and stopped:
             subprocess.run(["open", "-n", lfe.APP], check=False)
         lfe.save("rows.json", rows)
