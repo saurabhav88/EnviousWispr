@@ -1,0 +1,6 @@
+{"input": "Put the parts by the workbench, no, on the shelf by the door.", "output": "Put the parts on the shelf by the door."}
+{"input": "Put the parts by the workbench. No, wait, they are fine there, I already checked.", "output": "Put the parts by the workbench. No, wait, they are fine there, I already checked."}
+{"input": "Thanks for the photos. Oh and the plumber comes at eight. Sorry, at nine. Someone needs to be home.", "output": "Thanks for the photos.\n\nOh and the plumber comes at nine. Someone needs to be home."}
+{"input": "The plumber came at eight. Sorry I missed your call, I was with him.", "output": "The plumber came at eight. Sorry I missed your call, I was with him."}
+{"input": "um so the the invoice is still open I think and I was going to", "output": "So the invoice is still open, I think, and I was going to"}
+{"input": "three things before lunch first call Mia second book the room third send the invoice", "output": "Three things before lunch:\n- Call Mia.\n- Book the room.\n- Send the invoice."}

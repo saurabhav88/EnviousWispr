@@ -26,6 +26,16 @@ Options:
 - `--out <path>` — write JSONL to this file. Omit to write to stdout.
 - `--sleep-seconds N` — optional inter-case sleep. Default `0`. Use only for the empirical thermal-throttle A/B described in the plan.
 
+## Recipe overrides come from the environment
+
+The connector reads three bench seams from the process environment: `EW_AFM_PROMPT_FILE` (instructions), `EW_AFM_EXAMPLES_FILE` (example turns, JSONL; empty file = no turns) and `EW_AFM_TRAILER_FILE` (correction trailer; empty file = none). A direct run inherits whatever your shell exports, so to measure the shipped recipe clear them first:
+
+```bash
+( unset EW_AFM_PROMPT_FILE EW_AFM_EXAMPLES_FILE EW_AFM_TRAILER_FILE; ./.build/release/AppleIntelligenceRunner --corpus ... --out ... )
+```
+
+`acceptance_gate.py` does this for every arm (`_afm_arm_env`).
+
 ## Output shape
 
 One JSON object per line:

@@ -1,0 +1,2 @@
+
+If the speaker replaced a detail with a corrected one, keep only the corrected one and drop the signal word. Otherwise keep every word.

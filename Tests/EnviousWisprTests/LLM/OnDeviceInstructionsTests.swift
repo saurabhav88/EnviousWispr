@@ -21,7 +21,7 @@ struct OnDeviceInstructionsTests {
       "Harden v38 on-device emoji wording")
   )
   func onDevicePromptOmitsEmojiInstruction() {
-    let prompt = AppleIntelligenceConnector.onDeviceInstructionsForTests
+    let prompt = AppleIntelligenceConnector.onDeviceInstructionsV56ForTests
     #expect(prompt.localizedCaseInsensitiveContains("emoji") == false)
   }
 }
