@@ -229,6 +229,7 @@ struct InverseTextNormalizerNeutralAddressesTests {
     "john punkt smith at example.com",
     // an address with a path, or a host with a port, is left whole rather than half-converted
     "jan arroba ejemplo punto es barra ayuda",
+    "escribe a maría arroba gmail punto com /ayuda",
     "ejemplo punto es dos puntos 8080 barra api",
     "https dos puntos barra barra ejemplo punto es dos puntos 8080",
     // a link that goes on in a way no pass reads stays whole, numbers inside it included

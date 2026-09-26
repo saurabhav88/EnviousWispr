@@ -346,6 +346,7 @@ extension InverseTextNormalizer {
       with: NSRange(location: end, length: min(m.ns.length - end, 40)))
     let slash = Self.phraseAlt(Self.spokenURLWords.flatMap { $0.slash })
     return firstMatch(#"^\s+(?:"# + slash + #")\s*[\p{L}\p{N}]"#, rest) != nil
+      || firstMatch(#"^\s*/\s*[\p{L}\p{N}]"#, rest) != nil
   }
 
   /// `https deux points barre oblique barre oblique exemple point fr` → `https://exemple.fr`,
