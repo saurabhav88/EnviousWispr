@@ -283,7 +283,11 @@ extension InverseTextNormalizer {
     if let alias = firstMatch(#"^"# + neutralWWWAlias, host) {
       host = "www" + (host as NSString).substring(from: (alias as NSString).length)
     }
-    return neutralHostLabels(host, w).joined(separator: ".").lowercased()
+    let joined = neutralHostLabels(host, w).joined(separator: ".")
+    // A host the recogniser already wrote keeps its case (cloud review, PR #3232); a spoken one
+    // is lower-cased, since the recogniser capitalises it only for starting a sentence.
+    let spoken = firstMatch(#"\s+(?:"# + phraseAlt(w.dot) + #")\s+"#, raw) != nil
+    return spoken ? joined.lowercased() : joined
   }
 
   /// Path segments after a host: each language's slash phrase, then one segment; Dutch may
@@ -410,7 +414,11 @@ extension InverseTextNormalizer {
         + Self.neutralTLDAlt + #"))"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
-        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
+        // Only a host with something SPOKEN in it: a fully written `WWW.Example.COM` is the
+        // user's own text and is left byte-identical (cloud review, PR #3232).
+        guard firstMatch(dot, m.g("host") ?? "") != nil
+            || firstMatch(#"^(?!www)"# + Self.neutralWWWAlias, m.g("host") ?? "") != nil,
+          !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
           !neutralLinkStartsEarlier(m, Self.spokenURLWords)
         else { return nil }
         return Self.neutralCanonicalHost(m.g("host") ?? "", w)

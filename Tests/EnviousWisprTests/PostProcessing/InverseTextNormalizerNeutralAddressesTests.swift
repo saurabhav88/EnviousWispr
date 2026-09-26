@@ -118,6 +118,8 @@ struct InverseTextNormalizerNeutralAddressesTests {
     ("ga naar www.voorbeeld punt nl vandaag", "ga naar www.voorbeeld.nl vandaag"),
     // `localhost` is a host only on its own: a domain starting with the word keeps its ending (r4)
     ("http dos puntos barra barra localhost punto com", "http://localhost.com"),
+    // a host the recogniser wrote keeps its case when a spoken path joins it (cloud review)
+    ("Abre Ejemplo.ES barra ayuda", "Abre Ejemplo.ES/ayuda"),
     // German borrowed "at"; a Unicode name
     ("schreib an müller at beispiel punkt de bitte", "schreib an müller@beispiel.de bitte"),
     // recogniser output, verbatim
@@ -249,6 +251,9 @@ struct InverseTextNormalizerNeutralAddressesTests {
     // a written ending the link pass does not read leaves the link whole (diff review r6)
     "https dos puntos barra barra ejemplo punto es.foo barra ayuda",
     "https dos puntos barra barra ejemplo punto es:8080",
+    // a fully written address is the user's own text: nothing spoken, nothing changes (cloud review)
+    "Visit WWW.Example.COM now",
+    "Ga naar www.Voorbeeld.NL/help nu",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",
