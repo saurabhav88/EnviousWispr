@@ -179,19 +179,19 @@ final class MenuBarController: NSObject {
   ) -> (title: String, enabled: Bool) {
     switch state {
     case .nothingSelected:
-      return (Self.addSelectedWordTitle, fallbackEnabled)
+      return (Self.addToDictionaryTitle, fallbackEnabled)
     case .blocked:
       // **Enabled, and that is the point.** A refused read is not an empty selection: the user has
       // selected something and we could not read it, usually because Accessibility is off. A greyed
       // row tells them nothing, so this one opens the panel, which exists to state the reason. The
       // door that is meant to be the reliable one must not fail silently.
-      return (Self.addSelectedWordTitle, true)
+      return (Self.addToDictionaryTitle, true)
     case .ready(let selection):
       // **A `.ready` carrying only whitespace is the empty case wearing the wrong label.** The
       // reader trims, so this is not a state it can produce — but the type permits it, and a row
       // reading `Add “”` that opens a panel on nothing is worse than an inert one.
       guard !selection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return (Self.addSelectedWordTitle, false)
+        return (Self.addToDictionaryTitle, false)
       }
       return (Self.readyTitle(selection), true)
     }
@@ -223,9 +223,9 @@ final class MenuBarController: NSObject {
       comment: "Menu bar menu: pastes the last dictation into the app in front.")
   }
 
-  static var addSelectedWordTitle: String {
+  static var addToDictionaryTitle: String {
     String(
-      localized: "Add Selected Word",
+      localized: "Add to Dictionary",
       comment: "Menu bar menu: adds the word selected in any app to Your Words.")
   }
 
@@ -441,8 +441,8 @@ final class MenuBarController: NSObject {
     quickAddItem.image = NSImage(
       systemSymbolName: "text.badge.plus",
       accessibilityDescription: String(
-        localized: "Add selected word",
-        comment: "Menu bar menu, VoiceOver: the icon beside Add Selected Word."))
+        localized: "Add to dictionary",
+        comment: "Menu bar menu, VoiceOver: the icon beside Add to Dictionary."))
     quickAddItem.target = self
     quickAddItem.identifier = MenuBarItemID.quickAdd
     quickAddItem.isEnabled = quickAdd.enabled

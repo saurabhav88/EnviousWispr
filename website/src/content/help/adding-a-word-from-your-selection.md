@@ -15,7 +15,7 @@ When EnviousWispr writes a name the wrong way, you do not have to open settings 
 Both do the same thing, so use whichever is closer to hand.
 
 1. **The shortcut.** Highlight the word, then press your Quick Add keybind. It is **Control Shift W** unless you have changed it. You can see and change it in **Settings** \> **Keybinds**, under **Add a Word**.
-2. **The menu bar.** Highlight the word, click the EnviousWispr icon, and choose **Add Selected Word**. The row names the word it found, so you can check it before you click.
+2. **The menu bar.** Highlight the word, click the EnviousWispr icon, and choose the item that starts with **Add**. It names the word it found, so you can check it before you click.
 
 The panel shows you the word first and ranks the words already in your library, so you pick which one this spelling belongs to. Nothing is written until you choose.
 

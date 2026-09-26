@@ -2010,17 +2010,6 @@
         }
       }
     },
-    "Add Selected Word" : {
-      "comment" : "Menu bar menu: adds the word selected in any app to Your Words.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausgewähltes Wort hinzufügen"
-          }
-        }
-      }
-    },
     "Add a Word" : {
       "comment" : "Keybinds settings: section heading for the add-a-word keybind, shown in capitals.",
       "localizations" : {
@@ -2064,17 +2053,6 @@
         }
       }
     },
-    "Add selected word" : {
-      "comment" : "Menu bar menu, VoiceOver: the icon beside Add Selected Word.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausgewähltes Wort hinzufügen"
-          }
-        }
-      }
-    },
     "Add snippet" : {
       "localizations" : {
         "de" : {
@@ -2102,6 +2080,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gib den Text ein, den dieser Textbaustein einfügen soll. Ein leerer Textbaustein würde deine gesprochenen Wörter löschen."
+          }
+        }
+      }
+    },
+    "Add to Dictionary" : {
+      "comment" : "Menu bar menu: adds the word selected in any app to Your Words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Wörterbuch hinzufügen"
+          }
+        }
+      }
+    },
+    "Add to dictionary" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Add to Dictionary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Wörterbuch hinzufügen"
           }
         }
       }
