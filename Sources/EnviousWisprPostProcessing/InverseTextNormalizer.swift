@@ -327,8 +327,8 @@ public struct InverseTextNormalizer: Sendable {
     // before the chain pass so the rest reads on its own. Only that shape: "still at one point
     // six oh" is a decimal (founder history, 1.60) and keeps reading as one.
     t = reSub(
-      #"\bat\s+one\s+point\b(?=\s+(?:"# + Self.identifierNumberWordAlt + #")(?:\s+(?:"#
-        + Self.identifierNumberWordAlt + #"))*\s+point\b)"#, t
+      #"\bat\s+one\s+point\b(?=\s+(?:\d+|(?:"# + Self.identifierNumberWordAlt + #")(?:\s+(?:"#
+        + Self.identifierNumberWordAlt + #"))*)\s+point\b)"#, t
     ) { protect($0) }
     t = dottedNumberChains(t, englishWords: true)
     // protect spoken dotted chains (versions / IP-like: "one dot two dot three", >=2 dots) so the
@@ -992,7 +992,13 @@ public struct InverseTextNormalizer: Sendable {
       // "Read the docs at docs dot example dot com": after the English "at", a one-word name
       // before a MULTI-label domain is a website in prose far more often than an address; the
       // URL pass takes it (confirming diff review). A dotted name still says address.
-      if atw == "at", nameLabels.count == 1, domLabels.count > 1 { return nil }
+      // An "email"/"mail" cue right before the name says address ("email john at mail dot
+      // example dot com"; cloud-review enumeration).
+      let lead = min(m.result.range.location, 24)
+      let beforeName = m.ns.substring(
+        with: NSRange(location: m.result.range.location - lead, length: lead))
+      let emailCue = firstMatch(#"\be-?mail(?:\s+me)?(?:\s+at)?\s+$"#, beforeName) != nil
+      if atw == "at", nameLabels.count == 1, domLabels.count > 1, !emailCue { return nil }
       if neutral, atw == "at", nameLabels.count == 1,
         allDots.contains(where: { $0.lowercased() == "dot" })
       {

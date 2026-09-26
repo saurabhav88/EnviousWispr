@@ -91,6 +91,12 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("At one point twelve people left.", "At one point 12 people left."),
     // cloud review: the idiom "at one point" never starts a version
     ("At one point two point three million people left", "At one point 2.3 million people left"),
+    ("At one point 2 point three million people left", "At one point 2.3 million people left"),
+    // a separate field after a two-digit date part, and the article before a code letter
+    ("The date is 2026-9-26 8 am.", "The date is 2026-09-26 8:00 AM."),
+    ("Use a b dash two adapter.", "Use a B-2 adapter."),
+    // an "email" cue says address even for a multi-label domain
+    ("Please email john at mail dot example dot com", "Please email john@mail.example.com"),
     // "dash" as prose, and the pronoun
     ("Make a dash for it.", "Make a dash for it."),
     ("It was a- one of a kind", "It was a- one of a kind"),

@@ -70,13 +70,15 @@ extension InverseTextNormalizer {
     let end = r.location + r.length
     let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
     let after = m.ns.substring(with: NSRange(location: end, length: min(m.ns.length - end, 24)))
-    // A digit right after a match that itself ENDS in a digit means the recogniser split one
-    // number ("S dash 1 2", diff review). After a spoken number word it is a separate field
-    // ("version one point two point three 64 bit", cloud review), so it does not count there.
+    // A lone digit right after a match that itself ends in a LONE digit means the recogniser
+    // split one number ("S dash 1 2", diff review). After a spoken number word, or after a
+    // two-digit part, it is a separate field ("version one point two point three 64 bit",
+    // "2026-9-26 8 am"; cloud review and its local enumeration), so it does not count there.
     let endsInDigit = m.whole.last?.isNumber == true
     return firstMatch(#"(?:^|\s)(?:"# + connectorAlt + #")\s+$"#, before) != nil
       || firstMatch(#"^\s+(?:"# + connectorAlt + #")\s+\S"#, after) != nil
-      || (endsInDigit && firstMatch(#"^\s+\d"#, after) != nil)
+      || (endsInDigit && firstMatch(#"\d{2,}$"#, m.whole) == nil
+        && firstMatch(#"^\s+\d(?=\s|$)"#, after) != nil)
   }
 
   // MARK: - Dotted numbers: versions and IP addresses
@@ -202,9 +204,14 @@ extension InverseTextNormalizer {
       // parity holdout) is not a code: refuse it when another lone letter stands just before.
       if raw.count == 1, raw == raw.lowercased() {
         let r = m.result.range
-        let lead = min(r.location, 8)
+        let lead = min(r.location, 12)
         let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
-        if firstMatch(#"(?:^|\s)[A-Za-z]\s+$"#, before, caseInsensitive: false) != nil {
+        // The article "a" is not a spelled letter ("use a b dash two adapter"), unless it sits
+        // inside a spelled run itself ("v a n dash o u t e n", parity holdout).
+        let article =
+          firstMatch(#"(?:^|\s)[Aa]\s+$"#, before, caseInsensitive: false) != nil
+          && firstMatch(#"(?:^|\s)[A-Za-z]\s+[Aa]\s+$"#, before, caseInsensitive: false) == nil
+        if firstMatch(#"(?:^|\s)[A-Za-z]\s+$"#, before, caseInsensitive: false) != nil, !article {
           return nil
         }
       }
