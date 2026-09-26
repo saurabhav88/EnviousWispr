@@ -194,6 +194,20 @@ struct LearnedWordCheckerEligibilityTests {
         == .compatible)
   }
 
+  @Test("admission edges fire on a change of admission, never on a repeat")
+  func admissionEdges() {
+    let edges = AdmissionEdges()
+    let a = ModelIdentity(family: .s1MiniChecker, name: "s1c", revision: "r", variant: "f16", runtimeABI: "x")
+    let b = ModelIdentity(family: .egOneChecker, name: "eg1c", revision: "r", variant: "f16", runtimeABI: "x")
+    #expect(edges.changed(a, admitted: true), "the first value seen is a change")
+    #expect(!edges.changed(a, admitted: true), "a republished .admitted is not")
+    #expect(!edges.changed(a, admitted: true))
+    #expect(edges.changed(b, admitted: true), "identities are tracked apart")
+    #expect(edges.changed(a, admitted: false), "removal is a change")
+    #expect(!edges.changed(a, admitted: false))
+    #expect(edges.changed(a, admitted: true), "re-admission is a change")
+  }
+
   @Test("every provider maps to its engine or to none, and back")
   func engineTable() {
     for provider in LLMProvider.allCases {

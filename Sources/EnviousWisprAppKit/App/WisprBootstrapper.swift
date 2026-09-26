@@ -745,18 +745,28 @@ package final class WisprBootstrapper {
       case .egOne: egOneUpgrade?.registration.manifest.identity
       case .s1Mini: s1BaseRegistration?.manifest.identity
       }
+      // Act on admission EDGES only. A runtime refresh can re-adopt the base,
+      // which republishes `.admitted`; acting on every event would request the
+      // checker again and refresh the runtime again (confirming review of #3227).
+      let edges = AdmissionEdges()
       Task {
         await modelDelivery.controller.addStateObserver { identity, state in
-          if identity == baseIdentity, case .admitted = state {
+          let admitted: Bool
+          if case .admitted = state { admitted = true } else { admitted = false }
+          if identity == baseIdentity {
             Task { @MainActor in
+              guard edges.changed(identity, admitted: admitted), admitted else { return }
               await checkerEligibility.requestAdapterDownload(for: engine)
             }
             return
           }
           guard identity == checkerIdentity else { return }
           Task { @MainActor in
-            runtime.adapterAvailabilityDidChange()
+            // The Dictionary row follows every step of the download; the
+            // server restarts only when admission itself turns on or off.
             checkerEligibility.statusDidChange()
+            guard edges.changed(identity, admitted: admitted) else { return }
+            runtime.adapterAvailabilityDidChange()
           }
         }
       }

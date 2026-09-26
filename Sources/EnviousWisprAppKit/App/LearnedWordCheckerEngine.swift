@@ -63,3 +63,17 @@ enum LearnedWordCheckerEngine: CaseIterable, Sendable {
     }
   }
 }
+
+/// Remembers whether each delivery identity was last seen admitted, so an
+/// observer acts on a change of admission, never on a repeat of the same state.
+@MainActor
+final class AdmissionEdges {
+  private var admitted: [ModelIdentity: Bool] = [:]
+
+  /// True when `isAdmitted` differs from the last value seen for `identity`
+  /// (the first value seen counts as a change).
+  func changed(_ identity: ModelIdentity, admitted isAdmitted: Bool) -> Bool {
+    defer { admitted[identity] = isAdmitted }
+    return admitted[identity] != isAdmitted
+  }
+}
