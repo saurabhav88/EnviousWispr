@@ -108,7 +108,7 @@ struct EGOneLearnedWordCheckerTests {
     #expect(slots == [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8])
   }
 
-  @Test("adapter flags go on a configured EG-1 or S1-mini launch, never on a bare one")
+  @Test("the adapter loads at scale 0 on a configured EG-1 or S1-mini launch, never on a bare one")
   func adapterFlagsAreOnlyOnConfiguredLaunch() {
     let path = URL(fileURLWithPath: "/tmp/check.gguf")
     let baseline = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
@@ -116,19 +116,25 @@ struct EGOneLearnedWordCheckerTests {
     #expect(
       EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: path)
         == baseline + [
-          "--lora", path.path, "--lora-init-without-apply",
+          "--lora-scaled", "\(path.path):0",
           "-np", "9", "--kv-unified", "--no-cache-idle-slots",
         ])
     #expect(
       EGOneRuntime.launchArguments(for: .s1Mini, learnedWordAdapterURL: path)
         == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
         + [
-          "--lora", path.path, "--lora-init-without-apply",
+          "--lora-scaled", "\(path.path):0",
           "-np", "9", "--kv-unified", "--no-cache-idle-slots",
         ])
     #expect(
       EGOneRuntime.launchArguments(for: .s1Mini, learnedWordAdapterURL: nil)
         == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#])
+    // The server splits `--lora-scaled` on "," and ":": such a path boots without the adapter.
+    for odd in ["/tmp/a,b/check.gguf", "/tmp/a:b/check.gguf"] {
+      #expect(
+        EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: URL(fileURLWithPath: odd))
+          == baseline)
+    }
   }
 
   /// A real one-question reply from the same engine and adapter: a one-prompt array comes

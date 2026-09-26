@@ -8,7 +8,7 @@ import Testing
 @Suite("EG-1 adapter server lifecycle (#3105)", .serialized, .tags(.driftGuard))
 struct EGOneAdapterLifecycleTests {
   /// A tiny HTTP server that records argv before answering /health. An
-  /// adapter-failure marker makes only --lora launches exit before readiness.
+  /// adapter-failure marker makes only --lora-scaled launches exit before readiness.
   private struct Fixture {
     let root: URL
     let binary: URL
@@ -31,7 +31,8 @@ struct EGOneAdapterLifecycleTests {
         import http.server, json, os, sys, time
         args = sys.argv[1:]
         root = os.path.dirname(os.path.realpath(sys.argv[0]))
-        adapter_root = os.path.dirname(args[args.index('--lora') + 1]) if '--lora' in args else None
+        adapter_root = (os.path.dirname(args[args.index('--lora-scaled') + 1].rsplit(':', 1)[0])
+                        if '--lora-scaled' in args else None)
         with open(os.path.join(root, 'launches.jsonl'), 'a') as log:
             log.write(json.dumps(args) + '\n')
         if adapter_root and os.path.exists(os.path.join(adapter_root, 'fail_adapter')):
@@ -116,6 +117,15 @@ struct EGOneAdapterLifecycleTests {
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
     #expect(bareConfig.learnedWordAdapterURL == nil)
     #expect(bareConfig.learnedWordAdapterArguments.isEmpty)
+    // A path the server cannot split boots without the checker, and the endpoint
+    // does not claim an adapter the requests would name.
+    let unsplittable = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini,
+      learnedWordAdapterProvider: { URL(fileURLWithPath: "/fake/a,b/s1-d5.gguf") })
+    let refused = await unsplittable.makeServerConfiguration(
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
+    #expect(refused.learnedWordAdapterURL == nil)
+    #expect(refused.learnedWordAdapterArguments.isEmpty)
   }
 
   @Test("adapter-free polish bodies keep the original bytes across inputs")
@@ -190,8 +200,8 @@ struct EGOneAdapterLifecycleTests {
     #expect(await manager.checkerFailureReason == .adapterServerExited)
     let launches = try fixture.launches()
     #expect(launches.count == 2)
-    #expect(launches[0].contains("--lora"))
-    #expect(!launches[1].contains("--lora"))
+    #expect(launches[0].contains("--lora-scaled"))
+    #expect(!launches[1].contains("--lora-scaled"))
     await manager.stop()
   }
 
