@@ -93,7 +93,7 @@ struct DictationInvokedPipelineWiringTests {
       to: "\n  }\n\n  private static func positive"
     )
     #expect(
-      reportCall.contains("takeID: driver.lastTakeID)"),
+      reportCall.contains("takeID: driver.lastTakeID,"),
       "the App completion bridge must forward the concluded key into the four-event fan-out"
     )
   }

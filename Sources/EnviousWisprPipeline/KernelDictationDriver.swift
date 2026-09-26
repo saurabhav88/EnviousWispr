@@ -1044,6 +1044,14 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// would name the next take once the user started talking again. Rationale and the
   /// absent-vs-wrong argument live on `RecordingSessionKernel.lastTakeID`.
   public var lastTakeID: String? { kernel.lastTakeID }
+
+  /// #3195: `hit` / `miss_key` / `none` for the concluded take's live Apple polish,
+  /// or nil. Reported only when the outcome belongs to `lastTakeID`, so a value can
+  /// never be attributed to a different take.
+  public var lastAFMPrewarm: String? {
+    guard let takeID = outcome.afmPrewarmTakeID, takeID == lastTakeID else { return nil }
+    return outcome.afmPrewarmOutcome?.rawValue
+  }
   public var lastRecordingDurationSeconds: Double? { kernel.lastRecordingDurationSeconds }
   /// #1408: non-nil when the most recent recording's capture was interrupted
   /// mid-flight (device died, cap reached). Drives the disconnect disclosure pill
@@ -1213,6 +1221,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.llmProvider = nil
         outcome.llmModel = nil
         outcome.polishMetadata = nil
+        outcome.afmPrewarmOutcome = nil
+        outcome.afmPrewarmTakeID = nil
         outcome.pipelineFellBackToRaw = false
         outcome.pipelineStartedAtSeconds = nil
         outcome.pipelineEndedAtSeconds = nil

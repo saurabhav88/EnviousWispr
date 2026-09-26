@@ -993,7 +993,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       }
       let llmEnd = CFAbsoluteTimeGetCurrent()
       logPolishCompletion(
-        result: result, duration: llmEnd - llmStart, provider: provider, model: model)
+        result: result, duration: llmEnd - llmStart, provider: provider, model: model,
+        afmPrewarm: context.takeID == nil ? nil : prewarmOutcome?.rawValue)
       let validation = validatePolishOutput(
         polished: result.polishedText, original: context.text, mode: .message,
         provider: provider, model: model
@@ -1432,7 +1433,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   private func logPolishCompletion(
     result: LLMResult, duration: Double,
     provider: LLMProvider, model: String,
-    extraData: [String: String] = [:]
+    extraData: [String: String] = [:],
+    /// #3195: app.log only (content-free), for Live UAT; not the Sentry breadcrumb.
+    afmPrewarm: String? = nil
   ) {
     var data: [String: String] = [
       "provider": provider.rawValue,
@@ -1446,7 +1449,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     Task {
       await AppLogger.shared.log(
         "LLM polish complete: \(result.polishedText.count) chars in \(String(format: "%.3f", duration))s "
-          + "(provider=\(provider.rawValue), model=\(model))",
+          + "(provider=\(provider.rawValue), model=\(model)"
+          + (afmPrewarm.map { ", afm_prewarm=\($0)" } ?? "") + ")",
         level: .info, category: "PipelineTiming"
       )
     }

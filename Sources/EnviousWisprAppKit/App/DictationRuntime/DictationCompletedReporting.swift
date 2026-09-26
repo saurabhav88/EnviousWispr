@@ -67,7 +67,9 @@ enum DictationCompletedReporting {
       // this event with the NEXT take's id, which is worse than absent because it
       // joins cleanly to the wrong dictation. Rationale on
       // `RecordingSessionKernel.lastTakeID`.
-      takeID: driver.lastTakeID)
+      takeID: driver.lastTakeID,
+      // #3195: content-free; nil unless this take's live Apple polish completed.
+      afmPrewarm: driver.lastAFMPrewarm)
   }
 
   private static func positive(_ value: Int?) -> Int? {
