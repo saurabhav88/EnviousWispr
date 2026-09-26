@@ -829,8 +829,15 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     /// `polish` normalizes it.
     @available(macOS 26.0, *)
     package func prepareSession(detectedLanguage: String?) async throws -> AFMPreparedSession {
-      let assembly = try resolveAssembly(
-        detectedLanguage: LanguageNormalizer.baseCode(detectedLanguage))
+      let normalizedBase = LanguageNormalizer.baseCode(detectedLanguage)
+      // The same gate `polish` applies first: a language Apple Intelligence rejects never
+      // gets a session built for it (PR review P2).
+      if let base = Self.unsupportedBaseCode(
+        normalizedBase: normalizedBase, supportedLanguages: Self.supportedLanguageProvider())
+      {
+        throw LLMError.unsupportedInputLanguage(base)
+      }
+      let assembly = try resolveAssembly(detectedLanguage: normalizedBase)
       // A cancelled preparation never builds or hands back a session.
       try Task.checkCancellation()
       let prepared = Self.buildSession(assembly)

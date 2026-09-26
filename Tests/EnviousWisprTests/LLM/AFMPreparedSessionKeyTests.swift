@@ -155,6 +155,20 @@ struct AFMPreparedSessionKeyTests {
       #expect(prepared.countLifetime.task.isCancelled, "a rejected session's count is stopped")
     }
 
+    @Test("a language Apple Intelligence rejects is never prepared")
+    func unsupportedLanguageIsNotPrepared() async throws {
+      guard #available(macOS 26.0, *) else { return }
+      let previous = AppleIntelligenceConnector.supportedLanguageProvider
+      AppleIntelligenceConnector.supportedLanguageProvider = { ["en"] }
+      defer { AppleIntelligenceConnector.supportedLanguageProvider = previous }
+      do {
+        _ = try await AppleIntelligenceConnector().prepareSession(detectedLanguage: "ar")
+        Issue.record("expected unsupportedInputLanguage")
+      } catch LLMError.unsupportedInputLanguage(let code) {
+        #expect(code == "ar")
+      }
+    }
+
     @Test("a cancelled preparation throws instead of returning a session")
     func cancelledPreparationThrows() async throws {
       guard #available(macOS 26.0, *) else { return }
