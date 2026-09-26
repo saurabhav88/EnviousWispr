@@ -640,6 +640,13 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
     grid-auto-columns: 86%;
   }
 }
+/* Without JavaScript there are no arrows, so desktop keeps the peek as the cue. `scripting`, not the
+   section's enhancement marker, so a JavaScript visitor never sees the cards widen as it loads. */
+@media (scripting: none) and (min-width: 1000px) {
+  .home-carousel {
+    grid-auto-columns: 88%;
+  }
+}
 /* Side arrows sit on the rail's edges. One with nowhere to go is marked aria-disabled and hidden, but
    stays visible, dimmed, while it holds keyboard focus. Below 1000px the peek and a swipe take over;
    without JavaScript the arrows keep their server-rendered `disabled`, so hidden. */
