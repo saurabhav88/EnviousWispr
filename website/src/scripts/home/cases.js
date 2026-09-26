@@ -37,11 +37,26 @@ export function init(root, motion, scope) {
     demos.forEach((demo, i) => demo.set('finished', '', cases[i].final));
     prepared = undefined;
   }
+  // Chromium also gives every overflowing scroller a tab stop, and which parts of a preview scroll
+  // depends on the width (Gmail, Docs and clinical notes at 320px), so read them from computed style
+  // and again on resize; offscreen copies opt out, the card in view keeps the browser's default.
+  let innerScrollers = [];
+  function findScrollers() {
+    innerScrollers = previews.map((preview) =>
+      [...preview.querySelectorAll('*')].filter((el) => {
+        const style = getComputedStyle(el);
+        return /auto|scroll/.test(style.overflowX + ' ' + style.overflowY);
+      }),
+    );
+  }
   function sync(index) {
     buttons.forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
     // Each preview is focusable so a keyboard can scroll its text; only the card in view keeps a
     // tab stop, or Tab walks through nine offscreen cards and drags the rail with it.
     previews.forEach((preview, i) => (preview.tabIndex = i === index ? 0 : -1));
+    innerScrollers.forEach((list, i) =>
+      list.forEach((el) => (i === index ? el.removeAttribute('tabindex') : (el.tabIndex = -1))),
+    );
     const selected = buttons[index];
     if (choices.scrollWidth > choices.clientWidth) {
       const left = selected.offsetLeft,
@@ -84,7 +99,16 @@ export function init(root, motion, scope) {
       clock?.wake({ allowFocused: auto });
     },
   });
+  findScrollers();
   sync(carousel.index);
+  window.addEventListener(
+    'resize',
+    () => {
+      findScrollers();
+      sync(carousel.index);
+    },
+    { passive: true, signal: scope.signal },
+  );
   function render() {
     const index = carousel.index,
       item = cases[index],
