@@ -392,6 +392,17 @@ html[data-theme='dark'] .site-chrome {
  * painting the open lists and jumping ~1000px when the module collapses them.
  * site-nav.js removes the flag if it cannot install, which restores this
  * layout. */
+html:not([data-nav-js]) {
+  /* The open lists run taller than a phone screen (1123px at 390px wide), so the header scrolls
+     away with the page instead of pinning over it (#3196). Nothing pins beneath it, and anchor
+     jumps need no room for it. */
+  --site-header-offset: 0px;
+  scroll-padding-top: 16px;
+}
+html:not([data-nav-js]) .chrome-header {
+  position: relative;
+  top: 0;
+}
 html:not([data-nav-js]) .chrome-header .main-nav {
   display: flex;
   flex-direction: column;
