@@ -1154,7 +1154,9 @@ struct KernelFinalizationWiring {
               language: outcome.learnLanguage,
               // #3106 PR A: the one post-write reader for THIS paste; #996 asks it after its
               // gates instead of capturing on its own.
-              editCapture: result.arrivalCapture))
+              editCapture: result.arrivalCapture,
+              // #3105: the join key from the learn events to this take's rows.
+              takeID: deliveryTakeID))
           deliveryOutcome = .pasted
         } else {
           deliveryOutcome = .clipboardOnly

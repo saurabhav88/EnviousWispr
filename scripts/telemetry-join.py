@@ -112,6 +112,13 @@ TAKE_KEYED_EVENTS = (
     "audio.capture_interrupted",
     "audio.dead_mic_retire_attempted",
     "audio.vad_gate_no_speech",
+    # #3105. The learn-from-edits watcher's three rows carry the paste's take when it had one
+    # (capture coverage per app: the learn rows name no app, the take's dictation.completed
+    # target_app does). A delivered paste always has a take; a row without the key is a paste
+    # built without one, never re-keyed.
+    "custom_words.learn_judged",
+    "custom_words.learn_observation_ended",
+    "custom_words.learn_skipped",
     "dictation.completed",
     "dictation.first_vad_chunk_completed",
     "dictation.first_vad_chunk_started",

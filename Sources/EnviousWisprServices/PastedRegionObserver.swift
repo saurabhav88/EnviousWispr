@@ -172,11 +172,19 @@ package enum PastedRegionTiming {
   /// replacement ("Saurabh", distance 4); a rewrite of a short paste is the
   /// judge's to refuse. Cloud review of PR #3054.
   package static let editDistanceLimitFloor = 12
-  /// The banded distance costs about `pasted × (2 × limit + 1)` cells; above
-  /// this budget the check is INCONCLUSIVE and the watch ends as
+  /// The banded distance visits `PastedRegionLocator.bandedDistanceCells`
+  /// cells; above this budget the check is INCONCLUSIVE and the watch ends as
   /// `captureUnsupported` (a processing limit), never "within budget".
-  /// 16M cells is about 4,000 pasted units at the 50% band.
+  /// 16M cells is a same-length region of about 4,000 pasted units at the 50%
+  /// band, measured at 144 ms in Release on an M4 Pro (2026-09-26).
   package static let editDistanceCellBudget = 16_000_000
+  /// The cell budget for `edit_budget_ratio`, a telemetry number computed on
+  /// the main actor right after a distance check that may already have spent
+  /// `editDistanceCellBudget`. Measured 2026-09-26 (Release, M4 Pro): 16M cells
+  /// took 144 ms and 6.25M took 55 ms, so a quarter of the check's budget
+  /// (about 36 ms) covers same-length rewrites up to 2,000 pasted units and
+  /// omits the ratio past that.
+  package static let editBudgetRatioCellBudget = 4_000_000
   /// Consecutive failed or non-text reads before observation ends as
   /// `captureUnsupported`. Three polls is about two seconds: long enough to ride
   /// out a busy provider, short enough that a field that never answers does not
@@ -327,6 +335,30 @@ package protocol PastedRegionObserving: AnyObject {
   /// then delivering `.ended(reason)`. No-op when nothing is observed.
   func finish(_ reason: PastedRegionEndReason)
   var isObserving: Bool { get }
+  /// #3105: counts that describe WHY the last watch lost the text (which
+  /// landmark, how many hits, the field's shape, or how far past the rewrite budget), for
+  /// `regionRemoved`, `anchorAmbiguous` and `editDistanceExceeded` ends. Nil for
+  /// every other end. Never a character of the text.
+  var lastEndDetail: PastedRegionEndDetail? { get }
+}
+
+/// #3105: the content-free shape of a watch that lost the pasted text. The
+/// region fields come from `PastedRegionLocator.AmbiguityReport` (which needle,
+/// hits, rows, the needle's shape); the edit field is how many rewrite budgets
+/// the edit used. Counts only, safe to send (the privacy boundary
+/// is content, `sentry-operations.md` RULE: telemetry-privacy-boundary).
+package struct PastedRegionEndDetail: Equatable, Sendable {
+  package let region: PastedRegionLocator.AmbiguityReport?
+  /// How far past the rewrite budget the edit went: edit distance / budget,
+  /// rounded to 0.1 and capped at `PastedRegionLocator.editBudgetRatioCap`
+  /// (the cap reads as "at least"). Nil when the exact distance would cost
+  /// more than `PastedRegionTiming.editBudgetRatioCellBudget`.
+  package let editBudgetRatio: Double?
+
+  package init(region: PastedRegionLocator.AmbiguityReport? = nil, editBudgetRatio: Double? = nil) {
+    self.region = region
+    self.editBudgetRatio = editBudgetRatio
+  }
 }
 
 // MARK: - Seams
@@ -896,45 +928,92 @@ package enum PastedRegionLocator {
   ) -> EditDistanceVerdict {
     let a = Array(pasted.utf16)
     let b = Array(region.utf16)
-    let limit = max(Int((Double(a.count) * limitFraction).rounded(.down)), limitFloor)
+    let limit = editLimit(pastedUTF16: a.count, limitFraction: limitFraction, limitFloor: limitFloor)
     if abs(a.count - b.count) > limit { return .exceeded }
     if a == b { return .within }
-    guard a.count * (2 * limit + 1) <= cellBudget else { return .inconclusive }
+    guard bandedDistanceCells(m: a.count, n: b.count, cap: limit) <= cellBudget else {
+      return .inconclusive
+    }
     return bandedDistanceExceeds(a, b, limit: limit) ? .exceeded : .within
   }
 
-  /// Ukkonen-banded Levenshtein: true as soon as the distance provably exceeds
-  /// `limit`. Cost is O(min(m, n) × limit).
-  static func bandedDistanceExceeds(_ a: [UInt16], _ b: [UInt16], limit: Int) -> Bool {
-    if a == b { return false }
-    if limit <= 0 { return true }
+  /// `edit_budget_ratio` stops counting here: 4 means "at least four budgets".
+  package static let editBudgetRatioCap = 4.0
+
+  /// Edit distance over the rewrite budget for a watch that already exceeded
+  /// it, for telemetry only (#3105): exact up to `editBudgetRatioCap` budgets,
+  /// rounded to 0.1. Nil when that exact count would visit more than
+  /// `cellBudget` cells.
+  package static func editBudgetRatio(
+    pasted: String, region: String,
+    cellBudget: Int = PastedRegionTiming.editBudgetRatioCellBudget
+  ) -> Double? {
+    let a = Array(pasted.utf16)
+    let b = Array(region.utf16)
+    let limit = editLimit(pastedUTF16: a.count)
+    let cap = Int(Double(limit) * editBudgetRatioCap)
+    guard bandedDistanceCells(m: a.count, n: b.count, cap: cap) <= cellBudget else { return nil }
+    let distance = bandedDistance(a, b, cap: cap)
+    return (min(Double(distance) / Double(limit), editBudgetRatioCap) * 10).rounded() / 10
+  }
+
+  /// The most cells `bandedDistance` visits: one band of at most `2 × cap + 1`
+  /// columns, never wider than the region, per pasted unit.
+  package static func bandedDistanceCells(m: Int, n: Int, cap: Int) -> Int {
+    max(m, 1) * min(max(n, 1), 2 * cap + 1)
+  }
+
+  /// Ukkonen-banded Levenshtein distance, exact up to `cap` and `cap + 1`
+  /// beyond it. Only the band's cells are touched, so the cost is
+  /// `bandedDistanceCells(m:n:cap:)`.
+  package static func bandedDistance(_ a: [UInt16], _ b: [UInt16], cap: Int) -> Int {
+    if a == b { return 0 }
     let m = a.count
     let n = b.count
-    guard m > 0 else { return n > limit }
-    let inf = limit + 1
+    guard m > 0 else { return min(n, cap + 1) }
+    guard n > 0 else { return min(m, cap + 1) }
+    guard abs(m - n) <= cap else { return cap + 1 }
+    let inf = cap + 1
     var previous = [Int](repeating: inf, count: n + 1)
     var current = [Int](repeating: inf, count: n + 1)
-    for j in 0...min(n, limit) { previous[j] = j }
+    for j in 0...min(n, cap) { previous[j] = j }
     for i in 1...m {
-      let lo = max(1, i - limit)
-      let hi = min(n, i + limit)
-      for j in 0...n { current[j] = inf }
-      if i - limit <= 0 { current[0] = i }
-      var rowMin = inf
+      let lo = max(1, i - cap)
+      let hi = min(n, i + cap)
+      // The cells the band reads outside itself: its left neighbour in this
+      // row and, for the next row, its right neighbour. A buffer holds a row
+      // from two steps back, so each is reset rather than trusted.
+      current[lo - 1] = lo == 1 && i <= cap ? i : inf
+      if hi < n { current[hi + 1] = inf }
+      var rowMin = current[lo - 1]
       if lo <= hi {
         for j in lo...hi {
           let cost = a[i - 1] == b[j - 1] ? 0 : 1
-          let value = min(previous[j - 1] + cost, previous[j] + 1, current[j - 1] + 1)
+          let value = min(previous[j - 1] + cost, previous[j] + 1, current[j - 1] + 1, inf)
           current[j] = value
           rowMin = min(rowMin, value)
         }
-      } else {
-        rowMin = current[0]
       }
-      if rowMin > limit { return true }
+      if rowMin > cap { return cap + 1 }
       swap(&previous, &current)
     }
-    return previous[n] > limit
+    return min(previous[n], cap + 1)
+  }
+
+  /// The rewrite budget in UTF-16 units: `max(fraction × pasted length, floor)`.
+  package static func editLimit(
+    pastedUTF16: Int,
+    limitFraction: Double = PastedRegionTiming.editDistanceLimitFraction,
+    limitFloor: Int = PastedRegionTiming.editDistanceLimitFloor
+  ) -> Int {
+    max(Int((Double(pastedUTF16) * limitFraction).rounded(.down)), limitFloor)
+  }
+
+  /// Whether the UTF-16 edit distance exceeds `limit`; stops as soon as a
+  /// whole band row is past it.
+  package static func bandedDistanceExceeds(_ a: [UInt16], _ b: [UInt16], limit: Int) -> Bool {
+    if limit <= 0 { return a != b }
+    return bandedDistance(a, b, cap: limit) > limit
   }
 
   /// Why an `.ambiguous` answer happened, in COUNTS ONLY.
@@ -1204,6 +1283,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
   }
 
   package var isObserving: Bool { watch != nil }
+  package private(set) var lastEndDetail: PastedRegionEndDetail?
 
   // MARK: Capture (§3.1 step 2)
 
@@ -1471,6 +1551,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
     _ target: PastedRegionTarget, onEvent: @escaping @MainActor (PastedRegionEvent) -> Void
   ) {
     stop()
+    lastEndDetail = nil
     generation &+= 1
     let gen = generation
     var w = Watch(
@@ -1673,6 +1754,8 @@ package final class PastedRegionObserver: PastedRegionObserving {
             report: PastedRegionLocator.missingAnchorReport(in: value, anchors: target.anchors),
             valueUTF16: value.utf16.count)
         #endif
+        lastEndDetail = PastedRegionEndDetail(
+          region: PastedRegionLocator.missingAnchorReport(in: value, anchors: target.anchors))
         end(.regionRemoved)
         return .ended
       case .ambiguous:
@@ -1681,6 +1764,8 @@ package final class PastedRegionObserver: PastedRegionObserving {
             path: "poll",
             PastedRegionLocator.ambiguityReport(in: value, anchors: target.anchors))
         #endif
+        lastEndDetail = PastedRegionEndDetail(
+          region: PastedRegionLocator.ambiguityReport(in: value, anchors: target.anchors))
         end(.anchorAmbiguous)
         return .ended
       case .located(let located):
@@ -1691,6 +1776,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
               path: "poll", kind: "empty_region", pastedText: target.pastedText,
               start: located.start, end: located.end, valueUTF16: value.utf16.count)
           #endif
+          // Both landmarks are there and nothing is between them: side
+          // `empty_region`, no needle, the field's shape only.
+          lastEndDetail = PastedRegionEndDetail(
+            region: PastedRegionLocator.report(
+              side: "empty_region", needle: [], hits: 0, value: Array(value.utf16)))
           end(.regionRemoved)
           return .ended
         }
@@ -1710,6 +1800,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
         }
         switch PastedRegionLocator.editDistance(pasted: target.renderedText, region: region) {
         case .exceeded:
+          lastEndDetail = PastedRegionEndDetail(
+            editBudgetRatio: PastedRegionLocator.editBudgetRatio(
+              pasted: target.renderedText, region: region))
           end(.editDistanceExceeded)
           return .ended
         case .inconclusive:

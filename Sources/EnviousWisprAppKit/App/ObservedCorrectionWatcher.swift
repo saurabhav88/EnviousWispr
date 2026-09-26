@@ -90,6 +90,10 @@ import Foundation
 struct SelectedCorrectionJudge {
   let arm: TelemetryService.LearnFromEditsTelemetry.Arm
   let judge: any CorrectionJudging
+  /// The delivered classifier's pinned revision (the delivery manifest's), or
+  /// `uat_door` for the Debug export door; nil for the rules and AFM arms. Only
+  /// Judge 1's Sentry reports read it (#3105).
+  var revision: String? = nil
 }
 
 /// The active application, sampled ONCE per gate pass so pid and bundle id
@@ -108,14 +112,18 @@ struct FrontmostApplication: Equatable, Sendable {
 @MainActor
 protocol LearnFromEditsTelemetrySink: AnyObject {
   typealias T = TelemetryService.LearnFromEditsTelemetry
-  func learnSkipped(reason: T.SkipReason)
+  /// `takeID` (#3105) is the paste's take, the join key to its own rows; nil
+  /// when the paste carried none (the wire row omits the key).
+  func learnSkipped(reason: T.SkipReason, takeID: String?)
+  /// `regionDetail` (#3105): the observer's counts-only loss shape for a watch
+  /// that lost the text; nil for every other end.
   func learnObservationEnded(
     reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int,
-    unfinishedEdits: Int)
+    unfinishedEdits: Int, takeID: String?, regionDetail: PastedRegionEndDetail?)
   /// `queueWaitMs` nil = not measured by this arm (the wire row omits the key).
   func learnJudged(
     arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int,
-    queueWaitMs: Int?)
+    queueWaitMs: Int?, takeID: String?)
 }
 
 @MainActor
@@ -137,6 +145,8 @@ struct ObservedCorrectionWatcherDependencies {
   /// plus one, so the AFM judge's own deadline reports first. Tests shorten it.
   var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
   let telemetry: any LearnFromEditsTelemetrySink
+  /// Judge 1 defects reach Sentry once per process per kind (#3105).
+  var failureReporter: LearnJudgeFailureReporter = .shared
 }
 
 @MainActor
@@ -195,11 +205,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
 
   func pasteCompleted(_ event: PasteCompletionEvent) {
     guard deps.isLearnFromEditsOn() else {
-      Task { @MainActor [deps] in deps.telemetry.learnSkipped(reason: .toggleOff) }
+      Task { @MainActor [deps] in deps.telemetry.learnSkipped(reason: .toggleOff, takeID: event.takeID) }
       return
     }
     guard !isWatching else {
-      Task { @MainActor [deps] in deps.telemetry.learnSkipped(reason: .watchActive) }
+      Task { @MainActor [deps] in deps.telemetry.learnSkipped(reason: .watchActive, takeID: event.takeID) }
       return
     }
     // Reserve the watch BEFORE scheduling: a second paste arriving before the
@@ -273,7 +283,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     w.event.editCapture?.cancelEditWatchCapture()
     deps.observer.stop()
     toggledOffMidWatch += 1
-    deps.telemetry.learnSkipped(reason: .toggleOff)
+    deps.telemetry.learnSkipped(reason: .toggleOff, takeID: w.event.takeID)
   }
 
   // MARK: Steps 2–3: the deferred gates and capture
@@ -355,9 +365,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     _ reason: TelemetryService.LearnFromEditsTelemetry.SkipReason, generation gen: UInt64,
     report: Bool = true
   ) {
-    guard watch?.generation == gen else { return }
+    guard let w = watch, w.generation == gen else { return }
     watch = nil
-    if report { deps.telemetry.learnSkipped(reason: reason) }
+    if report { deps.telemetry.learnSkipped(reason: reason, takeID: w.event.takeID) }
   }
 
   // MARK: Step 4: observation events
@@ -380,15 +390,31 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       judgeBurst(region: region, generation: gen, revision: w.revision)
     case .ended(let reason):
       watch?.ended = true
-      emitEnded(reason: reason, generation: gen)
+      // Only an end the OBSERVER delivered carries its loss detail; a
+      // capture-time end never started an observation (#3105).
+      emitEnded(reason: reason, generation: gen, detail: Self.lossDetail(reason, from: deps.observer))
     }
   }
 
-  private func emitEnded(reason: PastedRegionEndReason, generation gen: UInt64) {
+  private func emitEnded(
+    reason: PastedRegionEndReason, generation gen: UInt64, detail: PastedRegionEndDetail? = nil
+  ) {
     guard let w = watch, w.generation == gen else { return }
     deps.telemetry.learnObservationEnded(
       reason: reason, settledBursts: w.settledBursts, appClass: w.appClass,
-      durationMs: max(0, deps.nowMs() - w.pastedAtMs), unfinishedEdits: w.unfinishedPairKeys.count)
+      durationMs: max(0, deps.nowMs() - w.pastedAtMs), unfinishedEdits: w.unfinishedPairKeys.count,
+      takeID: w.event.takeID, regionDetail: detail)
+  }
+
+  /// The observer's loss detail belongs only to the ends the observer itself
+  /// decided from a read (a watcher-decided end such as a new dictation has none).
+  static func lossDetail(
+    _ reason: PastedRegionEndReason, from observer: any PastedRegionObserving
+  ) -> PastedRegionEndDetail? {
+    switch reason {
+    case .regionRemoved, .anchorAmbiguous, .editDistanceExceeded: observer.lastEndDetail
+    default: nil
+    }
   }
 
   // MARK: Steps 5–7: align, filter, judge
@@ -439,6 +465,12 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
         request = try CorrectionJudgeRequest(
           candidates: prepared.candidates, context: context, language: language)
       } catch {
+        // A request the watcher built and the judge contract refused is our
+        // defect, not the user's edit: report its closed cause, no text.
+        deps.failureReporter.report(
+          .requestBuildFailed,
+          cause: (error as? CorrectionJudgeRequestError)?.causeCode ?? "other",
+          arm: arm.rawValue, judgeRevision: selected.revision)
         continue
       }
       // Reservation, atomically with the checks above (no suspension so far).
@@ -478,7 +510,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     // measure it, so it is reported as unknown rather than as zero.
     deps.telemetry.learnJudged(
       arm: arm, outcome: .init(outcome), candidates: prepared.candidates.count,
-      accepted: accepted, latencyMs: latency, queueWaitMs: nil)
+      accepted: accepted, latencyMs: latency, queueWaitMs: nil,
+      takeID: watch?.event.takeID)
     guard case .verdict(let decisions) = outcome else { return }
     #if DEBUG
       // Local debug log only (plan §11 UAT tokens): what the judge was asked and

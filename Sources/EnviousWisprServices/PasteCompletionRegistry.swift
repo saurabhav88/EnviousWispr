@@ -47,25 +47,31 @@ public struct PasteCompletionEvent: Sendable {
   /// Tier 1's edit-only one). Nil only for an event built without one (tests); a delivered
   /// dictation always carries it.
   package let editCapture: (any PasteEditCapturing)?
+  /// #3105: the take this paste delivered (`dictation.*` `take_id`), so the
+  /// learn-from-edits events can be joined to the take's own rows (its
+  /// `dictation.completed` names the destination app). Nil for a paste built without
+  /// a take (tests, and any delivery the kernel did not number).
+  public let takeID: String?
 
   public init(
     pastedText: String, destinationBundleID: String?, timestamp: Date = Date(),
-    language: String? = nil
+    language: String? = nil, takeID: String? = nil
   ) {
     self.init(
       pastedText: pastedText, destinationBundleID: destinationBundleID, timestamp: timestamp,
-      language: language, editCapture: nil)
+      language: language, editCapture: nil, takeID: takeID)
   }
 
   package init(
     pastedText: String, destinationBundleID: String?, timestamp: Date = Date(),
-    language: String? = nil, editCapture: (any PasteEditCapturing)?
+    language: String? = nil, editCapture: (any PasteEditCapturing)?, takeID: String? = nil
   ) {
     self.pastedText = pastedText
     self.destinationBundleID = destinationBundleID
     self.timestamp = timestamp
     self.language = language
     self.editCapture = editCapture
+    self.takeID = takeID
   }
 }
 

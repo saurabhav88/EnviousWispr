@@ -23,20 +23,30 @@ final class LearnTelemetrySpy: LearnFromEditsRuntimeTelemetrySink {
   }
   private(set) var events: [Event] = []
 
-  func learnSkipped(reason: T.SkipReason) { events.append(.skipped(reason)) }
+  /// The take id of every watcher emission, in order (#3105).
+  private(set) var takeIDs: [String?] = []
+  /// The loss detail of every ended observation, in order (#3105).
+  private(set) var regionDetails: [PastedRegionEndDetail?] = []
+  func learnSkipped(reason: T.SkipReason, takeID: String?) {
+    takeIDs.append(takeID)
+    events.append(.skipped(reason))
+  }
   /// `unfinished_edits` per ended observation, in order (#3105).
   private(set) var unfinishedEditCounts: [Int] = []
   func learnObservationEnded(
     reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int,
-    unfinishedEdits: Int
+    unfinishedEdits: Int, takeID: String?, regionDetail: PastedRegionEndDetail?
   ) {
+    takeIDs.append(takeID)
+    regionDetails.append(regionDetail)
     unfinishedEditCounts.append(unfinishedEdits)
     events.append(.observationEnded(reason, settledBursts, appClass))
   }
   func learnJudged(
     arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int,
-    queueWaitMs: Int?
+    queueWaitMs: Int?, takeID: String?
   ) {
+    takeIDs.append(takeID)
     events.append(.judged(arm, outcome, candidates, accepted))
   }
   func learnSaveFailed(reason: T.SaveFailure) { events.append(.saveFailed(reason)) }

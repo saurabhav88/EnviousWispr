@@ -108,6 +108,19 @@ package enum CorrectionJudgeRequestError: Error, Equatable {
   case emptyRun(id: Int)
   case unchangedRun(id: Int)
   case contextTooLong(Int)
+
+  /// A closed, content-free cause for Sentry (#3105); counts stay out of it.
+  package var causeCode: String {
+    switch self {
+    case .noCandidates: "no_candidates"
+    case .tooManyCandidates: "too_many_candidates"
+    case .duplicateID: "duplicate_id"
+    case .idOutOfRange: "id_out_of_range"
+    case .emptyRun: "empty_run"
+    case .unchangedRun: "unchanged_run"
+    case .contextTooLong: "context_too_long"
+    }
+  }
 }
 
 /// What a judge is asked: up to `maxCandidates` changed runs plus the

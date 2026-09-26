@@ -498,12 +498,62 @@ struct PastedRegionLocatorTests {
     // what it can.
     let long = String(repeating: "a", count: 5_000)
     let longRewritten = String(repeating: "b", count: long.count)
-    #expect(long.utf16.count * (2 * 2_500 + 1) > PastedRegionTiming.editDistanceCellBudget)
+    #expect(
+      L.bandedDistanceCells(m: long.utf16.count, n: longRewritten.utf16.count, cap: 2_500)
+        > PastedRegionTiming.editDistanceCellBudget)
     #expect(L.editDistance(pasted: long, region: longRewritten) == .inconclusive)
     #expect(L.editDistance(pasted: long, region: long) == .within)
     #expect(L.editDistance(pasted: long, region: String(long.prefix(100))) == .exceeded)
     // A tiny budget forces the inconclusive branch on a short input too.
     #expect(L.editDistance(pasted: "abcdefgh", region: "abcdefgX", cellBudget: 1) == .inconclusive)
+  }
+
+  @Test("a same-length rewrite reports its ratio up to the telemetry budget; the band matches a full-table distance (#3105)")
+  func editBudgetRatioLongRewrite() {
+    // 2,000 units rewritten letter for letter: distance 2,000 over a budget of
+    // 1,000 is two budgets. The band never outgrows the region, so this costs
+    // 2,000 × 2,000 cells, exactly the ratio's budget.
+    let pasted = String(repeating: "a", count: 2_000)
+    let rewritten = String(repeating: "b", count: 2_000)
+    #expect(
+      L.bandedDistanceCells(m: 2_000, n: 2_000, cap: 4_000)
+        == PastedRegionTiming.editBudgetRatioCellBudget)
+    #expect(L.editBudgetRatio(pasted: pasted, region: rewritten) == 2.0)
+    // One unit longer is past the budget: the ratio is omitted rather than guessed.
+    let longer = String(repeating: "a", count: 2_001)
+    #expect(L.editBudgetRatio(pasted: longer, region: longer.replacingOccurrences(of: "a", with: "b")) == nil)
+    // A tiny budget omits it on a short input too.
+    #expect(L.editBudgetRatio(pasted: pasted, region: rewritten, cellBudget: 1_000) == nil)
+
+    // Oracle: the unbanded Levenshtein table, clipped the way the band reports.
+    func full(_ a: [UInt16], _ b: [UInt16]) -> Int {
+      var row = Array(0...b.count)
+      for i in a.indices {
+        var next = [i + 1] + Array(repeating: 0, count: b.count)
+        for j in b.indices {
+          next[j + 1] = min(row[j] + (a[i] == b[j] ? 0 : 1), row[j + 1] + 1, next[j] + 1)
+        }
+        row = next
+      }
+      return row[b.count]
+    }
+    // A fixed-seed generator, so a failure names a reproducible input.
+    var state: UInt64 = 0x3105
+    func next(_ bound: Int) -> Int {
+      state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+      return Int((state >> 33) % UInt64(bound))
+    }
+    for _ in 0..<400 {
+      let a = (0..<next(25)).map { _ in UInt16(97 + next(3)) }
+      let b = (0..<next(25)).map { _ in UInt16(97 + next(3)) }
+      let cap = next(13)
+      #expect(
+        L.bandedDistance(a, b, cap: cap) == min(full(a, b), cap + 1),
+        "a=\(a) b=\(b) cap=\(cap)")
+      if cap > 0 {
+        #expect(L.bandedDistanceExceeds(a, b, limit: cap) == (full(a, b) > cap))
+      }
+    }
   }
 
   @Test("the end-reason vocabulary is the plan's thirteen snake_case tokens")
@@ -1007,6 +1057,36 @@ struct PastedRegionObserverWatchTests {
     run(.text("Note: Ask Sarah today please Note: x please"), .anchorAmbiguous)
     run(.text(String(repeating: "x", count: 20_001)), .captureUnsupported)
     run(.text("Note: a completely rewritten sentence typed over the paste please"), .editDistanceExceeded)
+  }
+
+  @Test("a watch that lost the text says why in counts only; other ends carry no detail (#3105)")
+  func lossDetail() {
+    func detail(_ read: PastedRegionValueRead) -> PastedRegionEndDetail? {
+      let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
+      o.start(target) { _ in }
+      ax.reads = [read]
+      scheduler.advance(ms: 750)
+      #expect(o.isObserving == false)
+      return o.lastEndDetail
+    }
+    #expect(detail(.text("")) == nil, "textbox_emptied is not a loss")
+    let empty = detail(.text("Note:  please"))
+    #expect(empty?.region?.side == "empty_region" && empty?.region?.hits == 0)
+    let lost = detail(.text("Ask Sarah today please"))
+    #expect(lost?.region?.side == "before" && lost?.region?.hits == 0)
+    #expect(lost?.region?.valueRows == 1)
+    let ambiguous = detail(.text("Note: Ask Sarah today please Note: x please"))
+    #expect(ambiguous?.region?.side == "before" && ambiguous?.region?.hits == 2)
+    let rewritten = "a completely rewritten sentence typed over the paste"
+    let exceeded = detail(.text("Note: \(rewritten) please"))
+    #expect(exceeded?.region == nil)
+    // "Ask Sarah today" (15 units, budget 12) against a 52-unit rewrite: the
+    // distance is at least the 37-unit length gap, so over three budgets.
+    let ratio = exceeded?.editBudgetRatio ?? 0
+    #expect(ratio >= 3.0 && ratio <= PastedRegionLocator.editBudgetRatioCap)
+    // The exact count below the cap, and cap + 1 beyond it.
+    #expect(PastedRegionLocator.bandedDistance(Array("kitten".utf16), Array("sitting".utf16), cap: 48) == 3)
+    #expect(PastedRegionLocator.bandedDistance(Array("abc".utf16), Array("xyzxyzxyz".utf16), cap: 4) == 5, "beyond the cap reads cap + 1")
   }
 
   @Test(
