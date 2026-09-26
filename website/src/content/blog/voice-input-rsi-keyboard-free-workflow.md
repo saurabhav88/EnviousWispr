@@ -57,7 +57,7 @@ That took about ten seconds to speak. Typing it, with RSI making every keystroke
 
 One concern people have about switching to voice input is that different contexts need different kinds of text. A Slack message should sound casual. A client email needs a more structured tone.
 
-EnviousWispr's AI polish step cleans up your dictation by removing filler words, fixing punctuation, and tightening structure. It handles most everyday writing well: Slack threads, internal notes, ticket comments. When you need a specific shape (a more structured client email, a formatted list), Ollama, OpenAI, or Gemini polish formats what you said; the Apple Intelligence default usually lays out a counted or announced list as simple bullets too and keeps the rest as clean prose.
+EnviousWispr's AI polish step cleans up your dictation by removing filler words, fixing punctuation, and tightening structure. It handles most everyday writing well: Slack threads, internal notes, ticket comments. When you need a specific shape (a more structured client email, a formatted list), Ollama, OpenAI, or Gemini polish formats what you said; the Apple Intelligence default usually lays out a counted or announced list as simple bullets too, while other dictation usually remains clean prose.
 
 This matters for RSI because it reduces the need to go back to the keyboard and fix tone or formatting. When voice output is already close to what you need, you're not adding correction keystrokes on top.
 
