@@ -2093,6 +2093,13 @@ package final class WisprBootstrapper {
     // #2197: same refusal while clipboard cleanup is pending (why: its own doc).
     sparkleUpdateController.updateCoordinator?
       .clipboardCleanupPendingProvider = { ClipboardCleanup.hasPending }
+    // #3142 5B: the language relaunch also refuses mid recovery replay or recording start (why:
+    // its own doc).
+    AppRelauncher.backgroundWorkInFlight = { [weak self] in
+      guard let self else { return false }
+      return recoveryCoordinator.isRecovering || engineCoordinator.isMintingAnySession
+    }
+    AppLanguagePreference.live.forgetUnshippedOverride()
     // #1029: install the notification tap delegate eagerly at launch (decoupled
     // from posting) so a tap on an already-delivered "update ready" notification —
     // or a cold launch from it — always routes, even when the once-per-version
