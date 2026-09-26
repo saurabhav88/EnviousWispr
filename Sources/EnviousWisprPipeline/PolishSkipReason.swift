@@ -98,7 +98,7 @@ enum PolishSkipReason: Sendable, Equatable {
   /// `LLMPolishStep`'s AFM catch block (to suppress its own alert), so the two
   /// call sites cannot independently drift out of agreement. `frameworkUnavailable`
   /// has two producer paths (a normal preflight throw, and a rarer wrapped path
-  /// via `AppleIntelligenceConnector.makeSession`'s defensive re-check) — both
+  /// via `AppleIntelligenceConnector.resolveAssembly`'s defensive re-check) — both
   /// classify the same way here regardless of which one actually threw.
   /// Attribution comes from the ERROR, never from a runner-side snapshot
   /// (#1448). `LLMPolishStep` wraps every connector `egOneSkipped` with its own

@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprPostProcessing
 import Foundation
 
@@ -41,8 +42,9 @@ public struct TextProcessingContext: Sendable {
   /// context never went through the runner. Read only by EG-1's language naming.
   package var textLanguage: String?
   /// #1846: which dictation this text belongs to, frozen by `TextProcessingRunner`
-  /// at the start of the chain. Observation-only: never persisted, never `Codable`,
-  /// and it never influences a processing decision.
+  /// at the start of the chain. Never persisted, never `Codable`. One processing
+  /// decision reads it (#3195): `LLMPolishStep` hands this take the Apple session
+  /// prepared for it at key-up only when the ids match exactly.
   ///
   /// Optional because two real paths genuinely have no take: re-polish of an
   /// existing transcript, and crash recovery, which replays audio that outlived the
@@ -62,6 +64,10 @@ public struct TextProcessingContext: Sendable {
   public var llmModel: String?
   /// Target app display name (e.g. "Terminal"). Nil if unknown or re-polish path.
   public var targetAppName: String?
+  /// #3195: whether a completed live Apple polish used the session prepared at key-up
+  /// (`hit`), refused one whose assembly differed (`missKey`), or had none (`none`).
+  /// Nil for every other provider, a bypass, an error, file import and recovery.
+  package var afmPrewarmOutcome: AppleIntelligenceConnector.AFMPrewarmOutcome?
   /// Connector-source-of-truth metadata for AFM polish (#429; single-prompt since #1072).
   /// Cloud providers leave this nil.
   public var polishMetadata: PolishMetadata?
