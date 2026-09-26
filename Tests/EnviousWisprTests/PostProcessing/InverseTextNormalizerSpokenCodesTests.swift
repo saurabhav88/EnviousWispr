@@ -49,6 +49,7 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("Install Python three point twelve.", "Install Python 3.12."),
     ("See section three point two point one.", "See section 3.2.1."),
     ("The F dash sixteen landed.", "The F-16 landed."),
+    // founder decision 2026-09-26: a spoken dash gives "GPT-40" (with no dash, "GPT 40")
     ("Try GPT dash four o.", "Try GPT-40."),
     ("COVID dash nineteen cases.", "COVID-19 cases."),
     ("Part S dash one hundred and two failed.", "Part S-102 failed."),
@@ -115,6 +116,7 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("the date 2026 dash 2 dash 31", "the date 2026 dash 2 dash 31"),
     // a literal URL or path segment is left exactly as written
     ("see https://example.com/2026-9-26 today", "see https://example.com/2026-9-26 today"),
+    ("see https://example.com?date=2026-9-26 today", "see https://example.com?date=2026-9-26 today"),
     ("filed 2026-2-31", "filed 2026-2-31"),
     ("filed 2028-2-29", "filed 2028-02-29"),
     // a chain the English path refuses (a foreign dot-word beside number words) stays whole
