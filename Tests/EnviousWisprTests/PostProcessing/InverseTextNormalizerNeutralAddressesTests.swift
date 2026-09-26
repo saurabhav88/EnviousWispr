@@ -127,6 +127,9 @@ struct InverseTextNormalizerNeutralAddressesTests {
     ("Visit WWW.Example punto COM now", "Visit WWW.Example.COM now"),
     // a hyphen the recogniser wrote makes a compound name too (r11)
     ("escribe a juan-perez arroba gmail.com", "escribe a juan-perez@gmail.com"),
+    // a scheme the recogniser wrote before a spoken host; a Dutch segment that is a word (r12)
+    ("https://ejemplo punto es barra ayuda", "https://ejemplo.es/ayuda"),
+    ("voorbeeld.nl schuine streep streepje", "voorbeeld.nl/streepje"),
     // German borrowed "at"; a Unicode name
     ("schreib an müller at beispiel punkt de bitte", "schreib an müller@beispiel.de bitte"),
     // recogniser output, verbatim
@@ -264,6 +267,8 @@ struct InverseTextNormalizerNeutralAddressesTests {
     // `streepje(s)` is a Dutch word, never slash + a path segment (r11)
     "voorbeeld.nl schuine streepjes",
     "voorbeeld punt nl schuine streepje",
+    // a fully written link keeps every byte, spacing included
+    "https://  Ejemplo.ES ya",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",

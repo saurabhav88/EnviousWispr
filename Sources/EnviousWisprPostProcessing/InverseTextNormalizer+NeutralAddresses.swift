@@ -302,7 +302,10 @@ extension InverseTextNormalizer {
   /// ordinary words ("schuine streepjes"; local Codex r11): a glued segment that is only a Dutch
   /// word ending is not a path.
   static func neutralGluedSlashIsWord(_ raw: String, _ w: SpokenURLWords) -> Bool {
-    w.glueSlash && firstMatch(#"streep(?:je|jes|en|e|s)(?![\p{L}\p{M}\p{N}])"#, raw) != nil
+    // Only text glued to the slash phrase itself ("schuine streepjes"), not a separate segment
+    // that happens to be the word ("schuine streep streepje"; local Codex r12).
+    w.glueSlash
+      && firstMatch(#"schuine\s+streep(?:je|jes|en|e|s)(?![\p{L}\p{M}\p{N}])"#, raw) != nil
   }
 
   static func neutralPathSegments(_ raw: String, _ w: SpokenURLWords) -> [String] {
@@ -368,8 +371,10 @@ extension InverseTextNormalizer {
       let slash = #"(?:"# + Self.phraseAlt(w.slash) + #")"#
       let path = Self.neutralPathPat(w).pattern
       let pat =
-        #"(?<![\p{L}\p{N}])(?<p>https?)\s+(?:"# + Self.phraseAlt(w.colon) + #")\s+"# + slash
-        + #"\s+"# + slash + #"\s+(?<host>"# + Self.neutralHostOrLocalPat(w, portRequired: false)
+        // The scheme spoken, or already written by the recogniser ("https://ejemplo punto es
+        // barra ayuda"; local Codex r12).
+        #"(?<![\p{L}\p{N}])(?<p>https?)(?:\s+(?:"# + Self.phraseAlt(w.colon) + #")\s+"# + slash
+        + #"\s+"# + slash + #"\s+|://\s*)(?<host>"# + Self.neutralHostOrLocalPat(w, portRequired: false)
         + #")(?<path>"# + path + #"*)(?![\p{L}\p{M}\p{N}_@-])"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
@@ -377,6 +382,14 @@ extension InverseTextNormalizer {
           let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
         else { return nil }
         guard !Self.neutralGluedSlashIsWord(m.g("path") ?? "", w) else { return nil }
+        // A written scheme converts only with something spoken after it: a fully written link
+        // is the user's own text and stays byte-identical.
+        let spokenScheme = firstMatch(#"^https?\s"#, m.whole) != nil
+        let spokenRest =
+          firstMatch(#"\s+(?:"# + Self.phraseAlt(w.dot + w.colon) + #")\s+"#, m.g("host") ?? "")
+          != nil || !(m.g("path") ?? "").isEmpty
+          || firstMatch(#"^"# + Self.neutralWWWAlias + #"\s"#, m.g("host") ?? "") != nil
+        guard spokenScheme || spokenRest else { return nil }
         let segs = Self.neutralPathSegments(m.g("path") ?? "", w)
         return (m.g("p") ?? "https") + "://" + host + segs.map { "/" + $0 }.joined()
       }
