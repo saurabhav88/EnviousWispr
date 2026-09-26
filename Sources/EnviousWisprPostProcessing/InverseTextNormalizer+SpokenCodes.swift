@@ -236,6 +236,9 @@ extension InverseTextNormalizer {
       guard code != "I", hcode?.lowercased() != "a", hcode != "i" else { return nil }
       // "A dash B dash one", "S dash one dash x": the code goes on past what reads.
       guard !identifierContinues(m, connectorAlt: dashAlt) else { return nil }
+      // #3226: on the neutral route a code inside a link the passes before this one refused
+      // ("… ukośnik GPT łącznik 4"; local Codex r14) stays whole, as the number chains do.
+      if !englishWords, neutralLinkStartsEarlier(m, Self.spokenURLWords) { return nil }
       let dw = (m.g("dw") ?? m.g("gdw") ?? "").lowercased()
         .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
       let num = (m.g("num") ?? "").lowercased()

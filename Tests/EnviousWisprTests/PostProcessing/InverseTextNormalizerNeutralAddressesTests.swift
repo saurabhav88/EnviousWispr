@@ -272,6 +272,7 @@ struct InverseTextNormalizerNeutralAddressesTests {
     // an address refused after a comma, or a link going on into a spoken query, stays whole (r13)
     "Mój adres to Łukasz małpa, przykład.pl ukośnik pomoc",
     "https dos puntos barra barra ejemplo punto es barra ayuda signo de interrogación q",
+    "http dwukropek ukośnik ukośnik przykład kropka pl ukośnik GPT łącznik 4",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",
