@@ -598,8 +598,10 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       detectedLanguage: String?,
       prepared offered: AFMPreparedSession?
     ) async throws -> (result: LLMResult, prewarm: AFMPrewarmOutcome) {
-      let (prepared, cachedPromptTokens, prewarm) = try sessionForPolish(
+      let (prepared, promptTokenCount, prewarm) = try sessionForPolish(
         detectedLanguage: detectedLanguage, offered: offered)
+      // The count started at preparation; a failed or cancelled one counts as before.
+      let cachedPromptTokens = try? await promptTokenCount?.value
 
       // Plain-string output path (no @Generable schema). Schema-constrained
       // output was dropping terminal punctuation; plain-string + post-filter
@@ -670,8 +672,10 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       detectedLanguage: String?,
       prepared offered: AFMPreparedSession?
     ) async throws -> (result: LLMResult, prewarm: AFMPrewarmOutcome) {
-      let (prepared, cachedPromptTokens, prewarm) = try sessionForPolish(
+      let (prepared, promptTokenCount, prewarm) = try sessionForPolish(
         detectedLanguage: detectedLanguage, offered: offered)
+      // The count started at preparation; a failed or cancelled one counts as before.
+      let cachedPromptTokens = try? await promptTokenCount?.value
 
       // CLT-only fallback path: same plain-string + filter design as the
       // @Generable path so behavior is consistent across build flavors.
@@ -782,27 +786,29 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     package struct AFMPreparedSession: Sendable {
       let prepared: PreparedAFMSession
       package let key: AFMSessionKey
-      /// The #1055 preflight count of `prepared.systemPrompt`, counted at preparation.
-      let systemPromptTokens: Int
+      /// The #1055 preflight count of `prepared.systemPrompt`, started at preparation and
+      /// finished in the background, so handing the session over never waits for it.
+      let systemPromptTokens: Task<Int, Error>
     }
 
     /// Build the session a polish in `detectedLanguage` would build, start loading it
-    /// (`prewarm()`), and count its instructions for the preflight. `detectedLanguage`
-    /// is the raw code `LLMProviderConfig.detectedLanguage` would carry; it is
-    /// normalized exactly as `polish` normalizes it.
+    /// (`prewarm()`), and start counting its instructions for the preflight. Returns as
+    /// soon as the session exists: measured live (2026-09-26), polish claims the slot
+    /// about 0.1 s after key-up on a short take, so waiting for the exact count here made
+    /// every short take miss. `detectedLanguage` is the raw code
+    /// `LLMProviderConfig.detectedLanguage` would carry; it is normalized exactly as
+    /// `polish` normalizes it.
     @available(macOS 26.0, *)
     package func prepareSession(detectedLanguage: String?) async throws -> AFMPreparedSession {
       let assembly = try resolveAssembly(
         detectedLanguage: LanguageNormalizer.baseCode(detectedLanguage))
+      // A cancelled preparation never builds or hands back a session.
+      try Task.checkCancellation()
       let prepared = Self.buildSession(assembly)
       prepared.session.prewarm()
-      // `try`, never `try?`: the estimator already falls back to the heuristic on a
-      // counter failure and rethrows only cancellation, which must end preparation.
-      let tokens = try await Self.estimateAFMTokens(
-        model: prepared.model, text: prepared.systemPrompt, lang: nil)
-      // A counter that finished without observing cancellation still ends here, so a
-      // cancelled preparation never hands back a session.
-      try Task.checkCancellation()
+      let model = prepared.model
+      let text = prepared.systemPrompt
+      let tokens = Task { try await Self.estimateAFMTokens(model: model, text: text, lang: nil) }
       return AFMPreparedSession(prepared: prepared, key: assembly.key, systemPromptTokens: tokens)
     }
 
@@ -1019,7 +1025,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     @available(macOS 26.0, *)
     private func sessionForPolish(
       detectedLanguage: String?, offered: AFMPreparedSession?
-    ) throws -> (PreparedAFMSession, Int?, AFMPrewarmOutcome) {
+    ) throws -> (PreparedAFMSession, Task<Int, Error>?, AFMPrewarmOutcome) {
       let assembly = try resolveAssembly(detectedLanguage: detectedLanguage)
       guard let offered else { return (Self.buildSession(assembly), nil, .none) }
       guard Self.reusesPrepared(offered.key, for: assembly.key) else {
