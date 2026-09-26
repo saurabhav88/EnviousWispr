@@ -566,7 +566,7 @@ public final class ModelDeliveryHome {
     // before its fetch began; removal only drains a fetch already running. An
     // adapter with no base never serves, so it is not left on disk.
     guard await controller.isAdmitted(baseRegistration) else {
-      _ = await controller.remove(checker)
+      _ = await removeCheckerAdapter(engine)
       return .baseNotAdmitted
     }
     return .delivery(outcome)
@@ -574,11 +574,16 @@ public final class ModelDeliveryHome {
 
   /// Remove Model's second half: the engine's checker goes with its base.
   /// The controller drains an in-flight fetch before deleting. Nothing
-  /// registered means nothing on disk to remove.
+  /// registered means nothing on disk to remove. The family's delivery switch
+  /// gates every mutation, deletion included, as it does for the base
+  /// (`EGOneDeliveryAdapter.remove`, §16.6): switched off, nothing is removed.
   func removeCheckerAdapter(
     _ engine: LearnedWordCheckerEngine
   ) async -> ModelDeliveryController.RemoveOutcome {
     guard let checker = checkerRegistrations[engine] else { return .removed }
+    guard checkerDeliveryEnabled(engine) else {
+      return .failed(DeliveryFailure(reason: .unknown, detail: "delivery_disabled"))
+    }
     return await controller.remove(checker)
   }
 

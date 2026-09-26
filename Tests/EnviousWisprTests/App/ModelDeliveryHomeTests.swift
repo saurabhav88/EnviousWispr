@@ -77,6 +77,33 @@ struct ModelDeliveryHomeTests {
     #expect(await home.removeCheckerAdapter(engine) == .removed, "nothing on disk removes cleanly")
   }
 
+  /// The family's delivery switch gates every mutation, deletion included, as
+  /// `EGOneDeliveryAdapter.remove` does for the base (cloud review of #3227).
+  @Test("a switched-off checker family refuses removal and leaves its bytes", arguments: LearnedWordCheckerEngine.allCases)
+  func checkerRemovalHonoursTheDeliverySwitch(engine: LearnedWordCheckerEngine) async throws {
+    let suite = try #require(UserDefaults(suiteName: "ew-3105-checker-switch-\(UUID().uuidString)"))
+    suite.set(false, forKey: "modelDelivery.\(engine.checkerFamily.rawValue).enabled")
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport(),
+      deliveryFlagDefaults: suite)
+    let checker = try #require(home.checkerRegistrations[engine])
+    try FileManager.default.createDirectory(at: checker.installDirectory, withIntermediateDirectories: true)
+    let adapter = checker.installDirectory.appendingPathComponent(
+      try #require(checker.manifest.checkerContract?.adapterFileName))
+    try Data("adapter".utf8).write(to: adapter)
+    #expect(home.checkerDeliveryEnabled(engine) == false)
+    #expect(
+      await home.removeCheckerAdapter(engine)
+        == .failed(DeliveryFailure(reason: .unknown, detail: "delivery_disabled")))
+    #expect(FileManager.default.fileExists(atPath: adapter.path), "switched off, nothing is deleted")
+    suite.set(true, forKey: "modelDelivery.\(engine.checkerFamily.rawValue).enabled")
+    #expect(await home.removeCheckerAdapter(engine) == .removed)
+    #expect(FileManager.default.fileExists(atPath: adapter.path) == false, "switched on, removal proceeds")
+  }
+
   /// Production's trust root is the signed app's own `Bundle.main` (contract
   /// §4a), which a unit-test process cannot see — these resources ride the
   /// `EnviousWispr` app target, not any framework or test bundle. Rather than
