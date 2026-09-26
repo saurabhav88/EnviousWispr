@@ -101,7 +101,6 @@ struct LearnedWordCheckStepTests {
       (.baseMismatch("shard_hash"), "base_mismatch_shard_hash"),
       (.baseMismatch("prompt_template"), "base_mismatch_prompt_template"),
       (.baseMismatch("runtime"), "base_mismatch_runtime"),
-      (.unqualifiedLanguage, "unqualified_language"),
       (.serverWithoutAdapter("adapter_missing"), "server_without_adapter_adapter_missing"),
       (
         .serverWithoutAdapter("adapter_server_exited"),
@@ -221,8 +220,8 @@ struct LearnedWordCheckStepTests {
     #expect(ContinuousClock.now - start < .milliseconds(1000))
     gate.parked?.resume()
 
-    s.selectionProvider = { _, _ in LearnedWordCheckerSelection(absence: .unqualifiedLanguage) }
-    #expect(await s.boundedSelection(for: .egOne, language: "de")?.absence == .unqualifiedLanguage)
+    s.selectionProvider = { _, _ in LearnedWordCheckerSelection(absence: .serverUnavailable) }
+    #expect(await s.boundedSelection(for: .egOne, language: "de")?.absence == .serverUnavailable)
     s.selectionProvider = nil
     #expect(await s.boundedSelection(for: .egOne, language: "en") == nil)
   }

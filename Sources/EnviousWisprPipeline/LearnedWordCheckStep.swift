@@ -5,7 +5,7 @@ import Foundation
 
 public enum LearnedWordCheckerAbsence: Sendable, Equatable {
   case notEGOne, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed, deliveryDisabled
-  case baseMismatch(String), unqualifiedLanguage, serverWithoutAdapter(String), serverUnavailable
+  case baseMismatch(String), serverWithoutAdapter(String), serverUnavailable
   /// Selection itself did not answer inside `LearnedWordCheckStep.selectionDeadline`.
   case selectionTimedOut
 
@@ -17,7 +17,6 @@ public enum LearnedWordCheckerAbsence: Sendable, Equatable {
     case .adapterDeliveryFailed: "adapter_delivery_failed"
     case .deliveryDisabled: "delivery_disabled"
     case .baseMismatch(let reason): "base_mismatch_\(reason)"
-    case .unqualifiedLanguage: "unqualified_language"
     case .serverWithoutAdapter(let reason): "server_without_adapter_\(reason)"
     case .serverUnavailable: "server_unavailable"
     case .selectionTimedOut: "selection_timed_out"
@@ -27,15 +26,13 @@ public enum LearnedWordCheckerAbsence: Sendable, Equatable {
 
 /// The judge that owns the selected polish engine's learned-word check, named
 /// for the Dictionary status line. Each judge's owner fills it, so a new judge
-/// or a newly qualified language needs no edit to the copy.
+/// needs no edit to the copy. Every dictation language is checked (founder
+/// 2026-09-26, #3105), so a judge names no language list.
 public struct LearnedWordJudge: Sendable, Equatable {
   public let displayName: String
-  /// Lowercase language codes the judge revision is qualified for.
-  public let qualifiedLanguages: [String]
 
-  public init(displayName: String, qualifiedLanguages: [String]) {
+  public init(displayName: String) {
     self.displayName = displayName
-    self.qualifiedLanguages = qualifiedLanguages
   }
 }
 

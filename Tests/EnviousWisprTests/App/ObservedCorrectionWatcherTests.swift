@@ -55,6 +55,8 @@ final class ObserverFake: PastedRegionObserving {
     handler(.ended(reason))
   }
   func fire(_ event: PastedRegionEvent) { onEvent?(event) }
+  /// What the fake reports as the last loss detail (#3105); tests set it before firing an end.
+  var lastEndDetail: PastedRegionEndDetail?
 }
 
 /// The paste's arrival session as #996 sees it (#3106 PR A): one scripted answer per request, the
@@ -302,12 +304,13 @@ struct ObservedCorrectionWatcherTests {
 
   func paste(
     _ text: String = "Ask sarah today", bundle: String? = "com.apple.Notes",
-    language: String? = "en"
+    language: String? = "en", takeID: String? = nil
   )
     -> PasteCompletionEvent
   {
     PasteCompletionEvent(
-      pastedText: text, destinationBundleID: bundle, language: language, editCapture: edits)
+      pastedText: text, destinationBundleID: bundle, language: language, editCapture: edits,
+      takeID: takeID)
   }
 
   @Test(
@@ -392,7 +395,7 @@ struct ObservedCorrectionWatcherTests {
 
   /// Starts a paste whose capture request parks, and returns once the request has arrived: the
   /// watcher is now awaiting the session, and the test can move the world before `release()`.
-  func pasteAndPark(_ watcher: ObservedCorrectionWatcher) async {
+  func pasteAndPark(_ watcher: ObservedCorrectionWatcher, takeID: String? = nil) async {
     edits.hold = true
     let edits = edits
     await withCheckedContinuation { (arrived: CheckedContinuation<Void, Never>) in
@@ -400,7 +403,7 @@ struct ObservedCorrectionWatcherTests {
         edits.onRequest = nil
         arrived.resume()
       }
-      watcher.pasteCompleted(paste())
+      watcher.pasteCompleted(paste(takeID: takeID))
     }
   }
 
@@ -447,6 +450,44 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events == [.observationEnded(.nextDictationStarted, 0, .other)])
     #expect(await waitUntil { !edits.isParked })
     #expect(observer.starts == 0 && watcher.isWatching == false)
+  }
+
+  @Test("every watcher row carries its own paste's take id, the join key to the app (#3105)")
+  func rowsCarryTheirTakeID() async {
+    let watcher = makeWatcher()
+    knobs.toggle = false
+    watcher.pasteCompleted(paste(takeID: "TAKE-A"))
+    #expect(await waitForEvents(telemetry, count: 1))
+    knobs.toggle = true
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher, takeID: "TAKE-B")
+    watcher.recordingStarted()
+    edits.release()
+    #expect(await waitForEvents(telemetry, count: 2))
+    #expect(telemetry.events == [.skipped(.toggleOff), .observationEnded(.nextDictationStarted, 0, .other)])
+    #expect(telemetry.takeIDs == ["TAKE-A", "TAKE-B"])
+  }
+
+  @Test("an observer-decided loss carries its detail to the row; any other end carries none (#3105)")
+  func lossDetailReachesTheRow() async {
+    let watcher = makeWatcher()
+    let lost = PastedRegionEndDetail(
+      region: .init(
+        side: "after", hits: 0, needleUTF16: 64, valueUTF16: 1844, valueRows: 39,
+        distinctUnits: 3, longestRun: 60))
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste(takeID: "TAKE-L"))
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.lastEndDetail = lost
+    observer.fire(.ended(.regionRemoved))
+    #expect(await waitForEvents(telemetry, count: 1))
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste(takeID: "TAKE-F"))
+    #expect(await waitUntil { observer.starts == 2 })
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitForEvents(telemetry, count: 2))
+    #expect(telemetry.regionDetails == [lost, nil], "a stale detail never rides on another end")
+    #expect(telemetry.takeIDs == ["TAKE-L", "TAKE-F"])
   }
 
   @Test("the judge removed while the session answers: the capture stops, no start, no row")

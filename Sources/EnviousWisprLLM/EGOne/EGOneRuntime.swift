@@ -842,13 +842,30 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     }
   }
 
+  /// The checker adapter loads at scale 0, so a request that names no adapter
+  /// runs the base model; only the checker's own request raises it to 1.
+  /// `--lora-init-without-apply` does NOT do this on the bundled server
+  /// (fdb1db8): measured 2026-09-26 (#3105 §11.1), `/lora-adapters` read 1.0
+  /// and an S1-mini polish without a `lora` field came back as garbage, while
+  /// `--lora-scaled <path>:0` read 0.0 and matched a no-adapter server on both
+  /// engines, before and after a checker request.
+  ///
+  /// The server splits that argument on `,` and `:`, so a path holding either
+  /// cannot be passed: the engine then boots without its checker (nil), never
+  /// with a mangled path.
   nonisolated static func launchArguments(
     for provider: LLMProvider, learnedWordAdapterURL: URL?
   ) -> [String] {
     let engine = engineArguments(for: provider)
-    guard provider == .egOne, let learnedWordAdapterURL else { return engine }
+    guard let learnedWordAdapterURL else { return engine }
+    switch provider {
+    case .egOne, .s1Mini: break
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: return engine
+    }
+    let path = learnedWordAdapterURL.path
+    guard !path.contains(","), !path.contains(":") else { return engine }
     return engine + [
-      "--lora", learnedWordAdapterURL.path, "--lora-init-without-apply",
+      "--lora-scaled", "\(path):0",
       "-np", String(EGOneSlots.totalCount), "--kv-unified", "--no-cache-idle-slots",
     ]
   }
@@ -875,21 +892,26 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   func makeServerConfiguration(
     serverBinaryURL: URL, modelURL: URL, contextTokens: Int
   ) async -> EGOneServerManager.Configuration {
-    let adapterURL: URL?
-    if provider == .egOne {
-      adapterURL = await learnedWordAdapterProvider()
-    } else {
-      adapterURL = nil
-    }
+    // Each bundled engine's runtime owns its own adapter provider (#3105: EG-1's
+    // eg1c, S1-mini's D5); a runtime built without one boots without an adapter.
+    let adapterURL = await learnedWordAdapterProvider()
     let baseArguments = Self.engineArguments(for: provider)
     let adapterArguments = Self.launchArguments(
       for: provider, learnedWordAdapterURL: adapterURL).dropFirst(baseArguments.count)
+    // A path the server cannot take boots the engine without its checker, and
+    // the endpoint must then not claim an adapter the requests would name.
+    let loadedAdapterURL = adapterArguments.isEmpty ? nil : adapterURL
+    if adapterURL != nil, loadedAdapterURL == nil {
+      await AppLogger.shared.log(
+        "Learned-word checker adapter not loaded: its path holds ',' or ':'",
+        level: .info, category: "LLM")
+    }
     return EGOneServerManager.Configuration(
       serverBinaryURL: serverBinaryURL,
       modelURL: modelURL,
       contextTokens: contextTokens,
       extraArguments: baseArguments,
-      learnedWordAdapterURL: adapterURL,
+      learnedWordAdapterURL: loadedAdapterURL,
       learnedWordAdapterArguments: Array(adapterArguments)
     )
   }

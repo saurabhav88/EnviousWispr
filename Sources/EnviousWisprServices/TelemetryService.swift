@@ -4355,7 +4355,10 @@ public final class TelemetryService {
   //
   // Counts, durations and closed enums only. No pasted text, no edited text, no
   // word, no bundle id, no exception text: the boundary is the network
-  // (`sentry-operations.md` RULE: telemetry-privacy-boundary). Every enum below
+  // (`sentry-operations.md` RULE: telemetry-privacy-boundary). The watcher's
+  // three carry the paste's `take_id` (#3105, founder 2026-09-26: capture
+  // coverage per app), the join key to that take's `dictation.completed`, whose
+  // `target_app` names the destination; the learn rows themselves still name no app. Every enum below
   // is `CaseIterable` so the payload test can enumerate the vocabulary, and
   // every emitter has a registry row (`scripts/telemetry-emitter-registry.txt`).
   // The producers are `ObservedCorrectionWatcher` and
@@ -4471,8 +4474,10 @@ public final class TelemetryService {
   }
 
   /// A paste the watcher did not observe, and why (every §3.2 reason counts).
-  package func learnSkipped(reason: LearnFromEditsTelemetry.SkipReason) {
-    emitLearnEvent("custom_words.learn_skipped", ["reason": reason.rawValue])
+  package func learnSkipped(reason: LearnFromEditsTelemetry.SkipReason, takeID: String? = nil) {
+    var props: [String: Any] = ["reason": reason.rawValue]
+    if let takeID { props["take_id"] = takeID }
+    emitLearnEvent("custom_words.learn_skipped", props)
   }
 
   /// One watched paste ended. `settledBursts` is how many settled snapshots
@@ -4481,15 +4486,26 @@ public final class TelemetryService {
   /// half-typed fixes (#3105), a count only, never the text.
   package func learnObservationEnded(
     reason: PastedRegionEndReason, settledBursts: Int,
-    appClass: LearnFromEditsTelemetry.AppClass, durationMs: Int, unfinishedEdits: Int
+    appClass: LearnFromEditsTelemetry.AppClass, durationMs: Int, unfinishedEdits: Int,
+    takeID: String? = nil, regionDetail: PastedRegionEndDetail? = nil
   ) {
-    emitLearnEvent(
-      "custom_words.learn_observation_ended",
-      [
-        "reason": reason.rawValue, "settled_bursts": settledBursts,
-        "app_class": appClass.rawValue, "duration_ms": durationMs,
-        "unfinished_edits": unfinishedEdits,
-      ])
+    var props: [String: Any] = [
+      "reason": reason.rawValue, "settled_bursts": settledBursts,
+      "app_class": appClass.rawValue, "duration_ms": durationMs,
+      "unfinished_edits": unfinishedEdits,
+    ]
+    if let takeID { props["take_id"] = takeID }
+    // #3105: why the watch lost the text, counts only (which landmark, hits,
+    // the field's rows, the landmark's shape; or edit distance over the rewrite budget).
+    if let region = regionDetail?.region {
+      props["region_side"] = region.side
+      props["region_hits"] = region.hits
+      props["value_rows"] = region.valueRows
+      props["needle_distinct_units"] = region.distinctUnits
+      props["needle_longest_run"] = region.longestRun
+    }
+    if let ratio = regionDetail?.editBudgetRatio { props["edit_budget_ratio"] = ratio }
+    emitLearnEvent("custom_words.learn_observation_ended", props)
   }
 
   /// One judge call. `candidates` were sent, `accepted` answered "correction";
@@ -4498,13 +4514,14 @@ public final class TelemetryService {
   /// measured" and the key is OMITTED, never written as zero.
   package func learnJudged(
     arm: LearnFromEditsTelemetry.Arm, outcome: LearnFromEditsTelemetry.JudgeOutcome,
-    candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?
+    candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?, takeID: String? = nil
   ) {
     var props: [String: Any] = [
       "arm": arm.rawValue, "outcome": outcome.rawValue, "candidates": candidates,
       "accepted": accepted, "latency_ms": latencyMs,
     ]
     if let queueWaitMs { props["queue_wait_ms"] = queueWaitMs }
+    if let takeID { props["take_id"] = takeID }
     emitLearnEvent("custom_words.learn_judged", props)
   }
 

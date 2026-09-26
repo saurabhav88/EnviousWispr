@@ -93,9 +93,10 @@ public final class FileImportRunner {
   /// The custom-words vocabulary, frozen with the settings for the same reason.
   private var frozenVocabulary: CorrectorVocabulary?
   /// An import is one invocation even when it has many parts, so the endpoint
-  /// is chosen once. The choice is keyed by each part's resolved language: a
-  /// judge qualified for English must not run on a later Spanish part because
-  /// the first part happened to be English. Key "" is an unresolved language.
+  /// is chosen once per language. The choice is keyed by each part's resolved
+  /// language because S1-mini's check prompt names that language (#3105): a
+  /// later Spanish part must not reuse a checker built for an English one.
+  /// Key "" is an unresolved language.
   private var frozenCheckerSelections: [String: LearnedWordCheckerSelection] = [:]
 
   public convenience init(

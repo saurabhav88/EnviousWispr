@@ -35,7 +35,10 @@ It is snapshotted byte for byte before the first case and restored, with the
 app down, in `finally`; the restore is verified by bytes AND by parsed per-key
 equality. The `learnFromEdits` default in `com.enviouswispr.app` and the
 launchd `EW_LEARN_FROM_EDITS_JUDGE_EXPORT` value are snapshotted and restored
-the same way. The retired ask-first ledger (`correction-proposals.json`) is
+the same way, as are the learned-word check doors: `EW_LEARNED_CHECK_UAT_APPROVE`
+and both engines' adapter doors (`EW_LEARNED_CHECK_EG1_ADAPTER`,
+`EW_LEARNED_CHECK_EG1_THRESHOLD`, `EW_LEARNED_CHECK_S1_ADAPTER`,
+`EW_LEARNED_CHECK_S1_THRESHOLD`). The retired ask-first ledger (`correction-proposals.json`) is
 NEVER written or restored by this script: the app deletes it once at launch,
 and the run records only whether it was present before and after. A failed
 restore exits 3 and overrides every pass.
@@ -220,14 +223,28 @@ def stop_app():
         raise Aborted("the dev app did not exit within 20s; refusing to touch settings under it")
 
 
+def expected_door_threshold():
+    """The detection threshold of the export the launch environment names."""
+    export = launchctl_get()
+    if not export:
+        raise Aborted(f"{ENV_KEY} is unset; the door cannot be checked")
+    with open(os.path.join(export, "training-manifest-shaped.json")) as fh:
+        return float(json.load(fh)["decision_config"]["detection_threshold"])
+
+
 def start_app():
     mark = log_mark()
     subprocess.run(["open", "-n", APP], check=True)
     if not wait_for("the app's door banner", lambda: has(mark, DOOR_ACTIVE), deadline=90.0):
         raise Aborted("the relaunched app never logged the UAT door as ACTIVE")
     banner = [l for l in w.log_entries_since(mark) if DOOR_ACTIVE in l][-1]
-    if "threshold=0.06" not in banner or "arm=classifier" not in banner:
-        raise Aborted(f"door banner is not the v9 door: {banner}")
+    # The banner must name the export this run installed and ITS threshold (the
+    # export's own decision config), never a remembered revision's: the judge
+    # under test changes between rounds (v9 in 2026-09-20, v31 from 2026-09-25).
+    expected = expected_door_threshold()
+    got = re.search(r"threshold=([0-9.eE-]+)", banner)
+    if "arm=classifier" not in banner or got is None or abs(float(got.group(1)) - expected) > 1e-9:
+        raise Aborted(f"door banner does not name the installed export's threshold {expected}: {banner}")
     if not wait_for("startup scan", lambda: has(mark, "scan finished"), deadline=60.0):
         raise Aborted("the app did not reach a ready state")
     # The menu-driven take taps the status item's "Start Recording". Right after
@@ -276,9 +293,13 @@ def defaults_restore(snap):
 
 
 CHECK_ENV_KEY = "EW_LEARNED_CHECK_UAT_APPROVE"
-# The real EG-1 checker's Debug doors (#3105). This run cleared them so its no-checker
-# cases see no checker, whatever the founder's dev build is testing, and restores them.
-EG1_DOOR_KEYS = ("EW_LEARNED_CHECK_EG1_ADAPTER", "EW_LEARNED_CHECK_EG1_THRESHOLD")
+# Every engine's real checker Debug doors (#3105: EG-1 and S1-mini). This run clears
+# them so its no-checker cases see no checker, whichever engine is selected and
+# whatever the founder's dev build is testing, and restores them.
+CHECKER_DOOR_KEYS = (
+    "EW_LEARNED_CHECK_EG1_ADAPTER", "EW_LEARNED_CHECK_EG1_THRESHOLD",
+    "EW_LEARNED_CHECK_S1_ADAPTER", "EW_LEARNED_CHECK_S1_THRESHOLD",
+)
 
 
 def env_get(key):
@@ -790,9 +811,9 @@ def case_existing_word(path):
     """The corrected word is ALREADY in Your Words (seeded, no sound-alikes):
     the fix attaches the mishearing to it (`learn_added state=existing_word`,
     the pill says updated), Undo is not pressed, and the sound-alike is marked
-    learned. Then the NEXT dictation of the same sentence: a learned sound-alike
-    never swaps text by itself (#3105 learn-only phase), so the heard form is
-    delivered as heard, and the corrector does not write the target.""" 
+    learned. Then the NEXT dictation of the same sentence, when it carries that
+    learned alias again: the learned alias alone must not insert the canonical
+    target (#3105: with no word check installed, a learned alias is inert)."""
     pair = PAIRS["existing-word"]
     mark, _, heard = dictate(path, "existing-word", pair)
     apply_fix(path, "existing-word", heard, pair.correct)
@@ -812,15 +833,35 @@ def case_existing_word(path):
     check("existing-word", ok, f"heard={heard!r} state={state} learned_alias={bool(landed)} one_word={one_word}")
     # No Undo: the pill leaves on its own and the word persists (checked again
     # after the window in `case_persists_then_your_words`).
-    clear_field(path)
-    mark2, text2, heard2 = dictate(path, "learned-alias", pair, need_heard=False)
     # Positive half first (code-uat.md FACT: a-negative-UAT-result-must-be-attributed):
-    # the take reached the corrector and the recogniser delivered the heard form
-    # again; only then does "the target is absent" say the learned alias held.
-    reached = wait_for("the take's Word Correction line", lambda: has(mark2, "WordCorrection enter"), deadline=10.0)
-    heard_again = pair.heard_in(text2 or "")
-    if not reached or heard_again is None or heard_again.lower() == pair.correct.lower():
-        raise Aborted(f"learned-alias: precondition not met (reached={bool(reached)} heard={heard_again!r} delivered={text2!r})")
+    # the take reached the corrector and the recogniser delivered THE LEARNED
+    # ALIAS again; only then does "the target is absent" say the learned alias
+    # held. A different garble ("Pixie Eye" after "PixieI", 2026-09-26) is not
+    # the alias: the old Word Correction may fuzzy-match it to the hand-added
+    # word, which says nothing about the learned alias. One retake, then the
+    # half is INSTRUMENT (no verdict), never a product FAIL.
+    for attempt in (1, 2):
+        raw_heard = None  # per take, so a retake's record never shows the first take's hearing
+        clear_field(path)
+        mark2, text2, heard2 = dictate(path, "learned-alias", pair, need_heard=False)
+        reached = wait_for("the take's Word Correction line", lambda: has(mark2, "WordCorrection enter"), deadline=10.0)
+        if not reached:
+            raise Aborted(f"learned-alias: the take never reached Word Correction (delivered={text2!r})")
+        heard_again = pair.heard_in(text2 or "")
+        if heard_again is None:
+            # The recogniser dropped an anchor word: a transient hearing, so it
+            # spends the one retake rather than ending the case.
+            continue
+        raw = re.search(r"\[RAW ASR\] (.*)", log_since(mark2) or "")
+        raw_heard = pair.heard_in(raw.group(1)) if raw else None
+        # The alias must reach BOTH the recogniser's output and the delivered text: a
+        # correction that turned it into some other non-target word tests nothing here.
+        if raw_heard is not None and raw_heard.lower() == heard.lower() and heard_again.lower() == heard.lower():
+            break
+    else:
+        record("learned-alias-not-swapped", "INSTRUMENT",
+               f"the recogniser never delivered the learned alias {heard!r} again (raw heard={raw_heard!r} delivered={text2!r})")
+        return ok
     check("learned-alias-not-swapped", pair.correct.lower() not in text2.lower(),
           f"heard={heard_again!r} delivered_has_target={pair.correct.lower() in text2.lower()} delivered={text2!r}")
     return ok
@@ -1093,7 +1134,7 @@ def case_learned_check(path):
 
 def case_learned_check_door_off(path):
     """The control: the same learned word and sentence with NO checker installed
-    (the production state until a model qualifies): the step still runs, records
+    (every engine's adapter door cleared, so no engine has a checker): the step still runs, records
     `arm=none reason=no_checker`, and the learned word never swaps by itself."""
     pair = PAIRS["learned-check"]
     mark, text, _ = dictate(path, "learned-check-off", pair, need_heard=False)
@@ -1155,11 +1196,11 @@ def main():
 
     head = subprocess.run(["git", "-C", WORKTREE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     snaps = {"words": file_snapshot(WORDS), "defaults": defaults_snapshot(), "launchctl": launchctl_get(),
-             "checkdoor": check_door_get(), "eg1": {key: env_get(key) for key in EG1_DOOR_KEYS}}
+             "checkdoor": check_door_get(), "checker_doors": {key: env_get(key) for key in CHECKER_DOOR_KEYS}}
     save("before-custom-words.json", {k: v for k, v in snaps["words"].items() if k != "bytes"})
     save("before-legacy-ledger.json", {"present": legacy_ledger_present(), "path": LEGACY_LEDGER, "note": "read only; the app deletes it at launch; this script never writes it"})
     save("before-defaults-and-launchctl.json", {"defaults": snaps["defaults"], "launchctl": snaps["launchctl"],
-                                                "eg1_doors": snaps["eg1"]})
+                                                "checker_doors": snaps["checker_doors"]})
     with open(APP_BIN, "rb") as fh:
         bin_sha = hashlib.sha256(fh.read()).hexdigest()
     save("subject.json", {"head": head, "app": APP_BIN, "bin_sha256": bin_sha,
@@ -1170,7 +1211,7 @@ def main():
     doc = None
     route = None
     try:
-        for key in EG1_DOOR_KEYS:
+        for key in CHECKER_DOOR_KEYS:
             env_set(key, None)
         # Inaudible: BlackHole for BOTH system output and input, and the app's
         # own mic picker set through the UI (uat-testing.md RULE:
@@ -1263,7 +1304,7 @@ def main():
         # Each step runs whatever an earlier one raised; the verification below
         # decides the verdict.
         env_restored = True
-        for key, value in [(ENV_KEY, snaps["launchctl"]), (CHECK_ENV_KEY, snaps["checkdoor"])] + list(snaps["eg1"].items()):
+        for key, value in [(ENV_KEY, snaps["launchctl"]), (CHECK_ENV_KEY, snaps["checkdoor"])] + list(snaps["checker_doors"].items()):
             try:
                 env_set(key, value)
             except Exception as error:
@@ -1284,7 +1325,7 @@ def main():
         try:
             after_launchctl = launchctl_get()
             ok_e = env_restored and after_launchctl == snaps["launchctl"] and check_door_get() == snaps["checkdoor"] \
-                and all(env_get(key) == value for key, value in snaps["eg1"].items())
+                and all(env_get(key) == value for key, value in snaps["checker_doors"].items())
         except Exception as error:
             ok_e = False
             record("env-readback", "FAIL", str(error))

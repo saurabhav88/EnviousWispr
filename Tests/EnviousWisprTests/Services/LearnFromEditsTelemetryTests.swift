@@ -48,13 +48,18 @@ import Testing
 
     /// Independent oracle: the plan §4 event list and property names spelled out.
     static let contract: [String: Set<String>] = [
-      "custom_words.learn_skipped": ["reason"],
+      // The watcher's three carry the paste's `take_id` when it has one (#3105),
+      // the join key to that take's `dictation.completed`; absent otherwise.
+      "custom_words.learn_skipped": ["reason", "take_id"],
       "custom_words.learn_observation_ended": [
-        "reason", "settled_bursts", "app_class", "duration_ms", "unfinished_edits",
+        "reason", "settled_bursts", "app_class", "duration_ms", "unfinished_edits", "take_id",
+        // #3105: why the watch lost the text, counts only, when it did.
+        "region_side", "region_hits", "value_rows", "needle_distinct_units", "needle_longest_run",
+        "edit_budget_ratio",
       ],
       // `queue_wait_ms` rides only when the arm measured it (see the second test).
       "custom_words.learn_judged": [
-        "arm", "outcome", "candidates", "accepted", "latency_ms", "queue_wait_ms",
+        "arm", "outcome", "candidates", "accepted", "latency_ms", "queue_wait_ms", "take_id",
       ],
       "custom_words.learn_save_failed": ["reason"],
       // Auto-learn (2026-09-21 plan §3.1 step 11).
@@ -68,12 +73,18 @@ import Testing
     func everyEventFrozenKeys() throws {
       let box = Self.capture {
         let t = TelemetryService.shared
-        t.learnSkipped(reason: .destinationMismatch)
+        t.learnSkipped(reason: .destinationMismatch, takeID: "TAKE-1")
         t.learnObservationEnded(
-          reason: .settled, settledBursts: 1, appClass: .native, durationMs: 4200, unfinishedEdits: 0)
+          reason: .settled, settledBursts: 1, appClass: .native, durationMs: 4200, unfinishedEdits: 0,
+          takeID: "TAKE-1",
+          regionDetail: PastedRegionEndDetail(
+            region: .init(
+              side: "after", hits: 0, needleUTF16: 64, valueUTF16: 1844, valueRows: 39,
+              distinctUnits: 3, longestRun: 60),
+            editBudgetRatio: 1.4))
         t.learnJudged(
           arm: .rules, outcome: .verdict, candidates: 3, accepted: 1, latencyMs: 812,
-          queueWaitMs: 0)
+          queueWaitMs: 0, takeID: "TAKE-1")
         t.learnSaveFailed(reason: .aliasOwnedElsewhere)
         t.learnAdded(state: .packOverride)
         t.learnUndoShown()
@@ -81,6 +92,11 @@ import Testing
       }
       let events = box.values
       #expect(events.count == 7)
+      let joined = events.filter { $0.stringProps["take_id"] != nil }
+      #expect(Set(joined.map(\.name)) == [
+        "custom_words.learn_skipped", "custom_words.learn_observation_ended", "custom_words.learn_judged",
+      ])
+      #expect(joined.allSatisfy { $0.stringProps["take_id"] == "TAKE-1" })
       #expect(Set(events.map(\.name)) == Set(Self.contract.keys))
       for event in events {
         let expected = try #require(Self.contract[event.name])
@@ -92,7 +108,9 @@ import Testing
         let expected = try #require(Self.contract[name])
         #expect(Set(props.keys) == expected, "\(name) raw keys")
         for (key, value) in props {
-          #expect(value is String || value is Int, "\(name).\(key) is \(type(of: value))")
+          // `edit_budget_ratio` (#3105) is the one Double: a ratio rounded to 0.1.
+          let typed = key == "edit_budget_ratio" ? value is Double : (value is String || value is Int)
+          #expect(typed, "\(name).\(key) is \(type(of: value))")
         }
       }
     }
@@ -119,6 +137,7 @@ import Testing
       #expect(ended.stringProps["app_class"] == "manual_accessibility")
       #expect(ended.intProps["settled_bursts"] == 2 && ended.intProps["duration_ms"] == 61_000)
       #expect(ended.intProps["unfinished_edits"] == 1)
+      #expect(ended.stringProps["take_id"] == nil, "no take: the key is absent")
       let judged = try #require(box.values.first { $0.name == "custom_words.learn_judged" })
       #expect(judged.stringProps["arm"] == "afm" && judged.stringProps["outcome"] == "deadline")
       #expect(judged.intProps["candidates"] == 4 && judged.intProps["accepted"] == 0)

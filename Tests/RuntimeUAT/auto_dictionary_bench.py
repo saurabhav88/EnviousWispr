@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """End-to-end timing bench for Auto Dictionary (#3105): release to pasted text, every stage live.
 
-    python3 Tests/RuntimeUAT/auto_dictionary_bench.py --run-dir <dir> --adapter <eg1 checker .gguf> \\
-        --threshold 0.9 [--rounds 2]
+    python3 Tests/RuntimeUAT/auto_dictionary_bench.py --run-dir <dir> --engine egOne|s1Mini \\
+        --adapter <that engine's checker .gguf> --threshold 0.9 [--rounds 2]
 
 WHAT IS TIMED. `Pipeline timing TOTAL` starts at the accepted stop (`RecordingSessionKernel`
 `markPipelineTimingStart`, the same instant as the `t_release` signpost) and ends after paste
 (`KernelFinalizationWiring` `pipelineEndedAtSeconds`), for every recogniser. Inside it, per take:
 the recogniser, every text step from `StepTiming:` lines (deterministic clean-up, Word Correction,
-the learned-word check = sensing + EG-1 judge + replacing, filler, emoji, ITN, EG-1 polish,
-emoji restore), and paste. Nothing is simulated: real audio through BlackHole into the real app,
-EG-1 polish on the bundled server, the checker as a LoRA adapter on the same server.
+the learned-word check = sensing + the engine's judge + replacing, filler, emoji, ITN, the
+engine's polish, emoji restore), and paste. Nothing is simulated: real audio through BlackHole into
+the real app, the selected local engine (EG-1 or S1-mini, `--engine`) polishing on the bundled
+server, its checker as a LoRA adapter on the same server.
 
 TWO ARMS, same sentences, same order:
   off: Auto Dictionary checker not installed (today's product, learned words inert)
-  on:  the EG-1 checker installed through the Debug door (`EW_LEARNED_CHECK_EG1_ADAPTER`)
+  on:  that engine's checker installed through its Debug door (`EW_LEARNED_CHECK_EG1_ADAPTER`
+       or `EW_LEARNED_CHECK_S1_ADAPTER`, with the matching `_THRESHOLD`)
 Each arm: relaunch, one warm-up take (reported separately as COLD, not in the medians), then
 `rounds` passes over the sentences. Six of twelve sentences carry a misspelling the dictionary has
 already learned for a word (the checker is asked; aliases only since founder 2026-09-25, #3105), one
@@ -22,8 +24,10 @@ of them a three-sentence take; the rest, including a second three-sentence take,
 
 WHAT IT TOUCHES AND PUTS BACK. The same shared-data rules as the learn-from-edits drill
 (code-uat.md RULE: uat-writes-reach-the-founders-REAL-data): `custom-words.json` byte for byte,
-the two launchctl door variables, the audio route (silent, BlackHole), and whether the dev app
-was running. `llmProvider` is read and must already be `egOne`; the bench never writes it.
+the chosen engine's two launchctl door variables, the audio route (silent, BlackHole), and
+whether the dev app was running. `llmProvider` is read and must already equal `--engine`; the
+bench never writes it. The other engine's doors are not touched: its checker is never selected
+while this engine is.
 """
 
 import argparse
@@ -40,8 +44,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import learn_from_edits_uat as lfe  # noqa: E402  (shared helpers: audio route, snapshots, TextEdit)
 
-ADAPTER_KEY = "EW_LEARNED_CHECK_EG1_ADAPTER"
-THRESHOLD_KEY = "EW_LEARNED_CHECK_EG1_THRESHOLD"
+# Each local engine's checker door (Swift: `LearnedWordCheckAdapterDoor.Engine`) and the label its
+# ACTIVE line uses ("learned-check <label> door ACTIVE").
+ENGINES = {
+    "egOne": {"adapter": "EW_LEARNED_CHECK_EG1_ADAPTER", "threshold": "EW_LEARNED_CHECK_EG1_THRESHOLD", "label": "EG-1",
+              "checker_arm": "eg1_lora"},
+    "s1Mini": {"adapter": "EW_LEARNED_CHECK_S1_ADAPTER", "threshold": "EW_LEARNED_CHECK_S1_THRESHOLD", "label": "S1-mini",
+               "checker_arm": "s1_lora"},
+}
 
 # A realistic learned dictionary: words the app learned from edits (born-learned), each with the
 # misspellings a user's earlier fixes taught it. The checker is asked only where one reappears.
@@ -117,7 +127,7 @@ def start_app():
     return mark
 
 
-def take(doc, arm, idx, sentence, expect):
+def take(doc, arm, idx, sentence, expect, checker_arm):
     pair = lfe.Pair(sentence, expect, "", "", "__none__")
     mark, text, _ = lfe.dictate(doc, f"{arm}-{idx:02d}", pair, need_heard=False)
     total = lfe.wait_for("the take's timing line", lambda: TOTAL_RE.search(lfe.log_since(mark)), deadline=30.0)
@@ -127,10 +137,16 @@ def take(doc, arm, idx, sentence, expect):
     steps = {m.group(1): float(m.group(2)) for m in STEP_RE.finditer(body) if m.group(3) == "true"}
     check = CHECK_RE.search(body)
     lfe.clear_field(doc)
+    # A timing is only about the arm it names: every on take ran the engine's checker (a
+    # take with no learned alias in it may say no_candidates), every off take ran none.
+    # An on door that logged ACTIVE but fell back to no_checker must not produce a summary.
+    want = checker_arm if arm == "on" else "none"
+    if not check or check.group(6) != want:
+        raise lfe.Aborted(f"{arm}-{idx}: expected checker arm {want!r}, got {check.group(0) if check else None!r}")
     return {"arm": arm, "idx": idx, "sentence": sentence, "trigger": idx % len(SENTENCES) in TRIGGER_IDX,
             "total_ms": round(float(total.group(1)) * 1000), "asr_ms": round(float(total.group(2)) * 1000),
             # The kernel's TOTAL line calls this span "polish", but it is every text step
-            # (the learned-word check included); EG-1 polish alone is steps_ms["LLM Polish"].
+            # (the learned-word check included); the engine's polish alone is steps_ms["LLM Polish"].
             "text_steps_ms": round(float(total.group(3)) * 1000), "paste_ms": round(float(total.group(4)) * 1000),
             "steps_ms": steps, "check": check.group(0) if check else None,
             "check_ms": int(check.group(5)) if check else None, "delivered": text}
@@ -165,20 +181,24 @@ def summarize(rows):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-dir", required=True)
-    ap.add_argument("--adapter", required=True, help="absolute path to the EG-1 checker adapter .gguf")
+    ap.add_argument("--engine", choices=sorted(ENGINES), default="egOne",
+                    help="the local engine whose checker is timed; llmProvider must already be this")
+    ap.add_argument("--adapter", required=True, help="absolute path to that engine's checker adapter .gguf")
     ap.add_argument("--threshold", default="0.9")
     ap.add_argument("--rounds", type=int, default=2)
     args = ap.parse_args()
     lfe.run_dir = args.run_dir
     os.makedirs(args.run_dir, exist_ok=True)
     provider = subprocess.run(["defaults", "read", lfe.DOMAIN, "llmProvider"], capture_output=True, text=True).stdout.strip()
-    if provider != "egOne":
-        raise SystemExit(f"llmProvider is {provider!r}; the bench times EG-1 polish and never changes the setting")
+    engine = ENGINES[args.engine]
+    adapter_key, threshold_key, label = engine["adapter"], engine["threshold"], engine["label"]
+    if provider != args.engine:
+        raise SystemExit(f"llmProvider is {provider!r}, not {args.engine!r}; the bench never changes the setting")
     if not os.path.isabs(args.adapter) or not os.path.exists(args.adapter):
         raise SystemExit(f"adapter not found: {args.adapter}")
 
     initially_running = lfe.app_pid() is not None
-    snaps = {"words": lfe.file_snapshot(lfe.WORDS), "adapter": door_get(ADAPTER_KEY), "threshold": door_get(THRESHOLD_KEY)}
+    snaps = {"words": lfe.file_snapshot(lfe.WORDS), "adapter": door_get(adapter_key), "threshold": door_get(threshold_key)}
     rows, audio_restored, route, doc = [], True, None, None
     try:
         if lfe.app_pid() is None:
@@ -194,19 +214,19 @@ def main():
             route.restore()
             lfe.stop_app()
             lfe.file_restore(lfe.WORDS, learned_dictionary(snaps["words"]))
-            door_set(ADAPTER_KEY, args.adapter if arm == "on" else None)
-            door_set(THRESHOLD_KEY, args.threshold if arm == "on" else None)
+            door_set(adapter_key, args.adapter if arm == "on" else None)
+            door_set(threshold_key, args.threshold if arm == "on" else None)
             mark = start_app()
             route.apply()
-            if arm == "on" and not lfe.wait_for("the EG-1 checker door", lambda: lfe.has(mark, "learned-check EG-1 door ACTIVE"), deadline=30.0):
-                raise lfe.Aborted("the EG-1 checker door did not report ACTIVE")
-            cold = take(doc, arm, 0, *SENTENCES[0])
+            if arm == "on" and not lfe.wait_for(f"the {label} checker door", lambda: lfe.has(mark, f"learned-check {label} door ACTIVE"), deadline=30.0):
+                raise lfe.Aborted(f"the {label} checker door did not report ACTIVE")
+            cold = take(doc, arm, 0, *SENTENCES[0], engine["checker_arm"])
             cold["cold"] = True
             rows.append(cold)
             print(f"  {arm} COLD total={cold['total_ms']} ms", flush=True)
             for rnd in range(args.rounds):
                 for i, (sentence, expect) in enumerate(SENTENCES):
-                    r = take(doc, arm, rnd * len(SENTENCES) + i, sentence, expect)
+                    r = take(doc, arm, rnd * len(SENTENCES) + i, sentence, expect, engine["checker_arm"])
                     rows.append(r)
                     print(f"  {arm} {r['idx']:02d} total={r['total_ms']} asr={r['asr_ms']} text={r['text_steps_ms']} "
                           f"check={r['check_ms']} {'[AD]' if r['trigger'] else ''}", flush=True)
@@ -232,7 +252,7 @@ def main():
             stopped = False
             print(f"APP STOP FAILED: {error}")
         doors_restored = True
-        for key, value in ((ADAPTER_KEY, snaps["adapter"]), (THRESHOLD_KEY, snaps["threshold"])):
+        for key, value in ((adapter_key, snaps["adapter"]), (threshold_key, snaps["threshold"])):
             try:
                 door_set(key, value)
             except Exception as error:
@@ -245,8 +265,8 @@ def main():
                 print(f"WORDS RESTORE FAILED: {error}")
         ok_w, why = lfe.verify_restore(lfe.WORDS, snaps["words"], "words") if stopped else (False, "app did not stop")
         try:
-            ok_d = doors_restored and door_get(ADAPTER_KEY) == snaps["adapter"] \
-                and door_get(THRESHOLD_KEY) == snaps["threshold"]
+            ok_d = doors_restored and door_get(adapter_key) == snaps["adapter"] \
+                and door_get(threshold_key) == snaps["threshold"]
         except Exception as error:
             ok_d = False
             print(f"DOOR READBACK FAILED: {error}")

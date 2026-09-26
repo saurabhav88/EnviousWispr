@@ -8,7 +8,7 @@ import Testing
 @Suite("EG-1 adapter server lifecycle (#3105)", .serialized, .tags(.driftGuard))
 struct EGOneAdapterLifecycleTests {
   /// A tiny HTTP server that records argv before answering /health. An
-  /// adapter-failure marker makes only --lora launches exit before readiness.
+  /// adapter-failure marker makes only --lora-scaled launches exit before readiness.
   private struct Fixture {
     let root: URL
     let binary: URL
@@ -31,7 +31,8 @@ struct EGOneAdapterLifecycleTests {
         import http.server, json, os, sys, time
         args = sys.argv[1:]
         root = os.path.dirname(os.path.realpath(sys.argv[0]))
-        adapter_root = os.path.dirname(args[args.index('--lora') + 1]) if '--lora' in args else None
+        adapter_root = (os.path.dirname(args[args.index('--lora-scaled') + 1].rsplit(':', 1)[0])
+                        if '--lora-scaled' in args else None)
         with open(os.path.join(root, 'launches.jsonl'), 'a') as log:
             log.write(json.dumps(args) + '\n')
         if adapter_root and os.path.exists(os.path.join(adapter_root, 'fail_adapter')):
@@ -80,7 +81,7 @@ struct EGOneAdapterLifecycleTests {
   }
 
   @MainActor
-  @Test("provider is read for every boot configuration; S1 never reads it")
+  @Test("each runtime reads its own adapter provider on every boot configuration")
   func providerPerBoot() async {
     var calls = 0
     var available: URL? = nil
@@ -100,16 +101,31 @@ struct EGOneAdapterLifecycleTests {
     #expect(calls == 2)
     #expect(first.learnedWordAdapterURL == nil)
     #expect(second.learnedWordAdapterURL == available)
+    // #3105: S1-mini boots with its own D5 adapter from its own provider.
+    let d5 = URL(fileURLWithPath: "/fake/s1-d5.gguf")
     let s1 = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini,
-      learnedWordAdapterProvider: {
-        Issue.record("S1 consulted EG-1 adapter provider")
-        return available
-      })
+      learnedWordAdapterProvider: { d5 })
     let s1Config = await s1.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
-    #expect(s1Config.learnedWordAdapterURL == nil)
+    #expect(s1Config.learnedWordAdapterURL == d5)
     #expect(s1Config.extraArguments == EGOneRuntime.engineArguments(for: .s1Mini))
+    // A runtime built without a provider boots bare.
+    let bare = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini)
+    let bareConfig = await bare.makeServerConfiguration(
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
+    #expect(bareConfig.learnedWordAdapterURL == nil)
+    #expect(bareConfig.learnedWordAdapterArguments.isEmpty)
+    // A path the server cannot split boots without the checker, and the endpoint
+    // does not claim an adapter the requests would name.
+    let unsplittable = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini,
+      learnedWordAdapterProvider: { URL(fileURLWithPath: "/fake/a,b/s1-d5.gguf") })
+    let refused = await unsplittable.makeServerConfiguration(
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
+    #expect(refused.learnedWordAdapterURL == nil)
+    #expect(refused.learnedWordAdapterArguments.isEmpty)
   }
 
   @Test("adapter-free polish bodies keep the original bytes across inputs")
@@ -184,8 +200,8 @@ struct EGOneAdapterLifecycleTests {
     #expect(await manager.checkerFailureReason == .adapterServerExited)
     let launches = try fixture.launches()
     #expect(launches.count == 2)
-    #expect(launches[0].contains("--lora"))
-    #expect(!launches[1].contains("--lora"))
+    #expect(launches[0].contains("--lora-scaled"))
+    #expect(!launches[1].contains("--lora-scaled"))
     await manager.stop()
   }
 

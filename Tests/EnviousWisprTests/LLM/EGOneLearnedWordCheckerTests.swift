@@ -20,6 +20,39 @@ struct EGOneLearnedWordCheckerTests {
     #expect(EGOneLearnedWordChecker.prompt(for: Self.question()) == expected)
   }
 
+  /// Pinned to the text D5 was trained and graded with (hint-validation
+  /// train_checker_distill.py through the HF chat template, enable_thinking=False;
+  /// judge2-exam-v2/s1_mac_score.py): the same system text, the named-language line
+  /// for the exam's eight languages, and the empty think block.
+  @Test("S1-mini asks D5's trained question: think block, and the language line outside English")
+  func s1MiniPromptIsPinned() {
+    let q = Self.question()
+    let english = EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: "en"))
+    #expect(
+      english == "<|im_start|>system\n\(EGOneLearnedWordChecker.systemPrompt)<|im_end|>\n"
+        + "<|im_start|>user\nDictionary word: Tuist\nA: I said toast\nB: I said Tuist<|im_end|>\n"
+        + "<|im_start|>assistant\n<think>\n\n</think>\n\n")
+    let german = EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: "de"))
+    #expect(german.contains("Answer with one letter. The sentence is in German.<|im_end|>"))
+    // A regional code names its base language (Codex whole-diff review of #3105 PR 1).
+    for regional in ["de-DE", "DE_at", " de-CH "] {
+      #expect(EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: regional)) == german)
+    }
+    #expect(
+      EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: "pt-BR"))
+        .contains("The sentence is in Portuguese.<|im_end|>"))
+    let unnamed = EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: "ja"))
+    #expect(unnamed == english)
+    #expect(EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: nil)) == english)
+    #expect(EGOneLearnedWordChecker.prompt(for: q).hasSuffix("<|im_start|>assistant\n"))
+    let checker = EGOneLearnedWordChecker(threshold: 0.5, style: .s1Mini(language: "fr")) {
+      nil as EGOneCheckerHold?
+    }
+    #expect(checker.armName == "s1_lora")
+    let body = EGOneLearnedWordChecker.makeRequestBody(q, index: 0, style: .s1Mini(language: "fr"))
+    #expect((body["prompt"] as? String)?.contains("The sentence is in French.") == true)
+  }
+
   @Test func multiSentencePromptShowsOnlyTheSpotSentence() {
     let text = "We use cotton daily. The plot twist surprised me."
     let question = LearnedWordCheckQuestion(
@@ -82,22 +115,33 @@ struct EGOneLearnedWordCheckerTests {
     #expect(slots == [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8])
   }
 
-  @Test func adapterFlagsAreOnlyOnConfiguredEGOneLaunch() {
+  @Test("the adapter loads at scale 0 on a configured EG-1 or S1-mini launch, never on a bare one")
+  func adapterFlagsAreOnlyOnConfiguredLaunch() {
     let path = URL(fileURLWithPath: "/tmp/check.gguf")
     let baseline = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
     #expect(EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: nil) == baseline)
     #expect(
       EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: path)
         == baseline + [
-          "--lora", path.path, "--lora-init-without-apply",
+          "--lora-scaled", "\(path.path):0",
           "-np", "9", "--kv-unified", "--no-cache-idle-slots",
         ])
     #expect(
       EGOneRuntime.launchArguments(for: .s1Mini, learnedWordAdapterURL: path)
-        == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#])
+        == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
+        + [
+          "--lora-scaled", "\(path.path):0",
+          "-np", "9", "--kv-unified", "--no-cache-idle-slots",
+        ])
     #expect(
       EGOneRuntime.launchArguments(for: .s1Mini, learnedWordAdapterURL: nil)
         == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#])
+    // The server splits `--lora-scaled` on "," and ":": such a path boots without the adapter.
+    for odd in ["/tmp/a,b/check.gguf", "/tmp/a:b/check.gguf"] {
+      #expect(
+        EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: URL(fileURLWithPath: odd))
+          == baseline)
+    }
   }
 
   /// A real one-question reply from the same engine and adapter: a one-prompt array comes

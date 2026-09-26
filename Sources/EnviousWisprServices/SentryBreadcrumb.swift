@@ -549,6 +549,12 @@ public enum SentryBreadcrumb {
     /// dictation is delivered in American spelling for the rest of the process. A packaging
     /// defect that removes the feature for every UK user; captured once per process, no text.
     case englishSpellingTableLoadFailed = "english_spelling_table_load_failed"
+    /// #3105: Judge 1, the on-device correction classifier behind the
+    /// self-learning dictionary, failed as a model (load, output, or a request
+    /// the watcher built). Learning pauses or skips that edit; dictation is
+    /// untouched. Captured once per process per kind (`LearnJudgeFailureReporter`),
+    /// no text: kind, closed cause, judge revision, arm, macOS major.
+    case learnJudgeFailure = "learn_judge_failure"
     /// #1175 (Telemetry Bible Phase 6): a hotkey registration failed — Carbon
     /// `RegisterEventHotKey` returned non-`noErr`, or an `NSEvent` modifier
     /// monitor installed `nil`. The affected hotkey will not fire. Rare and

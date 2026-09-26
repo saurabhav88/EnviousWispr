@@ -3927,23 +3927,6 @@
         }
       }
     },
-    "Checked by: %@. Learned words are checked before they're used in %@." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checked by: %1$@. Learned words are checked before they're used in %2$@."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geprüft von: %1$@. Gelernte Wörter werden geprüft, bevor sie in Diktaten auf %2$@ verwendet werden."
-          }
-        }
-      }
-    },
     "Checked by: %@. Learned words are checked before they're used." : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
       "localizations" : {
@@ -8456,28 +8439,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur lernen: Die Wortprüfung (%@) ist noch nicht einsatzbereit. Gelernte Wörter werden für später gespeichert."
-          }
-        }
-      }
-    },
-    "Learn-only: Learned words are checked in %@ only." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur lernen: Gelernte Wörter werden nur auf %@ geprüft."
-          }
-        }
-      }
-    },
-    "Learn-only: Learned words aren't checked in this language yet." : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur lernen: Gelernte Wörter werden in dieser Sprache noch nicht geprüft."
           }
         }
       }

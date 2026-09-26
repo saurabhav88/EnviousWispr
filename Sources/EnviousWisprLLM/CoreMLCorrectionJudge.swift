@@ -39,6 +39,31 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
     case tokenizerLoadFailed
     case modelLoadFailed
     case modelIOMismatch
+
+    /// A closed, content-free cause for Sentry (#3105). The associated
+    /// strings carry paths and messages, so they never leave the log.
+    package var causeCode: String {
+      switch self {
+      case .missingFile: "missing_file"
+      case .manifestInvalid: "manifest_invalid"
+      case .verificationNotClean: "verification_not_clean"
+      case .contractMismatch: "contract_mismatch"
+      case .identityMismatch: "identity_mismatch"
+      case .contractUnsupported: "contract_unsupported"
+      case .tokenizerLoadFailed: "tokenizer_load_failed"
+      case .modelLoadFailed: "model_load_failed"
+      case .modelIOMismatch: "model_io_mismatch"
+      }
+    }
+  }
+
+  /// Why a prediction became `.bypass(.malformed)` (#3105). The caller sees
+  /// only the bypass; the cause goes to `malformedObserver`, never the
+  /// prediction error itself (its request carries the user's words).
+  package enum MalformedCause: String, Sendable, CaseIterable {
+    case missingLogits = "missing_logits"
+    case predictionThrew = "prediction_threw"
+    case invalidProbability = "invalid_probability"
   }
 
   /// The export's own decision configuration, decoded from
@@ -94,6 +119,7 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
   package nonisolated let identity: Identity
   private let model: MLModel
   private let adapter: PairEncodingAdapter
+  private let malformedObserver: (@Sendable (MalformedCause) -> Void)?
 
   /// Synchronous Core ML inference on the actor's executor: non-async on
   /// purpose so overload resolution picks `prediction(from:)` and the
@@ -103,10 +129,14 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
     try model.prediction(from: provider)
   }
 
-  private init(identity: Identity, model: MLModel, adapter: PairEncodingAdapter) {
+  private init(
+    identity: Identity, model: MLModel, adapter: PairEncodingAdapter,
+    malformedObserver: (@Sendable (MalformedCause) -> Void)?
+  ) {
     self.identity = identity
     self.model = model
     self.adapter = adapter
+    self.malformedObserver = malformedObserver
   }
 
   // MARK: Load
@@ -139,7 +169,8 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
   }
 
   package static func load(
-    exportDirectory: URL, compiledCacheDirectory: URL = defaultCompiledCacheDirectory()
+    exportDirectory: URL, compiledCacheDirectory: URL = defaultCompiledCacheDirectory(),
+    malformedObserver: (@Sendable (MalformedCause) -> Void)? = nil
   ) async throws -> CoreMLCorrectionJudge {
     let fm = FileManager.default
     let manifestURL = exportDirectory.appendingPathComponent(manifestFileName)
@@ -252,7 +283,8 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
         ["arm": "classifier", "package_sha256": config.packageSHA256]
       ) { a, _ in a },
       pairInputForm: config.pairInputForm)
-    return CoreMLCorrectionJudge(identity: identity, model: model, adapter: adapter)
+    return CoreMLCorrectionJudge(
+      identity: identity, model: model, adapter: adapter, malformedObserver: malformedObserver)
   }
 
   /// The ONE digest qualification binds (phase D grounded review, Q3c): the
@@ -441,13 +473,16 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
         let provider = try Self.featureProvider(for: encoded)
         let prediction = try predictSync(provider)
         guard let array = prediction.featureValue(for: Self.logitsFeature)?.multiArrayValue else {
+          malformedObserver?(.missingLogits)
           return .bypass(.malformed)
         }
         logits = (0..<array.count).map { array[$0].doubleValue }
       } catch {
+        malformedObserver?(.predictionThrew)
         return .bypass(.malformed)
       }
       guard let probability = Self.positiveProbability(logits: logits) else {
+        malformedObserver?(.invalidProbability)
         return .bypass(.malformed)
       }
       decisions.append(

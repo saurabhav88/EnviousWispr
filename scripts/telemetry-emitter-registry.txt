@@ -41,10 +41,10 @@ coldstart.warmup_failed	ungraded	ungraded	-	pre-#2987
 coldstart.warmup_started	ungraded	ungraded	-	pre-#2987
 contacts_imported	ungraded	ungraded	-	pre-#2987
 custom_words.learn_added	per_take	keep	analytics-operations.md FACT: app-posthog-events (auto-learn funnel: added -> undo_shown -> undone, #996 2026-09-21 plan); only after the post-write reread proves the word	#996
-custom_words.learn_judged	per_take	keep	analytics-operations.md FACT: app-posthog-events (judge latency p50/p95 and bypass share per arm, #996 §3a); at most two rows per watched paste, only when a settled burst had candidates	#996
-custom_words.learn_observation_ended	per_take	keep	analytics-operations.md FACT: app-posthog-events (capture rate = pastes with a settled burst / watched pastes, per app_class, #996 §3a); at most one row per watched paste	#996
+custom_words.learn_judged	per_take	keep	analytics-operations.md FACT: app-posthog-events (judge latency p50/p95 and bypass share per arm, #996 §3a; `take_id` joins to the take's dictation.completed target_app, #3105); at most two rows per watched paste, only when a settled burst had candidates	#996
+custom_words.learn_observation_ended	per_take	keep	analytics-operations.md FACT: app-posthog-events (capture rate = pastes with a settled burst / watched pastes, per app_class, #996 §3a; per app via `take_id` -> dictation.completed target_app and counts-only loss detail region_*/value_rows/needle_*/edit_budget_ratio, #3105); at most one row per watched paste	#996
 custom_words.learn_save_failed	rare_failure	keep	analytics-operations.md FACT: app-posthog-events (refused saves by reason token, #996)	#996
-custom_words.learn_skipped	per_take	sampled	analytics-operations.md FACT: app-posthog-events (why watches do not start, by gate reason, weighted by $sample_threshold, #996 §3.2); every §3.2 reason is emitted, the policy samples them all	#996
+custom_words.learn_skipped	per_take	sampled	analytics-operations.md FACT: app-posthog-events (why watches do not start, by gate reason, weighted by $sample_threshold, #996 §3.2; `take_id` joins to the app, #3105); every §3.2 reason is emitted, the policy samples them all	#996
 custom_words.learn_undo_shown	per_take	keep	analytics-operations.md FACT: app-posthog-events (auto-learn funnel: the Undo pill was admitted; a save without this row offered no Undo, #996)	#996
 custom_words.learn_undone	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (auto-learn funnel: Undo pressed, by kind and outcome, #996)	#996
 custom_words.replacement_applied	ungraded	ungraded	-	pre-#2987

@@ -105,6 +105,11 @@ export const ERROR_CATEGORIES = Object.freeze({
   // the user's volume or a paused player was not put back.
   other_audio_defect: { group: DEGRADED, deliveryProven: true, emitted: true, label: "other-audio hold hit an app defect" },
 
+  // #3105: Judge 1 (the learn-from-edits correction judge) failed to load, returned an
+  // unusable prediction, or refused a request. It watches text AFTER paste, or loads with
+  // no dictation in flight, so the dictation was already delivered; only learning a fix stopped.
+  learn_judge_failure: { group: DEGRADED, deliveryProven: true, emitted: true, label: "learn-from-edits judge failed" },
+
   // Heart failures. Terminal: no text reached the user.
   audio_capture_failed: { group: LOST, deliveryProven: true, emitted: true, label: "microphone capture failed" },
   audio_capture_stalled: { group: LOST, deliveryProven: true, emitted: true, label: "microphone capture stalled" },

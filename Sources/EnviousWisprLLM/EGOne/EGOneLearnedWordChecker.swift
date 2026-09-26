@@ -24,11 +24,33 @@ public struct EGOneCheckerHold: Sendable {
   }
 }
 
-/// The EG-1 learned-word LoRA runs on the resident polish server. The lease
-/// refuses while the server is changing, and the endpoint lookup refuses after
-/// another local model takes that server.
+/// The learned-word LoRA of a bundled engine (EG-1's eg1c, S1-mini's D5) runs on
+/// the resident polish server. The lease refuses while the server is changing,
+/// and the endpoint lookup refuses after another local model takes that server.
 public struct EGOneLearnedWordChecker: LearnedWordChecking {
-  public let armName = "eg1_lora"
+  /// The question form each adapter was trained on (#3105). Both share the system
+  /// text and the user turn; S1-mini's D5 went through the HF chat template with
+  /// `enable_thinking=False`, so its answer opens after an empty think block, and
+  /// it was scored with the named-language line (+1 to +6 points in the exam).
+  public enum PromptStyle: Sendable, Equatable {
+    case egOne
+    case s1Mini(language: String?)
+  }
+
+  /// The exam's closed table (judge2-exam-v2 NAMED-LANGUAGE.md): the only names D5
+  /// was measured with. English is never named; other languages get no line.
+  static let namedLanguages = [
+    "pl": "Polish", "de": "German", "fr": "French", "es": "Spanish", "it": "Italian",
+    "pt": "Portuguese", "nl": "Dutch", "ru": "Russian",
+  ]
+
+  public let style: PromptStyle
+  public var armName: String {
+    switch style {
+    case .egOne: "eg1_lora"
+    case .s1Mini: "s1_lora"
+    }
+  }
   public let scoresAreComparable = true
 
   public static let systemPrompt =
@@ -37,9 +59,13 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
   private let threshold: Double
   private let hold: @Sendable () async -> EGOneCheckerHold?
 
-  public init(threshold: Double, hold: @escaping @Sendable () async -> EGOneCheckerHold?) {
+  public init(
+    threshold: Double, style: PromptStyle = .egOne,
+    hold: @escaping @Sendable () async -> EGOneCheckerHold?
+  ) {
     precondition(threshold.isFinite && (0...1).contains(threshold))
     self.threshold = threshold
+    self.style = style
     self.hold = hold
   }
 
@@ -56,16 +82,29 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
     }
   }
 
-  public static func prompt(for question: LearnedWordCheckQuestion) -> String {
-    "<|im_start|>system\n\(systemPrompt)<|im_end|>\n"
+  public static func prompt(
+    for question: LearnedWordCheckQuestion, style: PromptStyle = .egOne
+  ) -> String {
+    var system = systemPrompt
+    var answerPrefix = ""
+    if case .s1Mini(let language) = style {
+      // A regional code ("de-DE", "pt_BR") names the same language as its base.
+      if let base = LanguageNormalizer.baseCode(language), let name = namedLanguages[base] {
+        system += " The sentence is in \(name)."
+      }
+      answerPrefix = "<think>\n\n</think>\n\n"
+    }
+    return "<|im_start|>system\n\(system)<|im_end|>\n"
       + "<|im_start|>user\nDictionary word: \(question.word)\n"
       + "A: \(question.contextText)\nB: \(question.contextRewritten)<|im_end|>\n"
-      + "<|im_start|>assistant\n"
+      + "<|im_start|>assistant\n\(answerPrefix)"
   }
 
-  static func makeRequestBody(_ question: LearnedWordCheckQuestion, index: Int) -> [String: Any] {
+  static func makeRequestBody(
+    _ question: LearnedWordCheckQuestion, index: Int, style: PromptStyle = .egOne
+  ) -> [String: Any] {
     [
-      "prompt": Self.prompt(for: question),
+      "prompt": Self.prompt(for: question, style: style),
       "id_slot": EGOneSlots.checker(for: index),
       "n_predict": 1,
       "n_probs": 20,
@@ -104,11 +143,12 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
       let end = min(start + EGOneSlots.checkerCount, questions.count)
       let wave = try await withThrowingTaskGroup(of: (Int, LearnedWordCheckDecision).self) {
         group in
+        let style = self.style
         for index in start..<end {
           let question = questions[index]
           group.addTask {
             try Task.checkCancellation()
-            let body = Self.makeRequestBody(question, index: index)
+            let body = Self.makeRequestBody(question, index: index, style: style)
             var request = URLRequest(url: endpoint.completionURL)
             request.httpMethod = "POST"
             request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")

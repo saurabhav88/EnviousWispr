@@ -59,24 +59,28 @@ extension TelemetryService: LearnFromEditsRuntimeTelemetrySink {}
       Task { await AppLogger.shared.log(line, category: "LearnFromEdits") }
     }
 
-    func learnSkipped(reason: T.SkipReason) {
-      log("learn_skipped reason=\(reason.rawValue)")
-      inner.learnSkipped(reason: reason)
+    func learnSkipped(reason: T.SkipReason, takeID: String?) {
+      log("learn_skipped reason=\(reason.rawValue) take=\(takeID ?? "none")")
+      inner.learnSkipped(reason: reason, takeID: takeID)
     }
     func learnObservationEnded(
       reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int,
-      unfinishedEdits: Int
+      unfinishedEdits: Int, takeID: String?, regionDetail: PastedRegionEndDetail?
     ) {
-      log("learn_observation_ended reason=\(reason.rawValue) settled_bursts=\(settledBursts) app_class=\(appClass.rawValue) duration_ms=\(durationMs) unfinished_edits=\(unfinishedEdits)")
+      let detail = regionDetail.map {
+        " region=\($0.region?.logLine ?? "none") edit_budget_ratio=\($0.editBudgetRatio.map { String($0) } ?? "-")"
+      } ?? ""
+      log("learn_observation_ended reason=\(reason.rawValue) settled_bursts=\(settledBursts) app_class=\(appClass.rawValue) duration_ms=\(durationMs) unfinished_edits=\(unfinishedEdits) take=\(takeID ?? "none")\(detail)")
       inner.learnObservationEnded(
         reason: reason, settledBursts: settledBursts, appClass: appClass, durationMs: durationMs,
-        unfinishedEdits: unfinishedEdits)
+        unfinishedEdits: unfinishedEdits, takeID: takeID, regionDetail: regionDetail)
     }
     func learnJudged(
-      arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?
+      arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?,
+      takeID: String?
     ) {
-      log("learn_judged arm=\(arm.rawValue) outcome=\(outcome.rawValue) candidates=\(candidates) accepted=\(accepted) latency_ms=\(latencyMs)")
-      inner.learnJudged(arm: arm, outcome: outcome, candidates: candidates, accepted: accepted, latencyMs: latencyMs, queueWaitMs: queueWaitMs)
+      log("learn_judged arm=\(arm.rawValue) outcome=\(outcome.rawValue) candidates=\(candidates) accepted=\(accepted) latency_ms=\(latencyMs) take=\(takeID ?? "none")")
+      inner.learnJudged(arm: arm, outcome: outcome, candidates: candidates, accepted: accepted, latencyMs: latencyMs, queueWaitMs: queueWaitMs, takeID: takeID)
     }
     func learnSaveFailed(reason: T.SaveFailure) {
       log("learn_save_failed reason=\(reason.rawValue)")
@@ -512,10 +516,14 @@ final class LearnFromEditsWiring {
     publishPhase(.loading)
     let folder = registration.installDirectory
     let cache = compiledCacheDirectory
+    let revision = registration.manifest.identity.revision
     loadTask = Task { [weak self] in
       let loaded: Result<CoreMLCorrectionJudge, Error>
       do {
-        loaded = .success(try await CoreMLCorrectionJudge.load(exportDirectory: folder, compiledCacheDirectory: cache))
+        loaded = .success(
+          try await CoreMLCorrectionJudge.load(
+            exportDirectory: folder, compiledCacheDirectory: cache,
+            malformedObserver: LearnJudgeFailureReporter.malformedObserver(judgeRevision: revision)))
       } catch {
         loaded = .failure(error)
       }
@@ -525,6 +533,7 @@ final class LearnFromEditsWiring {
       case .failure(let error):
         await AppLogger.shared.log(
           "learn-from-edits judge load (\(reason)) failed: \(error)", category: "LearnFromEdits")
+        LearnJudgeFailureReporter.shared.reportLoadFailure(error, judgeRevision: revision)
         self.publishPhase(.loadFailed)
       case .success(let judge):
         self.deliveredJudge = judge
@@ -550,7 +559,9 @@ final class LearnFromEditsWiring {
         publishPhase(.loadFailed)
         return
       }
-      productionJudge = SelectedCorrectionJudge(arm: .classifier, judge: judge)
+      productionJudge = SelectedCorrectionJudge(
+        arm: .classifier, judge: judge,
+        revision: deliveryHome?.editJudgeRegistration?.manifest.identity.revision)
       publishPhase(.ready)
     case .arm(.rules):
       productionJudge = SelectedCorrectionJudge(arm: .rules, judge: rulesJudge)
@@ -686,7 +697,9 @@ final class LearnFromEditsWiring {
       let url = URL(fileURLWithPath: exportPath, isDirectory: true)
       task = Task { @MainActor [weak self] in
         do {
-          let judge = try await CoreMLCorrectionJudge.load(exportDirectory: url)
+          let judge = try await CoreMLCorrectionJudge.load(
+            exportDirectory: url,
+            malformedObserver: LearnJudgeFailureReporter.malformedObserver(judgeRevision: "uat_door"))
           guard let self else { return }
           self.state = .ready
           let id = judge.identity
@@ -694,10 +707,11 @@ final class LearnFromEditsWiring {
             "learn-from-edits UAT door ACTIVE: export=\(id.exportDirectory.path) "
               + "threshold=\(id.threshold) languages=all "
               + "package_sha256=\(id.executionIdentity["package_sha256"] ?? "?") arm=classifier")
-          publish(SelectedCorrectionJudge(arm: .classifier, judge: judge))
+          publish(SelectedCorrectionJudge(arm: .classifier, judge: judge, revision: "uat_door"))
         } catch {
           self?.state = .failed("\(error)")
           Self.log("learn-from-edits UAT door FAILED to load \(url.path): \(error)")
+          LearnJudgeFailureReporter.shared.reportLoadFailure(error, judgeRevision: "uat_door")
           onFailure()
         }
       }

@@ -97,8 +97,14 @@ struct TelemetryEmitterRegistryTests {
   /// existing `llm.polish_completed` site. Checklist: per_take, only on a completed live Apple
   /// polish, no new row/month, same take_id, content-free enum; reader is Apple polish
   /// latency by `afm_prewarm` at release. The site did not move; its function signature did.
+  /// #3105 PR 1 (founder 2026-09-26, capture coverage per app): `learnSkipped`,
+  /// `learnObservationEnded` and `learnJudged` gained `takeID`, and `learnObservationEnded` also
+  /// `regionDetail`, which changes the enclosing-function identity of those three existing sites.
+  /// No new site, no new event, same cadences (checklist: existing rows; `take_id` is the join key
+  /// already on every take row and the three events join TAKE_KEYED_EVENTS; the loss detail is
+  /// counts and one closed side token, Int or String on the wire, no text; registry readers updated).
   static let sitesFingerprint =
-    "95f2a05ac67980a8e2dfd6ccf447fdca4b86dc8bb3a8d4a6fb33f6c6ee1aa1b4"
+    "49b60a4f37e37310700bfd8defd135e04a6ef0cd0e3a17d1e78e7da565bc2f4d"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

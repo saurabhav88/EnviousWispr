@@ -430,10 +430,13 @@ package final class WisprBootstrapper {
     #if DEBUG
       let debugScriptedChecker = LearnedWordCheckUATDoor.configuration()
       let debugLearnedWordAdapter = debugScriptedChecker == nil
-        ? LearnedWordCheckEGOneDoor.configuration() : nil
+        ? LearnedWordCheckAdapterDoor.configuration(.egOne) : nil
+      let debugS1LearnedWordAdapter = debugScriptedChecker == nil
+        ? LearnedWordCheckAdapterDoor.configuration(.s1Mini) : nil
     #else
       let debugScriptedChecker: (any LearnedWordChecking)? = nil
       let debugLearnedWordAdapter: (url: URL, threshold: Double)? = nil
+      let debugS1LearnedWordAdapter: (url: URL, threshold: Double)? = nil
     #endif
     let learnedWordAdapterProvider: @MainActor () async -> URL? = {
       if let debugLearnedWordAdapter { return debugLearnedWordAdapter.url }
@@ -499,9 +502,12 @@ package final class WisprBootstrapper {
             "EnviousWispr/ModelDelivery", isDirectory: true)),
         version: s1Manifest?.resolvedDisplayVersion)
     }
+    // #3105: S1-mini's word check (D5) boots with S1-mini only through the Debug
+    // door until its delivery ships.
     let s1MiniRuntime = EGOneRuntime(
       manifest: s1Manifest, serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
-      coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini)
+      coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini,
+      learnedWordAdapterProvider: { debugS1LearnedWordAdapter?.url })
     s1MiniRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .s1Mini }
     // #2649 (cloud review): the second engine reports through the same bridge,
     // keyed by engine. Found on the "composition-root wiring" axis the class
@@ -706,9 +712,16 @@ package final class WisprBootstrapper {
       delivery: modelDelivery, base: checkerBaseRegistration,
       promptTemplateID: checkerPromptTemplateID, runtime: egOneRuntime,
       debugThreshold: debugLearnedWordAdapter?.threshold,
+      s1Runtime: s1MiniRuntime, s1DebugThreshold: debugS1LearnedWordAdapter?.threshold,
       debugScriptedChecker: debugScriptedChecker)
     egOneRuntime.onEvent = { event in
       EGOneTelemetryBridge.handler(engine: .egOne)(event)
+      Task { @MainActor in checkerEligibility.statusDidChange() }
+    }
+    // #3105: S1-mini now has a word check too, so its server's events refresh
+    // the Dictionary row the same way.
+    s1MiniRuntime.onEvent = { event in
+      EGOneTelemetryBridge.handler(engine: .s1Mini)(event)
       Task { @MainActor in checkerEligibility.statusDidChange() }
     }
     // One ensure, three triggers: selecting EG-1, launch, and the base model's

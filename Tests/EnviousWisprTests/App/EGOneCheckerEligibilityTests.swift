@@ -54,6 +54,31 @@ struct EGOneCheckerEligibilityTests {
         (await emptyEligibility.selection(provider: .s1Mini, language: "de")).absence
           == .notEGOne)
     }
+
+    /// The UAT drills set and clear these exact keys (`CHECKER_DOOR_KEYS` in
+    /// `learn_from_edits_uat.py`, `ENGINES` in `auto_dictionary_bench.py`).
+    @Test("each engine's adapter door reads only its own keys")
+    func adapterDoorPerEngine() throws {
+      let adapter = FileManager.default.temporaryDirectory
+        .appendingPathComponent("door-\(UUID().uuidString).gguf")
+      try Data([0]).write(to: adapter)
+      defer { try? FileManager.default.removeItem(at: adapter) }
+      let s1Only = [
+        "EW_LEARNED_CHECK_S1_ADAPTER": adapter.path, "EW_LEARNED_CHECK_S1_THRESHOLD": "0.858",
+      ]
+      let s1 = try #require(LearnedWordCheckAdapterDoor.configuration(.s1Mini, environment: s1Only))
+      #expect(s1.url.path == adapter.path)
+      #expect(s1.threshold == 0.858)
+      #expect(LearnedWordCheckAdapterDoor.configuration(.egOne, environment: s1Only) == nil)
+      let egOneOnly = [
+        "EW_LEARNED_CHECK_EG1_ADAPTER": adapter.path, "EW_LEARNED_CHECK_EG1_THRESHOLD": "0.481",
+      ]
+      let egOne = try #require(LearnedWordCheckAdapterDoor.configuration(.egOne, environment: egOneOnly))
+      #expect(egOne.threshold == 0.481)
+      #expect(LearnedWordCheckAdapterDoor.configuration(.s1Mini, environment: egOneOnly) == nil)
+      #expect(LearnedWordCheckAdapterDoor.Engine.s1Mini.label == "S1-mini")
+      #expect(LearnedWordCheckAdapterDoor.Engine.egOne.label == "EG-1")
+    }
   #endif
 
   private func pins() throws -> (EGOneCheckerContract, AdmittedEGOneBase) {
@@ -79,7 +104,7 @@ struct EGOneCheckerEligibilityTests {
     )
   }
 
-  @Test("ready, loading, mismatch, absent, and language refusal use one owner")
+  @Test("ready, loading, mismatch and absent use one owner; the decision reads no language")
   func decisionMatrix() throws {
     let (contract, base) = try pins()
     let ready = EGOneEndpoint(
@@ -88,14 +113,14 @@ struct EGOneCheckerEligibilityTests {
     func select(
       provider: LLMProvider = .egOne, baseAdmitted: Bool = true,
       adapterAdmitted: Bool = true, state: DeliveryState = .admitted,
-      admittedBase: AdmittedEGOneBase? = nil, language: String? = "en",
+      admittedBase: AdmittedEGOneBase? = nil,
       endpoint: EGOneEndpoint? = nil, serverReason: String? = nil
     ) -> LearnedWordCheckerSelection {
       EGOneCheckerEligibility.evaluate(
         provider: provider, baseAdmitted: baseAdmitted,
         adapterAdmitted: adapterAdmitted, deliveryState: state,
         contract: contract, admittedBase: admittedBase ?? base,
-        language: language, endpoint: endpoint ?? ready,
+        endpoint: endpoint ?? ready,
         serverReason: serverReason, hold: { nil })
     }
     #expect(select().checker != nil)
@@ -119,38 +144,36 @@ struct EGOneCheckerEligibilityTests {
       !EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, hostConfigured: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
+        admittedBase: base, endpoint: ready, serverReason: nil, hold: { nil }
       ).retryAvailable)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, deliveryEnabled: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
+        admittedBase: base, endpoint: ready, serverReason: nil, hold: { nil }
       ).absence
         == .deliveryDisabled)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, hostConfigured: false, deliveryEnabled: false,
-        contract: contract, admittedBase: base, language: "en", endpoint: ready,
+        contract: contract, admittedBase: base, endpoint: ready,
         serverReason: nil, hold: { nil }
       ).absence == .deliveryDisabled)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
         deliveryState: .admitted, deliveryEnabled: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
+        admittedBase: base, endpoint: ready, serverReason: nil, hold: { nil }
       ).checker != nil)
     #expect(
       select(admittedBase: try mismatchedBase()).absence
         == .baseMismatch("prompt_template"))
-    #expect(select(language: "de").absence == .unqualifiedLanguage)
-    #expect(select(language: nil).absence == .unqualifiedLanguage)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
         deliveryState: .admitted, contract: contract, admittedBase: base,
-        language: "en", endpoint: nil, serverReason: nil, hold: { nil }
+        endpoint: nil, serverReason: nil, hold: { nil }
       ).absence == .serverUnavailable)
     #expect(
       select(
