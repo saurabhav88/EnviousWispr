@@ -106,6 +106,26 @@ struct LLMPolishStepAFMPrewarmTests {
     #expect(step.claimAFMPrewarm(takeID: "take-1") == nil, "consumed by process()")
   }
 
+  @Test("a stale outcome on the incoming context never survives a bypass or another provider")
+  func staleOutcomeIsCleared() async throws {
+    var stale = TextProcessingContext(text: "yeah", language: "en")
+    stale.afmPrewarmOutcome = .hit
+    let bypassing = appleStep { _ in "unused" }
+    let bypassed = try await bypassing.process(stale)
+    #expect(bypassed.polishWasBypassed)
+    #expect(bypassed.afmPrewarmOutcome == nil)
+
+    var long = TextProcessingContext(text: transcript, language: "en")
+    long.afmPrewarmOutcome = .hit
+    let cloud = LLMPolishStep(keychainManager: KeychainManager())
+    cloud.llmProvider = .openAI
+    let box = TextBox()
+    cloud.makePolisher = { _, _, _ in RecordingPolisher(box: box) }
+    let polished = try await cloud.process(long)
+    #expect(box.text != nil, "control: the non-Apple polish actually ran")
+    #expect(polished.afmPrewarmOutcome == nil)
+  }
+
   @Test("a separately built step (recovery) sees no slot")
   func separateStepSeesNothing() async {
     let live = appleStep { _ in "unused" }

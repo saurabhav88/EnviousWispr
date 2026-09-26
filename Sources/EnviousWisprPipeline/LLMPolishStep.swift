@@ -657,6 +657,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // #1948: same reasoning for the route receipt. A stale family riding a bypass would tell
     // `EmojiRestoreStep` that a polish it never saw used the local prompt.
     ctx.promptFamily = nil
+    // #3195: nothing was polished, so no prewarm outcome either.
+    ctx.afmPrewarmOutcome = nil
     return ctx
   }
 
@@ -1157,6 +1159,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     ctx.symbolTokens = validation.symbolTokens
     ctx.llmProvider = provider.rawValue
     ctx.llmModel = model
+    // #3195: the prewarm outcome belongs to Apple polish only.
+    ctx.afmPrewarmOutcome = nil
     ctx.polishMetadata = result.polishMetadata
     ctx.pipelineFellBackToRaw =
       (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
