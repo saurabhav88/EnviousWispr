@@ -95,7 +95,10 @@ extension InverseTextNormalizer {
     let part = englishWords ? Self.identifierPartPat : #"\d+"#
     // #3226: the neutral route also reads Polish `kropka` and Dutch `punt` between digits.
     let dotAlt = englishWords ? Self.numberDotWordAlt : Self.neutralNumberDotWordAlt
-    let sep = #"\s+(?:"# + dotAlt + #")\s+"#
+    // #3233: on the neutral route a chain never crosses a line break ("2 точка" / "5 точка 0" are
+    // two lines, not a version; second-pass review). The English route is unchanged.
+    let gap = englishWords ? #"\s+"# : #"[^\S\r\n]+"#
+    let sep = gap + #"(?:"# + dotAlt + #")"# + gap
     let pat =
       #"(?<![\w.])(?:\d+(?:\.\d+)+(?:"# + sep + part + #")+|"# + part + #"(?:"# + sep + part
       + #"){2,})(?![\w]|\.\d)"#
@@ -133,8 +136,8 @@ extension InverseTextNormalizer {
         return nil
       }
       // Split on the spoken separators; an already-dotted first part splits on its dots.
-      let pieces = splitOnPattern(m.whole, #"\s+(?:"# + dotAlt + #")\s+"#)
-      let seps = allMatches(#"\s+("# + dotAlt + #")\s+"#, m.whole).map {
+      let pieces = splitOnPattern(m.whole, sep)
+      let seps = allMatches(gap + #"("# + dotAlt + #")"# + gap, m.whole).map {
         $0.lowercased()
       }
       let englishOnly = seps.allSatisfy { Self.englishNumberDotWords.contains($0) }

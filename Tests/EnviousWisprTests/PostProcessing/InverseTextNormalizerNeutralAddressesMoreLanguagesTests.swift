@@ -190,6 +190,10 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     "scrivi alla chiocciola esempio punto it",
     "escreva ao arroba exemplo ponto pt",
     "mande uma mensagem para que arrobaexemplo.pt",
+    "mande uma mensagem para que arroba empresa.com.br hoje",
+    // a line break ends a number
+    "versão 2 ponto\n5 ponto 0",
+    "версия 2 точка\n5 точка 0",
     "La chiocciola azienda.it era scritta sul muro.",
     // G7: a one-word mailbox in another language still converts (checked in `rows` of #3226)
   ]

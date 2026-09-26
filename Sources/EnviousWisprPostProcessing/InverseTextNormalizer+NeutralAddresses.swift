@@ -256,6 +256,14 @@ extension InverseTextNormalizer {
       guard !Self.isRefusedNeutralName(nameLabels),
         !Self.isRefusedLanguageName(nameLabels, atWord: atw, dots: dots)
       else { return nil }
+      // A domain the recogniser dotted carries no `ponto`: a Portuguese address word marks the
+      // address as Portuguese instead (second-pass review).
+      if atw == "arroba", nameLabels.count == 1,
+        Self.portugueseNameRefusedWords.contains(nameLabels[0].lowercased()),
+        hasCue(Self.portugueseAddressCue, m)
+      {
+        return nil
+      }
       let tldRange = m.result.range(withName: "tld")
       let beforeTLD = m.ns.substring(
         with: NSRange(
@@ -374,7 +382,7 @@ extension InverseTextNormalizer {
       refused: Self.portugueseNameRefusedWords, pluralS: true,
       // `arroba` is Spanish too: the Portuguese words refuse only a Portuguese address
       // (local Codex r4).
-      refusedOnlyAfter: #"\p{L}*(?:endereço|mensagem)\p{L}*"#)
+      refusedOnlyAfter: Self.portugueseAddressCue)
     // Russian: `собака` as a dotted label between the name and the host.
     out = gluedAtWord(
       out, start + #"(?<name>"# + dotted + #")\.(?<atw>собака)\."# + dom + end,
@@ -407,6 +415,10 @@ extension InverseTextNormalizer {
       return name + "@" + dom + "." + Self.writtenTLD(tld)
     }
   }
+
+  /// Portuguese address words: with `arroba`, which Spanish shares, they mark the address as
+  /// Portuguese for the Portuguese missing-name refusals.
+  static let portugueseAddressCue = #"\p{L}*(?:endereço|mensagem)\p{L}*"#
 
   /// The at-words whose address the Italian, Portuguese and Russian address words may license.
   static let gluedCueAtWords: Set<String> = ["chiocciola", "arroba", "собака", "sobaka"]
