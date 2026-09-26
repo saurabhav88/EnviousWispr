@@ -262,7 +262,8 @@ def flag_changed_translations(committed_strings, synced_strings, source_language
 
 def sync_seeded_table(catalog_path, seed, default_comment):
     """A catalog written entirely from a source seed: exactly the seed's keys, each through
-    `seeded_entry`; a key the source no longer has is removed."""
+    `seeded_entry`; a key the source no longer has is removed, unless it has a translation
+    (`keep_translated_removals`)."""
     committed = json.loads(catalog_path.read_text())
     source_language = committed.get("sourceLanguage", "en")
     synced = copy.deepcopy(committed)
@@ -270,7 +271,21 @@ def sync_seeded_table(catalog_path, seed, default_comment):
                                            source_language)
                          for key, value in seed.items()}
     flag_changed_translations(committed["strings"], synced["strings"], source_language)
+    synced["strings"] |= keep_translated_removals(committed["strings"], seed, source_language)
     return committed, synced
+
+
+def keep_translated_removals(committed_strings, kept, source_language):
+    """{key: entry} for keys gone from the source that still carry a translation (#3142 phase 5,
+    architecture review item 1): each stays, marked `stale`, so an English copy edit never
+    silently drops reviewed German. The German can be reused for the new key; only a person
+    removes the stale entry, and that edit is the review's disposition."""
+    stale = {}
+    for key, entry in committed_strings.items():
+        if key in kept or not any(lang != source_language for lang in entry.get("localizations", {})):
+            continue
+        stale[key] = copy.deepcopy(entry) | {"extractionState": "stale"}
+    return stale
 
 
 def xcstringstool_sync(start, files, work):
@@ -429,6 +444,8 @@ def incompleteness(strings, source_language, languages):
         for key, entry in strings.items():
             if key == "":  # Text("") extracts an empty key with nothing to translate
                 continue
+            if entry.get("extractionState") == "stale":  # never shown; kept for review
+                continue
             english = english_units(entry, source_language) or {(): key}  # key-only: the key is the English
             translated = dict(string_units(entry.get("localizations", {}).get(lang, {})))
             if not any(shown_on_mac(path) for path in translated):
@@ -523,8 +540,10 @@ def sync(committed_path, files, work, seed):
     flag_changed_translations(committed["strings"], synced["strings"], source_language)
     # The code decides which keys exist: exactly the fresh extraction (which
     # includes the verified manual keys) plus the What's New seed. A key gone from
-    # either is removed, never kept.
-    synced["strings"] = {k: synced["strings"][k] for k in [*fresh["strings"], *seed]}
+    # either is removed, unless it still carries a translation: that stays `stale`.
+    kept = [*fresh["strings"], *seed]
+    synced["strings"] = {k: synced["strings"][k] for k in kept}
+    synced["strings"] |= keep_translated_removals(committed["strings"], set(kept), source_language)
     return committed, synced
 
 
@@ -602,6 +621,13 @@ def main(argv):
                     print(f"  {lang} {key!r}: {reason}")
                 if len(problems) > 50:
                     print(f"  ... and {len(problems) - 50} more")
+        for path, _, after in tables:
+            stale = sorted(k for k, e in after["strings"].items() if e.get("extractionState") == "stale")
+            if stale:
+                print(f"STALE: {path.name}: {len(stale)} key(s) gone from the source, kept with their "
+                      "translations for review; reuse the German for the new wording, then delete each by hand:")
+                for key in stale:
+                    print(f"  {key!r}")
         if not languages:
             print("translations: no language beyond English yet")
         elif not incomplete:

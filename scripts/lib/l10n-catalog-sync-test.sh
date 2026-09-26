@@ -563,6 +563,45 @@ def german_device(device):
 completeness_case("German only for iPhone is missing on the Mac", 1, ["'fixture.value.key': missing"],
                   edit=german_device("iphone"))
 completeness_case("German for the Mac counts", 0, ["translations complete: de"], edit=german_device("mac"))
+GONE = "Old wording"
+
+
+def stale_with_german(strings):
+    entry = strings.get(GONE)
+    if not entry:
+        return f"{GONE!r} was dropped"
+    if entry.get("extractionState") != "stale":
+        return f"{GONE!r} is {entry.get('extractionState')}, not stale"
+    if "de" not in entry.get("localizations", {}):
+        return f"{GONE!r} lost its German"
+    return None
+
+
+completeness_case("a removed key with German is kept stale, and the rest stays complete", 0,
+                  ["STALE: Localizable.xcstrings: 1 key(s)", repr(GONE), "translations complete: de"], mode="--update",
+                  prepare_keys=[GONE], extra_keys=[], edit=german_everywhere, verify=stale_with_german)
+completeness_case("a removed key without German is still removed", 0, ["removed: 'Old wording'"], mode="--update",
+                  prepare_keys=[GONE], extra_keys=[],
+                  verify=lambda s: f"{GONE!r} was kept" if GONE in s else None)
+
+
+def stale_then_deleted(strings):
+    german_everywhere(strings)
+    strings[GONE]["extractionState"] = "stale"
+    del strings[GONE]
+
+
+completeness_case("deleting a stale key by hand is in sync", 0, ["catalog in sync"], prepare_keys=[GONE], extra_keys=[],
+                  edit=stale_then_deleted, forbid=["STALE", "DRIFT"])
+
+
+def already_stale(strings):
+    german_everywhere(strings)
+    strings[GONE]["extractionState"] = "stale"
+
+
+completeness_case("a stale key already recorded is in sync and needs no completeness", 0,
+                  ["catalog in sync", "STALE"], prepare_keys=[GONE], extra_keys=[], edit=already_stale, forbid=["DRIFT"])
 completeness_case("the empty key needs no German", 0, ["translations complete: de"], extra_keys=[""],
                   edit=lambda s: german_everywhere(s, skip={""}))
 
@@ -691,6 +730,23 @@ plist_case("a changed prompt keeps its translation and comment and flags it for 
 plist_case("a changed Services title removes the old entry and adds an untranslated one", 1,
            ["removed: ServicesMenu 'Add to Words'", "added: ServicesMenu 'Add to My Words'"],
            plist=dict(PLIST, NSServices=[{"NSMenuItem": {"default": "Add to My Words"}}]), catalogs_from=PLIST)
+
+
+def german_on_services(strings):
+    strings["Add to Words"]["localizations"]["de"] = {"stringUnit": {"state": "translated", "value": "Zu Wörtern"}}
+
+
+def old_title_stale(t):
+    old = t["ServicesMenu.xcstrings"].get("Add to Words")
+    if not old or old.get("extractionState") != "stale" or "de" not in old.get("localizations", {}):
+        return f"old title {old!r}"
+    return None if "Add to My Words" in t["ServicesMenu.xcstrings"] else "new title missing"
+
+
+plist_case("a changed Services title with German keeps the old entry stale", 0,
+           ["STALE: ServicesMenu.xcstrings: 1 key(s)", "added: ServicesMenu 'Add to My Words'"], mode="--update",
+           plist=dict(PLIST, NSServices=[{"NSMenuItem": {"default": "Add to My Words"}}]), catalogs_from=PLIST,
+           edit_tables={"ServicesMenu.xcstrings": german_on_services}, verify=old_title_stale)
 plist_case("two Services items with one title stop the run", 2, ["two Services items titled 'Add to Words'"],
            plist=dict(PLIST, NSServices=PLIST["NSServices"] * 2), catalogs_from=PLIST)
 plist_case("a plist with no permission prompts stops the run", 2, ["has no permission prompts"],

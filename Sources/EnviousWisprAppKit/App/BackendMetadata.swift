@@ -70,6 +70,13 @@ final class BackendMetadata {
       return String(
         localized: "LLM Deactivated", comment: "Sidebar and menu: no AI polish provider is chosen.")
     }
+    switch settings.llmProvider {
+    // #3142: a fixed-model engine has no model the user chooses, so its id ("apple-intelligence",
+    // "eg-1") is never a label; the status menu showed it in every language. `polishLabel`
+    // names these the same way.
+    case .appleIntelligence, .egOne, .s1Mini: return settings.llmProvider.displayName
+    case .none, .openAI, .gemini, .claude, .ollama: break
+    }
     let model = settings.effectiveLLMModel  // #1173: single source of truth
     if model.isEmpty { return settings.llmProvider.displayName }
     if let info = llmDiscovery.discoveredModels.first(where: { $0.id == model }) {

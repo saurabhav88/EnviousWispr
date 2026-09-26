@@ -47,6 +47,23 @@ struct BackendMetadataTests {
     #expect(bm.llmLabel == "OpenAI")
   }
 
+  @Test(
+    "llmLabel: a fixed-model engine shows its name, never its model id",
+    arguments: [
+      (LLMProvider.appleIntelligence, "apple-intelligence", "Apple Intelligence"),
+      (LLMProvider.egOne, "eg-1", "EG-1"),
+      (LLMProvider.s1Mini, "s1-mini", "S1-mini"),
+    ])
+  func llmLabelFixedModelEngineShowsItsName(
+    provider: LLMProvider, storedModel: String, expected: String
+  ) {
+    let bm = makeBackendMetadata()
+    bm.settings.llmProvider = provider
+    bm.settings.llmModel = storedModel
+    bm.llmDiscovery.discoveredModels = []
+    #expect(bm.llmLabel == expected)
+  }
+
   @Test("llmLabel: unknown model ID returns the raw ID")
   func llmLabelUnknownModelReturnsRawID() {
     let bm = makeBackendMetadata()

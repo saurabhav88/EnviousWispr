@@ -10,6 +10,12 @@
             "state" : "translated",
             "value" : "EnviousWispr uses AppleScript to paste your dictated text into the active app when direct insertion is not available, and to pause Music or Spotify while you dictate if you choose that setting."
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr verwendet AppleScript, um deinen diktierten Text in die aktive App einzufügen, wenn das direkte Einfügen nicht möglich ist, und um Musik oder Spotify während des Diktierens anzuhalten, wenn du diese Einstellung wählst."
+          }
         }
       }
     },
@@ -21,6 +27,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr reads the names in your contacts so dictation can spell the people you know correctly. Your address book is never uploaded."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr liest die Namen deiner Kontakte, damit die Namen von Menschen, die du kennst, beim Diktieren richtig geschrieben werden. Dein Adressbuch wird nie hochgeladen."
           }
         }
       }
@@ -34,6 +46,12 @@
             "state" : "translated",
             "value" : "Copyright © 2025–2026 Envious Labs LLC. All rights reserved."
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2025–2026 Envious Labs LLC. Alle Rechte vorbehalten."
+          }
         }
       }
     },
@@ -46,6 +64,12 @@
             "state" : "translated",
             "value" : "EnviousWispr needs microphone access for speech-to-text dictation."
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr benötigt Zugriff auf dein Mikrofon, um deine Sprache in Text umzuwandeln."
+          }
         }
       }
     },
@@ -57,6 +81,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr uses on-device speech recognition to show your words in the recording pill while you speak. This preview stays on your Mac and is never the text that gets pasted."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr verwendet die Spracherkennung auf dem Gerät, um deine Worte beim Sprechen in der Aufnahmeanzeige anzuzeigen. Diese Vorschau bleibt auf deinem Mac und ist nie der Text, der eingefügt wird."
           }
         }
       }
