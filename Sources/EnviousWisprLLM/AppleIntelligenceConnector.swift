@@ -10,7 +10,7 @@ import NaturalLanguage
 /// can capture it to Sentry as `generationFailed`. Thrown by
 /// `AppleIntelligenceConnector.polish()` for errors that occur during the
 /// wrapped `do` block: the on-device generation attempt itself, post-generation
-/// output-language validation (`outputLanguageDrift`), AND `makeSession`'s
+/// output-language validation (`outputLanguageDrift`), AND `resolveAssembly`'s
 /// defensive availability re-check (which can throw `frameworkUnavailable` from
 /// inside this block, not just from the earlier, unwrapped entry preflight).
 /// `unsupportedInputLanguage` is the only silent-skip case that is exclusively
@@ -274,7 +274,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
   /// Text appended AFTER the closing `</TRANSCRIPT>` tag of a prompt turn, live and
   /// example alike, and only when that turn's transcript carries a spoken correction
   /// marker (`wrapTranscript`). Byte-identical, leading newline included, to
-  /// `scripts/eval/prompts/single-v56-trailer.txt`. `makeSession` passes it only for
+  /// `scripts/eval/prompts/single-v56-trailer.txt`. `resolveAssembly` arms it only for
   /// English or undetected input, because the marker list is English.
   package static let onDevicePromptTrailerV56 =
     "\nIf the speaker replaced a detail with a corrected one, keep only the corrected one and drop the signal word. Otherwise keep every word."
@@ -309,6 +309,75 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
   /// turn alike. `detectedLanguage` is the normalized base code `polish` passes on.
   package static func armedTrailer(_ trailer: String, detectedLanguage: String?) -> String {
     detectedLanguage == nil || detectedLanguage == "en" ? trailer : ""
+  }
+
+  /// The Apple instructions a session actually carries: the recipe instructions, with
+  /// an English-framed clause in front for a non-English supported language (it names
+  /// the language and forbids translation). Nil or English leaves the recipe as is.
+  package static func assembledInstructions(base: String, detectedLanguage: String?) -> String {
+    guard let code = detectedLanguage, code != "en" else { return base }
+    let displayName = Locale(identifier: "en_US").localizedString(forLanguageCode: code) ?? code
+    let langClause = """
+      Input language: \(displayName) (\(code)).
+      Output MUST be in \(displayName). Never translate, summarize, or answer in a different language.
+      Preserve list structure and punctuation exactly as given.
+
+
+      """
+    return langClause + base
+  }
+
+  /// Everything that changes the on-device session a polish would build (#3195 PR B).
+  /// A session prepared ahead of polish (at key-up) is reused only when its key equals
+  /// the key of the session polish would build now; any difference builds fresh, which
+  /// is today's cost, never a different assembly. OS major is here for the MODEL (AFM 2
+  /// on 26, AFM 3 on 27, different context sizes), not for prompt selection.
+  package struct AFMSessionKey: Equatable, Sendable {
+    /// `assembledInstructions` output: language clause plus recipe instructions, exact bytes.
+    package let instructions: String
+    package let exampleTurns: [OnDeviceExampleTurn]
+    /// The ARMED trailer (`armedTrailer`), exact bytes.
+    package let trailer: String
+    package let guardrails: String
+    /// "stock", or "adapter:<canonical path>" for a DEBUG adapter that actually loaded.
+    package let modelIdentity: String
+    package let osMajor: Int
+
+    package init(
+      instructions: String, exampleTurns: [OnDeviceExampleTurn], trailer: String,
+      guardrails: String, modelIdentity: String, osMajor: Int
+    ) {
+      self.instructions = instructions
+      self.exampleTurns = exampleTurns
+      self.trailer = trailer
+      self.guardrails = guardrails
+      self.modelIdentity = modelIdentity
+      self.osMajor = osMajor
+    }
+  }
+
+  /// What happened to a session prepared ahead of polish, for `afm_prewarm` (#3195).
+  package enum AFMPrewarmOutcome: String, Sendable {
+    /// A prepared session matched and was used.
+    case hit
+    /// A prepared session existed but its key differed; polish built fresh.
+    case missKey = "miss_key"
+    /// No prepared session was offered.
+    case none
+  }
+
+  /// The one reuse decision: exact key equality, nothing looser.
+  package static func reusesPrepared(_ preparedKey: AFMSessionKey, for freshKey: AFMSessionKey) -> Bool {
+    preparedKey == freshKey
+  }
+
+  /// The #1055 preflight's instruction token count: the count cached at preparation
+  /// when the prepared session is the one being used, otherwise a fresh estimate.
+  package static func promptTokens(
+    cached: Int?, estimate: () async throws -> Int
+  ) async throws -> Int {
+    if let cached { return cached }
+    return try await estimate()
   }
 
   private static func promptFor() throws -> PromptSelection {
@@ -490,67 +559,9 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         )
       }
 
-      // Check provider availability BEFORE the per-request language gate so the
-      // caller receives the provider-state error rather than an unsupported-language
-      // error. The runner surfaces transient `.modelNotReady`, but treats permanent
-      // `.frameworkUnavailable` as a silent raw fallback.
-      try Self.throwIfAppleIntelligenceUnavailable()
-
-      // Preflight language gate. For non-English supported langs we also
-      // inject a language-aware prompt clause downstream; for unsupported
-      // langs we throw before burning a round trip on an empty generation.
-      let normalizedBase = LanguageNormalizer.baseCode(config.detectedLanguage)
-      if let base = Self.unsupportedBaseCode(
-        normalizedBase: normalizedBase, supportedLanguages: Self.supportedLanguageProvider())
-      {
-        Task {
-          await AppLogger.shared.log(
-            "LLM polish gated: Apple Intelligence does not support input language '\(base)', passing raw transcript through",
-            level: .info, category: "LLM"
-          )
-        }
-        throw LLMError.unsupportedInputLanguage(base)
-      }
-
-      // Single-prompt on-device polish (#1072: the dual natural/technical router
-      // was collapsed into one unified prompt). Everything inside this `do` block
-      // (generation, output-language validation, and makeSession's defensive
-      // availability re-check) gets wrapped in AFMPolishError so LLMPolishStep can
-      // capture it to Sentry as generationFailed — UNLESS the underlying LLMError
-      // is one of the silent-skip cases (frameworkUnavailable, outputLanguageDrift),
-      // which the step's catch site rethrows without alerting (#1448). The entry
-      // preflight above (unsupportedInputLanguage, the common frameworkUnavailable
-      // path) propagates untyped, never reaching this wrapping at all.
-      do {
-        let result = try await polishWithFoundationModels(
-          text: text,
-          detectedLanguage: normalizedBase
-        )
-
-        // Post-generation output-language validation. Skipped for English,
-        // short outputs, or recognizer ambiguity (see OutputLanguageValidator).
-        // Drift throws LLMError.outputLanguageDrift; LLMPolishStep catches
-        // and falls back to the original transcript silently.
-        if let expectedBase = normalizedBase, expectedBase != "en" {
-          try OutputLanguageValidator.validate(
-            polished: result.polishedText,
-            expectedBase: expectedBase
-          )
-        }
-
-        return result
-      } catch let ctxErr as AFMContextWindowExceeded {
-        // #1055: the context-window skip must NOT be wrapped as AFMPolishError
-        // (which LLMPolishStep maps to a `generation_failed` Sentry error). Let
-        // it propagate untyped to the runner (silent live skip); standalone
-        // callers (recovery) catch and fall back to raw.
-        throw ctxErr
-      } catch let afmErr as AFMPolishError {
-        // Re-throw untouched if already typed (defensive).
-        throw afmErr
-      } catch {
-        throw AFMPolishError(underlying: error)
-      }
+      return try await polish(
+        text: text, instructions: instructions, config: config, onToken: onToken, prepared: nil
+      ).result
     #else
       throw LLMError.frameworkUnavailable(
         "This build was compiled without Apple Intelligence support. Rebuild with the macOS 26 SDK, or use a different AI polish provider."
@@ -576,9 +587,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     @available(macOS 26.0, *)
     private func polishWithFoundationModels(
       text: String,
-      detectedLanguage: String?
-    ) async throws -> LLMResult {
-      let prepared = try makeSession(detectedLanguage: detectedLanguage)
+      detectedLanguage: String?,
+      prepared offered: AFMPreparedSession?
+    ) async throws -> (result: LLMResult, prewarm: AFMPrewarmOutcome) {
+      let (prepared, cachedPromptTokens, prewarm) = try sessionForPolish(
+        detectedLanguage: detectedLanguage, offered: offered)
 
       // Plain-string output path (no @Generable schema). Schema-constrained
       // output was dropping terminal punctuation; plain-string + post-filter
@@ -589,7 +602,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // AFMContextWindowExceeded (predicted/caught) when the dictation can't fit
       // the 4,096-token window, instead of stalling ~10s then erroring.
       let rawContent = try await Self.generateGuardingContextWindow(
-        prepared: prepared, wrapped: wrapped, detectedLanguage: detectedLanguage)
+        prepared: prepared, wrapped: wrapped, detectedLanguage: detectedLanguage,
+        cachedPromptTokens: cachedPromptTokens)
       let filtered = await EnviousOutputFilter.filterWithClassifier(
         input: text, output: rawContent, classifier: classifier)
       let content = filtered.polished
@@ -628,9 +642,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         filterTripped: filtered.tripped,
         filterFellBackToRaw: filtered.fellBackToRaw
       )
-      return LLMResult(
-        polishedText: repairedContent,
-        polishMetadata: metadata
+      return (
+        LLMResult(
+          polishedText: repairedContent,
+          polishMetadata: metadata
+        ), prewarm
       )
     }
 
@@ -643,9 +659,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     @available(macOS 26.0, *)
     private func polishWithFoundationModels(
       text: String,
-      detectedLanguage: String?
-    ) async throws -> LLMResult {
-      let prepared = try makeSession(detectedLanguage: detectedLanguage)
+      detectedLanguage: String?,
+      prepared offered: AFMPreparedSession?
+    ) async throws -> (result: LLMResult, prewarm: AFMPrewarmOutcome) {
+      let (prepared, cachedPromptTokens, prewarm) = try sessionForPolish(
+        detectedLanguage: detectedLanguage, offered: offered)
 
       // CLT-only fallback path: same plain-string + filter design as the
       // @Generable path so behavior is consistent across build flavors.
@@ -654,7 +672,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // AFMContextWindowExceeded (predicted/caught) when the dictation can't fit
       // the 4,096-token window, instead of stalling ~10s then erroring.
       let rawContent = try await Self.generateGuardingContextWindow(
-        prepared: prepared, wrapped: wrapped, detectedLanguage: detectedLanguage)
+        prepared: prepared, wrapped: wrapped, detectedLanguage: detectedLanguage,
+        cachedPromptTokens: cachedPromptTokens)
       let filtered = await EnviousOutputFilter.filterWithClassifier(
         input: text, output: rawContent, classifier: classifier)
       let content = filtered.polished
@@ -693,9 +712,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         filterTripped: filtered.tripped,
         filterFellBackToRaw: filtered.fellBackToRaw
       )
-      return LLMResult(
-        polishedText: repairedContent,
-        polishMetadata: metadata
+      return (
+        LLMResult(
+          polishedText: repairedContent,
+          polishMetadata: metadata
+        ), prewarm
       )
     }
   #endif
@@ -738,12 +759,114 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     /// system prompt, so the #1055 context-window preflight can `tokenCount` the
     /// same strings that `respond(...)` will consume.
     @available(macOS 26.0, *)
-    struct PreparedAFMSession {
+    struct PreparedAFMSession: Sendable {
       let session: LanguageModelSession
       let model: SystemLanguageModel
       let systemPrompt: String
       /// Appended after `</TRANSCRIPT>` on the live turn; see `wrapTranscript`.
       let trailer: String
+    }
+
+    /// A session built and prewarmed ahead of polish (#3195 PR B): built with the same
+    /// assembly `polish` uses, keyed by it, with the instruction token count cached.
+    /// Single use: whoever holds it hands it to one `polish(..., prepared:)` call.
+    @available(macOS 26.0, *)
+    package struct AFMPreparedSession: Sendable {
+      let prepared: PreparedAFMSession
+      package let key: AFMSessionKey
+      /// The #1055 preflight count of `prepared.systemPrompt`, or nil if counting failed
+      /// (polish then counts as it always did).
+      let systemPromptTokens: Int?
+    }
+
+    /// Build the session a polish in `detectedLanguage` would build, start loading it
+    /// (`prewarm()`), and count its instructions for the preflight. `detectedLanguage`
+    /// is the raw code `LLMProviderConfig.detectedLanguage` would carry; it is
+    /// normalized exactly as `polish` normalizes it.
+    @available(macOS 26.0, *)
+    package func prepareSession(detectedLanguage: String?) async throws -> AFMPreparedSession {
+      let assembly = try resolveAssembly(
+        detectedLanguage: LanguageNormalizer.baseCode(detectedLanguage))
+      let prepared = Self.buildSession(assembly)
+      prepared.session.prewarm()
+      let tokens = try? await Self.estimateAFMTokens(
+        model: prepared.model, text: prepared.systemPrompt, lang: nil)
+      return AFMPreparedSession(prepared: prepared, key: assembly.key, systemPromptTokens: tokens)
+    }
+
+    /// `polish`, optionally with a session prepared ahead of time. The prepared session
+    /// is used only when its key equals the key of the session this polish would build;
+    /// otherwise polish builds fresh. Returns what happened to the offered session.
+    @available(macOS 26.0, *)
+    package func polish(
+      text: String,
+      instructions: PolishInstructions,
+      config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?,
+      prepared: AFMPreparedSession?
+    ) async throws -> (result: LLMResult, prewarm: AFMPrewarmOutcome) {
+      // Check provider availability BEFORE the per-request language gate so the
+      // caller receives the provider-state error rather than an unsupported-language
+      // error. The runner surfaces transient `.modelNotReady`, but treats permanent
+      // `.frameworkUnavailable` as a silent raw fallback.
+      try Self.throwIfAppleIntelligenceUnavailable()
+
+      // Preflight language gate. For non-English supported langs we also
+      // inject a language-aware prompt clause downstream; for unsupported
+      // langs we throw before burning a round trip on an empty generation.
+      let normalizedBase = LanguageNormalizer.baseCode(config.detectedLanguage)
+      if let base = Self.unsupportedBaseCode(
+        normalizedBase: normalizedBase, supportedLanguages: Self.supportedLanguageProvider())
+      {
+        Task {
+          await AppLogger.shared.log(
+            "LLM polish gated: Apple Intelligence does not support input language '\(base)', passing raw transcript through",
+            level: .info, category: "LLM"
+          )
+        }
+        throw LLMError.unsupportedInputLanguage(base)
+      }
+
+      // Single-prompt on-device polish (#1072: the dual natural/technical router
+      // was collapsed into one unified prompt). Everything inside this `do` block
+      // (generation, output-language validation, and resolveAssembly's defensive
+      // availability re-check) gets wrapped in AFMPolishError so LLMPolishStep can
+      // capture it to Sentry as generationFailed — UNLESS the underlying LLMError
+      // is one of the silent-skip cases (frameworkUnavailable, outputLanguageDrift),
+      // which the step's catch site rethrows without alerting (#1448). The entry
+      // preflight above (unsupportedInputLanguage, the common frameworkUnavailable
+      // path) propagates untyped, never reaching this wrapping at all.
+      do {
+        let (result, prewarm) = try await polishWithFoundationModels(
+          text: text,
+          detectedLanguage: normalizedBase,
+          prepared: prepared
+        )
+
+        // Post-generation output-language validation. Skipped for English,
+        // short outputs, or recognizer ambiguity (see OutputLanguageValidator).
+        // Drift throws LLMError.outputLanguageDrift; LLMPolishStep catches
+        // and falls back to the original transcript silently.
+        if let expectedBase = normalizedBase, expectedBase != "en" {
+          try OutputLanguageValidator.validate(
+            polished: result.polishedText,
+            expectedBase: expectedBase
+          )
+        }
+
+        return (result, prewarm)
+      } catch let ctxErr as AFMContextWindowExceeded {
+        // #1055: the context-window skip must NOT be wrapped as AFMPolishError
+        // (which LLMPolishStep maps to a `generation_failed` Sentry error). Let
+        // it propagate untyped to the runner (silent live skip); standalone
+        // callers (recovery) catch and fall back to raw.
+        throw ctxErr
+      } catch let afmErr as AFMPolishError {
+        // Re-throw untouched if already typed (defensive).
+        throw afmErr
+      } catch {
+        throw AFMPolishError(underlying: error)
+      }
     }
 
     /// Exact token count via Apple's counter (macOS 26.4+, release builds only, #2883);
@@ -789,7 +912,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     /// the raw generated content. All other generation errors propagate.
     @available(macOS 26.0, *)
     private static func generateGuardingContextWindow(
-      prepared: PreparedAFMSession, wrapped: String, detectedLanguage: String?
+      prepared: PreparedAFMSession, wrapped: String, detectedLanguage: String?,
+      cachedPromptTokens: Int?
     ) async throws -> String {
       // The system prompt is always English (instructions + an English-framed
       // language clause), regardless of the dictation language. Count it with
@@ -798,8 +922,9 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // ~1 char/token for CJK/Thai/Lao dictations and wrongly skip transcripts
       // that actually fit. Only the transcript itself carries `detectedLanguage`.
       // (On macOS 26.4+ the exact `tokenCount` ignores `lang` entirely.)
-      let promptTokens = try await estimateAFMTokens(
-        model: prepared.model, text: prepared.systemPrompt, lang: nil)
+      let promptTokens = try await Self.promptTokens(cached: cachedPromptTokens) {
+        try await estimateAFMTokens(model: prepared.model, text: prepared.systemPrompt, lang: nil)
+      }
       let inputTokens = try await estimateAFMTokens(
         model: prepared.model, text: wrapped, lang: detectedLanguage)
       // Skip decision reserves room for a 1:1 clean polish (output ≈ input) on
@@ -866,12 +991,38 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       }
     #endif
 
+    /// Everything `buildSession` needs, resolved once per polish or preparation, with
+    /// the key that says whether a prepared session was built from the same inputs.
     @available(macOS 26.0, *)
-    private func makeSession(detectedLanguage: String?) throws -> PreparedAFMSession {
+    struct AFMAssembly {
+      let model: SystemLanguageModel
+      let systemPrompt: String
+      let exampleTurns: [OnDeviceExampleTurn]
+      let trailer: String
+      let key: AFMSessionKey
+    }
+
+    /// The session polish uses: the offered prepared session on an exact key match,
+    /// otherwise a fresh build from the same resolver.
+    @available(macOS 26.0, *)
+    private func sessionForPolish(
+      detectedLanguage: String?, offered: AFMPreparedSession?
+    ) throws -> (PreparedAFMSession, Int?, AFMPrewarmOutcome) {
+      let assembly = try resolveAssembly(detectedLanguage: detectedLanguage)
+      guard let offered else { return (Self.buildSession(assembly), nil, .none) }
+      guard Self.reusesPrepared(offered.key, for: assembly.key) else {
+        return (Self.buildSession(assembly), nil, .missKey)
+      }
+      return (offered.prepared, offered.systemPromptTokens, .hit)
+    }
+
+    @available(macOS 26.0, *)
+    private func resolveAssembly(detectedLanguage: String?) throws -> AFMAssembly {
       // Permissive content-transformation guardrails — peer-ecosystem default
       // for text-transform apps. Prevents AFM from refusing to polish benign
       // dictation that happens to mention sensitive topics.
       let model: SystemLanguageModel
+      var modelIdentity = "stock"
       #if DEBUG
         // DEV-ONLY live test seam (AFM adapter PoC): when the per-build toggle is
         // ON and EW_AFM_ADAPTER_PATH points at a local .fmadapter, polish through
@@ -889,7 +1040,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
             let adapter = try SystemLanguageModel.Adapter(
               fileURL: URL(fileURLWithPath: adapterPath))
             // NOTE: we intentionally do NOT call the async `adapter.compile()`.
-            // makeSession is synchronous (and shared with the release stock path),
+            // resolveAssembly is synchronous (and shared with the release stock path),
             // and the Gate-1 PoC proved this exact load→adapter-model→generate path
             // works on-device for ew_run5_v38.fmadapter with no explicit compile()
             // (compile front-loads on-device prep; absent it, prep is lazy on first
@@ -898,6 +1049,9 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
             // loudly — acceptable for a DEBUG-only triage seam.
             model = SystemLanguageModel(
               adapter: adapter, guardrails: .permissiveContentTransformations)
+            modelIdentity =
+              "adapter:"
+              + URL(fileURLWithPath: adapterPath).standardizedFileURL.resolvingSymlinksInPath().path
             Self.logAdapter("DEV adapter active: \((adapterPath as NSString).lastPathComponent)")
           } catch {
             Self.logAdapter(
@@ -912,43 +1066,37 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       #endif
 
       // Availability is verified at the entry of `polish(...)`, but re-check
-      // here to stay safe if `makeSession` is ever reached from another
+      // here to stay safe if `resolveAssembly` is ever reached from another
       // path in the future.
       try Self.throwIfAppleIntelligenceUnavailable()
 
-      // Language-aware base prompt. When a non-English supported base code
-      // is present, prepend an English-framed clause that names the target
-      // language and forbids translation. For nil or English, use the
-      // single unified prompt as-is. The on-device path uses no caller prompt
-      // text (#3195 removed the last suffix it read).
+      // The on-device path uses no caller prompt text (#3195 removed the last suffix it read).
       let selected = try Self.promptFor()
       let trailer = Self.armedTrailer(selected.trailer, detectedLanguage: detectedLanguage)
-      let unifiedPrompt = selected.base
-      let basePrompt: String = {
-        guard let base = detectedLanguage, base != "en" else {
-          return unifiedPrompt
-        }
-        let displayName =
-          Locale(identifier: "en_US")
-          .localizedString(forLanguageCode: base) ?? base
-        let langClause = """
-          Input language: \(displayName) (\(base)).
-          Output MUST be in \(displayName). Never translate, summarize, or answer in a different language.
-          Preserve list structure and punctuation exactly as given.
+      let systemPrompt = Self.assembledInstructions(
+        base: selected.base, detectedLanguage: detectedLanguage)
+      let key = AFMSessionKey(
+        instructions: systemPrompt, exampleTurns: selected.exampleTurns, trailer: trailer,
+        guardrails: "permissiveContentTransformations", modelIdentity: modelIdentity,
+        osMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
+      return AFMAssembly(
+        model: model, systemPrompt: systemPrompt, exampleTurns: selected.exampleTurns,
+        trailer: trailer, key: key)
+    }
 
-
-          """
-        return langClause + unifiedPrompt
-      }()
-
-      let systemPrompt = basePrompt
-
+    /// Build the live session from a resolved assembly. The only place a session is
+    /// assembled, for fresh polish and for preparation alike.
+    @available(macOS 26.0, *)
+    private static func buildSession(_ assembly: AFMAssembly) -> PreparedAFMSession {
+      let model = assembly.model
+      let systemPrompt = assembly.systemPrompt
+      let trailer = assembly.trailer
       // #2795/#3195: the session is seeded with the example turns, each wrapped
       // exactly as a live dictation is. With no turns (a bench measuring
       // instructions alone) the session is built from the instructions string.
       let session: LanguageModelSession
       var budgetText = systemPrompt
-      if selected.exampleTurns.isEmpty {
+      if assembly.exampleTurns.isEmpty {
         session = LanguageModelSession(model: model, instructions: systemPrompt)
       } else {
         var entries: [FoundationModels.Transcript.Entry] = [
@@ -957,7 +1105,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
               segments: [.text(FoundationModels.Transcript.TextSegment(content: systemPrompt))],
               toolDefinitions: []))
         ]
-        for turn in selected.exampleTurns {
+        for turn in assembly.exampleTurns {
           let wrappedExample = Self.wrapTranscript(turn.input, trailer: trailer)
           entries.append(
             .prompt(
