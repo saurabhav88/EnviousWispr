@@ -162,6 +162,10 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     "info собака yandex punto ру",
     "www punto example punto ру",
     "example точка ру точка xyz",
+    "www точка example точка ру точка com",
+    "письмо на info собака yandex точка ру точка com",
+    "письмо на info.собака.yandex.ру.com",
+    "открой example точка ру точка com слэш help",
     "Это ру",
     // G4: a single `точка` or dash word between digits is prose
     "Команда получила 2 точка",

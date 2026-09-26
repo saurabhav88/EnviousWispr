@@ -100,6 +100,14 @@ extension InverseTextNormalizer {
 
   static func writtenTLD(_ tld: String) -> String { spokenTLDWords[tld.lowercased()] ?? tld }
 
+  /// A spoken ending word before the last label (`… точка ру точка com`): `ру` is read only as the
+  /// ending, so such a domain is left as said (local Codex r2). Every domain writer checks this:
+  /// the link host (`neutralCanonicalHost`), `neutralUnicodeEmails` and `gluedAtWord`; the ASCII
+  /// `emails` frame cannot hold a Cyrillic label.
+  static func hasInnerSpokenTLDWord(_ domainLabels: [String]) -> Bool {
+    domainLabels.contains { spokenTLDWords[$0.lowercased()] != nil }
+  }
+
   // MARK: - Dash words (neutral route only)
 
   /// Dash words the neutral route reads in a code, beside the shared `foreignDashWords`. Kept
@@ -248,7 +256,9 @@ extension InverseTextNormalizer {
       let beforeTLD = m.ns.substring(
         with: NSRange(
           location: m.result.range.location, length: tldRange.location - m.result.range.location))
-      guard Self.neutralTLDSeparatorAllowed(tld, before: beforeTLD) else { return nil }
+      guard Self.neutralTLDSeparatorAllowed(tld, before: beforeTLD),
+        !Self.hasInnerSpokenTLDWord(splitOnPattern(m.g("dom") ?? "", sep))
+      else { return nil }
       if nameLabels.count > 1, let last = nameLabels.last?.lowercased(),
         Self.dottedNameRefusedSuffixes.contains(last)
       {
@@ -378,7 +388,9 @@ extension InverseTextNormalizer {
       else { return nil }
       if pluralS, dom.lowercased().hasPrefix("s") { return nil }
       // A spoken ending word only after its dot word, as in every other pass (local Codex r1).
-      guard Self.neutralTLDSeparatorAllowed(tld, before: ".") else { return nil }
+      guard Self.neutralTLDSeparatorAllowed(tld, before: "."),
+        !Self.hasInnerSpokenTLDWord(dom.components(separatedBy: "."))
+      else { return nil }
       guard hasAddressCue(m) || hasGluedAtWordCue(m), !neutralEmailFollowedBySlash(m),
         !Self.startsAfterSpokenDot(m), !Self.startsAfterSpokenDash(m), !hasFurtherSpokenLabel(m)
       else { return nil }
@@ -446,6 +458,7 @@ extension InverseTextNormalizer {
     // English email pass does (cloud review, PR #3232, and its local class enumeration).
     var labels = neutralHostLabels(host, w)
     // #3233: `it` never after the English `dot`, `ру` only after `точка`, written as `ru`.
+    guard !hasInnerSpokenTLDWord(Array(labels.dropLast())) else { return nil }
     if let tld = labels.last {
       guard neutralTLDSeparatorAllowed(tld, before: String(host.dropLast(tld.count))) else {
         return nil
