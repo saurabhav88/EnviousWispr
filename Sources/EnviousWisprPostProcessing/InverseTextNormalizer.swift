@@ -935,7 +935,8 @@ public struct InverseTextNormalizer: Sendable {
   func hasFurtherSpokenLabel(_ m: Match) -> Bool {
     let end = m.result.range.location + m.result.range.length
     let tail = m.ns.substring(with: NSRange(location: end, length: min(48, m.ns.length - end)))
-    return firstMatch(#"^\s+(?:"# + Self.addressDotAlt + #")\s+[a-z0-9]"#, tail) != nil
+    // Any script: "… dot com dot рф" goes on as surely as "… dot com dot xyz".
+    return firstMatch(#"^\s+(?:"# + Self.addressDotAlt + #")\s+[\p{L}\p{N}]"#, tail) != nil
   }
 
   /// - Parameter neutral: true on a take resolved as another language (`normalizeLanguageNeutral`).
