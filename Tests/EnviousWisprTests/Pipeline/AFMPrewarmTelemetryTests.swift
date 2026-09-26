@@ -10,7 +10,7 @@ import Testing
 /// polish, and nowhere else. When these fail, the field report on whether the key-up
 /// session was used is missing, or it lands on rows it does not describe.
 @MainActor
-@Suite("afm_prewarm on llm.polish_completed (#3195)", .tags(.productOutcome))
+@Suite("afm_prewarm on llm.polish_completed (#3195)", .tags(.observabilityContract))
 struct AFMPrewarmTelemetryTests {
 
   #if DEBUG
