@@ -339,7 +339,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     /// The ARMED trailer (`armedTrailer`), exact bytes.
     package let trailer: String
     package let guardrails: String
-    /// "stock", or "adapter:<canonical path>" for a DEBUG adapter that actually loaded.
+    /// "stock", or a unique `adapterModelIdentity()` for a DEBUG adapter that loaded.
     package let modelIdentity: String
     package let osMajor: Int
 
@@ -364,6 +364,14 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     case missKey = "miss_key"
     /// No prepared session was offered.
     case none
+  }
+
+  /// The key identity of a DEBUG adapter model. An adapter's contents can change at the
+  /// same path between preparation and polish and there is no cheap content identity, so
+  /// every adapter resolution is unique: a prepared adapter session is never reused and
+  /// polish always builds fresh through the adapter it loads now.
+  package static func adapterModelIdentity() -> String {
+    "adapter-unverified:" + UUID().uuidString
   }
 
   /// The one reuse decision: exact key equality, nothing looser.
@@ -774,9 +782,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     package struct AFMPreparedSession: Sendable {
       let prepared: PreparedAFMSession
       package let key: AFMSessionKey
-      /// The #1055 preflight count of `prepared.systemPrompt`, or nil if counting failed
-      /// (polish then counts as it always did).
-      let systemPromptTokens: Int?
+      /// The #1055 preflight count of `prepared.systemPrompt`, counted at preparation.
+      let systemPromptTokens: Int
     }
 
     /// Build the session a polish in `detectedLanguage` would build, start loading it
@@ -789,8 +796,13 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         detectedLanguage: LanguageNormalizer.baseCode(detectedLanguage))
       let prepared = Self.buildSession(assembly)
       prepared.session.prewarm()
-      let tokens = try? await Self.estimateAFMTokens(
+      // `try`, never `try?`: the estimator already falls back to the heuristic on a
+      // counter failure and rethrows only cancellation, which must end preparation.
+      let tokens = try await Self.estimateAFMTokens(
         model: prepared.model, text: prepared.systemPrompt, lang: nil)
+      // A counter that finished without observing cancellation still ends here, so a
+      // cancelled preparation never hands back a session.
+      try Task.checkCancellation()
       return AFMPreparedSession(prepared: prepared, key: assembly.key, systemPromptTokens: tokens)
     }
 
@@ -1049,9 +1061,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
             // loudly — acceptable for a DEBUG-only triage seam.
             model = SystemLanguageModel(
               adapter: adapter, guardrails: .permissiveContentTransformations)
-            modelIdentity =
-              "adapter:"
-              + URL(fileURLWithPath: adapterPath).standardizedFileURL.resolvingSymlinksInPath().path
+            modelIdentity = Self.adapterModelIdentity()
             Self.logAdapter("DEV adapter active: \((adapterPath as NSString).lastPathComponent)")
           } catch {
             Self.logAdapter(

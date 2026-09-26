@@ -46,7 +46,7 @@ struct AFMPreparedSessionKeyTests {
       ),
       ("trailer", Self.key(trailer: "")),
       ("guardrails", Self.key(guardrails: "default")),
-      ("adapter versus stock", Self.key(modelIdentity: "adapter:/tmp/ew.fmadapter")),
+      ("adapter versus stock", Self.key(modelIdentity: C.adapterModelIdentity())),
       ("OS major", Self.key(osMajor: 26)),
     ]
     for (field, variant) in variants {
@@ -66,6 +66,15 @@ struct AFMPreparedSessionKeyTests {
     #expect(german.hasSuffix("\n\nBASE"))
     #expect(C.armedTrailer("T", detectedLanguage: "de").isEmpty)
     #expect(C.armedTrailer("T", detectedLanguage: nil) == "T")
+  }
+
+  @Test("a DEBUG adapter session is never reused, even at the same adapter path")
+  func adapterIdentityIsNeverReused() {
+    let first = Self.key(modelIdentity: C.adapterModelIdentity())
+    let second = Self.key(modelIdentity: C.adapterModelIdentity())
+    #expect(first.modelIdentity.hasPrefix("adapter-unverified:"))
+    #expect(!C.reusesPrepared(first, for: second))
+    #expect(C.reusesPrepared(Self.key(), for: Self.key()), "control: stock keys still match")
   }
 
   @Test("the prepared instruction count is used on a hit and never recounted")
@@ -143,6 +152,17 @@ struct AFMPreparedSessionKeyTests {
         text: text, instructions: .default, config: config(nil), onToken: nil, prepared: prepared)
       #expect(out.prewarm == .missKey)
       #expect(!out.result.polishedText.isEmpty)
+    }
+
+    @Test("a cancelled preparation throws instead of returning a session")
+    func cancelledPreparationThrows() async throws {
+      guard #available(macOS 26.0, *) else { return }
+      let connector = AppleIntelligenceConnector()
+      let task = Task { () async throws -> AppleIntelligenceConnector.AFMPreparedSession in
+        withUnsafeCurrentTask { $0?.cancel() }
+        return try await connector.prepareSession(detectedLanguage: nil)
+      }
+      await #expect(throws: CancellationError.self) { _ = try await task.value }
     }
 
     @Test("with nothing offered the outcome is none")
