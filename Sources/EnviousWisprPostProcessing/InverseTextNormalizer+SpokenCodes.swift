@@ -70,8 +70,10 @@ extension InverseTextNormalizer {
     let end = r.location + r.length
     let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
     let after = m.ns.substring(with: NSRange(location: end, length: min(m.ns.length - end, 24)))
+    // A digit right after means the recogniser split one number ("S dash 1 2", diff review).
     return firstMatch(#"(?:^|\s)(?:"# + connectorAlt + #")\s+$"#, before) != nil
       || firstMatch(#"^\s+(?:"# + connectorAlt + #")\s+\S"#, after) != nil
+      || firstMatch(#"^\s+\d"#, after) != nil
   }
 
   // MARK: - Dotted numbers: versions and IP addresses
@@ -160,10 +162,12 @@ extension InverseTextNormalizer {
   /// lone `I` is the pronoun, refused as the list-marker pass refuses it. Up to four single
   /// capitals may precede the code, for a spelled acronym.
   func dashedCodes(_ t: String, englishWords: Bool) -> String {
-    // "S dash one hundred and two": the number may carry an internal "and" (local Codex r1).
+    // "S dash one hundred and two": the number may carry an internal "and" after "hundred" or
+    // "thousand" only, so "S dash 12 and 3" keeps its separate 3 (local Codex r1, diff review).
     let number =
       englishWords
-      ? Self.identifierPartPat + #"(?:\s+and\s+"# + Self.identifierPartPat + #")*"# : #"\d+"#
+      ? Self.identifierPartPat + #"(?:(?<=hundred|thousand)\s+and\s+"# + Self.identifierPartPat
+        + #")*"# : #"\d+"#
     let pat =
       #"(?<![\w-])(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5})\s+(?<dw>(?i:"# + Self.dashWordAlt + #"))\s+(?<num>(?i:"#
       + number + #"))(?![\w-])"#
@@ -227,7 +231,7 @@ extension InverseTextNormalizer {
   func localhostPorts(_ t: String) -> String {
     let pat =
       #"\b(?<host>localhost)\s+colon\s+(?<p>(?:"# + Self.numwordNoAndAlt + #")(?:\s+(?:"#
-      + Self.numwordAlt + #"))*|\d[\d,]*)(?![\w])"#
+      + Self.numwordNoAndAlt + #")|(?<=hundred|thousand)\s+and)*|\d[\d,]*)(?![\w])"#
     return reSub(pat, t) { m in
       let raw = (m.g("p") ?? "").replacingOccurrences(of: ",", with: "")
       let words = Self.splitWords(raw.lowercased())
