@@ -180,13 +180,16 @@ require_selected_ran() {  # $1=bundle $2=label
     exit 1
   fi
   if ! missing="$(python3 - "$payload" "${TEST_ARGS[@]}" <<'PY'
-import json, sys
+import json, re, sys
 from urllib.parse import unquote
 
 urls = []
 def walk(node):
     if node.get("nodeIdentifierURL"):
-        urls.append(unquote(node["nodeIdentifierURL"]))
+        url = unquote(node["nodeIdentifierURL"])
+        urls.append(url)
+        # A test filter may omit the signature: `Suite/test` for `Suite/test()`.
+        urls.append(re.sub(r"\([^/]*\)$", "", url))
     for child in node.get("children") or []:
         walk(child)
 for plan in json.load(open(sys.argv[1])).get("testNodes", []):
@@ -204,7 +207,7 @@ PY
   fi
   rm -f "$payload"
   if [ -n "$missing" ]; then
-    echo "ERROR: $label never ran these selections (check TARGET/SUITE spelling):" >&2
+    echo "ERROR: $label never ran these selections (check TARGET/SUITE spelling; a Swift Testing test needs its ()):" >&2
     printf '%s\n' "$missing" | sed 's/^/  /' >&2
     echo "==> $label verdict: FAIL"
     exit 1

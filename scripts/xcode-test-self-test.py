@@ -137,6 +137,10 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         result = self.run_runner('--filter', 'Target/SuiteA', NODE_SUFFIX='/caseOne()')
         self.assertIn('ran all 1 selection(s)', result.stdout)
 
+    def test_test_selection_without_signature_matches(self):
+        result = self.run_runner('--filter', 'Target/Suite/caseOne', NODE_SUFFIX='()')
+        self.assertIn('ran all 1 selection(s)', result.stdout)
+
     def test_unreadable_result_bundle_fails(self):
         self.run_runner('--filter', 'Target/SuiteA', rc=1, XCRESULT_RC='1')
         self.assertFalse((self.root / 'published-state').exists())
