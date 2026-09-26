@@ -90,6 +90,23 @@ struct InverseTextNormalizerNeutralAddressesTests {
     ("draait die op localhost dubbele punt 3000 en", "draait die op localhost:3000 en"),
     // French `point` is also English: a spoken www address converts on a take with no verdict
     ("Go to www point example point com now.", "Go to www.example.com now."),
+    // a link converts whole: spoken www in each language, localhost with a port, a glued Dutch
+    // path inside a protocol link (local Codex diff review r2 and its class enumeration)
+    (
+      "https dubbele punt schuine streep schuine streep voorbeeld punt nl schuine streephelp",
+      "https://voorbeeld.nl/help"
+    ),
+    ("w w w punto ejemplo punto es barra ayuda", "www.ejemplo.es/ayuda"),
+    ("wu wu wu kropka przykład kropka pl ukośnik pomoc", "www.przykład.pl/pomoc"),
+    ("https dos puntos barra barra w w w punto ejemplo punto es", "https://www.ejemplo.es"),
+    (
+      "https dos puntos barra barra uve doble uve doble uve doble punto ejemplo punto es barra ayuda",
+      "https://www.ejemplo.es/ayuda"
+    ),
+    ("localhost dos puntos 3000 barra api", "localhost:3000/api"),
+    ("http dos puntos barra barra localhost dos puntos 3000", "http://localhost:3000"),
+    ("localhost dwukropek 3000 ukośnik api ukośnik v1", "localhost:3000/api/v1"),
+    ("triple w punto ejemplo punto es", "www.ejemplo.es"),
     // German borrowed "at"; a Unicode name
     ("schreib an müller at beispiel punkt de bitte", "schreib an müller@beispiel.de bitte"),
     // recogniser output, verbatim
@@ -194,6 +211,10 @@ struct InverseTextNormalizerNeutralAddressesTests {
     "écris à arobase gmail point com",
     // German `at` beside a joined domain stays closed even with `punkt` in the name
     "john punkt smith at example.com",
+    // an address with a path, or a host with a port, is left whole rather than half-converted
+    "jan arroba ejemplo punto es barra ayuda",
+    "ejemplo punto es dos puntos 8080 barra api",
+    "https dos puntos barra barra ejemplo punto es dos puntos 8080",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",

@@ -153,6 +153,7 @@ extension InverseTextNormalizer {
       }
       // The address goes on past what reads ("… kropka pl kropka xyz").
       guard !hasFurtherSpokenLabel(m) else { return nil }
+      guard !neutralEmailFollowedBySlash(m) else { return nil }
       let nameLabels = splitOnPattern(m.g("name") ?? "", sep)
       guard !Self.isRefusedNeutralName(nameLabels) else { return nil }
       if nameLabels.count > 1, let last = nameLabels.last?.lowercased(),
@@ -206,31 +207,77 @@ extension InverseTextNormalizer {
         !Self.isRefusedNeutralName([name])
       else { return nil }
       if (m.g("gap") ?? "").isEmpty, dom.lowercased().hasPrefix("s") { return nil }
-      guard hasAddressCue(m) else { return nil }
+      guard hasAddressCue(m), !neutralEmailFollowedBySlash(m) else { return nil }
       return name.lowercased() + "@" + dom.lowercased() + "." + (m.g("tld") ?? "").lowercased()
     }
   }
 
   // MARK: - Links: protocol, path, www, localhost
 
-  /// A host: labels joined by `.` or this language's dot word, ending in an allowed TLD.
+  /// Spoken `www`: the word, or the letters as each language says them.
+  static let neutralWWWAlias =
+    #"(?:www|w\s+w\s+w|wu\s+wu\s+wu|uve\s+doble\s+uve\s+doble\s+uve\s+doble|triple\s+w)"#
+
+  /// A host: an optional spoken `www`, labels joined by `.` or this language's dot word, ending
+  /// in an allowed TLD.
   static func neutralHostPat(_ w: SpokenURLWords) -> String {
     let sep = #"(?:\.|\s+(?:"# + phraseAlt(w.dot) + #")\s+)"#
-    return uLabel + #"(?:"# + sep + uLabel + #"){0,5}"# + sep + #"(?:"# + neutralTLDAlt + #")"#
+    return #"(?:"# + neutralWWWAlias + sep + #")?"# + uLabel + #"(?:"# + sep + uLabel
+      + #"){0,5}"# + sep + #"(?:"# + neutralTLDAlt + #")"#
+  }
+
+  /// A host, or `localhost` with this language's colon word and a port (a path or a protocol
+  /// around it reads as one link).
+  static func neutralHostOrLocalPat(_ w: SpokenURLWords, portRequired: Bool) -> String {
+    let port = #"\s+(?:"# + phraseAlt(w.colon) + #")\s+\d{1,5}"#
+    return #"(?:"# + neutralHostPat(w) + #"|localhost(?:"# + port + (portRequired ? ")" : ")?")
+      + #")"#
   }
 
   static func neutralHostLabels(_ host: String, _ w: SpokenURLWords) -> [String] {
     splitOnPattern(host, #"\.|\s+(?:"# + phraseAlt(w.dot) + #")\s+"#)
   }
 
-  /// Spoken URL syntax just BEFORE a host (`https dos puntos barra barra …`, a slash word) means
-  /// a longer link the scheme pass refused; a later pass converting its tail would half-convert it.
-  func neutralLinkStartsEarlier(_ m: Match, _ w: SpokenURLWords) -> Bool {
+  /// The written form of a matched host: a spoken `www` becomes `www`, labels join with `.`,
+  /// `localhost <colon> 3000` becomes `localhost:3000`. Nil for a port outside 1...65535.
+  static func neutralCanonicalHost(_ raw: String, _ w: SpokenURLWords) -> String? {
+    if let local = firstMatch(#"^localhost\b"#, raw) {
+      let rest = (raw as NSString).substring(from: (local as NSString).length)
+      guard let digits = firstMatch(#"\d+$"#, rest) else { return "localhost" }
+      guard let port = Int(digits), (1...65535).contains(port) else { return nil }
+      return "localhost:\(port)"
+    }
+    var host = raw
+    if let alias = firstMatch(#"^"# + neutralWWWAlias, host) {
+      host = "www" + (host as NSString).substring(from: (alias as NSString).length)
+    }
+    return neutralHostLabels(host, w).joined(separator: ".").lowercased()
+  }
+
+  /// Path segments after a host: each language's slash phrase, then one segment; Dutch may
+  /// glue `streep` to the segment (`schuine streephelp`).
+  static func neutralPathPat(_ w: SpokenURLWords) -> (pattern: String, split: String) {
+    let slash = #"(?:"# + phraseAlt(w.slash) + #")"#
+    let gap = w.glueSlash ? #"\s*"# : #"\s+"#
+    return (#"(?:\s+"# + slash + gap + uLabel + #")"#, #"\s+"# + slash + gap)
+  }
+
+  static func neutralPathSegments(_ raw: String, _ w: SpokenURLWords) -> [String] {
+    splitOnPattern(raw, neutralPathPat(w).split)
+      .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+  }
+
+  /// Spoken URL syntax or an at-word just BEFORE a host (`https dos puntos barra barra …`, a
+  /// slash word, `arroba`) means a longer link or address an earlier pass refused; converting
+  /// its tail would half-convert it.
+  func neutralLinkStartsEarlier(_ m: Match, _ words: [SpokenURLWords]) -> Bool {
     let r = m.result.range
     let lead = min(r.location, 48)
     let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
-    let syntax = Self.phraseAlt(w.dot + w.slash + w.colon)
-    return firstMatch(#"(?:^|[^\p{L}])(?:https?|"# + syntax + #")\s+$"#, before) != nil
+    let syntax = Self.phraseAlt(words.flatMap { $0.dot + $0.slash + $0.colon })
+    // An at-word before the host: an address the email passes refused is not a link either.
+    return firstMatch(
+      #"(?:^|[^\p{L}])(?:https?|"# + syntax + "|" + Self.addressAtAlt + #")\s+$"#, before) != nil
       || firstMatch(#"/\s*$"#, before) != nil
   }
 
@@ -239,65 +286,73 @@ extension InverseTextNormalizer {
   /// pass keeps the same split, `lowerRiskURLTLDAlt`). A host the recogniser joined may use any.
   func neutralSpokenHostEndingAllowed(_ host: String, _ w: SpokenURLWords) -> Bool {
     let spoken = firstMatch(#"\s+(?:"# + Self.phraseAlt(w.dot) + #")\s+"#, host) != nil
-    guard spoken, firstMatch(#"^www\b"#, host) == nil,
+    guard spoken, firstMatch(#"^"# + Self.neutralWWWAlias, host) == nil,
+      firstMatch(#"^localhost\b"#, host) == nil,
       let last = Self.neutralHostLabels(host, w).last?.lowercased()
     else { return true }
     return !["ai", "app", "xyz"].contains(last)
   }
 
   /// Spoken URL syntax right after a converted link means the link goes on past what reads.
-  func neutralLinkContinues(_ rest: String, _ w: SpokenURLWords) -> Bool {
-    let syntax = Self.phraseAlt(w.dot + w.slash + w.colon)
+  func neutralLinkContinues(_ rest: String, _ words: [SpokenURLWords]) -> Bool {
+    let syntax = Self.phraseAlt(words.flatMap { $0.dot + $0.slash + $0.colon })
     return firstMatch(#"^\s+(?:"# + syntax + #")(?:\s+|$)[\p{L}\p{N}]?"#, rest) != nil
       || firstMatch(#"^[\p{L}\p{M}\p{N}_@-]"#, rest) != nil
   }
 
-  /// `https deux points barre oblique barre oblique exemple point fr` → `https://exemple.fr`.
+  /// A converted email followed by a slash phrase and a segment: an address with a path is not
+  /// a mailbox, and converting the email alone would half-convert what was said.
+  func neutralEmailFollowedBySlash(_ m: Match) -> Bool {
+    let end = m.result.range.location + m.result.range.length
+    let rest = m.ns.substring(
+      with: NSRange(location: end, length: min(m.ns.length - end, 40)))
+    let slash = Self.phraseAlt(Self.spokenURLWords.flatMap { $0.slash })
+    return firstMatch(#"^\s+(?:"# + slash + #")\s*[\p{L}\p{N}]"#, rest) != nil
+  }
+
+  /// `https deux points barre oblique barre oblique exemple point fr` → `https://exemple.fr`,
+  /// with a spoken `www`, a path, or `localhost` and its port.
   func neutralURLSchemes(_ t: String) -> String {
     var t = t
     for w in Self.spokenURLWords {
       let slash = #"(?:"# + Self.phraseAlt(w.slash) + #")"#
+      let path = Self.neutralPathPat(w).pattern
       let pat =
         #"(?<![\p{L}\p{N}])(?<p>https?)\s+(?:"# + Self.phraseAlt(w.colon) + #")\s+"# + slash
-        + #"\s+"# + slash + #"\s+(?<host>"# + Self.neutralHostPat(w) + #")(?<path>(?:\s+"#
-        + slash + #"\s+"# + Self.uLabel + #")*)"#
+        + #"\s+"# + slash + #"\s+(?<host>"# + Self.neutralHostOrLocalPat(w, portRequired: false)
+        + #")(?<path>"# + path + #"*)(?![\p{L}\p{M}\p{N}_@-])"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
-        let rest = m.ns.substring(from: end)
-        guard !neutralLinkContinues(rest, w) else { return nil }
-        let host = Self.neutralHostLabels(m.g("host") ?? "", w).joined(separator: ".")
-        let segs = splitOnPattern(m.g("path") ?? "", #"\s+(?:"# + slash + #")\s+"#)
-          .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        return (m.g("p") ?? "https").lowercased() + "://" + host.lowercased()
-          + segs.map { "/" + $0 }.joined()
+        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
+          let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
+        else { return nil }
+        let segs = Self.neutralPathSegments(m.g("path") ?? "", w)
+        return (m.g("p") ?? "https").lowercased() + "://" + host + segs.map { "/" + $0 }.joined()
       }
     }
     return t
   }
 
   /// `ejemplo punto es barra ayuda` / `ejemplo.es barra ayuda` → `ejemplo.es/ayuda`. The host
-  /// must end in an allowed TLD and a slash phrase must follow it, so `la barra del bar` has no
-  /// host to attach to. Path case is kept as written (`przykład.pl/Pomoc`).
+  /// must end in an allowed TLD (or be `localhost` with a port) and a slash phrase must follow
+  /// it, so `la barra del bar` has no host to attach to. Path case is kept as written
+  /// (`przykład.pl/Pomoc`).
   func neutralURLPaths(_ t: String) -> String {
     var t = t
     for w in Self.spokenURLWords {
-      let slash = #"(?:"# + Self.phraseAlt(w.slash) + #")"#
-      let gap = w.glueSlash ? #"\s*"# : #"\s+"#
       let pat =
-        #"(?<![\p{L}\p{M}\p{N}_.@/:-])(?<host>(?:www(?:\.|\s+(?:"# + Self.phraseAlt(w.dot)
-        + #")\s+))?"# + Self.neutralHostPat(w) + #")(?<path>(?:\s+"# + slash + gap + Self.uLabel
-        + #")+)(?![\p{L}\p{M}\p{N}_@-])"#
+        #"(?<![\p{L}\p{M}\p{N}_.@/:-])(?<host>"# + Self.neutralHostOrLocalPat(w, portRequired: true)
+        + #")(?<path>"# + Self.neutralPathPat(w).pattern + #"+)(?![\p{L}\p{M}\p{N}_@-])"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
-        guard !neutralLinkContinues(m.ns.substring(from: end), w),
-          !neutralLinkStartsEarlier(m, w),
-          neutralSpokenHostEndingAllowed(m.g("host") ?? "", w)
+        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
+          !neutralLinkStartsEarlier(m, Self.spokenURLWords),
+          neutralSpokenHostEndingAllowed(m.g("host") ?? "", w),
+          let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
         else { return nil }
-        let host = Self.neutralHostLabels(m.g("host") ?? "", w).joined(separator: ".")
-        let segs = splitOnPattern(m.g("path") ?? "", #"\s+"# + slash + gap)
-          .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let segs = Self.neutralPathSegments(m.g("path") ?? "", w)
         guard !segs.isEmpty else { return nil }
-        return host.lowercased() + segs.map { "/" + $0 }.joined()
+        return host + segs.map { "/" + $0 }.joined()
       }
     }
     return t
@@ -309,31 +364,35 @@ extension InverseTextNormalizer {
     var t = t
     for w in Self.spokenURLWords {
       let dot = #"\s+(?:"# + Self.phraseAlt(w.dot) + #")\s+"#
-      let www =
-        #"(?:www|w\s+w\s+w|wu\s+wu\s+wu|uve\s+doble\s+uve\s+doble\s+uve\s+doble|triple\s+w)"#
       let pat =
-        #"(?<![\p{L}\p{M}\p{N}_.@/-])"# + www + dot + #"(?<rest>"# + Self.uLabel + #"(?:(?:\.|"#
-        + dot + #")"# + Self.uLabel + #")*(?:\.|"# + dot + #")(?:"# + Self.neutralTLDAlt + #"))"#
+        #"(?<![\p{L}\p{M}\p{N}_.@/-])(?<host>"# + Self.neutralWWWAlias + dot + Self.uLabel
+        + #"(?:(?:\.|"# + dot + #")"# + Self.uLabel + #"){0,5}(?:\.|"# + dot + #")(?:"#
+        + Self.neutralTLDAlt + #"))"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
-        guard !neutralLinkContinues(m.ns.substring(from: end), w), !neutralLinkStartsEarlier(m, w)
+        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
+          !neutralLinkStartsEarlier(m, Self.spokenURLWords)
         else { return nil }
-        let labels = Self.neutralHostLabels(m.g("rest") ?? "", w)
-        return "www." + labels.joined(separator: ".").lowercased()
+        return Self.neutralCanonicalHost(m.g("host") ?? "", w)
       }
     }
     return t
   }
 
   /// `localhost dos puntos 3000` → `localhost:3000`. Digits only; a colon word is read only
-  /// right after `localhost`, so `Ganamos dos puntos` stays.
+  /// right after `localhost`, so `Ganamos dos puntos` stays. A path or protocol around it was
+  /// read by the passes above; one they refused is left whole here.
   func neutralLocalhostPorts(_ t: String) -> String {
     let colon = Self.phraseAlt(Self.spokenURLWords.flatMap { $0.colon })
     let pat =
       #"(?<![\p{L}\p{N}])(?<h>localhost)\s+(?:"# + colon
       + #")\s+(?<p>\d+)(?![\p{L}\p{N}.,]\d|[\p{L}\p{N}])"#
     return reSub(pat, t) { m in
-      guard let port = Int(m.g("p") ?? ""), (1...65535).contains(port) else { return nil }
+      let end = m.result.range.location + m.result.range.length
+      guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
+        !neutralLinkStartsEarlier(m, Self.spokenURLWords),
+        let port = Int(m.g("p") ?? ""), (1...65535).contains(port)
+      else { return nil }
       return "\((m.g("h") ?? "localhost").lowercased()):\(port)"
     }
   }

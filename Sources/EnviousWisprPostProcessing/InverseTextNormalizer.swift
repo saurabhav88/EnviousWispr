@@ -1012,6 +1012,8 @@ public struct InverseTextNormalizer: Sendable {
         return nil
       }
       guard !hasFurtherSpokenLabel(m) else { return nil }
+      // #3226: on a non-English take a slash phrase after the address means a path follows.
+      if neutral, neutralEmailFollowedBySlash(m) { return nil }
       // "report.pdf at example dot com": a dotted name that ends in a file or domain suffix is a
       // name of a thing, not a mailbox.
       if nameLabels.count > 1,
