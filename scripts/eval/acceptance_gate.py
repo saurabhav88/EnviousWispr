@@ -21,7 +21,9 @@ Design refs:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import http.client
+import io
 import json
 import os
 import random
@@ -1936,55 +1938,97 @@ def judge_tier_chunk(judge_model: str, cases: list) -> list:
     return parsed
 
 
+def _afm_arm_env(base_env: dict, prompt_path: Path, candidate_prompt: Path | None,
+                 candidate_examples: Path | None = None,
+                 candidate_trailer: Path | None = None) -> tuple[dict, list]:
+    """The environment and extra runner arguments for one AFM tier-bench arm.
+
+    Every arm starts with all three recipe seams CLEARED, so an inherited
+    EW_AFM_PROMPT_FILE / EW_AFM_EXAMPLES_FILE / EW_AFM_TRAILER_FILE from the parent
+    shell can never swap the shipping recipe out of the baseline arm, or into the
+    candidate arm, unnoticed (Codex r3; cloud review on PR #2796; #3195 §17.1). Only
+    the candidate arm sets a seam, and only the ones it was given. Examples and
+    trailer files may be EMPTY (no turns / no trailer); the prompt file may not.
+    Pure apart from reading the candidate files, so the selftest can check it."""
+    env = dict(base_env)
+    for key in ("EW_AFM_PROMPT_FILE", "EW_AFM_EXAMPLES_FILE", "EW_AFM_TRAILER_FILE"):
+        env.pop(key, None)
+    for flag, path, var in (("--afm-candidate-examples", candidate_examples, "EW_AFM_EXAMPLES_FILE"),
+                            ("--afm-candidate-trailer", candidate_trailer, "EW_AFM_TRAILER_FILE")):
+        if path is None:
+            continue
+        if candidate_prompt is None:
+            print(f"INFRA-ERROR: {flag} needs the apple-candidate provider.", file=sys.stderr)
+            raise SystemExit(2)
+        if not path.is_file():
+            print(f"INFRA-ERROR: {flag} {path} is not a file.", file=sys.stderr)
+            raise SystemExit(2)
+        env[var] = str(path)
+    if candidate_prompt is None:
+        return env, ["--system-prompt-file", str(prompt_path)]
+    # Fail fast (Codex PR1 review): the Swift connector silently falls back to
+    # its built-in prompt when EW_AFM_PROMPT_FILE is unreadable/empty, so a
+    # typo'd or empty candidate path would measure the WRONG prompt and look
+    # like the candidate did nothing. Validate before launching the subprocess.
+    try:
+        cand_text = candidate_prompt.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"INFRA-ERROR: candidate prompt {candidate_prompt} unreadable: {e}", file=sys.stderr)
+        raise SystemExit(2)
+    if not cand_text.strip():
+        print(f"INFRA-ERROR: candidate prompt {candidate_prompt} is empty.", file=sys.stderr)
+        raise SystemExit(2)
+    env["EW_AFM_PROMPT_FILE"] = str(candidate_prompt)
+    return env, ["--system-prompt", ""]  # the connector does not read it; kept explicit
+
+
+def _selftest_afm_arm_env() -> None:
+    """#3195 §17.1: a T13 candidate arm carries all three recipe files and the
+    shipping arm none, even when the parent shell exports all three."""
+    with tempfile.TemporaryDirectory() as d:
+        prompt, examples, trailer = (Path(d) / n for n in ("p.txt", "e.jsonl", "t.txt"))
+        prompt.write_text("CANDIDATE\n", encoding="utf-8")
+        examples.write_text("", encoding="utf-8")
+        trailer.write_text("", encoding="utf-8")
+        polluted = {"PATH": "/usr/bin", "EW_AFM_PROMPT_FILE": "/stale/p",
+                    "EW_AFM_EXAMPLES_FILE": "/stale/e", "EW_AFM_TRAILER_FILE": "/stale/t"}
+        ship_env, ship_args = _afm_arm_env(polluted, Path(d) / "prod.txt", None)
+        assert not any(k.startswith("EW_AFM_") for k in ship_env), f"ship arm kept {ship_env}"
+        assert ship_args == ["--system-prompt-file", str(Path(d) / "prod.txt")], ship_args
+        assert ship_env["PATH"] == "/usr/bin", "ship arm lost the rest of the environment"
+        cand_env, cand_args = _afm_arm_env(polluted, Path(d) / "prod.txt", prompt, examples, trailer)
+        assert {k: v for k, v in cand_env.items() if k.startswith("EW_AFM_")} == {
+            "EW_AFM_PROMPT_FILE": str(prompt), "EW_AFM_EXAMPLES_FILE": str(examples),
+            "EW_AFM_TRAILER_FILE": str(trailer)}, cand_env
+        assert cand_args == ["--system-prompt", ""], cand_args
+        only_prompt, _ = _afm_arm_env(polluted, Path(d) / "prod.txt", prompt)
+        assert "EW_AFM_TRAILER_FILE" not in only_prompt and "EW_AFM_EXAMPLES_FILE" not in only_prompt
+        for kwargs in ({"candidate_trailer": trailer}, {"candidate_examples": examples}):
+            try:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    _afm_arm_env(polluted, Path(d) / "prod.txt", None, **kwargs)
+            except SystemExit as e:
+                assert e.code == 2
+            else:
+                raise AssertionError(f"{kwargs} without a candidate prompt was accepted")
+
+
 def _afm_tier_polish(corpus_path: Path, out_path: Path, prompt_path: Path,
                      detected_language: str, candidate_prompt: Path | None,
-                     candidate_examples: Path | None = None) -> dict:
+                     candidate_examples: Path | None = None,
+                     candidate_trailer: Path | None = None) -> dict:
     """Run the AFM runner for tier-bench. detected_language='' => nil (default
-    Parakeet fidelity). candidate_prompt set => EW_AFM_PROMPT_FILE override.
-    candidate_examples set => EW_AFM_EXAMPLES_FILE override (a JSONL
-    of {"input","output"} example turns; an EMPTY file means "no turns", #2795).
-    Returns {id: latency_ms}."""
+    Parakeet fidelity). The candidate files set the EW_AFM_* recipe seams for that
+    arm only (`_afm_arm_env`). Returns {id: latency_ms}."""
     if not APPLE_RUNNER_BIN.exists():
         print(f"INFRA-ERROR: AFM runner not built at {APPLE_RUNNER_BIN}. "
               "Build: cd scripts/eval/apple_runner && swift build -c release", file=sys.stderr)
         raise SystemExit(2)
     cmd = [str(APPLE_RUNNER_BIN), "--corpus", str(corpus_path), "--out", str(out_path),
            "--detected-language", detected_language]
-    env = dict(os.environ)
-    # Never inherit a stray EW_AFM_PROMPT_FILE from the parent shell: the baseline
-    # (non-candidate) arm must run the shipping prompt, and an inherited override
-    # would silently make it use the candidate prompt — an invalid A/B (Codex r3).
-    # Each arm sets the override explicitly below.
-    env.pop("EW_AFM_PROMPT_FILE", None)
-    # Same for the example-turns seam (#2795, cloud review on PR #2796): an inherited
-    # EW_AFM_EXAMPLES_FILE would silently swap the shipping six turns for another set,
-    # or for none, on BOTH arms. Only the candidate arm may set it, explicitly.
-    env.pop("EW_AFM_EXAMPLES_FILE", None)
-    if candidate_examples is not None:
-        if candidate_prompt is None:
-            print("INFRA-ERROR: --afm-candidate-examples needs the apple-candidate provider.", file=sys.stderr)
-            raise SystemExit(2)
-        if not candidate_examples.is_file():
-            print(f"INFRA-ERROR: candidate examples {candidate_examples} is not a file.", file=sys.stderr)
-            raise SystemExit(2)
-        env["EW_AFM_EXAMPLES_FILE"] = str(candidate_examples)
-    if candidate_prompt is not None:
-        # Fail fast (Codex PR1 review): the Swift connector silently falls back to
-        # its built-in prompt when EW_AFM_PROMPT_FILE is unreadable/empty, so a
-        # typo'd or empty candidate path would measure the WRONG prompt and look
-        # like the candidate did nothing. Validate before launching the subprocess.
-        try:
-            cand_text = candidate_prompt.read_text(encoding="utf-8")
-        except OSError as e:
-            print(f"INFRA-ERROR: candidate prompt {candidate_prompt} unreadable: {e}", file=sys.stderr)
-            raise SystemExit(2)
-        if not cand_text.strip():
-            print(f"INFRA-ERROR: candidate prompt {candidate_prompt} is empty.", file=sys.stderr)
-            raise SystemExit(2)
-        env["EW_AFM_PROMPT_FILE"] = str(candidate_prompt)
-        cmd += ["--system-prompt", ""]  # the connector does not read it; kept explicit
-    else:
-        cmd += ["--system-prompt-file", str(prompt_path)]
+    env, extra = _afm_arm_env(dict(os.environ), prompt_path, candidate_prompt,
+                              candidate_examples, candidate_trailer)
+    cmd += extra
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if result.stderr:
         sys.stderr.write(result.stderr)
@@ -2003,7 +2047,8 @@ def _afm_tier_polish(corpus_path: Path, out_path: Path, prompt_path: Path,
 
 def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | None,
                     afm_candidate_prompt: str | None, afm_detected_language: str,
-                    afm_candidate_examples: str | None = None) -> int:
+                    afm_candidate_examples: str | None = None,
+                    afm_candidate_trailer: str | None = None) -> int:
     """Multi-provider, absolute, tier-grouped LLM-judged benchmark. The decision
     instrument (not the cheap per-PR gate). Reuses generation + validator plumbing."""
     corpus = corpus_path or CORPUS
@@ -2039,8 +2084,10 @@ def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | N
             cand_prompt = Path(afm_candidate_prompt) if prov == "apple-candidate" else None
             cand_examples = (Path(afm_candidate_examples)
                              if prov == "apple-candidate" and afm_candidate_examples else None)
+            cand_trailer = (Path(afm_candidate_trailer)
+                            if prov == "apple-candidate" and afm_candidate_trailer else None)
             lat = _afm_tier_polish(corpus, out_file, prompt_path, afm_detected_language, cand_prompt,
-                                   cand_examples)
+                                   cand_examples, cand_trailer)
             latency[prov] = lat
             cands, rel = _load_candidates_jsonl(out_file, cases=cases)
             reliability[prov] = {"cases_errored": rel.get("cases_errored", 0),
@@ -2207,6 +2254,9 @@ def main():
     parser.add_argument("--afm-candidate-examples", default=None,
                         help="(tier-bench) example-turns JSONL for the apple-candidate provider "
                              "(EW_AFM_EXAMPLES_FILE, #2795); an empty file means no turns")
+    parser.add_argument("--afm-candidate-trailer", default=None,
+                        help="(tier-bench) correction-gated trailer file for the apple-candidate provider "
+                             "(EW_AFM_TRAILER_FILE, #3195); an empty file means no trailer")
     parser.add_argument("--afm-detected-language", default="",
                         help="(tier-bench) AFM language; '' (default) => nil, mirrors default Parakeet path")
     args = parser.parse_args()
@@ -2218,9 +2268,14 @@ def main():
     except AssertionError as e:
         print(f"MIRROR-DRIFT: {e}", file=sys.stderr)
         sys.exit(2)
+    try:
+        _selftest_afm_arm_env()
+    except AssertionError as e:
+        print(f"AFM-ARM-ENV: {e}", file=sys.stderr)
+        sys.exit(2)
 
     if args.mode == "selftest":
-        print("mirror self-tests passed (CLOUD_FIXED_SYSTEM in sync)")
+        print("mirror self-tests passed (CLOUD_FIXED_SYSTEM in sync; AFM arm env isolated)")
         sys.exit(0)
 
     if args.mode == "baseline":
@@ -2242,7 +2297,7 @@ def main():
         provs = [p.strip() for p in args.providers.split(",") if p.strip()]
         sys.exit(mode_tier_bench(provs, corpus_path, args.out_name,
                                  args.afm_candidate_prompt, args.afm_detected_language,
-                                 args.afm_candidate_examples))
+                                 args.afm_candidate_examples, args.afm_candidate_trailer))
     else:
         sys.exit(mode_run(args.polish_model, args.out_name))
 
