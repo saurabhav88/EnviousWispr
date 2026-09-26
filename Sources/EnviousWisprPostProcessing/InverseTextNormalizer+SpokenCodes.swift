@@ -169,17 +169,22 @@ extension InverseTextNormalizer {
       ? Self.identifierPartPat + #"(?:(?<=hundred|thousand)\s+and\s+"# + Self.identifierPartPat
         + #")*"# : #"\d+"#
     let pat =
-      #"(?<![\w-])(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5})\s+(?<dw>(?i:"# + Self.dashWordAlt + #"))\s+(?<num>(?i:"#
-      + number + #"))(?![\w-])"#
+      #"(?<![\w-])(?:(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5})\s+(?<dw>(?i:"# + Self.dashWordAlt
+      + #"))\s+|(?<hcode>[A-Z]{1,5}|[a-z])-[ \t]+)(?<num>(?i:"# + number + #"))(?![\w-])"#
     return reSub(pat, t, caseInsensitive: false) { m in
       // A spelled acronym arrives as separate capitals ("E G dash one", founder log); the code
       // is the letters joined, as the recogniser writes the unspoken form ("EG-1").
-      let code = (m.g("code") ?? "").filter { !$0.isWhitespace }
-      guard code != "I" else { return nil }
+      // The recogniser also writes the dash itself and leaves the number spoken: "s- one" (Live
+      // UAT, 2026-09-26, Parakeet in the app). A lone letter there is a spelled capital.
+      let hcode = m.g("hcode")
+      let code =
+        hcode.map { $0.count == 1 ? $0.uppercased() : $0 }
+        ?? (m.g("code") ?? "").filter { !$0.isWhitespace }
+      guard code != "I", hcode?.lowercased() != "a", hcode != "i" else { return nil }
       // "A dash B dash one", "S dash one dash x": the code goes on past what reads.
       guard !identifierContinues(m, connectorAlt: Self.dashWordAlt) else { return nil }
       let dw = (m.g("dw") ?? "").lowercased()
-      let allowWords = englishWords && Self.englishDashWords.contains(dw)
+      let allowWords = englishWords && (hcode != nil || Self.englishDashWords.contains(dw))
       guard let digits = Self.identifierPartDigits(m.g("num") ?? "", allowWords: allowWords)
       else { return nil }
       return "\(code)-\(digits)"
