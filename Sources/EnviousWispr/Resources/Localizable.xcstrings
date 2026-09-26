@@ -20354,7 +20354,7 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "US-Adressen mit Ziffern und Kommas"
           }
         }
@@ -20372,8 +20372,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Diktierst du auf Englisch eine US-Adresse vollständig mit Bundesstaat und Postleitzahl, erscheint sie mit Ziffern und Kommas, in den Worten, die du gesagt hast. Aus „nine High Plains Road Shelton Connecticut zero six four eight four“ wird 9 High Plains Road, Shelton, Connecticut 06484."
+            "state" : "translated",
+            "value" : "Wenn du auf Englisch eine vollständige US-Adresse mit Bundesstaat und Postleitzahl diktierst, wird sie mit Ziffern und Kommas geschrieben. Deine Wortwahl bleibt dabei erhalten. Aus „nine High Plains Road Shelton Connecticut zero six four eight four“ wird 9 High Plains Road, Shelton, Connecticut 06484."
           }
         }
       }
