@@ -561,7 +561,15 @@ public final class ModelDeliveryHome {
     guard checkerDeliveryEnabled(engine) else { return .deliveryDisabled }
     await recordFirstRunBaseline(for: checker)
     await controller.sweepSupersededStaging(checker)
-    return .delivery(await controller.ensureModelAvailable(checker))
+    let outcome = await controller.ensureModelAvailable(checker)
+    // Remove Model may have removed the base while this ensure was suspended
+    // before its fetch began; removal only drains a fetch already running. An
+    // adapter with no base never serves, so it is not left on disk.
+    guard await controller.isAdmitted(baseRegistration) else {
+      _ = await controller.remove(checker)
+      return .baseNotAdmitted
+    }
+    return .delivery(outcome)
   }
 
   /// Remove Model's second half: the engine's checker goes with its base.
