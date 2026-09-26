@@ -11,11 +11,15 @@ struct LearnedWordCandidatesTests {
     // Founder 2026-09-25: known aliases only. The checker cannot hear the audio, so a
     // correctly heard word that sounds like a learned one must never reach it.
     let tuist = [LearnedWord(canonical: "Tuist", observedMisspellings: ["Twoist"])]
-    #expect(LearnedWordCandidates.questions(
-      for: "The plot twist surprised me.", learned: tuist).isEmpty)
+    #expect(
+      LearnedWordCandidates.questions(
+        for: "The plot twist surprised me.", learned: tuist
+      ).isEmpty)
     let sales = [LearnedWord(canonical: "EnviousSales", observedMisspellings: ["Envious Sales"])]
-    #expect(LearnedWordCandidates.questions(
-      for: "Expense tracking for Envious Labs and EnviousWispr.", learned: sales).isEmpty)
+    #expect(
+      LearnedWordCandidates.questions(
+        for: "Expense tracking for Envious Labs and EnviousWispr.", learned: sales
+      ).isEmpty)
     let kotlin = [LearnedWord(canonical: "Kotlin", observedMisspellings: [])]
     #expect(LearnedWordCandidates.questions(for: "rewrote it in cotton", learned: kotlin).isEmpty)
     let asked = LearnedWordCandidates.questions(
@@ -27,8 +31,9 @@ struct LearnedWordCandidatesTests {
   func exactCommonWordAlias() {
     let text = "Please go home"
     let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["home"])]
-    #expect(LearnedWordCandidates.questions(for: text, learned: learned)
-      .contains { String(text[$0.range]) == "home" && $0.word == "Tuist" })
+    #expect(
+      LearnedWordCandidates.questions(for: text, learned: learned)
+        .contains { String(text[$0.range]) == "home" && $0.word == "Tuist" })
   }
 
   @Test("text already spelled as one of the user's words is never asked about")
@@ -38,16 +43,21 @@ struct LearnedWordCandidatesTests {
     // "EnviousSales"), that word as dictated is still final.
     let sales = [LearnedWord(canonical: "EnviousSales", observedMisspellings: ["Envious Labs"])]
     let text = "Another session is updating expense tracking for Envious Labs."
-    #expect(LearnedWordCandidates.questions(for: text, learned: sales).count == 1,
+    #expect(
+      LearnedWordCandidates.questions(for: text, learned: sales).count == 1,
       "control: without the known spellings the alias is asked")
     let known = ["EnviousWispr", "EnviousStaging", "Envious Labs", "EnviousSales"]
-    #expect(LearnedWordCandidates.questions(
-      for: text, learned: sales, knownSpellings: known).isEmpty,
+    #expect(
+      LearnedWordCandidates.questions(
+        for: text, learned: sales, knownSpellings: known
+      ).isEmpty,
       "a sentence-final period still ends the settled word")
     // Only exact, whole-word, exact-case text is settled: a lowercase mishearing is asked.
     let misheard = "Another session is updating expense tracking for envious labs today"
-    #expect(LearnedWordCandidates.questions(
-      for: misheard, learned: sales, knownSpellings: known).count == 1)
+    #expect(
+      LearnedWordCandidates.questions(
+        for: misheard, learned: sales, knownSpellings: known
+      ).count == 1)
   }
 
   @Test("learned provenance supplies only user and builtin words")
@@ -98,7 +108,9 @@ struct LearnedWordCandidatesTests {
   @Test("the same alias listed twice makes one question for the span")
   func duplicateCandidate() {
     let text = "day toast"
-    let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["day toast", "Day Toast"])]
+    let learned = [
+      LearnedWord(canonical: "Tuist", observedMisspellings: ["day toast", "Day Toast"])
+    ]
     let questions = LearnedWordCandidates.questions(for: text, learned: learned)
     #expect(
       questions.filter { String(text[$0.range]) == "day toast" && $0.word == "Tuist" }.count == 1)
@@ -107,7 +119,9 @@ struct LearnedWordCandidatesTests {
   @Test("an alias in another alphabet is found with whole-word boundaries")
   func nonLatinAlias() {
     let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["туист"])]
-    #expect(LearnedWordCandidates.questions(for: "я пишу в туист каждый день", learned: learned).count == 1)
+    #expect(
+      LearnedWordCandidates.questions(for: "я пишу в туист каждый день", learned: learned).count
+        == 1)
     #expect(LearnedWordCandidates.questions(for: "я пишу в туисте", learned: learned).isEmpty)
   }
 
@@ -132,6 +146,21 @@ struct LearnedWordCandidatesTests {
     #expect(exactOnly.count == 1)
     #expect(exactOnly.first?.id == 0)
     #expect(exactOnly.first?.rewritten == "Tuist")
+  }
+
+  @Test("the question budget keeps the earliest spots, whichever word they belong to")
+  func budgetKeepsEarliestSpots() {
+    // The first entry's alias repeats past the budget; the second entry's alias
+    // comes first in the text and must still be asked.
+    let learned = [
+      LearnedWord(canonical: "Tuist", observedMisspellings: ["twist"]),
+      LearnedWord(canonical: "Kotlin", observedMisspellings: ["cotton"]),
+    ]
+    let text = "cotton " + Array(repeating: "twist", count: 20).joined(separator: " ")
+    let questions = LearnedWordCandidates.questions(for: text, learned: learned, maxSpots: 4)
+    #expect(questions.map(\.word) == ["Kotlin", "Tuist", "Tuist", "Tuist"])
+    #expect(questions.map(\.id) == [0, 1, 2, 3])
+    #expect(questions.first.map { String(text[$0.range]) } == "cotton")
   }
 
   @Test("a sentence-ending period is a boundary; a dotted term is not (Codex PR-3 review)")

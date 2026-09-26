@@ -11,8 +11,22 @@ enum EGOneSlots {
   }
 }
 
-/// The EG-1 learned-word LoRA runs on the resident polish server. The endpoint
-/// lookup also refuses a request after another local model takes that server.
+/// A lease on the resident bundled server and the endpoint read under it. The
+/// checker keeps it through every question wave, so an adapter change or Remove
+/// Model waits for the check instead of stopping the server mid-question.
+public struct EGOneCheckerHold: Sendable {
+  public let endpoint: EGOneEndpoint
+  public let release: @Sendable () async -> Void
+
+  public init(endpoint: EGOneEndpoint, release: @escaping @Sendable () async -> Void) {
+    self.endpoint = endpoint
+    self.release = release
+  }
+}
+
+/// The EG-1 learned-word LoRA runs on the resident polish server. The lease
+/// refuses while the server is changing, and the endpoint lookup refuses after
+/// another local model takes that server.
 public struct EGOneLearnedWordChecker: LearnedWordChecking {
   public let armName = "eg1_lora"
   public let scoresAreComparable = true
@@ -21,12 +35,25 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
     "[Task: check] A word from the user's dictionary may have been misheard in a dictated sentence. A is the sentence as transcribed. B writes the dictionary word at one spot. Answer B only if the speaker meant the dictionary word there; otherwise answer A. Answer with one letter."
 
   private let threshold: Double
-  private let endpoint: @Sendable () async -> EGOneEndpoint?
+  private let hold: @Sendable () async -> EGOneCheckerHold?
 
-  public init(threshold: Double, endpoint: @escaping @Sendable () async -> EGOneEndpoint?) {
+  public init(threshold: Double, hold: @escaping @Sendable () async -> EGOneCheckerHold?) {
     precondition(threshold.isFinite && (0...1).contains(threshold))
     self.threshold = threshold
-    self.endpoint = endpoint
+    self.hold = hold
+  }
+
+  /// The same admission the polish step takes (`LLMPolishStep`), held for the
+  /// whole check rather than one request.
+  public static func hold(on server: any EGOneLeaseProviding & Sendable) async -> EGOneCheckerHold? {
+    guard case .granted(let lease) = await server.acquireLocalServerLease() else { return nil }
+    guard let endpoint = await server.activeEndpoint() else {
+      await server.releaseLocalServerLease(lease)
+      return nil
+    }
+    return EGOneCheckerHold(endpoint: endpoint) {
+      await server.releaseLocalServerLease(lease)
+    }
   }
 
   public static func prompt(for question: LearnedWordCheckQuestion) -> String {
@@ -53,11 +80,22 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
   {
     guard !questions.isEmpty else { return [] }
     try Task.checkCancellation()
-    let availableEndpoint = await endpoint()
-    try Task.checkCancellation()
-    guard let endpoint = availableEndpoint, endpoint.hasLearnedWordAdapter else {
-      throw CheckerError.adapterUnavailable
+    guard let hold = await hold() else { throw CheckerError.adapterUnavailable }
+    do {
+      let decisions = try await decide(questions, endpoint: hold.endpoint)
+      await hold.release()
+      return decisions
+    } catch {
+      await hold.release()
+      throw error
     }
+  }
+
+  private func decide(_ questions: [LearnedWordCheckQuestion], endpoint: EGOneEndpoint)
+    async throws -> [LearnedWordCheckDecision]
+  {
+    try Task.checkCancellation()
+    guard endpoint.hasLearnedWordAdapter else { throw CheckerError.adapterUnavailable }
     let threshold = self.threshold
     var indexed: [(Int, LearnedWordCheckDecision)] = []
     // Finish a wave before reusing a slot: two requests must never target the

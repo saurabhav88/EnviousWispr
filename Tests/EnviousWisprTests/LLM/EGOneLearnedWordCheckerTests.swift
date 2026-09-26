@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import os
 import Testing
 
 @testable import EnviousWisprLLM
@@ -31,7 +32,7 @@ struct EGOneLearnedWordCheckerTests {
   }
 
   @Test func eachRequestCarriesOnePromptAndItsCheckerSlot() {
-    let checker = EGOneLearnedWordChecker(threshold: 0.5) { nil }
+    let checker = EGOneLearnedWordChecker(threshold: 0.5) { nil as EGOneCheckerHold? }
     #expect(checker.armName == "eg1_lora")
     #expect(checker.scoresAreComparable)
     let body = EGOneLearnedWordChecker.makeRequestBody(Self.question(), index: 0)
@@ -55,6 +56,23 @@ struct EGOneLearnedWordCheckerTests {
     #expect(lora?.count == 1)
     #expect(lora?.first?["id"] as? Int == 0)
     #expect(lora?.first?["scale"] as? Double == 1.0)
+  }
+
+  @Test("a check that fails still releases its server hold; no hold, no check")
+  func failedCheckReleasesHold() async {
+    let released = OSAllocatedUnfairLock<Int>(initialState: 0)
+    let bare = EGOneEndpoint(port: 1, authToken: "t", contextTokens: 4096)
+    let checker = EGOneLearnedWordChecker(threshold: 0.5) {
+      EGOneCheckerHold(endpoint: bare) { released.withLock { $0 += 1 } }
+    }
+    await #expect(throws: EGOneLearnedWordChecker.CheckerError.self) {
+      try await checker.decide([Self.question()])
+    }
+    #expect(released.withLock { $0 } == 1)
+    let refused = EGOneLearnedWordChecker(threshold: 0.5) { nil as EGOneCheckerHold? }
+    await #expect(throws: EGOneLearnedWordChecker.CheckerError.self) {
+      try await refused.decide([Self.question()])
+    }
   }
 
   @Test func checkerSlotsWrapAfterEightQuestions() {

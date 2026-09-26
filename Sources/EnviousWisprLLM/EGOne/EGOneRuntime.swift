@@ -621,7 +621,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// Codex r6); the generation token handles switch-away. The returned task is
   /// discardable in production and gives tests the exact completion signal.
   @discardableResult
-  public func activateAndProbe() -> Task<Void, Never>? {
+  public func activateAndProbe(retriesAdapterFallback: Bool = false) -> Task<Void, Never>? {
     // Choosing EG-1 cancels any deferred removal FIRST, even if activation
     // itself then bails on a blocker — otherwise remove-during-recording
     // followed by re-selecting EG-1 still deletes the model the user just
@@ -644,7 +644,8 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // First hop back onto the main actor: a switch-to-then-away that beat
       // this task bumped the generation — do not start the server.
       guard generation == self.activationGeneration else { return }
-      await self.startServerIfInstalled(generation: generation, intent: intent)
+      await self.startServerIfInstalled(
+        generation: generation, intent: intent, retriesAdapterFallback: retriesAdapterFallback)
       // A deactivate DURING the start already stopped the server (the
       // manager's mid-start guards handle that); just don't probe or stamp
       // health for a stale generation.
@@ -727,7 +728,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     guard provider == .egOne,
       isActiveProvider?() == true || isPinnedInFlight?() == true
     else { return nil }
-    return activateAndProbe()
+    return activateAndProbe(retriesAdapterFallback: true)
   }
 
   /// Called by the existing take/import release path, after its pin clears.
@@ -756,7 +757,9 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// the user's back — only the explicit Download button (`startDownload`)
   /// fetches. Delivery may continue after a provider switch-away, but the boot
   /// is generation-gated.
-  private func startServerIfInstalled(generation: Int, intent: Int) async {
+  private func startServerIfInstalled(
+    generation: Int, intent: Int, retriesAdapterFallback: Bool
+  ) async {
     guard let manifest, let delivery, serverBinaryURL != nil else { return }
     let admitted = await delivery.adoptIfPresent()
     guard generation == self.activationGeneration else { return }
@@ -769,7 +772,9 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       }
       return
     }
-    await bootServer(manifest: manifest, delivery: delivery, intent: intent, generation: generation)
+    await bootServer(
+      manifest: manifest, delivery: delivery, intent: intent, generation: generation,
+      retriesAdapterFallback: retriesAdapterFallback)
     // A failed --lora launch has already retried the same admitted base
     // without the adapter. Base repair would misdiagnose the checker fault.
     if await server.currentBootCheckerFailureReason() != nil { return }
@@ -783,7 +788,9 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       guard generation == self.activationGeneration else { return }
       // Same stamp deliberately: the repair retry is the SAME user intent, so
       // it must not out-rank a switch that arrived while the repair ran.
-      await bootServer(manifest: manifest, delivery: delivery, intent: intent, generation: generation)
+      await bootServer(
+        manifest: manifest, delivery: delivery, intent: intent, generation: generation,
+        retriesAdapterFallback: retriesAdapterFallback)
     }
   }
 
@@ -842,7 +849,8 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   }
 
   private func bootServer(
-    manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int, generation: Int
+    manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int, generation: Int,
+    retriesAdapterFallback: Bool
   ) async {
     guard let serverBinaryURL else { return }
     let configuration = await makeServerConfiguration(
@@ -853,7 +861,8 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     guard generation == activationGeneration else { return }
     await server.transition(
       to: .run(LocalPolishTarget(
-        provider: provider, configuration: configuration)),
+        provider: provider, configuration: configuration,
+        retriesAdapterFallback: retriesAdapterFallback)),
       intent: intent)
   }
 

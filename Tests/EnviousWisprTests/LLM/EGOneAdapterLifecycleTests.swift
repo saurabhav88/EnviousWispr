@@ -249,6 +249,77 @@ struct EGOneAdapterLifecycleTests {
     await manager.stop()
   }
 
+  @Test("a bare-base fallback reboots with the adapter only when delivery says it changed")
+  func fallbackRetriesOnlyOnAdapterSignal() async throws {
+    let fixture = try Fixture()
+    let coordinator = LocalPolishServerCoordinator()
+    defer { fixture.cleanup() }
+    let marker = fixture.root.appendingPathComponent("fail_adapter")
+    try Data().write(to: marker)
+    let adapted = LocalPolishTarget(
+      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter))
+    await coordinator.transition(to: .run(adapted), intent: coordinator.claimIntent())
+    #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
+    #expect(try fixture.launches().count == 2)
+
+    // A restatement (launch, switch, settings open) leaves the fallback alone.
+    try FileManager.default.removeItem(at: marker)
+    await coordinator.transition(to: .run(adapted), intent: coordinator.claimIntent())
+    #expect(try fixture.launches().count == 2)
+
+    let signalled = LocalPolishTarget(
+      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter),
+      retriesAdapterFallback: true)
+    await coordinator.transition(to: .run(signalled), intent: coordinator.claimIntent())
+    #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == true)
+    #expect(try fixture.launches().count == 3)
+    #expect(await coordinator.checkerFailureReason() == nil)
+
+    // Once the adapter is live, the same signal is an ordinary restatement.
+    await coordinator.transition(to: .run(signalled), intent: coordinator.claimIntent())
+    #expect(try fixture.launches().count == 3)
+    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+  }
+
+  /// The lease seam `EGOneRuntime` provides, over a bare coordinator.
+  @MainActor
+  private final class CoordinatorServer: EGOneLeaseProviding {
+    let coordinator: LocalPolishServerCoordinator
+    init(_ coordinator: LocalPolishServerCoordinator) { self.coordinator = coordinator }
+    func activeEndpoint() async -> EGOneEndpoint? { await coordinator.endpoint(for: .egOne) }
+    func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
+      await coordinator.acquireLease(for: .egOne)
+    }
+    func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {
+      await coordinator.releaseLease(lease)
+    }
+  }
+
+  @MainActor
+  @Test("a running word check holds the server: an adapter change waits for its release")
+  func checkerHoldDefersAdapterChange() async throws {
+    let fixture = try Fixture()
+    let coordinator = LocalPolishServerCoordinator()
+    defer { fixture.cleanup() }
+    let bare = LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())
+    let adapted = LocalPolishTarget(
+      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter))
+    await coordinator.transition(to: .run(adapted), intent: coordinator.claimIntent())
+    let hold = try #require(
+      await EGOneLearnedWordChecker.hold(on: CoordinatorServer(coordinator)))
+    #expect(hold.endpoint.hasLearnedWordAdapter)
+    #expect(try fixture.launches().count == 1)
+
+    await coordinator.transition(to: .run(bare), intent: coordinator.claimIntent())
+    #expect(await coordinator.endpoint(for: .egOne) == hold.endpoint)
+    #expect(try fixture.launches().count == 1)
+
+    await hold.release()
+    #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
+    #expect(try fixture.launches().count == 2)
+    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+  }
+
   @Test("switching to S1 and back boots EG-1 with the latest adapter set")
   func switchToS1AndBack() async throws {
     let fixture = try Fixture()

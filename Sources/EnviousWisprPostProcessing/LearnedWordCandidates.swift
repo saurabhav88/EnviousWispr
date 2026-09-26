@@ -53,19 +53,26 @@ public enum LearnedWordCandidates: Sendable {
 
     // One budget for every question the checker is asked (Codex PR-3 review: a
     // common alias repeated through a long dictation must not turn into hundreds
-    // of questions).
-    func add(_ range: Range<String.Index>, word: String) {
-      guard candidates.count < maxSpots else { return }
-      guard settled.allSatisfy({ !$0.overlaps(range) }) else { return }
-      guard text[range].unicodeScalars.elementsEqual(word.unicodeScalars) == false else { return }
+    // of questions). The budget keeps the EARLIEST spots in the text, whichever
+    // entry they belong to: each alias contributes at most `maxSpots` matches,
+    // enough to cover its share of the first `maxSpots`, and the cut is made
+    // after sorting.
+    func add(_ range: Range<String.Index>, word: String) -> Bool {
+      guard settled.allSatisfy({ !$0.overlaps(range) }) else { return false }
+      guard text[range].unicodeScalars.elementsEqual(word.unicodeScalars) == false else {
+        return false
+      }
       let key = CandidateKey(range: range, wordUTF8: Data(word.utf8))
-      if seen.insert(key).inserted { candidates.append(Candidate(range: range, word: word)) }
+      guard seen.insert(key).inserted else { return false }
+      candidates.append(Candidate(range: range, word: word))
+      return true
     }
 
     for entry in learned {
       for observed in entry.observedMisspellings where observed.isEmpty == false {
         var searchStart = text.startIndex
-        while searchStart < text.endIndex,
+        var added = 0
+        while added < maxSpots, searchStart < text.endIndex,
           let range = text.range(
             of: observed, options: .caseInsensitive, range: searchStart..<text.endIndex)
         {
@@ -80,8 +87,10 @@ public enum LearnedWordCandidates: Sendable {
             range.upperBound == text.endIndex
             || isWordScalar(text.unicodeScalars[range.upperBound]) == false
             || Self.isSentencePeriod(in: text, at: range.upperBound)
-          if sameLettersIgnoringCase && startsAtBoundary && endsAtBoundary {
+          if sameLettersIgnoringCase && startsAtBoundary && endsAtBoundary,
             add(range, word: entry.canonical)
+          {
+            added += 1
           }
           searchStart = text.unicodeScalars.index(after: range.lowerBound)
         }
@@ -94,7 +103,7 @@ public enum LearnedWordCandidates: Sendable {
       }
       return $0.word < $1.word
     }
-    return candidates.enumerated().map { id, candidate in
+    return candidates.prefix(maxSpots).enumerated().map { id, candidate in
       LearnedWordCheckQuestion(
         id: id, sentence: text, range: candidate.range,
         contextRange: contextRange(in: text, around: candidate.range), word: candidate.word)

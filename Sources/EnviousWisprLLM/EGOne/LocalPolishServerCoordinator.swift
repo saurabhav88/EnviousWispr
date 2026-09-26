@@ -30,10 +30,19 @@ import os
 public struct LocalPolishTarget: Sendable {
   public let provider: LLMProvider
   public let configuration: EGOneServerManager.Configuration
+  /// Set only by delivery's adapter-availability signal. A resident server that
+  /// fell back to the bare base keeps the requested adapter URL, so an ordinary
+  /// restatement (launch, provider switch, settings open) must not reboot it on
+  /// every call; this request may, once, to load an adapter delivery replaced.
+  public let retriesAdapterFallback: Bool
 
-  public init(provider: LLMProvider, configuration: EGOneServerManager.Configuration) {
+  public init(
+    provider: LLMProvider, configuration: EGOneServerManager.Configuration,
+    retriesAdapterFallback: Bool = false
+  ) {
     self.provider = provider
     self.configuration = configuration
+    self.retriesAdapterFallback = retriesAdapterFallback
   }
 }
 
@@ -98,6 +107,8 @@ public actor LocalPolishServerCoordinator {
   private var changing = false
   private var removalWaiters: [CheckedContinuation<Void, Never>] = []
   private var recordedCheckerFailure: EGOneServerManager.CheckerFailureReason?
+  /// The resident process was asked for an adapter and runs the bare base.
+  private var residentAdapterFellBack = false
 
   /// One observer per model. See `setStateObserver(for:_:)` for why a single
   /// slot was a regression rather than merely a limitation.
@@ -181,6 +192,7 @@ public actor LocalPolishServerCoordinator {
       observers[provider]?(.stopped)
       setResident(nil)
       residentTarget = nil
+      residentAdapterFellBack = false
     }
   }
 
@@ -233,7 +245,9 @@ public actor LocalPolishServerCoordinator {
     let changesProcess = resident != nil && (
       resident != target?.provider
         || residentTarget?.configuration.learnedWordAdapterURL
-          != target?.configuration.learnedWordAdapterURL)
+          != target?.configuration.learnedWordAdapterURL
+        || (residentAdapterFellBack && target?.retriesAdapterFallback == true
+          && target?.configuration.learnedWordAdapterURL != nil))
     if changesProcess, !leases.isEmpty {
       honouredIntent = intent
       deferredRequest = (request, intent)
@@ -258,6 +272,7 @@ public actor LocalPolishServerCoordinator {
       observers[resident]?(.stopped)
       setResident(nil)
       residentTarget = nil
+      residentAdapterFellBack = false
     }
 
     if intent < honouredIntent {
@@ -289,6 +304,8 @@ public actor LocalPolishServerCoordinator {
       } else if target.configuration.learnedWordAdapterURL != nil {
         recordedCheckerFailure = nil
       }
+      // Every manager failure reason is a bare-base fallback of an adapter boot.
+      residentAdapterFellBack = reason != nil && target.configuration.learnedWordAdapterURL != nil
     }
   }
 

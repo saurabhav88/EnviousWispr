@@ -96,7 +96,7 @@ struct EGOneCheckerEligibilityTests {
         adapterAdmitted: adapterAdmitted, deliveryState: state,
         contract: contract, admittedBase: admittedBase ?? base,
         language: language, endpoint: endpoint ?? ready,
-        serverReason: serverReason)
+        serverReason: serverReason, hold: { nil })
     }
     #expect(select().checker != nil)
     #expect(select(provider: .s1Mini).absence == .notEGOne)
@@ -119,13 +119,13 @@ struct EGOneCheckerEligibilityTests {
       !EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, hostConfigured: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil
+        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
       ).retryAvailable)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, deliveryEnabled: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil
+        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
       ).absence
         == .deliveryDisabled)
     #expect(
@@ -133,13 +133,13 @@ struct EGOneCheckerEligibilityTests {
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, hostConfigured: false, deliveryEnabled: false,
         contract: contract, admittedBase: base, language: "en", endpoint: ready,
-        serverReason: nil
+        serverReason: nil, hold: { nil }
       ).absence == .deliveryDisabled)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
         deliveryState: .admitted, deliveryEnabled: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil
+        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
       ).checker != nil)
     #expect(
       select(admittedBase: try mismatchedBase()).absence
@@ -150,7 +150,7 @@ struct EGOneCheckerEligibilityTests {
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
         deliveryState: .admitted, contract: contract, admittedBase: base,
-        language: "en", endpoint: nil, serverReason: nil
+        language: "en", endpoint: nil, serverReason: nil, hold: { nil }
       ).absence == .serverUnavailable)
     #expect(
       select(

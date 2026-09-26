@@ -94,7 +94,8 @@ final class EGOneCheckerEligibility {
       admittedBase: AdmittedEGOneBase(
         manifest: base.manifest, promptTemplateID: promptTemplateID),
       language: language, endpoint: endpoint, serverReason: serverReason,
-      debugThreshold: debugThreshold)
+      debugThreshold: debugThreshold,
+      hold: { [runtime] in await EGOneLearnedWordChecker.hold(on: runtime) })
     if let checker = answer.checker {
       return .init(
         checker: checker, identity: doorAdapter ? "uat_adapter" : adapter.manifest.identity.revision)
@@ -107,7 +108,8 @@ final class EGOneCheckerEligibility {
     deliveryState: DeliveryState, hostConfigured: Bool = true, deliveryEnabled: Bool = true,
     contract: EGOneCheckerContract?,
     admittedBase: AdmittedEGOneBase?, language: String?, endpoint: EGOneEndpoint?,
-    serverReason: String?, debugThreshold: Double? = nil
+    serverReason: String?, debugThreshold: Double? = nil,
+    hold: @escaping @Sendable () async -> EGOneCheckerHold?
   ) -> LearnedWordCheckerSelection {
     func absent(_ reason: LearnedWordCheckerAbsence) -> LearnedWordCheckerSelection {
       LearnedWordCheckerSelection(absence: reason)
@@ -151,9 +153,9 @@ final class EGOneCheckerEligibility {
     guard qualifiedThreshold.isFinite, (0...1).contains(qualifiedThreshold) else {
       return absent(.adapterDeliveryFailed)
     }
-    let checker = EGOneLearnedWordChecker(threshold: qualifiedThreshold) {
-      endpoint
-    }
+    // `endpoint` above is the selection-time read; each check takes its own
+    // lease and reads the endpoint again under it.
+    let checker = EGOneLearnedWordChecker(threshold: qualifiedThreshold, hold: hold)
     return LearnedWordCheckerSelection(checker: checker, identity: checker.armName)
   }
 }
