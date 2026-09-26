@@ -754,19 +754,17 @@ package final class WisprBootstrapper {
           let admitted: Bool
           if case .admitted = state { admitted = true } else { admitted = false }
           if identity == baseIdentity {
-            Task { @MainActor in
-              guard edges.changed(identity, admitted: admitted), admitted else { return }
-              await checkerEligibility.requestAdapterDownload(for: engine)
-            }
+            guard edges.changed(identity, admitted: admitted), admitted else { return }
+            Task { @MainActor in await checkerEligibility.requestAdapterDownload(for: engine) }
             return
           }
           guard identity == checkerIdentity else { return }
+          let admissionChanged = edges.changed(identity, admitted: admitted)
           Task { @MainActor in
             // The Dictionary row follows every step of the download; the
             // server restarts only when admission itself turns on or off.
             checkerEligibility.statusDidChange()
-            guard edges.changed(identity, admitted: admitted) else { return }
-            runtime.adapterAvailabilityDidChange()
+            if admissionChanged { runtime.adapterAvailabilityDidChange() }
           }
         }
       }

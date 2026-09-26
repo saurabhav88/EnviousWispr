@@ -2,6 +2,7 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprModelDelivery
 import Foundation
+import os
 
 /// The bundled local engines that have a learned-word checker (#3105). One
 /// table for delivery (manifest, folder, host prefix), eligibility and the
@@ -66,14 +67,18 @@ enum LearnedWordCheckerEngine: CaseIterable, Sendable {
 
 /// Remembers whether each delivery identity was last seen admitted, so an
 /// observer acts on a change of admission, never on a repeat of the same state.
-@MainActor
-final class AdmissionEdges {
-  private var admitted: [ModelIdentity: Bool] = [:]
+/// Called synchronously from the delivery observer, in event order: updating it
+/// from separately scheduled tasks could apply an older `.admitted` after a
+/// newer removal (confirming review of #3227).
+final class AdmissionEdges: Sendable {
+  private let admitted = OSAllocatedUnfairLock<[ModelIdentity: Bool]>(initialState: [:])
 
   /// True when `isAdmitted` differs from the last value seen for `identity`
   /// (the first value seen counts as a change).
   func changed(_ identity: ModelIdentity, admitted isAdmitted: Bool) -> Bool {
-    defer { admitted[identity] = isAdmitted }
-    return admitted[identity] != isAdmitted
+    admitted.withLock { seen in
+      defer { seen[identity] = isAdmitted }
+      return seen[identity] != isAdmitted
+    }
   }
 }
