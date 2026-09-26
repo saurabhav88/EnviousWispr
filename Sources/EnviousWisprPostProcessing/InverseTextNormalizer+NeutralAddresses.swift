@@ -377,6 +377,8 @@ extension InverseTextNormalizer {
         !Self.isRefusedNeutralName([name]), !refused.contains(name.lowercased())
       else { return nil }
       if pluralS, dom.lowercased().hasPrefix("s") { return nil }
+      // A spoken ending word only after its dot word, as in every other pass (local Codex r1).
+      guard Self.neutralTLDSeparatorAllowed(tld, before: ".") else { return nil }
       guard hasAddressCue(m) || hasGluedAtWordCue(m), !neutralEmailFollowedBySlash(m),
         !Self.startsAfterSpokenDot(m), !Self.startsAfterSpokenDash(m), !hasFurtherSpokenLabel(m)
       else { return nil }
@@ -532,7 +534,9 @@ extension InverseTextNormalizer {
     // "… punto es / ayuda"; local Codex class enumeration).
     // A spoken query mark too ("… barra ayuda signo de interrogación q"; local Codex r13).
     let syntax = Self.phraseAlt(
-      words.flatMap { $0.dot + $0.slash + $0.colon } + Self.spokenQueryWords + (row?.query ?? []))
+      words.flatMap { $0.dot + $0.slash + $0.colon } + Self.spokenQueryWords
+        // With no row (a bare `localhost` port), any language's question mark (local Codex r1).
+        + (row.map { $0.query } ?? words.flatMap { $0.query }))
     // So does a written `.label` or `:port` the pass did not read ("… punto es.foo", "…:8080").
     return firstMatch(#"^\s+(?:"# + syntax + "|" + Self.neutralDashWordAlt + #")(?:\s+|$)"#, rest)
       != nil

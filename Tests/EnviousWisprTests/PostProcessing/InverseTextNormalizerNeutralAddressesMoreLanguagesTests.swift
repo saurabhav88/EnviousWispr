@@ -152,6 +152,8 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     "открой example точка ру слэш help вопросительный знак q",
     "abre exemplo ponto pt barra ajuda ponto de interrogação q",
     "apri esempio punto it barra aiuto punto interrogativo q",
+    "läuft auf localhost Doppelpunkt 3000 Fragezeichen q",
+    "адрес 192 точка 168 точка 1 точка 1 вопросительный знак q",
     // G2: `.it` never after the English `dot`; `.com.br` only whole
     "scrivi a marco chiocciola esempio dot it",
     "scrivi a john.smith at example dot it",
@@ -171,6 +173,7 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     "a mensagem diz três arrobasdecafe.com.br",
     "La foto infochiocciolaazienda.it era bella.",
     "Мы видели info.собака.yandex.ru на экране.",
+    "отправь письмо на info.собака.yandex.ру сегодня",
     "Il mio indirizzo è cambiato. Adesso è niccolocchiocciolaesempio.it, quindi aggiorna la rubrica.",
     // G7: the name was not heard
     "напиши на собака gmail точка com",

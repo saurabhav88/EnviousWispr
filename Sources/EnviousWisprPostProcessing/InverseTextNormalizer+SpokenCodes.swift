@@ -113,7 +113,10 @@ extension InverseTextNormalizer {
       if !englishWords, neutralLinkStartsEarlier(m, Self.spokenURLWords)
         || neutralLinkContinues(
           m.ns.substring(from: m.result.range.location + m.result.range.length),
-          Self.spokenURLWords.map { SpokenURLWords(dot: [], slash: $0.slash, colon: $0.colon, glueSlash: false) })
+          Self.spokenURLWords.map {
+            SpokenURLWords(
+              dot: [], slash: $0.slash, colon: $0.colon, glueSlash: false, query: $0.query)
+          })
       {
         return nil
       }
