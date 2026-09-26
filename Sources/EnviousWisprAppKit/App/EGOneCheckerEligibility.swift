@@ -61,15 +61,13 @@ final class EGOneCheckerEligibility {
       }
     #endif
     // Founder 2026-09-26 (#3105): every dictation language, every engine. The
-    // judge names no language list, so the status line claims none.
+    // language reaches only S1-mini's prompt, which names it.
     switch provider {
     case .egOne:
-      let judge = LearnedWordJudge(
-        displayName: LLMProvider.egOne.displayName, qualifiedLanguages: [])
-      return await egOneSelection(language: language).naming(judge)
+      let judge = LearnedWordJudge(displayName: LLMProvider.egOne.displayName)
+      return await egOneSelection().naming(judge)
     case .s1Mini:
-      let judge = LearnedWordJudge(
-        displayName: LLMProvider.s1Mini.displayName, qualifiedLanguages: [])
+      let judge = LearnedWordJudge(displayName: LLMProvider.s1Mini.displayName)
       return await s1MiniSelection(language: language).naming(judge)
     case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
       return .init(absence: .notEGOne)
@@ -101,7 +99,7 @@ final class EGOneCheckerEligibility {
     #endif
   }
 
-  private func egOneSelection(language: String?) async -> LearnedWordCheckerSelection {
+  private func egOneSelection() async -> LearnedWordCheckerSelection {
     let provider = LLMProvider.egOne
     guard let base, let promptTemplateID else { return .init(absence: .baseNotAdmitted) }
     let baseAdmitted = await delivery.controller.isAdmitted(base)
@@ -133,7 +131,7 @@ final class EGOneCheckerEligibility {
       contract: contract,
       admittedBase: AdmittedEGOneBase(
         manifest: base.manifest, promptTemplateID: promptTemplateID),
-      language: language, endpoint: endpoint, serverReason: serverReason,
+      endpoint: endpoint, serverReason: serverReason,
       debugThreshold: debugThreshold,
       hold: { [runtime] in await EGOneLearnedWordChecker.hold(on: runtime) })
     if let checker = answer.checker {
@@ -147,7 +145,7 @@ final class EGOneCheckerEligibility {
     provider: LLMProvider, baseAdmitted: Bool, adapterAdmitted: Bool,
     deliveryState: DeliveryState, hostConfigured: Bool = true, deliveryEnabled: Bool = true,
     contract: EGOneCheckerContract?,
-    admittedBase: AdmittedEGOneBase?, language: String?, endpoint: EGOneEndpoint?,
+    admittedBase: AdmittedEGOneBase?, endpoint: EGOneEndpoint?,
     serverReason: String?, debugThreshold: Double? = nil,
     hold: @escaping @Sendable () async -> EGOneCheckerHold?
   ) -> LearnedWordCheckerSelection {

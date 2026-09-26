@@ -79,7 +79,7 @@ struct EGOneCheckerEligibilityTests {
     )
   }
 
-  @Test("ready, loading, mismatch and absent use one owner; every dictation language is eligible")
+  @Test("ready, loading, mismatch and absent use one owner; the decision reads no language")
   func decisionMatrix() throws {
     let (contract, base) = try pins()
     let ready = EGOneEndpoint(
@@ -88,14 +88,14 @@ struct EGOneCheckerEligibilityTests {
     func select(
       provider: LLMProvider = .egOne, baseAdmitted: Bool = true,
       adapterAdmitted: Bool = true, state: DeliveryState = .admitted,
-      admittedBase: AdmittedEGOneBase? = nil, language: String? = "en",
+      admittedBase: AdmittedEGOneBase? = nil,
       endpoint: EGOneEndpoint? = nil, serverReason: String? = nil
     ) -> LearnedWordCheckerSelection {
       EGOneCheckerEligibility.evaluate(
         provider: provider, baseAdmitted: baseAdmitted,
         adapterAdmitted: adapterAdmitted, deliveryState: state,
         contract: contract, admittedBase: admittedBase ?? base,
-        language: language, endpoint: endpoint ?? ready,
+        endpoint: endpoint ?? ready,
         serverReason: serverReason, hold: { nil })
     }
     #expect(select().checker != nil)
@@ -119,41 +119,36 @@ struct EGOneCheckerEligibilityTests {
       !EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, hostConfigured: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
+        admittedBase: base, endpoint: ready, serverReason: nil, hold: { nil }
       ).retryAvailable)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, deliveryEnabled: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
+        admittedBase: base, endpoint: ready, serverReason: nil, hold: { nil }
       ).absence
         == .deliveryDisabled)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
         deliveryState: .notReady, hostConfigured: false, deliveryEnabled: false,
-        contract: contract, admittedBase: base, language: "en", endpoint: ready,
+        contract: contract, admittedBase: base, endpoint: ready,
         serverReason: nil, hold: { nil }
       ).absence == .deliveryDisabled)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
         deliveryState: .admitted, deliveryEnabled: false, contract: contract,
-        admittedBase: base, language: "en", endpoint: ready, serverReason: nil, hold: { nil }
+        admittedBase: base, endpoint: ready, serverReason: nil, hold: { nil }
       ).checker != nil)
     #expect(
       select(admittedBase: try mismatchedBase()).absence
         == .baseMismatch("prompt_template"))
-    // Founder 2026-09-26 (#3105): no language gate. German, a language the exam
-    // never measured, and an unresolved language all get the check.
-    #expect(select(language: "de").checker != nil)
-    #expect(select(language: "ja").checker != nil)
-    #expect(select(language: nil).checker != nil)
     #expect(
       EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
         deliveryState: .admitted, contract: contract, admittedBase: base,
-        language: "en", endpoint: nil, serverReason: nil, hold: { nil }
+        endpoint: nil, serverReason: nil, hold: { nil }
       ).absence == .serverUnavailable)
     #expect(
       select(

@@ -34,7 +34,7 @@ struct CheckerSelectionPathTests {
       .init(absence: .adapterDownloading),
       .init(absence: .baseMismatch("prompt_template")),
       .init(absence: .serverUnavailable),
-      .init(absence: .unqualifiedLanguage),
+      .init(absence: .selectionTimedOut),
     ]
   }
 
@@ -115,7 +115,7 @@ struct CheckerSelectionPathTests {
         calls.append(language)
         return language == "en"
           ? .init(checker: Approver(), identity: "test_ready")
-          : .init(absence: .unqualifiedLanguage)
+          : .init(absence: .serverUnavailable)
       })
     runner.freeze(
       settings: snapshot(backend: .whisperKit, languageMode: .auto, engineDetectsLanguage: true),

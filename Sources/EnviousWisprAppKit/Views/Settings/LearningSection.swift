@@ -4,7 +4,7 @@ import EnviousWisprServices
 import SwiftUI
 
 /// Settings copy is a projection of the same frozen-choice owner used by takes.
-/// It has no delivery, language, or provider selection rule of its own.
+/// It has no delivery or provider selection rule of its own.
 struct LearnedCheckerSettingsStatus: Equatable {
   let line: String
   let canRetry: Bool
@@ -13,17 +13,12 @@ struct LearnedCheckerSettingsStatus: Equatable {
     comment: "Your Words, Learn from: the self-learning dictionary row: retry the word check download.")
 
   init(selection: LearnedWordCheckerSelection) {
-    // The judge's owner names it and its languages; the copy has no engine or
-    // language of its own, so a new judge or language needs no edit here.
+    // The judge's owner names it; the copy has no engine of its own, so a new
+    // judge needs no edit here. Every dictation language is checked (#3105).
     let judge = selection.judge?.displayName
       ?? String(localized: "The polish engine", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
-    let languages = Self.languageList(selection.judge?.qualifiedLanguages ?? [])
     if selection.checker != nil {
-      line = languages.map {
-        String(
-          localized: "Checked by: \(judge). Learned words are checked before they're used in \($0).",
-          comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
-      } ?? String(
+      line = String(
         localized: "Checked by: \(judge). Learned words are checked before they're used.",
         comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
       canRetry = false
@@ -48,25 +43,12 @@ struct LearnedCheckerSettingsStatus: Equatable {
     case .notEGOne:
       line = String(
         localized: "Learn-only: This polish choice doesn't use learned words yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
-    case .unqualifiedLanguage:
-      line = languages.map {
-        String(localized: "Learn-only: Learned words are checked in \($0) only.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
-      } ?? String(
-        localized: "Learn-only: Learned words aren't checked in this language yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable,
       .selectionTimedOut, .none:
       line = String(
         localized: "Learn-only: \(judge)'s word check isn't ready. Learned words are saved for later.",
         comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     }
-  }
-
-  /// "English", "English and German": language names in the app's interface
-  /// language, which `Locale.current` follows (interface-localization.md).
-  static func languageList(_ codes: [String]) -> String? {
-    let names = codes.map { Locale.current.localizedString(forLanguageCode: $0) ?? $0 }
-    guard !names.isEmpty else { return nil }
-    return ListFormatter.localizedString(byJoining: names)
   }
 }
 
@@ -96,13 +78,10 @@ struct LearningSection: View {
   @Environment(EGOneCheckerEligibility.self) private var checkerEligibility
   @State private var checkerStatus: LearnedCheckerSettingsStatus?
 
+  /// The status line does not vary by dictation language (#3105), so the
+  /// refresh keys only on the engine and the owner's revision.
   private var checkerStatusKey: String {
-    let language: String
-    switch settings.languageMode {
-    case .auto: language = "en"
-    case .locked(let code): language = code
-    }
-    return "\(settings.llmProvider.rawValue):\(language):\(checkerEligibility.statusRevision)"
+    "\(settings.llmProvider.rawValue):\(checkerEligibility.statusRevision)"
   }
 
   var body: some View {
@@ -129,13 +108,9 @@ struct LearningSection: View {
       }
     }
     .task(id: checkerStatusKey) {
-      let language: String
-      switch settings.languageMode {
-      case .auto: language = "en"
-      case .locked(let code): language = code
-      }
+      // The language reaches only S1-mini's prompt; the status reads none.
       let selection = await checkerEligibility.selection(
-        provider: settings.llmProvider, language: language)
+        provider: settings.llmProvider, language: nil)
       guard !Task.isCancelled else { return }
       checkerStatus = LearnedCheckerSettingsStatus(selection: selection)
     }
