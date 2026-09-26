@@ -1,6 +1,6 @@
 import cases from '../../data/home/cases.json';
 import { hydrateDemo } from './demo.js';
-import { createCarousel } from './carousel.js';
+import { arrowActive, createCarousel, markArrow } from './carousel.js';
 
 export function init(root, motion, scope) {
   const viewport = root.querySelector('.case-carousel'),
@@ -66,8 +66,8 @@ export function init(root, motion, scope) {
         choices.scrollLeft = right - choices.clientWidth;
     }
     root.querySelector('#case-count').textContent = `${index + 1} / ${cases.length}`;
-    prev.disabled = index === 0;
-    next.disabled = index === cases.length - 1;
+    markArrow(prev, index === 0);
+    markArrow(next, index === cases.length - 1);
     tour.textContent = auto ? 'Pause tour' : 'Play tour';
     tour.disabled = motion.paused || motion.reduced.matches;
     tour.title = motion.reduced.matches
@@ -131,10 +131,10 @@ export function init(root, motion, scope) {
       signal: scope.signal,
     });
   });
-  prev.addEventListener('click', () => carousel.step(-1, { user: true }), {
+  prev.addEventListener('click', () => arrowActive(prev) && carousel.step(-1, { user: true }), {
     signal: scope.signal,
   });
-  next.addEventListener('click', () => carousel.step(1, { user: true }), {
+  next.addEventListener('click', () => arrowActive(next) && carousel.step(1, { user: true }), {
     signal: scope.signal,
   });
   tour.addEventListener(

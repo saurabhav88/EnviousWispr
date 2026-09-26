@@ -1,4 +1,14 @@
 /**
+ * An end arrow stays enabled and focusable, marked aria-disabled, so a keyboard user who pressed it to
+ * reach the last card keeps focus instead of dropping to the page (WAI-ARIA APG carousel pattern).
+ */
+export function markArrow(button, atEnd) {
+  button.disabled = false;
+  button.setAttribute('aria-disabled', String(atEnd));
+}
+export const arrowActive = (button) => button.getAttribute('aria-disabled') !== 'true';
+
+/**
  * Native scrolling owns movement; this adapter synchronizes selection. onPreview names the card the
  * rail is heading to or passing while it moves, so controls never lag the cards; onSettle stays the
  * only place that commits a selection.

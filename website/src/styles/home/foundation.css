@@ -611,12 +611,13 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
   outline-offset: 4px;
 }
 
-/* Real sibling cards use the same native scrolling as the engine/provider rails. The next card
-   peeks in so the rail reads as swipeable before anyone touches it (founder UAT, #2768). */
+/* Real sibling cards use the same native scrolling as the engine/provider rails. Desktop shows one
+   whole card with side arrows; below 1000px (touch tablets and phones) the next card peeks in
+   instead, because the use-case previews leave no clear edge for an arrow there (founder UAT, #2768). */
 .home-carousel {
   display: grid;
   gap: 14px;
-  grid-auto-columns: 88%;
+  grid-auto-columns: 100%;
   grid-auto-flow: column;
   grid-template-columns: none;
   min-width: 0;
@@ -634,13 +635,14 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-@media (max-width: 600px) {
+@media (max-width: 999px) {
   .home-carousel {
     grid-auto-columns: 86%;
   }
 }
-/* Side arrows sit on the rail's edges; one with nowhere to go is disabled and hidden. Phones rely on
-   the peek and a swipe, and without JavaScript the arrows stay disabled, so hidden. */
+/* Side arrows sit on the rail's edges. One with nowhere to go is marked aria-disabled and hidden, but
+   stays visible, dimmed, while it holds keyboard focus. Below 1000px the peek and a swipe take over;
+   without JavaScript the arrows keep their server-rendered `disabled`, so hidden. */
 .carousel-frame {
   position: relative;
 }
@@ -679,9 +681,14 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-.carousel-side[disabled] {
+.carousel-side[disabled],
+.carousel-side[aria-disabled='true']:not(:focus-visible) {
   opacity: 0;
   pointer-events: none;
+}
+.carousel-side[aria-disabled='true']:focus-visible {
+  cursor: default;
+  opacity: 0.45;
 }
 .carousel-side svg {
   fill: none;
@@ -692,7 +699,7 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
   stroke-width: 2.4;
   width: 22px;
 }
-@media (max-width: 600px) {
+@media (max-width: 999px) {
   .carousel-side {
     display: none;
   }

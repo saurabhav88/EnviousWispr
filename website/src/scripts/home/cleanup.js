@@ -1,4 +1,4 @@
-import { createCarousel } from './carousel.js';
+import { arrowActive, createCarousel, markArrow } from './carousel.js';
 
 export function init(root, motion, scope) {
   const choices = root.querySelector('#polish-dots'),
@@ -30,7 +30,12 @@ export function init(root, motion, scope) {
       finishExamples();
     },
     onPreview: sync,
-    onSettle(index, { manual }) {
+    onSettle(index, { manual, changed }) {
+      // A resize re-settles on the same card; keep the tour's timing, as cases.js does.
+      if (!changed && !manual && prepared === undefined) {
+        sync(index);
+        return;
+      }
       if (prepared === index && !pinned && !motion.paused && !motion.reduced.matches) {
         reveal = 340;
         prepared = undefined;
@@ -49,8 +54,8 @@ export function init(root, motion, scope) {
   });
   function sync(index) {
     count.textContent = `${index + 1} of ${buttons.length}`;
-    prev.disabled = index === 0;
-    next.disabled = index === buttons.length - 1;
+    markArrow(prev, index === 0);
+    markArrow(next, index === buttons.length - 1);
     buttons.forEach((button, i) => {
       button.classList.toggle('is-current', i === index);
       button.setAttribute('aria-current', String(i === index));
@@ -85,10 +90,10 @@ export function init(root, motion, scope) {
     },
     { signal: scope.signal },
   );
-  prev.addEventListener('click', () => carousel.step(-1, { user: true }), {
+  prev.addEventListener('click', () => arrowActive(prev) && carousel.step(-1, { user: true }), {
     signal: scope.signal,
   });
-  next.addEventListener('click', () => carousel.step(1, { user: true }), {
+  next.addEventListener('click', () => arrowActive(next) && carousel.step(1, { user: true }), {
     signal: scope.signal,
   });
   clock = scope.timeline(

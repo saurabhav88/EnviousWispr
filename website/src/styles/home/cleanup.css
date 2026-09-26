@@ -704,7 +704,7 @@ main > #polish h2 {
   grid-template-columns: minmax(0, 1fr) 66px minmax(0, 1fr);
 }
 /* Cleanup cards carry text close to their edges, so the arrows sit centred on the rail's edges
-   (at least 13px clear of the screen at every width where they show) instead of over the text. */
+   (at least 29px clear of the screen from 1000px up, where they show) instead of over the text. */
 #polish .carousel-side.is-prev {
   left: 0;
   transform: translate(-50%, -50%);
