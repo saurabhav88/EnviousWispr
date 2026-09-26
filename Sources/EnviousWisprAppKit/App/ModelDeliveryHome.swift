@@ -561,6 +561,8 @@ public final class ModelDeliveryHome {
     guard checkerDeliveryEnabled(engine) else { return .deliveryDisabled }
     await recordFirstRunBaseline(for: checker)
     await controller.sweepSupersededStaging(checker)
+    // Read again after the awaits above: the switch can turn off while they run.
+    guard checkerDeliveryEnabled(engine) else { return .deliveryDisabled }
     let outcome = await controller.ensureModelAvailable(checker)
     // Remove Model may have removed the base while this ensure was suspended
     // before its fetch began; removal only drains a fetch already running. An
