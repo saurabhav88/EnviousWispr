@@ -240,13 +240,13 @@ def _find_match(root, text, role_filter=None, exact=False, mx=10, dep=0, _terms=
     return None
 
 def _text_visible(text):
-    """Walk AX tree, return True as soon as text is found (short-circuit)."""
-    needle = text.lower()
+    """Walk AX tree, return True as soon as text (or its translation, `_ui_terms`) is found."""
+    needles = [t.lower() for t in _ui_terms(text)]
     def _search(el, dep=0):
         if dep > 10: return False
         for a in _TEXT_ATTRS:   # one owner for the searchable set (#2511)
             v = get_attr(el, a)
-            if v and isinstance(v, str) and needle in v.lower(): return True
+            if v and isinstance(v, str) and any(n in v.lower() for n in needles): return True
         for c in (get_attr(el,"AXChildren") or []):
             if _search(c, dep+1): return True
         return False
@@ -413,19 +413,21 @@ def _fuzzy_find_label(label):
     2. Fuzzy/substring match across all AXStaticText elements
     Returns the element or None.
     """
+    terms = _ui_terms(label)  # the English label and the app's translation of it
     # Fast path: exact match
-    el = find_element(_app, role="AXStaticText", value=label)
-    if el: return el
-    el = find_element(_app, role="AXStaticText", title=label)
-    if el: return el
+    for term in terms:
+        el = find_element(_app, role="AXStaticText", value=term)
+        if el: return el
+        el = find_element(_app, role="AXStaticText", title=term)
+        if el: return el
 
     # Fuzzy path: substring match across all static text
-    needle = label.lower()
+    needles = [t.lower() for t in terms]
     best, best_len = None, float("inf")
     for t in find_all_elements(_app, role="AXStaticText"):
         for attr in ("AXValue", "AXTitle"):
             v = get_attr(t, attr)
-            if v and isinstance(v, str) and needle in v.lower():
+            if v and isinstance(v, str) and any(n in v.lower() for n in needles):
                 # Prefer shortest match (most specific)
                 if len(v) < best_len:
                     best, best_len = t, len(v)
@@ -439,12 +441,12 @@ def _find_control_by_description(label):
     rather than in a separate AXStaticText element.
     Returns (control_element, value_string) or (None, None).
     """
-    needle = label.lower()
+    needles = [t.lower() for t in _ui_terms(label)]
     for role in ("AXCheckBox", "AXPopUpButton", "AXTextField", "AXTextArea"):
         for el in find_all_elements(_app, role=role):
             for attr in ("AXDescription", "AXTitle"):
                 v = get_attr(el, attr)
-                if v and isinstance(v, str) and needle in v.lower():
+                if v and isinstance(v, str) and any(n in v.lower() for n in needles):
                     raw = get_attr(el, "AXValue") or ""
                     if role == "AXCheckBox":
                         return el, "ON" if str(raw) == "1" else "OFF"
@@ -654,7 +656,9 @@ def click_status_menu_item_real(title, settle=0.6):
     time.sleep(settle)  # settle: the menu renders inside AppKit's tracking loop; no AX ack
     _, rows = _status_menu_items()
     result["opened"] = bool(rows)
-    item = next((r for r in rows if str(get_attr(r, "AXTitle") or "").startswith(title)), None)
+    terms = _ui_terms(title)
+    item = next((r for r in rows
+                 if any(str(get_attr(r, "AXTitle") or "").startswith(t) for t in terms)), None)
     if item is None:
         _si.click(*centre)
         print(f"click_status_menu_item_real: no row titled {title!r}")
@@ -3488,8 +3492,8 @@ def _self_test():
     # A synthetic German tree and a stand-in for the app's compiled German table
     # (the real one is read by `_ui_tables` from the bundle). The negative rows
     # matter as much: a lookup must not start matching words it was never given.
-    global _pid, _TABLES
-    _saved_pid, _saved_tables = _pid, _TABLES
+    global _pid, _TABLES, _app
+    _saved_pid, _saved_tables, _saved_app = _pid, _TABLES, _app
     _pid, _TABLES = -1, (-1, [{"Selected": "Ausgewählt", "Fast": "Schnell",
                                "Transcription": "Transkription"}])
     _de_tree = _el("AXApplication", children=[_el("AXWindow", children=[
@@ -3517,6 +3521,13 @@ def _self_test():
         ("NEGATIVE CONTROL: German prose containing 'fast' is not the Fast card",
          _names_card("Fast immer bereit", "Fast"), False),
     ]
+    _app = _de_tree  # wait_for's search reads the connected app
+    de_cases += [
+        ("wait_for's search finds the German text for an English name",
+         _text_visible("Transcription"), True),
+        ("NEGATIVE CONTROL: wait_for's search does not find an untranslated absent name",
+         _text_visible("All Languages"), False),
+    ]
     try:
         for why, got, want in de_cases:
             if got != want:
@@ -3526,7 +3537,7 @@ def _self_test():
     finally:
         globals()["get_attr"] = _real_get_attr
         globals()["_iter_children_with_menubars"] = _real_iter
-        _pid, _TABLES = _saved_pid, _saved_tables
+        _pid, _TABLES, _app = _saved_pid, _saved_tables, _saved_app
     find_rows += len(de_cases)
 
     total = (guard_rows + len(banner_cases) + banner_rows_extra + file_rows
