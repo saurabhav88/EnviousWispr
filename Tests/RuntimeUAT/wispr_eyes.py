@@ -2,7 +2,7 @@
 Usage:  python3 -c "from wispr_eyes import *; connect(); see()"
         python3 -c "from wispr_eyes import *; connect(); tap('AI Polish')"
 """
-import os, sys, subprocess, time
+import json, os, sys, subprocess, time
 import datetime as _dt
 import pathlib
 sys.path.insert(0, os.path.dirname(__file__))
@@ -178,19 +178,64 @@ def _ensure_connected():
         print("ERROR: Not connected. Call connect() first.")
         raise SystemExit(1)
 
-def _find_match(root, text, role_filter=None, exact=False, mx=10, dep=0):
+_TABLES = (None, [])  # (pid, tables) for the connected app
+
+
+def _ui_tables():
+    """The connected app's own interface translations: one {English key: shown text} dict per
+    shipped language, read from its bundle's compiled `*.lproj/Localizable.strings` (#3142 5D).
+
+    The English is the key, so a caller keeps naming controls in English and still finds them
+    when the app runs in German. Fails loudly on a table it cannot read: a silent empty table
+    would turn every German lookup into "not found".
+    """
+    global _TABLES
+    if _pid is None:
+        return []  # a synthetic tree in a self-test: English only
+    if _TABLES[0] == _pid:
+        return _TABLES[1]
+    exe = subprocess.run(["ps", "-ww", "-o", "comm=", "-p", str(_pid)],
+                         capture_output=True, text=True).stdout.strip()
+    resources = pathlib.Path(exe).parents[1] / "Resources"
+    if not exe or not resources.is_dir():
+        raise RuntimeError(f"_ui_tables: no bundle Resources for PID {_pid} ({exe!r})")
+    tables = []
+    for f in sorted(resources.glob("*.lproj/Localizable.strings")):
+        out = subprocess.run(["plutil", "-convert", "json", "-o", "-", str(f)],
+                             capture_output=True, text=True)
+        if out.returncode != 0:
+            raise RuntimeError(f"_ui_tables: cannot read {f}: {out.stderr.strip()}")
+        tables.append(json.loads(out.stdout))
+    _TABLES = (_pid, tables)
+    return tables
+
+
+def _ui_terms(text):
+    """*text* plus what the app shows for it in each shipped language, English first."""
+    terms = [text]
+    for table in _ui_tables():
+        shown = table.get(text)
+        if isinstance(shown, str) and shown not in terms:
+            terms.append(shown)
+    return terms
+
+
+def _find_match(root, text, role_filter=None, exact=False, mx=10, dep=0, _terms=None):
     """Unified DFS find by text. Returns first match or None.
     exact=True: case-insensitive full match. exact=False: substring match.
+    *text* is English; it also matches the app's own translation of it (`_ui_terms`).
     """
     if dep > mx: return None
+    terms = _terms if _terms is not None else _ui_terms(text)
     r = get_attr(root,"AXRole") or ""
     if role_filter is None or r == role_filter:
         # EVERY name, not just the displayed one (#2511). See `_names`.
         for t in _names(root):
-            if exact and t.lower() == text.lower(): return root
-            if not exact and _fuzzy(text, t): return root
+            for want in terms:
+                if exact and t.lower() == want.lower(): return root
+                if not exact and _fuzzy(want, t): return root
     for c in _iter_children_with_menubars(root):
-        f = _find_match(c, text, role_filter, exact, mx, dep+1)
+        f = _find_match(c, text, role_filter, exact, mx, dep+1, terms)
         if f: return f
     return None
 
@@ -454,6 +499,20 @@ _CARD_GROUPS = {
     "pill": ["Capsule", "Reading Well", "Level Rail"],
 }
 
+def _names_card(title, name):
+    """Whether a card's label is *name*: the whole label, or "Name. Summary" as the pill cards
+    read. Never a substring: German text holds English card names ("fast" is "almost")."""
+    t, n = title.strip().lower(), name.strip().lower()
+    return t == n or t.startswith(n + ".")
+
+
+def _is_selected(el):
+    """Whether a card or option reports itself chosen: its AXValue is the app's "Selected"
+    (`SettingsCopy.selectedValue`) in the language it runs in."""
+    value = str(get_attr(el, "AXValue") or "").lower()
+    return any(value == term.lower() for term in _ui_terms("Selected"))
+
+
 def read_cards(group):
     """Read which card is selected in a card group.
 
@@ -470,18 +529,21 @@ def read_cards(group):
         results = {}
         for btn in find_all_elements(_app, role="AXButton"):
             fr = element_frame(btn)
-            if not fr or fr["x"] < 200: continue
+            # The sidebar is the window's first 200pt, measured from the WINDOW's edge: an
+            # absolute x only worked with the window at the screen's left, and on the German app
+            # a sidebar-region "Schnell" button overwrote the Fast card's state (#3142 5D).
+            win_fr = element_frame(get_attr(btn, "AXWindow")) if get_attr(btn, "AXWindow") else None
+            if not fr or fr["x"] - (win_fr["x"] if win_fr else 0) < 200: continue
             title = get_attr(btn, "AXTitle") or get_attr(btn, "AXDescription") or ""
             if not title: continue
             # Match button to this group by keyword
             matched_kw = None
             for kw in keywords:
-                if kw.lower() in title.lower():
+                if any(_names_card(title, term) for term in _ui_terms(kw)):
                     matched_kw = kw
                     break
             if not matched_kw: continue
-            val = get_attr(btn, "AXValue") or ""
-            results[matched_kw] = str(val).lower() == "selected"
+            results[matched_kw] = _is_selected(btn)
         if results:
             for name, sel in results.items():
                 print(f"  {name}: {'SELECTED' if sel else '-'}")
@@ -1560,7 +1622,7 @@ def switch_backend(name, wait=3.0):
     # assertion would then describe whichever engine was already selected.
     deadline = time.time() + 5.0
     while time.time() < deadline:
-        if str(get_attr(_engine_button(label), "AXValue") or "") == "Selected":
+        if _is_selected(_engine_button(label)):
             break
         time.sleep(0.25)  # settle: poll interval around the AXValue signal wait above, not a fixed delay
     else:
@@ -1577,8 +1639,9 @@ def _engine_button(label):
     whole app, and matching a description app-wide would make every caller's
     taps fuzzier. Returns None when absent.
     """
+    terms = _ui_terms(label)
     for el in find_all_elements(_app, role="AXButton"):
-        if (get_attr(el, "AXDescription") or "") == label:
+        if (get_attr(el, "AXDescription") or "") in terms:
             return el
     return None
 
@@ -3420,6 +3483,51 @@ def _self_test():
         print("  ok      the patched AX accessors are restored")
 
     find_rows = len(find_cases) + 2   # the cases, the property row, the restore row
+
+    # ---- #3142 5D: English names reach a German interface ---------------------
+    # A synthetic German tree and a stand-in for the app's compiled German table
+    # (the real one is read by `_ui_tables` from the bundle). The negative rows
+    # matter as much: a lookup must not start matching words it was never given.
+    global _pid, _TABLES
+    _saved_pid, _saved_tables = _pid, _TABLES
+    _pid, _TABLES = -1, (-1, [{"Selected": "Ausgewählt", "Fast": "Schnell",
+                               "Transcription": "Transkription"}])
+    _de_tree = _el("AXApplication", children=[_el("AXWindow", children=[
+        _el("AXButton", title="Transkription"),
+        _el("AXButton", value="Ausgewählt", desc="Schnell"),
+        _el("AXButton", value="", desc="Alle Sprachen"),
+    ])])
+    globals()["get_attr"] = lambda el, a: el.get(a) if isinstance(el, dict) else None
+    globals()["_iter_children_with_menubars"] = \
+        lambda el: (el.get("AXChildren") or []) if isinstance(el, dict) else []
+    de_cases = [
+        ("the English page name finds the German sidebar row",
+         _find_match(_de_tree, "Transcription", "AXButton", exact=True) is not None, True),
+        ("a German card's 'Ausgewählt' reads as selected",
+         _is_selected(_de_tree["AXChildren"][0]["AXChildren"][1]), True),
+        ("NEGATIVE CONTROL: an empty value is not selected",
+         _is_selected(_de_tree["AXChildren"][0]["AXChildren"][2]), False),
+        ("NEGATIVE CONTROL: a name the table does not translate is not found",
+         _find_match(_de_tree, "All Languages", "AXButton", exact=True) is not None, False),
+        ("English still matches alongside the translation",
+         _ui_terms("Fast"), ["Fast", "Schnell"]),
+        ("a card is named by its whole label", _names_card("Schnell", "Schnell"), True),
+        ("a pill card's 'Name. Summary' label names it",
+         _names_card("Kapsel. Eine kleine Kapsel.", "Kapsel"), True),
+        ("NEGATIVE CONTROL: German prose containing 'fast' is not the Fast card",
+         _names_card("Fast immer bereit", "Fast"), False),
+    ]
+    try:
+        for why, got, want in de_cases:
+            if got != want:
+                failures.append(f"5D: {why}: got {got!r}, want {want!r}")
+            else:
+                print(f"  ok      {why}")
+    finally:
+        globals()["get_attr"] = _real_get_attr
+        globals()["_iter_children_with_menubars"] = _real_iter
+        _pid, _TABLES = _saved_pid, _saved_tables
+    find_rows += len(de_cases)
 
     total = (guard_rows + len(banner_cases) + banner_rows_extra + file_rows
              + len(window_cases) + entry_rows + find_rows)
