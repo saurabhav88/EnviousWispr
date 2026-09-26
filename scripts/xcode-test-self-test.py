@@ -61,14 +61,34 @@ if args[0] == 'test':
     sys.exit(int(os.environ.get('XCODE_RC', '0')))
 ''')
         xcode.chmod(0o755)
+        # Result-bundle boundary: reports a node for each selection the recorded
+        # test command received, minus OMIT_SELECTION (a suite that never ran).
+        xcrun = bin_dir / 'xcrun'
+        xcrun.write_text('''#!/usr/bin/env python3
+import json, os, sys
+with open(os.environ['XCRUN_CALLS'], 'a') as f:
+    f.write(json.dumps(sys.argv[1:]) + '\\n')
+if os.environ.get('XCRESULT_RC'):
+    sys.exit(int(os.environ['XCRESULT_RC']))
+rows = [json.loads(r) for r in open(os.environ['CALLS'])]
+test = [r for r in rows if r[0] == 'test'][-1]
+omit = set(filter(None, os.environ.get('OMIT_SELECTION', '').split(',')))
+suffix = os.environ.get('NODE_SUFFIX', '')
+nodes = [{'nodeIdentifierURL': 'test://com.apple.xcode/EnviousWispr/' + a[len('-only-testing:'):] + suffix}
+         for a in test if a.startswith('-only-testing:') and a[len('-only-testing:'):] not in omit]
+print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
+''')
+        xcrun.chmod(0o755)
         self.env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
                         TRACE=str(self.root / 'trace'), CALLS=str(self.root / 'calls'),
+                        XCRUN_CALLS=str(self.root / 'xcrun-calls'),
                         DERIVED_DATA_PATH=str(self.root / 'derived'),
                         PACKAGE_STATE=str(self.root / 'package-state'),
                         PUBLISHED_STATE=str(self.root / 'published-state'), STUB_SEEDED='1')
         (self.root / 'package-state').write_text('old lockfile dependencies')
         self.env.pop('XCODE_RC', None)
-        self.env.pop('VERDICT_RC', None)
+        for name in ('VERDICT_RC', 'XCRESULT_RC', 'OMIT_SELECTION', 'NODE_SUFFIX'):
+            self.env.pop(name, None)
         self.sentinel = self.root / 'derived/keep-cache'
         self.sentinel.parent.mkdir()
         self.sentinel.write_text('unchanged compatible cache')
@@ -104,6 +124,26 @@ if args[0] == 'test':
         self.assertEqual(self.configurations(), ['Debug'])
         self.assertFalse(any(arg.startswith('-only-testing:') for arg in self.tests[0]))
         self.assertIn('verdict:Debug lane:required=unset', (self.root / 'trace').read_text())
+        self.assertFalse((self.root / 'xcrun-calls').exists())  # no selections to confirm
+
+    def test_selection_missing_from_result_bundle_fails(self):
+        result = self.run_runner('--filter', 'Target/SuiteA', '--filter', 'Target/Typo', rc=1,
+                                 OMIT_SELECTION='Target/Typo')
+        self.assertIn('\n  Target/Typo\n', result.stdout)
+        self.assertNotIn('\n  Target/SuiteA\n', result.stdout)
+        self.assertFalse((self.root / 'published-state').exists())
+
+    def test_selection_confirmed_by_its_test_cases(self):
+        result = self.run_runner('--filter', 'Target/SuiteA', NODE_SUFFIX='/caseOne()')
+        self.assertIn('ran all 1 selection(s)', result.stdout)
+
+    def test_unreadable_result_bundle_fails(self):
+        self.run_runner('--filter', 'Target/SuiteA', rc=1, XCRESULT_RC='1')
+        self.assertFalse((self.root / 'published-state').exists())
+
+    def test_option_is_not_taken_as_a_value(self):
+        self.run_runner('--filter', 'Target/SuiteA', '--filter', '--release', rc=2)
+        self.assertEqual(self.calls, [])
 
     def test_release_cut_can_run_release_alone(self):
         bundle = str(self.root / 'release receipt.xcresult')

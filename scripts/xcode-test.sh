@@ -54,10 +54,19 @@ RESULT_BUNDLE_PATH=""
 # Default keeps the existing per-invocation log directory and lane filenames.
 LOG_DIR=""
 
+# A value that looks like an option is a missing value: `--filter A --filter
+# --release` must not select a suite named `--release` and drop the lane.
+option_value() {  # $1=option $2=candidate value
+  case "${2:-}" in
+    ""|-*) echo "ERROR: $1 needs a value" >&2; exit 2 ;;
+  esac
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --filter)
-      TEST_ARGS+=("-only-testing:${2:?--filter needs a value}")
+      option_value "$1" "${2:-}"
+      TEST_ARGS+=("-only-testing:$2")
       shift 2 ;;
     --configuration|--release)
       if [ "$CONFIGURATION_SELECTED" = 1 ]; then
@@ -67,7 +76,8 @@ while [ "$#" -gt 0 ]; do
       if [ "$1" = "--release" ]; then
         CONFIGURATION="both"; shift
       else
-        CONFIGURATION="${2:?--configuration needs Debug, Release or both}"
+        option_value "$1" "${2:-}"
+        CONFIGURATION="$2"
         shift 2
       fi
       case "$CONFIGURATION" in
@@ -78,14 +88,14 @@ while [ "$#" -gt 0 ]; do
       echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--log-dir DIR] [--result-bundle-path PATH]"
       echo "Default: one Debug run. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior."
       exit 0 ;;
-    --result-bundle-path) RESULT_BUNDLE_PATH="${2:?--result-bundle-path needs a value}"; shift 2 ;;
+    --result-bundle-path) option_value "$1" "${2:-}"; RESULT_BUNDLE_PATH="$2"; shift 2 ;;
     # #2165: a per-invocation log directory. `run_lane` SUMS every
     # `Test run with N test` line in its log, so two runs sharing one fixed path
     # inflate the count — 10806 observed against a real 5387 — and the guard
     # below rejects only `n < 1`, so it catches an EMPTY run and passes a DOUBLED
     # one. A caller running many lanes (a mutation battery, a matrix) needs its
     # own path per row or its counts are not its own.
-    --log-dir) LOG_DIR="${2:?--log-dir needs a value}"; shift 2 ;;
+    --log-dir) option_value "$1" "${2:-}"; LOG_DIR="$2"; shift 2 ;;
     *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--log-dir DIR] [--result-bundle-path PATH]" >&2; exit 2 ;;
   esac
 done
@@ -157,6 +167,51 @@ RELEASE_RESULT_BUNDLE="${RESULT_BUNDLE_PATH:-$LOG_DIR/xcode-test-release.xcresul
 # `** TEST SUCCEEDED **` at 2,557 of 6,664 tests with exit 0. That owner is
 # shared with the three CI steps (pr-check.yml / main-post-merge.yml) so the
 # rule cannot hold in one place and lapse in another.
+# A batch sums every selected suite into one positive count, so a mistyped
+# filter beside a real one would still pass. Require every selection to appear
+# in the result bundle's node identifiers (`test://.../<Target>/<Suite>[/<test>]`).
+require_selected_ran() {  # $1=bundle $2=label
+  local bundle="$1" label="$2" payload missing
+  payload="$(mktemp "${TMPDIR:-/tmp}/ew-selected.XXXXXX")"
+  if ! xcrun xcresulttool get test-results tests --path "$bundle" >"$payload" 2>/dev/null; then
+    rm -f "$payload"
+    echo "ERROR: $label could not read $bundle to confirm the selected tests ran" >&2
+    echo "==> $label verdict: FAIL"
+    exit 1
+  fi
+  if ! missing="$(python3 - "$payload" "${TEST_ARGS[@]}" <<'PY'
+import json, sys
+from urllib.parse import unquote
+
+urls = []
+def walk(node):
+    if node.get("nodeIdentifierURL"):
+        urls.append(unquote(node["nodeIdentifierURL"]))
+    for child in node.get("children") or []:
+        walk(child)
+for plan in json.load(open(sys.argv[1])).get("testNodes", []):
+    walk(plan)
+for arg in sys.argv[2:]:
+    selected = "/" + arg[len("-only-testing:"):]
+    if not any(u.endswith(selected) or selected + "/" in u for u in urls):
+        print(selected[1:])
+PY
+)"; then
+    rm -f "$payload"
+    echo "ERROR: $label could not parse $bundle to confirm the selected tests ran" >&2
+    echo "==> $label verdict: FAIL"
+    exit 1
+  fi
+  rm -f "$payload"
+  if [ -n "$missing" ]; then
+    echo "ERROR: $label never ran these selections (check TARGET/SUITE spelling):" >&2
+    printf '%s\n' "$missing" | sed 's/^/  /' >&2
+    echo "==> $label verdict: FAIL"
+    exit 1
+  fi
+  echo "==> $label ran all ${#TEST_ARGS[@]} selection(s)"
+}
+
 run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build settings
   local scheme="$1" config="$2" log="$3" bundle="$4"; shift 4
   # xcodebuild refuses to overwrite an existing bundle. Scoped to a path that
@@ -205,6 +260,7 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   # leaves it at the default.
   if [ "${#TEST_ARGS[@]}" -gt 0 ]; then
     EW_LANE_REQUIRED_BUNDLES="" ew_lane_verdict "$log" "$bundle" "$config lane" "$expected" || exit 1
+    require_selected_ran "$bundle" "$config lane"
   else
     ew_lane_verdict "$log" "$bundle" "$config lane" "$expected" || exit 1
   fi
