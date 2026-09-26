@@ -71,6 +71,21 @@ enum WhatsNewContent {
       version: "2.5.1"
     ),
 
+    // #3195: one Apple Intelligence recipe on macOS 26 and 27, a supporting entry after the
+    // headline. Measured on sealed_v1 (English, pre-cleaned), old recipe -> new: macOS 27
+    // p50 1,172 -> 775 ms, spoken_list 69.3 -> 86.8%, self_correction 44.3 -> 54.3%; macOS
+    // 26.7 (300 cases) p50 758 -> 691 ms, spoken_list 7.1 -> 82.1%, self_correction 19.6 ->
+    // 34.8%. No numbers in the card (a model result, not a guarantee) and no "sub-second"
+    // (that phrase is reserved for transcription).
+    Entry(
+      id: "apple-intelligence-polish-faster-and-cleaner",
+      icon: "sparkles",  // "apple.intelligence" needs macOS 15; the floor is 14 (cloud review)
+      title: "Apple Intelligence polish is faster and cleaner",
+      description:
+        "On macOS 26 and 27, Apple Intelligence polish now finishes sooner, lays out spoken lists as lists and resolves more of your spoken corrections, like \"on Tuesday, sorry, Wednesday\".",
+      version: "2.5.1"
+    ),
+
     // #2480: a Reddit user's report (window behind other apps, no app menu, no Cmd-Tab entry,
     // could not find Settings) and the founder's Wispr Flow choice, 2026-09-24. Same unshipped
     // 2.5.1 group. Existing users see a Dock icon appear and the menu bar icon move right, so
