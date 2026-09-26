@@ -1085,6 +1085,11 @@ extension PasteArrivalCapture {
     guard hits.count == beforeHits.count + 1 else {
       return .ambiguous("rule=hit_count hits=\(hits.count) before_hits=\(beforeHits.count)")
     }
+    // Absent before the write and present exactly once after it: that occurrence is this paste's.
+    // The changed-span alignment below cannot be trusted here: #3105 live test (Ghostty,
+    // 2026-09-26, probe rule=changed_span hits=1 before_hits=0 picks=0,0) had old text ending
+    // like the new text, so the common suffix ran into the insertion and neither span held it.
+    if beforeHits.isEmpty { return .region(hits[0]) }
     let before = Array(beforeValue.utf16)
     let after = Array(field.value.utf16)
     if case .range(let location, let length) = selection,

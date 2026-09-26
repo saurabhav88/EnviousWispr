@@ -670,6 +670,23 @@ struct PasteArrivalCaptureTests {
     #expect(ambiguous == .ended(.anchorAmbiguous))
   }
 
+  @Test("a phrase absent before and present once after is this paste's, even when the ends coincide")
+  func singleNewOccurrenceIsTheRegion() async throws {
+    // #3105 live test (Ghostty): the old text ends like the pasted one ("Done." / "...name."), so
+    // the suffix-first alignment ([3, 20)) cuts into the insertion [5, 22) and the two alignments
+    // disagree; no selection is known. The phrase was absent before, so its only hit is the paste.
+    ax.reads = [.text("Done.")]
+    ax.selectedRange = .unavailable
+    let pasted = try prepare("Sorab is my name.")
+    ax.reads = [.text("Done.Sorab is my name.")]
+    pasted.commit()
+    guard case .captured(let target) = await startEditRequest(pasted).result() else {
+      Issue.record("expected the only new occurrence")
+      return
+    }
+    #expect(target.anchors == PastedRegionAnchors(before: "Done.", after: ""))
+  }
+
   @Test("cancellation ends #996's request: before it is made, and while it is retrying")
   func cancellationEndsTheEditRequest() async throws {
     let finished = try prepare()
