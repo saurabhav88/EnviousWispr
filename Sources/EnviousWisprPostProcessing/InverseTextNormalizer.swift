@@ -1113,7 +1113,8 @@ public struct InverseTextNormalizer: Sendable {
     let start = m.result.range.location
     guard start > 0 else { return true }
     let lead = m.ns.substring(with: NSRange(location: 0, length: start))
-    return firstMatch(#"^\s*(?:https?\s*:?\s*)?(?:slash\s*){0,2}$"#, lead) != nil
+    // #3210: `spokenProtocolPrefix` may already have written the scheme as "https://".
+    return firstMatch(#"^\s*(?:https?://|(?:https?\s*:?\s*)?(?:slash\s*){0,2})$"#, lead) != nil
   }
 
   private func urls(_ t: String) -> String {

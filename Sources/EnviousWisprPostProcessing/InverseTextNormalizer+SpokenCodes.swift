@@ -181,7 +181,7 @@ extension InverseTextNormalizer {
       ? Self.identifierPartPat + #"(?:(?<=hundred|thousand)\s+and\s+"# + Self.identifierPartPat
         + #")*"# : #"\d+"#
     let pat =
-      #"(?<![\w-])(?:(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5}|[b-hj-z])\s+(?<dw>(?i:"# + Self.dashWordAlt
+      #"(?<![\w/-])(?:(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5}|[b-hj-z])\s+(?<dw>(?i:"# + Self.dashWordAlt
       + #"))\s+|(?<hcode>[A-Z]{1,5}|[a-z])-[ \t]+)(?<num>(?i:"# + number + #"))(?![\w-])"#
     return reSub(pat, t, caseInsensitive: false) { m in
       // A spelled acronym arrives as separate capitals ("E G dash one", founder log); the code
@@ -243,7 +243,8 @@ extension InverseTextNormalizer {
         return "\(year)-\(pad2(mon))-\(pad2(day))"
       }
     }
-    return reSub(#"(?<![\w.-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\w-]|\.\d)"#, t) { m in
+    // Not inside a URL or path segment ("example.com/2026-9-26"): a path is literal text.
+    return reSub(#"(?<![\w./-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\w-]|\.\d)"#, t) { m in
       guard !identifierContinues(m, connectorAlt: Self.dashWordAlt) else { return nil }
       guard let year = Int(m.g(1) ?? ""), let mon = Int(m.g(2) ?? ""), let day = Int(m.g(3) ?? ""),
         Self.isCalendarDate(year: year, month: mon, day: day),
