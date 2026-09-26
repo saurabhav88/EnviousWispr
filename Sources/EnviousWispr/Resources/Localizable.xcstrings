@@ -20129,6 +20129,42 @@
         }
       }
     },
+    "whatsNew.apple-intelligence-polish-faster-and-cleaner.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry apple-intelligence-polish-faster-and-cleaner).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence polish is faster and cleaner"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnellere und sauberere Nachbearbeitung mit Apple Intelligence"
+          }
+        }
+      }
+    },
+    "whatsNew.apple-intelligence-polish-faster-and-cleaner.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry apple-intelligence-polish-faster-and-cleaner).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On macOS 26 and 27, Apple Intelligence polish now finishes sooner, lays out spoken lists as lists and resolves more of your spoken corrections, like \"on Tuesday, sorry, Wednesday\"."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unter macOS 26 und 27 ist die Nachbearbeitung mit Apple Intelligence jetzt schneller, formatiert gesprochene Aufzählungen als Listen und setzt mehr deiner gesprochenen Korrekturen um, etwa „am Dienstag, nein, am Mittwoch“."
+          }
+        }
+      }
+    },
     "whatsNew.dock-icon-and-window-in-front.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry dock-icon-and-window-in-front).",
       "extractionState" : "manual",
