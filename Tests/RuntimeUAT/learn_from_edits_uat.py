@@ -849,7 +849,9 @@ def case_existing_word(path):
             raise Aborted(f"learned-alias: precondition not met (reached={bool(reached)} heard={heard_again!r} delivered={text2!r})")
         raw = re.search(r"\[RAW ASR\] (.*)", log_since(mark2) or "")
         raw_heard = pair.heard_in(raw.group(1)) if raw else None
-        if raw_heard is not None and raw_heard.lower() == heard.lower():
+        # The alias must reach BOTH the recogniser's output and the delivered text: a
+        # correction that turned it into some other non-target word tests nothing here.
+        if raw_heard is not None and raw_heard.lower() == heard.lower() and heard_again.lower() == heard.lower():
             break
     else:
         record("learned-alias-not-swapped", "INSTRUMENT",

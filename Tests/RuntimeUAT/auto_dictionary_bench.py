@@ -47,8 +47,10 @@ import learn_from_edits_uat as lfe  # noqa: E402  (shared helpers: audio route, 
 # Each local engine's checker door (Swift: `LearnedWordCheckAdapterDoor.Engine`) and the label its
 # ACTIVE line uses ("learned-check <label> door ACTIVE").
 ENGINES = {
-    "egOne": {"adapter": "EW_LEARNED_CHECK_EG1_ADAPTER", "threshold": "EW_LEARNED_CHECK_EG1_THRESHOLD", "label": "EG-1"},
-    "s1Mini": {"adapter": "EW_LEARNED_CHECK_S1_ADAPTER", "threshold": "EW_LEARNED_CHECK_S1_THRESHOLD", "label": "S1-mini"},
+    "egOne": {"adapter": "EW_LEARNED_CHECK_EG1_ADAPTER", "threshold": "EW_LEARNED_CHECK_EG1_THRESHOLD", "label": "EG-1",
+              "checker_arm": "eg1_lora"},
+    "s1Mini": {"adapter": "EW_LEARNED_CHECK_S1_ADAPTER", "threshold": "EW_LEARNED_CHECK_S1_THRESHOLD", "label": "S1-mini",
+               "checker_arm": "s1_lora"},
 }
 
 # A realistic learned dictionary: words the app learned from edits (born-learned), each with the
@@ -125,7 +127,7 @@ def start_app():
     return mark
 
 
-def take(doc, arm, idx, sentence, expect):
+def take(doc, arm, idx, sentence, expect, checker_arm):
     pair = lfe.Pair(sentence, expect, "", "", "__none__")
     mark, text, _ = lfe.dictate(doc, f"{arm}-{idx:02d}", pair, need_heard=False)
     total = lfe.wait_for("the take's timing line", lambda: TOTAL_RE.search(lfe.log_since(mark)), deadline=30.0)
@@ -135,6 +137,12 @@ def take(doc, arm, idx, sentence, expect):
     steps = {m.group(1): float(m.group(2)) for m in STEP_RE.finditer(body) if m.group(3) == "true"}
     check = CHECK_RE.search(body)
     lfe.clear_field(doc)
+    # A timing is only about the arm it names: every on take ran the engine's checker (a
+    # take with no learned alias in it may say no_candidates), every off take ran none.
+    # An on door that logged ACTIVE but fell back to no_checker must not produce a summary.
+    want = checker_arm if arm == "on" else "none"
+    if not check or check.group(6) != want:
+        raise lfe.Aborted(f"{arm}-{idx}: expected checker arm {want!r}, got {check.group(0) if check else None!r}")
     return {"arm": arm, "idx": idx, "sentence": sentence, "trigger": idx % len(SENTENCES) in TRIGGER_IDX,
             "total_ms": round(float(total.group(1)) * 1000), "asr_ms": round(float(total.group(2)) * 1000),
             # The kernel's TOTAL line calls this span "polish", but it is every text step
@@ -212,13 +220,13 @@ def main():
             route.apply()
             if arm == "on" and not lfe.wait_for(f"the {label} checker door", lambda: lfe.has(mark, f"learned-check {label} door ACTIVE"), deadline=30.0):
                 raise lfe.Aborted(f"the {label} checker door did not report ACTIVE")
-            cold = take(doc, arm, 0, *SENTENCES[0])
+            cold = take(doc, arm, 0, *SENTENCES[0], engine["checker_arm"])
             cold["cold"] = True
             rows.append(cold)
             print(f"  {arm} COLD total={cold['total_ms']} ms", flush=True)
             for rnd in range(args.rounds):
                 for i, (sentence, expect) in enumerate(SENTENCES):
-                    r = take(doc, arm, rnd * len(SENTENCES) + i, sentence, expect)
+                    r = take(doc, arm, rnd * len(SENTENCES) + i, sentence, expect, engine["checker_arm"])
                     rows.append(r)
                     print(f"  {arm} {r['idx']:02d} total={r['total_ms']} asr={r['asr_ms']} text={r['text_steps_ms']} "
                           f"check={r['check_ms']} {'[AD]' if r['trigger'] else ''}", flush=True)
