@@ -1100,12 +1100,18 @@ def case_learned_check_door_off(path):
     reached = wait_for("the take's terminal", lambda: has(mark, "Pipeline timing TOTAL"), deadline=20.0)
     if not reached:
         raise Aborted("learned-check-off: the take never completed")
-    line = CHECK_LINE.search(log_since(mark))
+    # Positive input first (code-uat.md FACT: a-negative-UAT-result-must-be-attributed):
+    # "unchanged" says something only when the take carried a seeded misspelling.
+    heard = pair.heard_in(text or "")
+    if heard is None or heard.lower() not in {a.lower() for a in LEARNED_ALIASES}:
+        raise Aborted(f"learned-check-off: no seeded misspelling was heard (heard={heard!r} delivered={text!r})")
+    # The step logs from its own task, which can land after the terminal line.
+    line = wait_for("the LearnedWordCheck line", lambda: CHECK_LINE.search(log_since(mark)), deadline=15.0)
     if not line:
         return check("learned-check-door-off", False, f"no LearnedWordCheck line delivered={text!r}")
     applied, arm, reason = int(line.group(3)), line.group(6), line.group(7)
-    ok = arm == "none" and reason == "no_checker" and applied == 0
-    return check("learned-check-door-off", ok, f"line={line.group(0)} delivered={text!r}")
+    ok = arm == "none" and reason == "no_checker" and applied == 0 and pair.correct.lower() not in text.lower()
+    return check("learned-check-door-off", ok, f"heard={heard!r} line={line.group(0)} delivered={text!r}")
 
 
 # --- audio ------------------------------------------------------------------
