@@ -93,6 +93,8 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     ("la pagina esempio.it barra obliqua aiuto e", "la pagina esempio.it/aiuto e"),
     // the Italian full slash name is read whole, whichever row's host precedes it
     ("abre ejemplo.es barra obliqua ayuda y", "abre ejemplo.es/ayuda y"),
+    // a path segment that is itself the second word of the full slash name
+    ("apri esempio.it barra obliqua obliqua oggi", "apri esempio.it/obliqua oggi"),
     // WhisperKit, language set: verbatim (#3233 baseline v1)
     (
       "Se il programma non si avvia, apri la pagina esempio.it barra aiuto e segui i passaggi nella sezione dei problemi frequenti.",

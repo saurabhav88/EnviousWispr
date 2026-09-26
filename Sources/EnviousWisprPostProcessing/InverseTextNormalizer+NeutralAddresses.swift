@@ -472,15 +472,19 @@ extension InverseTextNormalizer {
   /// Spanish `barra` does not read the `barra` of Italian `barra obliqua` and leave `obliqua` as a
   /// path segment (Codex plan r4).
   static func neutralSlashAlt(_ w: SpokenURLWords) -> String {
-    let longerTails = spokenURLWords.flatMap { $0.slash }.compactMap { q -> String? in
-      guard let p = w.slash.first(where: { q.lowercased().hasPrefix($0.lowercased() + " ") })
-      else { return nil }
-      return String(q.dropFirst(p.count + 1))
-    }
-    let base = #"(?:"# + phraseAlt(w.slash) + #")"#
-    guard !longerTails.isEmpty else { return base }
-    return base + #"(?!\s+(?:"# + phraseAlt(longerTails) + #")(?![\p{L}\p{M}\p{N}]))"#
+    let all = spokenURLWords.flatMap { $0.slash }
+    // Each phrase of this row carries its own guard: only a phrase that begins a longer one is
+    // refused before that longer phrase's rest, so `barra obliqua obliqua` still reads the full
+    // phrase and the segment `obliqua` (local Codex r3).
+    return #"(?:"# + w.slash.sorted { $0.count > $1.count }.map { p -> String in
+      let tails = all.filter { $0.lowercased().hasPrefix(p.lowercased() + " ") }
+        .map { String($0.dropFirst(p.count + 1)) }
+      let one = phraseAlt([p])
+      guard !tails.isEmpty else { return one }
+      return one + #"(?!\s+(?:"# + phraseAlt(tails) + #")(?![\p{L}\p{M}\p{N}]))"#
+    }.joined(separator: "|") + #")"#
   }
+
 
   /// Path segments after a host: each language's slash phrase, then one segment; Dutch may
   /// glue `streep` to the segment (`schuine streephelp`).
