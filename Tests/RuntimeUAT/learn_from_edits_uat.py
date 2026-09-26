@@ -840,13 +840,18 @@ def case_existing_word(path):
     # the alias: the old Word Correction may fuzzy-match it to the hand-added
     # word, which says nothing about the learned alias. One retake, then the
     # half is INSTRUMENT (no verdict), never a product FAIL.
+    raw_heard = None
     for attempt in (1, 2):
         clear_field(path)
         mark2, text2, heard2 = dictate(path, "learned-alias", pair, need_heard=False)
         reached = wait_for("the take's Word Correction line", lambda: has(mark2, "WordCorrection enter"), deadline=10.0)
+        if not reached:
+            raise Aborted(f"learned-alias: the take never reached Word Correction (delivered={text2!r})")
         heard_again = pair.heard_in(text2 or "")
-        if not reached or heard_again is None:
-            raise Aborted(f"learned-alias: precondition not met (reached={bool(reached)} heard={heard_again!r} delivered={text2!r})")
+        if heard_again is None:
+            # The recogniser dropped an anchor word: a transient hearing, so it
+            # spends the one retake rather than ending the case.
+            continue
         raw = re.search(r"\[RAW ASR\] (.*)", log_since(mark2) or "")
         raw_heard = pair.heard_in(raw.group(1)) if raw else None
         # The alias must reach BOTH the recogniser's output and the delivered text: a
