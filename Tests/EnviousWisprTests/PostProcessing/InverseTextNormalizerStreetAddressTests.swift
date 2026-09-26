@@ -63,6 +63,15 @@ struct InverseTextNormalizerStreetAddressTests {
       "Send it to one oh one Elm Avenue New Haven Connecticut zero six five one zero dash one two three four please.",
       "Send it to 101 Elm Avenue, New Haven, Connecticut 06510-1234 please."
     ),
+    // the whole spoken house number, never its tail (Codex diff review r1)
+    (
+      "one hundred and twenty three Main Street Hartford Connecticut 06103",
+      "123 Main Street, Hartford, Connecticut 06103"
+    ),
+    (
+      "It is at two thousand and five Oak Lane Denver Colorado 80203.",
+      "It is at 2005 Oak Lane, Denver, Colorado 80203."
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."
@@ -120,6 +129,16 @@ struct InverseTextNormalizerStreetAddressTests {
   func yearGuardMiss() {
     let s = "Shipped from 2001 Main Street, Hartford Connecticut 06103."
     #expect(english(s) == s)
+  }
+
+  /// A house number longer than the pass reads is refused whole, never cut to its tail: the
+  /// cardinal pass writes the number and no commas are added.
+  @Test("a house number too long to read is left to the number pass")
+  func tooLongHouseNumber() {
+    let s = "nine hundred ninety nine thousand nine hundred ninety nine Main Street Hartford Connecticut 06103"
+    let out = "999,999 Main Street Hartford Connecticut 06103"
+    #expect(english(s) == out)
+    #expect(english(out) == out)
   }
 
   @Test("a formatted address is not changed again", arguments: rows)

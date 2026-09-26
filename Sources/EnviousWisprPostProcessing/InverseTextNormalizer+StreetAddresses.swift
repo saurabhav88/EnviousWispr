@@ -54,7 +54,9 @@ extension InverseTextNormalizer {
       words.sorted { $0.count > $1.count }.map { NSRegularExpression.escapedPattern(for: $0) }
         .joined(separator: "|")
     }
-    let house = #"(\d{1,6}|"# + numWord + #"(?:\s+"# + numWord + #"){0,3})"#
+    // The whole spoken number, "and" included ("one hundred and twenty three"); a match that
+    // starts inside a longer number is refused in `streetAddresses` (Codex diff review r1).
+    let house = #"(\d{1,6}|"# + numWord + #"(?:\s+(?:(?i:and)\s+)?"# + numWord + #"){0,5})"#
     let street =
       #"((?:(?:"# + cap + #"|\d{1,3}(?:st|nd|rd|th))\s+){1,4}(?:"#
       + streetTypes.joined(separator: "|")
@@ -74,7 +76,7 @@ extension InverseTextNormalizer {
       #"(\d{5}(?:-\d{4})?|"# + digitWord + #"(?:\s+"# + digitWord
       + #"){4}(?:\s+(?i:dash|hyphen)\s+(?:\d{4}|"#
       + digitWord + #"(?:\s+"# + digitWord + #"){3}))?)"#
-    return #"(?<![\p{L}\d'’-])"# + house + #"\s+(?:(?:"# + streetDirections.joined(separator: "|")
+    return #"(?<![\p{L}\d'’-])(?<!\d[,.])"# + house + #"\s+(?:(?:"# + streetDirections.joined(separator: "|")
       + #")\s+)?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*|[^\S\n]+))"# + zip
       + #"(?![\p{L}\d-])(?!\s+"# + digitWord + #"(?![\p{L}]))"#
   }()
@@ -94,9 +96,17 @@ extension InverseTextNormalizer {
       guard let houseWords = m.g(1), let street = m.g(2), let city = m.g(6), let state = m.g(8),
         let zipWords = m.g(10)
       else { return nil }
+      // The house number must be the whole number said: a match that begins after another number
+      // word would format only the tail ("one hundred and 23 Main Street").
+      let before = m.ns.substring(to: m.result.range.location)
+      let spelled = houseWords.first?.isNumber == false
+      let partOfLonger =
+        spelled
+        ? #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand|and)|\d)[^\S\n]*$"#
+        : #"\d[^\S\n]*$"#
+      if before.range(of: partOfLonger, options: .regularExpression) != nil { return nil }
       // A written year after a time word is a date, not a house number ("In 2019 Main Street Bank").
       if houseWords.count == 4, let y = Int(houseWords), (1900...2099).contains(y) {
-        let before = m.ns.substring(to: m.result.range.location)
         if before.range(
           of: #"(?i)\b(?:in|since|by|from|until|before|after)\s+$"#, options: .regularExpression)
           != nil
