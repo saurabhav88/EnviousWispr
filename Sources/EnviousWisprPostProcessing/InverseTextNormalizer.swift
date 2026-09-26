@@ -193,10 +193,9 @@ public struct InverseTextNormalizer: Sendable {
   /// Examples excluded by this policy include Italy (.it), Austria (.at), Belgium (.be),
   /// Norway (.no), American Samoa (.as), Belarus (.by), Tonga (.to) and Indonesia (.id).
   ///
-  /// **Only `emailTLDAlt` consumes this table.** URL handling and the production language gate are
-  /// unchanged, so non-English-resolved dictation still skips this formatter entirely
-  /// (`InverseTextNormalizationStep.skipReason`) — this change reaches an ENGLISH-resolved take
-  /// containing a foreign address, and does not by itself deliver support for those languages.
+  /// **Only `emailTLDAlt` consumes this table.** Since #3210 the spoken URL pass also reads it for a
+  /// host of two or more labels (`co dot uk`), and a take resolved as non-English runs `emails`
+  /// through `normalizeLanguageNeutral`, so the table reaches a spoken address on such a take too.
   ///
   /// Residual risk, unchanged in kind and now extended to these suffixes: the grammar cannot tell
   /// an address from prose about a website, so "learn more at example dot de" also converts.
@@ -211,8 +210,9 @@ public struct InverseTextNormalizer: Sendable {
   // "learn more at startup dot ai" would otherwise become "learn more@startup.ai".
   // The ccTLD extension accepts that existing ambiguity for its selected suffixes,
   // as documented above; it does not change either URL pass.
-  static let emailTLDAlt = alt(["com", "org", "io", "co", "dev", "me", "net", "edu", "gov"]
-    + countryCodeTLDs)
+  static let emailTLDAlt = alt(
+    ["com", "org", "io", "co", "dev", "me", "net", "edu", "gov"]
+      + countryCodeTLDs)
   // A domain label: may start with a letter OR digit (cloud Codex review, PR #2265 —
   // "3m.com", "1password.com" are real domains excluded by a letter-only start), may
   // contain digits/hyphens, never ENDS on a hyphen (a trailing "-" is not a valid
@@ -320,14 +320,37 @@ public struct InverseTextNormalizer: Sendable {
 
     t = emails(t)
     t = urls(t)
+    // #3210: dotted numbers of three or more parts (versions, IP addresses) convert whole,
+    // BEFORE the decimal pass can read the first pair as a decimal and strand the rest.
+    // #3210 cloud review: "at one point" followed by another "<number> point" is the idiom, not
+    // the start of a version ("At one point two point three million people left"). Shielded
+    // before the chain pass so the rest reads on its own. Only that shape: "still at one point
+    // six oh" is a decimal (founder history, 1.60) and keeps reading as one.
+    t = reSub(
+      #"\bat\s+one\s+point\b(?=\s+(?:\d+|(?:"# + Self.identifierNumberWordAlt + #")(?:\s+(?:"#
+        + Self.identifierNumberWordAlt + #"))*)\s+point\b)"#, t
+    ) { protect($0) }
+    t = dottedNumberChains(t, englishWords: true)
     // protect spoken dotted chains (versions / IP-like: "one dot two dot three", >=2 dots) so the
-    // 'dot'-decimal path can't partly convert them ("1.2 dot three"). A single "X dot Y" still
-    // becomes a decimal; only multi-dot chains are shielded and left for the AI-polish layer.
-    let dotPart =
-      #"(?:"# + Self.digitWordAlt + #"|\d[\d,]*)(?:\s+(?:"# + Self.digitWordAlt + #"|\d[\d,]*))*"#
-    let dotChainPat: String = #"\b"# + dotPart + #"(?:\s+dot\s+"# + dotPart + #"){2,}\b"#
+    // 'dot'-decimal path can't partly convert them ("1.2 dot three"). #3210: a chain whose every
+    // part reads has already converted above; what reaches this shield is a chain with a part
+    // the pass above refused ("one twenty three dot …"), left whole for the AI-polish layer.
+    // #3210: "point" as well as "dot", every number word the chain pass reads, and a chain that
+    // begins at an already-dotted number: a refused "one point two point three point x" or
+    // "2.5 point twenty point x" must stay whole, not reach the decimal or cardinal pass as
+    // "1.2 point three point x" / "2.5 point 20 point x" (local Codex r1, r2).
+    let dotPart = Self.identifierPartPat
+    let dotChainPat: String =
+      #"\b(?:"# + dotPart + #"(?:\s+(?:"# + Self.numberDotWordAlt + #")\s+"# + dotPart + #"){2,}"#
+      + #"|\d+(?:\.\d+)+(?:\s+(?:"# + Self.numberDotWordAlt + #")\s+"# + dotPart + #")+)\b"#
     t = reSub(dotChainPat, t) { protect($0) }
+    t = twoDigitMinorVersions(t)
     t = decimals(t)
+    // #3210: dashed dates, dashed codes and localhost ports, before the year, list-marker and
+    // cardinal passes read their number words on their own.
+    t = dashedDates(t, englishWords: true)
+    t = dashedCodes(t, englishWords: true)
+    t = localhostPorts(t)
 
     t = moneyPct(t)  // currency + percent (re-run after years below)
 
@@ -786,8 +809,11 @@ public struct InverseTextNormalizer: Sendable {
   /// website is not bounded by anything, and neither is the set of proper nouns.
   ///
   /// The language would decide it, and is not available here: `InverseTextNormalizationStep`
-  /// SKIPS this engine outright for an explicitly non-English take, so a German dictation reaches
-  /// this code only when the language is unknown — exactly the case a language gate cannot serve.
+  /// skips the full engine for an explicitly non-English take, so a German dictation reaches the
+  /// English path only when the language is unknown — exactly the case a language gate cannot
+  /// serve. Since #3210 a non-English take reaches `emails(_:neutral:)` through
+  /// `normalizeLanguageNeutral`, with the same spoken-dot requirement, so this shape stays closed
+  /// there too.
   ///
   /// What ships instead is the pass below, which is self-limiting because the speaker must SAY
   /// the dot. Reopening this needs an admission condition that is unambiguous, not a longer list.
@@ -824,10 +850,10 @@ public struct InverseTextNormalizer: Sendable {
   /// existing English-word policy, so a Norwegian or Belarusian address at its own national
   /// domain still does not convert.
   ///
-  /// WHERE THIS RUNS (#2783). `InverseTextNormalizationStep.skipReason` skips this engine
-  /// outright for a take resolved as explicitly non-English, so these words reach a take whose
-  /// language is UNKNOWN (Parakeet reports none) or resolved as English. They are not, by
-  /// themselves, support for dictating in those languages. Both halves are pinned in
+  /// WHERE THIS RUNS (#2783, #3210). A take whose language is UNKNOWN (Parakeet reports none) or
+  /// resolved as English reads these words through the full engine. A take resolved as another
+  /// language skips the full engine (`InverseTextNormalizationStep.skipReason`) and reads them
+  /// through `normalizeLanguageNeutral`, which calls `emails(_:neutral:)`. Both halves are pinned in
   /// `InverseTextNormalizationStepTests`, which is the only suite that sees the gate — the
   /// direct-formatter suite calls `normalize` and cannot.
   ///
@@ -858,19 +884,19 @@ public struct InverseTextNormalizer: Sendable {
   /// (#2781): a function word in the DOMAIN slot refuses the frame; a name-shaped domain in prose
   /// still converts.
   static let addressWordPairs: [String: Set<String>] = [
-    "at": ["dot", "punkt"],                          // English, and German which borrowed "at"
+    "at": ["dot", "punkt"],  // English, and German which borrowed "at"
     "klammeraffe": ["punkt"], "affenschwanz": ["punkt"],  // German
-    "arroba": ["punto", "ponto"],                    // Spanish, Portuguese
-    "chiocciola": ["punto"],                         // Italian
-    "apenstaartje": ["punt"], "apestaartje": ["punt"],    // Dutch
-    "malpa": ["kropka"], "małpa": ["kropka"],        // Polish
-    "sobaka": ["точка"], "собака": ["точка"],        // Russian
-    "сабака": ["кропка"], "малпа": ["кропка"],       // Belarusian
-    "собачка": ["крапка"], "равлик": ["крапка"],     // Ukrainian
+    "arroba": ["punto", "ponto"],  // Spanish, Portuguese
+    "chiocciola": ["punto"],  // Italian
+    "apenstaartje": ["punt"], "apestaartje": ["punt"],  // Dutch
+    "malpa": ["kropka"], "małpa": ["kropka"],  // Polish
+    "sobaka": ["точка"], "собака": ["точка"],  // Russian
+    "сабака": ["кропка"], "малпа": ["кропка"],  // Belarusian
+    "собачка": ["крапка"], "равлик": ["крапка"],  // Ukrainian
     "snabel-a": ["punkt", "punktum"], "snabela": ["punkt", "punktum"],  // Swedish, Danish
-    "krøllalfa": ["punktum", "prikk"],               // Norwegian
-    "kukac": ["pont"],                               // Hungarian
-    "arobase": ["point"],                            // French
+    "krøllalfa": ["punktum", "prikk"],  // Norwegian
+    "kukac": ["pont"],  // Hungarian
+    "arobase": ["point"],  // French
     "ät": ["piste"], "miuku": ["piste"], "miukumauku": ["piste"], "kissanhäntä": ["piste"],  // Finnish
   ]
 
@@ -911,29 +937,97 @@ public struct InverseTextNormalizer: Sendable {
     "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
   ]
 
-  private func emails(_ t: String) -> String {
+  /// #3210: a spoken dot-word and another label right after a converted address mean the
+  /// address went on past an ending this file reads ("… gmail dot com dot xyz"); converting the
+  /// readable part leaves a half-address (local Codex r1).
+  func hasFurtherSpokenLabel(_ m: Match) -> Bool {
+    let end = m.result.range.location + m.result.range.length
+    let tail = m.ns.substring(with: NSRange(location: end, length: min(48, m.ns.length - end)))
+    // Any script: "… dot com dot рф" goes on as surely as "… dot com dot xyz".
+    return firstMatch(#"^\s+(?:"# + Self.addressDotAlt + #")\s+[\p{L}\p{N}]"#, tail) != nil
+  }
+
+  /// - Parameter neutral: true on a take resolved as another language (`normalizeLanguageNeutral`).
+  ///   There the English pair "at … dot" after a one-word name is refused: it is how an English
+  ///   phrase inside the take reads ("Ich arbeite at example dot com"), and a speaker of that
+  ///   language says their own dot-word (local Codex r1).
+  func emails(_ t: String, neutral: Bool = false) -> String {
     // Fully spoken: "name <at-word> domain <dot-word> tld", where the at-word and the dot-word
     // must belong to ONE language. The pair is checked in the closure rather than by running a
     // frame per language, so this stays a single pass — `emails` runs on every dictation and the
     // engine has a 0.5 s deadline (#2770).
+    //
+    // #3210: the name and the domain may each be a CHAIN, joined by a spoken dot-word or by a
+    // "." the recogniser already wrote ("john dot smith at gmail dot com", "john.smith at gmail
+    // dot com", "john at mail dot example dot com"). The single-label form converted only its
+    // tail ("john dot smith@gmail.com"). The DOMAIN must still carry at least one SPOKEN dot-word:
+    // a domain the recogniser already joined is the already-dotted shape the doc comment above
+    // closes, and nothing here reopens it.
+    let sep = #"(?:\.|\s+(?:"# + Self.addressDotAlt + #")\s+)"#
     let pat =
-      #"\b(?<name>[a-z][a-z0-9_]*)\s+(?<atw>"# + Self.addressAtAlt + #")\s+"#
-      + #"(?<dom>[a-z][a-z0-9-]*)\s+(?<dotw>"# + Self.addressDotAlt + #")\s+"#
-      + #"(?<tld>"# + Self.emailTLDAlt + #")\b"#
+      #"(?<![\w.@])(?<name>[a-z][a-z0-9_]*(?:"# + sep + #"[a-z0-9_]+)*)\s+(?<atw>"#
+      + Self.addressAtAlt + #")\s+(?<dom>[a-z][a-z0-9-]*(?:"# + sep + #"[a-z0-9][a-z0-9-]*)*)"#
+      + sep + #"(?<tld>"# + Self.emailTLDAlt + #")\b(?!\.[a-z0-9])"#
     return reSub(pat, t) { m in
       let atw = (m.g("atw") ?? "").lowercased()
-      let dotw = (m.g("dotw") ?? "").lowercased()
-      guard Self.isPairedAddressWording(atw, dotw) else { return nil }
-      let dom = m.g("dom") ?? ""
-      // #2781: on the English pair, a function word in the domain slot is prose, not a host.
-      if atw == "at", dotw == "dot", Self.englishProseDomainWords.contains(dom.lowercased()) {
+      let name = m.g("name") ?? ""
+      let domChain = m.g("dom") ?? ""
+      let tld = m.g("tld") ?? ""
+      // The spoken dot-words of the domain half (between the at-word and the TLD).
+      let atRange = m.result.range(withName: "atw")
+      let matchEnd = m.result.range.location + m.result.range.length
+      let domainHalf =
+        " "
+        + m.ns.substring(
+          with: NSRange(
+            location: atRange.location + atRange.length,
+            length: matchEnd - atRange.location - atRange.length)) + " "
+      let domainDots = allMatches(#"\s("# + Self.addressDotAlt + #")(?=\s)"#, domainHalf)
+      guard !domainDots.isEmpty else { return nil }
+      // Every spoken dot-word in the address must belong to the at-word's language.
+      let allDots = allMatches(#"\s("# + Self.addressDotAlt + #")(?=\s)"#, " " + m.whole + " ")
+      guard allDots.allSatisfy({ Self.isPairedAddressWording(atw, $0) }) else { return nil }
+      let nameLabels = splitOnPattern(name, sep)
+      let domLabels = splitOnPattern(domChain, sep)
+      // "Read the docs at docs dot example dot com": after the English "at", a one-word name
+      // before a MULTI-label domain is a website in prose far more often than an address; the
+      // URL pass takes it (confirming diff review). A dotted name still says address.
+      // An "email"/"mail" cue right before the name says address ("email john at mail dot
+      // example dot com"; cloud-review enumeration).
+      let lead = min(m.result.range.location, 24)
+      let beforeName = m.ns.substring(
+        with: NSRange(location: m.result.range.location - lead, length: lead))
+      let emailCue = firstMatch(#"\be-?mail(?:\s+me)?(?:\s+at)?\s+$"#, beforeName) != nil
+      if atw == "at", nameLabels.count == 1, domLabels.count > 1, !emailCue { return nil }
+      if neutral, atw == "at", nameLabels.count == 1,
+        allDots.contains(where: { $0.lowercased() == "dot" })
+      {
         return nil
       }
-      let name = (m.g("name") ?? "").replacingOccurrences(of: " ", with: "")
-      return "\(name)@\(dom).\(m.g("tld") ?? "")"
+      guard !hasFurtherSpokenLabel(m) else { return nil }
+      // "report.pdf at example dot com": a dotted name that ends in a file or domain suffix is a
+      // name of a thing, not a mailbox.
+      if nameLabels.count > 1,
+        let last = nameLabels.last?.lowercased(), Self.dottedNameRefusedSuffixes.contains(last)
+      {
+        return nil
+      }
+      // #2781: on the English pair, a function word in the domain slot is prose, not a host.
+      if atw == "at", allDots.allSatisfy({ $0.lowercased() == "dot" }),
+        let first = domLabels.first?.lowercased(), Self.englishProseDomainWords.contains(first)
+      {
+        return nil
+      }
+      return nameLabels.joined(separator: ".") + "@" + (domLabels + [tld]).joined(separator: ".")
     }
   }
 
+  /// #3210: the last label of a dotted name that makes it a file or a domain, not a mailbox.
+  static let dottedNameRefusedSuffixes: Set<String> = [
+    "js", "ts", "py", "rb", "go", "rs", "md", "txt", "html", "css", "json", "swift", "app",
+    "pdf", "doc", "docx", "xls", "xlsx", "csv", "png", "jpg", "zip",
+    "com", "net", "org", "io", "ai", "dev", "co",
+  ]
 
   /// Two independent passes over two different recognizer shapes for the same spoken
   /// URL (#2257, #2049/#2050 — Parakeet v3 sometimes leaves "dot"/"slash" as literal
@@ -1034,11 +1128,12 @@ public struct InverseTextNormalizer: Sendable {
     let start = m.result.range.location
     guard start > 0 else { return true }
     let lead = m.ns.substring(with: NSRange(location: 0, length: start))
-    return firstMatch(#"^\s*(?:https?\s*:?\s*)?(?:slash\s*){0,2}$"#, lead) != nil
+    // #3210: `spokenProtocolPrefix` may already have written the scheme as "https://".
+    return firstMatch(#"^\s*(?:https?://|(?:https?\s*:?\s*)?(?:slash\s*){0,2})$"#, lead) != nil
   }
 
   private func urls(_ t: String) -> String {
-    let t = normalizeGarbledHTTPSPrefix(t)
+    let t = spokenProtocolPrefix(normalizeGarbledHTTPSPrefix(t))
     func withPath(_ base: String, _ path: String?) -> String {
       var s = base
       if let path, !path.isEmpty {
@@ -1143,9 +1238,16 @@ public struct InverseTextNormalizer: Sendable {
     // word" without being URLs at all. The recognizer already having committed to a
     // literal "." (the joined-host pass's trigger) is independent, stronger evidence of
     // domain intent that a path alone is not.
+    //
+    // #3210: host labels may also be joined by a SPOKEN "dot" ("www dot example dot com",
+    // "docs dot example dot com"). Before, only the last "dot" was read, and the guard below
+    // then refused the whole match because a "dot" stood before it, so every subdomain, "www"
+    // and "co dot uk" address stayed spoken. A host of two or more labels may end in a country
+    // code as well (`emailTLDAlt`): the extra labels are the evidence a lone "X dot de" lacks.
     let spokenPat =
-      #"(?<![@a-z0-9.-])\b(?<host>(?:"# + Self.urlHostLabelPat + #"\.)*"#
-      + Self.urlHostLabelPat + #")\s+dot\s+(?<tld>"# + Self.lowerRiskURLTLDAlt + #")\b"#
+      #"(?<![@a-z0-9.-])\b(?<host>"# + Self.urlHostLabelPat + #"(?:(?:\.|\s+dot\s+)"#
+      + Self.urlHostLabelPat + #")*)\s+dot\s+(?<tld>"# + Self.lowerRiskURLTLDAlt + "|"
+      + Self.emailTLDAlt + #")\b"#
       + #"(?<path>(?:\s+slash\s+"# + Self.urlPathSegmentPat + #")*)"# + Self.urlTrailerPat
     var result = reSub(spokenPat, t) { m in
       // followedByUnsupportedContinuation only applies once a path is actually being
@@ -1155,19 +1257,45 @@ public struct InverseTextNormalizer: Sendable {
       // pre-existing "h t t p colon slash slash w w w dot ... n e w s dot com dot s m"
       // shape, where "s.com" converts and "dot s m" that follows is unconnected text.
       let hasPath = !(m.g("path") ?? "").isEmpty
-      let host = m.g("host") ?? ""
+      var labels = splitOnPattern(m.g("host") ?? "", #"\.|\s+dot\s+"#)
+      let tld = m.g("tld") ?? ""
+      guard labels.count > 1 || firstMatch(#"^(?:"# + Self.lowerRiskURLTLDAlt + #")$"#, tld) != nil
+      else { return nil }
+      // #3210: Parakeet hears a spoken "w w w" as one "W" (founder log, twice). A lone "w"
+      // leading a host of two or more labels is read as that "www". Accepted cost: a real
+      // one-letter subdomain ("w.example.com") dictated this way becomes "www.example.com".
+      if labels.count > 1, labels[0].lowercased() == "w" { labels[0] = "www" }
+      // A host that goes on past its ending ("docs dot example dot com dot xyz") is refused
+      // whole when it has 2+ labels, or when an at-word stands before it (the domain of an
+      // address `emails` just refused for the same reason). Any other single-label host keeps its
+      // #2257 behaviour, which the spelled-URL oracle rows pin ("… n e w s dot com dot s m" →
+      // "… n e w s.com dot s m").
+      if hasFurtherSpokenLabel(m) {
+        let lead = min(m.result.range.location, 24)
+        let before = m.ns.substring(
+          with: NSRange(location: m.result.range.location - lead, length: lead))
+        let afterAtWord =
+          firstMatch(#"(?:^|\s)(?:"# + Self.addressAtAlt + #")\s+$"#, before) != nil
+        if labels.count > 1 || afterAtWord { return nil }
+      }
+      let host = labels.joined(separator: ".")
       guard
         !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m),
-        !precededBySpacedAtSign(m), !(hasPath && followedByUnsupportedContinuation(m)),
+        !precededBySpacedAtSign(m),
+        // #3210: a multi-label host is new here, so it also refuses URL syntax it cannot finish
+        // ("docs dot example dot com question mark page"); a bare single-label host keeps the
+        // #2257 reading below.
+        !((hasPath || labels.count > 1) && followedByUnsupportedContinuation(m)),
         // #2781: "the score was one dot me nothing" is prose; a single-label host that is an
         // English function word is refused here as `emails` refuses it in the domain slot.
         // One-letter hosts are exempt: a spelled-out URL ends in a single letter before "dot"
         // ("a l l a f r i c a dot com" → `a l l a f r i c a.com`, parity holdout, gtn), and the
         // article "a" is the only one-letter entry on the list. Residual: "he laughed at a dot
         // me" is refused by `emails` and then converts here to `a.me`.
-        !(host.count > 1 && Self.englishProseDomainWords.contains(host.lowercased()))
+        !(labels.count == 1 && host.count > 1
+          && Self.englishProseDomainWords.contains(host.lowercased()))
       else { return nil }
-      return withPath("\(host).\(m.g("tld") ?? "")", m.g("path")) + trailerSuffix(m)
+      return withPath("\(host).\(tld)", m.g("path")) + trailerSuffix(m)
     }
 
     // Pass 2: recognizer already pre-joined the host into `word.tld`; only a trailing
@@ -1384,7 +1512,9 @@ public struct InverseTextNormalizer: Sendable {
     return isASCIILetters(core) ? core : ""
   }
 
-  static let tokenStripSet = CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019}([{<\u{00AB})]}>\u{00BB}.,;:!?-\u{2014}\u{2013}*\u{2022}")
+  static let tokenStripSet = CharacterSet(
+    charactersIn:
+      "\"'\u{201C}\u{201D}\u{2018}\u{2019}([{<\u{00AB})]}>\u{00BB}.,;:!?-\u{2014}\u{2013}*\u{2022}")
 
   /// Sentinel for "there IS a neighbour but it cannot be classified" — distinct from "no
   /// neighbour". Collapsing those two is what produced the bug: the walk helpers answered "" for
@@ -1427,10 +1557,11 @@ public struct InverseTextNormalizer: Sendable {
   /// therefore STOPS the walk rather than making the run unreadable. Cloud review r2 caught the
   /// difference: without this, `Tasks:\nP one is urgent` refused, because the newline entered the
   /// glued branch and no newline appears in tokenStripSet.
-  static let whitespaceSet = CharacterSet(charactersIn:
-    "\t\n\u{000B}\u{000C}\r \u{0085}\u{00A0}\u{1680}"
-    + "\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}"
-    + "\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}")
+  static let whitespaceSet = CharacterSet(
+    charactersIn:
+      "\t\n\u{000B}\u{000C}\r \u{0085}\u{00A0}\u{1680}"
+      + "\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}"
+      + "\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}")
 
   /// Unicode's line terminators — also a closed external set, not a list of ours. Everything the
   /// White_Space property contains that is NOT one of these is horizontal, so the third question
@@ -1969,7 +2100,9 @@ public struct InverseTextNormalizer: Sendable {
       if let head = card.first, head.isUppercase,
         let firstNext = Self.nextRawToken(m.ns, r.location + r.length).first,
         firstNext.isUppercase
-      { return nil }
+      {
+        return nil
+      }
       var words = Self.splitWords(card.lowercased())
       // Strip-and-reappend, and ONLY in this direction: here "and" follows a complete marker
       // ("P one and Q two" is two markers joined by a conjunction), so lifting it off, parsing
@@ -2268,8 +2401,10 @@ public struct InverseTextNormalizer: Sendable {
     // still keeps its space in the render. `slashSentenceBreak` decides, so "Dr." is not an end.
     // A punctuation-only neighbour (`..`, row B3) is a written token, not a sentence end.
     let leftEndsSentence =
-      !c.left.isEmpty && firstMatch(slashSentenceBreak, c.leftRaw + " ", caseInsensitive: false) != nil
-    let l = leftEndsSentence ? "" : c.left, r = c.right
+      !c.left.isEmpty
+      && firstMatch(slashSentenceBreak, c.leftRaw + " ", caseInsensitive: false) != nil
+    let l = leftEndsSentence ? "" : c.left
+    let r = c.right
     // The previous marker is adjacent when the token before the left neighbour is "slash", or
     // when the left neighbour IS the previous marker ("backslash slash" -> `\/`, #2955).
     let leftIsMarker = l == "backslash" || (l == "slash" && c.beforeLeft == "back")
@@ -2300,7 +2435,9 @@ public struct InverseTextNormalizer: Sendable {
     let leftIsScheme = slashSchemes.contains(l) || c.leftSpellsScheme
     if r == "slash" {
       // A spelled-out scheme is followed by a spelled-out host ("w w w"), so the letters decide.
-      if leftIsScheme { return c.afterRight.contains(".") || c.leftSpellsScheme ? .glue : .unresolved }
+      if leftIsScheme {
+        return c.afterRight.contains(".") || c.leftSpellsScheme ? .glue : .unresolved
+      }
       // "use slash slash" names the command `/slash` when a command is expected here;
       // "the variable H slash slash is malformed" is nonsense and keeps its words.
       return l.isEmpty || isSlashPrefixLeft(l) ? .prefix : .unresolved
@@ -2428,7 +2565,9 @@ public struct InverseTextNormalizer: Sendable {
   /// slash away a lot" is the Slack command (T35).
   static let slashParticles: Set<String> = ["off", "down"]
   /// Verbs whose "off" particle precedes a command ("kick off slash wfp").
-  static let slashParticleVerbs: Set<String> = ["kick", "kicked", "kicking", "fire", "fired", "firing"]
+  static let slashParticleVerbs: Set<String> = [
+    "kick", "kicked", "kicking", "fire", "fired", "firing",
+  ]
   /// Words before "to" that make it a destination and never an infinitive marker: "switched to
   /// slash compact", "go back to slash plan", "straight to slash plan". Motion verbs ("moved to",
   /// "went to") are absent: "the company moved to slash costs" is a purpose.
@@ -2485,7 +2624,9 @@ public struct InverseTextNormalizer: Sendable {
   /// every path. Returns the raw whitespace-delimited token and its core (see `SlashContext`).
   /// `edge` is where the token starts (`before`) or ends (`after`), so a caller can read the
   /// next token out from it.
-  static func slashNeighbour(_ ns: NSString, before start: Int) -> (raw: String, core: String, edge: Int) {
+  static func slashNeighbour(_ ns: NSString, before start: Int) -> (
+    raw: String, core: String, edge: Int
+  ) {
     var end = start
     while end > 0, isHorizontalWhitespace(ns.character(at: end - 1)) { end -= 1 }
     var begin = end
@@ -2494,7 +2635,9 @@ public struct InverseTextNormalizer: Sendable {
     return (raw, slashCore(raw, keepAfterLastSlash: true), begin)
   }
 
-  static func slashNeighbour(_ ns: NSString, after end: Int) -> (raw: String, core: String, edge: Int) {
+  static func slashNeighbour(_ ns: NSString, after end: Int) -> (
+    raw: String, core: String, edge: Int
+  ) {
     let n = ns.length
     var begin = end
     if begin < n, !isWhitespace(ns.character(at: begin)) {
@@ -2598,7 +2741,9 @@ public struct InverseTextNormalizer: Sendable {
 
   /// Titles and Latin abbreviations a recogniser writes with a period mid-sentence. Closed
   /// list; the single-letter rule in `slashSentenceBreak` covers "e.g.", "i.e." and "p.m.".
-  static let slashAbbreviations = ["mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs", "etc"]
+  static let slashAbbreviations = [
+    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs", "etc",
+  ]
 
   /// - Parameter spokenPunctuation: when false, the nine mark commands and backslash are skipped
   ///   and their trigger words survive as ordinary text. The spoken SLASH is read regardless
@@ -2656,7 +2801,8 @@ public struct InverseTextNormalizer: Sendable {
           beforeLeft = Self.slashNeighbour(ns, before: beforeLeft.edge)
         }
         ctx.beforeLeft = beforeLeft.core
-        ctx.leftSpellsScheme = Self.slashSpelledScheme(ns, endingAt: left.edge + left.raw.utf16.count)
+        ctx.leftSpellsScheme = Self.slashSpelledScheme(
+          ns, endingAt: left.edge + left.raw.utf16.count)
         if !beforeLeft.raw.isEmpty {
           ctx.beforeLeftSpellsScheme = Self.slashSpelledScheme(
             ns, endingAt: beforeLeft.edge + beforeLeft.raw.utf16.count)
