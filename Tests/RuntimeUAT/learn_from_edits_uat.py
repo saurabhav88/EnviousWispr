@@ -1178,9 +1178,11 @@ def case_learned_check_door_off(path):
         return check("learned-check-door-off", False, f"no LearnedWordCheck line delivered={text!r}")
     applied, arm, reason = int(line.group(3)), line.group(6), line.group(7)
     if expected_arm is not None:
-        # The delivered checker ran; whether it approved this word is the model's
-        # answer, so the case asserts only that the delivered arm answered.
-        ok = arm == expected_arm and reason in ("none", "no_candidates")
+        # The delivered checker must have been ASKED (a flagged candidate and an
+        # answered check); whether it approved the word is the model's answer.
+        # `no_candidates` means it was never asked, which proves nothing here.
+        flagged = int(line.group(1))
+        ok = arm == expected_arm and reason == "none" and flagged >= 1
         return check("learned-check-door-off", ok,
                      f"delivered checker expected arm={expected_arm} heard={heard!r} line={line.group(0)} delivered={text!r}")
     ok = arm == "none" and reason == "no_checker" and applied == 0 and pair.correct.lower() not in text.lower()
