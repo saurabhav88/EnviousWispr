@@ -72,6 +72,20 @@ struct InverseTextNormalizerStreetAddressTests {
       "It is at two thousand and five Oak Lane Denver Colorado 80203.",
       "It is at 2005 Oak Lane, Denver, Colorado 80203."
     ),
+    // Codex diff review r2: a ZIP opened by the letter "o", a unit letter written apart, a unit
+    // number of four words
+    (
+      "9 Main Street Hartford Connecticut o six one zero three",
+      "9 Main Street, Hartford, Connecticut 06103"
+    ),
+    (
+      "Deliver to 900 Harbor Boulevard Suite 4 B Miami Florida 33131.",
+      "Deliver to 900 Harbor Boulevard, Suite 4B, Miami, Florida 33131."
+    ),
+    (
+      "9 Main Street Suite one hundred twenty three Miami Florida 33131",
+      "9 Main Street, Suite 123, Miami, Florida 33131"
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."

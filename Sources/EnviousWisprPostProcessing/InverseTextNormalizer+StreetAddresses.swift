@@ -64,8 +64,11 @@ extension InverseTextNormalizer {
     // One reading per gap (atomic): a comma, a line break, or spaces. An ambiguous whitespace run
     // here made a long near miss backtrack (6.9 s for 59,200 characters before this).
     let sep = #"((?>[^\S\n]*,[^\S\n]*\n?[^\S\n]*|[^\S\n]*\n[^\S\n]*|[^\S\n]+))"#
+    // Written ("12", "4B", "4 B") or spoken ("two twenty", "one hundred and twenty three",
+    // "four B"); a trailing single capital is the unit letter, never the start of the city.
     let unitNum =
-      #"(?:\d{1,5}[A-Z]?|"# + numWord + #"(?:\s+"# + numWord + #"){0,2}(?:\s+[A-Z](?![\p{L}]))?)"#
+      #"(?:\d{1,5}(?:[A-Z]|\s+[A-Z])?(?![\p{L}\d])|"# + numWord + #"(?:\s+(?:(?i:and)\s+)?"# + numWord
+      + #"){0,5}(?:\s+[A-Z](?![\p{L}]))?)"#
     let unit =
       #"(?:((?:"# + streetUnitWords.joined(separator: "|") + #")\.?\s+"# + unitNum
       + #"|#\s?\d{1,5}[A-Z]?)"#
@@ -89,7 +92,7 @@ extension InverseTextNormalizer {
     guard
       t.range(
         of:
-          #"\d{5}|(?i:zero|oh|one|two|three|four|five|six|seven|eight|nine)\s+\w+\s+\w+\s+\w+\s+\w+"#,
+          #"\d{5}|(?i:zero|oh|o|one|two|three|four|five|six|seven|eight|nine)\s+\w+\s+\w+\s+\w+\s+\w+"#,
         options: .regularExpression) != nil
     else { return t }
     return reSub(Self.streetAddressPattern, t, caseInsensitive: false) { m in
@@ -116,6 +119,8 @@ extension InverseTextNormalizer {
       }
       // The city run must not hold a second street type: that split is ambiguous.
       let cityTokens = city.split(separator: " ").map(String.init)
+      // A lone capital opening the city is a unit letter the unit pattern did not take.
+      if cityTokens.first?.count == 1 { return nil }
       if cityTokens.contains(where: { Self.streetTypes.contains($0) }) { return nil }
       guard let house = Self.addressNumber(houseWords), let zip = Self.zipCode(zipWords) else {
         return nil
@@ -199,6 +204,12 @@ extension InverseTextNormalizer {
     // Already written ("Suite 12", "Suite 4B", the list-marker pass's form): kept as is.
     if parts.count == 2, parts[1].range(of: #"^\d{1,5}[A-Z]?$"#, options: .regularExpression) != nil {
       return unit
+    }
+    // "Suite 4 B": the letter joins the number, as the list-marker pass writes it.
+    if parts.count == 3, parts[1].allSatisfy(\.isNumber), parts[2].count == 1,
+      parts[2].first?.isUppercase == true
+    {
+      return parts[0] + " " + parts[1] + parts[2]
     }
     var numberWords = Array(parts.dropFirst())
     var letter = ""
