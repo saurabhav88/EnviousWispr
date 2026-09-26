@@ -54,6 +54,31 @@ struct EGOneCheckerEligibilityTests {
         (await emptyEligibility.selection(provider: .s1Mini, language: "de")).absence
           == .notEGOne)
     }
+
+    /// The UAT drills set and clear these exact keys (`CHECKER_DOOR_KEYS` in
+    /// `learn_from_edits_uat.py`, `ENGINES` in `auto_dictionary_bench.py`).
+    @Test("each engine's adapter door reads only its own keys")
+    func adapterDoorPerEngine() throws {
+      let adapter = FileManager.default.temporaryDirectory
+        .appendingPathComponent("door-\(UUID().uuidString).gguf")
+      try Data([0]).write(to: adapter)
+      defer { try? FileManager.default.removeItem(at: adapter) }
+      let s1Only = [
+        "EW_LEARNED_CHECK_S1_ADAPTER": adapter.path, "EW_LEARNED_CHECK_S1_THRESHOLD": "0.858",
+      ]
+      let s1 = try #require(LearnedWordCheckAdapterDoor.configuration(.s1Mini, environment: s1Only))
+      #expect(s1.url.path == adapter.path)
+      #expect(s1.threshold == 0.858)
+      #expect(LearnedWordCheckAdapterDoor.configuration(.egOne, environment: s1Only) == nil)
+      let egOneOnly = [
+        "EW_LEARNED_CHECK_EG1_ADAPTER": adapter.path, "EW_LEARNED_CHECK_EG1_THRESHOLD": "0.481",
+      ]
+      let egOne = try #require(LearnedWordCheckAdapterDoor.configuration(.egOne, environment: egOneOnly))
+      #expect(egOne.threshold == 0.481)
+      #expect(LearnedWordCheckAdapterDoor.configuration(.s1Mini, environment: egOneOnly) == nil)
+      #expect(LearnedWordCheckAdapterDoor.Engine.s1Mini.label == "S1-mini")
+      #expect(LearnedWordCheckAdapterDoor.Engine.egOne.label == "EG-1")
+    }
   #endif
 
   private func pins() throws -> (EGOneCheckerContract, AdmittedEGOneBase) {
