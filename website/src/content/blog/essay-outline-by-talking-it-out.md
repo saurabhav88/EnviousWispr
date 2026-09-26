@@ -3,7 +3,7 @@ title: "Write Your Essay Outline by Talking It Out on Mac"
 description: "Speak through an argument before turning it into an outline."
 topic: writing-productivity
 pubDate: 2026-03-17
-updatedDate: 2026-04-04
+updatedDate: 2026-09-26
 tags: ["students", "essays", "dictation", "writing-style", "study-hack"]
 keywords: ["essay outline voice dictation", "dictate essay outline mac", "voice to outline", "speech to text essay", "writing outline by speaking", "mac dictation students", "free dictation app essays"]
 draft: false
@@ -26,7 +26,7 @@ There's a practical speed advantage too. Most people speak at 130-150 words per 
 
 ## The setup: just start talking
 
-Here's how EnviousWispr fits in. Instead of dictating raw text and then manually reorganizing it, the LLM post-processor cleans up your spoken thoughts into clean prose. For academic work, the polish tightens sentence structure and produces organized output from your rambling. With Ollama, OpenAI, or Gemini polish on, talking through points in sequence lays them out as structure; on the Apple Intelligence default, the same points come back as clean prose you can shape into an outline.
+Here's how EnviousWispr fits in. Instead of dictating raw text and then manually reorganizing it, the LLM post-processor cleans up your spoken thoughts into clean prose. For academic work, the polish tightens sentence structure and produces organized output from your rambling. With Ollama, OpenAI, or Gemini polish on, talking through points in sequence lays them out as structure; on the Apple Intelligence default, count your points off ("first... second...") and they usually come back as a simple list. Anything else usually comes back as clean prose you can shape into an outline.
 
 Hold the keybind, talk through your argument, and release. EnviousWispr transcribes your speech locally, runs it through the LLM post-processor, and delivers cleaned-up text. The whole thing takes a few seconds on any M-series chip.
 

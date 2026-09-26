@@ -3,7 +3,7 @@ title: "How to Dictate Code Reviews and PR Descriptions on Mac"
 description: "Use your voice to explain a code change, ask a question, or leave a thoughtful review."
 topic: writing-productivity
 pubDate: 2026-03-12
-updatedDate: 2026-08-22
+updatedDate: 2026-09-26
 tags: ["developers", "dictation", "productivity", "code-review"]
 draft: false
 author: "Saurabh Vaish"
@@ -35,7 +35,7 @@ For more specialized output, the way you talk steers the shape, and supported lo
 - Walk a postmortem timeline in order and the polish keeps that sequence the way you narrate it.
 - Name the parts of an API doc as you speak (the parameters, what each returns) and the output lands organized.
 
-On the Apple Intelligence default, you get the same content as clean prose, with no markdown invented. There's nothing to set up either way.
+On the Apple Intelligence default, a counted or announced list like your changelog usually comes back as a simple bullet list too, and the rest usually as clean prose without invented markdown. There's nothing to set up either way.
 
 ## Real workflow: dictating a PR description
 

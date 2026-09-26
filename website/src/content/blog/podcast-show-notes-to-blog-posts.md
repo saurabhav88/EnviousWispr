@@ -3,7 +3,7 @@ title: "Turn Podcast Show Notes Into Blog Posts with Dictation"
 description: "Find a reusable writing workflow around the ideas in your episodes."
 topic: writing-productivity
 pubDate: 2026-03-22
-updatedDate: 2026-04-04
+updatedDate: 2026-09-26
 tags: ["podcasting", "workflow", "dictation", "content-creation"]
 author: "Saurabh Vaish"
 ---
@@ -43,7 +43,7 @@ You can dictate show notes in the same conversational tone your audience already
 
 This is where things get genuinely useful for podcast show notes blog posts. EnviousWispr's [post-processing pipeline](/features/dictation/) cleans up your dictation and formats it into polished text. The polish keeps things conversational and scannable, which is what you want for show notes. When you talk through a longer, structured blog version, it comes back as tighter prose with proper paragraphs.
 
-You shape that by how you speak, and Ollama, OpenAI, or Gemini polish turns it into format: run through your show notes as a quick list and they land as clean bullet points. On the Apple Intelligence default, you get the same content as clean prose. For a blog version, speak the post in full (a longer take, in your own words); the polish cleans up what you said, but it never pads a short recap out into a long post, so say the post you want.
+You shape that by how you speak, and Ollama, OpenAI, or Gemini polish turns it into format: run through your show notes as a quick list and they land as clean bullet points. On the Apple Intelligence default, count your points off ("first... second...") and they usually come back as a list too; the rest usually lands as clean prose. For a blog version, speak the post in full (a longer take, in your own words); the polish cleans up what you said, but it never pads a short recap out into a long post, so say the post you want.
 
 Here's what this looks like end to end, dictating a recap right after recording. The structure follows the cues you speak; with Ollama, OpenAI, or Gemini polish on you get labeled bullets, and the Apple Intelligence default keeps the same content as clean prose:
 
