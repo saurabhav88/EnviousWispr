@@ -18,7 +18,7 @@ On Parakeet, locking a language narrows what the engine produces to your own alp
 
 ### British spelling: English (UK)
 
-Both engines write English with American spelling, because they learned mostly from American text. They hear you correctly and spell "organisation" as "organization". Choose **English (UK)** and the app gives you British spelling instead: colour, centre, organise, travelled, favourite.
+Both engines write English with American spelling. They hear you correctly and spell "organisation" as "organization". Choose **English (UK)** and the app gives you British spelling instead: colour, centre, organise, travelled, favourite.
 
 **Turn off auto-detect.** Go to **Settings** \> **Transcription** \> **Language** and switch off **Auto-detect language**.
 
@@ -28,11 +28,11 @@ You will know it is working when your next dictation says "colour" where it used
 
 What to expect:
 
-- **It works with AI Polish on or off.** The spelling is changed before AI Polish runs and checked again after it, so a polish provider cannot switch it back to American spelling.
+- **It works with AI Polish on or off.** The spelling is changed before AI Polish runs and checked again after it, which catches American spelling that AI Polish puts back.
 - **Words whose spelling depends on meaning are left as you said them.** "Program", "check", "practice", "license", "meter", "story" and "tire" each have a British spelling in only some of their meanings, so the app does not guess.
 - **Names and your own words are kept.** A name in the middle of a sentence, such as "Kennedy Center", and anything in your Custom Words stays exactly as written. A name at the very start of a sentence or list item can still be changed.
 - **It changes spelling, not vocabulary.** "Apartment" stays "apartment". Your accent does not matter, and the engine still listens for English.
-- **Auto-detect keeps American spelling.** British spelling applies only while **English (UK)** is chosen.
+- **Auto-detect keeps American spelling in your dictation.** The app converts to British spelling only while **English (UK)** is chosen.
 - **Live Preview shows British spelling too.** With the macOS preview engine, Live Preview uses the English (United Kingdom) language pack, which you may need to download on the **Live Preview** page first.
 
 ### Switching to WhisperKit for more languages
