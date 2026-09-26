@@ -40,9 +40,9 @@ extension InverseTextNormalizer {
   static let dashWordAlt = alt(englishDashWords.union(foreignDashWords))
 
   /// One number inside an identifier: a digit run, or English number words without "and"
-  /// (units, teens, tens, hundred).
+  /// (units, teens, tens, hundred, thousand).
   static let identifierNumberWordAlt = alt(
-    Set(units.keys).union(tens.keys).union(["hundred"]))
+    Set(units.keys).union(tens.keys).union(["hundred", "thousand"]))
   static let identifierPartPat =
     #"(?:\d+|(?:"# + identifierNumberWordAlt + #")(?:\s+(?:"# + identifierNumberWordAlt + #"))*)"#
 

@@ -980,6 +980,10 @@ public struct InverseTextNormalizer: Sendable {
       guard allDots.allSatisfy({ Self.isPairedAddressWording(atw, $0) }) else { return nil }
       let nameLabels = splitOnPattern(name, sep)
       let domLabels = splitOnPattern(domChain, sep)
+      // "Read the docs at docs dot example dot com": after the English "at", a one-word name
+      // before a MULTI-label domain is a website in prose far more often than an address; the
+      // URL pass takes it (confirming diff review). A dotted name still says address.
+      if atw == "at", nameLabels.count == 1, domLabels.count > 1 { return nil }
       if neutral, atw == "at", nameLabels.count == 1,
         allDots.contains(where: { $0.lowercased() == "dot" })
       {

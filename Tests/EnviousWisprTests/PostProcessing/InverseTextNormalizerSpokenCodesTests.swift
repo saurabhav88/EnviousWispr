@@ -65,9 +65,10 @@ struct InverseTextNormalizerSpokenCodesTests {
     ),
     ("Email me at john dot smith at gmail dot com today", "Email me at john.smith@gmail.com today"),
     (
-      "Email me at john at mail dot example dot com today",
-      "Email me at john@mail.example.com today"
+      "Email me at john dot smith at mail dot example dot com today",
+      "Email me at john.smith@mail.example.com today"
     ),
+    ("Part S dash one thousand and one failed.", "Part S-1001 failed."),
   ]
 
   @Test("converts the whole identifier", arguments: englishRows)
@@ -123,6 +124,8 @@ struct InverseTextNormalizerSpokenCodesTests {
     // a domain the recogniser already joined stays as spoken, the class #2770 closed
     // (`InverseTextNormalizerDottedEmailTests`): no spoken dot-word, no address
     ("she works at example.com", "she works at example.com"),
+    // a one-word name before a multi-label domain after "at" is a website in prose
+    ("Read the docs at docs dot example dot com", "Read the docs at docs.example.com"),
     ("Email john at mail.example.com", "Email john at mail.example.com"),
     ("and my email is Sarah.chen at gmail.com.", "and my email is Sarah.chen at gmail.com."),
     // a dotted name that is a file keeps its "at", even with a spoken dot in the domain
