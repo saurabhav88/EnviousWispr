@@ -1132,11 +1132,37 @@ def case_learned_check(path):
     return check("learned-check", ok, f"line={line.group(0)} delivered={text!r}")
 
 
+# #3105 PR 2: each local engine's DELIVERED checker (admission marker beside the
+# base's). With every adapter door cleared, the selected engine runs its delivered
+# checker when one is admitted, and none otherwise.
+DELIVERED_CHECKER = {
+    "egOne": ("eg_one_checker-eg1c-", "eg1_lora"),
+    "s1Mini": ("s1_mini_checker-s1c-", "s1_lora"),
+}
+
+
+def delivered_checker_arm():
+    """The arm the selected engine's delivered checker runs as, or None when the
+    selected engine has none admitted. Reads the provider and the admission
+    markers; never writes either."""
+    provider = subprocess.run(["defaults", "read", "com.enviouswispr.app", "llmProvider"],
+                              capture_output=True, text=True).stdout.strip()
+    prefix, arm = DELIVERED_CHECKER.get(provider, (None, None))
+    if prefix is None:
+        return None
+    meta = os.path.expanduser("~/Library/Application Support/EnviousWispr/ModelDelivery")
+    admitted = [n for n in os.listdir(meta) if n.startswith(prefix) and n.endswith(".admission.json")] \
+        if os.path.isdir(meta) else []
+    return arm if admitted else None
+
+
 def case_learned_check_door_off(path):
-    """The control: the same learned word and sentence with NO checker installed
-    (every engine's adapter door cleared, so no engine has a checker): the step still runs, records
-    `arm=none reason=no_checker`, and the learned word never swaps by itself."""
+    """Every engine's adapter door cleared. The selected engine then runs its
+    DELIVERED checker if one is admitted (#3105 PR 2: `arm=<engine>_lora` and the
+    learned word is fixed), else no checker (`arm=none reason=no_checker`, the word
+    never swaps by itself)."""
     pair = PAIRS["learned-check"]
+    expected_arm = delivered_checker_arm()
     mark, text, _ = dictate(path, "learned-check-off", pair, need_heard=False)
     reached = wait_for("the take's terminal", lambda: has(mark, "Pipeline timing TOTAL"), deadline=20.0)
     if not reached:
@@ -1151,6 +1177,12 @@ def case_learned_check_door_off(path):
     if not line:
         return check("learned-check-door-off", False, f"no LearnedWordCheck line delivered={text!r}")
     applied, arm, reason = int(line.group(3)), line.group(6), line.group(7)
+    if expected_arm is not None:
+        # The delivered checker ran; whether it approved this word is the model's
+        # answer, so the case asserts only that the delivered arm answered.
+        ok = arm == expected_arm and reason in ("none", "no_candidates")
+        return check("learned-check-door-off", ok,
+                     f"delivered checker expected arm={expected_arm} heard={heard!r} line={line.group(0)} delivered={text!r}")
     ok = arm == "none" and reason == "no_checker" and applied == 0 and pair.correct.lower() not in text.lower()
     return check("learned-check-door-off", ok, f"heard={heard!r} line={line.group(0)} delivered={text!r}")
 

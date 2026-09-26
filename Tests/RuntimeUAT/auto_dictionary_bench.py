@@ -196,6 +196,12 @@ def main():
         raise SystemExit(f"llmProvider is {provider!r}, not {args.engine!r}; the bench never changes the setting")
     if not os.path.isabs(args.adapter) or not os.path.exists(args.adapter):
         raise SystemExit(f"adapter not found: {args.adapter}")
+    # #3105 PR 2: an engine with a DELIVERED checker runs it with every door cleared, so the
+    # off arm (no checker) cannot be staged on this Mac; refuse rather than time the wrong arm.
+    if lfe.delivered_checker_arm() is not None:
+        raise SystemExit(
+            f"{label}'s delivered word check is installed (Models/, ModelDelivery/ admission marker), so "
+            "the off arm cannot run without a checker; remove that engine's checker folder and marker first")
 
     initially_running = lfe.app_pid() is not None
     snaps = {"words": lfe.file_snapshot(lfe.WORDS), "adapter": door_get(adapter_key), "threshold": door_get(threshold_key)}
