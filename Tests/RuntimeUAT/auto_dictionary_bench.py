@@ -210,8 +210,14 @@ def main():
                     print(f"  {arm} {r['idx']:02d} total={r['total_ms']} asr={r['asr_ms']} text={r['text_steps_ms']} "
                           f"check={r['check_ms']} {'[AD]' if r['trigger'] else ''}", flush=True)
     finally:
+        # Every cleanup step runs whatever an earlier one raised: the run
+        # replaced the founder's real dictionary and launch doors, and the
+        # verification below is what decides the exit code.
         if doc is not None:
-            lfe.close_doc(doc)
+            try:
+                lfe.close_doc(doc)
+            except Exception as error:
+                print(f"    (closing the document failed: {error})")
         if route is not None:
             try:
                 route.restore()
@@ -221,12 +227,19 @@ def main():
         stopped = True
         try:
             lfe.stop_app()
-        except lfe.Aborted:
+        except Exception as error:
             stopped = False
-        door_set(ADAPTER_KEY, snaps["adapter"])
-        door_set(THRESHOLD_KEY, snaps["threshold"])
+            print(f"APP STOP FAILED: {error}")
+        for key, value in ((ADAPTER_KEY, snaps["adapter"]), (THRESHOLD_KEY, snaps["threshold"])):
+            try:
+                door_set(key, value)
+            except Exception as error:
+                print(f"DOOR RESTORE FAILED for {key}: {error}")
         if stopped:
-            lfe.file_restore(lfe.WORDS, snaps["words"])
+            try:
+                lfe.file_restore(lfe.WORDS, snaps["words"])
+            except Exception as error:
+                print(f"WORDS RESTORE FAILED: {error}")
         ok_w, why = lfe.verify_restore(lfe.WORDS, snaps["words"], "words") if stopped else (False, "app did not stop")
         ok_d = door_get(ADAPTER_KEY) == snaps["adapter"] and door_get(THRESHOLD_KEY) == snaps["threshold"]
         if initially_running and stopped:
