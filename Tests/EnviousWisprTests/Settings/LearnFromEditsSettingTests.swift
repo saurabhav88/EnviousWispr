@@ -176,14 +176,18 @@ struct LearnFromEditsRowTests {
       .deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
       .appendingPathComponent("Sources/EnviousWispr/Resources")
-    let checker = EGOneCheckerEligibility(
+    let checker = LearnedWordCheckerEligibility(
       delivery: ModelDeliveryHome(
         engineMutationScope: .live(
           tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
         manifestBundle: try #require(Bundle(url: resources)),
         appSupportOverride: dir.appendingPathComponent("delivery", isDirectory: true)),
-      base: nil, promptTemplateID: nil,
-      runtime: EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil))
+      engines: [
+        .egOne: .init(
+          base: nil, promptTemplateID: nil,
+          runtime: EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil),
+          debugThreshold: nil)
+      ])
     let enabled = host(
       LearningSection().environment(settings).environment(contacts).environment(checker)
         .environment(LearnFromEditsAvailability(presentation: LearnFromEditsSettingsPresentation(selection: .arm(.rules)))))

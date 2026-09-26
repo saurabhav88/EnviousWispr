@@ -40,7 +40,7 @@ struct LearnedCheckerSettingsStatus: Equatable {
           localized:
             "Learn-only: \(judge)'s word check isn't available yet. Learned words are saved for later.",
           comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
-    case .notEGOne:
+    case .engineHasNoChecker:
       line = String(
         localized: "Learn-only: This polish choice doesn't use learned words yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable,
@@ -75,7 +75,7 @@ struct LearningSection: View {
   /// picture; this view never reads the selection, the OS or the delivery
   /// layer itself.
   @Environment(LearnFromEditsAvailability.self) private var availability
-  @Environment(EGOneCheckerEligibility.self) private var checkerEligibility
+  @Environment(LearnedWordCheckerEligibility.self) private var checkerEligibility
   @State private var checkerStatus: LearnedCheckerSettingsStatus?
 
   /// The status line does not vary by dictation language (#3105), so the
@@ -154,7 +154,10 @@ struct LearningSection: View {
               Spacer(minLength: 8)
               SettingsActionButton(title: LearnedCheckerSettingsStatus.retryTitle,
                 isEnabled: true) {
-                Task { await checkerEligibility.requestAdapterDownload() }
+                // "Try again" retries the selected engine's word check (#3105).
+                if let engine = LearnedWordCheckerEngine(provider: settings.wrappedValue.llmProvider) {
+                  Task { await checkerEligibility.requestAdapterDownload(for: engine) }
+                }
               }
             }
           }

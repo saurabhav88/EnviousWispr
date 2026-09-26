@@ -29,7 +29,7 @@ struct LearnedCheckerSettingsStatusTests {
         "Learn-only: EG-1's word check isn't available yet", false),
       (.init(absence: .deliveryDisabled, judge: egOne),
         "Learn-only: EG-1's word check isn't available yet", false),
-      (.init(absence: .notEGOne), "Learn-only: This polish choice", false),
+      (.init(absence: .engineHasNoChecker), "Learn-only: This polish choice", false),
     ]
     for (selection, prefix, retry) in cases {
       let status = LearnedCheckerSettingsStatus(selection: selection)
@@ -49,7 +49,7 @@ struct LearnedCheckerSettingsStatusTests {
   @Test("all Dictionary status copy avoids internal terms")
   func copyIsPlainEnglish() {
     let reasons: [LearnedWordCheckerAbsence] = [
-      .adapterDownloading, .adapterDeliveryFailed, .notEGOne,
+      .adapterDownloading, .adapterDeliveryFailed, .engineHasNoChecker,
       .baseNotAdmitted, .baseMismatch("revision"), .serverWithoutAdapter("adapter_missing"),
       .serverUnavailable, .deliveryDisabled,
     ]

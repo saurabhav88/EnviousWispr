@@ -4,14 +4,14 @@ import EnviousWisprServices
 import Foundation
 
 public enum LearnedWordCheckerAbsence: Sendable, Equatable {
-  case notEGOne, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed, deliveryDisabled
+  case engineHasNoChecker, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed, deliveryDisabled
   case baseMismatch(String), serverWithoutAdapter(String), serverUnavailable
   /// Selection itself did not answer inside `LearnedWordCheckStep.selectionDeadline`.
   case selectionTimedOut
 
   public var code: String {
     switch self {
-    case .notEGOne: "not_eg_one"
+    case .engineHasNoChecker: "engine_has_no_checker"
     case .baseNotAdmitted: "base_not_admitted"
     case .adapterDownloading: "adapter_downloading"
     case .adapterDeliveryFailed: "adapter_delivery_failed"
@@ -42,7 +42,7 @@ public struct LearnedWordCheckerSelection: Sendable {
   public let absence: LearnedWordCheckerAbsence?
   /// Only a failed or cancelled fetch on a configured source offers a retry.
   public let retryAvailable: Bool
-  /// Nil when the selected engine has no judge (`notEGOne`) or in tests.
+  /// Nil when the selected engine has no judge (`engineHasNoChecker`) or in tests.
   public let judge: LearnedWordJudge?
 
   public init(checker: any LearnedWordChecking, identity: String, judge: LearnedWordJudge? = nil) {

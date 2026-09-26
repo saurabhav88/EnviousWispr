@@ -86,6 +86,18 @@ enum WhatsNewContent {
       version: "2.5.1"
     ),
 
+    // #3105 PR 2: each installed local engine downloads its own word check (EG-1's
+    // eg1c, S1-mini's D5) and checks learned words in every dictation language.
+    // Line from the approved plan (issue-3105-2026-09-26-word-check-release.md §3.8).
+    Entry(
+      id: "learned-word-check-eg1-s1",
+      icon: "checkmark.seal",
+      title: "Learned words, checked on EG-1 and S1-mini",
+      description:
+        "Your learned words are now checked in every language on EG-1 and S1-mini. Each engine you have installed downloads its small word check on its own, and the check runs on your Mac.",
+      version: "2.5.1"
+    ),
+
     // #2480: a Reddit user's report (window behind other apps, no app menu, no Cmd-Tab entry,
     // could not find Settings) and the founder's Wispr Flow choice, 2026-09-24. Same unshipped
     // 2.5.1 group. Existing users see a Dock icon appear and the menu bar icon move right, so

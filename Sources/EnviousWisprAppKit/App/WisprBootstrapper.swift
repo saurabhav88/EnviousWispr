@@ -84,7 +84,7 @@ package final class WisprBootstrapper {
   /// EnviousWisprAppCeilingsTests).
   let modelDelivery: ModelDeliveryHome
   /// The take selector also answers the Dictionary status line.
-  let checkerEligibility: EGOneCheckerEligibility
+  let checkerEligibility: LearnedWordCheckerEligibility
 
   /// #1386 PR-2. Stored because nothing else owns it: it is reached only through a closure
   /// `SetupCoordinator` calls once, and a closure capture cannot keep it alive. Held here, it
@@ -443,22 +443,14 @@ package final class WisprBootstrapper {
       guard let base = egOneUpgrade?.registration,
         let promptTemplateID = egOneManifest?.promptTemplateID
       else { return nil }
-      return await modelDelivery.admittedCompatibleEGOneCheckerURL(
-        baseRegistration: base, promptTemplateID: promptTemplateID)
+      return await modelDelivery.admittedCompatibleCheckerURL(
+        engine: .egOne, baseRegistration: base, promptTemplateID: promptTemplateID)
     }
     let egOneRuntime = EGOneRuntime(
       manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
       learnedWordAdapterProvider: learnedWordAdapterProvider)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
-    if let checkerIdentity = modelDelivery.egOneCheckerRegistration?.manifest.identity {
-      Task {
-        await modelDelivery.controller.addStateObserver { identity, _ in
-          guard identity == checkerIdentity else { return }
-          Task { @MainActor in egOneRuntime.adapterAvailabilityDidChange() }
-        }
-      }
-    }
     if let egOneUpgrade {
       // First-run baseline (#1348 §16.2) → legacy launch table → the RUNTIME
       // decides if the completed replacement boots the server (PR #1500 P1).
@@ -468,10 +460,10 @@ package final class WisprBootstrapper {
         await delivery.recordFirstRunBaseline(for: egOneUpgrade.registration)
         await egOneUpgrade.coordinator.runLaunch()
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
+        // #3105: the word check follows the installed base, selected or not.
         if let prompt = egOneManifest?.promptTemplateID {
-          _ = await delivery.ensureCheckerAdapterIfEGOneSelected(
-            selected: settings.llmProvider == .egOne,
-            baseRegistration: egOneUpgrade.registration,
+          _ = await delivery.ensureCheckerAdapter(
+            engine: .egOne, baseRegistration: egOneUpgrade.registration,
             promptTemplateID: prompt)
         }
       }
@@ -488,26 +480,37 @@ package final class WisprBootstrapper {
     // No upgrade coordinator: that machinery exists to retire the one shipped
     // EG-1 monolith, and S1-mini has no predecessor to retire.
     let s1Manifest = try? EGOneManifest.loadBundled(resourceName: "s1-manifest")
-    var s1Adapter: EGOneDeliveryAdapter?
-    if let s1DeliveryManifest = try? DeliveryManifest.loadBundled(
-      resource: "s1-delivery-manifest")
-    {
-      s1Adapter = EGOneDeliveryAdapter(
-        controller: modelDelivery.controller,
-        registration: DeliveryRegistration(
+    // #3105: hoisted, because S1-mini's word check pins this registration's
+    // admitted base exactly as EG-1's pins `egOneUpgrade.registration`.
+    let s1BaseRegistration = (try? DeliveryManifest.loadBundled(resource: "s1-delivery-manifest"))
+      .map { s1DeliveryManifest in
+        DeliveryRegistration(
           manifest: s1DeliveryManifest,
           installDirectory: egOneAppSupport.appendingPathComponent(
             "EnviousWispr/Models/s1-mini", isDirectory: true),
           metadataDirectory: egOneAppSupport.appendingPathComponent(
-            "EnviousWispr/ModelDelivery", isDirectory: true)),
+            "EnviousWispr/ModelDelivery", isDirectory: true))
+      }
+    let s1Adapter = s1BaseRegistration.map {
+      EGOneDeliveryAdapter(
+        controller: modelDelivery.controller, registration: $0,
         version: s1Manifest?.resolvedDisplayVersion)
     }
-    // #3105: S1-mini's word check (D5) boots with S1-mini only through the Debug
-    // door until its delivery ships.
+    // #3105: S1-mini's word check (D5): the Debug door first, as EG-1, then the
+    // delivered adapter pinned to the admitted S1-mini base.
+    let s1LearnedWordAdapterProvider: @MainActor () async -> URL? = {
+      if let debugS1LearnedWordAdapter { return debugS1LearnedWordAdapter.url }
+      guard let base = s1BaseRegistration, let promptTemplateID = s1Manifest?.promptTemplateID
+      else { return nil }
+      return await modelDelivery.admittedCompatibleCheckerURL(
+        engine: .s1Mini, baseRegistration: base, promptTemplateID: promptTemplateID)
+    }
     let s1MiniRuntime = EGOneRuntime(
       manifest: s1Manifest, serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
       coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini,
-      learnedWordAdapterProvider: { debugS1LearnedWordAdapter?.url })
+      learnedWordAdapterProvider: s1LearnedWordAdapterProvider)
+    egOneRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.egOne) }
+    s1MiniRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.s1Mini) }
     s1MiniRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .s1Mini }
     // #2649 (cloud review): the second engine reports through the same bridge,
     // keyed by engine. Found on the "composition-root wiring" axis the class
@@ -706,51 +709,55 @@ package final class WisprBootstrapper {
     // Start. Two of those are promises to the user about where their words went,
     // so they must not be able to disagree with the third.
     let ollamaRemoteness = PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
-    let checkerBaseRegistration = egOneUpgrade?.registration
-    let checkerPromptTemplateID = egOneManifest?.promptTemplateID
-    let checkerEligibility = EGOneCheckerEligibility(
-      delivery: modelDelivery, base: checkerBaseRegistration,
-      promptTemplateID: checkerPromptTemplateID, runtime: egOneRuntime,
-      debugThreshold: debugLearnedWordAdapter?.threshold,
-      s1Runtime: s1MiniRuntime, s1DebugThreshold: debugS1LearnedWordAdapter?.threshold,
+    // #3105: one eligibility owner, one engine table. Each engine brings its
+    // admitted base, the prompt its adapter was trained with and its runtime.
+    let checkerEligibility = LearnedWordCheckerEligibility(
+      delivery: modelDelivery,
+      engines: [
+        .egOne: .init(
+          base: egOneUpgrade?.registration, promptTemplateID: egOneManifest?.promptTemplateID,
+          runtime: egOneRuntime, debugThreshold: debugLearnedWordAdapter?.threshold),
+        .s1Mini: .init(
+          base: s1BaseRegistration, promptTemplateID: s1Manifest?.promptTemplateID,
+          runtime: s1MiniRuntime, debugThreshold: debugS1LearnedWordAdapter?.threshold),
+      ],
       debugScriptedChecker: debugScriptedChecker)
     egOneRuntime.onEvent = { event in
       EGOneTelemetryBridge.handler(engine: .egOne)(event)
       Task { @MainActor in checkerEligibility.statusDidChange() }
     }
-    // #3105: S1-mini now has a word check too, so its server's events refresh
-    // the Dictionary row the same way.
     s1MiniRuntime.onEvent = { event in
       EGOneTelemetryBridge.handler(engine: .s1Mini)(event)
       Task { @MainActor in checkerEligibility.statusDidChange() }
     }
-    // One ensure, three triggers: selecting EG-1, launch, and the base model's
-    // own admission. A first-time EG-1 download passes the first two while the
-    // base is still arriving, and nothing else would start the word check's
-    // download once it lands.
-    let ensureCheckerAdapter: @MainActor () -> Void = { [weak settings, modelDelivery] in
-      Task {
-        guard let base = checkerBaseRegistration,
-          let prompt = checkerPromptTemplateID
-        else { return }
-        _ = await modelDelivery.ensureCheckerAdapterIfEGOneSelected(
-          selected: settings?.llmProvider == .egOne,
-          baseRegistration: base, promptTemplateID: prompt)
+    // Founder 2026-09-26 (#3105): every INSTALLED engine gets its word check,
+    // selected or not. Two triggers per engine: launch (EG-1's runs after its
+    // upgrade pass above; S1-mini has none, so here) and the base's own
+    // admission, which is what a first-time download of either engine reaches.
+    // Selection and import activation never fetch.
+    Task { await checkerEligibility.requestAdapterDownload(for: .s1Mini) }
+    let runtimes: [LearnedWordCheckerEngine: EGOneRuntime] = [.egOne: egOneRuntime, .s1Mini: s1MiniRuntime]
+    for engine in LearnedWordCheckerEngine.allCases {
+      guard let checkerIdentity = modelDelivery.checkerRegistrations[engine]?.manifest.identity,
+        let runtime = runtimes[engine]
+      else { continue }
+      let baseIdentity: ModelIdentity? = switch engine {
+      case .egOne: egOneUpgrade?.registration.manifest.identity
+      case .s1Mini: s1BaseRegistration?.manifest.identity
       }
-    }
-    if let checkerIdentity = modelDelivery.egOneCheckerRegistration?.manifest.identity {
-      let baseIdentity = checkerBaseRegistration?.manifest.identity
       Task {
         await modelDelivery.controller.addStateObserver { identity, state in
           if identity == baseIdentity, case .admitted = state {
             Task { @MainActor in
-              ensureCheckerAdapter()
-              checkerEligibility.statusDidChange()
+              await checkerEligibility.requestAdapterDownload(for: engine)
             }
             return
           }
           guard identity == checkerIdentity else { return }
-          Task { @MainActor in checkerEligibility.statusDidChange() }
+          Task { @MainActor in
+            runtime.adapterAvailabilityDidChange()
+            checkerEligibility.statusDidChange()
+          }
         }
       }
     }
@@ -765,7 +772,6 @@ package final class WisprBootstrapper {
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         await checkerEligibility.selection(provider: provider, language: language)
       },
-      ensureCheckerAdapter: ensureCheckerAdapter,
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
@@ -1850,11 +1856,8 @@ package final class WisprBootstrapper {
       // Only the BUNDLED servers are prepared here. Ollama is the user's own process and
       // the cloud providers have nothing on this Mac to start, which is the same set
       // `localPolishProvider` already names for the eviction pin.
-      prepareLocalPolish: { [localPolishRuntimes, checkerEligibility] configuration in
+      prepareLocalPolish: { [localPolishRuntimes] configuration in
         guard let localPolish = configuration.localPolishProvider else { return true }
-        if localPolish == .egOne {
-          Task { await checkerEligibility.requestAdapterDownload() }
-        }
         // A nil activation is a refusal before the server is even asked: another session
         // pins the engine, or an activation blocker stands. Red after the probe is the server
         // itself not coming up. Either way the cleanup is refused rather than run against a

@@ -87,7 +87,6 @@ final class PipelineSettingsSync {
     egOneRuntime: EGOneRuntime? = nil,
     s1MiniRuntime: EGOneRuntime? = nil,
     checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
-    ensureCheckerAdapter: (@MainActor () -> Void)? = nil,
     ollamaRemotenessLookup: @escaping (String) -> Bool?,
     /// #2648 — the bundled local polisher a RUNNING file import has frozen, or
     /// nil.
@@ -118,7 +117,6 @@ final class PipelineSettingsSync {
     self.egOneRuntime = egOneRuntime
     self.s1MiniRuntime = s1MiniRuntime
     self.checkerSelectionProvider = checkerSelectionProvider
-    self.ensureCheckerAdapter = ensureCheckerAdapter
     self.ollamaRemotenessLookup = ollamaRemotenessLookup
     // #1271 matrix gap 3: Remove Model defers while a recording froze
     // `.egOne`. The pinned-session authority is THIS class (it owns both
@@ -157,14 +155,10 @@ final class PipelineSettingsSync {
   private let s1MiniRuntime: EGOneRuntime?
   private let checkerSelectionProvider:
     (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
-  private let ensureCheckerAdapter: (@MainActor () -> Void)?
 
   private func syncEGOneLearnedWordChecker(provider: LLMProvider) {
     kernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
     whisperKitKernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
-    if provider == .egOne, let ensureCheckerAdapter {
-      ensureCheckerAdapter()
-    }
   }
 
   /// Seed live-mutable subsystems. Per-recording values are captured fresh

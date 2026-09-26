@@ -19,7 +19,6 @@ import EnviousWisprPipeline
 struct PipelineSettingsSyncLocalEngineSwitchTests {
 
   private func makeSync(
-    onEnsure: @escaping @MainActor () -> Void = {},
     selection: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) -> (PipelineSettingsSync, SettingsManager, LocalPolishServerCoordinator,
     KernelDictationDriver, KernelDictationDriver) {
@@ -51,7 +50,6 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
       egOneRuntime: egOne,
       s1MiniRuntime: s1Mini,
       checkerSelectionProvider: selection,
-      ensureCheckerAdapter: onEnsure,
       ollamaRemotenessLookup: { _ in nil }
     )
     return (sync, settings, coordinator, pipeline, whisperKit)
@@ -113,15 +111,15 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     #expect(stamps == 2)
   }
 
-  @Test("launch and EG-1 selection schedule ensure, other engines do not")
-  func checkerEnsureAndBothDrivers() async {
-    var ensures = 0
+  /// #3105: selecting an engine no longer fetches its word check (the installed
+  /// base's launch and admission do, in `WisprBootstrapper`); settings only hands
+  /// both drivers the one selection owner, on launch and on every switch.
+  @Test("launch and every engine switch hand both drivers the checker selection")
+  func checkerSelectionReachesBothDrivers() async {
     let (sync, settings, _, parakeet, whisperKit) = makeSync(
-      onEnsure: { ensures += 1 },
       selection: { _, _ in .init(absence: .adapterDownloading) })
     settings.llmProvider = .egOne
     sync.applyInitialSettings(settings)
-    #expect(ensures == 1)
     let first = await parakeet.learnedWordCheck.selectionProvider?(.egOne, "en")
     let second = await whisperKit.learnedWordCheck.selectionProvider?(.egOne, "en")
     #expect(first?.absence == .adapterDownloading)
@@ -131,10 +129,8 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     ] {
       settings.llmProvider = provider
       sync.handleSettingChanged(.llmProvider, settings: settings)
+      let selection = await parakeet.learnedWordCheck.selectionProvider?(provider, "de")
+      #expect(selection?.absence == .adapterDownloading)
     }
-    #expect(ensures == 1)
-    settings.llmProvider = .egOne
-    sync.handleSettingChanged(.llmProvider, settings: settings)
-    #expect(ensures == 2)
   }
 }

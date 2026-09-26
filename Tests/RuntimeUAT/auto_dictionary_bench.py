@@ -44,7 +44,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import learn_from_edits_uat as lfe  # noqa: E402  (shared helpers: audio route, snapshots, TextEdit)
 
-# Each local engine's checker door (Swift: `LearnedWordCheckAdapterDoor.Engine`) and the label its
+# Each local engine's checker door (Swift: `LearnedWordCheckerEngine`, Debug door keys) and the label its
 # ACTIVE line uses ("learned-check <label> door ACTIVE").
 ENGINES = {
     "egOne": {"adapter": "EW_LEARNED_CHECK_EG1_ADAPTER", "threshold": "EW_LEARNED_CHECK_EG1_THRESHOLD", "label": "EG-1",

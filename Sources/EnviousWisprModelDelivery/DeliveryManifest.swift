@@ -78,7 +78,7 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
   public let runtimeIdentityDigest: String?
   /// #3105: signed-app, digest-covered checker qualification and exact-base pin.
   /// Required for the checker family; absent for every other model.
-  public let checkerContract: EGOneCheckerContract?
+  public let checkerContract: LearnedWordCheckerContract?
   public let manifestDigest: String
 
   /// The only supported schema version. A manifest with any other version is
@@ -123,23 +123,18 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
 
   private func validateStructure() throws {
     guard !files.isEmpty else { throw ManifestError.structurallyInvalid("files[] empty") }
-    if identity.family == .egOneChecker {
+    if identity.family.checkerBaseFamily != nil {
       guard let checkerContract, checkerContract.version == 1,
         files.count == 1, let file = files.first,
         checkerContract.adapterFileName == file.resolvedInstallPath,
         checkerContract.adapterSizeBytes == file.sizeBytes,
         checkerContract.adapterSHA256 == file.sha256,
         checkerContract.format == "gguf-lora",
-        // The signed contract, not this parser, names what a judge revision is
-        // qualified for, so a newly qualified language or threshold is a
-        // manifest change. The parser only refuses values no judge can mean.
+        // The signed contract, not this parser, names the threshold a checker
+        // revision is qualified at, so a new threshold is a manifest change.
+        // The parser only refuses values no checker can mean.
         let threshold = Double(checkerContract.qualifiedThreshold), threshold.isFinite,
         threshold > 0, threshold <= 1,
-        !checkerContract.qualifiedLanguages.isEmpty,
-        Set(checkerContract.qualifiedLanguages).count == checkerContract.qualifiedLanguages.count,
-        checkerContract.qualifiedLanguages.allSatisfy({
-          (2...3).contains($0.count) && $0.allSatisfy({ "abcdefghijklmnopqrstuvwxyz".contains($0) })
-        }),
         checkerContract.adapterSizeBytes > 0,
         !checkerContract.base.revision.isEmpty,
         !checkerContract.base.variant.isEmpty,
@@ -147,7 +142,7 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
         checkerContract.base.runtimeABI == identity.runtimeABI,
         !checkerContract.base.shardSHA256.isEmpty,
         checkerContract.base.shardSHA256.allSatisfy({ $0.count == 64 && $0.allSatisfy({ "0123456789abcdef".contains($0) }) })
-      else { throw ManifestError.structurallyInvalid("invalid EG-1 checker contract") }
+      else { throw ManifestError.structurallyInvalid("invalid learned-word checker contract") }
     } else if checkerContract != nil {
       throw ManifestError.structurallyInvalid("checker contract on non-checker model")
     }

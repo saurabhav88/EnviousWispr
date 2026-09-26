@@ -55,43 +55,40 @@ public final class ModelDeliveryHome {
   /// this build. No mutation claim, no `ProgressFile` bridge: a limb.
   public private(set) var editJudgeHandle: DeliveredModelHandle?
   public private(set) var editJudgeRegistration: DeliveryRegistration?
-  /// #3105: sibling of EG-1's exhaustive shard directory, with its own
-  /// identity and admission marker. Selection and launch call the ensure door;
-  /// registration alone starts no fetch.
-  public private(set) var egOneCheckerRegistration: DeliveryRegistration?
+  /// #3105: each local engine's learned-word checker, a sibling of that
+  /// engine's shard directory with its own identity and admission marker.
+  /// Registration alone starts no fetch; `ensureCheckerAdapter` does.
+  private(set) var checkerRegistrations: [LearnedWordCheckerEngine: DeliveryRegistration] = [:]
   private let checkerDeliveryDefaults: UserDefaults?
 
-  /// Placeholder host is intentionally unroutable. PR 4 chunk 4 replaces the
-  /// signed manifest URL; this exact sentinel refuses before any fetch starts.
-  public static let TODOCheckerAdapterHostBaseURL =
-    "https://adapter-host-pending.invalid/eg1-checker/"
-
-  /// The one read of the checker family's delivery switch, shared by the
-  /// ensure path and the eligibility owner so they cannot disagree.
-  public var checkerDeliveryEnabled: Bool {
+  /// The one read of a checker family's delivery switch
+  /// (`modelDelivery.<family>.enabled`), shared by the ensure path and the
+  /// eligibility owner so they cannot disagree.
+  func checkerDeliveryEnabled(_ engine: LearnedWordCheckerEngine) -> Bool {
     let defaults = checkerDeliveryDefaults
       ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
-    return DeliveryFlags.snapshot(family: .egOneChecker, defaults: defaults).familyEnabled
+    return DeliveryFlags.snapshot(family: engine.checkerFamily, defaults: defaults).familyEnabled
   }
 
-  public static func checkerHostIsConfigured(_ manifest: DeliveryManifest) -> Bool {
-    guard manifest.identity.family == .egOneChecker,
+  /// A checker downloads only from our own mirror, under the prefix its base
+  /// model already uses: one `our_copy` source on `models.enviouslabs.co`.
+  static func checkerHostIsConfigured(
+    _ manifest: DeliveryManifest, engine: LearnedWordCheckerEngine
+  ) -> Bool {
+    guard manifest.identity.family == engine.checkerFamily,
       manifest.sources.count == 1,
       let source = manifest.sources.first,
-      source.id == "our_copy",
-      source.baseURL.absoluteString != TODOCheckerAdapterHostBaseURL
+      source.id == "our_copy"
     else { return false }
-    // EG-1 shards use the R2 custom domain's /eg1/ prefix. The companion
-    // follows that same route once its object is uploaded in chunk 4.
-    return source.baseURL.host == "models.enviouslabs.co"
-      && source.baseURL.path.hasPrefix("/eg1/")
+    return source.baseURL.scheme == "https"
+      && source.baseURL.host == "models.enviouslabs.co"
+      && source.baseURL.path.hasPrefix(engine.hostPathPrefix)
   }
 
   public enum CheckerEnsureOutcome: Sendable, Equatable {
-    case notSelected
     case baseNotAdmitted
     case manifestUnavailable
-    case incompatible(EGOneCheckerRefusal)
+    case incompatible(LearnedWordCheckerRefusal)
     case hostNotConfigured
     case deliveryDisabled
     case delivery(ModelDeliveryController.DeliveryOutcome)
@@ -517,63 +514,79 @@ public final class ModelDeliveryHome {
       }
     }
 
-    // #3105: checker bytes are a separate ModelIdentity and install directory.
-    // The EG-1 registration remains in WisprBootstrapper and is not changed.
-    if let manifest = try? DeliveryManifest.loadBundled(
-      resource: "eg1-checker-delivery-manifest", bundle: manifestBundle)
-    {
-      let checkerDataDirectory = appSupportOverride == nil
-        ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-          .appendingPathComponent("EnviousWispr", isDirectory: true)
-        : storage.dataDirectory
-      egOneCheckerRegistration = DeliveryRegistration(
+    // #3105: each engine's checker is a separate ModelIdentity and install
+    // directory. The base registrations stay in WisprBootstrapper.
+    let checkerDataDirectory = appSupportOverride == nil
+      ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("EnviousWispr", isDirectory: true)
+      : storage.dataDirectory
+    for engine in LearnedWordCheckerEngine.allCases {
+      guard let manifest = try? DeliveryManifest.loadBundled(
+        resource: engine.manifestResource, bundle: manifestBundle),
+        manifest.identity.family == engine.checkerFamily
+      else { continue }
+      checkerRegistrations[engine] = DeliveryRegistration(
         manifest: manifest,
         installDirectory: checkerDataDirectory.appendingPathComponent(
-          "Models/eg-1-checker", isDirectory: true),
+          engine.installFolder, isDirectory: true),
         metadataDirectory: checkerDataDirectory.appendingPathComponent(
           "ModelDelivery", isDirectory: true))
     }
   }
 
-  /// Automatic trigger: EG-1 selected and admitted -> ensure checker.
-  /// The bootstrap launch pass and PipelineSettingsSync call this without
-  /// waiting for polish. Admission truth comes from the controller.
-  public func ensureCheckerAdapterIfEGOneSelected(
-    selected: Bool, baseRegistration: DeliveryRegistration, promptTemplateID: String
+  /// Fetch an engine's checker when its base is admitted, whether or not that
+  /// engine is selected (founder 2026-09-26: every installed engine gets its
+  /// word check). Callers: launch, the base's own admission, and the
+  /// Dictionary's "Try again". Admission truth comes from the controller.
+  func ensureCheckerAdapter(
+    engine: LearnedWordCheckerEngine, baseRegistration: DeliveryRegistration,
+    promptTemplateID: String
   ) async -> CheckerEnsureOutcome {
-    guard selected else { return .notSelected }
-    guard baseRegistration.manifest.identity.family == .egOne,
+    guard baseRegistration.manifest.identity.family == engine.checkerFamily.checkerBaseFamily,
       await controller.isAdmitted(baseRegistration)
     else { return .baseNotAdmitted }
-    guard let checker = egOneCheckerRegistration,
+    guard let checker = checkerRegistrations[engine],
       let contract = checker.manifest.checkerContract
     else { return .manifestUnavailable }
-    let admittedBase = AdmittedEGOneBase(
+    let admittedBase = AdmittedCheckerBase(
       manifest: baseRegistration.manifest, promptTemplateID: promptTemplateID)
     if case .refused(let reason) = compatibility(
-      contract: contract, admittedBase: admittedBase)
+      contract: contract, checkerFamily: engine.checkerFamily, admittedBase: admittedBase)
     {
       return .incompatible(reason)
     }
-    guard Self.checkerHostIsConfigured(checker.manifest) else { return .hostNotConfigured }
-    guard checkerDeliveryEnabled else { return .deliveryDisabled }
+    guard Self.checkerHostIsConfigured(checker.manifest, engine: engine) else {
+      return .hostNotConfigured
+    }
+    guard checkerDeliveryEnabled(engine) else { return .deliveryDisabled }
     await recordFirstRunBaseline(for: checker)
     await controller.sweepSupersededStaging(checker)
     return .delivery(await controller.ensureModelAvailable(checker))
   }
 
+  /// Remove Model's second half: the engine's checker goes with its base.
+  /// The controller drains an in-flight fetch before deleting. Nothing
+  /// registered means nothing on disk to remove.
+  func removeCheckerAdapter(
+    _ engine: LearnedWordCheckerEngine
+  ) async -> ModelDeliveryController.RemoveOutcome {
+    guard let checker = checkerRegistrations[engine] else { return .removed }
+    return await controller.remove(checker)
+  }
+
   /// Read-only boot source. A file path alone cannot supply an adapter:
   /// both admission markers and the signed compatibility pin must agree.
-  public func admittedCompatibleEGOneCheckerURL(
-    baseRegistration: DeliveryRegistration, promptTemplateID: String
+  func admittedCompatibleCheckerURL(
+    engine: LearnedWordCheckerEngine, baseRegistration: DeliveryRegistration,
+    promptTemplateID: String
   ) async -> URL? {
-    guard let checker = egOneCheckerRegistration,
+    guard let checker = checkerRegistrations[engine],
       let contract = checker.manifest.checkerContract,
       await controller.isAdmitted(baseRegistration),
       await controller.isAdmitted(checker),
       compatibility(
-        contract: contract,
-        admittedBase: AdmittedEGOneBase(
+        contract: contract, checkerFamily: engine.checkerFamily,
+        admittedBase: AdmittedCheckerBase(
           manifest: baseRegistration.manifest, promptTemplateID: promptTemplateID)) == .compatible
     else { return nil }
     return checker.installDirectory.appendingPathComponent(contract.adapterFileName)
