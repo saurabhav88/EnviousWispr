@@ -1,0 +1,136 @@
+import Foundation
+import Testing
+
+@testable import EnviousWisprPostProcessing
+
+/// A dictated US street address gets its numbers written and its commas (#3211).
+///
+/// **When this fails, a speaker who says "nine High Plains Road Shelton Connecticut zero six four
+/// eight four" pastes it without commas or with spelled numbers, or an ordinary sentence that
+/// names a road, a city or a state gains digits and commas.** Product coverage. Expected outputs
+/// are written by hand. The recogniser rows are verbatim Parakeet and WhisperKit output for Azure
+/// clips (`docs/audits/2026-09-26-3211-baseline-azure/`, main checkout); the founder rows are his
+/// own dictations from 2026-09-26.
+@Suite("ITN formats dictated US street addresses (#3211)", .tags(.productOutcome))
+struct InverseTextNormalizerStreetAddressTests {
+
+  private func english(_ s: String) -> String {
+    InverseTextNormalizer().normalize(s, spokenPunctuation: false)
+  }
+
+  nonisolated static let rows: [(dictated: String, expected: String)] = [
+    // founder, 2026-09-26
+    (
+      "9 High Plains Road Shelton Connecticut 06484",
+      "9 High Plains Road, Shelton, Connecticut 06484"
+    ),
+    (
+      "Three twenty West Thirty Eighth Street, apartment two twenty, New York, New York one zero zero one eight.",
+      "320 West 38th Street, apartment 220, New York, New York 10018."
+    ),
+    (
+      "My parents live at nine High Plains Road, Shelton, Connecticut, 06484.",
+      "My parents live at 9 High Plains Road, Shelton, Connecticut 06484."
+    ),
+    // Parakeet, verbatim
+    (
+      "Please send the replacement key to Nine High Plains Road Shelton, Connecticut 06484, since the old one was misplaced during the move.",
+      "Please send the replacement key to 9 High Plains Road, Shelton, Connecticut 06484, since the old one was misplaced during the move."
+    ),
+    (
+      "Forward the medical records to Eleven Garden Lane, New Haven, Connecticut zero six five one nine, after the patient confirms the mailing address.",
+      "Forward the medical records to 11 Garden Lane, New Haven, Connecticut 06519, after the patient confirms the mailing address."
+    ),
+    (
+      "When the driver calls, direct her to forty two Oak Lane, Apartment seven, Boston, Massachusetts zero two one zero eight, and ask her to use the side entrance.",
+      "When the driver calls, direct her to 42 Oak Lane, Apartment 7, Boston, Massachusetts 02108, and ask her to use the side entrance."
+    ),
+    (
+      "The courier should bring the samples to eighty eight Market Avenue, Floor three, San Francisco, California nine four one zero five before the afternoon review begins.",
+      "The courier should bring the samples to 88 Market Avenue, Floor 3, San Francisco, California 94105 before the afternoon review begins."
+    ),
+    // WhisperKit, English locked, verbatim
+    (
+      "Mail the hearing notice to 100 Pennsylvania Avenue, Washington, District of Columbia, 20004, and keep a copy with the case file.",
+      "Mail the hearing notice to 100 Pennsylvania Avenue, Washington, District of Columbia 20004, and keep a copy with the case file."
+    ),
+    (
+      "Send the final invoice to 50 Maple Place, Washington, District of Columbia, 20001-1234 and include the purchase order.",
+      "Send the final invoice to 50 Maple Place, Washington, District of Columbia 20001-1234 and include the purchase order."
+    ),
+    // shapes: pair and digit house numbers, units, spoken ZIP+4, a code, a kept line break
+    (
+      "Send it to one oh one Elm Avenue New Haven Connecticut zero six five one zero dash one two three four please.",
+      "Send it to 101 Elm Avenue, New Haven, Connecticut 06510-1234 please."
+    ),
+    (
+      "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
+      "It goes to 1520 Main Street, Hartford, Connecticut 06103."
+    ),
+    (
+      "Deliver to 900 Harbor Boulevard Suite four B Miami Florida 33131.",
+      "Deliver to 900 Harbor Boulevard, Suite 4B, Miami, Florida 33131."
+    ),
+    (
+      "Ship it to 100 Pennsylvania Avenue, Washington, DC 20500.",
+      "Ship it to 100 Pennsylvania Avenue, Washington, DC 20500."
+    ),
+    (
+      "Ship it to 100 Pennsylvania Avenue\nWashington DC 20500 today.",
+      "Ship it to 100 Pennsylvania Avenue\nWashington, DC 20500 today."
+    ),
+  ]
+
+  @Test("a dictated address is written with digits and commas", arguments: rows)
+  func row(row: (dictated: String, expected: String)) {
+    #expect(english(row.dictated) == row.expected)
+  }
+
+  /// Each needs the whole address: a road, a city or a state alone, a five-digit ID, a year, or
+  /// an address with no state or ZIP stays exactly as the recogniser wrote it.
+  nonisolated static let controls: [String] = [
+    "We met at three twenty near the station.",
+    "Take 9 High Plains Road toward Shelton, then turn left.",
+    "We walked down High Plains Road before sunrise.",
+    "The report numbered 10018 was filed today.",
+    "Court Street, Brooklyn is where we met in 2019.",
+    "She moved from Washington to Oregon in 2020 and back in 2021.",
+    "The Main Street festival draws 50000 people.",
+    "In 2019 Main Street Bank Denver Colorado 80203 opened.",
+    "Georgia Way told Indiana Place about the Virginia Court ruling.",
+    "Ticket 48213 covers the Washington Court hearing.",
+    "The Place Street sign in Virginia fell over.",
+    "Order 12 copies of Main Street Stories for Georgia 30301 readers.",
+    "Nine people live on High Plains Road in Shelton, Connecticut.",
+    "Apartment seven is empty.",
+    "Meet me at 9 High Plains Road Shelton Connecticut.",
+    "Room two twenty is booked for Friday.",
+    "Take 9 High Plains Road toward Shelton Connecticut 06484 and turn left.",
+    "Log 9 High Plains Road Shelton Connecticut 064841 today.",
+  ]
+
+  @Test("prose that is not a whole address is left alone", arguments: controls)
+  func control(text: String) {
+    #expect(english(text) == text)
+  }
+
+  /// Accepted miss (plan §2.2): a written year after a time word is never a house number, so a
+  /// real address that starts with one stays as spoken.
+  @Test("a year-shaped house number after a time word stays as spoken")
+  func yearGuardMiss() {
+    let s = "Shipped from 2001 Main Street, Hartford Connecticut 06103."
+    #expect(english(s) == s)
+  }
+
+  @Test("a formatted address is not changed again", arguments: rows)
+  func idempotent(row: (dictated: String, expected: String)) {
+    #expect(english(row.expected) == row.expected)
+  }
+
+  /// The address pass runs only on the English route: a take resolved as another language keeps
+  /// the recogniser's text (no English number words, no added commas).
+  @Test("a non-English take never reads the address", arguments: rows)
+  func neutralRoute(row: (dictated: String, expected: String)) {
+    #expect(InverseTextNormalizer().normalizeLanguageNeutral(row.dictated) == row.dictated)
+  }
+}

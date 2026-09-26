@@ -403,6 +403,9 @@ public struct InverseTextNormalizer: Sendable {
 
     // standalone ordinals: after dates consume "Month Nth Year", before cardinals.
     t = ordinals(t)
+    // #3211: a whole US street address, after ordinals (`38th`) and before the year, digit-read
+    // and AP cardinal passes can read its house number, unit or ZIP on their own.
+    t = streetAddresses(t, protectFormatted: protectSub)
     // year-pairs (founder option 1): after dates/ordinals, before cardinals.
     t = years(t)
     t = moneyPct(t)  // re-run: 'twenty twenty six dollars'->'2026 dollars'->'$2,026' (idempotence)

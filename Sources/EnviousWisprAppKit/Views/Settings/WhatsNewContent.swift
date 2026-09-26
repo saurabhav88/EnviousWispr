@@ -162,6 +162,19 @@ enum WhatsNewContent {
       version: "2.5.1"
     ),
 
+    // #3211. SCOPE: English takes only (`normalize`); fires only on a whole US address that ends
+    // in a state and a ZIP code, so the copy names both. Keeps the spoken words (no postal
+    // abbreviations) and adds digits and commas. Baseline v1 on 46 Azure clips: Parakeet 19 to 25
+    // of 34, WhisperKit 26 to 29 of 34; the rest are ZIP digits the engine misheard.
+    Entry(
+      id: "street-addresses-written-out",
+      icon: "house",
+      title: "Street addresses written out",
+      description:
+        "Dictate a US address in English in full, with the state and ZIP code, and it comes out with digits and commas, in the words you said. \"nine High Plains Road Shelton Connecticut zero six four eight four\" becomes 9 High Plains Road, Shelton, Connecticut 06484.",
+      version: "2.5.1"
+    ),
+
     // MARK: - v2.5.0
 
     // Cut by the founder on the 2.5.0 notes page (2026-09-14): custom-word-mishearings-easier, history-dictations-and-transcripts.
