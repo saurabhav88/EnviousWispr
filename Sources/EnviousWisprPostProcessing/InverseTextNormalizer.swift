@@ -964,7 +964,10 @@ public struct InverseTextNormalizer: Sendable {
     // a domain the recogniser already joined is the already-dotted shape the doc comment above
     // closes, and this frame never reopens it. On a non-English take only, after a NON-English
     // at-word, `neutralUnicodeEmails` reads that shape (#3226); `at` stays closed there too.
-    let sep = #"(?:\.|\s+(?:"# + Self.addressDotAlt + #")\s+)"#
+    // #3233: on the neutral route a dot word never reads the first word of a spoken question mark
+    // (`ponto de interrogação`; cloud review, PR #3235). The English separator is unchanged.
+    let dotAlt = neutral ? Self.neutralAddressDotAlt : #"(?:"# + Self.addressDotAlt + #")"#
+    let sep = #"(?:\.|\s+"# + dotAlt + #"\s+)"#
     // #3233: the neutral route also reads `br`, `it` and the spoken `ру` (guarded below); the
     // English route's ending list is unchanged.
     let tldAlt = neutral ? Self.neutralEmailTLDAlt : Self.emailTLDAlt

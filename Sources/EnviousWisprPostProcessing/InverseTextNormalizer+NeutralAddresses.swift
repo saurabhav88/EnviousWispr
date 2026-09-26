@@ -25,7 +25,7 @@ extension InverseTextNormalizer {
     let slash: [String]
     let colon: [String]
     let glueSlash: Bool
-    /// This language's spoken question mark, checked only after a link this row read (#3233).
+    /// This language's spoken question mark (#3233); `allQueryWords` reads every row's.
     var query: [String] = []
   }
 
@@ -66,6 +66,27 @@ extension InverseTextNormalizer {
         }.joined(separator: #"\s+"#)
       }.joined(separator: "|")
   }
+
+  /// Every language's spoken question mark (the shared list and each row's own).
+  static let allQueryWords = spokenQueryWords + spokenURLWords.flatMap { $0.query }
+
+  /// Dot words as a separator alternation that never reads the first word of a spoken question
+  /// mark: Portuguese `ponto de interrogação` is not a dot and a `.de` label (cloud review, PR
+  /// #3235). Used by every neutral host and email separator.
+  static func neutralDotAlt(_ dots: [String]) -> String {
+    let tails = allQueryWords.compactMap { q -> String? in
+      guard let d = dots.first(where: { q.lowercased().hasPrefix($0.lowercased() + " ") })
+      else { return nil }
+      return String(q.dropFirst(d.count + 1))
+    }
+    let base = #"(?:"# + phraseAlt(dots) + #")"#
+    guard !tails.isEmpty else { return base }
+    return base + #"(?!\s+(?:"# + phraseAlt(tails) + #")(?![\p{L}\p{M}\p{N}]))"#
+  }
+
+  /// `addressWordPairs`' dot words, guarded as above.
+  static let neutralAddressDotAlt = neutralDotAlt(
+    Array(Set(addressWordPairs.values.flatMap { $0 })))
 
   /// A Unicode label: letters (with combining marks after a base), digits, inner `_`/`-`.
   static let uLabel = #"[\p{L}\p{N}][\p{L}\p{M}\p{N}_-]*(?<![_-])"#
@@ -187,7 +208,7 @@ extension InverseTextNormalizer {
   /// paired with `punkt` (German borrowed "at"). A joined domain needs a non-English at-word:
   /// the already-dotted shape stays closed for `at` (#2770).
   func neutralUnicodeEmails(_ t: String) -> String {
-    let dot = #"\s+(?:"# + Self.addressDotAlt + #")\s+"#
+    let dot = #"\s+"# + Self.neutralAddressDotAlt + #"\s+"#
     // A spoken hyphen joins labels too ("jean trait d'union dupont", "juan guion pérez";
     // local Codex class enumeration), written `-`.
     let dash = #"\s+(?:"# + Self.neutralDashWordAlt + #")\s+"#
@@ -450,7 +471,7 @@ extension InverseTextNormalizer {
   /// A host: an optional spoken `www`, labels joined by `.` or this language's dot word, ending
   /// in an allowed TLD.
   static func neutralHostPat(_ w: SpokenURLWords) -> String {
-    let sep = #"(?:\.|\s+(?:"# + phraseAlt(w.dot) + #")\s+)"#
+    let sep = #"(?:\.|\s+"# + neutralDotAlt(w.dot) + #"\s+)"#
     return #"(?:"# + neutralWWWAlias + sep + #")?"# + uLabel + #"(?:"# + sep + uLabel
       + #"){0,5}"# + sep + #"(?:"# + neutralTLDAlt + #")"#
   }
@@ -573,17 +594,16 @@ extension InverseTextNormalizer {
   ]
 
   /// Spoken URL syntax right after a converted link means the link goes on past what reads.
-  /// `row` is the language row that read the link: its own spoken question mark counts too.
   func neutralLinkContinues(
-    _ rest: String, _ words: [SpokenURLWords], row: SpokenURLWords? = nil
+    _ rest: String, _ words: [SpokenURLWords]
   ) -> Bool {
     // A dash word or a written `/` after the link also means it goes on ("… barra api guion v2",
     // "… punto es / ayuda"; local Codex class enumeration).
     // A spoken query mark too ("… barra ayuda signo de interrogación q"; local Codex r13).
     let syntax = Self.phraseAlt(
-      words.flatMap { $0.dot + $0.slash + $0.colon } + Self.spokenQueryWords
-        // With no row (a bare `localhost` port), any language's question mark (local Codex r1).
-        + (row.map { $0.query } ?? words.flatMap { $0.query }))
+      // Every language's question mark: a `www` alias or a written host does not say which row
+      // read the link (cloud review, PR #3235).
+      words.flatMap { $0.dot + $0.slash + $0.colon } + Self.allQueryWords)
     // So does a written `.label` or `:port` the pass did not read ("… punto es.foo", "…:8080").
     return firstMatch(#"^\s+(?:"# + syntax + "|" + Self.neutralDashWordAlt + #")(?:\s+|$)"#, rest)
       != nil
@@ -619,7 +639,7 @@ extension InverseTextNormalizer {
         + #")(?<path>"# + path + #"*)(?![\p{L}\p{M}\p{N}_@-])"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
-        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords, row: w),
+        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
           let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
         else { return nil }
         guard !Self.neutralGluedSlashIsWord(m.g("path") ?? "", w) else { return nil }
@@ -650,7 +670,7 @@ extension InverseTextNormalizer {
         + #")(?<path>"# + Self.neutralPathPat(w).pattern + #"+)(?![\p{L}\p{M}\p{N}_@-])"#
       t = reSub(pat, t) { m in
         let end = m.result.range.location + m.result.range.length
-        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords, row: w),
+        guard !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
           !neutralLinkStartsEarlier(m, Self.spokenURLWords),
           neutralSpokenHostEndingAllowed(m.g("host") ?? "", w),
           let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
@@ -669,7 +689,7 @@ extension InverseTextNormalizer {
   func neutralWWWHosts(_ t: String) -> String {
     var t = t
     for w in Self.spokenURLWords {
-      let dot = #"\s+(?:"# + Self.phraseAlt(w.dot) + #")\s+"#
+      let dot = #"\s+"# + Self.neutralDotAlt(w.dot) + #"\s+"#
       let pat =
         #"(?<![\p{L}\p{M}\p{N}_.@/-])(?<host>"# + Self.neutralWWWAlias + #"(?:\.|"# + dot + #")"#
         + Self.uLabel
@@ -682,7 +702,7 @@ extension InverseTextNormalizer {
         guard
           firstMatch(dot, m.g("host") ?? "") != nil
             || firstMatch(#"^(?!www)"# + Self.neutralWWWAlias, m.g("host") ?? "") != nil,
-          !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords, row: w),
+          !neutralLinkContinues(m.ns.substring(from: end), Self.spokenURLWords),
           !neutralLinkStartsEarlier(m, Self.spokenURLWords)
         else { return nil }
         return Self.neutralCanonicalHost(m.g("host") ?? "", w)

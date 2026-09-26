@@ -159,6 +159,13 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     "abre exemplo ponto pt barra ajuda ponto de interrogação q",
     "apri esempio punto it barra aiuto punto interrogativo q",
     "läuft auf localhost Doppelpunkt 3000 Fragezeichen q",
+    // a dot word that begins a spoken question mark is not a dot (cloud review, PR #3235)
+    "https dois pontos barra barra exemplo ponto pt ponto de interrogação q",
+    "escreva a ana arroba exemplo ponto pt ponto de interrogação q",
+    "https due punti barra barra esempio punto it punto interrogativo q",
+    // any language's question mark after a `www` alias with written dots
+    "we we we.example.de Fragezeichen q",
+    "вэ вэ вэ.example.ru вопросительный знак q",
     "адрес 192 точка 168 точка 1 точка 1 вопросительный знак q",
     // G2: `.it` never after the English `dot`; `.com.br` only whole
     "scrivi a marco chiocciola esempio dot it",
