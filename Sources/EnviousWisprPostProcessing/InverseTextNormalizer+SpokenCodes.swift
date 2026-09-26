@@ -169,17 +169,28 @@ extension InverseTextNormalizer {
       ? Self.identifierPartPat + #"(?:(?<=hundred|thousand)\s+and\s+"# + Self.identifierPartPat
         + #")*"# : #"\d+"#
     let pat =
-      #"(?<![\w-])(?:(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5})\s+(?<dw>(?i:"# + Self.dashWordAlt
+      #"(?<![\w-])(?:(?<code>(?:[A-Z][ \t]+){0,3}[A-Z]{1,5}|[b-hj-z])\s+(?<dw>(?i:"# + Self.dashWordAlt
       + #"))\s+|(?<hcode>[A-Z]{1,5}|[a-z])-[ \t]+)(?<num>(?i:"# + number + #"))(?![\w-])"#
     return reSub(pat, t, caseInsensitive: false) { m in
       // A spelled acronym arrives as separate capitals ("E G dash one", founder log); the code
       // is the letters joined, as the recogniser writes the unspoken form ("EG-1").
       // The recogniser also writes the dash itself and leaves the number spoken: "s- one" (Live
       // UAT, 2026-09-26, Parakeet in the app). A lone letter there is a spelled capital.
+      // Parakeet lower-cases a spelled letter mid-sentence ("The part number is s dash one.",
+      // Live UAT); a lone letter is a spelled capital in either form.
       let hcode = m.g("hcode")
-      let code =
-        hcode.map { $0.count == 1 ? $0.uppercased() : $0 }
-        ?? (m.g("code") ?? "").filter { !$0.isWhitespace }
+      let raw = hcode ?? (m.g("code") ?? "").filter { !$0.isWhitespace }
+      // A lower-case letter that ends a spelled-out word ("l i s t dash o f", "s d d dash three",
+      // parity holdout) is not a code: refuse it when another lone letter stands just before.
+      if raw.count == 1, raw == raw.lowercased() {
+        let r = m.result.range
+        let lead = min(r.location, 8)
+        let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
+        if firstMatch(#"(?:^|\s)[A-Za-z]\s+$"#, before, caseInsensitive: false) != nil {
+          return nil
+        }
+      }
+      let code = raw.count == 1 ? raw.uppercased() : raw
       guard code != "I", hcode?.lowercased() != "a", hcode != "i" else { return nil }
       // "A dash B dash one", "S dash one dash x": the code goes on past what reads.
       guard !identifierContinues(m, connectorAlt: Self.dashWordAlt) else { return nil }

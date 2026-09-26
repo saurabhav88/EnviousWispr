@@ -26,6 +26,7 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("Test question B dash two.", "Test question B-2."),
     // Live UAT, Parakeet in the app: the recogniser wrote the hyphen and left the number spoken
     ("The part number is s- one.", "The part number is S-1."),
+    ("The part number is s dash one.", "The part number is S-1."),
     ("The F- sixteen landed.", "The F-16 landed."),
     ("Https colon slash slash www.envisvisper dot com.", "https://www.envisvisper.com."),
     ("W dot nvsvisper dot com.", "www.nvsvisper.com"),
@@ -84,6 +85,9 @@ struct InverseTextNormalizerSpokenCodesTests {
     // "dash" as prose, and the pronoun
     ("Make a dash for it.", "Make a dash for it."),
     ("It was a- one of a kind", "It was a- one of a kind"),
+    ("add a dash two times", "add a dash two times"),
+    // a spelled-out word ending in a letter before "dash" is not a code (parity holdout shape)
+    ("l i s t dash o f banks", "l i s t dash o f banks"),
     ("Then I dash two things off.", "Then I dash two things off."),
     ("we dash two emails off", "we dash two emails off"),
     // an identifier with an unreadable part stays whole: no "2.5 point x" halves
