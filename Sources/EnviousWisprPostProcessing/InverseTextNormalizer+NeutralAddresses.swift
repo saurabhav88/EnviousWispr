@@ -177,10 +177,10 @@ extension InverseTextNormalizer {
       let written: (String) -> String = { raw in
         var out = raw.replacingOccurrences(of: dash, with: "-", options: [.regularExpression, .caseInsensitive])
         out = out.replacingOccurrences(of: dot, with: ".", options: [.regularExpression, .caseInsensitive])
-        return out.lowercased()
+        return out
       }
       return written(m.g("name") ?? "") + "@" + written(m.g("dom") ?? "") + "."
-        + (m.g("tld") ?? "").lowercased()
+        + (m.g("tld") ?? "")
     }
   }
 
@@ -237,7 +237,7 @@ extension InverseTextNormalizer {
       guard hasAddressCue(m), !neutralEmailFollowedBySlash(m), !Self.startsAfterSpokenDot(m),
         !Self.startsAfterSpokenDash(m)
       else { return nil }
-      return name.lowercased() + "@" + dom.lowercased() + "." + (m.g("tld") ?? "").lowercased()
+      return name + "@" + dom + "." + (m.g("tld") ?? "")
     }
   }
 
@@ -275,19 +275,18 @@ extension InverseTextNormalizer {
     // Standalone `localhost`, with an optional port: `localhost punto com` is a domain whose
     // first label happens to be the word (local Codex diff review r4).
     if firstMatch(#"^localhost(?:\s+(?:"# + phraseAlt(w.colon) + #")\s+\d{1,5})?$"#, raw) != nil {
-      guard let digits = firstMatch(#"\d+$"#, raw) else { return "localhost" }
+      let word = (raw as NSString).substring(to: 9)
+      guard let digits = firstMatch(#"\d+$"#, raw) else { return word }
       guard let port = Int(digits), (1...65535).contains(port) else { return nil }
-      return "localhost:\(port)"
+      return "\(word):\(digits)"
     }
     var host = raw
-    if let alias = firstMatch(#"^"# + neutralWWWAlias, host) {
+    if let alias = firstMatch(#"^"# + neutralWWWAlias, host), alias.lowercased() != "www" {
       host = "www" + (host as NSString).substring(from: (alias as NSString).length)
     }
-    let joined = neutralHostLabels(host, w).joined(separator: ".")
-    // A host the recogniser already wrote keeps its case (cloud review, PR #3232); a spoken one
-    // is lower-cased, since the recogniser capitalises it only for starting a sentence.
-    let spoken = firstMatch(#"\s+(?:"# + phraseAlt(w.dot) + #")\s+"#, raw) != nil
-    return spoken ? joined.lowercased() : joined
+    // Only the spoken separators change; every word keeps the case the recogniser wrote, as the
+    // English email pass does (cloud review, PR #3232, and its local class enumeration).
+    return neutralHostLabels(host, w).joined(separator: ".")
   }
 
   /// Path segments after a host: each language's slash phrase, then one segment; Dutch may
@@ -370,7 +369,7 @@ extension InverseTextNormalizer {
           let host = Self.neutralCanonicalHost(m.g("host") ?? "", w)
         else { return nil }
         let segs = Self.neutralPathSegments(m.g("path") ?? "", w)
-        return (m.g("p") ?? "https").lowercased() + "://" + host + segs.map { "/" + $0 }.joined()
+        return (m.g("p") ?? "https") + "://" + host + segs.map { "/" + $0 }.joined()
       }
     }
     return t
@@ -441,7 +440,7 @@ extension InverseTextNormalizer {
         !neutralLinkStartsEarlier(m, Self.spokenURLWords),
         let port = Int(m.g("p") ?? ""), (1...65535).contains(port)
       else { return nil }
-      return "\((m.g("h") ?? "localhost").lowercased()):\(port)"
+      return "\(m.g("h") ?? "localhost"):\(m.g("p") ?? "")"
     }
   }
 }

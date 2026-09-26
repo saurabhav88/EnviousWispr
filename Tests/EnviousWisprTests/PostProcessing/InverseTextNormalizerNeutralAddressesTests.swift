@@ -120,6 +120,11 @@ struct InverseTextNormalizerNeutralAddressesTests {
     ("http dos puntos barra barra localhost punto com", "http://localhost.com"),
     // a host the recogniser wrote keeps its case when a spoken path joins it (cloud review)
     ("Abre Ejemplo.ES barra ayuda", "Abre Ejemplo.ES/ayuda"),
+    // only spoken separators change: every word keeps the case the recogniser wrote, as on the
+    // English route (cloud review class enumeration)
+    ("Escribe a María.López arroba Mi-Empresa.COM", "Escribe a María.López@Mi-Empresa.COM"),
+    ("Ouvre HTTPS deux points barre oblique barre oblique Éxemple point FR", "Ouvre HTTPS://Éxemple.FR"),
+    ("Visit WWW.Example punto COM now", "Visit WWW.Example.COM now"),
     // German borrowed "at"; a Unicode name
     ("schreib an müller at beispiel punkt de bitte", "schreib an müller@beispiel.de bitte"),
     // recogniser output, verbatim
@@ -148,7 +153,7 @@ struct InverseTextNormalizerNeutralAddressesTests {
     ),
     (
       "Mój prywatny adres się zmienił. Teraz to Łukasz małpa, przykład.pl, więc",
-      "Mój prywatny adres się zmienił. Teraz to łukasz@przykład.pl, więc"
+      "Mój prywatny adres się zmienił. Teraz to Łukasz@przykład.pl, więc"
     ),
     (
       "mail dan rechtstreeks naar jan.jansenapenstaartje gmail.com en",
