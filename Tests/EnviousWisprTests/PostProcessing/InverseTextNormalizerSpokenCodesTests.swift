@@ -97,6 +97,11 @@ struct InverseTextNormalizerSpokenCodesTests {
       "two two five dot double five dot o dot four o"
     ),
     ("version one point two point three point x", "version one point two point three point x"),
+    // the next two are byte-identical to origin/main: the new passes refuse them, and what the
+    // older passes then write is a pre-existing limit, not new
+    ("open https colon slash slash docs dot example dot com slash help question mark q",
+     "open https colon slash slash docs dot example dot com/help question mark q"),
+    ("version one hundred and two dot three dot four", "version 100 and two dot three dot four"),
     ("version 2.5 point twenty point x", "version 2.5 point twenty point x"),
     // the minor-version pass refuses this; the cardinal pass then writes "12" exactly as it did
     // before #3210 (a pre-existing limit, not a new half-conversion)
@@ -189,6 +194,7 @@ struct InverseTextNormalizerSpokenCodesTests {
     "Version zwei Punkt fünf Punkt null.",
     "S dash one.",
     "Schreib an max.mustermann at gmail.com",
+    "version 1 2 Punkt 3 Punkt 4",
     "Ich arbeite at example dot com",
     "Escribe a juan.perez arroba gmail.com",
     "Ich wohne in der Straße 12, zweiter Stock.",

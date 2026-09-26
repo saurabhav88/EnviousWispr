@@ -101,6 +101,18 @@ extension InverseTextNormalizer {
       if identifierContinues(m, connectorAlt: Self.numberDotWordAlt + "|double|triple") {
         return nil
       }
+      // The first part must be the whole first component: a number word, digit or "and" just
+      // before means it began earlier in a shape this pass cannot read ("one hundred and two dot
+      // three dot four", "1 2 Punkt 3 Punkt 4"; confirming diff review).
+      let r = m.result.range
+      let lead = min(r.location, 24)
+      let before = m.ns.substring(with: NSRange(location: r.location - lead, length: lead))
+      if firstMatch(
+        #"(?:^|\s)(?:"# + Self.identifierNumberWordAlt + #"|(?:hundred|thousand)\s+and|\d+)\s+$"#,
+        before) != nil
+      {
+        return nil
+      }
       // Split on the spoken separators; an already-dotted first part splits on its dots.
       let pieces = splitOnPattern(m.whole, #"\s+(?:"# + Self.numberDotWordAlt + #")\s+"#)
       let seps = allMatches(#"\s+("# + Self.numberDotWordAlt + #")\s+"#, m.whole).map {
@@ -293,10 +305,16 @@ extension InverseTextNormalizer {
       guard let chain = firstMatch(chainPat, tail) else { return nil }
       // URL syntax this file does not read, spoken right after the host ("… dot com question
       // mark page"), means the address goes on; the prefix alone would be a half-URL.
-      let rest = (tail as NSString).substring(from: (chain as NSString).length)
+      // A spoken path after the host is read over too, so words after the PATH count as well
+      // ("… dot com slash help question mark q"; confirming diff review).
+      var rest = (tail as NSString).substring(from: (chain as NSString).length)
+      if let path = firstMatch(#"^(?:\s+slash\s+"# + Self.urlPathSegmentPat + #")+"#, rest) {
+        rest = (rest as NSString).substring(from: (path as NSString).length)
+      }
       guard
         firstMatch(
-          #"^\s+(?:question\s+mark|equals|ampersand|hash|pound|percent|tilde|underscore|colon)\b"#,
+          #"^\s+(?:question\s+mark|equals|ampersand|hash|pound|percent|tilde|underscore|colon"#
+            + #"|dot|dash|hyphen|slash)\b"#,
           rest) == nil
       else { return nil }
       let labels = splitOnPattern(chain, #"\.|\s+dot\s+"#)
