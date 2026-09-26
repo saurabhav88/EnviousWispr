@@ -84,11 +84,13 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   struct RunOutcome: Sendable {
     /// True when the engine actually ran (not gated out by language).
     let ran: Bool
-    /// True when the engine changed the text.
+    /// True when the step changed the text. On a skipped take (`ran == false`) this is the
+    /// language-neutral subset's answer (#3210, `normalizeLanguageNeutral`), which is the only
+    /// thing a skipped take runs.
     let changed: Bool
     /// `nil` when it ran; otherwise the skip bucket (`non_english` / `lid_backend_nil`).
     let skipReason: String?
-    /// Wall-clock of the engine call in milliseconds (0 on skip).
+    /// Wall-clock of the engine call in milliseconds; on skip, of the language-neutral subset.
     let latencyMs: Double
     /// Character length before / after (edit size is allowed; #253 precedent).
     let lenBefore: Int
@@ -137,14 +139,29 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // grapheme and eleven units). `lenBefore` stays graphemes for telemetry.
     let deadline = Self.deadlineSeconds(forCharacterCount: input.utf16.count)
 
-    // Backend-aware language gate (plan §"What changes" #4). On skip, no-op.
+    // Backend-aware language gate (plan §"What changes" #4). On skip, only the
+    // language-neutral subset runs (#3210).
     if let skip = skipReason(
       language: context.language, englishVetoed: context.englishRulesVetoed)
     {
+      // #3210: a take in another language still gets the subset that reads no English words:
+      // digits joined by a spoken dot or dash word, unpadded dates, and addresses whose at-word
+      // and dot-word belong to one language. Same off-main deadline as the full engine; a
+      // timeout keeps the input.
+      let neutral = self.normalizer
+      let start = CFAbsoluteTimeGetCurrent()
+      let converted = await withDeadline(seconds: deadline) {
+        neutral.normalizeLanguageNeutral(input)
+      }
+      let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
+      let output = converted ?? input
       lastRun = RunOutcome(
-        ran: false, changed: false, skipReason: skip,
-        latencyMs: 0, lenBefore: lenBefore, lenAfter: lenBefore)
-      return context
+        ran: false, changed: output != input, skipReason: skip,
+        latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: output.count)
+      guard output != input else { return context }
+      var ctx = context
+      ctx.text = output
+      return ctx
     }
 
     // Pure-CPU regex chain runs OFF the main actor with a TRUE wall-clock deadline.

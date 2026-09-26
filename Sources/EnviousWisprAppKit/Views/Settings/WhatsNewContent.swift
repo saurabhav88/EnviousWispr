@@ -199,8 +199,9 @@ enum WhatsNewContent {
 
     // #2782 (nine languages' own words for at and dot) and #2766 (26 country-code
     // domains such as .de, .nl, .fr). SCOPE, from #2766's own body: a take the app
-    // resolves as a language other than English still skips the address formatter, so
-    // this reaches an English dictation that contains a foreign address; and .it, .at,
+    // resolves as a language other than English skipped the address formatter then, so
+    // this reached an English dictation that contains a foreign address (#3210 later runs
+    // the address pass on those takes too); and .it, .at,
     // .be, .no are deliberately excluded because they are English words. The copy
     // therefore promises the words and the domains, not "every language".
     Entry(

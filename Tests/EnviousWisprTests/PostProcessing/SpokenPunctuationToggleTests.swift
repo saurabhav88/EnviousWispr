@@ -175,10 +175,12 @@ struct SpokenPunctuationToggleTests {
   ///
   /// The pinned rows come from a real run (2026-09-18), never a prediction. Since #3038 the
   /// spoken slash is read in both switch positions, so the only corpus rows the toggle still
-  /// moves are the `punctuation` rows that carry one of the nine marks and five `url` rows: four
-  /// whose protocol carries a spoken "colon" (the reading sees a scheme with its colon ON and a
-  /// bare "colon" word OFF: `h t t p://` versus `h t t p colon slash slash`) and one #2257 guard
-  /// fixture carrying "question mark". The 20 `negative` rows and 4 `url` rows that used to
+  /// moves are the `punctuation` rows that carry one of the nine marks and four `url` rows: three
+  /// whose SPELLED protocol carries a spoken "colon" (the reading sees a scheme with its colon ON
+  /// and a bare "colon" word OFF: `h t t p://` versus `h t t p colon slash slash`) and one #2257
+  /// guard fixture carrying "question mark". The word "https" before "colon slash slash" and a
+  /// host converts in both positions since #3210 (`spokenProtocolPrefix`), so
+  /// `https colon slash slash example.com slash docs` left this set on 2026-09-26. The 20 `negative` rows and 4 `url` rows that used to
   /// diverge on a bare "slash" (#2955) no longer do, because the slash reading does not consult
   /// the setting. Two pins, both required: the identity pin
   /// catches a rule firing on a row it should not touch, and the trigger-presence pin catches a
@@ -213,9 +215,6 @@ struct SpokenPunctuationToggleTests {
       "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b slash s m": (
         "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b/s m",
         "h t t p://w w w dot c o m d a i l y n e w s dot a b/s m"),
-      "https colon slash slash example.com slash docs": (
-        "https colon slash slash example.com/docs",
-        "https://example.com/docs"),
       // A #2257 guard fixture: "question mark" is a gated command; the slash is not.
       "example.com slash search question mark q equals test": (
         "example.com/search question mark q equals test",

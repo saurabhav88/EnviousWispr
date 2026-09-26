@@ -104,7 +104,7 @@ func allMatches(_ pattern: String, _ s: String, caseInsensitive: Bool = true) ->
 }
 
 /// `re.split(pattern, s, flags=re.I)` for a separator pattern.
-private func splitOnPattern(_ s: String, _ pattern: String) -> [String] {
+func splitOnPattern(_ s: String, _ pattern: String) -> [String] {
   guard let re = RegexCache.shared.regex(pattern, [.caseInsensitive]) else { return [s] }
   let ns = s as NSString
   var parts: [String] = []

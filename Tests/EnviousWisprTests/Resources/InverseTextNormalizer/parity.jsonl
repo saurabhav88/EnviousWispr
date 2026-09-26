@@ -1778,10 +1778,10 @@
 {"input": "oh two three one two three five six seven eight", "expected": "023-123-5678", "category": "phone", "slice": "public"}
 {"input": "double oh three one two three five six seven eight", "expected": "double oh three one two three five six seven eight", "category": "phone", "slice": "public"}
 {"input": "four three two double seven three two one four three two one four three double zero five", "expected": "four three two double 732-143-2143 double 05", "category": "phone", "slice": "public"}
-{"input": "one two three dot one two three dot o dot four o", "expected": "one two three dot one two three dot o dot four o", "category": "phone", "slice": "public"}
+{"input": "one two three dot one two three dot o dot four o", "expected": "123.123.0.40", "category": "phone", "slice": "public"}
 {"input": "one twenty three dot one two three dot o dot four o", "expected": "one twenty three dot one two three dot o dot four o", "category": "phone", "slice": "public"}
 {"input": "two two five dot double five dot o dot four o", "expected": "two two five dot double five dot o dot four o", "category": "phone", "slice": "public"}
-{"input": "two two five dot double five dot o dot forty five", "expected": "two two five dot double 5.0 dot 45", "category": "phone", "slice": "public"}
+{"input": "two two five dot double five dot o dot forty five", "expected": "two two five dot double five dot o dot forty five", "category": "phone", "slice": "public"}
 {"input": "ssn is seven double nine one two three double one three", "expected": "ssn is seven double nine one two three double one three", "category": "phone", "slice": "public"}
 {"input": "seven nine nine", "expected": "seven nine nine", "category": "phone", "slice": "public"}
 {"input": "a b nine", "expected": "a b nine", "category": "phone", "slice": "public"}
@@ -2049,7 +2049,7 @@
 {"input": "twenty \"special\" items", "expected": "20 \"special\" items", "category": "numeric", "slice": "ap_gold"}
 {"input": "Twenty and change", "expected": "20 and change", "category": "numeric", "slice": "ap_gold"}
 {"input": "a hundred-year lease", "expected": "a 100-year lease", "category": "numeric", "slice": "ap_gold"}
-{"input": "version one dot two dot three", "expected": "version one dot two dot three", "category": "numeric", "slice": "ap_gold"}
+{"input": "version one dot two dot three", "expected": "version 1.2.3", "category": "numeric", "slice": "ap_gold"}
 {"input": "two by two inch card", "expected": "2 by 2 inch card", "category": "numeric", "slice": "ap_gold"}
 {"input": "five point five per cent", "expected": "5.5%", "category": "numeric", "slice": "ap_gold"}
 {"input": "we need to catch twenty two fish", "expected": "we need to catch 22 fish", "category": "numeric", "slice": "ap_gold"}

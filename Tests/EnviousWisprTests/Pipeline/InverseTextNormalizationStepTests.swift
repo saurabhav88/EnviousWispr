@@ -63,18 +63,30 @@ import Testing
     #expect(step.lastRun?.ran == true)
   }
 
-  /// The limit, as a test rather than a comment: a take the app KNOWS is Spanish skips this
-  /// engine entirely, so the Spanish words never run on it. The localised words serve a take
-  /// whose language is unknown (Parakeet reports none) or resolved as English. Routing them for
-  /// a resolved non-English take is tracked separately.
-  @Test("the same address does NOT convert on a take resolved as Spanish")
-  func localisedAddressSkippedOnResolvedNonEnglishTake() async throws {
+  /// #3210: a take the app KNOWS is Spanish skips the English engine, and still gets the
+  /// language-neutral subset, so the address in the speaker's own words converts there too.
+  @Test("the same address converts on a take resolved as Spanish, through the neutral subset")
+  func localisedAddressConvertsOnResolvedNonEnglishTake() async throws {
     let step = InverseTextNormalizationStep()
     step.backendSupportsLID = true
-    let input = "mandalo a marco arroba esempio punto com"
-    let out = try await step.process(ctx(input, language: "es"))
-    #expect(out.text == input)
+    let out = try await step.process(ctx("mandalo a marco arroba esempio punto com", language: "es"))
+    #expect(out.text == "mandalo a marco@esempio.com")
+    #expect(step.lastRun?.ran == false)
+    #expect(step.lastRun?.changed == true)
     #expect(step.lastRun?.skipReason == "non_english")
+  }
+
+  /// The neutral subset reads no English number words: the English digit read stays spoken on
+  /// a foreign take, and a spoken code with digits converts.
+  @Test("a skipped take converts digit codes and never English number words")
+  func neutralSubsetOnSkippedTake() async throws {
+    let step = InverseTextNormalizationStep()
+    step.backendSupportsLID = true
+    let out = try await step.process(ctx("Frage B Bindestrich 2, Code zwei null drei", language: "de"))
+    #expect(out.text == "Frage B-2, Code zwei null drei")
+    #expect(step.lastRun?.ran == false)
+    #expect(step.lastRun?.changed == true)
+    #expect(step.lastRun?.lenAfter == "Frage B-2, Code zwei null drei".count)
   }
 
   @Test("explicit non-English language → skips (non_english)")
@@ -133,7 +145,7 @@ import Testing
 
   // MARK: Telemetry outcome
 
-  @Test("lastRun records lengths on a real run and zero latency on a skip")
+  @Test("lastRun records lengths on a real run and an unchanged skip")
   func lastRunTelemetryShape() async throws {
     let step = InverseTextNormalizationStep()
     step.backendSupportsLID = false
@@ -144,6 +156,7 @@ import Testing
     step.backendSupportsLID = true  // force a skip
     _ = try await step.process(ctx("the code is two zero three"))
     #expect(step.lastRun?.ran == false)
-    #expect(step.lastRun?.latencyMs == 0)
+    #expect(step.lastRun?.changed == false)
+    #expect(step.lastRun?.lenAfter == step.lastRun?.lenBefore)
   }
 }

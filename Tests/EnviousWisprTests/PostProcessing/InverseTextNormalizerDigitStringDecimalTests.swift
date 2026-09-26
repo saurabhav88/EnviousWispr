@@ -9,7 +9,7 @@ import Testing
 /// plausible number that is not what was said, or "one two dot three four" stays as words.**
 /// Product coverage. The nine-row table is the issue's own repro, measured with the real
 /// normalizer before the fix; the controls pin what must NOT change: a lone "oh" is a word, a
-/// cardinal before "point" still reads as a cardinal, and a multi-dot chain stays shielded.
+/// cardinal before "point" still reads as a cardinal, and a multi-dot chain never reaches it.
 @Suite("ITN reads a digit string before point/dot as one decimal (#2874)", .tags(.productOutcome))
 struct InverseTextNormalizerDigitStringDecimalTests {
 
@@ -52,8 +52,13 @@ struct InverseTextNormalizerDigitStringDecimalTests {
     ("one hundred forty seven point one seven", "147.17"),
     // the everyday noun stays
     ("at this point one thing matters", "at this point one thing matters"),
-    // a multi-dot chain is shielded from the decimal pass
-    ("one nine two dot one six eight dot one dot one", "one nine two dot one six eight dot one dot one"),
+    // a multi-dot chain never reaches the decimal pass: one that reads whole converts whole
+    // (#3210), and one with a part that does not read is shielded whole
+    ("one nine two dot one six eight dot one dot one", "192.168.1.1"),
+    (
+      "one twenty three dot one two three dot o dot four o",
+      "one twenty three dot one two three dot o dot four o"
+    ),
     // a digit string has no length cap, so a scale word can push it past what Int holds; the
     // decimal pass leaves the match alone instead of trapping in the heart path (local Codex,
     // round 1), and the later digit-read pass then formats the ten digits as a phone number
