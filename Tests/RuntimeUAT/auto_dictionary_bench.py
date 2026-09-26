@@ -142,7 +142,10 @@ def take(doc, arm, idx, sentence, expect, checker_arm):
     # An on door that logged ACTIVE but fell back to no_checker must not produce a summary.
     want = checker_arm if arm == "on" else "none"
     if not check or check.group(6) != want:
-        raise lfe.Aborted(f"{arm}-{idx}: expected checker arm {want!r}, got {check.group(0) if check else None!r}")
+        raise lfe.Aborted(
+            f"{arm}-{idx}: expected checker arm {want!r}, got {check.group(0) if check else None!r}"
+            + ("; a build that delivers checkers runs its own with the doors cleared, so time the off "
+               "arm on a build without checker delivery" if arm == "off" and check else ""))
     return {"arm": arm, "idx": idx, "sentence": sentence, "trigger": idx % len(SENTENCES) in TRIGGER_IDX,
             "total_ms": round(float(total.group(1)) * 1000), "asr_ms": round(float(total.group(2)) * 1000),
             # The kernel's TOTAL line calls this span "polish", but it is every text step
@@ -196,14 +199,6 @@ def main():
         raise SystemExit(f"llmProvider is {provider!r}, not {args.engine!r}; the bench never changes the setting")
     if not os.path.isabs(args.adapter) or not os.path.exists(args.adapter):
         raise SystemExit(f"adapter not found: {args.adapter}")
-    # #3105 PR 2: a build that delivers checkers runs the engine's own checker with every door
-    # cleared, and relaunching re-downloads one that was removed, so this bench's off arm (no
-    # checker) cannot be staged against such a build. Refuse rather than time the wrong arm.
-    if lfe.delivered_checker_arm() is not None:
-        raise SystemExit(
-            f"{label}'s delivered word check is admitted on this Mac, so the off arm cannot run without a "
-            "checker (and a removed one downloads again at launch); time the off arm on a build without "
-            "checker delivery")
 
     initially_running = lfe.app_pid() is not None
     snaps = {"words": lfe.file_snapshot(lfe.WORDS), "adapter": door_get(adapter_key), "threshold": door_get(threshold_key)}
