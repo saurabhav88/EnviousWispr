@@ -130,7 +130,7 @@ struct MenuBarControllerTests {
         "Version: \(AppConstants.appVersion)",
         "",  // separator
         "Start Recording",
-        "Add Selected Word  \u{2303}\u{2325} W",  // #2412, disabled; the chord rides in the title
+        "Add to Dictionary  \u{2303}\u{2325} W",  // #2412, disabled; the chord rides in the title
         "Paste Last Dictation",  // #3106, disabled: this fixture has nothing to reuse
         "Transcribe a File...",  // #2772, opens the window on that page; above the divider (#2811)
         "",  // separator
@@ -219,7 +219,7 @@ struct MenuBarControllerTests {
     controller.renderMenu(
       into: empty, state: fixture(pipelineState: .idle, quickAddFallbackEnabled: false))
     let inert = item(empty, id: MenuBarItemID.quickAdd)
-    #expect(inert?.title.hasPrefix("Add Selected Word") == true)
+    #expect(inert?.title.hasPrefix("Add to Dictionary") == true)
     #expect(inert?.isEnabled == false, "with no fallback to run, an empty read IS the answer")
 
     let offered = NSMenu()
@@ -542,14 +542,14 @@ struct MenuBarControllerTests {
   @Test("The chord is appended, and its absence leaves the title untouched")
   func theTitleCarriesTheChord() {
     #expect(
-      MenuBarController.quickAddTitle(base: "Add Selected Word", shortcut: "\u{2303}\u{2325} W")
-        == "Add Selected Word  \u{2303}\u{2325} W")
+      MenuBarController.quickAddTitle(base: "Add to Dictionary", shortcut: "\u{2303}\u{2325} W")
+        == "Add to Dictionary  \u{2303}\u{2325} W")
     #expect(
-      MenuBarController.quickAddTitle(base: "Add Selected Word", shortcut: nil)
-        == "Add Selected Word")
+      MenuBarController.quickAddTitle(base: "Add to Dictionary", shortcut: nil)
+        == "Add to Dictionary")
     #expect(
-      MenuBarController.quickAddTitle(base: "Add Selected Word", shortcut: "")
-        == "Add Selected Word", "an empty hint must not leave trailing spaces")
+      MenuBarController.quickAddTitle(base: "Add to Dictionary", shortcut: "")
+        == "Add to Dictionary", "an empty hint must not leave trailing spaces")
   }
 
   @Test("renderMenu (b): recording → Stop Recording, record item enabled")
@@ -773,7 +773,7 @@ struct MenuBarControllerTests {
     }
     #expect(
       item(menu, id: MenuBarItemID.pasteLast)?.title.hasPrefix("Paste Last Dictation") == true)
-    #expect(item(menu, id: MenuBarItemID.quickAdd)?.title.hasPrefix("Add Selected Word") == true)
+    #expect(item(menu, id: MenuBarItemID.quickAdd)?.title.hasPrefix("Add to Dictionary") == true)
     let appearance = item(menu, id: MenuBarItemID.appearance)?.submenu?.items.map(\.title)
     #expect(appearance == ["System", "Light", "Dark"])
   }
@@ -926,11 +926,11 @@ struct QuickAddMenuItemTests {
   @Test("An empty read is OFFERED when the fallback can run, and inert when it cannot")
   func nothingSelectedFollowsTheFallback() {
     let offered = MenuBarController.quickAddItem(.nothingSelected, fallbackEnabled: true)
-    #expect(offered.title == "Add Selected Word")
+    #expect(offered.title == "Add to Dictionary")
     #expect(offered.enabled, "the menu cannot know, so the click is what finds out")
 
     let inert = MenuBarController.quickAddItem(.nothingSelected, fallbackEnabled: false)
-    #expect(inert.title == "Add Selected Word")
+    #expect(inert.title == "Add to Dictionary")
     #expect(!inert.enabled, "with no fallback to run, an empty read IS the answer")
   }
 
@@ -943,7 +943,7 @@ struct QuickAddMenuItemTests {
     for blank in ["", "   ", "\n\t "] {
       for fallback in [true, false] {
         let item = MenuBarController.quickAddItem(.ready(blank), fallbackEnabled: fallback)
-        #expect(item.title == "Add Selected Word", "for \(blank.debugDescription)")
+        #expect(item.title == "Add to Dictionary", "for \(blank.debugDescription)")
         #expect(!item.enabled, "for \(blank.debugDescription), fallback \(fallback)")
       }
     }
@@ -979,7 +979,7 @@ struct QuickAddMenuItemTests {
     let blocked = MenuBarController.quickAddItem(
       .blocked(.accessibilityNotTrusted), fallbackEnabled: true)
     #expect(blocked.enabled, "the door that must be reliable cannot fail silently")
-    #expect(blocked.title == "Add Selected Word")
+    #expect(blocked.title == "Add to Dictionary")
 
     // **Every refusal renders the SAME row, and the state still carries which one it was.** The
     // display is deliberately uniform — the panel states the reason, not the menu — but dropping the

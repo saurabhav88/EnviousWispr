@@ -199,7 +199,7 @@ struct QuickAddTeachingSection: View {
         localized: "Menu bar",
         comment: "Dictionary settings, Quick Add teaching card: label of the menu bar callout."),
       // Verified against MenuBarController.swift: the item's real title is
-      // "Add Selected Word" (nothing selected) or "Add "<word>"" — never
+      // "Add to Dictionary" (nothing selected) or "Add "<word>"" — never
       // literally "Quick Add".
       value: String(
         localized:
