@@ -236,12 +236,13 @@ internal final class TextProcessingRunner {
     context.englishSpelling = evidence.englishSpelling
     context.spellingProtectedWords = Self.spellingProtectedWords(steps: steps)
     if let learnedStep = steps.first(where: { $0 is LearnedWordCheckStep }) as? LearnedWordCheckStep,
-      learnedStep.isEnabled(for: context),
-      let provider = learnedStep.selectionProvider
+      learnedStep.isEnabled(for: context)
     {
       let selectedProvider = (steps.first { $0 is LLMPolishStep } as? LLMPolishStep)?.llmProvider
         ?? .none
-      context.frozenLearnedWordChecker = await provider(selectedProvider, resolution.language)
+      // Bounded: this runs before the timed loop, so the step's own cap cannot cover it.
+      context.frozenLearnedWordChecker = await learnedStep.boundedSelection(
+        for: selectedProvider, language: resolution.language)
     }
     var polishNotice: PolishNotice?
 

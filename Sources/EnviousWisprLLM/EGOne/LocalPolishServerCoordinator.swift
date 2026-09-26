@@ -181,10 +181,23 @@ public actor LocalPolishServerCoordinator {
   /// Reserve the server for Remove Model, including the artifact deletion that
   /// follows the stop. New takes see changing before they freeze. A live hold
   /// waits on its release signal instead of racing a separate MainActor read.
-  public func beginRemoval(for provider: LLMProvider, intent: Int) async {
+  ///
+  /// `stillWanted` is asked after the wait, in the same turn that claims the
+  /// server: a user who re-selected this model while the removal waited
+  /// (Codex branch review r2) keeps the running server. False means nothing
+  /// was claimed and `endRemoval` must not be called.
+  public func beginRemoval(
+    for provider: LLMProvider, intent: Int,
+    stillWanted: @escaping @Sendable () async -> Bool
+  ) async -> Bool {
     honouredIntent = max(honouredIntent, intent)
-    while changing || leases.values.contains(provider) {
-      await withCheckedContinuation { removalWaiters.append($0) }
+    while true {
+      while changing || leases.values.contains(provider) {
+        await withCheckedContinuation { removalWaiters.append($0) }
+      }
+      guard await stillWanted() else { return false }
+      // Asking suspended this actor; claim only if nothing moved meanwhile.
+      if !changing && !leases.values.contains(provider) { break }
     }
     changing = true
     if resident == provider {
@@ -194,6 +207,7 @@ public actor LocalPolishServerCoordinator {
       residentTarget = nil
       residentAdapterFellBack = false
     }
+    return true
   }
 
   public func endRemoval() async {

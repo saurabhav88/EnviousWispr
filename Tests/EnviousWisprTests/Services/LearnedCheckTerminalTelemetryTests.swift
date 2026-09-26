@@ -42,6 +42,7 @@ struct LearnedCheckTerminalTelemetryTests {
       "unqualified_language", "server_without_adapter_adapter_missing",
       "server_without_adapter_adapter_server_exited",
       "server_without_adapter_adapter_server_never_ready", "server_unavailable",
+      "selection_timed_out",
     ])
   func absenceProjection(reason: String) throws {
     let ledger = TakeStageLedger()

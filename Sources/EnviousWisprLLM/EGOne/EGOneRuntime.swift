@@ -585,7 +585,12 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // #3105: the coordinator now owns the entire stop-to-delete exclusion.
       // A lease that appears after the old MainActor refusal waits here; a
       // take that arrives later sees changing before it freezes.
-      await self.server.beginRemoval(for: self.provider, intent: intent)
+      let claimed = await self.server.beginRemoval(for: self.provider, intent: intent) {
+        @MainActor [weak self] in self?.isActiveProvider?() != true
+      }
+      // Re-selected while the removal waited: the newer activation owns the
+      // running server and the bytes stay.
+      guard claimed else { return }
       if self.isActiveProvider?() != true {
         _ = await delivery.remove()
       } else {

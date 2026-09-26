@@ -1,9 +1,9 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
-import EnviousWisprServices
 
 /// #3105: the learned-word check changes only what an installed checker
 /// approves, and leaves the text exactly as it arrived on every failure.
@@ -103,11 +103,16 @@ struct LearnedWordCheckStepTests {
       (.baseMismatch("runtime"), "base_mismatch_runtime"),
       (.unqualifiedLanguage, "unqualified_language"),
       (.serverWithoutAdapter("adapter_missing"), "server_without_adapter_adapter_missing"),
-      (.serverWithoutAdapter("adapter_server_exited"),
-        "server_without_adapter_adapter_server_exited"),
-      (.serverWithoutAdapter("adapter_server_never_ready"),
-        "server_without_adapter_adapter_server_never_ready"),
+      (
+        .serverWithoutAdapter("adapter_server_exited"),
+        "server_without_adapter_adapter_server_exited"
+      ),
+      (
+        .serverWithoutAdapter("adapter_server_never_ready"),
+        "server_without_adapter_adapter_server_never_ready"
+      ),
       (.serverUnavailable, "server_unavailable"),
+      (.selectionTimedOut, "selection_timed_out"),
     ]
     for (absence, expected) in values { #expect(absence.code == expected) }
   }
@@ -196,5 +201,29 @@ struct LearnedWordCheckStepTests {
     #expect(try await run(s, twin) == twin)
     #expect(ContinuousClock.now - start < .milliseconds(1000))
     #expect(s.lastOutcome?.fallbackReason == .deadline)
+  }
+
+  @Test("a selection that never answers cannot hold the take; a prompt one is kept")
+  func selectionIsBounded() async {
+    final class Gate: @unchecked Sendable {
+      var parked: CheckedContinuation<Void, Never>?
+    }
+    let gate = Gate()
+    let s = step(nil)
+    s.selectionDeadline = .milliseconds(100)
+    s.selectionProvider = { _, _ in
+      await withCheckedContinuation { gate.parked = $0 }
+      return LearnedWordCheckerSelection(absence: .notEGOne)
+    }
+    let start = ContinuousClock.now
+    let stalled = await s.boundedSelection(for: .egOne, language: "en")
+    #expect(stalled?.absence == .selectionTimedOut)
+    #expect(ContinuousClock.now - start < .milliseconds(1000))
+    gate.parked?.resume()
+
+    s.selectionProvider = { _, _ in LearnedWordCheckerSelection(absence: .unqualifiedLanguage) }
+    #expect(await s.boundedSelection(for: .egOne, language: "de")?.absence == .unqualifiedLanguage)
+    s.selectionProvider = nil
+    #expect(await s.boundedSelection(for: .egOne, language: "en") == nil)
   }
 }

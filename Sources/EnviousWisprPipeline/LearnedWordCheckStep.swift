@@ -6,6 +6,8 @@ import Foundation
 public enum LearnedWordCheckerAbsence: Sendable, Equatable {
   case notEGOne, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed, deliveryDisabled
   case baseMismatch(String), unqualifiedLanguage, serverWithoutAdapter(String), serverUnavailable
+  /// Selection itself did not answer inside `LearnedWordCheckStep.selectionDeadline`.
+  case selectionTimedOut
 
   public var code: String {
     switch self {
@@ -18,6 +20,7 @@ public enum LearnedWordCheckerAbsence: Sendable, Equatable {
     case .unqualifiedLanguage: "unqualified_language"
     case .serverWithoutAdapter(let reason): "server_without_adapter_\(reason)"
     case .serverUnavailable: "server_unavailable"
+    case .selectionTimedOut: "selection_timed_out"
     }
   }
 }
@@ -162,6 +165,37 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   /// against this clock and returns the unchanged text the moment it passes,
   /// never awaiting the late checker.
   var answerDeadline: Duration = .milliseconds(1200)
+
+  /// Selection reads the delivery and local-server actors, before the runner's
+  /// timed loop starts, so it gets a clock of its own (Codex branch review r2).
+  /// The same allowance as the checker's answer: selection is actor hops and
+  /// normally returns in milliseconds; past this the take goes on unchanged.
+  var selectionDeadline: Duration = .milliseconds(1200)
+
+  /// The selection for this take, or `.selectionTimedOut` once
+  /// `selectionDeadline` passes. The late selection is cancelled and never
+  /// awaited, as in `decide(_:_:within:)`.
+  func boundedSelection(for provider: LLMProvider, language: String?) async
+    -> LearnedWordCheckerSelection?
+  {
+    guard let selectionProvider else { return nil }
+    let deadline = selectionDeadline
+    let once = ResumeOnce()
+    return await withCheckedContinuation {
+      (continuation: CheckedContinuation<LearnedWordCheckerSelection, Never>) in
+      let work = Task { @MainActor in
+        let selection = await selectionProvider(provider, language)
+        if once.claim() { continuation.resume(returning: selection) }
+      }
+      Task {
+        try? await Task.sleep(for: deadline)
+        if once.claim() {
+          work.cancel()
+          continuation.resume(returning: LearnedWordCheckerSelection(absence: .selectionTimedOut))
+        }
+      }
+    }
+  }
 
   private enum Answer: Sendable {
     case decided([LearnedWordCheckDecision])

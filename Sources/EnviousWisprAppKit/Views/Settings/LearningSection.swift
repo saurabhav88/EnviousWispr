@@ -53,7 +53,8 @@ struct LearnedCheckerSettingsStatus: Equatable {
         String(localized: "Learn-only: Learned words are checked in \($0) only.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
       } ?? String(
         localized: "Learn-only: Learned words aren't checked in this language yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
-    case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable, .none:
+    case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable,
+      .selectionTimedOut, .none:
       line = String(
         localized: "Learn-only: \(judge)'s word check isn't ready. Learned words are saved for later.",
         comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")

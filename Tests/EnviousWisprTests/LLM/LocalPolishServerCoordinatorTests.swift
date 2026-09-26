@@ -232,12 +232,39 @@ struct LocalPolishServerCoordinatorTests {
       return
     }
     let removing = Task {
-      await coordinator.beginRemoval(for: .egOne, intent: coordinator.claimIntent())
+      let claimed = await coordinator.beginRemoval(
+        for: .egOne, intent: coordinator.claimIntent()) { true }
+      #expect(claimed)
       await coordinator.endRemoval()
     }
     #expect(await coordinator.residentModelForTesting == .egOne)
     await coordinator.releaseLease(lease)
     await removing.value
     #expect(await coordinator.residentModelForTesting == nil)
+  }
+
+  @Test("a removal the user overtook by re-selecting the model leaves its server running (#3105)")
+  func reselectedRemovalKeepsServer() async {
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    let admission = await coordinator.acquireLease(for: .egOne)
+    guard case .granted(let lease) = admission else {
+      Issue.record("resident server refused its lease")
+      return
+    }
+    let removalIntent = coordinator.claimIntent()
+    let removing = Task {
+      // Asked after the take's lease clears: the user has re-selected EG-1.
+      await coordinator.beginRemoval(for: .egOne, intent: removalIntent) { false }
+    }
+    await coordinator.releaseLease(lease)
+    #expect(await removing.value == false)
+    #expect(await coordinator.residentModelForTesting == .egOne)
+    // Nothing was claimed, so the next take is admitted.
+    guard case .granted(let next) = await coordinator.acquireLease(for: .egOne) else {
+      Issue.record("an abandoned removal left the server changing")
+      return
+    }
+    await coordinator.releaseLease(next)
   }
 }
