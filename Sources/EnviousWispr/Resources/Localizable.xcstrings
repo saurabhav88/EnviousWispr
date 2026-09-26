@@ -20126,6 +20126,42 @@
         }
       }
     },
+    "whatsNew.learned-word-check-eg1-s1.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry learned-word-check-eg1-s1).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Learned words, checked on EG-1 and S1-mini"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gelernte Wörter, geprüft mit EG-1 und S1-mini"
+          }
+        }
+      }
+    },
+    "whatsNew.learned-word-check-eg1-s1.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry learned-word-check-eg1-s1).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your learned words are now checked in every language on EG-1 and S1-mini. Each engine you have installed downloads its small word check on its own, and the check runs on your Mac."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine gelernten Wörter werden jetzt in jeder Sprache mit EG-1 und S1-mini geprüft. Jede installierte Engine lädt ihre kleine Wortprüfung selbst herunter, und die Prüfung läuft auf deinem Mac."
+          }
+        }
+      }
+    },
     "whatsNew.dock-icon-and-window-in-front.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry dock-icon-and-window-in-front).",
       "extractionState" : "manual",
