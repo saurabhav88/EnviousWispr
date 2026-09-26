@@ -36,7 +36,7 @@ Raw transcription is useful, but the real power for students is in post-processi
 
 The polish works well for lecture notes: it cleans up your speech into clear, well-punctuated prose without making it overly stiff.
 
-When you want more structure, the way you talk shapes the output. Call out a list ("the three causes were, first... second... third...") and it usually comes back as bullet points, on the Apple Intelligence default as well as with Ollama, OpenAI, or Gemini polish. On any engine, history notes you narrate chronologically stay chronological, and science notes where you spell out each formula keep that emphasis.
+When you want more structure, the way you talk shapes the output. Count off a list ("the three causes were, first... second... third...") and it usually comes back as bullet points, with Apple Intelligence as well as with Ollama, OpenAI, or Gemini polish. On any engine, history notes you narrate chronologically stay chronological, and science notes where you spell out each formula keep that emphasis.
 
 ## Step 4: Position your microphone and speak naturally
 
