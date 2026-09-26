@@ -215,6 +215,7 @@ struct InverseTextNormalizerNeutralAddressesTests {
     "abre ejemplo punto es barra ayuda punto html",
     // a name longer than the pattern reads is refused whole, never converted from its tail
     "a punto b punto c punto d punto e punto f punto g punto h arroba gmail punto com",
+    "jean guion paul guion pierre guion marie guion anne guion luc guion dupont arroba gmail punto com",
     // a missing name is never invented from the word before the at-word (local Codex diff review)
     "envía a arroba gmail punto com",
     "envía a arroba gmail.com",

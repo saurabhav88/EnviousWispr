@@ -121,7 +121,8 @@ extension InverseTextNormalizer {
       + Self.addressAtAlt + #")(?<comma>,)?\s+(?<dom>"# + label + #"(?:"# + sep + label
       + #"){0,5})"# + sep + #"(?<tld>"# + Self.emailTLDAlt + #")(?![\p{L}\p{M}\p{N}_-]|\.[\p{L}\p{N}])"#
     return reSub(pat, t) { m in
-      guard !Self.startsAfterSpokenDot(m) else { return nil }
+      // A name longer than the bounded chain began earlier, after a spoken dot or hyphen.
+      guard !Self.startsAfterSpokenDot(m), !Self.startsAfterSpokenDash(m) else { return nil }
       let atw = (m.g("atw") ?? "").lowercased()
       let whole = " " + m.whole + " "
       let dots = allMatches(#"\s("# + Self.addressDotAlt + #")(?=\s)"#, whole).map {
