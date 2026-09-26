@@ -104,7 +104,7 @@ struct TelemetryEmitterRegistryTests {
   /// already on every take row and the three events join TAKE_KEYED_EVENTS; the loss detail is
   /// counts and one closed side token, Int or String on the wire, no text; registry readers updated).
   static let sitesFingerprint =
-    "RECOMPUTE"
+    "49b60a4f37e37310700bfd8defd135e04a6ef0cd0e3a17d1e78e7da565bc2f4d"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
