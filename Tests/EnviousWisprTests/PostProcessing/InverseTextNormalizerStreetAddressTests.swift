@@ -86,6 +86,15 @@ struct InverseTextNormalizerStreetAddressTests {
       "9 Main Street Suite one hundred twenty three Miami Florida 33131",
       "9 Main Street, Suite 123, Miami, Florida 33131"
     ),
+    // Codex diff review r4: a written ZIP with a spoken +4; a line break before the ZIP
+    (
+      "9 Main Street Hartford Connecticut 06103 dash one two three four",
+      "9 Main Street, Hartford, Connecticut 06103-1234"
+    ),
+    (
+      "nine Main Street\nHartford\nConnecticut\nzero six one zero three",
+      "9 Main Street\nHartford\nConnecticut\n06103"
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."
@@ -165,6 +174,11 @@ struct InverseTextNormalizerStreetAddressTests {
     (
       "Log 9 Main Street Hartford Connecticut zero six four eight four 1 today.",
       "Log 9 Main Street Hartford Connecticut 064841 today."
+    ),
+    // Codex diff review r4: a written house number after spoken number words is the tail of one number
+    (
+      "one hundred and 23 Main Street Hartford Connecticut 06103",
+      "100 and 23 Main Street Hartford Connecticut 06103"
     ),
   ]
 

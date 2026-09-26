@@ -76,11 +76,12 @@ extension InverseTextNormalizer {
     let city = #"("# + cap + #"(?:\s+"# + cap + #"){0,2})"#
     let state = #"("# + longestFirst(usStates) + #"|"# + usStateCodes.joined(separator: "|") + #")"#
     let zip =
-      #"(\d{5}(?:-\d{4})?|"# + digitWord + #"(?:\s+"# + digitWord
+      #"(\d{5}(?:-\d{4}|\s+(?i:dash|hyphen)\s+(?:\d{4}|"# + digitWord + #"(?:\s+"# + digitWord
+      + #"){3}))?|"# + digitWord + #"(?:\s+"# + digitWord
       + #"){4}(?:\s+(?i:dash|hyphen)\s+(?:\d{4}|"#
       + digitWord + #"(?:\s+"# + digitWord + #"){3}))?)"#
     return #"(?<![\p{L}\d'’-])(?<!\d[,.])"# + house + #"\s+(?:(?:"# + streetDirections.joined(separator: "|")
-      + #")\s+)?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*|[^\S\n]+))"# + zip
+      + #")\s+)?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*\n?[^\S\n]*|[^\S\n]*\n[^\S\n]*|[^\S\n]+))"# + zip
       + #"(?![\p{L}\d-])(?!\s+(?:"# + digitWord + #"(?![\p{L}])|\d))"#
   }()
 
@@ -106,7 +107,7 @@ extension InverseTextNormalizer {
       let partOfLonger =
         spelled
         ? #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand|and)|\d)[^\S\n]*$"#
-        : #"\d[^\S\n]*$"#
+        : #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand)(?:[^\S\n]+and)?|\d)[^\S\n]*$"#
       if before.range(of: partOfLonger, options: .regularExpression) != nil { return nil }
       // The city run must not hold a second street type: that split is ambiguous.
       let cityTokens = city.split(separator: " ").map(String.init)
@@ -134,7 +135,7 @@ extension InverseTextNormalizer {
         guard let rendered = Self.renderUnit(unit) else { return nil }
         out += rendered + Self.addressSeparator(m.g(5) ?? " ")
       }
-      out += city + Self.addressSeparator(m.g(7) ?? " ") + state + " " + zip
+      out += city + Self.addressSeparator(m.g(7) ?? " ") + state + ((m.g(9) ?? " ").contains("\n") ? "\n" : " ") + zip
       return protectFormatted(out)
     }
   }
@@ -182,11 +183,17 @@ extension InverseTextNormalizer {
 
   /// Five digits (plus four), written or spoken one digit at a time; a leading zero is kept.
   static func zipCode(_ s: String) -> String? {
-    if s.first?.isNumber == true { return s }
     let parts = s.components(separatedBy: CharacterSet.whitespaces).filter { !$0.isEmpty }
+    if parts.count == 1, s.first?.isNumber == true { return s }  // 06103 or 06103-1234
     let dashAt = parts.firstIndex { ["dash", "hyphen"].contains($0.lowercased()) }
     let head = Array(parts[..<(dashAt ?? parts.count)]).map { $0.lowercased() }
-    guard head.count == 5, let five = digitString(head) else { return nil }
+    let five: String
+    if head.count == 1, head[0].count == 5, head[0].allSatisfy(\.isNumber) {
+      five = head[0]  // written five digits, spoken +4
+    } else {
+      guard head.count == 5, let spoken = digitString(head) else { return nil }
+      five = spoken
+    }
     guard let dashAt else { return five }
     let tail = Array(parts[(dashAt + 1)...])
     if tail.count == 1, tail[0].count == 4, tail[0].allSatisfy(\.isNumber) {
