@@ -50,6 +50,21 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
     package let detectionThreshold: Double
     package let contractSHA256: String
     package let packageSHA256: String
+    /// How the edit side of the pair is written; `decision_config.encoding.pair_input`
+    /// (inside the config the identity digest binds), `.plain` when absent
+    /// (every export before #3105).
+    package var pairInputForm: PairInputForm = .plain
+  }
+
+  /// The edit text the model was trained on. The export names it, so each
+  /// model gets its own form and the app has no table of its own (#3105).
+  package enum PairInputForm: String, Equatable, Sendable {
+    /// `original → replacement`.
+    case plain
+    /// `original → replacement | o r i g i n a l → r e p l a c e m e n t`:
+    /// both sides again, NFC-normalised, one Unicode scalar per item joined by
+    /// a space, exactly Python's `" ".join(unicodedata.normalize("NFC", w))`.
+    case spell
   }
 
   /// What `load` verified, for the receipt and the activation log line.
@@ -60,6 +75,7 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
     package let contract: URL
     package let threshold: Double
     package let executionIdentity: [String: String]
+    package var pairInputForm: PairInputForm = .plain
   }
 
   package static let expectedObjective = "detection"
@@ -234,7 +250,8 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
       contract: contractURL, threshold: config.detectionThreshold,
       executionIdentity: executionIdentity.merging(
         ["arm": "classifier", "package_sha256": config.packageSHA256]
-      ) { a, _ in a })
+      ) { a, _ in a },
+      pairInputForm: config.pairInputForm)
     return CoreMLCorrectionJudge(identity: identity, model: model, adapter: adapter)
   }
 
@@ -378,7 +395,9 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
 
   /// The tensors one candidate produces, for parity against the Python path.
   package func encoded(original: String, replacement: String, context: String) -> EncodedClassifierInput {
-    adapter.encodePair(input: Self.pairInput(original: original, replacement: replacement), output: context)
+    adapter.encodePair(
+      input: Self.pairInput(original: original, replacement: replacement, form: identity.pairInputForm),
+      output: context)
   }
 
   /// The raw logits and `p[1]` for one candidate; nil when inference fails.
@@ -413,7 +432,9 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
     for candidate in request.candidates {
       if Task.isCancelled { return .bypass(.cancelled) }
       let encoded = adapter.encodePair(
-        input: Self.pairInput(original: candidate.original, replacement: candidate.replacement),
+        input: Self.pairInput(
+          original: candidate.original, replacement: candidate.replacement,
+          form: identity.pairInputForm),
         output: request.context)
       let logits: [Double]
       do {
@@ -439,9 +460,23 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
 
   // MARK: Pure pieces (tested without the artifact)
 
-  /// `Edit: {original} → {replacement}` minus the prefix the contract adds.
-  package static func pairInput(original: String, replacement: String) -> String {
-    "\(original) \u{2192} \(replacement)"
+  /// `Edit: {original} → {replacement}` minus the prefix the contract adds,
+  /// followed for `.spell` by both sides spelled out (see `PairInputForm`).
+  package static func pairInput(
+    original: String, replacement: String, form: PairInputForm = .plain
+  ) -> String {
+    let plain = "\(original) \u{2192} \(replacement)"
+    switch form {
+    case .plain: return plain
+    case .spell: return "\(plain) | \(spelled(original)) \u{2192} \(spelled(replacement))"
+    }
+  }
+
+  /// Python iterates a `str` by code point, so this iterates Unicode scalars,
+  /// never Swift `Character`s (grapheme clusters): a decomposed accent, a flag
+  /// or a ZWJ emoji is several items, as it was in training.
+  package static func spelled(_ word: String) -> String {
+    word.precomposedStringWithCanonicalMapping.unicodeScalars.map(String.init).joined(separator: " ")
   }
 
   /// Stable two-class softmax, `p[1]`; nil for anything but two finite logits.
@@ -482,9 +517,17 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
     guard let packageSHA = config["package_sha256"] as? String else {
       throw LoadFailure.manifestInvalid("package_sha256 missing")
     }
+    var pairInputForm = PairInputForm.plain
+    if let raw = (config["encoding"] as? [String: Any])?["pair_input"] {
+      guard let name = raw as? String, let form = PairInputForm(rawValue: name) else {
+        throw LoadFailure.manifestInvalid("pair_input \(raw)")
+      }
+      pairInputForm = form
+    }
     return DecisionConfig(
       objective: objective, classOrder: classOrder, decisionRule: rule,
-      detectionThreshold: threshold, contractSHA256: contractSHA, packageSHA256: packageSHA)
+      detectionThreshold: threshold, contractSHA256: contractSHA, packageSHA256: packageSHA,
+      pairInputForm: pairInputForm)
   }
 
   package static func validate(_ config: DecisionConfig) throws {

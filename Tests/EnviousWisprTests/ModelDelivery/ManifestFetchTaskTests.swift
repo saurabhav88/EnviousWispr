@@ -163,6 +163,73 @@ final class DeliveryStubProtocol: URLProtocol {
     }
   }
 
+  @Test func checkerCancelDuringRetryThenAdmitsOnRetry() async throws {
+    let bytes = Data("adapter".utf8)
+    let manifest = try EGOneCheckerDeliveryTests.tinyChecker(bytes)
+    let staging = try makeStaging()
+    let install = staging.deletingLastPathComponent().appendingPathComponent(
+      "checker-install-\(UUID().uuidString)")
+    let metadata = staging.deletingLastPathComponent().appendingPathComponent(
+      "checker-metadata-\(UUID().uuidString)")
+    try await withStubs {
+      let url = manifest.sources[0].baseURL
+        .appendingPathComponent(manifest.files[0].path).absoluteString
+      DeliveryStubProtocol.enqueue(
+        url: url, .init(status: 200, headers: [:], body: Data(), error: URLError(.timedOut)))
+
+      let (signal, announced) = AsyncStream<Void>.makeStream()
+      let first = Task {
+        try await task(
+          manifest: manifest, staging: staging,
+          backoffSleep: { _ in
+            announced.yield(())
+            try await Task.sleep(nanoseconds: .max)  // deadline-fallback: cancellation is the signal
+          }).run()
+      }
+      let reachedBackoff = await withTaskGroup(of: Bool.self) { group in
+        group.addTask {
+          for await _ in signal { return true }
+          return false
+        }
+        group.addTask {
+          try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounded signal wait
+          return false
+        }
+        let result = await group.next() ?? false
+        group.cancelAll()
+        announced.finish()
+        return result
+      }
+      if !reachedBackoff {
+        first.cancel()
+        _ = try? await first.value
+        Issue.record("checker never reached retry backoff")
+        return
+      }
+      first.cancel()
+      do {
+        _ = try await first.value
+        Issue.record("cancelled checker fetch unexpectedly completed")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .cancelled)
+      } catch is CancellationError {
+        // Task cancellation is also a valid unwind from the injected sleep.
+      }
+
+      DeliveryStubProtocol.enqueue(
+        url: url,
+        .init(status: 200, headers: ["Content-Length": String(bytes.count)], body: bytes))
+      let outcome = try await task(manifest: manifest, staging: staging).run()
+      #expect(outcome.bytesDownloaded == Int64(bytes.count))
+      let gate = CacheAdmission(
+        manifest: manifest, installDirectory: install, metadataDirectory: metadata)
+      let component = try #require(manifest.files.first?.component)
+      try gate.promoteAndAdmit(
+        stagedComponents: [component], stagingDirectory: staging, untouchedComponents: [])
+      #expect(gate.isAdmitted())
+    }
+  }
+
   @Test func perFileFailoverToBackupIsSticky() async throws {
     let files = ManifestFixture.smallFiles
     let manifest = try ManifestFixture.manifest(files: files)

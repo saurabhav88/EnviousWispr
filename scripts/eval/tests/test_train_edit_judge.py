@@ -556,3 +556,28 @@ def test_locate_recorded_file_trusts_the_digest_not_the_path(tmp_path):
         trainer.locate_recorded_file(str(other), digest, None, "file")
     with pytest.raises(RuntimeError):
         trainer.locate_recorded_file(r"C:\gone\a.jsonl", digest, other, "file")
+
+
+# #3105: the spelled pair input. Expected strings are the research trainer's output
+# (judge1-v3/night-0925/common.py edit_text(variant="spell")), the same oracle the
+# Swift loader test (CoreMLCorrectionJudgeTests.spelledPairInputMatchesPython) pins.
+@pytest.mark.parametrize("original,replacement,expected", [
+    ("gaggle", "Kaggle", "gaggle → Kaggle | g a g g l e → K a g g l e"),
+    ("tail scale", "Tailscale", "tail scale → Tailscale | t a i l   s c a l e → T a i l s c a l e"),
+    ("café", "Café", "café → Café | c a f é → C a f é"),
+    ("hi \U0001F469‍\U0001F4BB", "hey \U0001F1FA\U0001F1F8",
+     "hi \U0001F469‍\U0001F4BB → hey \U0001F1FA\U0001F1F8 | h i   \U0001F469 ‍ \U0001F4BB → h e y   \U0001F1FA \U0001F1F8"),
+])
+def test_spelled_pair_input_matches_the_research_trainer(original, replacement, expected):
+    assert trainer.pair_input_text(original, replacement, "spell") == expected
+    assert trainer.pair_input_text(original, replacement, "plain") == f"{original} → {replacement}"
+
+
+def test_pair_input_form_is_read_from_the_encoding_and_refuses_unknowns():
+    assert trainer.pair_input_form({}) == "plain"
+    assert trainer.pair_input_form({"encoding": {"input": "x"}}) == "plain"
+    assert trainer.pair_input_form({"encoding": {"pair_input": "spell"}}) == "spell"
+    with pytest.raises(RuntimeError):
+        trainer.pair_input_form({"encoding": {"pair_input": "shape"}})
+    with pytest.raises(ValueError):
+        trainer.pair_input_text("a", "b", "shape")

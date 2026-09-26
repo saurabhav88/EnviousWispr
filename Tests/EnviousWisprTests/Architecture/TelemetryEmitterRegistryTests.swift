@@ -45,7 +45,7 @@ struct TelemetryEmitterRegistryTests {
 
   /// Grandfathered rows at the freeze. The count must EQUAL this: grade a row, lower the
   /// number in the same change. Slack here is a free `ungraded` slot for a new emitter.
-  static let ungradedCeiling = 108
+  static let ungradedCeiling = 107
   /// SHA-256 of the sorted, newline-joined `ungraded` event names. The count alone lets a
   /// retired row be swapped for a new `ungraded` one; the fingerprint pins the IDENTITIES.
   /// The failure message prints the new value; paste it only when grading or retiring.
@@ -84,10 +84,19 @@ struct TelemetryEmitterRegistryTests {
   /// site, no new event, same per-take cadence; two optional properties on the existing
   /// (ungraded) row, present only on English (UK) takes: a closed string and an Int count, no
   /// text, `take_id` unchanged, registry row unchanged.
+  /// #3105: `learnObservationEnded` gained `unfinishedEdits`, which changes the enclosing-function
+  /// identity of the same single `custom_words.learn_observation_ended` site. No new site, no new
+  /// event, same once-per-watched-paste cadence; one Int count on the existing row (checklist items
+  /// 4-8: existing row, a count not content, Int on the wire, registry row unchanged).
+  /// #3105 PR 4: `LearnedCheckTerminalFacts` adds checker identity, status and closed absence
+  /// reason to the existing `dictation.terminal` site. Checklist: one row per accepted take
+  /// already emitted; no new row/month, same take_id, content-free enums and signed revision;
+  /// the Auto Dictionary readiness query reads it. That site did not move, so sitesFingerprint
+  /// stays unchanged; its registry row is now graded as the folded terminal summary.
   static let sitesFingerprint =
-    "84d3a3df146e076a17542e93756a0605dd4a2612165119a781eea3188e435ce7"
+    "4ca611cad8d49363711644b457264a01294410afc7e4bea573f56fdf39b18fa7"
   static let ungradedFingerprint =
-    "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
+    "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
   /// The closed cadence vocabulary. Deliberately no `per_chunk`, `per_buffer`, `per_frame`,
   /// `per_second`: an event finer than a take folds into the take's terminal row.

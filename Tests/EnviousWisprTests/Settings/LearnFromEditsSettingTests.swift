@@ -1,5 +1,7 @@
 import AppKit
 import EnviousWisprContacts
+import EnviousWisprLLM
+import EnviousWisprModelDelivery
 import EnviousWisprPostProcessing
 import Foundation
 import SwiftUI
@@ -149,7 +151,7 @@ struct LearnFromEditsRowTests {
   }
 
   @Test("the Learning row renders enabled and disabled without a Contacts coordinator crash")
-  @MainActor func learningRowRenders() {
+  @MainActor func learningRowRenders() throws {
     func host<V: View>(_ view: V) -> NSHostingView<AnyView> {
       let host = NSHostingView(rootView: AnyView(view.frame(width: 640)))
       host.layoutSubtreeIfNeeded()
@@ -168,11 +170,25 @@ struct LearnFromEditsRowTests {
         manager: CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json"))),
       stateStore: ImportedContactsStateStore(
         fileURL: dir.appendingPathComponent("imported-contacts-state.json")))
+    // #3105: the row also reads the learned-word check's eligibility. No
+    // manifest and no server binary, so it reports the check as unavailable.
+    let resources = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("Sources/EnviousWispr/Resources")
+    let checker = EGOneCheckerEligibility(
+      delivery: ModelDeliveryHome(
+        engineMutationScope: .live(
+          tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+        manifestBundle: try #require(Bundle(url: resources)),
+        appSupportOverride: dir.appendingPathComponent("delivery", isDirectory: true)),
+      base: nil, promptTemplateID: nil,
+      runtime: EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil))
     let enabled = host(
-      LearningSection().environment(settings).environment(contacts)
+      LearningSection().environment(settings).environment(contacts).environment(checker)
         .environment(LearnFromEditsAvailability(presentation: LearnFromEditsSettingsPresentation(selection: .arm(.rules)))))
     let disabled = host(
-      LearningSection().environment(settings).environment(contacts)
+      LearningSection().environment(settings).environment(contacts).environment(checker)
         .environment(LearnFromEditsAvailability(presentation: .unwired)))
     #expect(enabled.fittingSize.height > 0)
     #expect(disabled.fittingSize.height > enabled.fittingSize.height, "the reason line adds a line")

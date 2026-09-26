@@ -224,6 +224,7 @@ struct Issue1358EmptyRecoveryTests {
     LimbSteps(
       snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
+      learnedWordCheck: LearnedWordCheckStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),

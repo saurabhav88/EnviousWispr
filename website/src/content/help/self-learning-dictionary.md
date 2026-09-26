@@ -8,7 +8,7 @@ keywords: ["self-learning dictionary", "learn from my edits", "learn from edits"
 related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-word-from-your-selection", "privacy-overview", "model-downloads-and-management"]
 updated: 2026-09-22
 ---
-When EnviousWispr pastes a dictation and you then fix one word in it by hand, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you three seconds to undo. The next time EnviousWispr hears the same thing it writes the word you meant. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
+When EnviousWispr pastes a dictation and you then fix one word in it by hand, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you three seconds to undo. A learned word can correct a later dictation only when the selected polish engine can check it. Today that means EG-1 with English dictation and its word check ready. Otherwise the word is saved and waits. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
 
 ### What you see
 
@@ -24,7 +24,7 @@ When EnviousWispr pastes a dictation and you then fix one word in it by hand, th
 
 If the pill says **Couldn’t save “Saoirse”**, nothing was written: the mishearing already belongs to another word as a trigger, the word it was about had been deleted in the meantime, or the dictionary file could not be updated. If Undo says **Couldn’t undo**, the word stayed as it was and you can remove it in Your Words. Both notices stay for 3 seconds.
 
-A learned word behaves like any word you added yourself: the mishearing is corrected before the text is polished, and it is used in every language you dictate in. You can edit or delete it in **Settings** \> **Dictionary** \> **Your Words**.
+A learned word is checked before it can correct dictated text. Today this works with EG-1 in English when its word check is ready. With another polish engine, another language, or while the check is downloading or unavailable, the learned word stays in Your Words without changing the dictation. You can edit or delete it in **Settings** \> **Dictionary** \> **Your Words**.
 
 ### Which apps it works in
 
@@ -49,9 +49,9 @@ That model is about 305 MB. EnviousWispr normally starts its download after firs
 
 ### What stays on your Mac
 
-The watching and the judging run on your Mac. The text EnviousWispr watches, the word you fixed, the mishearing it attached, and the name of the app you were in never leave it, and Envious Labs never receives them. Your voice never leaves your Mac either: transcription happens on it. What Envious Labs receives is metadata with no content in it: why a watch was skipped or how it ended (a reason such as "password field"), how long it lasted and how many editing pauses it had, and a broad kind of app (native, web-based, browser or other); which on-device judge answered, whether it did, how many edits it saw and accepted, and how long it took; whether a save landed and, if not, which of three fixed reasons; whether the saved word was new, existing, or came from a pack; whether the Undo pill was shown; and whether an Undo restored the word, found it already changed, or failed. No words, watched text, app names, identifiers or error text are attached.
+The watching and the judging run on your Mac. The text EnviousWispr watches, the word you fixed, the mishearing it attached, and the name of the app you were in never leave it, and Envious Labs never receives them. Your voice never leaves your Mac either: transcription happens on it. What Envious Labs receives is metadata with no content in it: why a watch was skipped or how it ended (a reason such as "password field"), how long it lasted and how many editing pauses it had, and a broad kind of app (native, web-based, browser or other); which on-device judge answered, whether it did, how many edits it saw and accepted, and how long it took; whether a save landed and, if not, which of three fixed reasons; whether the saved word was new, existing, or came from a pack; whether the Undo pill was shown; whether an Undo restored the word, found it already changed, or failed. EG-1's word check adds only its version, whether it ran, why it could not, and counts and timing. No words, watched text, app names or error text are attached.
 
-One thing to know: a learned word is a custom word, and custom words are part of what EnviousWispr sends to your polish provider along with your text. If you polish on your Mac (Apple Intelligence, EG-1, or an Ollama model you downloaded) nothing leaves it. If you chose cloud polish, whether under your own OpenAI, Gemini or Claude key or through one of Ollama's hosted models under your Ollama sign-in, the selected text and your custom words go directly to that provider under your key, never through Envious Labs, the same as any custom word you typed in yourself.
+EG-1 checks learned words locally. Nothing from that check leaves your Mac. If you choose cloud polish, the selected text goes directly to your chosen provider under your key, never through Envious Labs. Custom words you added yourself may also go to that provider with the selected text. Learned words wait rather than being applied by cloud polish today.
 
 ### Requirements and turning it off
 

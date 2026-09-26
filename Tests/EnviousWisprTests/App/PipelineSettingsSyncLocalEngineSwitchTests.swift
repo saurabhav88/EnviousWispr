@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import Foundation
 import Testing
+import EnviousWisprPipeline
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
@@ -17,7 +18,11 @@ import Testing
 @Suite("PipelineSettingsSync local-engine switch (#2649)", .tags(.productOutcome))
 struct PipelineSettingsSyncLocalEngineSwitchTests {
 
-  private func makeSync() -> (PipelineSettingsSync, SettingsManager, LocalPolishServerCoordinator) {
+  private func makeSync(
+    onEnsure: @escaping @MainActor () -> Void = {},
+    selection: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+  ) -> (PipelineSettingsSync, SettingsManager, LocalPolishServerCoordinator,
+    KernelDictationDriver, KernelDictationDriver) {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
@@ -45,9 +50,11 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
       hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),
       egOneRuntime: egOne,
       s1MiniRuntime: s1Mini,
+      checkerSelectionProvider: selection,
+      ensureCheckerAdapter: onEnsure,
       ollamaRemotenessLookup: { _ in nil }
     )
-    return (sync, settings, coordinator)
+    return (sync, settings, coordinator, pipeline, whisperKit)
   }
 
   /// Stamps claimed by a switch, measured as the gap between two probe claims.
@@ -62,7 +69,7 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
 
   @Test("switching S1-mini to EG-1 stops S1-mini exactly once")
   func switchClaimsOneStop() {
-    let (sync, settings, coordinator) = makeSync()
+    let (sync, settings, coordinator, _, _) = makeSync()
     settings.llmProvider = .s1Mini
     sync.applyInitialSettings(settings)
 
@@ -78,7 +85,7 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
 
   @Test("switching EG-1 to S1-mini stops EG-1 exactly once")
   func switchBackClaimsOneStop() {
-    let (sync, settings, coordinator) = makeSync()
+    let (sync, settings, coordinator, _, _) = makeSync()
     settings.llmProvider = .egOne
     sync.applyInitialSettings(settings)
 
@@ -94,7 +101,7 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
   /// both engines, one stamp each, so the counter is demonstrably counting stops.
   @Test("switching to a cloud provider stops both engines, one stamp each")
   func cloudSwitchStopsBoth() {
-    let (sync, settings, coordinator) = makeSync()
+    let (sync, settings, coordinator, _, _) = makeSync()
     settings.llmProvider = .egOne
     sync.applyInitialSettings(settings)
 
@@ -104,5 +111,30 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
         sync.handleSettingChanged(.llmProvider, settings: settings)
       }, on: coordinator)
     #expect(stamps == 2)
+  }
+
+  @Test("launch and EG-1 selection schedule ensure, other engines do not")
+  func checkerEnsureAndBothDrivers() async {
+    var ensures = 0
+    let (sync, settings, _, parakeet, whisperKit) = makeSync(
+      onEnsure: { ensures += 1 },
+      selection: { _, _ in .init(absence: .adapterDownloading) })
+    settings.llmProvider = .egOne
+    sync.applyInitialSettings(settings)
+    #expect(ensures == 1)
+    let first = await parakeet.learnedWordCheck.selectionProvider?(.egOne, "en")
+    let second = await whisperKit.learnedWordCheck.selectionProvider?(.egOne, "en")
+    #expect(first?.absence == .adapterDownloading)
+    #expect(second?.absence == .adapterDownloading)
+    for provider in [
+      LLMProvider.s1Mini, .appleIntelligence, .openAI, .gemini, .claude, .ollama, .none,
+    ] {
+      settings.llmProvider = provider
+      sync.handleSettingChanged(.llmProvider, settings: settings)
+    }
+    #expect(ensures == 1)
+    settings.llmProvider = .egOne
+    sync.handleSettingChanged(.llmProvider, settings: settings)
+    #expect(ensures == 2)
   }
 }

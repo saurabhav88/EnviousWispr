@@ -12,6 +12,14 @@ public protocol EGOneEndpointProviding: AnyObject {
   func activeEndpoint() async -> EGOneEndpoint?
 }
 
+/// Only a process-owning runtime offers admission. Endpoint-only test doubles
+/// still exercise routing without pretending to own the bundled server.
+@MainActor
+public protocol EGOneLeaseProviding: EGOneEndpointProviding {
+  func acquireLocalServerLease() async -> LocalPolishLeaseAdmission
+  func releaseLocalServerLease(_ lease: LocalPolishServerLease) async
+}
+
 /// Observable lifecycle events the AppKit layer forwards to telemetry.
 ///
 /// #1348 Phase 3: EG-1's DOWNLOAD lifecycle telemetry now flows through the
@@ -90,7 +98,7 @@ public enum EGOnePausedInstallState: String, Sendable, Equatable {
 /// state, health, and server activation; only the byte-moving relocated.
 @Observable
 @MainActor
-public final class EGOneRuntime: EGOneEndpointProviding {
+public final class EGOneRuntime: EGOneLeaseProviding {
 
   // MARK: - Published state (settings UI reads these)
 
@@ -228,6 +236,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// `EGOneServerManager.ProbeSpec`.
   private let probeSpec: EGOneServerManager.ProbeSpec
   private let serverBinaryURL: URL?
+  /// Called for each EG-1 boot, after base admission, not cached at launch.
+  private let learnedWordAdapterProvider: @MainActor () async -> URL?
 
   // MARK: - Init
 
@@ -244,7 +254,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     manifest: EGOneManifest?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
     defaults: UserDefaults? = nil,
     coordinator: LocalPolishServerCoordinator? = nil,
-    provider: LLMProvider = .egOne
+    provider: LLMProvider = .egOne,
+    learnedWordAdapterProvider: @escaping @MainActor () async -> URL? = { nil }
   ) {
     self.provider = provider
     // Derived from the provider rather than taken as a parameter: the two must
@@ -271,6 +282,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
+    self.learnedWordAdapterProvider = learnedWordAdapterProvider
     self.delivery = delivery
     self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
     // Restore the paused projection from the last launch (#2109, whole-diff
@@ -550,11 +562,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
     removalPending = false
     activationGeneration += 1
-    // Stamped on the main actor, in the order the user acted. Inside the task
-    // the order would be whatever the scheduler chose.
+    // Keep the user's Remove in the same intent order as provider switches.
     let intent = server.claimIntent()
     Task {
-      await self.server.transition(to: .idle(self.provider), intent: intent)
+      // The prior stop/delete split established why selection, rather than an
+      // intent stamp, must still decide deletion after the awaited exclusion.
       // The stop can be superseded, and the two halves of this task do NOT
       // deserve the same guard. A superseded stop is harmless — the server is
       // running because somebody newer asked for it. A superseded DELETE
@@ -570,8 +582,24 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // Unset reads as "not selected" and the deletion proceeds: the user
       // asked for this explicitly, and refusing on a missing closure would
       // make removal unreachable rather than safe.
-      guard self.isActiveProvider?() != true else { return }
-      _ = await delivery.remove()
+      // #3105: the coordinator now owns the entire stop-to-delete exclusion.
+      // A lease that appears after the old MainActor refusal waits here; a
+      // take that arrives later sees changing before it freezes.
+      let claimed = await self.server.beginRemoval(for: self.provider, intent: intent) {
+        @MainActor [weak self] in self?.isActiveProvider?() != true
+      }
+      // Re-selected while the removal waited: the newer activation owns the
+      // running server and the bytes stay.
+      guard claimed else { return }
+      if self.isActiveProvider?() != true {
+        _ = await delivery.remove()
+      } else {
+        // Reselection while the removal waited on a lease keeps the bytes.
+        // Re-issue activation because the exclusive stop may have won after
+        // the earlier activation; the coordinator defers it until endRemoval.
+        self.activateAndProbe()
+      }
+      await self.server.endRemoval()
     }
   }
 
@@ -598,7 +626,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// Codex r6); the generation token handles switch-away. The returned task is
   /// discardable in production and gives tests the exact completion signal.
   @discardableResult
-  public func activateAndProbe() -> Task<Void, Never>? {
+  public func activateAndProbe(retriesAdapterFallback: Bool = false) -> Task<Void, Never>? {
     // Choosing EG-1 cancels any deferred removal FIRST, even if activation
     // itself then bails on a blocker — otherwise remove-during-recording
     // followed by re-selecting EG-1 still deletes the model the user just
@@ -621,7 +649,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // First hop back onto the main actor: a switch-to-then-away that beat
       // this task bumped the generation — do not start the server.
       guard generation == self.activationGeneration else { return }
-      await self.startServerIfInstalled(generation: generation, intent: intent)
+      await self.startServerIfInstalled(
+        generation: generation, intent: intent, retriesAdapterFallback: retriesAdapterFallback)
       // A deactivate DURING the start already stopped the server (the
       // manager's mid-start guards handle that); just don't probe or stamp
       // health for a stale generation.
@@ -697,6 +726,25 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     Task { await self.server.transition(to: .idle(self.provider), intent: intent) }
   }
 
+  /// Delivery calls this when admission changes. The coordinator compares the
+  /// new boot request with the resident process and defers if a take pins it.
+  @discardableResult
+  public func adapterAvailabilityDidChange() -> Task<Void, Never>? {
+    guard provider == .egOne,
+      isActiveProvider?() == true || isPinnedInFlight?() == true
+    else { return nil }
+    return activateAndProbe(retriesAdapterFallback: true)
+  }
+
+  /// Called by the existing take/import release path, after its pin clears.
+  public func retryPendingAdapterReconfiguration() {
+    Task { await server.retryDeferredReconfiguration() }
+  }
+
+  public func checkerFailureReason() async -> EGOneServerManager.CheckerFailureReason? {
+    await server.checkerFailureReason()
+  }
+
   /// App-quit path (#1271 Codex r1 P1): `applicationWillTerminate` cannot
   /// await into the server actor, and `Process` children are NOT killed
   /// when the parent exits — kill synchronously or orphan a multi-GB
@@ -714,7 +762,9 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// the user's back — only the explicit Download button (`startDownload`)
   /// fetches. Delivery may continue after a provider switch-away, but the boot
   /// is generation-gated.
-  private func startServerIfInstalled(generation: Int, intent: Int) async {
+  private func startServerIfInstalled(
+    generation: Int, intent: Int, retriesAdapterFallback: Bool
+  ) async {
     guard let manifest, let delivery, serverBinaryURL != nil else { return }
     let admitted = await delivery.adoptIfPresent()
     guard generation == self.activationGeneration else { return }
@@ -727,7 +777,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       }
       return
     }
-    await bootServer(manifest: manifest, delivery: delivery, intent: intent)
+    await bootServer(
+      manifest: manifest, delivery: delivery, intent: intent, generation: generation,
+      retriesAdapterFallback: retriesAdapterFallback)
+    // A failed --lora launch has already retried the same admitted base
+    // without the adapter. Base repair would misdiagnose the checker fault.
+    if await server.currentBootCheckerFailureReason() != nil { return }
     // #1348 §16.5: the controller reported `.admitted` but the server has no
     // usable endpoint (file missing/unreadable/rejected after admission — a
     // stale marker or post-admission mutation). Run ONE repair pass + ONE
@@ -738,7 +793,9 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       guard generation == self.activationGeneration else { return }
       // Same stamp deliberately: the repair retry is the SAME user intent, so
       // it must not out-rank a switch that arrived while the repair ran.
-      await bootServer(manifest: manifest, delivery: delivery, intent: intent)
+      await bootServer(
+        manifest: manifest, delivery: delivery, intent: intent, generation: generation,
+        retriesAdapterFallback: retriesAdapterFallback)
     }
   }
 
@@ -785,26 +842,71 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
   }
 
+  nonisolated static func launchArguments(
+    for provider: LLMProvider, learnedWordAdapterURL: URL?
+  ) -> [String] {
+    let engine = engineArguments(for: provider)
+    guard provider == .egOne, let learnedWordAdapterURL else { return engine }
+    return engine + [
+      "--lora", learnedWordAdapterURL.path, "--lora-init-without-apply",
+      "-np", String(EGOneSlots.totalCount), "--kv-unified", "--no-cache-idle-slots",
+    ]
+  }
+
   private func bootServer(
-    manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int
+    manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int, generation: Int,
+    retriesAdapterFallback: Bool
   ) async {
     guard let serverBinaryURL else { return }
-    let configuration = EGOneServerManager.Configuration(
+    let configuration = await makeServerConfiguration(
       serverBinaryURL: serverBinaryURL,
-      // The verified admitted location (install dir + resolved install path).
+      // Delivery exposes the verified admitted entrypoint, not a discovered file.
       modelURL: delivery.installedArtifactURL,
-      contextTokens: manifest.contextTokens,
-      extraArguments: Self.engineArguments(for: provider)
-    )
+      contextTokens: manifest.contextTokens)
+    guard generation == activationGeneration else { return }
     await server.transition(
-      to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
+      to: .run(LocalPolishTarget(
+        provider: provider, configuration: configuration,
+        retriesAdapterFallback: retriesAdapterFallback)),
       intent: intent)
+  }
+
+  /// Internal seam tests can use without staging a multi-shard base model.
+  func makeServerConfiguration(
+    serverBinaryURL: URL, modelURL: URL, contextTokens: Int
+  ) async -> EGOneServerManager.Configuration {
+    let adapterURL: URL?
+    if provider == .egOne {
+      adapterURL = await learnedWordAdapterProvider()
+    } else {
+      adapterURL = nil
+    }
+    let baseArguments = Self.engineArguments(for: provider)
+    let adapterArguments = Self.launchArguments(
+      for: provider, learnedWordAdapterURL: adapterURL).dropFirst(baseArguments.count)
+    return EGOneServerManager.Configuration(
+      serverBinaryURL: serverBinaryURL,
+      modelURL: modelURL,
+      contextTokens: contextTokens,
+      extraArguments: baseArguments,
+      learnedWordAdapterURL: adapterURL,
+      learnedWordAdapterArguments: Array(adapterArguments)
+    )
   }
 
   // MARK: - EGOneEndpointProviding (pipeline seam)
 
   public func activeEndpoint() async -> EGOneEndpoint? {
     await server.endpoint(for: provider)
+  }
+
+  public func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
+    await server.acquireLease(for: provider)
+  }
+
+  public func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {
+    await server.releaseLease(lease)
+    retryPendingRemoval()
   }
 
   // MARK: - Helpers

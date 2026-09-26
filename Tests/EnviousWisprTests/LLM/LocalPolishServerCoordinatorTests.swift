@@ -167,4 +167,104 @@ struct LocalPolishServerCoordinatorTests {
     #expect(stamps == stamps.sorted(), "stamps must increase in claim order")
     #expect(Set(stamps).count == stamps.count, "two callers must never share a stamp")
   }
+
+  @Test("lease and stop race has one winner (#3105)")
+  func leaseAndStopAreAtomic() async {
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    let stopIntent = coordinator.claimIntent()
+    let acquiring = Task { await coordinator.acquireLease(for: .egOne) }
+    let stopping = Task { await coordinator.transition(to: .idle(.egOne), intent: stopIntent) }
+    let admission = await acquiring.value
+    await stopping.value
+
+    switch admission {
+    case .granted(let lease):
+      #expect(await coordinator.residentModelForTesting == .egOne)
+      #expect(await coordinator.hasLease(for: .egOne) == true)
+      await coordinator.releaseLease(lease)
+      #expect(await coordinator.residentModelForTesting == nil)
+    case .changing:
+      #expect(await coordinator.residentModelForTesting == nil)
+      #expect(await coordinator.hasLease(for: .egOne) == false)
+    }
+  }
+
+  @Test("a same-model restatement never refuses a lease, whichever task runs first (#3105)")
+  func restatementDoesNotMarkChanging() async {
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    let restateIntent = coordinator.claimIntent()
+    let restating = Task { await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: restateIntent) }
+    let acquiring = Task { await coordinator.acquireLease(for: .egOne) }
+    let admission = await acquiring.value
+    await restating.value
+    guard case .granted(let lease) = admission else {
+      Issue.record("an idempotent restatement refused the resident server's lease")
+      return
+    }
+    #expect(await coordinator.residentModelForTesting == .egOne)
+    await coordinator.releaseLease(lease)
+  }
+
+  @Test("release retries the latest deferred provider switch (#3105)")
+  func releaseRetriesDeferredSwitch() async {
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    let admission = await coordinator.acquireLease(for: .egOne)
+    guard case .granted(let lease) = admission else {
+      Issue.record("resident server refused its lease")
+      return
+    }
+    await coordinator.transition(to: Self.run(.s1Mini, "s1"), intent: coordinator.claimIntent())
+    #expect(await coordinator.residentModelForTesting == .egOne)
+    await coordinator.releaseLease(lease)
+    #expect(await coordinator.residentModelForTesting == .s1Mini)
+  }
+
+  @Test("Remove Model waits for a resident lease (#3105)")
+  func removalWaitsForLease() async {
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    let admission = await coordinator.acquireLease(for: .egOne)
+    guard case .granted(let lease) = admission else {
+      Issue.record("resident server refused its lease")
+      return
+    }
+    let removing = Task {
+      let claimed = await coordinator.beginRemoval(
+        for: .egOne, intent: coordinator.claimIntent()) { true }
+      #expect(claimed)
+      await coordinator.endRemoval()
+    }
+    #expect(await coordinator.residentModelForTesting == .egOne)
+    await coordinator.releaseLease(lease)
+    await removing.value
+    #expect(await coordinator.residentModelForTesting == nil)
+  }
+
+  @Test("a removal the user overtook by re-selecting the model leaves its server running (#3105)")
+  func reselectedRemovalKeepsServer() async {
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    let admission = await coordinator.acquireLease(for: .egOne)
+    guard case .granted(let lease) = admission else {
+      Issue.record("resident server refused its lease")
+      return
+    }
+    let removalIntent = coordinator.claimIntent()
+    let removing = Task {
+      // Asked after the take's lease clears: the user has re-selected EG-1.
+      await coordinator.beginRemoval(for: .egOne, intent: removalIntent) { false }
+    }
+    await coordinator.releaseLease(lease)
+    #expect(await removing.value == false)
+    #expect(await coordinator.residentModelForTesting == .egOne)
+    // Nothing was claimed, so the next take is admitted.
+    guard case .granted(let next) = await coordinator.acquireLease(for: .egOne) else {
+      Issue.record("an abandoned removal left the server changing")
+      return
+    }
+    await coordinator.releaseLease(next)
+  }
 }

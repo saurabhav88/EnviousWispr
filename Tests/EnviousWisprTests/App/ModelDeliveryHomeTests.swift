@@ -3,12 +3,56 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprModelDelivery
 
 /// #1741 Chunk 6 — pins the gate-refusal contract for `ModelDeliveryHome`'s
 /// two Settings-row mutation sites (Parakeet Cancel/Resume).
 @MainActor
 @Suite("ModelDeliveryHome — engine mutation gate refusal")
 struct ModelDeliveryHomeTests {
+
+  @Test("EG-1 checker has a sibling registration and the future trigger refuses absent base")
+  func checkerRegistrationAndAutomaticTriggerGate() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
+    let checker = try #require(home.egOneCheckerRegistration)
+    #expect(checker.installDirectory.lastPathComponent == "eg-1-checker")
+    #expect(checker.manifest.identity.family == .egOneChecker)
+    #expect(checker.manifest.sources.first?.baseURL.absoluteString
+      == ModelDeliveryHome.TODOCheckerAdapterHostBaseURL)
+    #expect(ModelDeliveryHome.checkerHostIsConfigured(checker.manifest) == false)
+    let hostedManifest = DeliveryManifest(
+      schemaVersion: checker.manifest.schemaVersion,
+      identity: checker.manifest.identity,
+      files: checker.manifest.files,
+      optionalFiles: checker.manifest.optionalFiles,
+      totalBytes: checker.manifest.totalBytes,
+      sources: [.init(
+        id: "our_copy", baseURL: try #require(URL(string: "https://models.enviouslabs.co/eg1/checker/")))],
+      admission: checker.manifest.admission,
+      runtimeIdentityDigest: checker.manifest.runtimeIdentityDigest,
+      checkerContract: checker.manifest.checkerContract,
+      manifestDigest: checker.manifest.manifestDigest)
+    #expect(ModelDeliveryHome.checkerHostIsConfigured(hostedManifest))
+    let root = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+    let baseManifest = try DeliveryManifest.load(from: Data(contentsOf: root.appendingPathComponent(
+      "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json")))
+    let base = DeliveryRegistration(
+      manifest: baseManifest,
+      installDirectory: checker.installDirectory.deletingLastPathComponent()
+        .appendingPathComponent("eg-1"),
+      metadataDirectory: checker.metadataDirectory)
+    #expect(await home.ensureCheckerAdapterIfEGOneSelected(
+      selected: false, baseRegistration: base, promptTemplateID: "eg1-v2") == .notSelected)
+    #expect(await home.ensureCheckerAdapterIfEGOneSelected(
+      selected: true, baseRegistration: base, promptTemplateID: "eg1-v2") == .baseNotAdmitted)
+    #expect(FileManager.default.fileExists(atPath: checker.installDirectory.path) == false)
+  }
 
   /// Production's trust root is the signed app's own `Bundle.main` (contract
   /// §4a), which a unit-test process cannot see — these resources ride the

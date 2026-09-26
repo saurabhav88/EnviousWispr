@@ -70,6 +70,8 @@ public final class FileImportRunner {
   private let egOneRuntime: (any EGOneEndpointProviding)?
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
   private let outputClassifierHolder: OutputClassifierHolder?
+  private let checkerSelectionProvider:
+    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
 
   /// Test seams (#3111), production defaults unchanged: the language recogniser the
   /// runner resolves with, the EG-1 polisher factory, and the prompt planner, so a test
@@ -90,18 +92,24 @@ public final class FileImportRunner {
 
   /// The custom-words vocabulary, frozen with the settings for the same reason.
   private var frozenVocabulary: CorrectorVocabulary?
+  /// An import is one invocation even when it has many parts, so the endpoint
+  /// is chosen once. The choice is keyed by each part's resolved language: a
+  /// judge qualified for English must not run on a later Spanish part because
+  /// the first part happened to be English. Key "" is an unresolved language.
+  private var frozenCheckerSelections: [String: LearnedWordCheckerSelection] = [:]
 
   public convenience init(
     keychainManager: KeychainManager,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
-    outputClassifierHolder: OutputClassifierHolder? = nil
+    outputClassifierHolder: OutputClassifierHolder? = nil,
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     self.init(
       keychainManager: keychainManager, egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
       outputClassifierHolder: outputClassifierHolder,
       languageIdentifier: DictationLanguageResolver.identify, makeEGOnePolisher: nil,
-      promptPlanner: nil)
+      promptPlanner: nil, checkerSelectionProvider: checkerSelectionProvider)
   }
 
   init(
@@ -111,7 +119,8 @@ public final class FileImportRunner {
     outputClassifierHolder: OutputClassifierHolder?,
     languageIdentifier: @escaping (String) -> (language: String, confidence: Double)?,
     makeEGOnePolisher: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher)?,
-    promptPlanner: (any PromptPlanning)?
+    promptPlanner: (any PromptPlanning)?,
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     self.keychainManager = keychainManager
     self.egOneRuntime = egOneRuntime
@@ -120,6 +129,7 @@ public final class FileImportRunner {
     self.languageIdentifier = languageIdentifier
     self.makeEGOnePolisher = makeEGOnePolisher
     self.promptPlanner = promptPlanner
+    self.checkerSelectionProvider = checkerSelectionProvider
   }
 
   /// Freezes the configuration this import runs under. Called once, before the
@@ -127,6 +137,7 @@ public final class FileImportRunner {
   public func freeze(settings: RecordingSettingsSnapshot, vocabulary: CorrectorVocabulary?) {
     frozenSettings = settings
     frozenVocabulary = vocabulary
+    frozenCheckerSelections = [:]
   }
 
   /// Runs one part through the shipped chain.
@@ -172,7 +183,8 @@ public final class FileImportRunner {
       // adapts to the frontmost app would be adapting to whatever the user
       // happened to have open while the file decoded.
       targetAppName: nil,
-      steps: steps.orderedChainForFileImport)
+      steps: steps.orderedChainForFileImport,
+      frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary)
 
     // The user pressed Stop while this part was in flight. The runner will have
     // returned the deterministic floor rather than propagating, which is right
@@ -249,6 +261,18 @@ public final class FileImportRunner {
     let wordCorrection = WordCorrectionStep()
     wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     if let frozenVocabulary { wordCorrection.correctorVocabulary = frozenVocabulary }
+    let learnedWordCheck = LearnedWordCheckStep()
+    learnedWordCheck.selectionProvider = { [weak self] provider, language in
+      guard let self else { return .init(absence: .serverUnavailable) }
+      let key = language ?? ""
+      if let frozen = self.frozenCheckerSelections[key] { return frozen }
+      let selection = await self.checkerSelectionProvider?(provider, language)
+        ?? .init(absence: .serverUnavailable)
+      self.frozenCheckerSelections[key] = selection
+      return selection
+    }
+    learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    if let frozenVocabulary { learnedWordCheck.correctorVocabulary = frozenVocabulary }
 
     let fillerRemoval = FillerRemovalStep()
     fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
@@ -263,6 +287,7 @@ public final class FileImportRunner {
     return LimbSteps(
       snippetExpansion: SnippetExpansionStep(),
       wordCorrection: wordCorrection,
+      learnedWordCheck: learnedWordCheck,
       fillerRemoval: fillerRemoval,
       emojiFormatter: emojiFormatter,
       inverseTextNormalization: itn,

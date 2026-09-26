@@ -685,6 +685,39 @@ private func deterministicRunner(
   return TextProcessingRunner(timeoutExecutor: executor.run)
 }
 
+@MainActor
+@Suite("Per-step timing log (#3105)", .tags(.observabilityContract))
+struct StepTimingTests {
+  @Test func logsRunSkippedAndFailedStepsWithoutContent() async throws {
+    let logger = SignalPipelineLogger()
+    let runner = deterministicRunner(logger: logger)
+    let ran = RecordingStep(name: "Ran") { $0 }
+    let skipped = RecordingStep(name: "Skipped", isEnabled: false) { $0 }
+    let failed = RecordingStep(name: "Failed") { _ in
+      throw StepFailure(message: "failure")
+    }
+    _ = try await runner.run(
+      rawText: "secret text", evidence: .locked("en"), targetAppName: nil,
+      steps: [ran, skipped, failed])
+
+    let ranEntry = try await logger.waitForEntry {
+      $0.category == "Pipeline" && $0.message.hasPrefix("StepTiming: step=Ran ")
+    }
+    let skippedEntry = try await logger.waitForEntry {
+      $0.category == "Pipeline" && $0.message.hasPrefix("StepTiming: step=Skipped ")
+    }
+    let failedEntry = try await logger.waitForEntry {
+      $0.category == "Pipeline" && $0.message.hasPrefix("StepTiming: step=Failed ")
+    }
+    #expect(ranEntry.message.hasSuffix(" ran=true"))
+    #expect(skippedEntry.message == "StepTiming: step=Skipped ms=0 ran=false")
+    #expect(failedEntry.message.hasSuffix(" ran=true"))
+    #expect(!ranEntry.message.contains("secret text"))
+    #expect(TextProcessingRunner.stepTimingLine(name: "A", milliseconds: 2.34, ran: true)
+      == "StepTiming: step=A ms=2.3 ran=true")
+  }
+}
+
 // MARK: - #2614 language resolution happens ONCE, in the runner
 
 /// The runner resolves the dictation's language from the caller's `LanguageEvidence`

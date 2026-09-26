@@ -11,8 +11,21 @@ public struct EGOneEndpoint: Sendable, Equatable {
   /// input-size preflight reads this so an over-budget dictation skips
   /// whole (silent raw fallback), never truncates silently.
   public let contextTokens: Int
+  public let hasLearnedWordAdapter: Bool
   public var chatCompletionsURL: URL {
     URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
+  }
+  public var completionURL: URL {
+    URL(string: "http://127.0.0.1:\(port)/completion")!
+  }
+
+  public init(port: UInt16, authToken: String, contextTokens: Int,
+    hasLearnedWordAdapter: Bool = false
+  ) {
+    self.port = port
+    self.authToken = authToken
+    self.contextTokens = contextTokens
+    self.hasLearnedWordAdapter = hasLearnedWordAdapter
   }
 }
 
@@ -38,6 +51,13 @@ public enum EGOneHealth: Sendable, Equatable {
 /// #286/#295 Ollama dual-residency incident is the precedent), and every
 /// failure surfaces to dictation as a silent raw-text fallback.
 public actor EGOneServerManager {
+  /// Closed startup diagnosis for the checker. Polish can continue after this.
+  public enum CheckerFailureReason: String, Sendable, Equatable {
+    case adapterMissing = "adapter_missing"
+    case adapterServerExited = "adapter_server_exited"
+    case adapterServerNeverReady = "adapter_server_never_ready"
+  }
+
   public enum ServerState: Sendable, Equatable {
     case stopped
     case starting
@@ -56,6 +76,9 @@ public actor EGOneServerManager {
     public var serverBinaryURL: URL
     public var modelURL: URL
     public var contextTokens: Int
+    public var learnedWordAdapterURL: URL?
+    /// Arguments that belong only to the adapter, removed for fallback.
+    public var learnedWordAdapterArguments: [String]
     /// Extra launch arguments appended after the standard set.
     public var extraArguments: [String]
     /// Seconds to wait for the HTTP surface after spawn (model load takes
@@ -65,17 +88,29 @@ public actor EGOneServerManager {
 
     public init(
       serverBinaryURL: URL, modelURL: URL, contextTokens: Int,
-      extraArguments: [String] = [], readinessBudgetSeconds: Int = 60
+      extraArguments: [String] = [], readinessBudgetSeconds: Int = 60,
+      learnedWordAdapterURL: URL? = nil,
+      learnedWordAdapterArguments: [String] = []
     ) {
       self.serverBinaryURL = serverBinaryURL
       self.modelURL = modelURL
       self.contextTokens = contextTokens
+      self.learnedWordAdapterURL = learnedWordAdapterURL
+      self.learnedWordAdapterArguments = learnedWordAdapterArguments
       self.extraArguments = extraArguments
       self.readinessBudgetSeconds = readinessBudgetSeconds
+    }
+
+    func withoutLearnedWordAdapter() -> Configuration {
+      var fallback = self
+      fallback.learnedWordAdapterURL = nil
+      fallback.learnedWordAdapterArguments = []
+      return fallback
     }
   }
 
   private(set) var state: ServerState = .stopped
+  public private(set) var checkerFailureReason: CheckerFailureReason?
   /// Monotonic spawn token (#1271 matrix gap 1): `stop()` / memory-pressure
   /// pause / a newer spawn bump it, so a spawn whose readiness await resumes
   /// AFTER its generation ended can neither tear down a successor's process
@@ -131,6 +166,7 @@ public actor EGOneServerManager {
     case .stopped, .pausedForMemoryPressure, .failed: break
     }
     restartedOnceThisGeneration = false
+    checkerFailureReason = nil
     await spawn(configuration: configuration)
   }
 
@@ -212,6 +248,13 @@ public actor EGOneServerManager {
       transition(to: .failed(reason: "model_missing"))
       return
     }
+    if let adapter = configuration.learnedWordAdapterURL,
+      !FileManager.default.fileExists(atPath: adapter.path)
+    {
+      checkerFailureReason = .adapterMissing
+      await spawn(configuration: configuration.withoutLearnedWordAdapter())
+      return
+    }
 
     // App-chosen free port (bind-probe then release). llama-server's
     // `--port 0` self-report is NOT assumed (plan §11 port strategy).
@@ -230,7 +273,7 @@ public actor EGOneServerManager {
         "--port", String(port),
         "-c", String(configuration.contextTokens),
         "--api-key", token,
-      ] + configuration.extraArguments
+      ] + configuration.extraArguments + configuration.learnedWordAdapterArguments
     // The server's stdout/stderr are noise for us; route to null so the
     // pipe buffers can never fill and wedge the child.
     proc.standardOutput = FileHandle.nullDevice
@@ -254,7 +297,8 @@ public actor EGOneServerManager {
     installMemoryPressureSource()
 
     let endpoint = EGOneEndpoint(
-      port: port, authToken: token, contextTokens: configuration.contextTokens)
+      port: port, authToken: token, contextTokens: configuration.contextTokens,
+      hasLearnedWordAdapter: configuration.learnedWordAdapterURL != nil)
     // Wait for the HTTP surface to come up (model load can take seconds;
     // poll /health until 200, the process dying, or budget exhausted).
     let healthy = await Self.awaitServerUp(
@@ -268,6 +312,12 @@ public actor EGOneServerManager {
     // down the successor's process (#1271 matrix gap 1).
     guard generation == launchGeneration else { return }
     guard healthy else {
+      if configuration.learnedWordAdapterURL != nil {
+        checkerFailureReason = proc.isRunning ? .adapterServerNeverReady : .adapterServerExited
+        tearDownProcess()
+        await spawn(configuration: configuration.withoutLearnedWordAdapter())
+        return
+      }
       // The termination handler may have already routed a startup death to
       // `.failed(crashed_during_start)`; do not overwrite its diagnosis.
       if case .starting = state {
@@ -276,9 +326,16 @@ public actor EGOneServerManager {
       }
       return
     }
-    // Same race on the success side: only a still-starting spawn may
-    // promote to ready.
-    guard case .starting = state else { return }
+    // A child can answer /health and exit before promotion. It never became
+    // a ready process, so an adapter launch still needs the bare-base retry.
+    guard case .starting = state, proc.isRunning else {
+      if configuration.learnedWordAdapterURL != nil {
+        checkerFailureReason = .adapterServerExited
+        tearDownProcess()
+        await spawn(configuration: configuration.withoutLearnedWordAdapter())
+      }
+      return
+    }
     transition(to: .ready(endpoint))
     await AppLogger.shared.log(
       "Local polish server ready on 127.0.0.1:\(port)", level: .info, category: "LLM")

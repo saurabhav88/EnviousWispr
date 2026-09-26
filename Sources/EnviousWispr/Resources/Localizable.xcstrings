@@ -3957,6 +3957,34 @@
         }
       }
     },
+    "Checked by: %@. Learned words are checked before they're used in %@." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Checked by: %1$@. Learned words are checked before they're used in %2$@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geprüft von: %1$@. Gelernte Wörter werden geprüft, bevor sie in Diktaten auf %2$@ verwendet werden."
+          }
+        }
+      }
+    },
+    "Checked by: %@. Learned words are checked before they're used." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geprüft von: %@. Gelernte Wörter werden geprüft, bevor sie verwendet werden."
+          }
+        }
+      }
+    },
     "Checked on %@" : {
       "comment" : "AI Polish, Ollama model list: when the hosted list was last verified. %@ is a date.",
       "localizations" : {
@@ -8443,6 +8471,83 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mehr über Engines erfahren"
+          }
+        }
+      }
+    },
+    "Learn-only: %@'s word check couldn't download. Learned words are saved for later." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lernen: Die Wortprüfung (%@) konnte nicht heruntergeladen werden. Gelernte Wörter werden für später gespeichert."
+          }
+        }
+      }
+    },
+    "Learn-only: %@'s word check is downloading. Learned words are saved for later." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lernen: Die Wortprüfung (%@) wird heruntergeladen. Gelernte Wörter werden für später gespeichert."
+          }
+        }
+      }
+    },
+    "Learn-only: %@'s word check isn't available yet. Learned words are saved for later." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lernen: Die Wortprüfung (%@) ist noch nicht verfügbar. Gelernte Wörter werden für später gespeichert."
+          }
+        }
+      }
+    },
+    "Learn-only: %@'s word check isn't ready. Learned words are saved for later." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lernen: Die Wortprüfung (%@) ist noch nicht einsatzbereit. Gelernte Wörter werden für später gespeichert."
+          }
+        }
+      }
+    },
+    "Learn-only: Learned words are checked in %@ only." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lernen: Gelernte Wörter werden nur auf %@ geprüft."
+          }
+        }
+      }
+    },
+    "Learn-only: Learned words aren't checked in this language yet." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lernen: Gelernte Wörter werden in dieser Sprache noch nicht geprüft."
+          }
+        }
+      }
+    },
+    "Learn-only: This polish choice doesn't use learned words yet." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lernen: Diese Nachbearbeitungsoption verwendet gelernte Wörter noch nicht."
           }
         }
       }
@@ -15529,6 +15634,17 @@
         }
       }
     },
+    "The polish engine" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachbearbeitungs-Engine"
+          }
+        }
+      }
+    },
     "The preview detects your language as you speak." : {
       "comment" : "Live Preview settings: universal auto.",
       "localizations" : {
@@ -16516,7 +16632,7 @@
       }
     },
     "Try again" : {
-      "comment" : "Live Preview settings: pack retry.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.",
+      "comment" : "Live Preview settings: pack retry.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

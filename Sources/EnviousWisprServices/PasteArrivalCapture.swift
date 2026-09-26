@@ -1007,7 +1007,11 @@ extension PasteArrivalCapture {
       switch newRegion(in: field, hits: hits) {
       case .notYet:
         return (.ended(.dictatedTextNotFound), true)
-      case .ambiguous:
+      case .ambiguous(let why):
+        #if DEBUG
+          let line = "arrival_ambiguous_probe \(why) value_utf16=\(field.value.utf16.count)"
+          Task { await AppLogger.shared.log(line, level: .info, category: "LearnFromEdits") }
+        #endif
         return (.ended(.anchorAmbiguous), false)
       case .region(let hit):
         return (
@@ -1036,7 +1040,8 @@ extension PasteArrivalCapture {
 
   private enum NewRegion {
     case notYet
-    case ambiguous
+    /// Which rule refused, as counts only (#3105 probe; logged in DEBUG builds).
+    case ambiguous(String)
     case region(PastedRegionLocator.Located)
   }
 
@@ -1065,11 +1070,21 @@ extension PasteArrivalCapture {
       switch hits.count {
       case 0: return .notYet
       case 1: return .region(hits[0])
-      default: return .ambiguous
+      default:
+        let why: String
+        switch baseline {
+        case .noFocus: why = "baseline_no_focus"
+        case .unreadable: why = "baseline_unreadable"
+        case .field(_, _, _, .complete, _): why = "baseline_other_field_or_reader"
+        case .field: why = "baseline_incomplete"
+        }
+        return .ambiguous("rule=\(why) hits=\(hits.count)")
       }
     }
     guard hits.count > beforeHits.count else { return .notYet }
-    guard hits.count == beforeHits.count + 1 else { return .ambiguous }
+    guard hits.count == beforeHits.count + 1 else {
+      return .ambiguous("rule=hit_count hits=\(hits.count) before_hits=\(beforeHits.count)")
+    }
     let before = Array(beforeValue.utf16)
     let after = Array(field.value.utf16)
     if case .range(let location, let length) = selection,
@@ -1101,6 +1116,9 @@ extension PasteArrivalCapture {
     if picks.allSatisfy({ $0.count == 1 }), picks[0][0].start == picks[1][0].start {
       return .region(picks[0][0])
     }
-    return .ambiguous
+    return .ambiguous(
+      "rule=changed_span hits=\(hits.count) before_hits=\(beforeHits.count) "
+        + "picks=\(picks[0].count),\(picks[1].count) before_utf16=\(before.count) "
+        + "prefix=\(prefix) suffix=\(suffixAfterPrefix)")
   }
 }

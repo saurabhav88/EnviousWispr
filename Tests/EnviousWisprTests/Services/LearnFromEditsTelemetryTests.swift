@@ -50,7 +50,7 @@ import Testing
     static let contract: [String: Set<String>] = [
       "custom_words.learn_skipped": ["reason"],
       "custom_words.learn_observation_ended": [
-        "reason", "settled_bursts", "app_class", "duration_ms",
+        "reason", "settled_bursts", "app_class", "duration_ms", "unfinished_edits",
       ],
       // `queue_wait_ms` rides only when the arm measured it (see the second test).
       "custom_words.learn_judged": [
@@ -70,7 +70,7 @@ import Testing
         let t = TelemetryService.shared
         t.learnSkipped(reason: .destinationMismatch)
         t.learnObservationEnded(
-          reason: .settled, settledBursts: 1, appClass: .native, durationMs: 4200)
+          reason: .settled, settledBursts: 1, appClass: .native, durationMs: 4200, unfinishedEdits: 0)
         t.learnJudged(
           arm: .rules, outcome: .verdict, candidates: 3, accepted: 1, latencyMs: 812,
           queueWaitMs: 0)
@@ -103,7 +103,7 @@ import Testing
       let box = Self.capture {
         TelemetryService.shared.learnObservationEnded(
           reason: .editDistanceExceeded, settledBursts: 2, appClass: .manualAccessibility,
-          durationMs: 61_000)
+          durationMs: 61_000, unfinishedEdits: 1)
         TelemetryService.shared.learnJudged(
           arm: .afm, outcome: .deadline, candidates: 4, accepted: 0, latencyMs: 5001,
           queueWaitMs: 120)
@@ -118,6 +118,7 @@ import Testing
       #expect(ended.stringProps["reason"] == "edit_distance_exceeded")
       #expect(ended.stringProps["app_class"] == "manual_accessibility")
       #expect(ended.intProps["settled_bursts"] == 2 && ended.intProps["duration_ms"] == 61_000)
+      #expect(ended.intProps["unfinished_edits"] == 1)
       let judged = try #require(box.values.first { $0.name == "custom_words.learn_judged" })
       #expect(judged.stringProps["arm"] == "afm" && judged.stringProps["outcome"] == "deadline")
       #expect(judged.intProps["candidates"] == 4 && judged.intProps["accepted"] == 0)

@@ -83,6 +83,8 @@ package final class WisprBootstrapper {
   /// property is the plan's named cost (ceiling 34 -> 35, Bible entry in
   /// EnviousWisprAppCeilingsTests).
   let modelDelivery: ModelDeliveryHome
+  /// The take selector also answers the Dictionary status line.
+  let checkerEligibility: EGOneCheckerEligibility
 
   /// #1386 PR-2. Stored because nothing else owns it: it is reached only through a closure
   /// `SetupCoordinator` calls once, and a closure capture cannot keep it alive. Held here, it
@@ -425,10 +427,35 @@ package final class WisprBootstrapper {
         selectedProvider: { [weak settings] in settings?.llmProvider == .egOne })
       egOneUpgrade = (registration, coordinator)
     }
+    #if DEBUG
+      let debugScriptedChecker = LearnedWordCheckUATDoor.configuration()
+      let debugLearnedWordAdapter = debugScriptedChecker == nil
+        ? LearnedWordCheckEGOneDoor.configuration() : nil
+    #else
+      let debugScriptedChecker: (any LearnedWordChecking)? = nil
+      let debugLearnedWordAdapter: (url: URL, threshold: Double)? = nil
+    #endif
+    let learnedWordAdapterProvider: @MainActor () async -> URL? = {
+      if let debugLearnedWordAdapter { return debugLearnedWordAdapter.url }
+      guard let base = egOneUpgrade?.registration,
+        let promptTemplateID = egOneManifest?.promptTemplateID
+      else { return nil }
+      return await modelDelivery.admittedCompatibleEGOneCheckerURL(
+        baseRegistration: base, promptTemplateID: promptTemplateID)
+    }
     let egOneRuntime = EGOneRuntime(
-      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter)
+      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
+      learnedWordAdapterProvider: learnedWordAdapterProvider)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
+    if let checkerIdentity = modelDelivery.egOneCheckerRegistration?.manifest.identity {
+      Task {
+        await modelDelivery.controller.addStateObserver { identity, _ in
+          guard identity == checkerIdentity else { return }
+          Task { @MainActor in egOneRuntime.adapterAvailabilityDidChange() }
+        }
+      }
+    }
     if let egOneUpgrade {
       // First-run baseline (#1348 §16.2) → legacy launch table → the RUNTIME
       // decides if the completed replacement boots the server (PR #1500 P1).
@@ -438,6 +465,12 @@ package final class WisprBootstrapper {
         await delivery.recordFirstRunBaseline(for: egOneUpgrade.registration)
         await egOneUpgrade.coordinator.runLaunch()
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
+        if let prompt = egOneManifest?.promptTemplateID {
+          _ = await delivery.ensureCheckerAdapterIfEGOneSelected(
+            selected: settings.llmProvider == .egOne,
+            baseRegistration: egOneUpgrade.registration,
+            promptTemplateID: prompt)
+        }
       }
     }
     // #2649: S1-mini's install path, built beside EG-1's and sharing its
@@ -667,6 +700,47 @@ package final class WisprBootstrapper {
     // Start. Two of those are promises to the user about where their words went,
     // so they must not be able to disagree with the third.
     let ollamaRemoteness = PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
+    let checkerBaseRegistration = egOneUpgrade?.registration
+    let checkerPromptTemplateID = egOneManifest?.promptTemplateID
+    let checkerEligibility = EGOneCheckerEligibility(
+      delivery: modelDelivery, base: checkerBaseRegistration,
+      promptTemplateID: checkerPromptTemplateID, runtime: egOneRuntime,
+      debugThreshold: debugLearnedWordAdapter?.threshold,
+      debugScriptedChecker: debugScriptedChecker)
+    egOneRuntime.onEvent = { event in
+      EGOneTelemetryBridge.handler(engine: .egOne)(event)
+      Task { @MainActor in checkerEligibility.statusDidChange() }
+    }
+    // One ensure, three triggers: selecting EG-1, launch, and the base model's
+    // own admission. A first-time EG-1 download passes the first two while the
+    // base is still arriving, and nothing else would start the word check's
+    // download once it lands.
+    let ensureCheckerAdapter: @MainActor () -> Void = { [weak settings, modelDelivery] in
+      Task {
+        guard let base = checkerBaseRegistration,
+          let prompt = checkerPromptTemplateID
+        else { return }
+        _ = await modelDelivery.ensureCheckerAdapterIfEGOneSelected(
+          selected: settings?.llmProvider == .egOne,
+          baseRegistration: base, promptTemplateID: prompt)
+      }
+    }
+    if let checkerIdentity = modelDelivery.egOneCheckerRegistration?.manifest.identity {
+      let baseIdentity = checkerBaseRegistration?.manifest.identity
+      Task {
+        await modelDelivery.controller.addStateObserver { identity, state in
+          if identity == baseIdentity, case .admitted = state {
+            Task { @MainActor in
+              ensureCheckerAdapter()
+              checkerEligibility.statusDidChange()
+            }
+            return
+          }
+          guard identity == checkerIdentity else { return }
+          Task { @MainActor in checkerEligibility.statusDidChange() }
+        }
+      }
+    }
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
@@ -675,6 +749,10 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
+      checkerSelectionProvider: { [checkerEligibility] provider, language in
+        await checkerEligibility.selection(provider: provider, language: language)
+      },
+      ensureCheckerAdapter: ensureCheckerAdapter,
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
@@ -850,7 +928,9 @@ package final class WisprBootstrapper {
       initialWords: customWordsCoordinator.customWords,
       correctorConsumers: [
         kernelDriver.wordCorrection,
+        kernelDriver.learnedWordCheck,
         whisperKitKernelDriver.wordCorrection,
+        whisperKitKernelDriver.learnedWordCheck,
         // #1988: the preview corrects displayed text with the SAME lane, so a
         // user's own names do not visibly mangle while the pasted text is fixed.
         livePreview,
@@ -1088,6 +1168,9 @@ package final class WisprBootstrapper {
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
+      checkerSelectionProvider: { [checkerEligibility] provider, language in
+        await checkerEligibility.selection(provider: provider, language: language)
+      },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
       // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.
@@ -1525,7 +1608,10 @@ package final class WisprBootstrapper {
       // and crash recovery get. Without it an imported part polished by Apple
       // Intelligence silently loses the classifier-aware output filter, even
       // when the classifier prewarmed successfully.
-      outputClassifierHolder: outputClassifierHolder)
+      outputClassifierHolder: outputClassifierHolder,
+      checkerSelectionProvider: { [checkerEligibility] provider, language in
+        await checkerEligibility.selection(provider: provider, language: language)
+      })
     // #2648: the health probe asks the lease, not the settings sync, because
     // the question is "is the ONE inference slot occupied" and every workload
     // that can occupy it takes this claim. `isBusy` had no production reader
@@ -1688,15 +1774,22 @@ package final class WisprBootstrapper {
       onEngineReleased: {
         [
           weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings,
-          asrManager
+          asrManager, localPolishRuntimes
         ] in
+        // #3105: THIS run's server hold is taken synchronously, so a later
+        // import's hold can never be the one released, and the forced reconcile
+        // waits for the release rather than being deferred behind it.
+        let releaseHold = localPolishRuntimes.releaseImportHold()
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
-        // #2772: FORCED. An import that started its own bundled polisher armed no
-        // pending flag, so the unforced call returned without reconciling and the
-        // import's engine stayed resident in place of dictation's.
-        settingsSync.retryDeferredEGOneDeactivation(
-          settings: settings, forceReconciliation: true)
+        Task { @MainActor in
+          await releaseHold?.value
+          // #2772: FORCED. An import that started its own bundled polisher armed no
+          // pending flag, so the unforced call returned without reconciling and the
+          // import's engine stayed resident in place of dictation's.
+          settingsSync.retryDeferredEGOneDeactivation(
+            settings: settings, forceReconciliation: true)
+        }
         // **Recovery needs its OWN wake.** A poke that finds the selected and
         // active engines already matching returns without reaching recovery, so
         // a scan that released its mutation gate because an import held the
@@ -1744,8 +1837,11 @@ package final class WisprBootstrapper {
       // Only the BUNDLED servers are prepared here. Ollama is the user's own process and
       // the cloud providers have nothing on this Mac to start, which is the same set
       // `localPolishProvider` already names for the eviction pin.
-      prepareLocalPolish: { [localPolishRuntimes] configuration in
+      prepareLocalPolish: { [localPolishRuntimes, checkerEligibility] configuration in
         guard let localPolish = configuration.localPolishProvider else { return true }
+        if localPolish == .egOne {
+          Task { await checkerEligibility.requestAdapterDownload() }
+        }
         // A nil activation is a refusal before the server is even asked: another session
         // pins the engine, or an activation blocker stands. Red after the probe is the server
         // itself not coming up. Either way the cleanup is refused rather than run against a
@@ -1758,7 +1854,8 @@ package final class WisprBootstrapper {
         // activation's probe sees the engine busy and skips on purpose, leaving `health` at
         // whatever the last probe said; a server that just came up after an earlier red
         // verdict would be refused on stale advice. The endpoint is what the run will use.
-        return await runtime.activeEndpoint() != nil
+        guard await runtime.activeEndpoint() != nil else { return false }
+        return await localPolishRuntimes.holdForImport(localPolish)
       },
       // #2772 finding 11: the third writer of History, beside dictation and crash replay.
       // Through the COORDINATOR rather than the store, so the row appears immediately —
@@ -1851,6 +1948,7 @@ package final class WisprBootstrapper {
     self.whisperKitRetirement = whisperKitRetirement
     self.localPolishRuntimes = localPolishRuntimes
     self.modelDelivery = modelDelivery
+    self.checkerEligibility = checkerEligibility
     self.audioDeviceList = audioDeviceList
     self.pillAppearance = pillAppearance
     self.inputDevicePreferenceReconciler = inputDevicePreferenceReconciler
@@ -2129,6 +2227,7 @@ private struct MainWindowRoot: View {
       .environment(b.backendMetadata)
       .environment(b.engineCoordinator)
       .environment(b.modelDelivery)
+      .environment(b.checkerEligibility)
       .environment(b.dictationRuntime)
       .environment(b.appWindowCoordinator)
       // The nine view-facing homes (epic #763).

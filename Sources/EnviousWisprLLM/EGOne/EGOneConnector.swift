@@ -45,12 +45,13 @@ public struct EGOneConnector: TranscriptPolisher {
   /// uncapped request is an invariant breach and throws through the
   /// ordinary limb-failure path.
   static func makeRequestBody(
-    system: String, user: String, config: LLMProviderConfig
+    system: String, user: String, config: LLMProviderConfig,
+    hasLearnedWordAdapter: Bool = false
   ) throws -> [String: Any] {
     guard case .capped(let maxTokens) = config.outputTokens else {
       throw LLMError.requestFailed("Local polish requires an explicit output-token cap")
     }
-    return [
+    let body: [String: Any] = [
       "model": config.model,
       "messages": [
         ["role": "system", "content": system],
@@ -59,6 +60,11 @@ public struct EGOneConnector: TranscriptPolisher {
       "max_tokens": maxTokens,
       "temperature": config.temperature,
     ]
+    guard hasLearnedWordAdapter else { return body }
+    var adapted = body
+    adapted["lora"] = [["id": 0 as Int, "scale": 0.0 as Double] as [String: Any]]
+    adapted["id_slot"] = EGOneSlots.polish
+    return adapted
   }
 
   /// The transport moved to `LocalPolishTransport` when a second model began

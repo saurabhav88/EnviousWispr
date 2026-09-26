@@ -15,7 +15,8 @@ internal struct TextProcessingRunResult {
   var polishError: String? { polishNotice?.text }
 }
 
-/// Runs the post-ASR text processing chain: word correction -> filler removal -> LLM polish.
+/// Runs the post-ASR chain, including deterministic correction, learned-word checking,
+/// cleanup, and polish in the order supplied by `LimbSteps`.
 ///
 /// Does NOT own step instances. Steps are passed in by the pipeline, which retains
 /// ownership across the timeout await.
@@ -29,6 +30,10 @@ internal struct TextProcessingRunResult {
 /// `PipelineLogging` so tests can verify side effects without disk reads.
 @MainActor
 internal final class TextProcessingRunner {
+
+  static func stepTimingLine(name: String, milliseconds: Double, ran: Bool) -> String {
+    "StepTiming: step=\(name) ms=\(ran ? String(format: "%.1f", milliseconds) : "0") ran=\(ran)"
+  }
 
   /// Per-step timeout-executor seam (#784, 2026-05-18). Production default
   /// delegates to `withThrowingTimeout`; tests inject a deterministic fake
@@ -196,6 +201,9 @@ internal final class TextProcessingRunner {
     evidence: LanguageEvidence,
     targetAppName: String?,
     steps: [any TextProcessingStep],
+    /// One take's full vocabulary, set before any step can suspend. Nil keeps
+    /// direct runner callers on their existing per-step lane behavior.
+    frozenCorrectorVocabulary: CorrectorVocabulary? = nil,
     /// #1846: the live in-flight take. Frozen into the context below so every
     /// emission in this chain names the same dictation even if the session state
     /// moves on mid-chain.
@@ -215,6 +223,7 @@ internal final class TextProcessingRunner {
       identifyTextOnAllPaths: true,
       identify: languageIdentifier)
     var context = TextProcessingContext(text: rawText, language: resolution.language)
+    context.frozenCorrectorVocabulary = frozenCorrectorVocabulary
     context.languageSource = resolution.source
     context.languageConfidenceBucket = resolution.confidenceBucket
     context.englishRulesVetoed = resolution.englishVeto
@@ -226,6 +235,15 @@ internal final class TextProcessingRunner {
     // (the runner keeps the INPUT context on failure) and both passes read one set.
     context.englishSpelling = evidence.englishSpelling
     context.spellingProtectedWords = Self.spellingProtectedWords(steps: steps)
+    if let learnedStep = steps.first(where: { $0 is LearnedWordCheckStep }) as? LearnedWordCheckStep,
+      learnedStep.isEnabled(for: context)
+    {
+      let selectedProvider = (steps.first { $0 is LLMPolishStep } as? LLMPolishStep)?.llmProvider
+        ?? .none
+      // Bounded: this runs before the timed loop, so the step's own cap cannot cover it.
+      context.frozenLearnedWordChecker = await learnedStep.boundedSelection(
+        for: selectedProvider, language: resolution.language)
+    }
     var polishNotice: PolishNotice?
 
     let logger = self.logger
@@ -236,8 +254,16 @@ internal final class TextProcessingRunner {
       )
     }
 
-    for step in steps where step.isEnabled {
+    for step in steps {
       let stepName = step.name
+      guard step.isEnabled(for: context) else {
+        Task {
+          await logger.log(
+            Self.stepTimingLine(name: stepName, milliseconds: 0, ran: false),
+            level: .info, category: "Pipeline")
+        }
+        continue
+      }
       let input = context
       let stepStart = CFAbsoluteTimeGetCurrent()
       // #1770: the context-aware form. Five steps inherit the default, which
@@ -266,11 +292,13 @@ internal final class TextProcessingRunner {
       // LLMPolishStep.swift), so the step snapshot is the only reliable source of
       // the model the failed attempt actually used.
       let polishModelAtStart = (step as? LLMPolishStep)?.llmModel
+      var stepElapsedMs = 0.0
       do {
         context = try await timeoutExecutor(budgetSeconds) {
           try await step.process(input)
         }
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
+        stepElapsedMs = stepMs
         let inputText = input.polishedText ?? input.text
         let outputText = context.polishedText ?? context.text
         let changed = inputText != outputText
@@ -297,6 +325,7 @@ internal final class TextProcessingRunner {
         }
       } catch {
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
+        stepElapsedMs = stepMs
         let isTimeout = error is TimeoutError
         // #1055: AFM context-window overflow is a clean skip (dictation too long
         // for the on-device model), not a failure — raw deterministically-cleaned
@@ -554,6 +583,9 @@ internal final class TextProcessingRunner {
         }
         // Heart & Limbs: limb failed, continue with input text
       }
+      let timingLine = Self.stepTimingLine(
+        name: stepName, milliseconds: stepElapsedMs, ran: true)
+      Task { await logger.log(timingLine, level: .info, category: "Pipeline") }
     }
     return TextProcessingRunResult(context: context, polishNotice: polishNotice)
   }

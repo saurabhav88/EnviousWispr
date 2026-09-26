@@ -1,6 +1,74 @@
 import AppKit
+import EnviousWisprPipeline
 import EnviousWisprServices
 import SwiftUI
+
+/// Settings copy is a projection of the same frozen-choice owner used by takes.
+/// It has no delivery, language, or provider selection rule of its own.
+struct LearnedCheckerSettingsStatus: Equatable {
+  let line: String
+  let canRetry: Bool
+  static let retryTitle = LocalizedStringResource(
+    "Try again",
+    comment: "Your Words, Learn from: the self-learning dictionary row: retry the word check download.")
+
+  init(selection: LearnedWordCheckerSelection) {
+    // The judge's owner names it and its languages; the copy has no engine or
+    // language of its own, so a new judge or language needs no edit here.
+    let judge = selection.judge?.displayName
+      ?? String(localized: "The polish engine", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+    let languages = Self.languageList(selection.judge?.qualifiedLanguages ?? [])
+    if selection.checker != nil {
+      line = languages.map {
+        String(
+          localized: "Checked by: \(judge). Learned words are checked before they're used in \($0).",
+          comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+      } ?? String(
+        localized: "Checked by: \(judge). Learned words are checked before they're used.",
+        comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+      canRetry = false
+      return
+    }
+    canRetry = selection.retryAvailable
+    switch selection.absence {
+    case .adapterDownloading:
+      line = String(
+        localized: "Learn-only: \(judge)'s word check is downloading. Learned words are saved for later.",
+        comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+    case .adapterDeliveryFailed, .deliveryDisabled:
+      line = selection.retryAvailable
+        ? String(
+          localized:
+            "Learn-only: \(judge)'s word check couldn't download. Learned words are saved for later.",
+          comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+        : String(
+          localized:
+            "Learn-only: \(judge)'s word check isn't available yet. Learned words are saved for later.",
+          comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+    case .notEGOne:
+      line = String(
+        localized: "Learn-only: This polish choice doesn't use learned words yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+    case .unqualifiedLanguage:
+      line = languages.map {
+        String(localized: "Learn-only: Learned words are checked in \($0) only.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+      } ?? String(
+        localized: "Learn-only: Learned words aren't checked in this language yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+    case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable,
+      .selectionTimedOut, .none:
+      line = String(
+        localized: "Learn-only: \(judge)'s word check isn't ready. Learned words are saved for later.",
+        comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+    }
+  }
+
+  /// "English", "English and German": language names in the app's interface
+  /// language, which `Locale.current` follows (interface-localization.md).
+  static func languageList(_ codes: [String]) -> String? {
+    let names = codes.map { Locale.current.localizedString(forLanguageCode: $0) ?? $0 }
+    guard !names.isEmpty else { return nil }
+    return ListFormatter.localizedString(byJoining: names)
+  }
+}
 
 /// Learn from... tab of the Dictionary page. Two ways the app can pick up words
 /// without being told each one: learn from the user's own edits (#996, live
@@ -25,6 +93,17 @@ struct LearningSection: View {
   /// picture; this view never reads the selection, the OS or the delivery
   /// layer itself.
   @Environment(LearnFromEditsAvailability.self) private var availability
+  @Environment(EGOneCheckerEligibility.self) private var checkerEligibility
+  @State private var checkerStatus: LearnedCheckerSettingsStatus?
+
+  private var checkerStatusKey: String {
+    let language: String
+    switch settings.languageMode {
+    case .auto: language = "en"
+    case .locked(let code): language = code
+    }
+    return "\(settings.llmProvider.rawValue):\(language):\(checkerEligibility.statusRevision)"
+  }
 
   var body: some View {
     @Bindable var settings = settings
@@ -48,6 +127,17 @@ struct LearningSection: View {
           onConfirm: { contactsImport.confirmImport() },
           onCancel: { contactsImport.cancelImport() })
       }
+    }
+    .task(id: checkerStatusKey) {
+      let language: String
+      switch settings.languageMode {
+      case .auto: language = "en"
+      case .locked(let code): language = code
+      }
+      let selection = await checkerEligibility.selection(
+        provider: settings.llmProvider, language: language)
+      guard !Task.isCancelled else { return }
+      checkerStatus = LearnedCheckerSettingsStatus(selection: selection)
     }
   }
 
@@ -79,6 +169,21 @@ struct LearningSection: View {
         Text(LearnFromEditsSettingsPresentation.rowCopy)
           .settingsReadingCopy()
           .fixedSize(horizontal: false, vertical: true)
+        if let checkerStatus {
+          HStack(alignment: .center, spacing: 8) {
+            Text(checkerStatus.line)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+            if checkerStatus.canRetry {
+              Spacer(minLength: 8)
+              SettingsActionButton(title: LearnedCheckerSettingsStatus.retryTitle,
+                isEnabled: true) {
+                Task { await checkerEligibility.requestAdapterDownload() }
+              }
+            }
+          }
+        }
         // Which apps it works in, how the on-device judge runs and what a
         // remembered word reaches are the article's job, not the card's
         // (same shape as the Live Preview engines link).

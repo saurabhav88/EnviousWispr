@@ -110,7 +110,8 @@ protocol LearnFromEditsTelemetrySink: AnyObject {
   typealias T = TelemetryService.LearnFromEditsTelemetry
   func learnSkipped(reason: T.SkipReason)
   func learnObservationEnded(
-    reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int)
+    reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int,
+    unfinishedEdits: Int)
   /// `queueWaitMs` nil = not measured by this arm (the wire row omits the key).
   func learnJudged(
     arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int,
@@ -154,6 +155,10 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     var revision: UInt64 = 0
     var settledSnapshots: Set<String> = []
     var settledBursts = 0
+    /// Distinct runs withheld as deletion-only half-typed fixes (#3105), per
+    /// paste: keyed by pair so a run still present in the second settled
+    /// snapshot is not counted twice.
+    var unfinishedPairKeys: Set<String> = []
     var judgeCalls = 0
     /// Pairs already reserved for the judge in this paste; burst two never
     /// re-sends them.
@@ -383,7 +388,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     guard let w = watch, w.generation == gen else { return }
     deps.telemetry.learnObservationEnded(
       reason: reason, settledBursts: w.settledBursts, appClass: w.appClass,
-      durationMs: max(0, deps.nowMs() - w.pastedAtMs))
+      durationMs: max(0, deps.nowMs() - w.pastedAtMs), unfinishedEdits: w.unfinishedPairKeys.count)
   }
 
   // MARK: Steps 5–7: align, filter, judge
@@ -404,6 +409,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       userWords: deps.userWords(), packTerms: deps.packTerms())
     var filtered = CorrectionCandidateFilter.filter(runs: alignment.runs, inputs: inputs)
     filtered.removeAll { w.sentPairKeys.contains($0.pairKey) }
+    for run in filtered where run.disposition == .ineligible(.unfinishedEdit) {
+      watch?.unfinishedPairKeys.insert(run.pairKey)
+    }
     let eligible = filtered.filter {
       if case .candidate = $0.disposition { return true }
       return false

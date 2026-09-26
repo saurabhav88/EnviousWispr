@@ -574,6 +574,18 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   }
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+    // #3105: every caller (live take, file-import part, re-polish, recovery
+    // replay) holds the bundled server through the actual inference. A live
+    // take deliberately takes no hold at recording start: that would put an
+    // actor hop on the heart path before audio. A server change during the
+    // recording is answered here, as the limb's existing skip. A file import
+    // also holds for its whole run (`LocalPolishRuntimeSet.holdForImport`).
+    var inferenceLease: (runtime: any EGOneLeaseProviding, lease: LocalPolishServerLease)?
+    defer {
+      if let inferenceLease {
+        Task { await inferenceLease.runtime.releaseLocalServerLease(inferenceLease.lease) }
+      }
+    }
     onWillProcess?()
     // #827 PR-8: snapshot the mutable provider/model at entry. process()
     // suspends at the polish await, so every read after it must come from
@@ -732,6 +744,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     if let handles = localServerHandles {
       guard let runtime = handles.runtime else {
         throw LLMError.localEngineSkipped(.notReady, provider)
+      }
+      if let owner = runtime as? any EGOneLeaseProviding {
+        switch await owner.acquireLocalServerLease() {
+        case .granted(let lease): inferenceLease = (owner, lease)
+        case .changing: throw LLMError.localEngineSkipped(.notReady, provider)
+        }
       }
       guard let endpoint = await runtime.activeEndpoint() else {
         // Also the answer when ANOTHER model holds the server: the coordinator

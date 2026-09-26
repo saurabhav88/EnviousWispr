@@ -40,11 +40,18 @@ public struct WordCorrector: Sendable {
   /// alias for them. See plan §3.4 global-behavior caveat.
   static let emojiTriggerReservedWords: Set<String> = ["emoji", "emoticon"]
 
+  /// #3105: a placeholder written by `maskCheckerOnlySurfaces`.
+  static func isMaskedLearnedSurface(_ token: String) -> Bool {
+    token.unicodeScalars.first == "\u{E000}" && token.unicodeScalars.last == "\u{E001}"
+  }
+
   /// True if any token in the slice (after punctuation strip + lowercase) is a
-  /// reserved trigger word. Used by Pass 0/1/2 to skip multi-word substitutions
-  /// that would consume a trigger word.
+  /// reserved trigger word, or a masked learned surface (#3105,
+  /// `maskCheckerOnlySurfaces`). Used by Pass 0/1/2 to skip multi-word
+  /// substitutions that would consume either.
   static func sliceContainsReservedTriggerWord(_ slice: ArraySlice<String>) -> Bool {
     for token in slice {
+      if isMaskedLearnedSurface(token) { return true }
       let core = stripPunctuationStatic(token).lowercased()
       if emojiTriggerReservedWords.contains(core) { return true }
     }
@@ -165,6 +172,16 @@ public struct WordCorrector: Sendable {
     /// pack fuzzy tier must NEVER rewrite it — including the case where the
     /// non-pack tier made no replacement because no fix was needed.
     public let nonPackExactKeys: Set<String>
+    /// #3105: lowercased surfaces that only the learned-word checker may change:
+    /// single and multi-word keys whose winning claim is checker-only (a learned
+    /// sound-alike, or a born-learned word's own spelling) plus every
+    /// born-learned multi-word canonical (which has no exact self-entry).
+    /// `correct` masks each occurrence before Pass 0 and restores it after the
+    /// last pass, so NO pass can rewrite it or any word inside it: not a fuzzy
+    /// match to a nearby manual alias ("microphones" learned, "microphone"
+    /// manual), not a manual alias on a word inside a learned phrase, not the
+    /// domain-peeled form ("microphones.com"). Codex PR-1 review rounds 1-2.
+    public let checkerOnlyKeys: Set<String>
   }
 
   // MARK: - Exact-trigger authority (#1667)
@@ -211,6 +228,15 @@ public struct WordCorrector: Sendable {
     /// Carried here so `buildLookups` can separate the two populations without
     /// rebuilding either map.
     package let isPack: Bool
+    /// The claim is an AUTOMATICALLY learned one (#3105): a sound-alike in the
+    /// word's `learnedAliases`, or any claim of a word the app created from an
+    /// edit (`learnedAt`). It still OWNS its key, so learning and import keep
+    /// refusing a collision against it, but it never swaps text by itself: only
+    /// the learned-word checker may change a learned word's spot. `buildLookups`
+    /// projects deterministic claims only, from the same resolved winners, so a
+    /// checker-only winner leaves its key with no swap rather than reviving the
+    /// claim it shadowed.
+    package var checkerOnly: Bool = false
   }
 
   /// A key claimed twice in an ordinary namespace, recorded rather than logged.
@@ -345,7 +371,7 @@ public struct WordCorrector: Sendable {
     /// The ordinary-namespace maps in `buildLookups`' shape, optionally limited
     /// to non-pack owners for the fuzzy pools that must exclude pack terms.
     func canonicalsByKey(
-      _ namespace: ExactTriggerNamespace, nonPackOnly: Bool = false
+      _ namespace: ExactTriggerNamespace, nonPackOnly: Bool = false, deterministicOnly: Bool = false
     ) -> [String: String] {
       let source: [String: TriggerOwner]
       switch namespace {
@@ -355,6 +381,7 @@ public struct WordCorrector: Sendable {
       }
       return source.reduce(into: [String: String]()) { result, entry in
         guard !nonPackOnly || !entry.value.isPack else { return }
+        guard !deterministicOnly || !entry.value.checkerOnly else { return }
         result[entry.key] = entry.value.canonical
       }
     }
@@ -451,7 +478,6 @@ public struct WordCorrector: Sendable {
 
     // Non-pack aliases: last writer wins in the ordinary namespaces.
     for word in nonPackWords {
-      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
       // Empty keys are NOT filtered, here or below. The construction this
       // replaces inserted them, and a refactor that quietly drops entries is
       // not a refactor. They are inert at runtime (Pass 0 requires three
@@ -468,6 +494,9 @@ public struct WordCorrector: Sendable {
             ExactTriggerCollision(
               key: key, existingCanonical: existing.canonical, winningCanonical: word.canonical))
         }
+        let owner = TriggerOwner(
+          wordID: word.id, canonical: word.canonical, isPack: false,
+          checkerOnly: isCheckerOnly(alias: alias, of: word))
         if namespace == .multi { index.multi[key] = owner } else { index.single[key] = owner }
       }
     }
@@ -484,7 +513,8 @@ public struct WordCorrector: Sendable {
         }
         continue
       }
-      index.single[key] = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
+      index.single[key] = TriggerOwner(
+        wordID: word.id, canonical: word.canonical, isPack: false, checkerOnly: word.learnedAt != nil)
     }
 
     // No-space namespace, non-pack only. Canonical is unconditional and last
@@ -493,13 +523,15 @@ public struct WordCorrector: Sendable {
     // canonical can overwrite an earlier alias. Three rules, one map — the
     // reason a hand-rolled mirror kept getting this wrong.
     for word in nonPackWords {
-      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
       let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
-      index.nospace[nospace] = owner
+      index.nospace[nospace] = TriggerOwner(
+        wordID: word.id, canonical: word.canonical, isPack: false, checkerOnly: word.learnedAt != nil)
       for alias in word.aliases {
         let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
         guard index.nospace[aliasNospace] == nil else { continue }
-        index.nospace[aliasNospace] = owner
+        index.nospace[aliasNospace] = TriggerOwner(
+          wordID: word.id, canonical: word.canonical, isPack: false,
+          checkerOnly: isCheckerOnly(alias: alias, of: word))
       }
     }
 
@@ -521,6 +553,12 @@ public struct WordCorrector: Sendable {
     }
 
     return index
+  }
+
+  /// #3105: a learned sound-alike, or any alias of a word the app created from
+  /// an edit, may only be applied by the learned-word checker.
+  private static func isCheckerOnly(alias: String, of word: CustomWord) -> Bool {
+    word.learnedAt != nil || word.learnedAliases.contains(alias)
   }
 
   /// Build the lookup structures for a given vocabulary. Pure function.
@@ -571,13 +609,16 @@ public struct WordCorrector: Sendable {
       }
     #endif
 
-    let singleAliasMap = triggerIndex.canonicalsByKey(.single)
-    let multiAliasMap = triggerIndex.canonicalsByKey(.multi)
+    // #3105: only deterministic claims swap. Checker-only (learned) winners
+    // stay in the index for ownership and are filtered here, never earlier, so
+    // the claim a learned alias shadowed is not revived.
+    let singleAliasMap = triggerIndex.canonicalsByKey(.single, deterministicOnly: true)
+    let multiAliasMap = triggerIndex.canonicalsByKey(.multi, deterministicOnly: true)
 
     // The NON-PACK exact maps. The fuzzy/compound pools derive from these so
     // pack terms can never become fuzzy candidates.
-    let nonPackSingleAliasMap = triggerIndex.canonicalsByKey(.single, nonPackOnly: true)
-    let nonPackMultiAliasMap = triggerIndex.canonicalsByKey(.multi, nonPackOnly: true)
+    let nonPackSingleAliasMap = triggerIndex.canonicalsByKey(.single, nonPackOnly: true, deterministicOnly: true)
+    let nonPackMultiAliasMap = triggerIndex.canonicalsByKey(.multi, nonPackOnly: true, deterministicOnly: true)
 
     // Every non-pack canonical key (INCLUDING multi-word canonicals, which get
     // no exact-map self-entry). A pack term must never claim one of these keys,
@@ -605,8 +646,9 @@ public struct WordCorrector: Sendable {
       if canonicalToWord[ck] == nil { canonicalToWord[ck] = word }
     }
 
-    // Fuzzy + compound + canonical-fuzzy pools: NON-PACK words ONLY.
-    let canonicals = nonPackWords.map(\.canonical)
+    // Fuzzy + compound + canonical-fuzzy pools: NON-PACK words ONLY, and never a
+    // word the app learned from an edit (#3105: the checker alone uses it).
+    let canonicals = nonPackWords.filter { $0.learnedAt == nil }.map(\.canonical)
     let lowercasedCanonicals = canonicals.map { $0.lowercased() }
     let singleFuzzyCandidates = nonPackSingleAliasMap.map {
       Lookups.SurfaceCanonical(surface: $0.key, canonical: $0.value)
@@ -622,7 +664,7 @@ public struct WordCorrector: Sendable {
     // an imported alias equal to an existing multi-word canonical's space-free
     // form was reported collision-free, persisted, and then never fired,
     // because Pass 0 resolved the n-gram here first.
-    let nospaceCanonicalMap = triggerIndex.canonicalsByKey(.nospace)
+    let nospaceCanonicalMap = triggerIndex.canonicalsByKey(.nospace, deterministicOnly: true)
 
     // #992 pack fuzzy tier (LOWER authority). Single-word pack terms whose
     // scored surface length ≥ packFuzzyMinLength, built from the SAME lowercased
@@ -658,7 +700,11 @@ public struct WordCorrector: Sendable {
     // #992 precedence: every token the non-pack vocabulary already recognizes
     // as-is (single alias keys + canonical self-entries via nonPackSingleAliasMap,
     // plus all non-pack canonicals). The pack fuzzy tier is skipped for these.
-    let nonPackExactKeys = Set(nonPackSingleAliasMap.keys).union(nonPackCanonicalKeys)
+    // Checker-only (learned) keys count too: a surface the user's own vocabulary
+    // claims must never be handed to the pack fuzzy tier just because its own
+    // claim no longer swaps deterministically (#3105).
+    let nonPackExactKeys = Set(triggerIndex.canonicalsByKey(.single, nonPackOnly: true).keys)
+      .union(nonPackCanonicalKeys)
 
     return Lookups(
       singleAliasMap: singleAliasMap,
@@ -674,7 +720,12 @@ public struct WordCorrector: Sendable {
       packSingleFuzzyCandidates: packSingleFuzzyCandidates,
       packCanonicals: packCanonicals,
       packLowercasedCanonicals: packLowercasedCanonicals,
-      nonPackExactKeys: nonPackExactKeys
+      nonPackExactKeys: nonPackExactKeys,
+      checkerOnlyKeys: Set(triggerIndex.single.filter(\.value.checkerOnly).keys)
+        .union(triggerIndex.multi.filter(\.value.checkerOnly).keys)
+        .union(
+          nonPackWords.filter { $0.learnedAt != nil && $0.canonical.contains(" ") }
+            .map { $0.canonical.lowercased() })
     )
   }
 
@@ -725,6 +776,7 @@ public struct WordCorrector: Sendable {
 
     var replacements: [Replacement] = []
     var tokens = text.components(separatedBy: .whitespaces)
+    let learnedMask = Self.maskCheckerOnlySurfaces(&tokens, keys: lookups.checkerOnlyKeys)
     // Phase 3a (#631) helper: append a Replacement for the given canonical.
     // Falls through silently if the canonical lookup misses (shouldn't happen
     // with valid input — defensive only).
@@ -1099,6 +1151,8 @@ public struct WordCorrector: Sendable {
       if Self.emojiTriggerReservedWords.contains(coreLower) {
         return token
       }
+      // #3105: a masked learned surface is restored untouched after the passes.
+      if Self.isMaskedLearnedSurface(token) { return token }
 
       // Compute the peeled form up front (used by steps 2 and 4 below).
       // The trigger is purely structural -- a dot followed by a non-empty
@@ -1342,7 +1396,7 @@ public struct WordCorrector: Sendable {
       return token
     }
 
-    return (corrected.joined(separator: " "), replacements)
+    return (Self.restoreMasked(corrected.joined(separator: " "), learnedMask), replacements)
   }
 
   /// Pass 3 alone: exact single-word alias (includes canonical self-entries).
@@ -2034,6 +2088,50 @@ public struct WordCorrector: Sendable {
   /// real, feature-sized mechanisms named there: a maintained
   /// public-suffix authority, or letting a word's OWNER mark it as a
   /// domain explicitly.
+  /// #3105: replace every token of every learned (checker-only) surface with an
+  /// inert placeholder before any pass runs. A placeholder is private-use code
+  /// points only, so it is never a key, never a stopword, carries no letters to
+  /// score and no punctuation to peel; the passes leave it where it is and
+  /// `restoreMasked` puts the original token back byte for byte. One mechanism
+  /// for every pass, instead of a guard per pass.
+  static func maskCheckerOnlySurfaces(_ tokens: inout [String], keys: Set<String>) -> [String: String] {
+    guard !keys.isEmpty, !tokens.isEmpty else { return [:] }
+    let cores = tokens.map { stripPunctuationStatic($0).lowercased() }
+    let maxSpan = keys.map { $0.split(separator: " ").count }.max() ?? 1
+    var protected = Set<Int>()
+    for i in cores.indices where !cores[i].isEmpty {
+      for n in 1...min(maxSpan, cores.count - i) {
+        if keys.contains(cores[i..<(i + n)].joined(separator: " ")) {
+          protected.formUnion(i..<(i + n))
+        }
+      }
+      if let split = splitDomainSuffix(cores[i]), keys.contains(split.bare) { protected.insert(i) }
+    }
+    var mask: [String: String] = [:]
+    for i in protected.sorted() {
+      var placeholder = "\u{E000}"
+      var n = mask.count
+      repeat {
+        placeholder.unicodeScalars.append(Unicode.Scalar(0xE100 + UInt32(n % 256))!)
+        n /= 256
+      } while n > 0
+      placeholder += "\u{E001}"
+      mask[placeholder] = tokens[i]
+      tokens[i] = placeholder
+    }
+    return mask
+  }
+
+  /// Puts every masked token back (`maskCheckerOnlySurfaces`).
+  static func restoreMasked(_ text: String, _ mask: [String: String]) -> String {
+    guard !mask.isEmpty else { return text }
+    var out = text
+    for (placeholder, original) in mask {
+      out = out.replacingOccurrences(of: placeholder, with: original)
+    }
+    return out
+  }
+
   private static func splitDomainSuffix(_ s: String) -> (bare: String, suffix: String)? {
     guard let firstDot = s.firstIndex(of: "."), firstDot > s.startIndex else { return nil }
     let tail = s[s.index(after: firstDot)...]

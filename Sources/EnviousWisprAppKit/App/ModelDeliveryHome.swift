@@ -55,6 +55,47 @@ public final class ModelDeliveryHome {
   /// this build. No mutation claim, no `ProgressFile` bridge: a limb.
   public private(set) var editJudgeHandle: DeliveredModelHandle?
   public private(set) var editJudgeRegistration: DeliveryRegistration?
+  /// #3105: sibling of EG-1's exhaustive shard directory, with its own
+  /// identity and admission marker. Selection and launch call the ensure door;
+  /// registration alone starts no fetch.
+  public private(set) var egOneCheckerRegistration: DeliveryRegistration?
+  private let checkerDeliveryDefaults: UserDefaults?
+
+  /// Placeholder host is intentionally unroutable. PR 4 chunk 4 replaces the
+  /// signed manifest URL; this exact sentinel refuses before any fetch starts.
+  public static let TODOCheckerAdapterHostBaseURL =
+    "https://adapter-host-pending.invalid/eg1-checker/"
+
+  /// The one read of the checker family's delivery switch, shared by the
+  /// ensure path and the eligibility owner so they cannot disagree.
+  public var checkerDeliveryEnabled: Bool {
+    let defaults = checkerDeliveryDefaults
+      ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    return DeliveryFlags.snapshot(family: .egOneChecker, defaults: defaults).familyEnabled
+  }
+
+  public static func checkerHostIsConfigured(_ manifest: DeliveryManifest) -> Bool {
+    guard manifest.identity.family == .egOneChecker,
+      manifest.sources.count == 1,
+      let source = manifest.sources.first,
+      source.id == "our_copy",
+      source.baseURL.absoluteString != TODOCheckerAdapterHostBaseURL
+    else { return false }
+    // EG-1 shards use the R2 custom domain's /eg1/ prefix. The companion
+    // follows that same route once its object is uploaded in chunk 4.
+    return source.baseURL.host == "models.enviouslabs.co"
+      && source.baseURL.path.hasPrefix("/eg1/")
+  }
+
+  public enum CheckerEnsureOutcome: Sendable, Equatable {
+    case notSelected
+    case baseNotAdmitted
+    case manifestUnavailable
+    case incompatible(EGOneCheckerRefusal)
+    case hostNotConfigured
+    case deliveryDisabled
+    case delivery(ModelDeliveryController.DeliveryOutcome)
+  }
 
   /// Observable mirror of the Parakeet delivery state for SwiftUI renderers.
   public private(set) var parakeetState: DeliveryState = .notReady
@@ -194,6 +235,7 @@ public final class ModelDeliveryHome {
     appSupportOverride: URL? = nil, deliveryFlagDefaults: UserDefaults? = nil
   ) {
     self.engineMutationScope = engineMutationScope
+    self.checkerDeliveryDefaults = deliveryFlagDefaults
     // #2695: ONE owner answers "where may we write". `dataDirectory` already
     // includes `EnviousWispr`, so nothing here appends it.
     let storage =
@@ -474,6 +516,67 @@ public final class ModelDeliveryHome {
           level: .info, category: "Delivery")
       }
     }
+
+    // #3105: checker bytes are a separate ModelIdentity and install directory.
+    // The EG-1 registration remains in WisprBootstrapper and is not changed.
+    if let manifest = try? DeliveryManifest.loadBundled(
+      resource: "eg1-checker-delivery-manifest", bundle: manifestBundle)
+    {
+      let checkerDataDirectory = appSupportOverride == nil
+        ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+          .appendingPathComponent("EnviousWispr", isDirectory: true)
+        : storage.dataDirectory
+      egOneCheckerRegistration = DeliveryRegistration(
+        manifest: manifest,
+        installDirectory: checkerDataDirectory.appendingPathComponent(
+          "Models/eg-1-checker", isDirectory: true),
+        metadataDirectory: checkerDataDirectory.appendingPathComponent(
+          "ModelDelivery", isDirectory: true))
+    }
+  }
+
+  /// Automatic trigger: EG-1 selected and admitted -> ensure checker.
+  /// The bootstrap launch pass and PipelineSettingsSync call this without
+  /// waiting for polish. Admission truth comes from the controller.
+  public func ensureCheckerAdapterIfEGOneSelected(
+    selected: Bool, baseRegistration: DeliveryRegistration, promptTemplateID: String
+  ) async -> CheckerEnsureOutcome {
+    guard selected else { return .notSelected }
+    guard baseRegistration.manifest.identity.family == .egOne,
+      await controller.isAdmitted(baseRegistration)
+    else { return .baseNotAdmitted }
+    guard let checker = egOneCheckerRegistration,
+      let contract = checker.manifest.checkerContract
+    else { return .manifestUnavailable }
+    let admittedBase = AdmittedEGOneBase(
+      manifest: baseRegistration.manifest, promptTemplateID: promptTemplateID)
+    if case .refused(let reason) = compatibility(
+      contract: contract, admittedBase: admittedBase)
+    {
+      return .incompatible(reason)
+    }
+    guard Self.checkerHostIsConfigured(checker.manifest) else { return .hostNotConfigured }
+    guard checkerDeliveryEnabled else { return .deliveryDisabled }
+    await recordFirstRunBaseline(for: checker)
+    await controller.sweepSupersededStaging(checker)
+    return .delivery(await controller.ensureModelAvailable(checker))
+  }
+
+  /// Read-only boot source. A file path alone cannot supply an adapter:
+  /// both admission markers and the signed compatibility pin must agree.
+  public func admittedCompatibleEGOneCheckerURL(
+    baseRegistration: DeliveryRegistration, promptTemplateID: String
+  ) async -> URL? {
+    guard let checker = egOneCheckerRegistration,
+      let contract = checker.manifest.checkerContract,
+      await controller.isAdmitted(baseRegistration),
+      await controller.isAdmitted(checker),
+      compatibility(
+        contract: contract,
+        admittedBase: AdmittedEGOneBase(
+          manifest: baseRegistration.manifest, promptTemplateID: promptTemplateID)) == .compatible
+    else { return nil }
+    return checker.installDirectory.appendingPathComponent(contract.adapterFileName)
   }
 
   // MARK: - #996 phase D: the correction judge's own controls

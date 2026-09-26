@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprPipeline
 
 /// Phase 0 (#640) — pins the `CustomWordsPropagator` contract around the
 /// split-lane registry pattern. Replaces Phase D (#496) tests after the
@@ -14,6 +15,29 @@ import Testing
 @MainActor
 @Suite("CustomWordsPropagator — Phase 0 split-lane registry contract")
 struct CustomWordsPropagatorTests {
+
+  private struct ApprovingChecker: LearnedWordChecking {
+    let armName = "test"
+    let scoresAreComparable = false
+
+    func decide(_ questions: [LearnedWordCheckQuestion]) async throws -> [LearnedWordCheckDecision] {
+      questions.map { .init(questionID: $0.id, approved: true) }
+    }
+  }
+
+  private final class BroadcastStep: TextProcessingStep {
+    let name = "Broadcast"
+    let isEnabled = true
+    let maxDuration: Duration = .seconds(1)
+    let broadcast: @MainActor () -> Void
+
+    init(broadcast: @escaping @MainActor () -> Void) { self.broadcast = broadcast }
+
+    func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+      broadcast()
+      return context
+    }
+  }
 
   // MARK: - Fixtures
 
@@ -49,6 +73,20 @@ struct CustomWordsPropagatorTests {
 
   private static func makeWord(_ canonical: String, source: WordSource = .user) -> CustomWord {
     CustomWord(canonical: canonical, source: source)
+  }
+
+  @Test("learned entries cannot enter a local or cloud polish prompt")
+  func learnedWordsStayInCheckerLane() {
+    let learned = CustomWord(
+      canonical: "Tuist", aliases: ["toast"], learnedAliases: ["toast"],
+      learnedAt: Date(timeIntervalSince1970: 1_790_000_000))
+    let manual = CustomWord(
+      canonical: "Saoirse", aliases: ["sur-sha", "source"], learnedAliases: ["source"])
+    let lanes = LanePartitioner.split([learned, manual], generation: 7)
+    #expect(lanes.corrector.terms == [learned, manual])
+    #expect(lanes.polish.terms.map(\.canonical) == ["Saoirse"])
+    #expect(lanes.polish.terms.first?.aliases == ["sur-sha"])
+    #expect(lanes.polish.generation == 7)
   }
 
   // MARK: - Unit: weak storage
@@ -200,6 +238,42 @@ struct CustomWordsPropagatorTests {
         spy.polishVocabulary.terms == updated,
         "polish spy[\(i)] missed the broadcast")
     }
+  }
+
+  @Test("A broadcast during one take cannot change either correction step's vocabulary")
+  func frozenTakeFeedsBothCorrectionSteps() async throws {
+    let original = [
+      CustomWord(canonical: "Kubernetes", aliases: ["k8s"]),
+      CustomWord(
+        canonical: "Tuist", aliases: ["toast"], learnedAliases: ["toast"],
+        learnedAt: Date(timeIntervalSince1970: 1_790_000_000)),
+    ]
+    let propagator = CustomWordsPropagator()
+    let wordCorrection = WordCorrectionStep()
+    wordCorrection.wordCorrectionEnabled = true
+    let learnedWordCheck = LearnedWordCheckStep()
+    learnedWordCheck.checker = ApprovingChecker()
+    learnedWordCheck.wordCorrectionEnabled = true
+    propagator.register(wordCorrection)
+    propagator.register(learnedWordCheck)
+    propagator.update(
+      corrector: CorrectorVocabulary(terms: original, generation: 1), polish: .empty)
+    let frozen = propagator.corrector
+
+    let broadcast = BroadcastStep {
+      propagator.update(
+        corrector: CorrectorVocabulary(terms: [], generation: 2), polish: .empty)
+    }
+    let result = try await TextProcessingRunner(telemetry: .silent).run(
+      rawText: "k8s toast", evidence: .locked("en"), targetAppName: nil,
+      steps: [broadcast, wordCorrection, learnedWordCheck],
+      frozenCorrectorVocabulary: frozen)
+
+    #expect(wordCorrection.correctorVocabulary.generation == 2)
+    #expect(learnedWordCheck.correctorVocabulary.generation == 2)
+    #expect(result.context.frozenCorrectorVocabulary?.generation == 1)
+    #expect(result.context.text == "Kubernetes Tuist")
+    #expect(learnedWordCheck.lastOutcome?.applied == 1)
   }
 
 }

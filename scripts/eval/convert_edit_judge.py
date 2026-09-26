@@ -182,7 +182,7 @@ def main() -> int:
         (cfg["class_order"] == list(objective.class_order), "class order differs from converter implementation"),
         (cfg["decision_rule"] == objective.decision_rule, "decision rule differs from converter implementation"),
         (manifest["thresholds"][objective.threshold_key] == cfg[objective.threshold_key], "threshold differs from decision configuration"),
-        (manifest["thresholds"].get("qualifying") is True, "run has no qualifying threshold"),
+        (manifest["thresholds"].get("qualifying") is True or bool((manifest["thresholds"].get("waiver") or {}).get("founder_decision")), "run has no qualifying threshold and no recorded founder waiver"),
         (cfg.get("precision_variant") == "fp32-pytorch" and cfg.get("package_sha256") is None, "the run manifest is already bound to an exported package"),
     ]
     for ok, message in checks:
@@ -221,7 +221,9 @@ def main() -> int:
     # Truncation boundaries: the probe's long non-frozen pair fixtures (a long
     # context and a long edit) so the verification batch is not all padding.
     for i, (edit, context) in enumerate(probe.PAIR_FIXTURES):
-        original, replacement = edit.split("→")[0].strip(), edit.split("→")[-1].strip()
+        original, separator, replacement = edit.partition(" → ")
+        if not separator:
+            raise ValueError(f"invalid pair fixture: {edit!r}")
         rows.append({"id": f"PROBE-PAIR-{i}", "language": "en", "original": original, "replacement": replacement, "pasted": context})
     if len(rows) < 8:
         print("INFRA-ERROR: fewer than 8 verification rows", file=sys.stderr)
@@ -229,7 +231,7 @@ def main() -> int:
 
     tok = AutoTokenizer.from_pretrained(tok_dir)
     encode = lambda text: tok(text, add_special_tokens=False)["input_ids"]  # noqa: E731
-    enc = trainer.encode_rows(rows, contract, encode)
+    enc = trainer.encode_rows(rows, contract, encode, trainer.pair_input_form(cfg))
     ids = torch.tensor([e["input_ids"] for e in enc], dtype=torch.int32)
     mask = torch.tensor([e["attention_mask"] for e in enc], dtype=torch.int32)
     types = torch.tensor([e["token_type_ids"] for e in enc], dtype=torch.int32)
