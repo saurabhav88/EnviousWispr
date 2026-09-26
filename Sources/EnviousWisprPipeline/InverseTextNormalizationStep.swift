@@ -154,6 +154,20 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         neutral.normalizeLanguageNeutral(input)
       }
       let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
+      if converted == nil {
+        // Same anomaly breadcrumb as the full engine's timeout below, marked with the route, so a
+        // subset that hit the deadline is not read as an ordinary no-op (second-pass review).
+        let timeoutExtra: [String: Any] = [
+          "latency_ms": elapsedMs, "len_before": lenBefore, "deadline_ms": deadline * 1000,
+          "route": "language_neutral",
+        ]
+        SentryBreadcrumb.captureError(
+          TimeoutError(seconds: deadline),
+          category: .inverseNormalizationTimeout,
+          stage: "inverse_text_normalization",
+          extra: timeoutExtra)
+        onTimeoutForTesting?(timeoutExtra)
+      }
       let output = converted ?? input
       lastRun = RunOutcome(
         ran: false, changed: output != input, skipReason: skip,

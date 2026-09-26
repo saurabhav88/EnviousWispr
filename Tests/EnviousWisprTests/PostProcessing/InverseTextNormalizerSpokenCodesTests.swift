@@ -97,6 +97,11 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("rows S dash 12 and 3 failed", "rows S-12 and 3 failed"),
     ("the tag S dash 1 2 again", "the tag S dash 1 2 again"),
     ("the build 2026 dash 9 dash 2 6", "the build 2026 dash 9 dash 2 6"),
+    ("the date 2026 dash 2 dash 31", "the date 2026 dash 2 dash 31"),
+    ("filed 2026-2-31", "filed 2026-2-31"),
+    ("filed 2028-2-29", "filed 2028-02-29"),
+    // a chain the English path refuses (a foreign dot-word beside number words) stays whole
+    ("Version twelve Punkt 5 Punkt 0", "Version twelve Punkt 5 Punkt 0"),
     ("the build ID is 2026-9-26 dash one", "the build ID is 2026-9-26 dash one"),
     ("open https colon slash slash example dot de", "open https colon slash slash example dot de"),
     ("open https colon slash slash one dot com", "open https colon slash slash one dot com"),

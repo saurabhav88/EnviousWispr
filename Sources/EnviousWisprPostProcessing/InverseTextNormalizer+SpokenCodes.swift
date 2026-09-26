@@ -210,19 +210,28 @@ extension InverseTextNormalizer {
           ),
           let day = Self.identifierPartDigits(m.g("d") ?? "", allowWords: true).flatMap({ Int($0) }
           ),
-          (1...12).contains(mon), (1...31).contains(day)
+          Self.isCalendarDate(year: year, month: mon, day: day)
         else { return nil }
         return "\(year)-\(pad2(mon))-\(pad2(day))"
       }
     }
     return reSub(#"(?<![\w.-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\w-]|\.\d)"#, t) { m in
       guard !identifierContinues(m, connectorAlt: Self.dashWordAlt) else { return nil }
-      guard let mon = Int(m.g(2) ?? ""), let day = Int(m.g(3) ?? ""),
-        (1...12).contains(mon), (1...31).contains(day),
+      guard let year = Int(m.g(1) ?? ""), let mon = Int(m.g(2) ?? ""), let day = Int(m.g(3) ?? ""),
+        Self.isCalendarDate(year: year, month: mon, day: day),
         (m.g(2) ?? "").count == 1 || (m.g(3) ?? "").count == 1
       else { return nil }
       return "\(m.g(1) ?? "")-\(pad2(mon))-\(pad2(day))"
     }
+  }
+
+  /// A real calendar date: the day fits its month, February 29 only in a leap year
+  /// ("2026 dash 2 dash 31" stays as spoken, second-pass review).
+  static func isCalendarDate(year: Int, month: Int, day: Int) -> Bool {
+    guard (1...12).contains(month), day >= 1 else { return false }
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+    let lengths = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    return day <= lengths[month - 1]
   }
 
   // MARK: - localhost ports

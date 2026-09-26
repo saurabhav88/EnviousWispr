@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+import EnviousWisprPostProcessing
 
 // MARK: - InverseTextNormalizationStepTests (#145)
 //
@@ -87,6 +88,18 @@ import Testing
     #expect(step.lastRun?.ran == false)
     #expect(step.lastRun?.changed == true)
     #expect(step.lastRun?.lenAfter == "Frage B-2, Code zwei null drei".count)
+  }
+
+  /// The discriminating control for the neutral route: the English engine reads German `am` as
+  /// the meridiem ("7 am Abend" → "7:00 AM Abend"), the neutral subset must not (#2763).
+  @Test("a German take keeps \"7 am Abend\": the English time rule never runs on it")
+  func neutralSubsetNeverRunsEnglishTimeRule() async throws {
+    let step = InverseTextNormalizationStep()
+    step.backendSupportsLID = true
+    let input = "Ruf mich bitte um 7 am Abend an."
+    let out = try await step.process(ctx(input, language: "de"))
+    #expect(out.text == input)
+    #expect(InverseTextNormalizer().normalize(input) != input, "control: the English engine does change it")
   }
 
   @Test("explicit non-English language → skips (non_english)")

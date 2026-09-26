@@ -333,8 +333,8 @@ public struct InverseTextNormalizer: Sendable {
     // "1.2 point three point x" / "2.5 point 20 point x" (local Codex r1, r2).
     let dotPart = Self.identifierPartPat
     let dotChainPat: String =
-      #"\b(?:"# + dotPart + #"(?:\s+(?:dot|point)\s+"# + dotPart + #"){2,}"#
-      + #"|\d+(?:\.\d+)+(?:\s+(?:dot|point)\s+"# + dotPart + #")+)\b"#
+      #"\b(?:"# + dotPart + #"(?:\s+(?:"# + Self.numberDotWordAlt + #")\s+"# + dotPart + #"){2,}"#
+      + #"|\d+(?:\.\d+)+(?:\s+(?:"# + Self.numberDotWordAlt + #")\s+"# + dotPart + #")+)\b"#
     t = reSub(dotChainPat, t) { protect($0) }
     t = twoDigitMinorVersions(t)
     t = decimals(t)
@@ -1242,7 +1242,8 @@ public struct InverseTextNormalizer: Sendable {
       guard labels.count > 1 || firstMatch(#"^(?:"# + Self.lowerRiskURLTLDAlt + #")$"#, tld) != nil
       else { return nil }
       // #3210: Parakeet hears a spoken "w w w" as one "W" (founder log, twice). A lone "w"
-      // leading a host of two or more labels is that "www"; nothing else puts it there.
+      // leading a host of two or more labels is read as that "www". Accepted cost: a real
+      // one-letter subdomain ("w.example.com") dictated this way becomes "www.example.com".
       if labels.count > 1, labels[0].lowercased() == "w" { labels[0] = "www" }
       // A host that goes on past its ending ("docs dot example dot com dot xyz") is refused
       // whole when it has 2+ labels, or when an at-word stands before it (the domain of an
