@@ -11,8 +11,9 @@ const draft =
   renderDraft(text) +
   '</div></div>';
 const host = renderHost(app, context).replace('<div class="host-draft-slot"></div>', draft);
+// renderHost already names each preview after its app; a second aria-label would win and hide it.
 const accessibleHost = focusable
-  ? host.replace('class="host-app', 'tabindex="0" role="region" aria-label="App message preview" class="host-app')
+  ? host.replace('class="host-app', 'tabindex="0" role="region" class="host-app')
   : host;
 ---
 
