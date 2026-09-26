@@ -235,6 +235,12 @@ struct InverseTextNormalizerNeutralAddressesTests {
     // a glued Dutch address whose name began with a spoken dot or dash stays whole
     "mail naar jan punt jansenapenstaartjebedrijf.nl",
     "mail naar jan streepje jansenapenstaartjebedrijf.nl",
+    // a joined domain needs a real mailbox before it (diff review r6)
+    "El símbolo arroba gmail.com",
+    "Escribe arroba gmail.com",
+    // a written ending the link pass does not read leaves the link whole (diff review r6)
+    "https dos puntos barra barra ejemplo punto es.foo barra ayuda",
+    "https dos puntos barra barra ejemplo punto es:8080",
     // lost words are never inferred
     "Cuando arrancas el servidor, funciona en Localhost 2.3000 y puedes abrirlo.",
     "écris directement à gin.dupont.com et il te répondra.",

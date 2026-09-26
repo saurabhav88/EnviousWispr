@@ -148,9 +148,15 @@ extension InverseTextNormalizer {
       let ascii = m.whole.unicodeScalars.allSatisfy { $0.isASCII }
       let spokenDash = firstMatch(dash, m.whole) != nil
       if ascii, spokenDomainDot, !spokenDash { return nil }
-      // `małpa` is also "monkey": beside a domain the recogniser already joined it needs an
-      // address cue ("Ta małpa zoo.pl" stays).
-      if atw == "małpa" || atw == "malpa", !spokenDomainDot, !hasAddressCue(m) { return nil }
+      // A domain the recogniser already joined says little on its own: the word before the
+      // at-word may be any word ("El símbolo arroba gmail.com", "Escribe arroba gmail.com";
+      // local Codex diff review r6). It converts only when the name is itself a dotted or
+      // hyphenated mailbox ("maria.lopez") or an address word precedes it ("un correo a
+      // recepción arroba empresa.es"). This also keeps Polish `małpa`, "monkey", as prose.
+      if !spokenDomainDot {
+        let nameIsCompound = splitOnPattern(m.g("name") ?? "", sep).count > 1
+        guard nameIsCompound || hasAddressCue(m) else { return nil }
+      }
       // A comma after the at-word: Polish `małpa` only, and only after an address cue
       // ("Teraz to Łukasz małpa, przykład.pl"; Codex plan r2 N2).
       if m.g("comma") != nil {
@@ -322,9 +328,11 @@ extension InverseTextNormalizer {
     // A dash word or a written `/` after the link also means it goes on ("… barra api guion v2",
     // "… punto es / ayuda"; local Codex class enumeration).
     let syntax = Self.phraseAlt(words.flatMap { $0.dot + $0.slash + $0.colon })
+    // So does a written `.label` or `:port` the pass did not read ("… punto es.foo", "…:8080").
     return firstMatch(#"^\s+(?:"# + syntax + "|" + Self.neutralDashWordAlt + #")(?:\s+|$)"#, rest)
       != nil
       || firstMatch(#"^\s*/"#, rest) != nil
+      || firstMatch(#"^[.:][\p{L}\p{N}]"#, rest) != nil
       || firstMatch(#"^[\p{L}\p{M}\p{N}_@-]"#, rest) != nil
   }
 
