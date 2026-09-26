@@ -220,20 +220,6 @@
   margin: 0;
   white-space: nowrap;
 }
-.polish-arrows {
-  display: flex;
-  gap: 10px;
-  margin-inline: auto;
-}
-.polish-arrows .icon-button {
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-  font-size: 19px;
-  line-height: 1;
-}
-.polish-arrows .icon-button:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border-color: var(--accent);
-}
 .polish-hint {
   align-items: center;
   color: var(--body);
@@ -246,12 +232,6 @@
 .polish-hint span {
   color: var(--accent);
   font-size: 16px;
-}
-#polish-next {
-  animation: polish-nudge 3s ease-in-out 0.8s infinite;
-}
-.polish-nav.is-used #polish-next {
-  animation: none;
 }
 .polish-guards {
   align-items: stretch;
@@ -430,10 +410,6 @@
   .polish-hint {
     display: none;
   }
-  .polish-arrows {
-    margin-left: auto;
-    margin-right: 0;
-  }
   .polish-card {
     border-radius: 16px;
     gap: 18px;
@@ -603,15 +579,6 @@ main > section#polish h2 .accent-ink {
 .polish-hint span {
   color: var(--eg-accent);
 }
-.polish-arrows .icon-button {
-  background: var(--eg-card);
-  border-color: var(--eg-line);
-  color: var(--eg-accent);
-}
-.polish-arrows .icon-button:hover {
-  background: var(--eg-chip);
-  border-color: var(--eg-accent);
-}
 .polish .fine-print {
   color: var(--eg-mute);
 }
@@ -736,6 +703,16 @@ main > #polish h2 {
 #polish .polish-compare {
   grid-template-columns: minmax(0, 1fr) 66px minmax(0, 1fr);
 }
+/* Cleanup cards carry text close to their edges, so the arrows sit centred on the rail's edges
+   (at least 13px clear of the screen at every width where they show) instead of over the text. */
+#polish .carousel-side.is-prev {
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+#polish .carousel-side.is-next {
+  right: 0;
+  transform: translate(50%, -50%);
+}
 #polish .polish-nav {
   margin-top: 14px;
   justify-content: flex-end;
@@ -745,14 +722,8 @@ main > #polish h2 {
 #polish .polish-count {
   margin-right: auto;
 }
-#polish .polish-arrows {
-  margin: 0;
-}
 #polish .polish-hint {
   display: none;
-}
-#polish-next {
-  animation: none;
 }
 #polish .polish-raw.is-live .is-cut {
   background: #fc56851c;

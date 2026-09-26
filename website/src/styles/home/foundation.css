@@ -544,22 +544,6 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
 .section-heading h2 .accent-ink {
   font-weight: 700;
 }
-@keyframes polish-nudge {
-  0%,
-  70%,
-  to {
-    transform: none;
-  }
-  78% {
-    transform: translateX(4px);
-  }
-  86% {
-    transform: none;
-  }
-  94% {
-    transform: translateX(4px);
-  }
-}
 @media (max-width: 600px) {
   .brand {
     min-height: 44px;
@@ -627,11 +611,12 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
   outline-offset: 4px;
 }
 
-/* Real sibling cards use the same native scrolling as the engine/provider rails. */
+/* Real sibling cards use the same native scrolling as the engine/provider rails. The next card
+   peeks in so the rail reads as swipeable before anyone touches it (founder UAT, #2768). */
 .home-carousel {
   display: grid;
   gap: 14px;
-  grid-auto-columns: 100%;
+  grid-auto-columns: 88%;
   grid-auto-flow: column;
   grid-template-columns: none;
   min-width: 0;
@@ -651,7 +636,70 @@ main > section:not(#opening):where(:not(.download-closing)) h2 {
 }
 @media (max-width: 600px) {
   .home-carousel {
-    grid-auto-columns: 90%;
+    grid-auto-columns: 86%;
+  }
+}
+/* Side arrows sit on the rail's edges; one with nowhere to go is disabled and hidden. Phones rely on
+   the peek and a swipe, and without JavaScript the arrows stay disabled, so hidden. */
+.carousel-frame {
+  position: relative;
+}
+.carousel-side {
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 50%;
+  box-shadow: 0 8px 24px #1a0f2a2e;
+  color: var(--accent);
+  cursor: pointer;
+  display: grid;
+  height: 52px;
+  padding: 0;
+  place-items: center;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  transition:
+    opacity 0.2s,
+    background 0.2s,
+    border-color 0.2s;
+  width: 52px;
+  z-index: 5;
+}
+.carousel-side.is-prev {
+  left: 10px;
+}
+.carousel-side.is-next {
+  right: 10px;
+}
+.carousel-side:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border-color: var(--accent);
+}
+.carousel-side:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.carousel-side[disabled] {
+  opacity: 0;
+  pointer-events: none;
+}
+.carousel-side svg {
+  fill: none;
+  height: 22px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+  width: 22px;
+}
+@media (max-width: 600px) {
+  .carousel-side {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carousel-side {
+    transition: none;
   }
 }
 #polish:not([data-enhancement='ready']) .polish-count,

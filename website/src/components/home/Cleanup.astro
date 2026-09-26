@@ -61,51 +61,39 @@ const icons = [
             ))
           }
         </div>
-        <div class="home-carousel polish-carousel" tabindex="0" role="region" aria-label="Cleanup examples">
-          {polish.chips.map((chip, i) => (
-            <article class="polish-card" aria-labelledby={`polish-name-${i}`}>
-              <div class="polish-card-head">
-                <div class="polish-card-title-row">
-                  <Icon name={icons[i]} />
-                  <h3 class="polish-card-title" id={`polish-name-${i}`}>{chip.name}</h3>
-                  <span class:list={['polish-where', `is-${chip.where}`]}>{chip.where === 'mac' ? 'On your Mac' : 'With AI polish'}</span>
+        <div class="carousel-frame">
+          <button type="button" class="carousel-side is-prev" id="polish-prev" disabled aria-label="Previous kind of cleanup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg></button>
+          <div class="home-carousel polish-carousel" tabindex="0" role="region" aria-label="Cleanup examples">
+            {polish.chips.map((chip, i) => (
+              <article class="polish-card" aria-labelledby={`polish-name-${i}`}>
+                <div class="polish-card-head">
+                  <div class="polish-card-title-row">
+                    <Icon name={icons[i]} />
+                    <h3 class="polish-card-title" id={`polish-name-${i}`}>{chip.name}</h3>
+                    <span class:list={['polish-where', `is-${chip.where}`]}>{chip.where === 'mac' ? 'On your Mac' : 'With AI polish'}</span>
+                  </div>
+                  <p class="polish-card-note">{chip.note}</p>
                 </div>
-                <p class="polish-card-note">{chip.note}</p>
-              </div>
-              <div class="polish-compare">
-                <div class="polish-side">
-                  <span class="polish-side-label">You say</span>
-                  <p class="polish-raw is-live" lang={chip.lang || 'en'} set:html={renderTokens(chip.raw)} />
+                <div class="polish-compare">
+                  <div class="polish-side">
+                    <span class="polish-side-label">You say</span>
+                    <p class="polish-raw is-live" lang={chip.lang || 'en'} set:html={renderTokens(chip.raw)} />
+                  </div>
+                  <div class="polish-arrow" aria-hidden="true"><span>→</span></div>
+                  <div class="polish-side polish-side-out">
+                    <span class="polish-side-label">Your finished text</span>
+                    <p class="polish-out" lang={chip.lang || 'en'} set:html={renderTokens(chip.out)} />
+                  </div>
                 </div>
-                <div class="polish-arrow" aria-hidden="true"><span>→</span></div>
-                <div class="polish-side polish-side-out">
-                  <span class="polish-side-label">Your finished text</span>
-                  <p class="polish-out" lang={chip.lang || 'en'} set:html={renderTokens(chip.out)} />
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-          <div class="polish-nav">
-            <p class="polish-count" id="polish-count">1 of {polish.chips.length}</p>
-            <div class="polish-arrows">
-              <button
-                type="button"
-                class="icon-button"
-                id="polish-prev"
-                disabled
-                aria-label="Previous kind of cleanup">←</button
-              >
-              <button
-                type="button"
-                class="icon-button"
-                id="polish-next"
-                disabled
-                aria-label="Next kind of cleanup">→</button
-              >
-            </div>
-            <p class="polish-hint"><span aria-hidden="true">⇄</span>Swipe, or use the arrows</p>
+              </article>
+            ))}
           </div>
+          <button type="button" class="carousel-side is-next" id="polish-next" disabled aria-label="Next kind of cleanup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg></button>
+        </div>
+        <div class="polish-nav">
+          <p class="polish-count" id="polish-count">1 of {polish.chips.length}</p>
+          <p class="polish-hint"><span aria-hidden="true">⇄</span>Swipe for more examples</p>
+        </div>
       </div><div class="polish-guards" id="polish-guards">
         <p class="polish-guards-heading">What each one means</p>
         <div class="polish-guard-row" id="polish-guard-notes">

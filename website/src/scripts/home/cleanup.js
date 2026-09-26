@@ -28,7 +28,6 @@ export function init(root, motion, scope) {
       pinned = true;
       elapsed = 0;
       finishExamples();
-      root.querySelector('.polish-nav').classList.add('is-used');
     },
     onPreview: sync,
     onSettle(index, { manual }) {
