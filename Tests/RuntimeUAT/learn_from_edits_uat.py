@@ -840,8 +840,8 @@ def case_existing_word(path):
     # the alias: the old Word Correction may fuzzy-match it to the hand-added
     # word, which says nothing about the learned alias. One retake, then the
     # half is INSTRUMENT (no verdict), never a product FAIL.
-    raw_heard = None
     for attempt in (1, 2):
+        raw_heard = None  # per take, so a retake's record never shows the first take's hearing
         clear_field(path)
         mark2, text2, heard2 = dictate(path, "learned-alias", pair, need_heard=False)
         reached = wait_for("the take's Word Correction line", lambda: has(mark2, "WordCorrection enter"), deadline=10.0)
