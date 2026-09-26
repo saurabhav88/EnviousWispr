@@ -152,6 +152,7 @@ struct AFMPreparedSessionKeyTests {
         text: text, instructions: .default, config: config(nil), onToken: nil, prepared: prepared)
       #expect(out.prewarm == .missKey)
       #expect(!out.result.polishedText.isEmpty)
+      #expect(prepared.countLifetime.task.isCancelled, "a rejected session's count is stopped")
     }
 
     @Test("a cancelled preparation throws instead of returning a session")
@@ -197,10 +198,10 @@ struct AFMPreparedSessionKeyTests {
     @Test("a finished count is returned; a failed one falls back to counting")
     func valueOrNil() async throws {
       guard #available(macOS 26.0, *) else { return }
-      let done = Task<Int, Error> { 812 }
-      #expect(try await AppleIntelligenceConnector.awaitPreparedCount(done) == 812)
+      typealias L = AppleIntelligenceConnector.AFMCountLifetime
+      #expect(try await AppleIntelligenceConnector.awaitPreparedCount(L(Task { 812 })) == 812)
       struct Boom: Error {}
-      let failed = Task<Int, Error> { throw Boom() }
+      let failed = L(Task<Int, Error> { throw Boom() })
       #expect(try await AppleIntelligenceConnector.awaitPreparedCount(failed) == nil)
       #expect(try await AppleIntelligenceConnector.awaitPreparedCount(nil) == nil)
     }
@@ -224,6 +225,25 @@ struct AFMPreparedSessionKeyTests {
       _ = try? await count.value
     }
 
+    @Test("a count being awaited stays alive even when every other holder lets go")
+    func awaitedCountOutlivesItsCarrier() async throws {
+      guard #available(macOS 26.0, *) else { return }
+      let gate = Gate()
+      let count = Task<Int, Error> {
+        await gate.wait()
+        try Task.checkCancellation()
+        return 42
+      }
+      var holder: AppleIntelligenceConnector.AFMCountLifetime? =
+        AppleIntelligenceConnector.AFMCountLifetime(count)
+      let polish = Task { [holder] in try await AppleIntelligenceConnector.awaitPreparedCount(holder) }
+      holder = nil
+      #expect(holder == nil)
+      #expect(!count.isCancelled, "the awaiting polish still holds it")
+      await gate.release()
+      #expect(try await polish.value == 42)
+    }
+
     @Test("cancelling the waiting polish cancels the count and still ends polish")
     func callerCancellationPropagates() async throws {
       guard #available(macOS 26.0, *) else { return }
@@ -233,7 +253,8 @@ struct AFMPreparedSessionKeyTests {
         try Task.checkCancellation()
         return 1
       }
-      let polish = Task { try await AppleIntelligenceConnector.awaitPreparedCount(count) }
+      let lifetime = AppleIntelligenceConnector.AFMCountLifetime(count)
+      let polish = Task { try await AppleIntelligenceConnector.awaitPreparedCount(lifetime) }
       polish.cancel()
       await gate.release()
       await #expect(throws: CancellationError.self) { _ = try await polish.value }

@@ -806,14 +806,17 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     /// cancellation cancels the count and still ends polish; a count that failed or was
     /// cancelled on its own returns nil, and polish counts as it always did.
     @available(macOS 26.0, *)
-    static func awaitPreparedCount(_ count: Task<Int, Error>?) async throws -> Int? {
-      guard let count else { return nil }
+    static func awaitPreparedCount(_ lifetime: AFMCountLifetime?) async throws -> Int? {
+      // Holding `lifetime` (not just its task) keeps the count alive through this await.
+      guard let lifetime else { return nil }
+      let count = lifetime.task
       let value = await withTaskCancellationHandler {
         try? await count.value
       } onCancel: {
         count.cancel()
       }
       try Task.checkCancellation()
+      withExtendedLifetime(lifetime) {}
       return value
     }
 
@@ -1052,13 +1055,15 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     @available(macOS 26.0, *)
     private func sessionForPolish(
       detectedLanguage: String?, offered: AFMPreparedSession?
-    ) throws -> (PreparedAFMSession, Task<Int, Error>?, AFMPrewarmOutcome) {
+    ) throws -> (PreparedAFMSession, AFMCountLifetime?, AFMPrewarmOutcome) {
       let assembly = try resolveAssembly(detectedLanguage: detectedLanguage)
       guard let offered else { return (Self.buildSession(assembly), nil, .none) }
       guard Self.reusesPrepared(offered.key, for: assembly.key) else {
+        // Stop its count now, before the fresh build competes with it.
+        offered.countLifetime.task.cancel()
         return (Self.buildSession(assembly), nil, .missKey)
       }
-      return (offered.prepared, offered.systemPromptTokens, .hit)
+      return (offered.prepared, offered.countLifetime, .hit)
     }
 
     @available(macOS 26.0, *)
