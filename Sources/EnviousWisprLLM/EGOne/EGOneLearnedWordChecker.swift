@@ -88,7 +88,8 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
     var system = systemPrompt
     var answerPrefix = ""
     if case .s1Mini(let language) = style {
-      if let language, let name = namedLanguages[language.lowercased()] {
+      // A regional code ("de-DE", "pt_BR") names the same language as its base.
+      if let base = LanguageNormalizer.baseCode(language), let name = namedLanguages[base] {
         system += " The sentence is in \(name)."
       }
       answerPrefix = "<think>\n\n</think>\n\n"

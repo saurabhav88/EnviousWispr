@@ -76,10 +76,12 @@
         case .s1Mini: "EW_LEARNED_CHECK_S1_THRESHOLD"
         }
       }
+      /// The drills wait for this name in the ACTIVE line; it is the provider's
+      /// own display name (#2650 freeze), never a restatement.
       var label: String {
         switch self {
-        case .egOne: "EG-1"
-        case .s1Mini: "S1-mini"
+        case .egOne: LLMProvider.egOne.displayName
+        case .s1Mini: LLMProvider.s1Mini.displayName
         }
       }
     }

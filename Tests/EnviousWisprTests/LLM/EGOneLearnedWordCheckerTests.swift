@@ -34,6 +34,13 @@ struct EGOneLearnedWordCheckerTests {
         + "<|im_start|>assistant\n<think>\n\n</think>\n\n")
     let german = EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: "de"))
     #expect(german.contains("Answer with one letter. The sentence is in German.<|im_end|>"))
+    // A regional code names its base language (Codex whole-diff review of #3105 PR 1).
+    for regional in ["de-DE", "DE_at", " de-CH "] {
+      #expect(EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: regional)) == german)
+    }
+    #expect(
+      EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: "pt-BR"))
+        .contains("The sentence is in Portuguese.<|im_end|>"))
     let unnamed = EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: "ja"))
     #expect(unnamed == english)
     #expect(EGOneLearnedWordChecker.prompt(for: q, style: .s1Mini(language: nil)) == english)
