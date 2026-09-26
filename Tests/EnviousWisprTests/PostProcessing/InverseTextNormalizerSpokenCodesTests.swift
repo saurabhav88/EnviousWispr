@@ -54,6 +54,7 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("COVID dash nineteen cases.", "COVID-19 cases."),
     ("Part S dash one hundred and two failed.", "Part S-102 failed."),
     ("Install Python three Point twelve.", "Install Python 3.12."),
+    ("Install Python 3 point 12.", "Install Python 3.12."),
     ("The date is twenty twenty six dash nine dash twenty six.", "The date is 2026-09-26."),
     ("Open localhost colon three thousand.", "Open localhost:3000."),
     ("Open localhost colon three thousand and one.", "Open localhost:3001."),
@@ -121,6 +122,8 @@ struct InverseTextNormalizerSpokenCodesTests {
     ("open 2026-9-26.com today", "open 2026-9-26.com today"),
     ("Open 2026-9-26/report.md today", "Open 2026-9-26/report.md today"),
     ("see docs dot example dot com dot рф", "see docs dot example dot com dot рф"),
+    ("open docs dot example dot com question mark page",
+     "open docs dot example dot com question mark page"),
     ("filed 2026-2-31", "filed 2026-2-31"),
     ("filed 2028-2-29", "filed 2028-02-29"),
     // a chain the English path refuses (a foreign dot-word beside number words) stays whole

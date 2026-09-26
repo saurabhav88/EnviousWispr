@@ -1267,7 +1267,11 @@ public struct InverseTextNormalizer: Sendable {
       let host = labels.joined(separator: ".")
       guard
         !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m),
-        !precededBySpacedAtSign(m), !(hasPath && followedByUnsupportedContinuation(m)),
+        !precededBySpacedAtSign(m),
+        // #3210: a multi-label host is new here, so it also refuses URL syntax it cannot finish
+        // ("docs dot example dot com question mark page"); a bare single-label host keeps the
+        // #2257 reading below.
+        !((hasPath || labels.count > 1) && followedByUnsupportedContinuation(m)),
         // #2781: "the score was one dot me nothing" is prose; a single-label host that is an
         // English function word is refused here as `emails` refuses it in the domain slot.
         // One-letter hosts are exempt: a spelled-out URL ends in a single letter before "dot"

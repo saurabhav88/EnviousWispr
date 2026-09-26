@@ -139,8 +139,9 @@ extension InverseTextNormalizer {
   /// part is read ONLY after a name-shaped word or a version word: "at one point twelve people
   /// left" is prose, and "point" is an everyday noun.
   func twoDigitMinorVersions(_ t: String) -> String {
+    // Digits too: the recogniser may write "Python 3 point 12" (confirming diff review r8).
     let minor =
-      #"(?:(?:"# + Self.tensAlt + #")(?:\s+(?:"# + Self.unit19Alt + #"))?|"#
+      #"(?:\d{1,2}|(?:"# + Self.tensAlt + #")(?:\s+(?:"# + Self.unit19Alt + #"))?|"#
       + Self.teenAlt + #")"#
     let pat =
       #"(?<lead>\b(?:version|v|release|build|update|[A-Z][A-Za-z]*|[a-z]+[A-Z][A-Za-z]*))\s+"#
@@ -153,7 +154,9 @@ extension InverseTextNormalizer {
       // "Python three point twelve point x": the version goes on past what reads.
       guard !identifierContinues(m, connectorAlt: Self.numberDotWordAlt) else { return nil }
       guard let major = Self.identifierPartDigits(m.g("major") ?? "", allowWords: true),
-        let minor = Self.wordsToInt(Self.splitWords((m.g("minor") ?? "").lowercased()))
+        let minor = Self.isFixedDigits(m.g("minor") ?? "", 1...2)
+          ? m.g("minor")
+          : Self.wordsToInt(Self.splitWords((m.g("minor") ?? "").lowercased())).map(String.init)
       else { return nil }
       return "\(lead) \(major).\(minor)"
     }
