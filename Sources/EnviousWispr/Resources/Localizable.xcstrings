@@ -12552,17 +12552,6 @@
         }
       }
     },
-    "Remove word check" : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: delete the downloaded word check (about 500 MB) when no chosen polish engine needs it.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wortprüfung entfernen"
-          }
-        }
-      }
-    },
     "Removed: %@." : {
       "comment" : "VoiceOver, marked-up transcript: a word the cleanup removed. %@ is the word.",
       "localizations" : {

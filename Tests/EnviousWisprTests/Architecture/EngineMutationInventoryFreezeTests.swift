@@ -705,9 +705,6 @@ import Testing
       text: "if activeSelections == 0 { unload(reason: \"not_wanted\") }", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
-      text: "unload(reason: \"remove\")", classification: .unrelatedDomain),
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
       text: "unload(reason: \"delivery_\\(state)\")", classification: .unrelatedDomain),
 
     // MARK: CaptureVADSignalSource — a different subsystem (voice-activity

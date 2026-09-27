@@ -8,14 +8,9 @@ import SwiftUI
 struct LearnedCheckerSettingsStatus: Equatable {
   let line: String
   let canRetry: Bool
-  /// #3242: the shared word check is on disk and nothing chosen needs it; the row offers Remove.
-  var canRemoveWordCheck = false
   static let retryTitle = LocalizedStringResource(
     "Try again",
     comment: "Your Words, Learn from: the self-learning dictionary row: retry the word check download.")
-  static let removeWordCheckTitle = LocalizedStringResource(
-    "Remove word check",
-    comment: "Your Words, Learn from: the self-learning dictionary row: delete the downloaded word check (about 500 MB) when no chosen polish engine needs it.")
 
   /// A check that is installed and ready, named by its owner. Used for the shared word check
   /// (#3242), whose status is read without loading its model.
@@ -173,15 +168,6 @@ struct LearningSection: View {
                 // shared word check for an engine without its own (#3242).
                 let provider = settings.wrappedValue.llmProvider
                 Task { await checkerEligibility.retryDownload(for: provider) }
-              }
-            }
-            // Independent of Try again (#3242): a download stopped part-way offers both, and
-            // only Remove does anything while the Dictionary is off.
-            if checkerStatus.canRemoveWordCheck {
-              if !checkerStatus.canRetry { Spacer(minLength: 8) }
-              SettingsActionButton(title: LearnedCheckerSettingsStatus.removeWordCheckTitle,
-                isEnabled: true) {
-                Task { await checkerEligibility.removeWordCheck() }
               }
             }
           }
