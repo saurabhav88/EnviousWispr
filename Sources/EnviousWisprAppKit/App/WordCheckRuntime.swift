@@ -136,6 +136,7 @@ final class WordCheckRuntime {
       let started = ContinuousClock.now
       do {
         let model = try await KevWordCheckModel(folder: folder)
+        try await model.warmUp()
         let contract = await model.contract
         let elapsed = ContinuousClock.now - started
         guard let self else { return }

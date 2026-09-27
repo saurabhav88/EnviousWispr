@@ -82,6 +82,17 @@ public actor KevWordCheckModel {
     return value
   }
 
+  /// One throwaway question. MLX compiles its Metal kernels on first use; measured live, the
+  /// first real take after a load spent 1.2 s there and ran out the step's answer deadline,
+  /// while the next take answered in 32 ms (#3242). Run before the model is handed to a take.
+  public func warmUp() throws {
+    _ = try probabilities(forStates: [
+      KevEncoding.stateText(
+        listedWord: "Tuist", asWritten: "Run twist generate first.",
+        withListedWord: "Run Tuist generate first.", changedFrom: "twist")
+    ])
+  }
+
   /// p(the speaker said the listed word) for each state, in order. One right-padded batch: pads
   /// sit after every real token and both layer kinds are causal, so no real token sees a pad.
   public func probabilities(forStates states: [String]) throws -> [Double] {
