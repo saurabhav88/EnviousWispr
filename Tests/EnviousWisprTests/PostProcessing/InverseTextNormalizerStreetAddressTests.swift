@@ -138,6 +138,11 @@ struct InverseTextNormalizerStreetAddressTests {
       "Deliver it here:\n9 Main Street Hartford Connecticut 06103",
       "Deliver it here:\n9 Main Street, Hartford, Connecticut 06103"
     ),
+    // a real sentence end still lets the next address start
+    (
+      "I moved last week. 9 Main Street Hartford Connecticut 06103 is the new place.",
+      "I moved last week. 9 Main Street, Hartford, Connecticut 06103 is the new place."
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."
@@ -268,6 +273,9 @@ struct InverseTextNormalizerStreetAddressTests {
     ("See section 9 Main Street Hartford Connecticut 06103 for details.", "See section 9 Main Street Hartford Connecticut 06103 for details."),
     ("Ask about No. 9 Main Street Hartford Connecticut 06103 today.", "Ask about No. 9 Main Street Hartford Connecticut 06103 today."),
     ("Ask about no. 9 Main Street Hartford Connecticut 06103 today.", "Ask about no. 9 Main Street Hartford Connecticut 06103 today."),
+    // Codex diff review r18: an abbreviation is not a sentence end
+    ("See Sec. 9 Main Street Hartford Connecticut 06103 for details.", "See Sec. 9 Main Street Hartford Connecticut 06103 for details."),
+    ("See fig. 9 Main Street Hartford Connecticut 06103 for details.", "See fig. 9 Main Street Hartford Connecticut 06103 for details."),
   ]
 
   @Test("a number that belongs to the words before it is not a house number", arguments: borrowedNumbers)

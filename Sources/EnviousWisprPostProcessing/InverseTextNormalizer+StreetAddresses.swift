@@ -223,10 +223,13 @@ extension InverseTextNormalizer {
       of: #"[\t\p{Zs}]+$"#, with: "", options: .regularExpression)
     guard let last = lead.last else { return atTextStart || before.contains(where: \.isNewline) }
     if last.isNewline || ",:;([{\"“'‘—–-".contains(last) { return true }
-    // A sentence end, but not an abbreviation ("No.", "St.", "Dr."): two lowercase letters or more.
+    // A sentence end, but not an abbreviation: the last word is wholly lowercase ("here.", never
+    // "No.", "Sec.", "Dr."), and not a lowercase abbreviation that labels a number.
     if ".!?".contains(last) {
-      return lead.range(of: #"[a-z]{2,}[.!?]$"#, options: .regularExpression) != nil
-        && lead.range(of: #"(?i)\bno\.$"#, options: .regularExpression) == nil
+      return lead.range(of: #"\b[a-z]{2,}[.!?]$"#, options: .regularExpression) != nil
+        && lead.range(
+          of: #"\b(?:no|nos|sec|fig|figs|vol|pg|pp|ch|art|para|ext|ref|approx|ed|app|ex)\.$"#,
+          options: .regularExpression) == nil
     }
     guard let word = lead.split(whereSeparator: { $0.isWhitespace }).last else { return atTextStart }
     return addressIntroducers.contains(word.lowercased())
