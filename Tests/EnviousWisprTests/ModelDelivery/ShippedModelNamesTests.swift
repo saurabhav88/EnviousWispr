@@ -160,7 +160,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 8, "expected eight bundled registrations, got \(keys.count)")
+    #expect(keys.count == 9, "expected nine bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
