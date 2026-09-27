@@ -1200,9 +1200,19 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager
     )
-    // #3242: the word check never idle-unloads while a dictation it pre-loaded for is in flight.
-    checkerEligibility.wordCheck?.isDictationInFlight = { [weak liveRecordingState] in
-      liveRecordingState?.pipelineState.isActive ?? false
+    // #3242: the word check never idle-unloads while a dictation is in flight, and a take keeps the
+    // check its FROZEN provider selects. The drivers' session config is the in-flight authority: it
+    // lives from arming to the terminal, unlike the published pipeline state (an external error can
+    // show `.error` while the kernel is still processing).
+    checkerEligibility.wordCheck?.isDictationInFlight = {
+      [weak kernelDriver, weak whisperKitKernelDriver] in
+      kernelDriver?.currentSessionConfig != nil || whisperKitKernelDriver?.currentSessionConfig != nil
+    }
+    checkerEligibility.wordCheck?.inFlightDictationNeedsWordCheck = {
+      [weak kernelDriver, weak whisperKitKernelDriver] in
+      [kernelDriver?.currentSessionConfig, whisperKitKernelDriver?.currentSessionConfig]
+        .compactMap { $0 }
+        .contains { LearnedWordCheckerEngine(provider: $0.llmProvider) == nil }
     }
     // #1063 PR2: crash-recovery owner. The per-orphan replayer (decrypt →
     // transcribe → polish → save) is built from existing app deps; the coordinator
@@ -1636,9 +1646,14 @@ package final class WisprBootstrapper {
       batchDecodeFaultController: batchDecodeFaultController,
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
-      onRecordingStarted: { [weak learnFromEdits, weak checkerEligibility, weak settings] in
+      onRecordingStarted: {
+        [weak learnFromEdits, weak checkerEligibility, weak kernelDriver, weak whisperKitKernelDriver] in
         learnFromEdits?.recordingStarted()
-        guard let provider = settings?.llmProvider else { return }
+        // The take's frozen provider (set at arming), never the mutable setting.
+        guard
+          let provider = kernelDriver?.currentSessionConfig?.llmProvider
+            ?? whisperKitKernelDriver?.currentSessionConfig?.llmProvider
+        else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
           needsWordCheckForRecording: LearnedWordCheckerEngine(provider: provider) == nil)
       }

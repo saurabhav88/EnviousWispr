@@ -36,6 +36,10 @@ final class WordCheckRuntime {
   /// transcription runs, would otherwise lose the model it pre-loaded at record start (cloud review,
   /// PR #3246).
   var isDictationInFlight: @MainActor () -> Bool = { false }
+  /// Whether the dictation in flight polishes (by its FROZEN session provider) with an engine that
+  /// has no checker of its own. A provider switch mid-take changes the settings but not the take, so
+  /// the take keeps the check it will select (local review, PR #3246).
+  var inFlightDictationNeedsWordCheck: @MainActor () -> Bool = { false }
 
   private var deliveryState: DeliveryState = .notReady
   private var launchProbeFinished = false
@@ -78,7 +82,8 @@ final class WordCheckRuntime {
   /// Needed now: Dictionary on, some chosen engine without its own check, and first-run setup done
   /// (a Diagnostics onboarding reset takes the check back out, download and memory both).
   private var wanted: Bool {
-    isDictionaryEnabled() && someEngineLacksOwnChecker() && isOnboardingComplete()
+    isDictionaryEnabled() && isOnboardingComplete()
+      && (someEngineLacksOwnChecker() || inFlightDictationNeedsWordCheck())
   }
   private var isAdmitted: Bool {
     if case .admitted = deliveryState { return true }
@@ -261,9 +266,7 @@ final class WordCheckRuntime {
   /// unchecked. Loading at record start hides that behind the dictation itself.
   /// `needsWordCheckForRecording`: this dictation's own polish engine has no checker. `wanted` alone
   /// is also true when only Transcribe a File needs the check, and a dictation must not load 480 MB
-  /// it will not use. Known limit: the caller reads the CURRENT provider; a switch in the moment
-  /// between the key press and `.recording` decides by the new one, while the take polishes with the
-  /// frozen old one. The cost is this fix not applying to that one take (it cold-loads as before).
+  /// it will not use. The caller passes the take's FROZEN session provider, not the current setting.
   func recordingStarted(needsWordCheckForRecording: Bool) {
     guard needsWordCheckForRecording, wanted else { return }
     if loaded != nil {
