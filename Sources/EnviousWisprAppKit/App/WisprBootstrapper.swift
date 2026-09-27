@@ -1200,6 +1200,10 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager
     )
+    // #3242: the word check never idle-unloads during a recording it pre-loaded for.
+    checkerEligibility.wordCheck?.isRecording = { [weak liveRecordingState] in
+      liveRecordingState?.pipelineState == .recording
+    }
     // #1063 PR2: crash-recovery owner. The per-orphan replayer (decrypt →
     // transcribe → polish → save) is built from existing app deps; the coordinator
     // owns the launch scan, the recording gate, dedup, and cleanup routing. The
@@ -1632,9 +1636,11 @@ package final class WisprBootstrapper {
       batchDecodeFaultController: batchDecodeFaultController,
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
-      onRecordingStarted: { [weak learnFromEdits, weak checkerEligibility] in
+      onRecordingStarted: { [weak learnFromEdits, weak checkerEligibility, weak settings] in
         learnFromEdits?.recordingStarted()
-        checkerEligibility?.wordCheck?.recordingStarted()
+        guard let provider = settings?.llmProvider else { return }
+        checkerEligibility?.wordCheck?.recordingStarted(
+          needsWordCheckForRecording: LearnedWordCheckerEngine(provider: provider) == nil)
       }
     )
 

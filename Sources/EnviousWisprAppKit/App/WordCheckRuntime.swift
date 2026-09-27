@@ -31,6 +31,9 @@ final class WordCheckRuntime {
   private let isOnboardingComplete: @MainActor () -> Bool
   /// The Dictionary row re-reads its status when this fires.
   var onStatusChange: @MainActor () -> Void = {}
+  /// Whether a dictation is recording right now. The idle timer never unloads during one: a take
+  /// longer than `idleUnloadDelay` would otherwise lose the model it pre-loaded at record start.
+  var isRecording: @MainActor () -> Bool = { false }
 
   private var deliveryState: DeliveryState = .notReady
   private var launchProbeFinished = false
@@ -242,6 +245,10 @@ final class WordCheckRuntime {
     idleUnloadTask = Task { [weak self] in
       try? await Task.sleep(for: Self.idleUnloadDelay)
       guard !Task.isCancelled, let self, self.activeSelections == 0 else { return }
+      if self.isRecording() {
+        self.scheduleIdleUnload()
+        return
+      }
       self.unload(reason: "idle")
     }
   }
@@ -250,8 +257,11 @@ final class WordCheckRuntime {
   /// check finds it ready. Measured live (#3242): after the ten-minute idle unload the reload took
   /// 1.6 s, past the 1.2 s selection deadline, so the first take after a quiet stretch went
   /// unchecked. Loading at record start hides that behind the dictation itself.
-  func recordingStarted() {
-    guard wanted else { return }
+  /// `needsWordCheckForRecording`: this dictation's own polish engine has no checker. `wanted` alone
+  /// is also true when only Transcribe a File needs the check, and a dictation must not load 480 MB
+  /// it will not use.
+  func recordingStarted(needsWordCheckForRecording: Bool) {
+    guard needsWordCheckForRecording, wanted else { return }
     if loaded != nil {
       scheduleIdleUnload()
     } else {
