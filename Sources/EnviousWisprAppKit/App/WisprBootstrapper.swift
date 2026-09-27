@@ -1200,9 +1200,9 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager
     )
-    // #3242: the word check never idle-unloads during a recording it pre-loaded for.
-    checkerEligibility.wordCheck?.isRecording = { [weak liveRecordingState] in
-      liveRecordingState?.pipelineState == .recording
+    // #3242: the word check never idle-unloads while a dictation it pre-loaded for is in flight.
+    checkerEligibility.wordCheck?.isDictationInFlight = { [weak liveRecordingState] in
+      liveRecordingState?.pipelineState.isActive ?? false
     }
     // #1063 PR2: crash-recovery owner. The per-orphan replayer (decrypt →
     // transcribe → polish → save) is built from existing app deps; the coordinator
