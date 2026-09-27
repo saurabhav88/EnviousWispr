@@ -26,6 +26,10 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
   /// #3105: S1-mini's learned-word checker (D5), a LoRA adapter admitted on
   /// its own like `egOneChecker`, never a member of S1-mini's shard set.
   case s1MiniChecker = "s1_mini_checker"
+  /// #3242: the learned-word check for polish engines without their own (Kev, a Qwen3.5 decision
+  /// model on MLX). A standalone folder like `editJudge`, NOT a checker adapter: it runs on no
+  /// base, so it has no `checkerBaseFamily` and no `checkerContract`.
+  case wordCheck = "word_check"
 
   /// The base family a checker adapter runs on; nil for a family that is not
   /// a checker. Exhaustive, so a new family must say whether it is one.
@@ -33,7 +37,7 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
     switch self {
     case .egOneChecker: .egOne
     case .s1MiniChecker: .s1Mini
-    case .parakeet, .whisperKit, .egOne, .s1Mini, .editJudge: nil
+    case .parakeet, .whisperKit, .egOne, .s1Mini, .editJudge, .wordCheck: nil
     }
   }
 }

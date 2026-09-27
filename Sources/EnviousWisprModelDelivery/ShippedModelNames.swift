@@ -34,6 +34,7 @@ enum ShippedModelNames {
     .s1Mini: ["s1-mini"],
     .s1MiniChecker: ["s1c"],
     .whisperKit: ["whisperkit-coreml"],
+    .wordCheck: ["kev-wc"],
   ]
 
   /// Names shipped by an earlier build and no longer bundled. Empty today —
@@ -74,6 +75,7 @@ enum ShippedModelNames {
     "whisper_kit|whisperkit-coreml": [
       "openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB",
     ],
+    "word_check|kev-wc": ["mlx-q4"],
   ]
 
   static func variantKey(family: ModelFamily, name: String) -> String {

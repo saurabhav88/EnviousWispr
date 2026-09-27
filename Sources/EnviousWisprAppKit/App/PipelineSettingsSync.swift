@@ -33,6 +33,10 @@ final class PipelineSettingsSync {
   /// because the two mean different things — "stop previewing" versus "preview
   /// with something else" — and a single hook would have to re-derive which.
   var onLivePreviewEngineChanged: () -> Void = {}
+  /// #3242: the Dictionary switch or a polish engine choice (dictation's or Transcribe a
+  /// File's) changed, so whether the shared word check is needed may have changed. The
+  /// composition root binds this to `WordCheckRuntime.refresh`.
+  var onWordCheckInputsChanged: () -> Void = {}
 
   /// Tracks the last evictable Ollama model for #295. Independent of the
   /// kernel's polish step because SettingsManager's cascading didSet can
@@ -234,6 +238,7 @@ final class PipelineSettingsSync {
     case .recordingMode:
       hotkeyService.recordingMode = settings.recordingMode
     case .llmProvider:
+      onWordCheckInputsChanged()
       syncEGOneLearnedWordChecker(provider: settings.llmProvider)
       // Eviction fires for RAM management (#295). Pipeline polish uses the
       // frozen value from `DictationSessionConfig`; live steps are seeded per
@@ -270,6 +275,7 @@ final class PipelineSettingsSync {
       }
       reconcileOllamaEviction(settings: settings)
       reconcileEGOneActivation(settings: settings)
+      onWordCheckInputsChanged()
     case .hotkeyEnabled:
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
     case .cancelKeyCode:
@@ -318,6 +324,7 @@ final class PipelineSettingsSync {
       whisperKitKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
       kernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
       whisperKitKernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
+      onWordCheckInputsChanged()
     case .fillerRemovalEnabled:
       kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
       whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled

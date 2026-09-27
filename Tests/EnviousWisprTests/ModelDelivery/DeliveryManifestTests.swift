@@ -903,3 +903,40 @@ struct S1MiniShippedManifestTests {
   }
 
 }
+
+/// #3242: the word check (Kev on MLX). Loading the bundled manifest through the real loader is the
+/// check that matters: its structural rules (each file's component is its own install root, the
+/// entrypoint is listed) run at launch, and a manifest that fails them silently disables the check
+/// for every engine that needs it. The first build shipped exactly that ("component model !=
+/// install root"), caught only by a live run.
+@Suite(.tags(.driftGuard)) struct WordCheckManifestTests {
+  static var manifestURL: URL {
+    ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
+      "Sources/EnviousWispr/Resources/word-check-delivery-manifest.json")
+  }
+
+  @Test func wordCheckManifestLoadsWithItsIdentityAndHostedSource() throws {
+    let data = try Data(contentsOf: Self.manifestURL)
+    let manifest = try DeliveryManifest.load(from: data)
+    #expect(try DeliveryManifest.canonicalDigest(of: data) == manifest.manifestDigest)
+    #expect(manifest.identity.family == .wordCheck)
+    #expect(manifest.identity.name == "kev-wc")
+    #expect(manifest.identity.revision == "kev-wc-1-43a5a2e7")
+    #expect(manifest.identity.variant == "mlx-q4")
+    #expect(manifest.identity.runtimeABI == "mlx-kev-v1")
+    #expect(manifest.checkerContract == nil)
+    #expect(manifest.files.count == 10)
+    #expect(manifest.totalBytes == 439_038_087)
+    #expect(manifest.sources.map(\.baseURL.absoluteString) == [
+      "https://models.enviouslabs.co/kev/kev-wc-1-43a5a2e7/"
+    ])
+    // The runtime reads these by name; a manifest that drops one admits a folder the loader refuses.
+    let names = Set(manifest.files.map(\.path))
+    for required in [
+      "config.json", "head.safetensors", "kev-contract.json", "model.safetensors.index.json",
+      "tokenizer.json", "tokenizer_config.json", "LICENSE", "NOTICE",
+    ] {
+      #expect(names.contains(required), "word check manifest is missing \(required)")
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "originHash" : "84dfc64018bc5e42ede3cd7ca5ba30ce62be0a4123f8a7c2aa881004ed8ea6c6",
+  "originHash" : "5f9f57adfbd11d253dcb1ce85ccf7b4c2a7be7dac53a1f4a6ad7af7dfdd63f74",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -16,6 +16,22 @@
       "location" : "https://github.com/saurabhav88/FluidAudio.git",
       "state" : {
         "revision" : "b29591ada1f70510c12c13b50ffae02052ff75c3"
+      }
+    },
+    {
+      "identity" : "mlx-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/saurabhav88/mlx-swift",
+      "state" : {
+        "revision" : "8746d3d8d2f3a19c79276f6d884b8c9c02e751e2"
+      }
+    },
+    {
+      "identity" : "mlx-swift-lm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/saurabhav88/mlx-swift-lm.git",
+      "state" : {
+        "revision" : "644680cddf080bc3bfd1318798735646b184e127"
       }
     },
     {
@@ -52,6 +68,15 @@
       "state" : {
         "revision" : "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
         "version" : "1.7.1"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
       }
     },
     {

@@ -785,6 +785,22 @@ package final class WisprBootstrapper {
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
     )
     settingsSync.applyInitialSettings(settings)
+    // #3242: the word check for polish engines without their own. Held by the eligibility
+    // owner (its only reader); driven by the Dictionary switch and both engine choices.
+    let wordCheck = WordCheckRuntime(
+      delivery: modelDelivery,
+      isDictionaryEnabled: { [weak settings] in settings?.wordCorrectionEnabled ?? false },
+      someEngineLacksOwnChecker: { [weak settings] in
+        guard let settings else { return false }
+        return LearnedWordCheckerEngine(provider: settings.llmProvider) == nil
+          || LearnedWordCheckerEngine(provider: settings.effectiveFileImportLLMProvider) == nil
+      },
+      isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
+    wordCheck.onStatusChange = { [checkerEligibility] in checkerEligibility.statusDidChange() }
+    checkerEligibility.wordCheck = wordCheck
+    settingsSync.onWordCheckInputsChanged = { [weak wordCheck] in
+      wordCheck?.refresh(trigger: "settings")
+    }
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
     //
@@ -1075,6 +1091,11 @@ package final class WisprBootstrapper {
       // #2096: EG-1's automatic model upgrade stands aside while first-run setup runs, so the
       // heart's model download owns the bandwidth. `runLaunch` fires once at bootstrap, so
       // without this the deferral would mean "never until relaunch" rather than "later".
+      // #3242: the word check needs first-run setup done, so every onboarding change (completion,
+      // or a Diagnostics reset) re-evaluates its download and residency.
+      if key == .onboardingState {
+        checkerEligibility.wordCheck?.refresh(trigger: "onboarding_changed")
+      }
       if key == .onboardingState, settings.onboardingState == .completed {
         Task {
           guard await egOneCoordinator?.onboardingDidComplete() == true else { return }

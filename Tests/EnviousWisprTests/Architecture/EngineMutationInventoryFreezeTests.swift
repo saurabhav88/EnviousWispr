@@ -691,6 +691,25 @@ import Testing
       text: "if let seams = testSeams { return try await seams.loadModel(modelPath) }",
       classification: .dormant),
 
+    // MARK: WordCheckRuntime (#3242) — the learned-word check's Kev model (MLX), not the ASR
+    // engine. `unload` releases that model; `warmUp` runs its first question. Matched only by
+    // method-name coincidence.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "warmUp",
+      text: "try await model.warmUp()", classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
+      text: "self.unload(reason: \"idle\")", classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
+      text: "if activeSelections == 0 { unload(reason: \"not_wanted\") }", classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
+      text: "unload(reason: \"remove\")", classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
+      text: "unload(reason: \"delivery_\\(state)\")", classification: .unrelatedDomain),
+
     // MARK: CaptureVADSignalSource — a different subsystem (voice-activity
     // detection), not the ASR engine. Matched only by method-name coincidence.
     CallSite(

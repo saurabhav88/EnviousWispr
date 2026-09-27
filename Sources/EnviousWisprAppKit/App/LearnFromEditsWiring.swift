@@ -380,7 +380,7 @@ final class LearnFromEditsWiring {
     home.drainEditJudgeHoldersBeforeRemoval = { [weak self] in
       await self?.releaseDeliveredJudge() ?? true
     }
-    home.onParakeetAdmitted = { [weak self] in self?.startFetch(trigger: "parakeet_admitted") }
+    home.addParakeetAdmittedObserver { [weak self] in self?.startFetch(trigger: "parakeet_admitted") }
     // The controller replays each identity's current state to a late observer,
     // so an `.admitted` published by the launch probe before this line is still
     // delivered (`ModelDeliveryController.addStateObserver`).

@@ -288,6 +288,16 @@ fi
 # broken.
 "$PROJ_ROOT/scripts/check-preview-engine-resources.sh" "$BUNDLE"
 
+# #3242: the word check runs on MLX, which loads its Metal shaders from the Cmlx resource bundle at
+# first use. A build without the Metal toolchain, or a packaging change that drops the bundle, still
+# links and launches; the word check then fails at load for every user. Refuse the release instead.
+MLX_METALLIB="$BUNDLE/Contents/Resources/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib"
+if [[ ! -s "$MLX_METALLIB" ]]; then
+    echo "::error::MLX Metal library missing or empty at $MLX_METALLIB (word check would fail to load)"
+    exit 1
+fi
+echo "==> MLX Metal library present ($(stat -f %z "$MLX_METALLIB") bytes)"
+
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> CODESIGN_IDENTITY not set — skipping signing (unsigned assembly only)"
 else

@@ -24,6 +24,10 @@ final class LearnedWordCheckerEligibility {
   private(set) var statusRevision = 0
   private let delivery: ModelDeliveryHome
   private let engines: [LearnedWordCheckerEngine: EngineInputs]
+  /// #3242: the word check for every provider without a checker of its own. Set by the
+  /// composition root after construction (it needs the delivery home's registration); nil
+  /// leaves those providers at `.engineHasNoChecker`, as before.
+  @ObservationIgnored var wordCheck: WordCheckRuntime?
   #if DEBUG
     private let debugScriptedChecker: (any LearnedWordChecking)?
   #endif
@@ -54,6 +58,37 @@ final class LearnedWordCheckerEligibility {
     statusDidChange()
   }
 
+  /// The Dictionary row's status for this provider. The shared word check reports without loading
+  /// its model (#3242); an engine's own check reports through its take selection, as before.
+  func settingsStatus(provider: LLMProvider) async -> LearnedCheckerSettingsStatus {
+    var status: LearnedCheckerSettingsStatus
+    if LearnedWordCheckerEngine(provider: provider) == nil, let wordCheck {
+      status = wordCheck.settingsStatus()
+    } else {
+      status = LearnedCheckerSettingsStatus(
+        selection: await selection(provider: provider, language: nil))
+    }
+    // Offered whatever the provider: an S1-mini or EG-1 user who once used the shared check can
+    // still delete it.
+    status.canRemoveWordCheck = wordCheck?.offersRemoval ?? false
+    return status
+  }
+
+  /// "Remove word check" in the Dictionary row (#3242).
+  func removeWordCheck() async {
+    _ = await wordCheck?.remove()
+    statusDidChange()
+  }
+
+  /// "Try again" in the Dictionary row, for whichever check the provider uses.
+  func retryDownload(for provider: LLMProvider) async {
+    if let engine = LearnedWordCheckerEngine(provider: provider) {
+      await requestAdapterDownload(for: engine)
+    } else {
+      wordCheck?.retryDownload()
+    }
+  }
+
   func selection(provider: LLMProvider, language: String?) async -> LearnedWordCheckerSelection {
     #if DEBUG
       if let debugScriptedChecker {
@@ -63,8 +98,11 @@ final class LearnedWordCheckerEligibility {
     #endif
     // Founder 2026-09-26 (#3105): every dictation language, every engine. The
     // language reaches only S1-mini's prompt, which names it.
-    guard let engine = LearnedWordCheckerEngine(provider: provider), let inputs = engines[engine]
-    else { return .init(absence: .engineHasNoChecker) }
+    guard let engine = LearnedWordCheckerEngine(provider: provider) else {
+      // #3242: Apple Intelligence, the cloud engines, Ollama and no polish use the word check.
+      return await wordCheck?.selection() ?? .init(absence: .engineHasNoChecker)
+    }
+    guard let inputs = engines[engine] else { return .init(absence: .engineHasNoChecker) }
     let judge = LearnedWordJudge(displayName: provider.displayName)
     return await engineSelection(engine, inputs: inputs, language: language).naming(judge)
   }
