@@ -247,9 +247,16 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     Task { @MainActor in
       await AppLogger.shared.log(
         "update relaunch held: work in flight (\(item.versionString))", category: "Update")
-      await coordinator.waitUntilRelaunchIsSafe()
+      // The last check and the relaunch share one main-actor stretch with no `await` between
+      // them, so work cannot start after the check and still be cut off (local Codex, r2).
+      while true {
+        await coordinator.waitUntilRelaunchIsSafe()
+        if !coordinator.installRefusedNow {
+          installHandler()
+          break
+        }
+      }
       await AppLogger.shared.log("update relaunch released", category: "Update")
-      installHandler()
     }
     return true
   }
