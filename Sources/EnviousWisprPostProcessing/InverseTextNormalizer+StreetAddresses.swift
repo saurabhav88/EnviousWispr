@@ -90,7 +90,9 @@ extension InverseTextNormalizer {
       + #"){3}))?|"# + digitWord + #"(?:\s+"# + digitWord
       + #"){4}(?:\s+(?i:dash|hyphen)\s+(?:\d{4}|"#
       + digitWord + #"(?:\s+"# + digitWord + #"){3}))?)"#
-    return #"(?<![\p{L}\d'’-])(?<!\d[,.])"# + house + hs + #"(?:(?:"# + streetDirections.joined(separator: "|")
+    // A house number starts a word: at the start, or after whitespace, an opening bracket or a
+    // quote. Never glued to a time, date, price or ratio ("9:00", "9/12", "$9"; cloud review).
+    return #"(?<![^\s(\[{"“'‘])"# + house + hs + #"(?:(?:"# + streetDirections.joined(separator: "|")
       + #")"# + hs + #")?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*\n?[^\S\n]*|[^\S\n]*\n[^\S\n]*|[^\S\n]+))"# + zip
       + #"(?![\p{L}\d-])(?!\s+(?:\d|(?i:dash|hyphen)\b))"#
   }()
@@ -122,6 +124,35 @@ extension InverseTextNormalizer {
       let partOfLonger =
         #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand)(?:[^\S\n]+and)?|\d)[^\S\n]*$"#
       if before.range(of: partOfLonger, options: .regularExpression) != nil { return nil }
+      // Enumerated after the cloud review (docs/audits/2026-09-26-3211-cloud-class-enum.txt): a
+      // number after a lowercase label, the day of a written date, the far end of a range or ratio,
+      // and a time zone or unit read as a street word are not house numbers.
+      if before.range(
+        of: #"(?i)\b(?:room|apt|apartment|suite|unit|floor|exit|route|chapter|highway|mile|page|no)\.?\s+$"#,
+        options: .regularExpression) != nil
+      {
+        return nil
+      }
+      if before.range(of: #"\b[A-Z][a-z]+\s+\d{1,2},\s+$"#, options: .regularExpression) != nil {
+        return nil
+      }
+      if before.range(
+        of: #"(?i)(?:\b(?:one|two|three|four|five|six|seven|eight|nine|\d+)\s+(?:to|through)|\d+\s*[-–:])\s+$"#,
+        options: .regularExpression) != nil
+      {
+        return nil
+      }
+      if street.range(
+        of: #"^(?:AM|PM|UTC|GMT|EST|EDT|CST|CDT|MST|MDT|PST|PDT|FT)\s"#, options: .regularExpression)
+        != nil
+      {
+        return nil
+      }
+      // A number right after a capitalized word is that word's label, not a house number
+      // ("Room 12 Main Street", "Chapter 9 Main Street", "Route 9"; cloud review lens).
+      if before.range(of: #"[A-Z][\p{L}'’-]*[\t\p{Zs}]+$"#, options: .regularExpression) != nil {
+        return nil
+      }
       // The city run must not hold a second street type: that split is ambiguous.
       let cityTokens = city.split(whereSeparator: \.isWhitespace).map(String.init)
       // A lone capital opening the city is a unit letter the unit pattern did not take.

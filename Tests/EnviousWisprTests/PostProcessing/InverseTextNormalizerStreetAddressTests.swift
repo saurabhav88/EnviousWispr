@@ -166,7 +166,7 @@ struct InverseTextNormalizerStreetAddressTests {
     "Court Street, Brooklyn is where we met in 2019.",
     "She moved from Washington to Oregon in 2020 and back in 2021.",
     "The Main Street festival draws 50000 people.",
-    "In 2019 Main Street Bank Denver Colorado 80203 opened.",
+    "It closed in 2019 Main Street Bank Denver Colorado 80203 opened.",
     "Georgia Way told Indiana Place about the Virginia Court ruling.",
     "Ticket 48213 covers the Washington Court hearing.",
     "The Place Street sign in Virginia fell over.",
@@ -176,13 +176,13 @@ struct InverseTextNormalizerStreetAddressTests {
     "Meet me at 9 High Plains Road Shelton Connecticut.",
     "Room two twenty is booked for Friday.",
     "Take 9 High Plains Road toward Shelton Connecticut 06484 and turn left.",
-    "Log 9 High Plains Road Shelton Connecticut 064841 today.",
+    "We log 9 High Plains Road Shelton Connecticut 064841 today.",
     // Codex diff review r11: a name never runs through a time or a sentence end
     "We met at 9 A.M. Main Street Hartford Connecticut 06103 was the next topic.",
     "The rope measures 9 Ft. Main Street Hartford Connecticut 06103 is the next entry.",
     // Codex diff review r14: a street, unit or city name never spans a line break
-    "Log Nine Main Street Hartford\nCourt Connecticut 06103 as two separate entries.",
-    "Log Nine Main Street Hartford\nNew Haven Connecticut 06103 as two entries.",
+    "We log nine Main Street Hartford\nCourt Connecticut 06103 as two separate entries.",
+    "We log nine Main Street Hartford\nNew Haven Connecticut 06103 as two entries.",
     "Deliver to 9 Main Street Suite two\u{2028}twenty Hartford Connecticut 06103.",
   ]
 
@@ -213,12 +213,12 @@ struct InverseTextNormalizerStreetAddressTests {
   /// digit, are not addresses. The year and digit-read passes still write their numbers, as on main.
   nonisolated static let notAddresses: [(dictated: String, expected: String)] = [
     (
-      "In twenty twenty Main Street Bank Denver Colorado 80203 opened.",
-      "In 2020 Main Street Bank Denver Colorado 80203 opened."
+      "It closed in twenty twenty Main Street Bank Denver Colorado 80203 opened.",
+      "It closed in 2020 Main Street Bank Denver Colorado 80203 opened."
     ),
     (
-      "Log 9 Main Street Hartford Connecticut zero six four eight four 1 today.",
-      "Log 9 Main Street Hartford Connecticut 064841 today."
+      "We log 9 Main Street Hartford Connecticut zero six four eight four 1 today.",
+      "We log 9 Main Street Hartford Connecticut 064841 today."
     ),
     // Codex diff review r6: a ZIP+4 cut short, and a year after "during"
     (
@@ -226,8 +226,8 @@ struct InverseTextNormalizerStreetAddressTests {
       "Send it to 9 Main Street Hartford Connecticut 02108 dash one two today."
     ),
     (
-      "During 2019 Main Street Bank Denver Colorado 80203 opened.",
-      "During 2019 Main Street Bank Denver Colorado 80203 opened."
+      "It closed during 2019 Main Street Bank Denver Colorado 80203 opened.",
+      "It closed during 2019 Main Street Bank Denver Colorado 80203 opened."
     ),
     // Codex diff review r10: a SPOKEN ZIP running into another digit word may be a longer number
     (
@@ -240,6 +240,31 @@ struct InverseTextNormalizerStreetAddressTests {
       "100 and 23 Main Street Hartford Connecticut 06103"
     ),
   ]
+
+  /// Cloud review and its class enumeration (docs/audits/2026-09-26-3211-cloud-class-enum.txt):
+  /// a time, date, price, label, range, time zone or unit right before an address-shaped span
+  /// never lends it a house number. Expected output is origin/main's own.
+  nonisolated static let borrowedNumbers: [(dictated: String, expected: String)] = [
+    ("We meet at 9 AM Main Street Hartford Connecticut 06103.", "We meet at 9:00 AM Main Street Hartford Connecticut 06103."),
+    ("On 9/12 Main Street Hartford Connecticut 06103.", "On 9/12 Main Street Hartford Connecticut 06103."),
+    ("It costs $9 Main Street Hartford Connecticut 06103.", "It costs $9 Main Street Hartford Connecticut 06103."),
+    ("June second twenty twenty six Main Street Hartford Connecticut 06103.", "June 2, 2026 Main Street Hartford Connecticut 06103."),
+    ("No. 9 Main Street Hartford Connecticut 06103.", "No. 9 Main Street Hartford Connecticut 06103."),
+    ("at 9 UTC Main Street Hartford Connecticut 06103.", "at 9 UTC Main Street Hartford Connecticut 06103."),
+    ("room 12 Main Street Hartford Connecticut 06103.", "room 12 Main Street Hartford Connecticut 06103."),
+    ("exit 9 Main Street Hartford Connecticut 06103.", "exit 9 Main Street Hartford Connecticut 06103."),
+    ("chapter 9 Main Street Hartford Connecticut 06103.", "chapter 9 Main Street Hartford Connecticut 06103."),
+    ("9 - 11 Main Street Hartford Connecticut 06103.", "9 - 11 Main Street Hartford Connecticut 06103."),
+    ("9 FT Main Street Hartford Connecticut 06103.", "9 FT Main Street Hartford Connecticut 06103."),
+    ("Room 12 Main Street Hartford Connecticut 06103.", "Room 12 Main Street Hartford Connecticut 06103."),
+    ("Chapter 9 Main Street Hartford Connecticut 06103.", "Chapter 9 Main Street Hartford Connecticut 06103."),
+    ("Gate 9 Main Street Hartford Connecticut 06103.", "Gate 9 Main Street Hartford Connecticut 06103."),
+  ]
+
+  @Test("a number that belongs to the words before it is not a house number", arguments: borrowedNumbers)
+  func borrowedNumber(row: (dictated: String, expected: String)) {
+    #expect(english(row.dictated) == row.expected)
+  }
 
   @Test("a year or a longer digit run is not read as an address", arguments: notAddresses)
   func notAddress(row: (dictated: String, expected: String)) {
