@@ -100,6 +100,11 @@ struct InverseTextNormalizerStreetAddressTests {
       "Mail the documents and nine High Plains Road Shelton Connecticut 06484",
       "Mail the documents and 9 High Plains Road, Shelton, Connecticut 06484"
     ),
+    // Codex diff review r8: a pair ending in ten to nineteen
+    (
+      "Send it to one ten Main Street Hartford Connecticut 06103",
+      "Send it to 110 Main Street, Hartford, Connecticut 06103"
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."

@@ -164,12 +164,19 @@ extension InverseTextNormalizer {
   static func addressNumber(_ s: String) -> String? {
     if s.allSatisfy(\.isNumber) { return s }
     let words = s.split(whereSeparator: \.isWhitespace).map { $0.lowercased() }
-    // Pair reading: <1 to 99> then <20 to 99> ("three twenty", "fifteen twenty", "twenty two
-    // forty five"), first part x 100 + second. Only inside an accepted address.
+    // Pair reading: <1 to 99> then <10 to 99> ("one ten" 110, "one fifteen" 115, "three twenty",
+    // "fifteen twenty", "twenty two forty five"), first part x 100 + second. Only inside an
+    // accepted address.
     for split in 1..<words.count {
       let tail = Array(words[split...])
-      guard let second = tens[tail[0]] else { continue }
-      var low = second
+      var low: Int
+      if tail.count == 1, let teen = units[tail[0]], (10...19).contains(teen) {
+        low = teen
+      } else if let second = tens[tail[0]] {
+        low = second
+      } else {
+        continue
+      }
       if tail.count == 2 {
         guard let u = units[tail[1]], (1...9).contains(u) else { continue }
         low += u
