@@ -180,6 +180,9 @@ struct InverseTextNormalizerStreetAddressTests {
     // Codex diff review r11: a name never runs through a time or a sentence end
     "We met at 9 A.M. Main Street Hartford Connecticut 06103 was the next topic.",
     "The rope measures 9 Ft. Main Street Hartford Connecticut 06103 is the next entry.",
+    // Codex diff review r14: a street, unit or city name never spans a line break
+    "Log Nine Main Street Hartford\nCourt Connecticut 06103 as two separate entries.",
+    "Log Nine Main Street Hartford\nNew Haven Connecticut 06103 as two entries.",
   ]
 
   @Test("prose that is not a whole address is left alone", arguments: controls)

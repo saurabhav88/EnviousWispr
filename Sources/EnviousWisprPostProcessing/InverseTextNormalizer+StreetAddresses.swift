@@ -53,6 +53,9 @@ extension InverseTextNormalizer {
     // time or a unit ("9 A.M. Main Street", "9 Ft. Main Street"; Codex diff review r11, r12).
     // Only a city may open with St., Ft. or Mt. ("St. Louis").
     let cap = #"[A-Z][\p{L}'’-]*"#
+    // Space inside one field never crosses a line: a street, unit or city name is on one line,
+    // so two lines of prose cannot join into one field ("Hartford\nCourt", Codex review r14).
+    let hs = #"[^\S\r\n]+"#
     let cityCap = #"(?:(?:St|Ft|Mt)\.|[A-Z][\p{L}'’-]*)"#
     let longestFirst: ([String]) -> String = { words in
       words.sorted { $0.count > $1.count }.map { NSRegularExpression.escapedPattern(for: $0) }
@@ -60,9 +63,9 @@ extension InverseTextNormalizer {
     }
     // The whole spoken number, "and" included ("one hundred and twenty three"); a match that
     // starts inside a longer number is refused in `streetAddresses` (Codex diff review r1).
-    let house = #"(\d{1,6}|"# + numWord + #"(?:\s+(?:(?i:and)\s+)?"# + numWord + #"){0,5})"#
+    let house = #"(\d{1,6}|"# + numWord + #"(?:"# + hs + #"(?:(?i:and)"# + hs + #")?"# + numWord + #"){0,5})"#
     let street =
-      #"((?:(?:"# + cap + #"|\d{1,3}(?:st|nd|rd|th))\s+){1,4}(?:"#
+      #"((?:(?:"# + cap + #"|\d{1,3}(?:st|nd|rd|th))"# + hs + #"){1,4}(?:"#
       + streetTypes.joined(separator: "|")
       + #"))"#
     // One reading per gap (atomic): a comma, a line break, or spaces. An ambiguous whitespace run
@@ -71,23 +74,24 @@ extension InverseTextNormalizer {
     // Written ("12", "4B", "4 B") or spoken ("two twenty", "one hundred and twenty three",
     // "four B"); a trailing single capital is the unit letter, never the start of the city.
     let unitNum =
-      #"(?:\d{1,5}(?:[A-Z]|\s+[A-Z])?(?![\p{L}\d])|"# + numWord + #"(?:\s+(?:(?i:and)\s+)?"# + numWord
-      + #"){0,5}(?:\s+[A-Z](?![\p{L}]))?)"#
+      #"(?:\d{1,5}(?:[A-Z]|"# + hs + #"[A-Z])?(?![\p{L}\d])|"# + numWord + #"(?:"# + hs + #"(?:(?i:and)"#
+      + hs + #")?"# + numWord + #"){0,5}(?:"# + hs + #"[A-Z](?![\p{L}]))?)"#
     let unit =
-      #"(?:((?:"# + streetUnitWords.joined(separator: "|") + #")\.?\s+"# + unitNum
+      #"(?:((?:"# + streetUnitWords.joined(separator: "|") + #")\.?"# + hs + unitNum
       + #"|#\s?\d{1,5}[A-Z]?)"#
       + sep + #")?"#
     // A city may hold a lowercase connector between capitalized words ("City of Industry",
     // "Stratford upon Avon"); a connector never opens or closes the city.
-    let city = #"("# + cityCap + #"(?:\s+(?:(?:of|on|upon|de|del|la|le|du|the)\s+)?"# + cap + #"){0,2})"#
+    let city = #"("# + cityCap + #"(?:"# + hs + #"(?:(?:of|on|upon|de|del|la|le|du|the)"# + hs + #")?"# + cap
+      + #"){0,2})"#
     let state = #"("# + longestFirst(usStates) + #"|"# + usStateCodes.joined(separator: "|") + #")"#
     let zip =
       #"(\d{5}(?:-\d{4}|\s+(?i:dash|hyphen)\s+(?:\d{4}|"# + digitWord + #"(?:\s+"# + digitWord
       + #"){3}))?|"# + digitWord + #"(?:\s+"# + digitWord
       + #"){4}(?:\s+(?i:dash|hyphen)\s+(?:\d{4}|"#
       + digitWord + #"(?:\s+"# + digitWord + #"){3}))?)"#
-    return #"(?<![\p{L}\d'’-])(?<!\d[,.])"# + house + #"\s+(?:(?:"# + streetDirections.joined(separator: "|")
-      + #")\s+)?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*\n?[^\S\n]*|[^\S\n]*\n[^\S\n]*|[^\S\n]+))"# + zip
+    return #"(?<![\p{L}\d'’-])(?<!\d[,.])"# + house + hs + #"(?:(?:"# + streetDirections.joined(separator: "|")
+      + #")"# + hs + #")?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*\n?[^\S\n]*|[^\S\n]*\n[^\S\n]*|[^\S\n]+))"# + zip
       + #"(?![\p{L}\d-])(?!\s+(?:\d|(?i:dash|hyphen)\b))"#
   }()
 
@@ -119,7 +123,7 @@ extension InverseTextNormalizer {
         #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand)(?:[^\S\n]+and)?|\d)[^\S\n]*$"#
       if before.range(of: partOfLonger, options: .regularExpression) != nil { return nil }
       // The city run must not hold a second street type: that split is ambiguous.
-      let cityTokens = city.split(separator: " ").map(String.init)
+      let cityTokens = city.split(whereSeparator: \.isWhitespace).map(String.init)
       // A lone capital opening the city is a unit letter the unit pattern did not take.
       if cityTokens.first?.count == 1 { return nil }
       if cityTokens.contains(where: { Self.streetTypes.contains($0) }) { return nil }
