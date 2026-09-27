@@ -106,19 +106,15 @@ enum WhatsNewContent {
       version: "2.5.1"
     ),
 
-    // #3121 (#3129) same-app window paste; #3106 PR B (#3123) retained words and the Copied
-    // notice on a paste that went nowhere (VS Code and Excel excluded); #2652 (#3148) Firefox
-    // family no longer inserts twice.
+    // #3121 (#3129) same-app window paste, with the words kept on the clipboard when that window
+    // is gone. Founder's one line, 2026-09-27: the detail (VS Code and Excel excluded from #3123's
+    // retained paste, the Firefox duplicate fix #3148) is deliberately left out.
     Entry(
       id: "paste-lands-where-you-started",
       icon: "macwindow.on.rectangle",
       title: "Improvements to \"remembering initial text box\"",
       description:
-        "Multi-window focus tracking: Previously, target memory only worked when switching between entirely different applications. Now, it tracks the exact window even across multiple instances of the same app (like two or three Chrome windows). Start speaking, flip windows, and your transcription lands precisely where you started.",
-      bullets: [
-        "Fail-safe clipboard backup: If a target field closes or loses focus entirely, your dictated text stays safe on your clipboard, accompanied by a quick notification to paste with ⌘V.",
-        "Reliable Firefox insertion: Firefox and other Gecko-based browsers no longer insert a dictation twice; text now drops cleanly into place every time.",
-      ],
+        "Window Focus Memory: Remembers your exact starting window (even across multiple browser instances) with a fallback copy to clipboard if the box closes.",
       version: "2.5.1"
     ),
 

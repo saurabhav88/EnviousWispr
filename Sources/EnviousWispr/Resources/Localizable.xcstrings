@@ -20277,49 +20277,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Multi-window focus tracking: Previously, target memory only worked when switching between entirely different applications. Now, it tracks the exact window even across multiple instances of the same app (like two or three Chrome windows). Start speaking, flip windows, and your transcription lands precisely where you started."
+            "value" : "Window Focus Memory: Remembers your exact starting window (even across multiple browser instances) with a fallback copy to clipboard if the box closes."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fenstergenaues Merken: Bisher merkte sich EnviousWispr das Ziel nur beim Wechsel zwischen verschiedenen Apps. Jetzt merkt es sich das genaue Fenster, auch bei mehreren Fenstern derselben App (etwa zwei oder drei Chrome-Fenstern). Fang an zu sprechen, wechsle das Fenster, und dein Text landet genau dort, wo du angefangen hast."
-          }
-        }
-      }
-    },
-    "whatsNew.paste-lands-where-you-started.bullet.0" : {
-      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry paste-lands-where-you-started).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fail-safe clipboard backup: If a target field closes or loses focus entirely, your dictated text stays safe on your clipboard, accompanied by a quick notification to paste with ⌘V."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sicherheitsnetz Zwischenablage: Wenn sich das Zielfeld schließt oder den Fokus ganz verliert, bleibt dein diktierter Text sicher in der Zwischenablage, und ein kurzer Hinweis erinnert dich an ⌘V zum Einfügen."
-          }
-        }
-      }
-    },
-    "whatsNew.paste-lands-where-you-started.bullet.1" : {
-      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry paste-lands-where-you-started).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reliable Firefox insertion: Firefox and other Gecko-based browsers no longer insert a dictation twice; text now drops cleanly into place every time."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zuverlässiges Einfügen in Firefox: Firefox und andere Gecko-Browser fügen ein Diktat nicht mehr doppelt ein; der Text landet jedes Mal sauber an seinem Platz."
+            "value" : "Fenster merken: EnviousWispr merkt sich dein ursprüngliches Fenster (auch bei mehreren Browserfenstern) und legt den Text als Rückfall in die Zwischenablage, wenn sich das Textfeld schließt."
           }
         }
       }
