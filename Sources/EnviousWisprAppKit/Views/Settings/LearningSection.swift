@@ -174,8 +174,11 @@ struct LearningSection: View {
                 let provider = settings.wrappedValue.llmProvider
                 Task { await checkerEligibility.retryDownload(for: provider) }
               }
-            } else if checkerStatus.canRemoveWordCheck {
-              Spacer(minLength: 8)
+            }
+            // Independent of Try again (#3242): a download stopped part-way offers both, and
+            // only Remove does anything while the Dictionary is off.
+            if checkerStatus.canRemoveWordCheck {
+              if !checkerStatus.canRetry { Spacer(minLength: 8) }
               SettingsActionButton(title: LearnedCheckerSettingsStatus.removeWordCheckTitle,
                 isEnabled: true) {
                 Task { await checkerEligibility.removeWordCheck() }
