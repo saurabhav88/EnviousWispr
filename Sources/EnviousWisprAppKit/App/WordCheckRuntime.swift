@@ -44,6 +44,8 @@ final class WordCheckRuntime {
   /// The revision a load failed for; retried only after the admitted bytes change.
   private var failedLoadRevision: String?
   private var idleUnloadTask: Task<Void, Never>?
+  /// A removal is draining the last load and deleting the files: no new load may start.
+  private var removing = false
 
   package private(set) var fetchDecisionsForTests: [WordCheckFetchPolicy.Decision] = []
 
@@ -134,7 +136,7 @@ final class WordCheckRuntime {
   }
 
   private func startLoadIfNeeded() {
-    guard loaded == nil, loadTask == nil, isAdmitted,
+    guard loaded == nil, loadTask == nil, isAdmitted, !removing,
       let registration = delivery.wordCheckRegistration,
       failedLoadRevision != registration.manifest.identity.revision
     else { return }
@@ -193,8 +195,18 @@ final class WordCheckRuntime {
     }
   }
 
-  /// "Try again" in the Dictionary row.
-  func retryDownload() { refresh(trigger: "settings_retry", userInitiated: true) }
+  /// "Try again" in the Dictionary row: a failed download starts again; a failed LOAD of admitted
+  /// bytes (for instance under memory pressure) is retried once, by the user. Automatic retries of
+  /// a failed load stay blocked so a model that cannot load does not loop.
+  func retryDownload() {
+    if isAdmitted {
+      failedLoadRevision = nil
+      startLoadIfNeeded()
+      onStatusChange()
+    } else {
+      refresh(trigger: "settings_retry", userInitiated: true)
+    }
+  }
 
   // MARK: - Removal
 
@@ -205,12 +217,23 @@ final class WordCheckRuntime {
 
   /// Deletes the downloaded model after releasing the loaded one. Returns whether the bytes went.
   /// It comes back on its own the next time the Dictionary switch or an engine choice needs it.
+  ///
+  /// A load in flight keeps reading the model files on a background queue even once cancelled, so
+  /// the removal waits for it to end before deleting, and blocks new loads meanwhile. A take that
+  /// already holds the warmed model needs no files (the weights are materialized at load) and
+  /// finishes on its own copy.
   func remove() async -> Bool {
-    guard let handle = delivery.wordCheckHandle else { return false }
+    guard offersRemoval, !removing, let handle = delivery.wordCheckHandle else { return false }
+    removing = true
+    defer {
+      removing = false
+      onStatusChange()
+    }
+    let loading = loadTask
     unload(reason: "remove")
+    await loading?.value
     let removed = await handle.remove()
     await AppLogger.shared.log("word check remove: removed=\(removed)", category: "WordCheck")
-    onStatusChange()
     return removed
   }
 
@@ -240,6 +263,12 @@ final class WordCheckRuntime {
     if let absence = currentAbsence(triggerFetch: false) {
       return LearnedCheckerSettingsStatus(selection: absence)
     }
+    // While the first load and warm-up run (about 1.6 s measured), a take can still miss its
+    // deadline, so the row must not yet say words are checked. Idle-unloaded is different: the
+    // next take reloads it.
+    if loadTask != nil && loaded == nil {
+      return LearnedCheckerSettingsStatus(selection: Self.absent(.serverUnavailable))
+    }
     return LearnedCheckerSettingsStatus(checkedBy: Self.judge)
   }
 
@@ -255,8 +284,9 @@ final class WordCheckRuntime {
     else { return Self.absent(.adapterDeliveryFailed) }
     switch deliveryState {
     case .admitted:
+      if removing { return Self.absent(.serverUnavailable) }
       if failedLoadRevision == registration.manifest.identity.revision {
-        return Self.absent(.serverUnavailable)
+        return Self.absent(.serverUnavailable, retry: true)
       }
       return nil
     case .failed, .cancelled:
