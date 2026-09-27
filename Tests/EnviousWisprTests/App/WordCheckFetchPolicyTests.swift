@@ -4,7 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 
-/// When the word check may download (#3242). When this fails, a Mac downloads about 440 MB it
+/// When the word check may download (#3242). When this fails, a Mac downloads about 500 MB it
 /// will never use (the Dictionary is off, or every chosen engine has its own check), during
 /// first-run setup, or against the kill switch; or an Apple Intelligence user never gets it.
 @Suite(

@@ -5,7 +5,7 @@ import Foundation
 //
 // The delivery layer owns HOW bytes move; this value owns WHEN a download may start, pure so
 // every gate is a table test. Founder decisions 2026-09-26: the check is downloaded silently
-// (about 440 MB) for anyone whose polish engine has no learned-word check of its own, and the
+// (about 500 MB) for anyone whose polish engine has no learned-word check of its own, and the
 // only thing that turns it off is the Dictionary switch. Gates, all required:
 //
 // 1. The Dictionary switch is on ("Enable Dictionary", `wordCorrectionEnabled`).

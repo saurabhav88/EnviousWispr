@@ -3,8 +3,8 @@
   "identity": {
     "family": "word_check",
     "name": "kev-wc",
-    "revision": "kev-wc-1-43a5a2e7",
-    "variant": "mlx-q4",
+    "revision": "kev-wc-2-bf2af137",
+    "variant": "mlx-q5-embed-q4",
     "runtimeABI": "mlx-kev-v1"
   },
   "files": [
@@ -18,50 +18,50 @@
     {
       "path": "NOTICE",
       "installPath": "NOTICE",
-      "sizeBytes": 841,
-      "sha256": "9b47ec55276bfca2d4b0f355fa62cf1522fbe5fe7ca457e10ad77b422355ceb1",
+      "sizeBytes": 911,
+      "sha256": "3818e6465004b3fce4e4c10dc7fe389fbcf56fe7d713a99add80bcfd0ceecd74",
       "component": "NOTICE"
     },
     {
       "path": "config.json",
       "installPath": "config.json",
-      "sizeBytes": 2578,
-      "sha256": "5cc116030d3695c9aaeb606a2be35bdf137f6ff44694761b2edde4d8fde629da",
+      "sizeBytes": 2798,
+      "sha256": "ab626f3c2f5646733bdd6ba5ffbb477dcb0bbb7f871b5871278ac78c4adb741a",
       "component": "config.json"
     },
     {
       "path": "head.safetensors",
       "installPath": "head.safetensors",
       "sizeBytes": 2099586,
-      "sha256": "923f8224d1ae358d24509bac4759b6bdc48c3a339312dd2ab7b457fcbae38457",
+      "sha256": "e744249b7d56e19353520f9b9329fa5a9c159d83c8046b6287087f2a9e7cc09b",
       "component": "head.safetensors"
     },
     {
       "path": "kev-contract.json",
       "installPath": "kev-contract.json",
-      "sizeBytes": 1768,
-      "sha256": "a2609a69ea5dbf3f03cbcacc3142ddd534b4b76ccda8484d82fd57965499be34",
+      "sizeBytes": 1834,
+      "sha256": "80b688d3363e834085338571aec6e4d8743b0908aca424d6157e669f12d5e927",
       "component": "kev-contract.json"
     },
     {
       "path": "model-00001-of-00002.safetensors",
       "installPath": "model-00001-of-00002.safetensors",
-      "sizeBytes": 212133334,
-      "sha256": "9d1c60abc9965d9b78dcc76204cc4bf6aa91fe304bb732b77ab54ad407bce110",
+      "sizeBytes": 244805821,
+      "sha256": "9f75b161bfb5850fb0f87c14a14496690e20375b11a5ee84773dde701d2b8d14",
       "component": "model-00001-of-00002.safetensors"
     },
     {
       "path": "model-00002-of-00002.safetensors",
       "installPath": "model-00002-of-00002.safetensors",
-      "sizeBytes": 211897741,
-      "sha256": "9408cc8a242c993a7133dc15b5d7ce988529e4a627bc5dadae0fa5c40e13e465",
+      "sizeBytes": 241427194,
+      "sha256": "d782ea0c8c8382d30b0b96bc7f3dd482ffd472d568ed8520f8decd6de8c2457b",
       "component": "model-00002-of-00002.safetensors"
     },
     {
       "path": "model.safetensors.index.json",
       "installPath": "model.safetensors.index.json",
       "sizeBytes": 66973,
-      "sha256": "a58478ae6b71e1ce2fab989c379bc4f8cd0c9db539d384cfeb9097a2933dd869",
+      "sha256": "2dd40b3fb67626b6c4da7aacfb377cd004449f175792cab245b8059893456924",
       "component": "model.safetensors.index.json"
     },
     {
@@ -80,11 +80,11 @@
     }
   ],
   "optionalFiles": [],
-  "totalBytes": 439038087,
+  "totalBytes": 501240383,
   "sources": [
     {
       "id": "our_copy",
-      "baseURL": "https://models.enviouslabs.co/kev/kev-wc-1-43a5a2e7/"
+      "baseURL": "https://models.enviouslabs.co/kev/kev-wc-2-bf2af137/"
     }
   ],
   "license": {
@@ -98,5 +98,5 @@
     "evictPreviousRevisions": true,
     "entrypointFile": "kev-contract.json"
   },
-  "manifestDigest": "0d422954f482de1d5e466f206f16a4e115b13c102d5db7996e6e7c7d3ce008cc"
+  "manifestDigest": "4a98d211c7117ddd07a853696379a6f5e41469329d7772e443a83a5b4fd55ee6"
 }

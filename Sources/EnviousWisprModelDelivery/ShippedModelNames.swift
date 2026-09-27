@@ -75,7 +75,7 @@ enum ShippedModelNames {
     "whisper_kit|whisperkit-coreml": [
       "openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB",
     ],
-    "word_check|kev-wc": ["mlx-q4"],
+    "word_check|kev-wc": ["mlx-q4", "mlx-q5-embed-q4"],
   ]
 
   static func variantKey(family: ModelFamily, name: String) -> String {

@@ -26,7 +26,6 @@ public actor KevWordCheckModel {
   static let cacheLimitBytes = 128 << 20
 
   public enum LoadError: Error, Equatable {
-    case configUnreadable
     case quantizationMissing
     case headTensorMissing(String)
     case headShapeMismatch
@@ -39,17 +38,16 @@ public actor KevWordCheckModel {
     let loadedContract = try KevContract.load(from: folder)
     let configData = try Data(contentsOf: folder.appendingPathComponent("config.json"))
     let configuration = try JSONDecoder().decode(Qwen35Configuration.self, from: configData)
-    guard let config = try JSONSerialization.jsonObject(with: configData) as? [String: Any]
-    else { throw LoadError.configUnreadable }
-    guard let quantizationObject = config["quantization"] else {
-      throw LoadError.quantizationMissing
-    }
-    let quantization = try JSONDecoder().decode(
-      BaseConfiguration.Quantization.self,
-      from: JSONSerialization.data(withJSONObject: quantizationObject))
+    // Per-layer widths: kev-wc-2 keeps the token embedding at 4 bits and the layers at 5
+    // (`"quantization": {"bits": 5, ..., "language_model.model.embed_tokens": {"bits": 4, ...}}`).
+    // Reading only the top-level width would dequantize the embedding at the wrong width.
+    guard
+      let quantization = try JSONDecoder().decode(BaseConfiguration.self, from: configData)
+        .perLayerQuantization
+    else { throw LoadError.quantizationMissing }
     Memory.cacheLimit = Self.cacheLimitBytes
     let model = Qwen35Model(configuration)
-    try await loadWeights(modelDirectory: folder, model: model, quantization: quantization)
+    try await loadWeights(modelDirectory: folder, model: model, perLayerQuantization: quantization)
     // MLXNN modules start in training mode, and Qwen3.5's Gated DeltaNet takes its Metal kernel
     // only when not training: measured 242 ms per question with it on, 16.7 ms off (M5 Max).
     model.train(false)
