@@ -1091,6 +1091,11 @@ package final class WisprBootstrapper {
       // #2096: EG-1's automatic model upgrade stands aside while first-run setup runs, so the
       // heart's model download owns the bandwidth. `runLaunch` fires once at bootstrap, so
       // without this the deferral would mean "never until relaunch" rather than "later".
+      // #3242: the word check needs first-run setup done, so every onboarding change (completion,
+      // or a Diagnostics reset) re-evaluates its download and residency.
+      if key == .onboardingState {
+        checkerEligibility.wordCheck?.refresh(trigger: "onboarding_changed")
+      }
       if key == .onboardingState, settings.onboardingState == .completed {
         Task {
           guard await egOneCoordinator?.onboardingDidComplete() == true else { return }
@@ -1098,8 +1103,6 @@ package final class WisprBootstrapper {
         }
         // #996 phase D: the judge downloads after first-run setup, never during it.
         learnFromEdits?.onboardingDidComplete()
-        // #3242: so does the word check.
-        checkerEligibility.wordCheck?.onboardingDidComplete()
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
       // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first

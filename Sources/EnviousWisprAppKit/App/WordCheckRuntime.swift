@@ -70,7 +70,11 @@ final class WordCheckRuntime {
     wire()
   }
 
-  private var wanted: Bool { isDictionaryEnabled() && someEngineLacksOwnChecker() }
+  /// Needed now: Dictionary on, some chosen engine without its own check, and first-run setup done
+  /// (a Diagnostics onboarding reset takes the check back out, download and memory both).
+  private var wanted: Bool {
+    isDictionaryEnabled() && someEngineLacksOwnChecker() && isOnboardingComplete()
+  }
   private var isAdmitted: Bool {
     if case .admitted = deliveryState { return true }
     return false
@@ -95,13 +99,7 @@ final class WordCheckRuntime {
     guard wanted else {
       if activeSelections == 0 { unload(reason: "not_wanted") }
       // The Dictionary switch is the off-switch for the download too: stop one in flight.
-      switch deliveryState {
-      case .preparing, .downloading, .verifying:
-        cancelledBecauseUnwanted = true
-        delivery.cancelWordCheckDownload()
-      case .notReady, .admitted, .failed, .cancelled:
-        break
-      }
+      cancelFetchIfInFlight()
       onStatusChange()
       return
     }
@@ -117,8 +115,6 @@ final class WordCheckRuntime {
         trigger: trigger, userInitiated: userInitiated, parakeetAdmitted: parakeetAdmitted)
     }
   }
-
-  func onboardingDidComplete() { refresh(trigger: "onboarding_completed") }
 
   private func decideFetch(trigger: String, userInitiated: Bool, parakeetAdmitted: Bool) {
     guard let handle = delivery.wordCheckHandle else { return }
@@ -141,15 +137,34 @@ final class WordCheckRuntime {
     }
   }
 
+  /// Stop an in-flight download nothing needs, remembering the app (not the user) cancelled it.
+  private func cancelFetchIfInFlight() {
+    switch deliveryState {
+    case .preparing, .downloading, .verifying:
+      cancelledBecauseUnwanted = true
+      delivery.cancelWordCheckDownload()
+    case .notReady, .admitted, .failed, .cancelled:
+      break
+    }
+  }
+
   private func deliveryStateChanged(_ state: DeliveryState) {
     let wasAdmitted = isAdmitted
     deliveryState = state
     if isAdmitted {
+      cancelledBecauseUnwanted = false  // a cancel that lost the race to admission
       if !wasAdmitted { failedLoadRevision = nil }
       if wanted { startLoadIfNeeded() }
     } else if wasAdmitted {
       // Removed or superseded: the loaded model may point at deleted files.
       unload(reason: "delivery_\(state)")
+    }
+    // The wanted decision and the delivery state can cross: a start already under way when the
+    // check stopped being needed, or the app's cancel landing after it was needed again.
+    if !wanted {
+      cancelFetchIfInFlight()
+    } else if case .cancelled = state, cancelledBecauseUnwanted {
+      refresh(trigger: "app_cancel_finished")
     }
     onStatusChange()
   }
@@ -249,7 +264,13 @@ final class WordCheckRuntime {
   /// Whether the Dictionary row offers "Remove": the model is on disk and nothing chosen needs it
   /// (Dictionary off, or every chosen engine has its own check). While it is needed, removing it
   /// would only start the download again.
-  var offersRemoval: Bool { isAdmitted && !wanted }
+  var offersRemoval: Bool {
+    guard !wanted else { return false }
+    if isAdmitted { return true }
+    // Partial bytes from a download stopped part-way: removable too, or they would sit on disk.
+    if case .cancelled(resumable: true) = deliveryState { return true }
+    return false
+  }
 
   /// Deletes the downloaded model after releasing the loaded one. Returns whether the bytes went.
   /// It comes back on its own the next time the Dictionary switch or an engine choice needs it.
