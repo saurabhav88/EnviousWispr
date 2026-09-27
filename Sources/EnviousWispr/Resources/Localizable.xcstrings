@@ -20097,13 +20097,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Context-aware replacement: The tool now recognizes when a standard dictionary word should be replaced with a specific term or proper noun (e.g., \"Twist\" to \"Tuist\") to ensure accurate future transcriptions."
+            "value" : "Context-aware replacement: The tool now recognizes when a standard dictionary word should be replaced with a specific term or proper noun (e.g., \"Twist\" to \"Tuist\") for more accurate future transcriptions."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ersetzen mit Blick auf den Zusammenhang: EnviousWispr erkennt jetzt, wann ein gewöhnliches Wort durch einen bestimmten Begriff oder Eigennamen ersetzt werden sollte (etwa „Twist“ durch „Tuist“), damit künftige Diktate stimmen."
+            "value" : "Ersetzen mit Blick auf den Zusammenhang: EnviousWispr erkennt jetzt, wann ein gewöhnliches Wort durch einen bestimmten Begriff oder Eigennamen ersetzt werden sollte (etwa „Twist“ durch „Tuist“), für genauere künftige Diktate."
           }
         }
       }
