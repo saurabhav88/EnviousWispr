@@ -20079,13 +20079,283 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Automatically detects when you correct a dictation, adds the corrected word to your dictionary, and shows Undo. The Self-Learning Dictionary help article covers which apps it works in and how the judge runs on your Mac."
+            "value" : "Self-learning custom dictionary: Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erkennt automatisch, wenn du ein Diktat korrigierst, übernimmt das korrigierte Wort in dein Wörterbuch und zeigt „Rückgängig“ an. Im Hilfeartikel zum selbstlernenden Wörterbuch erfährst du, in welchen Apps es funktioniert und wie die Prüfung auf deinem Mac abläuft."
+            "value" : "Selbstlernendes Wörterbuch: Spracherkennungsmodelle wie Parakeet und WhisperKit verhören sich gelegentlich bei ähnlich klingenden Wörtern oder Fachbegriffen. Wenn du ein Ergebnis korrigierst, erkennt EnviousWispr die Änderung jetzt automatisch und übernimmt den gemeinten Begriff in dein Wörterbuch."
+          }
+        }
+      }
+    },
+    "whatsNew.self-learning-dictionary.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry self-learning-dictionary).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Context-aware replacement: The tool now recognizes when a standard dictionary word should be replaced with a specific term or proper noun (e.g., \"Twist\" to \"Tuist\") to ensure accurate future transcriptions."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen mit Blick auf den Zusammenhang: EnviousWispr erkennt jetzt, wann ein gewöhnliches Wort durch einen bestimmten Begriff oder Eigennamen ersetzt werden sollte (etwa „Twist“ durch „Tuist“), damit künftige Diktate stimmen."
+          }
+        }
+      }
+    },
+    "whatsNew.self-learning-dictionary.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry self-learning-dictionary).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Self-Learning Dictionary help article has more."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr dazu im Hilfeartikel zum selbstlernenden Wörterbuch."
+          }
+        }
+      }
+    },
+    "whatsNew.enviouswispr-in-german.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry enviouswispr-in-german).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Now available natively in German"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt auch auf Deutsch"
+          }
+        }
+      }
+    },
+    "whatsNew.enviouswispr-in-german.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry enviouswispr-in-german).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Deutsch in Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle „Deutsch“ unter Einstellungen > Erscheinungsbild > Sprache und starte die App dann neu. „Systemstandard“ folgt der Sprache deines Macs."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-last-dictation.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry paste-last-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste Last Dictation"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letztes Diktat einfügen"
+          }
+        }
+      }
+    },
+    "whatsNew.paste-last-dictation.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry paste-last-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ever finish dictating only to realize your cursor wasn't focused in a text box? Or wanted to drop your exact last thought into a second app? Meet Paste Last Dictation."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig diktiert, aber der Cursor stand in keinem Textfeld? Oder du möchtest denselben Gedanken in eine zweite App bringen? Hier kommt „Letztes Diktat einfügen“."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-last-dictation.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry paste-last-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste instantly: ⌃⌘V drops your most recent transcription wherever your cursor is right now."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sofort einfügen: ⌃⌘V fügt dein letztes Diktat dort ein, wo dein Cursor gerade steht."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-last-dictation.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry paste-last-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy to clipboard: ⌃⌘C puts it straight onto your clipboard so you can reuse it later."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die Zwischenablage kopieren: ⌃⌘C legt es direkt in deine Zwischenablage, damit du es später weiterverwenden kannst."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-last-dictation.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry paste-last-dictation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste Last Dictation is in your menu bar too, and you can customize either shortcut under Settings > Keybinds. Never lose a spoken thought to a missed click again."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Letztes Diktat einfügen“ findest du auch in der Menüleiste, und beide Kurzbefehle kannst du unter Einstellungen > Tastenkürzel ändern. Kein gesprochener Gedanke geht mehr durch einen verpassten Klick verloren."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-lands-where-you-started.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry paste-lands-where-you-started).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improvements to \"remembering initial text box\""
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbesserungen beim Merken des ursprünglichen Textfelds"
+          }
+        }
+      }
+    },
+    "whatsNew.paste-lands-where-you-started.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry paste-lands-where-you-started).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multi-window focus tracking: Previously, target memory only worked when switching between entirely different applications. Now, it tracks the exact window even across multiple instances of the same app (like two or three Chrome windows). Start speaking, flip windows, and your transcription lands precisely where you started."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenstergenaues Merken: Bisher merkte sich EnviousWispr das Ziel nur beim Wechsel zwischen verschiedenen Apps. Jetzt merkt es sich das genaue Fenster, auch bei mehreren Fenstern derselben App (etwa zwei oder drei Chrome-Fenstern). Fang an zu sprechen, wechsle das Fenster, und dein Text landet genau dort, wo du angefangen hast."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-lands-where-you-started.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry paste-lands-where-you-started).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fail-safe clipboard backup: If a target field closes or loses focus entirely, your dictated text stays safe on your clipboard, accompanied by a quick notification to paste with ⌘V."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sicherheitsnetz Zwischenablage: Wenn sich das Zielfeld schließt oder den Fokus ganz verliert, bleibt dein diktierter Text sicher in der Zwischenablage, und ein kurzer Hinweis erinnert dich an ⌘V zum Einfügen."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-lands-where-you-started.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry paste-lands-where-you-started).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reliable Firefox insertion: Firefox and other Gecko-based browsers no longer insert a dictation twice; text now drops cleanly into place every time."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuverlässiges Einfügen in Firefox: Firefox und andere Gecko-Browser fügen ein Diktat nicht mehr doppelt ein; der Text landet jedes Mal sauber an seinem Platz."
+          }
+        }
+      }
+    },
+    "whatsNew.send-feedback.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry send-feedback).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send Feedback"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feedback senden"
+          }
+        }
+      }
+    },
+    "whatsNew.send-feedback.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry send-feedback).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Send Feedback\". Click the bug button beside Record to tell us what works and what doesn't, with an optional email if you'd like a reply. Your draft is saved on your Mac as you type."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu: „Feedback senden“. Klicke auf den Käfer-Knopf neben „Aufnehmen“ und sag uns, was funktioniert und was nicht, auf Wunsch mit deiner E-Mail-Adresse für eine Antwort. Dein Entwurf wird beim Tippen auf deinem Mac gespeichert."
           }
         }
       }
@@ -20115,121 +20385,49 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "On macOS 26 and 27, Apple Intelligence polish now finishes sooner, lays out spoken lists as lists and resolves more of your spoken corrections, like \"on Tuesday, sorry, Wednesday\"."
+            "value" : "On macOS 26 and 27, Apple Intelligence polish now finishes sooner, up to about a third faster on macOS 27, lays out spoken lists as lists and resolves more of your spoken corrections, like \"on Tuesday, sorry, Wednesday\"."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unter macOS 26 und 27 ist die Nachbearbeitung mit Apple Intelligence jetzt schneller, formatiert gesprochene Aufzählungen als Listen und setzt mehr deiner gesprochenen Korrekturen um, etwa „am Dienstag, nein, am Mittwoch“."
+            "value" : "Unter macOS 26 und 27 ist die Nachbearbeitung mit Apple Intelligence jetzt schneller, unter macOS 27 um bis zu etwa ein Drittel, formatiert gesprochene Aufzählungen als Listen und setzt mehr deiner gesprochenen Korrekturen um, etwa „am Dienstag, nein, am Mittwoch“."
           }
         }
       }
     },
-    "whatsNew.learned-word-check-eg1-s1.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry learned-word-check-eg1-s1).",
+    "whatsNew.media-during-dictation.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry media-during-dictation).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Learned words, checked on EG-1 and S1-mini"
+            "value" : "Lower, mute, pause audio while dictating"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gelernte Wörter, geprüft mit EG-1 und S1-mini"
+            "value" : "Audio beim Diktieren leiser stellen, stummschalten oder pausieren"
           }
         }
       }
     },
-    "whatsNew.learned-word-check-eg1-s1.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry learned-word-check-eg1-s1).",
+    "whatsNew.media-during-dictation.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry media-during-dictation).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your learned words are now checked in every language on EG-1 and S1-mini. Each engine you have installed downloads its small word check on its own, and the check runs on your Mac."
+            "value" : "Choose what your music and videos do while you dictate: Continue, Lower, Mute or Pause. Pause picks the same song or video back up when you finish. It lives on the redesigned Microphone page in Settings."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine gelernten Wörter werden jetzt in jeder Sprache mit EG-1 und S1-mini geprüft. Jede installierte Engine lädt ihre kleine Wortprüfung selbst herunter, und die Prüfung läuft auf deinem Mac."
-          }
-        }
-      }
-    },
-    "whatsNew.dock-icon-and-window-in-front.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry dock-icon-and-window-in-front).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A Dock icon, and a window that opens in front"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Symbol im Dock und ein Fenster im Vordergrund"
-          }
-        }
-      }
-    },
-    "whatsNew.dock-icon-and-window-in-front.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry dock-icon-and-window-in-front).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousWispr now shows in the Dock and in Command-Tab like any Mac app, and its window opens in front of what you were doing. On a Mac where you never moved it, the menu bar icon also starts further right, closer to the system icons, where it is easier to find. Prefer the menu bar alone? Switch off Show app in Dock in Settings, Appearance."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousWispr erscheint jetzt wie andere Mac-Apps im Dock und beim Wechseln mit Befehlstaste-Tab. Das Fenster öffnet sich vor deiner aktuellen Arbeit. Wenn du das Menüleistensymbol nie verschoben hast, erscheint es außerdem weiter rechts bei den Systemsymbolen und ist leichter zu finden. Du möchtest nur die Menüleiste nutzen? Deaktiviere „App im Dock anzeigen“ unter Einstellungen > Erscheinungsbild."
-          }
-        }
-      }
-    },
-    "whatsNew.mouse-wheel-scrolling-glides.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry mouse-wheel-scrolling-glides).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mouse wheel scrolling glides"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sanfter mit dem Mausrad scrollen"
-          }
-        }
-      }
-    },
-    "whatsNew.mouse-wheel-scrolling-glides.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry mouse-wheel-scrolling-glides).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mouse wheel scrolling now moves farther per notch with a short smooth glide, while trackpad scrolling stays unchanged."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mit dem Mausrad scrollst du jetzt pro Rastung weiter und gleitest kurz sanft aus. Das Scrollen mit dem Trackpad bleibt unverändert."
+            "value" : "Lege fest, was deine Musik und Videos beim Diktieren tun: Fortfahren, Leiser, Stummschalten oder Pausieren. Mit „Pausieren“ läuft derselbe Song oder dasselbe Video weiter, sobald du fertig bist. Du findest die Einstellung auf der neu gestalteten Seite „Mikrofon“ in den Einstellungen."
           }
         }
       }
@@ -20270,38 +20468,146 @@
         }
       }
     },
-    "whatsNew.say-slash-get-a-slash.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry say-slash-get-a-slash).",
+    "whatsNew.snippet-dynamic-values.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry snippet-dynamic-values).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Say slash, get a slash"
+            "value" : "Dynamic variables in snippets"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sag „Slash“ und erhalte einen Schrägstrich"
+            "value" : "Dynamische Werte in Textbausteinen"
           }
         }
       }
     },
-    "whatsNew.say-slash-get-a-slash.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry say-slash-get-a-slash).",
+    "whatsNew.snippet-dynamic-values.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry snippet-dynamic-values).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Slash works with the spoken punctuation setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol. Backslash still needs Convert spoken punctuation on. The Spoken punctuation and emoji help article has the details."
+            "value" : "Insert the current date, current time, or your last copied text into snippets. Dynamic values resolve instantly on trigger, and clipboard contents are read strictly when the snippet fires."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„Slash“ funktioniert auch bei ausgeschalteter Option für gesprochene Satzzeichen: Aus „slash clear“ wird /clear, aus „command is slash wfp“ wird command is /wfp und aus „pros slash cons“ wird pros/cons. „Slash the budget“ bleibt Text. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen. Für den umgekehrten Schrägstrich muss „Gesprochene Satzzeichen umwandeln“ weiterhin aktiviert sein. Einzelheiten stehen im Hilfeartikel zu gesprochenen Satzzeichen und Emoji."
+            "value" : "Füge das aktuelle Datum, die aktuelle Uhrzeit oder deinen zuletzt kopierten Text in Textbausteine ein. Die Werte werden erst beim Auslösen eingesetzt, und die Zwischenablage wird nur gelesen, wenn der Textbaustein tatsächlich ausgelöst wird."
+          }
+        }
+      }
+    },
+    "whatsNew.english-uk-spelling.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry english-uk-spelling).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "English (UK) spelling"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Britische Schreibweise mit Englisch (UK)"
+          }
+        }
+      }
+    },
+    "whatsNew.english-uk-spelling.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry english-uk-spelling).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose English (UK) as your dictation language and your text comes out in British spelling, like colour, organisation and centre. It works for dictation and Transcribe a File, with polishing on or off."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle Englisch (UK) als Diktiersprache, und dein Text erscheint in britischer Schreibweise, etwa colour, organisation und centre. Das gilt für Diktate und „Datei transkribieren“, mit und ohne Nachbearbeitung."
+          }
+        }
+      }
+    },
+    "whatsNew.dock-icon-and-window-in-front.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry dock-icon-and-window-in-front).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Dock icon, and a window that opens in front"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Symbol im Dock und ein Fenster im Vordergrund"
+          }
+        }
+      }
+    },
+    "whatsNew.dock-icon-and-window-in-front.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry dock-icon-and-window-in-front).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard macOS app behavior: EnviousWispr now appears in your Dock and the ⌘⇥ (Command-Tab) app switcher, bringing its window to the front when focused."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ganz normales Mac-Verhalten: EnviousWispr erscheint jetzt im Dock und beim App-Wechsel mit ⌘⇥ (Befehlstaste-Tab) und bringt sein Fenster nach vorn, wenn du es aufrufst."
+          }
+        }
+      }
+    },
+    "whatsNew.dock-icon-and-window-in-front.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry dock-icon-and-window-in-front).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Better menu bar placement: Unless you've moved it, the menu bar icon now sits further to the right near your system icons, making it quicker to spot."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bessere Position in der Menüleiste: Wenn du das Menüleistensymbol nie verschoben hast, sitzt es jetzt weiter rechts bei den Systemsymbolen und ist schneller zu finden."
+          }
+        }
+      }
+    },
+    "whatsNew.dock-icon-and-window-in-front.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry dock-icon-and-window-in-front).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menu bar only mode: Prefer a distraction-free setup? Turn off Show app in Dock under Settings > Appearance to keep EnviousWispr tucked away exclusively in your menu bar."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur in der Menüleiste: Du möchtest es aufgeräumt? Deaktiviere „App im Dock anzeigen“ unter Einstellungen > Erscheinungsbild, dann bleibt EnviousWispr nur in deiner Menüleiste."
           }
         }
       }
@@ -20331,49 +20637,337 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "With your dictation language set to French, Spanish, Polish, Dutch, German, Russian, Portuguese or Italian, addresses, links and codes said in your own words now come out written. \"maría punto lópez arroba gmail punto com\" becomes maría.lópez@gmail.com, \"beispiel Punkt de Schrägstrich hilfe\" becomes beispiel.de/hilfe, and \"GPT łącznik 4\" becomes GPT-4."
+            "value" : "Localized spoken formatting: With your dictation language set to French, Spanish, Polish, Dutch, German, Russian, Portuguese or Italian, spoken URLs, emails and technical codes now come out written."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn deine Diktiersprache auf Französisch, Spanisch, Polnisch, Niederländisch, Deutsch, Russisch, Portugiesisch oder Italienisch eingestellt ist, werden Adressen, Links und Codes, die du in eigenen Worten einsprichst, jetzt mit den passenden Zeichen geschrieben. Aus „maría punto lópez arroba gmail punto com“ wird maría.lópez@gmail.com, aus „beispiel Punkt de Schrägstrich hilfe“ wird beispiel.de/hilfe und aus „GPT łącznik 4“ wird GPT-4."
+            "value" : "Gesprochene Formatierung in deiner Sprache: Wenn deine Diktiersprache auf Französisch, Spanisch, Polnisch, Niederländisch, Deutsch, Russisch, Portugiesisch oder Italienisch eingestellt ist, werden gesprochene Webadressen, E-Mail-Adressen und technische Codes jetzt richtig geschrieben."
           }
         }
       }
     },
-    "whatsNew.street-addresses-written-out.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry street-addresses-written-out).",
+    "whatsNew.addresses-links-codes-in-four-languages.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry addresses-links-codes-in-four-languages).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Street addresses written out"
+            "value" : "Spanish: \"maría punto lópez arroba gmail punto com\" becomes maría.lópez@gmail.com"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "US-Adressen mit Ziffern und Kommas"
+            "value" : "Spanisch: Aus „maría punto lópez arroba gmail punto com“ wird maría.lópez@gmail.com"
           }
         }
       }
     },
-    "whatsNew.street-addresses-written-out.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry street-addresses-written-out).",
+    "whatsNew.addresses-links-codes-in-four-languages.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry addresses-links-codes-in-four-languages).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dictate a US address in English in full, with the state and ZIP code, and it comes out with digits and commas, in the words you said. \"nine High Plains Road Shelton Connecticut zero six four eight four\" becomes 9 High Plains Road, Shelton, Connecticut 06484."
+            "value" : "German: \"beispiel Punkt de Schrägstrich hilfe\" becomes beispiel.de/hilfe"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn du auf Englisch eine vollständige US-Adresse mit Bundesstaat und Postleitzahl diktierst, wird sie mit Ziffern und Kommas geschrieben. Deine Wortwahl bleibt dabei erhalten. Aus „nine High Plains Road Shelton Connecticut zero six four eight four“ wird 9 High Plains Road, Shelton, Connecticut 06484."
+            "value" : "Deutsch: Aus „beispiel Punkt de Schrägstrich hilfe“ wird beispiel.de/hilfe"
+          }
+        }
+      }
+    },
+    "whatsNew.addresses-links-codes-in-four-languages.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry addresses-links-codes-in-four-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Polish: \"GPT łącznik 4\" becomes GPT-4"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Polnisch: Aus „GPT łącznik 4“ wird GPT-4"
+          }
+        }
+      }
+    },
+    "whatsNew.versions-ips-codes-whole.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry versions-ips-codes-whole).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versions, IP addresses and codes come out whole"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versionen, IP-Adressen und Codes am Stück"
+          }
+        }
+      }
+    },
+    "whatsNew.versions-ips-codes-whole.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry versions-ips-codes-whole).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smarter technical and developer formatting: Technical patterns, network addresses, and standard data types now convert directly into clean, written notation instead of spelled-out words."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bessere Formatierung für Technik und Entwicklung: Technische Muster, Netzwerkadressen und gängige Datenformate erscheinen jetzt direkt in sauberer Schreibweise statt als ausgeschriebene Wörter."
+          }
+        }
+      }
+    },
+    "whatsNew.versions-ips-codes-whole.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry versions-ips-codes-whole).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semantic versions: \"version two point five point zero\" becomes version 2.5.0"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versionsnummern: Aus „version two point five point zero“ wird version 2.5.0"
+          }
+        }
+      }
+    },
+    "whatsNew.versions-ips-codes-whole.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry versions-ips-codes-whole).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hosts and ports: \"localhost colon three thousand\" becomes localhost:3000"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hosts und Ports: Aus „localhost colon three thousand“ wird localhost:3000"
+          }
+        }
+      }
+    },
+    "whatsNew.versions-ips-codes-whole.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry versions-ips-codes-whole).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IP and web addresses: Formats full IPs, domains, and emails like john.smith@gmail.com"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IP- und Webadressen: Vollständige IP-Adressen, Domains und E-Mail-Adressen wie john.smith@gmail.com"
+          }
+        }
+      }
+    },
+    "whatsNew.versions-ips-codes-whole.bullet.3" : {
+      "comment" : "Settings > What's New: point 4 of the list under one feature announcement (entry versions-ips-codes-whole).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Structured dates: Dates said with dashes, like \"twenty twenty six dash nine dash twenty six\", become 2026-09-26"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datumsangaben: Mit Bindestrichen gesprochene Daten wie „twenty twenty six dash nine dash twenty six“ werden zu 2026-09-26"
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Say slash, get a slash"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag „Slash“ und erhalte einen Schrägstrich"
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Context-aware slash formatting: Spoken slash commands and shorthand now format intelligently, even with Spoken punctuation turned off."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schrägstriche mit Blick auf den Zusammenhang: Gesprochene Slash-Befehle und Kurzschreibweisen werden jetzt passend formatiert, auch wenn gesprochene Satzzeichen ausgeschaltet sind."
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Commands and flags: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Befehle und Optionen: Aus „slash clear“ wird /clear, aus „command is slash wfp“ wird command is /wfp"
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparisons and alternatives: \"pros slash cons\" becomes pros/cons"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vergleiche und Alternativen: Aus „pros slash cons“ wird pros/cons"
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Idiomatic phrases: Stays as words in contexts like \"slash the budget\" (though verbs like \"slash prices\" may still resolve to a symbol)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redewendungen: Bleiben Text, etwa „slash the budget“ (Verben wie „slash prices“ können trotzdem zum Zeichen werden)"
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.bullet.3" : {
+      "comment" : "Settings > What's New: point 4 of the list under one feature announcement (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backslash handling: Formatting a literal backslash still requires Convert spoken punctuation to be enabled."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umgekehrter Schrägstrich: Dafür muss „Gesprochene Satzzeichen umwandeln“ weiterhin aktiviert sein."
+          }
+        }
+      }
+    },
+    "whatsNew.say-slash-get-a-slash.bullet.4" : {
+      "comment" : "Settings > What's New: point 5 of the list under one feature announcement (entry say-slash-get-a-slash).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For more edge cases and examples, check out the Spoken punctuation and emoji help guide."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr Sonderfälle und Beispiele findest du im Hilfeartikel zu gesprochenen Satzzeichen und Emoji."
+          }
+        }
+      }
+    },
+    "whatsNew.mouse-wheel-scrolling-glides.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry mouse-wheel-scrolling-glides).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mouse wheel scrolling glides"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sanfter mit dem Mausrad scrollen"
+          }
+        }
+      }
+    },
+    "whatsNew.mouse-wheel-scrolling-glides.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry mouse-wheel-scrolling-glides).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mouse wheel scrolling now moves farther per notch with a short smooth glide, while trackpad scrolling stays unchanged."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit dem Mausrad scrollst du jetzt pro Rastung weiter und gleitest kurz sanft aus. Das Scrollen mit dem Trackpad bleibt unverändert."
           }
         }
       }

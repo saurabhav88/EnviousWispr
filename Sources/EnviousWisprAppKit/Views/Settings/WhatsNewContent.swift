@@ -57,74 +57,109 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.5.1
 
-    // #996: the Self-Learning Dictionary (PRs #3054, #3072, #3079, #3083, #3090, #3094 and
-    // the auto-learn Undo PR). Founder copy 2026-09-21: the word is saved at once and a
-    // 3-second pill offers Undo (widened from 2 on 2026-09-22); every language; the
-    // on-device judge is qualified on every
-    // supported macOS. The help article is named in prose: `Entry` has no link field.
+    // Founder-edited group, 2026-09-27 (Claude Doc "EnviousWispr 2.5.1 Release Notes"). Cards
+    // 1-4 and the revised text of 10 and 12-16 are his wording; repairs declared to him in chat:
+    // Copy Last Dictation has no menu item (keyboard only), the Firefox defect was a duplicate
+    // insertion (#3148), the menu bar icon moves only where the user never moved it (#3154), the
+    // eight-language card needs the dictation language set and covers addresses, links and codes,
+    // not spoken punctuation (#3226/#3233), and only dashed dates convert (#3218). The EG-1/S1
+    // word-check card and the street-address card were cut by him.
+
+    // #996: the Self-Learning Dictionary, with its word check on every engine (#3105, #3242).
     Entry(
       id: "self-learning-dictionary",
       icon: "text.badge.checkmark",
       title: "Self-Learning Dictionary",
       description:
-        "Automatically detects when you correct a dictation, adds the corrected word to your dictionary, and shows Undo. The Self-Learning Dictionary help article covers which apps it works in and how the judge runs on your Mac.",
+        "Self-learning custom dictionary: Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary.",
+      bullets: [
+        "Context-aware replacement: The tool now recognizes when a standard dictionary word should be replaced with a specific term or proper noun (e.g., \"Twist\" to \"Tuist\") to ensure accurate future transcriptions.",
+        "The Self-Learning Dictionary help article has more.",
+      ],
       version: "2.5.1"
     ),
 
-    // #3195: one Apple Intelligence recipe on macOS 26 and 27, a supporting entry after the
-    // headline. Measured on sealed_v1 (English, pre-cleaned), old recipe -> new: macOS 27
-    // p50 1,172 -> 775 ms, spoken_list 69.3 -> 86.8%, self_correction 44.3 -> 54.3%; macOS
-    // 26.7 (300 cases) p50 758 -> 691 ms, spoken_list 7.1 -> 82.1%, self_correction 19.6 ->
-    // 34.8%. No numbers in the card (a model result, not a guarantee) and no "sub-second"
-    // (that phrase is reserved for transcription).
+    // #3142 phases 5A/5B: German in all three catalogs; the Language panel in Appearance offers
+    // System default and each shipped language, and a change asks to relaunch.
+    Entry(
+      id: "enviouswispr-in-german",
+      icon: "character.bubble",
+      title: "Now available natively in German",
+      description:
+        "Choose Deutsch in Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
+      version: "2.5.1"
+    ),
+
+    // #3106 PR A (#3110): Paste Last Dictation is a menu bar item; Control Command V pastes and
+    // Control Command C copies (copy has no menu item); both rebind in Settings > Keybinds.
+    Entry(
+      id: "paste-last-dictation",
+      icon: "doc.on.clipboard",
+      title: "Paste Last Dictation",
+      description:
+        "Ever finish dictating only to realize your cursor wasn't focused in a text box? Or wanted to drop your exact last thought into a second app? Meet Paste Last Dictation.",
+      bullets: [
+        "Paste instantly: ⌃⌘V drops your most recent transcription wherever your cursor is right now.",
+        "Copy to clipboard: ⌃⌘C puts it straight onto your clipboard so you can reuse it later.",
+        "Paste Last Dictation is in your menu bar too, and you can customize either shortcut under Settings > Keybinds. Never lose a spoken thought to a missed click again.",
+      ],
+      version: "2.5.1"
+    ),
+
+    // #3121 (#3129) same-app window paste; #3106 PR B (#3123) retained words and the Copied
+    // notice on a paste that went nowhere (VS Code and Excel excluded); #2652 (#3148) Firefox
+    // family no longer inserts twice.
+    Entry(
+      id: "paste-lands-where-you-started",
+      icon: "macwindow.on.rectangle",
+      title: "Improvements to \"remembering initial text box\"",
+      description:
+        "Multi-window focus tracking: Previously, target memory only worked when switching between entirely different applications. Now, it tracks the exact window even across multiple instances of the same app (like two or three Chrome windows). Start speaking, flip windows, and your transcription lands precisely where you started.",
+      bullets: [
+        "Fail-safe clipboard backup: If a target field closes or loses focus entirely, your dictated text stays safe on your clipboard, accompanied by a quick notification to paste with ⌘V.",
+        "Reliable Firefox insertion: Firefox and other Gecko-based browsers no longer insert a dictation twice; text now drops cleanly into place every time.",
+      ],
+      version: "2.5.1"
+    ),
+
+    // #3153 (#3164, #3182): the bug button beside Record opens the Send Feedback pop-up; the
+    // draft is saved locally as the user types.
+    Entry(
+      id: "send-feedback",
+      icon: "ladybug",
+      title: "Send Feedback",
+      description:
+        "Introducing \"Send Feedback\". Click the bug button beside Record to tell us what works and what doesn't, with an optional email if you'd like a reply. Your draft is saved on your Mac as you type.",
+      version: "2.5.1"
+    ),
+
+    // #3195 (#3207 recipe v56, #3217 session prepared at recording end). Measured on sealed_v1
+    // (English, pre-cleaned), old recipe -> new: macOS 27 (M5 Max, 1,462 cases) p50 1,172 ->
+    // 775 ms, the "about a third faster" the founder asked to name (2026-09-27); macOS 26.7
+    // (300 cases) p50 758 -> 691 ms. The "on macOS 27" scope keeps the number on the OS it was
+    // measured on; no "sub-second" (reserved for transcription).
     Entry(
       id: "apple-intelligence-polish-faster-and-cleaner",
       icon: "sparkles",  // "apple.intelligence" needs macOS 15; the floor is 14 (cloud review)
       title: "Apple Intelligence polish is faster and cleaner",
       description:
-        "On macOS 26 and 27, Apple Intelligence polish now finishes sooner, lays out spoken lists as lists and resolves more of your spoken corrections, like \"on Tuesday, sorry, Wednesday\".",
+        "On macOS 26 and 27, Apple Intelligence polish now finishes sooner, up to about a third faster on macOS 27, lays out spoken lists as lists and resolves more of your spoken corrections, like \"on Tuesday, sorry, Wednesday\".",
       version: "2.5.1"
     ),
 
-    // #3105 PR 2: each installed local engine downloads its own word check (EG-1's
-    // eg1c, S1-mini's D5) and checks learned words in every dictation language.
-    // Line from the approved plan (issue-3105-2026-09-26-word-check-release.md §3.8).
+    // #1413 (#3000, relabelled in #3017): Media during dictation on the Microphone page,
+    // Continue (the default) / Lower / Mute / Pause; Pause resumes only the same item.
     Entry(
-      id: "learned-word-check-eg1-s1",
-      icon: "checkmark.seal",
-      title: "Learned words, checked on EG-1 and S1-mini",
+      id: "media-during-dictation",
+      icon: "speaker.wave.2",
+      title: "Lower, mute, pause audio while dictating",
       description:
-        "Your learned words are now checked in every language on EG-1 and S1-mini. Each engine you have installed downloads its small word check on its own, and the check runs on your Mac.",
-      version: "2.5.1"
-    ),
-
-    // #2480: a Reddit user's report (window behind other apps, no app menu, no Cmd-Tab entry,
-    // could not find Settings) and the founder's Wispr Flow choice, 2026-09-24. Same unshipped
-    // 2.5.1 group. Existing users see a Dock icon appear and the menu bar icon move right, so
-    // the card says both are intended and where the switch lives.
-    Entry(
-      id: "dock-icon-and-window-in-front",
-      icon: "dock.rectangle",
-      title: "A Dock icon, and a window that opens in front",
-      description:
-        "EnviousWispr now shows in the Dock and in Command-Tab like any Mac app, and its window opens in front of what you were doing. On a Mac where you never moved it, the menu bar icon also starts further right, closer to the system icons, where it is easier to find. Prefer the menu bar alone? Switch off Show app in Dock in Settings, Appearance.",
-      version: "2.5.1"
-    ),
-
-    // #3062: a clicking mouse wheel moved the page a few points per click in one frame
-    // (reporter's video, discussion #3059). Same unshipped 2.5.1 group.
-    Entry(
-      id: "mouse-wheel-scrolling-glides",
-      icon: "computermouse",
-      title: "Mouse wheel scrolling glides",
-      description:
-        "Mouse wheel scrolling now moves farther per notch with a short smooth glide, while trackpad scrolling stays unchanged.",
+        "Choose what your music and videos do while you dictate: Continue, Lower, Mute or Pause. Pause picks the same song or video back up when you finish. It lives on the redesigned Microphone page in Settings.",
       version: "2.5.1"
     ),
 
     // #2997 PR-A, merged onto main after v2.5.0 shipped (tag v2.5.0 exists), so this entry
     // opens a new group per whats-new-protocol.md FACT: whats-new-grouping.
-    // currentContentVersion bumped to match.
     Entry(
       id: "import-your-snippets",
       icon: "square.and.arrow.down",
@@ -134,44 +169,104 @@ enum WhatsNewContent {
       version: "2.5.1"
     ),
 
-    // #3038: the spoken slash left the spoken-punctuation setting; it is read in both switch
-    // positions. Same unshipped 2.5.1 group (no v2.5.1 tag yet), so the card reaches the
-    // people it is for. The help article is named in prose: `Entry` has no link field.
+    // #3018 (#3025): {{date}}, {{time}} and {{clipboard}}, resolved when the snippet fires; the
+    // clipboard is read only on a take where a clipboard snippet fired.
     Entry(
-      id: "say-slash-get-a-slash",
-      icon: "slash.circle",
-      title: "Say slash, get a slash",
+      id: "snippet-dynamic-values",
+      icon: "calendar",
+      title: "Dynamic variables in snippets",
       description:
-        "Slash works with the spoken punctuation setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol. Backslash still needs Convert spoken punctuation on. The Spoken punctuation and emoji help article has the details.",
+        "Insert the current date, current time, or your last copied text into snippets. Dynamic values resolve instantly on trigger, and clipboard contents are read strictly when the snippet fires.",
       version: "2.5.1"
     ),
 
-    // #3226. SCOPE: these convert on a take the app resolves as another language (a
-    // dictation language set in Speech Engine settings, or WhisperKit detecting it), never on
-    // an English take; the copy names the setting. Measured on 120 Azure clips per language
-    // set (#3226 baseline v3 and the PR): perfect-hearing transcripts 54/120 before, 120/120
-    // after; a word the speech engine lost is never guessed. #3233 added German, Russian,
-    // Portuguese and Italian the same way (baseline v1: 68/120 before, 120/120 after). The id
-    // keeps its #3226 name so the translation key is unchanged (2.5.1 not yet released).
+    // #3124 (#3132): English (UK) in the dictation-language picker; live dictation, Transcribe a
+    // File and recovery, polish on or off.
+    Entry(
+      id: "english-uk-spelling",
+      icon: "textformat.abc",
+      title: "English (UK) spelling",
+      description:
+        "Choose English (UK) as your dictation language and your text comes out in British spelling, like colour, organisation and centre. It works for dictation and Transcribe a File, with polishing on or off.",
+      version: "2.5.1"
+    ),
+
+    // #2480 (#3154): a Reddit user's report and the founder's Wispr Flow choice, 2026-09-24.
+    // The menu bar icon starts further right only where the user never moved it.
+    Entry(
+      id: "dock-icon-and-window-in-front",
+      icon: "dock.rectangle",
+      title: "A Dock icon, and a window that opens in front",
+      description:
+        "Standard macOS app behavior: EnviousWispr now appears in your Dock and the ⌘⇥ (Command-Tab) app switcher, bringing its window to the front when focused.",
+      bullets: [
+        "Better menu bar placement: Unless you've moved it, the menu bar icon now sits further to the right near your system icons, making it quicker to spot.",
+        "Menu bar only mode: Prefer a distraction-free setup? Turn off Show app in Dock under Settings > Appearance to keep EnviousWispr tucked away exclusively in your menu bar.",
+      ],
+      version: "2.5.1"
+    ),
+
+    // #3226, #3233. SCOPE: a take the app resolves as one of these languages (the dictation
+    // language set in Speech Engine settings, or WhisperKit detecting it), never an English take.
+    // Measured on 120 Azure clips per language set: 54/120 then 68/120 before, 120/120 after; a
+    // word the speech engine lost is never guessed. The id keeps its #3226 name.
     Entry(
       id: "addresses-links-codes-in-four-languages",
       icon: "globe",
       title: "Addresses, links and codes in eight languages",
       description:
-        "With your dictation language set to French, Spanish, Polish, Dutch, German, Russian, Portuguese or Italian, addresses, links and codes said in your own words now come out written. \"maría punto lópez arroba gmail punto com\" becomes maría.lópez@gmail.com, \"beispiel Punkt de Schrägstrich hilfe\" becomes beispiel.de/hilfe, and \"GPT łącznik 4\" becomes GPT-4.",
+        "Localized spoken formatting: With your dictation language set to French, Spanish, Polish, Dutch, German, Russian, Portuguese or Italian, spoken URLs, emails and technical codes now come out written.",
+      bullets: [
+        "Spanish: \"maría punto lópez arroba gmail punto com\" becomes maría.lópez@gmail.com",
+        "German: \"beispiel Punkt de Schrägstrich hilfe\" becomes beispiel.de/hilfe",
+        "Polish: \"GPT łącznik 4\" becomes GPT-4",
+      ],
       version: "2.5.1"
     ),
 
-    // #3211. SCOPE: English takes only (`normalize`); fires only on a whole US address that ends
-    // in a state and a ZIP code, so the copy names both. Keeps the spoken words (no postal
-    // abbreviations) and adds digits and commas. Baseline v1 on 46 Azure clips: Parakeet 19 to 25
-    // of 34, WhisperKit 26 to 29 of 34; the rest are ZIP digits the engine misheard.
+    // #3210 (#3218): English takes; each example is a row of the PR's before/after table. Only a
+    // date said with dashes converts ("September twenty sixth" does not).
     Entry(
-      id: "street-addresses-written-out",
-      icon: "house",
-      title: "Street addresses written out",
+      id: "versions-ips-codes-whole",
+      icon: "number",
+      title: "Versions, IP addresses and codes come out whole",
       description:
-        "Dictate a US address in English in full, with the state and ZIP code, and it comes out with digits and commas, in the words you said. \"nine High Plains Road Shelton Connecticut zero six four eight four\" becomes 9 High Plains Road, Shelton, Connecticut 06484.",
+        "Smarter technical and developer formatting: Technical patterns, network addresses, and standard data types now convert directly into clean, written notation instead of spelled-out words.",
+      bullets: [
+        "Semantic versions: \"version two point five point zero\" becomes version 2.5.0",
+        "Hosts and ports: \"localhost colon three thousand\" becomes localhost:3000",
+        "IP and web addresses: Formats full IPs, domains, and emails like john.smith@gmail.com",
+        "Structured dates: Dates said with dashes, like \"twenty twenty six dash nine dash twenty six\", become 2026-09-26",
+      ],
+      version: "2.5.1"
+    ),
+
+    // #3038: the spoken slash left the spoken-punctuation setting; it is read in both switch
+    // positions. Backslash still needs the setting.
+    Entry(
+      id: "say-slash-get-a-slash",
+      icon: "slash.circle",
+      title: "Say slash, get a slash",
+      description:
+        "Context-aware slash formatting: Spoken slash commands and shorthand now format intelligently, even with Spoken punctuation turned off.",
+      bullets: [
+        "Commands and flags: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp",
+        "Comparisons and alternatives: \"pros slash cons\" becomes pros/cons",
+        "Idiomatic phrases: Stays as words in contexts like \"slash the budget\" (though verbs like \"slash prices\" may still resolve to a symbol)",
+        "Backslash handling: Formatting a literal backslash still requires Convert spoken punctuation to be enabled.",
+        "For more edge cases and examples, check out the Spoken punctuation and emoji help guide.",
+      ],
+      version: "2.5.1"
+    ),
+
+    // #3062: a clicking mouse wheel moved the page a few points per click in one frame
+    // (reporter's video, discussion #3059).
+    Entry(
+      id: "mouse-wheel-scrolling-glides",
+      icon: "computermouse",
+      title: "Mouse wheel scrolling glides",
+      description:
+        "Mouse wheel scrolling now moves farther per notch with a short smooth glide, while trackpad scrolling stays unchanged.",
       version: "2.5.1"
     ),
 
