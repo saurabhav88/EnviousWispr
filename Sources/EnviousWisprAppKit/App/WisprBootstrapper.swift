@@ -1631,7 +1631,11 @@ package final class WisprBootstrapper {
       transcriptionCheckpointStore: transcriptionCheckpointStore,
       batchDecodeFaultController: batchDecodeFaultController,
       // #996: each real transition into `.recording` cancels a live edit watch.
-      onRecordingStarted: { [weak learnFromEdits] in learnFromEdits?.recordingStarted() }
+      // #3242: and pre-loads the word check so the take's check finds it ready.
+      onRecordingStarted: { [weak learnFromEdits, weak checkerEligibility] in
+        learnFromEdits?.recordingStarted()
+        checkerEligibility?.wordCheck?.recordingStarted()
+      }
     )
 
     self.navigationCoordinator = navigationCoordinator

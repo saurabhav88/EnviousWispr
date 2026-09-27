@@ -246,6 +246,19 @@ final class WordCheckRuntime {
     }
   }
 
+  /// A recording just started: load the model now, while the user is still speaking, so the take's
+  /// check finds it ready. Measured live (#3242): after the ten-minute idle unload the reload took
+  /// 1.6 s, past the 1.2 s selection deadline, so the first take after a quiet stretch went
+  /// unchecked. Loading at record start hides that behind the dictation itself.
+  func recordingStarted() {
+    guard wanted else { return }
+    if loaded != nil {
+      scheduleIdleUnload()
+    } else {
+      startLoadIfNeeded()
+    }
+  }
+
   /// "Try again" in the Dictionary row: a failed download starts again; a failed LOAD of admitted
   /// bytes (for instance under memory pressure) is retried once, by the user. Automatic retries of
   /// a failed load stay blocked so a model that cannot load does not loop.
