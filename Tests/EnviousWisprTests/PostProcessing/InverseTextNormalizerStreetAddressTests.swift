@@ -183,6 +183,7 @@ struct InverseTextNormalizerStreetAddressTests {
     // Codex diff review r14: a street, unit or city name never spans a line break
     "Log Nine Main Street Hartford\nCourt Connecticut 06103 as two separate entries.",
     "Log Nine Main Street Hartford\nNew Haven Connecticut 06103 as two entries.",
+    "Deliver to 9 Main Street Suite two\u{2028}twenty Hartford Connecticut 06103.",
   ]
 
   @Test("prose that is not a whole address is left alone", arguments: controls)

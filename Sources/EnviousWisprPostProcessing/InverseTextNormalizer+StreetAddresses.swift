@@ -55,7 +55,7 @@ extension InverseTextNormalizer {
     let cap = #"[A-Z][\p{L}'’-]*"#
     // Space inside one field never crosses a line: a street, unit or city name is on one line,
     // so two lines of prose cannot join into one field ("Hartford\nCourt", Codex review r14).
-    let hs = #"[^\S\r\n]+"#
+    let hs = #"[\t\p{Zs}]+"#  // tabs and space separators only; never a line or paragraph separator
     let cityCap = #"(?:(?:St|Ft|Mt)\.|[A-Z][\p{L}'’-]*)"#
     let longestFirst: ([String]) -> String = { words in
       words.sorted { $0.count > $1.count }.map { NSRegularExpression.escapedPattern(for: $0) }
