@@ -31,6 +31,15 @@ final class WordCheckRuntime {
   private let isOnboardingComplete: @MainActor () -> Bool
   /// The Dictionary row re-reads its status when this fires.
   var onStatusChange: @MainActor () -> Void = {}
+  /// Whether a dictation is in flight (recording, transcribing or polishing). The idle timer never
+  /// unloads during one: a take that crosses `idleUnloadDelay`, whether while recording or while its
+  /// transcription runs, would otherwise lose the model it pre-loaded at record start (cloud review,
+  /// PR #3246).
+  var isDictationInFlight: @MainActor () -> Bool = { false }
+  /// Whether the dictation in flight polishes (by its FROZEN session provider) with an engine that
+  /// has no checker of its own. A provider switch mid-take changes the settings but not the take, so
+  /// the take keeps the check it will select (local review, PR #3246).
+  var inFlightDictationNeedsWordCheck: @MainActor () -> Bool = { false }
 
   private var deliveryState: DeliveryState = .notReady
   private var launchProbeFinished = false
@@ -73,7 +82,8 @@ final class WordCheckRuntime {
   /// Needed now: Dictionary on, some chosen engine without its own check, and first-run setup done
   /// (a Diagnostics onboarding reset takes the check back out, download and memory both).
   private var wanted: Bool {
-    isDictionaryEnabled() && someEngineLacksOwnChecker() && isOnboardingComplete()
+    isDictionaryEnabled() && isOnboardingComplete()
+      && (someEngineLacksOwnChecker() || inFlightDictationNeedsWordCheck())
   }
   private var isAdmitted: Bool {
     if case .admitted = deliveryState { return true }
@@ -242,7 +252,27 @@ final class WordCheckRuntime {
     idleUnloadTask = Task { [weak self] in
       try? await Task.sleep(for: Self.idleUnloadDelay)
       guard !Task.isCancelled, let self, self.activeSelections == 0 else { return }
+      if self.isDictationInFlight() {
+        self.scheduleIdleUnload()
+        return
+      }
       self.unload(reason: "idle")
+    }
+  }
+
+  /// A recording just started: load the model now, while the user is still speaking, so the take's
+  /// check finds it ready. Measured live (#3242): after the ten-minute idle unload the reload took
+  /// 1.6 s, past the 1.2 s selection deadline, so the first take after a quiet stretch went
+  /// unchecked. Loading at record start hides that behind the dictation itself.
+  /// `needsWordCheckForRecording`: this dictation's own polish engine has no checker. `wanted` alone
+  /// is also true when only Transcribe a File needs the check, and a dictation must not load 480 MB
+  /// it will not use. The caller passes the take's FROZEN session provider, not the current setting.
+  func recordingStarted(needsWordCheckForRecording: Bool) {
+    guard needsWordCheckForRecording, wanted else { return }
+    if loaded != nil {
+      scheduleIdleUnload()
+    } else {
+      startLoadIfNeeded()
     }
   }
 
