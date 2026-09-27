@@ -138,10 +138,10 @@ struct InverseTextNormalizerStreetAddressTests {
       "Deliver it here:\n9 Main Street Hartford Connecticut 06103",
       "Deliver it here:\n9 Main Street, Hartford, Connecticut 06103"
     ),
-    // a real sentence end still lets the next address start
+    // "!" or "?" ends a sentence and lets the next address start
     (
-      "I moved last week. 9 Main Street Hartford Connecticut 06103 is the new place.",
-      "I moved last week. 9 Main Street, Hartford, Connecticut 06103 is the new place."
+      "Where is it? 9 Main Street Hartford Connecticut 06103 is the place.",
+      "Where is it? 9 Main Street, Hartford, Connecticut 06103 is the place."
     ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
@@ -273,7 +273,10 @@ struct InverseTextNormalizerStreetAddressTests {
     ("See section 9 Main Street Hartford Connecticut 06103 for details.", "See section 9 Main Street Hartford Connecticut 06103 for details."),
     ("Ask about No. 9 Main Street Hartford Connecticut 06103 today.", "Ask about No. 9 Main Street Hartford Connecticut 06103 today."),
     ("Ask about no. 9 Main Street Hartford Connecticut 06103 today.", "Ask about no. 9 Main Street Hartford Connecticut 06103 today."),
-    // Codex diff review r18: an abbreviation is not a sentence end
+    // Codex diff review r18/r19: a period never starts an address, since it cannot be told from
+    // an abbreviation (accepted miss: "I moved last week. 9 Main Street ..." stays as spoken)
+    ("See tbl. 9 Main Street Hartford Connecticut 06103 for details.", "See tbl. 9 Main Street Hartford Connecticut 06103 for details."),
+    ("I moved last week. 9 Main Street Hartford Connecticut 06103 is the new place.", "I moved last week. 9 Main Street Hartford Connecticut 06103 is the new place."),
     ("See Sec. 9 Main Street Hartford Connecticut 06103 for details.", "See Sec. 9 Main Street Hartford Connecticut 06103 for details."),
     ("See fig. 9 Main Street Hartford Connecticut 06103 for details.", "See fig. 9 Main Street Hartford Connecticut 06103 for details."),
   ]

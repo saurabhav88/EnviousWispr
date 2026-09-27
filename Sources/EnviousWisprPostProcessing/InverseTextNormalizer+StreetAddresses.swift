@@ -125,7 +125,7 @@ extension InverseTextNormalizer {
         #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand)(?:[^\S\n]+and)?|\d)[^\S\n]*$"#
       if before.range(of: partOfLonger, options: .regularExpression) != nil { return nil }
       // An address starts where addresses are introduced: at the start of the text or a line,
-      // after a comma, colon, semicolon, bracket, quote or dash, after a sentence end, or after
+      // after a comma, colon, semicolon, bracket, quote or dash, after "!" or "?", or after
       // an introducing word ("to", "at", "for", "is", "from", "and", ...). Any other word before
       // the number is its label ("section 9", "Room 12", "exit 9"), an open set no list closes
       // (cloud review, class enumeration and Codex review r17).
@@ -223,14 +223,11 @@ extension InverseTextNormalizer {
       of: #"[\t\p{Zs}]+$"#, with: "", options: .regularExpression)
     guard let last = lead.last else { return atTextStart || before.contains(where: \.isNewline) }
     if last.isNewline || ",:;([{\"“'‘—–-".contains(last) { return true }
-    // A sentence end, but not an abbreviation: the last word is wholly lowercase ("here.", never
-    // "No.", "Sec.", "Dr."), and not a lowercase abbreviation that labels a number.
-    if ".!?".contains(last) {
-      return lead.range(of: #"\b[a-z]{2,}[.!?]$"#, options: .regularExpression) != nil
-        && lead.range(
-          of: #"\b(?:no|nos|sec|fig|figs|vol|pg|pp|ch|art|para|ext|ref|approx|ed|app|ex)\.$"#,
-          options: .regularExpression) == nil
-    }
+    // "!" or "?" ends a sentence. A period does not count (it falls to the word check below and
+    // never matches an introducing word), since it cannot be told from an abbreviation that
+    // labels a number ("No. 9", "Sec. 9", "tbl. 9": an open set, Codex review r18/r19). An address
+    // after a period is left as spoken, as before this pass.
+    if "!?".contains(last) { return true }
     guard let word = lead.split(whereSeparator: { $0.isWhitespace }).last else { return atTextStart }
     return addressIntroducers.contains(word.lowercased())
   }
