@@ -62,7 +62,7 @@ exec python3 - "$REPO_ROOT" "$@" <<'PY'
 import argparse, copy, json, pathlib, plistlib, re, subprocess, sys, tempfile
 
 REPO = pathlib.Path(sys.argv[1])
-PINNED_XCODE_BUILD = "17F113"  # Xcode 26.6; keep equal to .github/actions/xcode-ci-setup/action.yml
+PINNED_XCODE_BUILD = "17F113"  # Xcode 26.6; keep equal to .github/actions/xcode-ci-setup/action.yml and .github/workflows/release.yml
 
 # Production targets whose code ships in the app, in Project.swift order. A new
 # first-party module must be added here (or to NON_PRODUCTION) or the run stops.

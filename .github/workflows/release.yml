@@ -259,10 +259,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
+      # #3155: the same Xcode every PR, main and nightly lane tests with (.github/actions/xcode-ci-setup
+      # pins 26.6 and checks build 17F113; scripts/lib/l10n-catalog-sync.sh PINNED_XCODE_BUILD).
+      # `latest-stable` would let a hosted-image update ship a release built on a toolchain no gate
+      # ran. Moving Xcode is one deliberate PR that bumps all three.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
-          xcode-version: latest-stable
+          xcode-version: '26.6'
+
+      - name: Verify pinned Xcode build
+        env:
+          EXPECTED_XCODE_BUILD: 17F113
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          XCODE_BUILD="$(xcodebuild -version | awk '/^Build version /{print $3}')"
+          if [ "$XCODE_BUILD" != "$EXPECTED_XCODE_BUILD" ]; then
+            echo "::error::Xcode build $XCODE_BUILD selected; pinned build is $EXPECTED_XCODE_BUILD (#3155)"
+            exit 1
+          fi
 
       # #3242: MLX (the word check) compiles Metal shaders; hosted macOS 26 images do not always
       # carry the Metal toolchain component. Same step as .github/actions/xcode-ci-setup.
