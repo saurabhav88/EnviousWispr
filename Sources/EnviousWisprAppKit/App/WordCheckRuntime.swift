@@ -46,6 +46,10 @@ final class WordCheckRuntime {
   private var idleUnloadTask: Task<Void, Never>?
   /// A removal is draining the last load and deleting the files: no new load may start.
   private var removing = false
+  /// Every load still running, cancelled or not, by generation. Cancellation does not stop a load:
+  /// the weights are read on a background queue until it ends. A new load waits for these before
+  /// reading (two never overlap in memory), and a removal waits for all of them before deleting.
+  private var runningLoads: [UInt64: Task<Void, Never>] = [:]
 
   package private(set) var fetchDecisionsForTests: [WordCheckFetchPolicy.Decision] = []
 
@@ -144,7 +148,14 @@ final class WordCheckRuntime {
     let revision = registration.manifest.identity.revision
     loadGeneration &+= 1
     let generation = loadGeneration
-    loadTask = Task { [weak self] in
+    let predecessors = Array(runningLoads.values)
+    let task = Task { [weak self] in
+      for predecessor in predecessors { await predecessor.value }
+      // This task runs on the main actor (created there), so the bookkeeping is ordered with it.
+      defer { self?.runningLoads[generation] = nil }
+      guard let current = self?.loadGeneration, current == generation, !Task.isCancelled else {
+        return
+      }
       let started = ContinuousClock.now
       do {
         let model = try await KevWordCheckModel(folder: folder)
@@ -170,6 +181,16 @@ final class WordCheckRuntime {
           "word check load failed revision=\(revision): \(error)", level: .info,
           category: "WordCheck")
       }
+    }
+    loadTask = task
+    runningLoads[generation] = task
+  }
+
+  /// Waits until no load is reading the model files.
+  private func drainRunningLoads() async {
+    while let next = runningLoads.values.first {
+      await next.value
+      runningLoads = runningLoads.filter { $0.value != next }
     }
   }
 
@@ -229,9 +250,8 @@ final class WordCheckRuntime {
       removing = false
       onStatusChange()
     }
-    let loading = loadTask
     unload(reason: "remove")
-    await loading?.value
+    await drainRunningLoads()
     let removed = await handle.remove()
     await AppLogger.shared.log("word check remove: removed=\(removed)", category: "WordCheck")
     return removed
