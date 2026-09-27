@@ -16,7 +16,7 @@ TARGETS = [
     "EnviousWisprCore", "EnviousWisprObservabilityCore", "EnviousWisprStorage",
     "EnviousWisprModelDelivery", "EnviousWisprPostProcessing", "EnviousWisprAudio",
     "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprASR",
-    "EnviousWisprLLM", "EnviousWisprPipeline", "EnviousWisprContacts",
+    "EnviousWisprLLM", "EnviousWisprWordCheck", "EnviousWisprPipeline", "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
     "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",
 ]
