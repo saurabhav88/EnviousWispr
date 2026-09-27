@@ -371,6 +371,8 @@ let package = Package(
         "EnviousWisprAppKit",
         "EnviousWisprAppKitTestSupport",
         "EnviousWisprContacts",
+        // #3242: KevEncodingTests exercise the word check's encoder directly.
+        "EnviousWisprWordCheck",
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
         // parser (replaces its hand-rolled comment/string scanner). This is
         // the ONLY place swift-syntax is depended on in this package.
