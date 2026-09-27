@@ -110,6 +110,15 @@ struct InverseTextNormalizerStreetAddressTests {
       "nine Main Street City of Industry California 91744",
       "9 Main Street, City of Industry, California 91744"
     ),
+    // Codex diff review r10: a line break inside a spoken ZIP; a quantity after a written ZIP
+    (
+      "nine High Plains Road, Shelton, Connecticut zero six\nfour eight four",
+      "9 High Plains Road, Shelton, Connecticut 06484"
+    ),
+    (
+      "9 High Plains Road Shelton Connecticut 06484 two days from now",
+      "9 High Plains Road, Shelton, Connecticut 06484 two days from now"
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."
@@ -198,6 +207,11 @@ struct InverseTextNormalizerStreetAddressTests {
     (
       "During 2019 Main Street Bank Denver Colorado 80203 opened.",
       "During 2019 Main Street Bank Denver Colorado 80203 opened."
+    ),
+    // Codex diff review r10: a SPOKEN ZIP running into another digit word may be a longer number
+    (
+      "9 High Plains Road Shelton Connecticut zero six four eight four two days from now",
+      "9 High Plains Road Shelton Connecticut 064842 days from now"
     ),
     // Codex diff review r4: a written house number after spoken number words is the tail of one number
     (

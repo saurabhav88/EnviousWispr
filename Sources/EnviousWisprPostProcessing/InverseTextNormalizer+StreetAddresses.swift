@@ -84,7 +84,7 @@ extension InverseTextNormalizer {
       + digitWord + #"(?:\s+"# + digitWord + #"){3}))?)"#
     return #"(?<![\p{L}\d'’-])(?<!\d[,.])"# + house + #"\s+(?:(?:"# + streetDirections.joined(separator: "|")
       + #")\s+)?"# + street + sep + unit + city + sep + state + #"((?>[^\S\n]*,[^\S\n]*\n?[^\S\n]*|[^\S\n]*\n[^\S\n]*|[^\S\n]+))"# + zip
-      + #"(?![\p{L}\d-])(?!\s+(?:"# + digitWord + #"(?![\p{L}])|\d|(?i:dash|hyphen)\b))"#
+      + #"(?![\p{L}\d-])(?!\s+(?:\d|(?i:dash|hyphen)\b))"#
   }()
 
   /// Groups of `streetAddressPattern`: 1 house, 2 street (with type), 3 street/unit separator,
@@ -119,6 +119,19 @@ extension InverseTextNormalizer {
       // A lone capital opening the city is a unit letter the unit pattern did not take.
       if cityTokens.first?.count == 1 { return nil }
       if cityTokens.contains(where: { Self.streetTypes.contains($0) }) { return nil }
+      // A SPOKEN ZIP followed by another digit word may be a longer number misheard; a written
+      // one is complete, so a quantity after it ("06484 two days from now") is prose.
+      if zipWords.first?.isNumber == false {
+        let end = m.result.range.location + m.result.range.length
+        let after = m.ns.substring(
+          with: NSRange(location: end, length: min(24, m.ns.length - end)))
+        if after.range(
+          of: #"(?i)^\s+(?:zero|oh|o|one|two|three|four|five|six|seven|eight|nine)(?![\p{L}])"#,
+          options: .regularExpression) != nil
+        {
+          return nil
+        }
+      }
       guard let house = Self.addressNumber(houseWords), let zip = Self.zipCode(zipWords) else {
         return nil
       }
@@ -195,7 +208,7 @@ extension InverseTextNormalizer {
 
   /// Five digits (plus four), written or spoken one digit at a time; a leading zero is kept.
   static func zipCode(_ s: String) -> String? {
-    let parts = s.components(separatedBy: CharacterSet.whitespaces).filter { !$0.isEmpty }
+    let parts = s.components(separatedBy: CharacterSet.whitespacesAndNewlines).filter { !$0.isEmpty }
     if parts.count == 1, s.first?.isNumber == true { return s }  // 06103 or 06103-1234
     let dashAt = parts.firstIndex { ["dash", "hyphen"].contains($0.lowercased()) }
     let head = Array(parts[..<(dashAt ?? parts.count)]).map { $0.lowercased() }
