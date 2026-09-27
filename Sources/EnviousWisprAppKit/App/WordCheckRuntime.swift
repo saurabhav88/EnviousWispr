@@ -9,7 +9,8 @@ import Foundation
 /// gets from it, and its removal. One owner so the download, the loaded model and the Dictionary
 /// row cannot disagree.
 ///
-/// Memory: the 4-bit model holds about 480 MB while loaded (measured on an M5 Max). It is loaded
+/// Memory: kev-wc-2's weights are 486 MB (embedding 4-bit, layers 5-bit); kev-wc-1's 424 MB of
+/// 4-bit weights held about 480 MB while loaded (measured on an M5 Max). It is loaded
 /// when a take needs it or when the inputs say one soon will (launch, admission, a settings
 /// change), and released after `idleUnloadDelay` without a take, when the Dictionary switch goes
 /// off, or when no chosen engine needs it any more.

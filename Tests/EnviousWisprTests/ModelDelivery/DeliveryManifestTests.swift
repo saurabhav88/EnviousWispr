@@ -921,14 +921,14 @@ struct S1MiniShippedManifestTests {
     #expect(try DeliveryManifest.canonicalDigest(of: data) == manifest.manifestDigest)
     #expect(manifest.identity.family == .wordCheck)
     #expect(manifest.identity.name == "kev-wc")
-    #expect(manifest.identity.revision == "kev-wc-1-43a5a2e7")
+    #expect(manifest.identity.revision == "kev-wc-2-bf2af137")
     #expect(manifest.identity.variant == "mlx-q4")
     #expect(manifest.identity.runtimeABI == "mlx-kev-v1")
     #expect(manifest.checkerContract == nil)
     #expect(manifest.files.count == 10)
-    #expect(manifest.totalBytes == 439_038_087)
+    #expect(manifest.totalBytes == 501_240_383)
     #expect(manifest.sources.map(\.baseURL.absoluteString) == [
-      "https://models.enviouslabs.co/kev/kev-wc-1-43a5a2e7/"
+      "https://models.enviouslabs.co/kev/kev-wc-2-bf2af137/"
     ])
     // The runtime reads these by name; a manifest that drops one admits a folder the loader refuses.
     let names = Set(manifest.files.map(\.path))
