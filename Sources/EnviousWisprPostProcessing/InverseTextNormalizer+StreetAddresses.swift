@@ -49,9 +49,11 @@ extension InverseTextNormalizer {
   static let streetAddressPattern: String = {
     let numWord = #"(?i:"# + unitsTensAlt + #"|hundred|thousand)"#
     let digitWord = #"(?i:zero|oh|o|one|two|three|four|five|six|seven|eight|nine)"#
-    // A capitalized word; a period only in St., Ft. or Mt. ("St. Louis"), so a name never runs
-    // through a sentence end or a time ("9 A.M. Main Street", Codex diff review r11).
-    let cap = #"(?:(?:St|Ft|Mt)\.|[A-Z][\p{L}'’-]*)"#
+    // A capitalized word with no period, so a street name never runs through a sentence end, a
+    // time or a unit ("9 A.M. Main Street", "9 Ft. Main Street"; Codex diff review r11, r12).
+    // Only a city may open with St., Ft. or Mt. ("St. Louis").
+    let cap = #"[A-Z][\p{L}'’-]*"#
+    let cityCap = #"(?:(?:St|Ft|Mt)\.|[A-Z][\p{L}'’-]*)"#
     let longestFirst: ([String]) -> String = { words in
       words.sorted { $0.count > $1.count }.map { NSRegularExpression.escapedPattern(for: $0) }
         .joined(separator: "|")
@@ -77,7 +79,7 @@ extension InverseTextNormalizer {
       + sep + #")?"#
     // A city may hold a lowercase connector between capitalized words ("City of Industry",
     // "Stratford upon Avon"); a connector never opens or closes the city.
-    let city = #"("# + cap + #"(?:\s+(?:(?:of|on|upon|de|del|la|le|du|the)\s+)?"# + cap + #"){0,2})"#
+    let city = #"("# + cityCap + #"(?:\s+(?:(?:of|on|upon|de|del|la|le|du|the)\s+)?"# + cap + #"){0,2})"#
     let state = #"("# + longestFirst(usStates) + #"|"# + usStateCodes.joined(separator: "|") + #")"#
     let zip =
       #"(\d{5}(?:-\d{4}|\s+(?i:dash|hyphen)\s+(?:\d{4}|"# + digitWord + #"(?:\s+"# + digitWord

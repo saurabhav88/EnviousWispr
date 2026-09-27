@@ -119,7 +119,7 @@ struct InverseTextNormalizerStreetAddressTests {
       "9 High Plains Road Shelton Connecticut 06484 two days from now",
       "9 High Plains Road, Shelton, Connecticut 06484 two days from now"
     ),
-    // Codex diff review r11: St. / Ft. / Mt. keep their period inside a name
+    // Codex diff review r11/r12: a city may open with St., Ft. or Mt.
     (
       "Ship to 100 Market Street St. Louis Missouri 63101 today.",
       "Ship to 100 Market Street, St. Louis, Missouri 63101 today."
@@ -170,6 +170,7 @@ struct InverseTextNormalizerStreetAddressTests {
     "Log 9 High Plains Road Shelton Connecticut 064841 today.",
     // Codex diff review r11: a name never runs through a time or a sentence end
     "We met at 9 A.M. Main Street Hartford Connecticut 06103 was the next topic.",
+    "The rope measures 9 Ft. Main Street Hartford Connecticut 06103 is the next entry.",
   ]
 
   @Test("prose that is not a whole address is left alone", arguments: controls)
