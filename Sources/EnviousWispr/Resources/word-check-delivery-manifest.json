@@ -4,7 +4,7 @@
     "family": "word_check",
     "name": "kev-wc",
     "revision": "kev-wc-2-bf2af137",
-    "variant": "mlx-q4",
+    "variant": "mlx-q5-embed-q4",
     "runtimeABI": "mlx-kev-v1"
   },
   "files": [
@@ -98,5 +98,5 @@
     "evictPreviousRevisions": true,
     "entrypointFile": "kev-contract.json"
   },
-  "manifestDigest": "5335fa981b10e85cb9d4c1e21ef9a1f3df6cfa40ae0fec3aa5a6c7f12d126e55"
+  "manifestDigest": "4a98d211c7117ddd07a853696379a6f5e41469329d7772e443a83a5b4fd55ee6"
 }

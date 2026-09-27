@@ -922,7 +922,7 @@ struct S1MiniShippedManifestTests {
     #expect(manifest.identity.family == .wordCheck)
     #expect(manifest.identity.name == "kev-wc")
     #expect(manifest.identity.revision == "kev-wc-2-bf2af137")
-    #expect(manifest.identity.variant == "mlx-q4")
+    #expect(manifest.identity.variant == "mlx-q5-embed-q4")
     #expect(manifest.identity.runtimeABI == "mlx-kev-v1")
     #expect(manifest.checkerContract == nil)
     #expect(manifest.files.count == 10)
