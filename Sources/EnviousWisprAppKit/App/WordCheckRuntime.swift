@@ -5,23 +5,23 @@ import EnviousWisprWordCheck
 import Foundation
 
 /// Owns the word check for polish engines without a learned-word checker of their own (#3242):
-/// when its model downloads (`WordCheckFetchPolicy`), when it is in memory, and the selection a
-/// take gets from it. One owner so the download, the loaded model and the Dictionary row cannot
-/// disagree.
+/// when its model downloads (`WordCheckFetchPolicy`), when it is in memory, the selection a take
+/// gets from it, and its removal. One owner so the download, the loaded model and the Dictionary
+/// row cannot disagree.
 ///
 /// Memory: the 4-bit model holds about 480 MB while loaded (measured on an M5 Max). It is loaded
 /// when a take needs it or when the inputs say one soon will (launch, admission, a settings
 /// change), and released after `idleUnloadDelay` without a take, when the Dictionary switch goes
 /// off, or when no chosen engine needs it any more.
+///
+/// Ownership of a load is a GENERATION, never the task handle: `unload` and `remove` bump it, and a
+/// load that finishes under an older generation publishes nothing (a Dictionary off-and-on during
+/// the 1.6 s load must not let the first load clear or overwrite the second).
 @MainActor
 final class WordCheckRuntime {
-  /// How the Dictionary row names this check ("Checked by: ...").
-  static let judge = LearnedWordJudge(
-    displayName: String(
-      localized: "Envious Word Check",
-      comment:
-        "Your Words, Learn from: the name of the on-device word check used when the polish engine has none of its own."
-    ))
+  /// How the Dictionary row names this check ("Checked by: ..."). A product name, like the engine
+  /// names other judges use (`LLMProvider.displayName`), so it is not translated.
+  static let judge = LearnedWordJudge(displayName: "Envious Word Check")
 
   static let idleUnloadDelay: Duration = .seconds(600)
 
@@ -29,13 +29,18 @@ final class WordCheckRuntime {
   private let isDictionaryEnabled: @MainActor () -> Bool
   private let someEngineLacksOwnChecker: @MainActor () -> Bool
   private let isOnboardingComplete: @MainActor () -> Bool
-  /// The Dictionary row re-reads its selection when this fires.
+  /// The Dictionary row re-reads its status when this fires.
   var onStatusChange: @MainActor () -> Void = {}
 
   private var deliveryState: DeliveryState = .notReady
   private var launchProbeFinished = false
   private var loaded: (model: KevWordCheckModel, contract: KevContract)?
   private var loadTask: Task<Void, Never>?
+  private var loadGeneration: UInt64 = 0
+  /// Takes waiting on a load right now. A take asks with the provider it RECORDED (crash-recovery
+  /// replay, a file import's frozen choice), which today's settings may no longer need; while one
+  /// waits, the load is kept even though `wanted` says otherwise.
+  private var activeSelections = 0
   /// The revision a load failed for; retried only after the admitted bytes change.
   private var failedLoadRevision: String?
   private var idleUnloadTask: Task<Void, Never>?
@@ -56,6 +61,10 @@ final class WordCheckRuntime {
   }
 
   private var wanted: Bool { isDictionaryEnabled() && someEngineLacksOwnChecker() }
+  private var isAdmitted: Bool {
+    if case .admitted = deliveryState { return true }
+    return false
+  }
 
   private func wire() {
     guard let handle = delivery.wordCheckHandle else { return }
@@ -74,11 +83,11 @@ final class WordCheckRuntime {
   /// Parakeet admission, and when the Dictionary switch or a polish engine choice changes.
   func refresh(trigger: String, userInitiated: Bool = false) {
     guard wanted else {
-      unload(reason: "not_wanted")
+      if activeSelections == 0 { unload(reason: "not_wanted") }
       onStatusChange()
       return
     }
-    if case .admitted = deliveryState {
+    if isAdmitted {
       startLoadIfNeeded()
       return
     }
@@ -112,10 +121,9 @@ final class WordCheckRuntime {
   }
 
   private func deliveryStateChanged(_ state: DeliveryState) {
-    let wasAdmitted: Bool
-    if case .admitted = deliveryState { wasAdmitted = true } else { wasAdmitted = false }
+    let wasAdmitted = isAdmitted
     deliveryState = state
-    if case .admitted = state {
+    if isAdmitted {
       if !wasAdmitted { failedLoadRevision = nil }
       if wanted { startLoadIfNeeded() }
     } else if wasAdmitted {
@@ -126,12 +134,14 @@ final class WordCheckRuntime {
   }
 
   private func startLoadIfNeeded() {
-    guard loaded == nil, loadTask == nil,
+    guard loaded == nil, loadTask == nil, isAdmitted,
       let registration = delivery.wordCheckRegistration,
       failedLoadRevision != registration.manifest.identity.revision
     else { return }
     let folder = registration.installDirectory
     let revision = registration.manifest.identity.revision
+    loadGeneration &+= 1
+    let generation = loadGeneration
     loadTask = Task { [weak self] in
       let started = ContinuousClock.now
       do {
@@ -139,9 +149,10 @@ final class WordCheckRuntime {
         try await model.warmUp()
         let contract = await model.contract
         let elapsed = ContinuousClock.now - started
-        guard let self else { return }
+        // Only the load of the CURRENT generation may publish anything.
+        guard let self, self.loadGeneration == generation else { return }
         self.loadTask = nil
-        guard self.wanted else { return }  // turned off while loading: drop it
+        guard self.isAdmitted, self.wanted || self.activeSelections > 0 else { return }
         self.loaded = (model, contract)
         self.scheduleIdleUnload()
         self.onStatusChange()
@@ -149,7 +160,7 @@ final class WordCheckRuntime {
           "word check loaded revision=\(contract.revision) ms=\(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)",
           category: "WordCheck")
       } catch {
-        guard let self else { return }
+        guard let self, self.loadGeneration == generation else { return }
         self.loadTask = nil
         self.failedLoadRevision = revision
         self.onStatusChange()
@@ -161,6 +172,7 @@ final class WordCheckRuntime {
   }
 
   private func unload(reason: String) {
+    loadGeneration &+= 1
     idleUnloadTask?.cancel()
     idleUnloadTask = nil
     loadTask?.cancel()
@@ -176,47 +188,84 @@ final class WordCheckRuntime {
     idleUnloadTask?.cancel()
     idleUnloadTask = Task { [weak self] in
       try? await Task.sleep(for: Self.idleUnloadDelay)
-      guard !Task.isCancelled else { return }
-      self?.unload(reason: "idle")
+      guard !Task.isCancelled, let self, self.activeSelections == 0 else { return }
+      self.unload(reason: "idle")
     }
   }
 
   /// "Try again" in the Dictionary row.
   func retryDownload() { refresh(trigger: "settings_retry", userInitiated: true) }
 
+  // MARK: - Removal
+
+  /// Whether the Dictionary row offers "Remove": the model is on disk and nothing chosen needs it
+  /// (Dictionary off, or every chosen engine has its own check). While it is needed, removing it
+  /// would only start the download again.
+  var offersRemoval: Bool { isAdmitted && !wanted }
+
+  /// Deletes the downloaded model after releasing the loaded one. Returns whether the bytes went.
+  /// It comes back on its own the next time the Dictionary switch or an engine choice needs it.
+  func remove() async -> Bool {
+    guard let handle = delivery.wordCheckHandle else { return false }
+    unload(reason: "remove")
+    let removed = await handle.remove()
+    await AppLogger.shared.log("word check remove: removed=\(removed)", category: "WordCheck")
+    onStatusChange()
+    return removed
+  }
+
+  // MARK: - Selection
+
   /// The selection for one take whose polish engine has no checker of its own. Awaits an
   /// in-progress load: `LearnedWordCheckStep.selectionDeadline` bounds that wait, and a load that
   /// outlives it finishes in the background for the next take.
   func selection() async -> LearnedWordCheckerSelection {
-    func absent(_ reason: LearnedWordCheckerAbsence, retry: Bool = false)
-      -> LearnedWordCheckerSelection
-    {
-      .init(absence: reason, retryAvailable: retry, judge: Self.judge)
-    }
-    guard let handle = delivery.wordCheckHandle, let registration = delivery.wordCheckRegistration
-    else { return absent(.adapterDeliveryFailed) }
-    switch deliveryState {
-    case .admitted:
-      break
-    case .failed, .cancelled:
-      return handle.isEnabled()
-        ? absent(.adapterDeliveryFailed, retry: true) : absent(.deliveryDisabled)
-    case .notReady, .preparing, .downloading, .verifying:
-      guard handle.isEnabled() else { return absent(.deliveryDisabled) }
-      refresh(trigger: "take")
-      return absent(.adapterDownloading)
-    }
+    if let absence = currentAbsence(triggerFetch: true) { return absence }
     if loaded == nil {
-      if failedLoadRevision == registration.manifest.identity.revision {
-        return absent(.serverUnavailable)
-      }
+      activeSelections += 1
+      defer { activeSelections -= 1 }
       startLoadIfNeeded()
       await loadTask?.value
     }
-    guard let loaded else { return absent(.serverUnavailable) }
+    guard let loaded else { return Self.absent(.serverUnavailable) }
     scheduleIdleUnload()
     return LearnedWordCheckerSelection(
       checker: KevLearnedWordChecker(model: loaded.model, contract: loaded.contract),
       identity: loaded.contract.revision, judge: Self.judge)
+  }
+
+  /// The Dictionary row's line. Never loads the model: reading a status must not put 480 MB in
+  /// memory, least of all right after the user turned the Dictionary off.
+  func settingsStatus() -> LearnedCheckerSettingsStatus {
+    if let absence = currentAbsence(triggerFetch: false) {
+      return LearnedCheckerSettingsStatus(selection: absence)
+    }
+    return LearnedCheckerSettingsStatus(checkedBy: Self.judge)
+  }
+
+  private static func absent(_ reason: LearnedWordCheckerAbsence, retry: Bool = false)
+    -> LearnedWordCheckerSelection
+  {
+    .init(absence: reason, retryAvailable: retry, judge: judge)
+  }
+
+  /// Why no check can run right now, or nil when the model is admitted and loadable.
+  private func currentAbsence(triggerFetch: Bool) -> LearnedWordCheckerSelection? {
+    guard let handle = delivery.wordCheckHandle, let registration = delivery.wordCheckRegistration
+    else { return Self.absent(.adapterDeliveryFailed) }
+    switch deliveryState {
+    case .admitted:
+      if failedLoadRevision == registration.manifest.identity.revision {
+        return Self.absent(.serverUnavailable)
+      }
+      return nil
+    case .failed, .cancelled:
+      return handle.isEnabled()
+        ? Self.absent(.adapterDeliveryFailed, retry: true) : Self.absent(.deliveryDisabled)
+    case .notReady, .preparing, .downloading, .verifying:
+      guard handle.isEnabled() else { return Self.absent(.deliveryDisabled) }
+      if triggerFetch { refresh(trigger: "take") }
+      return Self.absent(.adapterDownloading)
+    }
   }
 }

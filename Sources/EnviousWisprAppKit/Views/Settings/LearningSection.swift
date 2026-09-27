@@ -8,9 +8,27 @@ import SwiftUI
 struct LearnedCheckerSettingsStatus: Equatable {
   let line: String
   let canRetry: Bool
+  /// #3242: the shared word check is on disk and nothing chosen needs it; the row offers Remove.
+  var canRemoveWordCheck = false
   static let retryTitle = LocalizedStringResource(
     "Try again",
     comment: "Your Words, Learn from: the self-learning dictionary row: retry the word check download.")
+  static let removeWordCheckTitle = LocalizedStringResource(
+    "Remove word check",
+    comment: "Your Words, Learn from: the self-learning dictionary row: delete the downloaded word check (about 440 MB) when no chosen polish engine needs it.")
+
+  /// A check that is installed and ready, named by its owner. Used for the shared word check
+  /// (#3242), whose status is read without loading its model.
+  init(checkedBy judge: LearnedWordJudge) {
+    line = Self.checkedByLine(judge.displayName)
+    canRetry = false
+  }
+
+  private static func checkedByLine(_ judge: String) -> String {
+    String(
+      localized: "Checked by: \(judge). Learned words are checked before they're used.",
+      comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+  }
 
   init(selection: LearnedWordCheckerSelection) {
     // The judge's owner names it; the copy has no engine of its own, so a new
@@ -18,9 +36,7 @@ struct LearnedCheckerSettingsStatus: Equatable {
     let judge = selection.judge?.displayName
       ?? String(localized: "The polish engine", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     if selection.checker != nil {
-      line = String(
-        localized: "Checked by: \(judge). Learned words are checked before they're used.",
-        comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+      line = Self.checkedByLine(judge)
       canRetry = false
       return
     }
@@ -109,10 +125,9 @@ struct LearningSection: View {
     }
     .task(id: checkerStatusKey) {
       // The language reaches only S1-mini's prompt; the status reads none.
-      let selection = await checkerEligibility.selection(
-        provider: settings.llmProvider, language: nil)
+      let status = await checkerEligibility.settingsStatus(provider: settings.llmProvider)
       guard !Task.isCancelled else { return }
-      checkerStatus = LearnedCheckerSettingsStatus(selection: selection)
+      checkerStatus = status
     }
   }
 
@@ -158,6 +173,12 @@ struct LearningSection: View {
                 // shared word check for an engine without its own (#3242).
                 let provider = settings.wrappedValue.llmProvider
                 Task { await checkerEligibility.retryDownload(for: provider) }
+              }
+            } else if checkerStatus.canRemoveWordCheck {
+              Spacer(minLength: 8)
+              SettingsActionButton(title: LearnedCheckerSettingsStatus.removeWordCheckTitle,
+                isEnabled: true) {
+                Task { await checkerEligibility.removeWordCheck() }
               }
             }
           }
