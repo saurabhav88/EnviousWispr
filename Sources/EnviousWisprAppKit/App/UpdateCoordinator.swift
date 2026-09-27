@@ -291,6 +291,17 @@ final class UpdateCoordinator {
     (workInFlightProvider?() ?? false) || (clipboardCleanupPendingProvider?() ?? false)
   }
 
+  /// #3194 (cloud review): the relaunch boundary. `installRefusedNow` gates the click, but Sparkle
+  /// confirms and relaunches later, so work that starts in between (a file transcription begun
+  /// while the update dialog resolves) would still be cut off. Sparkle asks
+  /// `shouldPostponeRelaunchForUpdate` right before it relaunches; the controller holds the
+  /// relaunch until this returns. Returns at once when nothing refuses.
+  func waitUntilRelaunchIsSafe(pollInterval: Duration = .milliseconds(500)) async {
+    while installRefusedNow {
+      try? await Task.sleep(for: pollInterval)
+    }
+  }
+
   private func triggerGuardedInstall(source: String) {
     guard !installRefusedNow else { return }
     // #1029: only install when an update is actually available. With the tap

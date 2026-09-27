@@ -364,6 +364,38 @@ struct UpdateCoordinatorProactiveCheckTests {
     #expect(coordinator.installRefusedNow == false)
   }
 
+  // MARK: - Relaunch boundary (#3194 cloud review)
+
+  @Test("the relaunch waits while work is in flight and goes ahead once it ends")
+  func relaunchWaitsForWorkToEnd() async {
+    @MainActor final class Flag { var busy = true; var released = false }
+    let flag = Flag()
+    let coordinator = makeCoordinator()
+    coordinator.workInFlightProvider = { flag.busy }
+    coordinator.clipboardCleanupPendingProvider = { false }
+
+    let waiter = Task { @MainActor in
+      await coordinator.waitUntilRelaunchIsSafe(pollInterval: .milliseconds(1))
+      flag.released = true
+    }
+    // Many poll intervals pass with work in flight: the relaunch is still held.
+    for _ in 0..<20 { try? await Task.sleep(for: .milliseconds(2)) }
+    #expect(flag.released == false, "a relaunch now would cut off the running work")
+
+    flag.busy = false
+    await waiter.value
+    #expect(flag.released, "the relaunch goes ahead once the work has ended")
+  }
+
+  @Test("the relaunch is not held when nothing refuses")
+  func relaunchNotHeldWhenIdle() async {
+    let coordinator = makeCoordinator()
+    coordinator.workInFlightProvider = { false }
+    coordinator.clipboardCleanupPendingProvider = { false }
+    // Returns without sleeping; a hang here fails the suite's time limit.
+    await coordinator.waitUntilRelaunchIsSafe(pollInterval: .seconds(60))
+  }
+
   @Test("installRefusedNow still refuses during dictation, with cleanup idle")
   func refusedWhileDictating() {
     let coordinator = makeCoordinator()
