@@ -6,7 +6,7 @@ import Foundation
 
 /// Owns the word check for polish engines without a learned-word checker of their own (#3242):
 /// when its model downloads (`WordCheckFetchPolicy`), when it is in memory, the selection a take
-/// gets from it, and its removal. One owner so the download, the loaded model and the Dictionary
+/// gets from it. One owner so the download, the loaded model and the Dictionary
 /// row cannot disagree.
 ///
 /// Memory: kev-wc-2's weights are 486 MB (embedding 4-bit, layers 5-bit); kev-wc-1's 424 MB of
@@ -15,7 +15,7 @@ import Foundation
 /// change), and released after `idleUnloadDelay` without a take, when the Dictionary switch goes
 /// off, or when no chosen engine needs it any more.
 ///
-/// Ownership of a load is a GENERATION, never the task handle: `unload` and `remove` bump it, and a
+/// Ownership of a load is a GENERATION, never the task handle: `unload` bumps it, and a
 /// load that finishes under an older generation publishes nothing (a Dictionary off-and-on during
 /// the 1.6 s load must not let the first load clear or overwrite the second).
 @MainActor
@@ -54,15 +54,13 @@ final class WordCheckRuntime {
   /// The revision a load failed for; retried only after the admitted bytes change.
   private var failedLoadRevision: String?
   private var idleUnloadTask: Task<Void, Never>?
-  /// A removal is draining the last load and deleting the files: no new load may start.
-  private var removing = false
   /// The app, not the user, cancelled a download because nothing needed it any more. The fetch
   /// policy holds a user's cancel until they ask again; this one must resume on its own once the
   /// check is wanted again (cloud review, PR #3245).
   private var cancelledBecauseUnwanted = false
   /// Every load still running, cancelled or not, by generation. Cancellation does not stop a load:
   /// the weights are read on a background queue until it ends. A new load waits for these before
-  /// reading (two never overlap in memory), and a removal waits for all of them before deleting.
+  /// reading (two never overlap in memory).
   private var runningLoads: [UInt64: Task<Void, Never>] = [:]
 
   package private(set) var fetchDecisionsForTests: [WordCheckFetchPolicy.Decision] = []
@@ -181,7 +179,7 @@ final class WordCheckRuntime {
   }
 
   private func startLoadIfNeeded() {
-    guard loaded == nil, loadTask == nil, isAdmitted, !removing,
+    guard loaded == nil, loadTask == nil, isAdmitted,
       let registration = delivery.wordCheckRegistration,
       failedLoadRevision != registration.manifest.identity.revision
     else { return }
@@ -225,14 +223,6 @@ final class WordCheckRuntime {
     }
     loadTask = task
     runningLoads[generation] = task
-  }
-
-  /// Waits until no load is reading the model files.
-  private func drainRunningLoads() async {
-    while let next = runningLoads.values.first {
-      await next.value
-      runningLoads = runningLoads.filter { $0.value != next }
-    }
   }
 
   private func unload(reason: String) {
@@ -290,40 +280,6 @@ final class WordCheckRuntime {
     }
   }
 
-  // MARK: - Removal
-
-  /// Whether the Dictionary row offers "Remove": the model is on disk and nothing chosen needs it
-  /// (Dictionary off, or every chosen engine has its own check). While it is needed, removing it
-  /// would only start the download again.
-  var offersRemoval: Bool {
-    guard !wanted else { return false }
-    if isAdmitted { return true }
-    // Partial bytes from a download stopped part-way: removable too, or they would sit on disk.
-    if case .cancelled(resumable: true) = deliveryState { return true }
-    return false
-  }
-
-  /// Deletes the downloaded model after releasing the loaded one. Returns whether the bytes went.
-  /// It comes back on its own the next time the Dictionary switch or an engine choice needs it.
-  ///
-  /// A load in flight keeps reading the model files on a background queue even once cancelled, so
-  /// the removal waits for it to end before deleting, and blocks new loads meanwhile. A take that
-  /// already holds the warmed model needs no files (the weights are materialized at load) and
-  /// finishes on its own copy.
-  func remove() async -> Bool {
-    guard offersRemoval, !removing, let handle = delivery.wordCheckHandle else { return false }
-    removing = true
-    defer {
-      removing = false
-      onStatusChange()
-    }
-    unload(reason: "remove")
-    await drainRunningLoads()
-    let removed = await handle.remove()
-    await AppLogger.shared.log("word check remove: removed=\(removed)", category: "WordCheck")
-    return removed
-  }
-
   // MARK: - Selection
 
   /// The selection for one take whose polish engine has no checker of its own. Awaits an
@@ -371,7 +327,6 @@ final class WordCheckRuntime {
     else { return Self.absent(.adapterDeliveryFailed) }
     switch deliveryState {
     case .admitted:
-      if removing { return Self.absent(.serverUnavailable) }
       if failedLoadRevision == registration.manifest.identity.revision {
         return Self.absent(.serverUnavailable, retry: true)
       }
