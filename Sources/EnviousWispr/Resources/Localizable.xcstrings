@@ -20342,6 +20342,42 @@
         }
       }
     },
+    "whatsNew.street-addresses-written-out.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry street-addresses-written-out).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Street addresses written out"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "US-Adressen mit Ziffern und Kommas"
+          }
+        }
+      }
+    },
+    "whatsNew.street-addresses-written-out.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry street-addresses-written-out).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate a US address in English in full, with the state and ZIP code, and it comes out with digits and commas, in the words you said. \"nine High Plains Road Shelton Connecticut zero six four eight four\" becomes 9 High Plains Road, Shelton, Connecticut 06484."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du auf Englisch eine vollständige US-Adresse mit Bundesstaat und Postleitzahl diktierst, wird sie mit Ziffern und Kommas geschrieben. Deine Wortwahl bleibt dabei erhalten. Aus „nine High Plains Road Shelton Connecticut zero six four eight four“ wird 9 High Plains Road, Shelton, Connecticut 06484."
+          }
+        }
+      }
+    },
     "whatsNew.transcribe-a-file.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry transcribe-a-file).",
       "extractionState" : "manual",

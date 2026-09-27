@@ -4,7 +4,7 @@ description: "How spoken numbers, money, dates and phone numbers get written out
 category: "features"
 section: "Text Processing"
 order: 4
-keywords: ["numbers", "dates", "times", "money", "dollars", "percent", "phone number", "email address", "url", "version number", "ip address", "formatting numbers", "writes out numbers", "spelled out"]
+keywords: ["street address", "mailing address", "zip code", "numbers", "dates", "times", "money", "dollars", "percent", "phone number", "email address", "url", "version number", "ip address", "formatting numbers", "writes out numbers", "spelled out"]
 related: ["spoken-punctuation-and-emoji", "how-text-gets-pasted-into-your-app"]
 seeAlso: "spoken-text-formatting-dates-numbers-emails"
 updated: 2026-09-26
@@ -24,10 +24,15 @@ Numbers, dates, and times are converted automatically from spoken words into the
 | "S dash one" | S-1 |
 | "twenty twenty six dash nine dash twenty six" | 2026-09-26 |
 | "john dot smith at gmail dot com" | john.smith@gmail.com |
+| "nine High Plains Road Shelton Connecticut zero six four eight four" | 9 High Plains Road, Shelton, Connecticut 06484 |
 
 ### Small numbers stay as words
 
-Numbers below ten are written out as words, while numbers from ten upwards use digits. That follows the standard style used in most professional and general writing.
+Numbers below ten are written out as words, while numbers from ten upwards use digits. That follows the standard style used in most professional and general writing. A full street address is the exception: its house and apartment numbers are written as digits.
+
+### Street addresses
+
+A US street address said in full, from the house number through the state and ZIP code, comes out with digits and commas, in the words you said. "three twenty West Thirty Eighth Street, apartment two twenty, New York, New York one zero zero one eight" becomes 320 West 38th Street, apartment 220, New York, New York 10018. Street and state names are not shortened to postal abbreviations. An address without a state or a ZIP code is left as you spoke it, and so is a ZIP code the speech engine misheard.
 
 ### Web addresses
 
