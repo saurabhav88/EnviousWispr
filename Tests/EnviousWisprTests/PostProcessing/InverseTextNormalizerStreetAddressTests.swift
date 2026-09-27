@@ -304,6 +304,53 @@ struct InverseTextNormalizerStreetAddressTests {
     #expect(english(row.dictated) == row.expected)
   }
 
+  /// Non-US addresses (India, UK, Ireland, Europe) and places whose region shares a US state or
+  /// sits in another country's format are not read as US addresses: the rule needs a US state and
+  /// a US ZIP. Expected output is main's (39c9062e); only number words convert, as on any take.
+  /// One accepted shape: Georgia the country is also a US state, and "12 Rustaveli Avenue Tbilisi
+  /// Georgia 01080" gains commas, which is also correct for that address.
+  nonisolated static let nonUSAddresses: [(dictated: String, expected: String)] = [
+    ("Send it to Flat 4B, 12 MG Road, Bengaluru, Karnataka 560001 by Friday.",
+      "Send it to Flat 4B, 12 MG Road, Bengaluru, Karnataka 560001 by Friday."),
+    ("My address is 45 Park Street, Kolkata, West Bengal 700016.",
+      "My address is 45 Park Street, Kolkata, West Bengal 700016."),
+    ("Ship to twelve Nehru Place, New Delhi, Delhi 110019 please.",
+      "Ship to 12 Nehru Place, New Delhi, Delhi 110019 please."),
+    ("I live at 221 Linking Road, Bandra West, Mumbai, Maharashtra 400050.",
+      "I live at 221 Linking Road, Bandra West, Mumbai, Maharashtra 400050."),
+    ("Send it to 7 Anna Salai, Chennai, Tamil Nadu six zero zero zero zero two.",
+      "Send it to 7 Anna Salai, Chennai, Tamil Nadu 600002."),
+    ("Send it to 221B Baker Street, London NW1 6XE.",
+      "Send it to 221B Baker Street, London NW1 6XE."),
+    ("My address is 10 Downing Street London SW1A 2AA.",
+      "My address is 10 Downing Street London SW1A 2AA."),
+    ("Ship to 5 Grafton Street, Dublin 2, Ireland.",
+      "Ship to 5 Grafton Street, Dublin 2, Ireland."),
+    ("Send it to Hauptstraße 5, 10115 Berlin.",
+      "Send it to Hauptstraße 5, 10115 Berlin."),
+    ("My address is 12 Rue de Rivoli, 75001 Paris, France.",
+      "My address is 12 Rue de Rivoli, 75001 Paris, France."),
+    ("Ship to Via Roma 10, 00184 Roma.",
+      "Ship to Via Roma 10, 00184 Roma."),
+    ("Send it to Calle Mayor 15, 28013 Madrid.",
+      "Send it to Calle Mayor 15, 28013 Madrid."),
+    ("Deliver to Keizersgracht 123, 1015 CJ Amsterdam.",
+      "Deliver to Keizersgracht 123, 1015 CJ Amsterdam."),
+    ("Send it to 12 Rustaveli Avenue Tbilisi Georgia 01080 today.",
+      "Send it to 12 Rustaveli Avenue, Tbilisi, Georgia 01080 today."),
+    ("Ship to 20 Queen Street Melbourne Victoria 3000.",
+      "Ship to 20 Queen Street Melbourne Victoria 3000."),
+    ("Send it to 45 King Street Toronto Ontario M5H 1J9.",
+      "Send it to 45 King Street Toronto Ontario M5H 1J9."),
+    ("My address is 9 George Street Sydney New South Wales 2000.",
+      "My address is 9 George Street Sydney New South Wales 2000."),
+  ]
+
+  @Test("an Indian, UK or European address is not read as a US address", arguments: nonUSAddresses)
+  func nonUSAddress(row: (dictated: String, expected: String)) {
+    #expect(english(row.dictated) == row.expected)
+  }
+
   @Test("a formatted address is not changed again", arguments: rows)
   func idempotent(row: (dictated: String, expected: String)) {
     #expect(english(row.expected) == row.expected)
