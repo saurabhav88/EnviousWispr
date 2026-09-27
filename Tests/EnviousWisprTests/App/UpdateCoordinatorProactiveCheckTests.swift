@@ -318,7 +318,7 @@ struct UpdateCoordinatorProactiveCheckTests {
   func notificationTapInstallsWhenIdle() {
     let notifier = FakeNotifier()
     let coordinator = makeCoordinator(notifier: notifier)
-    coordinator.dictationActiveProvider = { false }
+    coordinator.workInFlightProvider = { false }
     coordinator.service.noteAvailable(availableUpdate("2.1.4"))
 
     notifier.onInstallTapped?()
@@ -330,7 +330,7 @@ struct UpdateCoordinatorProactiveCheckTests {
   func notificationTapBlockedWhileDictating() {
     let notifier = FakeNotifier()
     let coordinator = makeCoordinator(notifier: notifier)
-    coordinator.dictationActiveProvider = { true }
+    coordinator.workInFlightProvider = { true }
     coordinator.service.noteAvailable(availableUpdate("2.1.4"))
 
     notifier.onInstallTapped?()
@@ -344,7 +344,7 @@ struct UpdateCoordinatorProactiveCheckTests {
   @Test("installRefusedNow is true while clipboard cleanup is pending")
   func refusedWhileClipboardCleanupPending() {
     let coordinator = makeCoordinator()
-    coordinator.dictationActiveProvider = { false }
+    coordinator.workInFlightProvider = { false }
     coordinator.clipboardCleanupPendingProvider = { true }
 
     // Sparkle relaunches the app. Doing that inside the ~200 ms window between a
@@ -356,7 +356,7 @@ struct UpdateCoordinatorProactiveCheckTests {
   @Test("installRefusedNow is false once nothing refuses")
   func notRefusedWhenIdle() {
     let coordinator = makeCoordinator()
-    coordinator.dictationActiveProvider = { false }
+    coordinator.workInFlightProvider = { false }
     coordinator.clipboardCleanupPendingProvider = { false }
 
     // The paired half. Without it, a predicate wired permanently ON would satisfy
@@ -367,7 +367,7 @@ struct UpdateCoordinatorProactiveCheckTests {
   @Test("installRefusedNow still refuses during dictation, with cleanup idle")
   func refusedWhileDictating() {
     let coordinator = makeCoordinator()
-    coordinator.dictationActiveProvider = { true }
+    coordinator.workInFlightProvider = { true }
     coordinator.clipboardCleanupPendingProvider = { false }
 
     // #2197 folded two conditions into one predicate; this is the check that the
@@ -410,7 +410,7 @@ struct UpdateCoordinatorProactiveCheckTests {
     // the real presenter would touch `UNUserNotificationCenter` in the test
     // bundle.
     let coordinator = makeCoordinator(notifier: FakeNotifier())
-    coordinator.dictationActiveProvider = { true }
+    coordinator.workInFlightProvider = { true }
     coordinator.service.noteAvailable(availableUpdate("2.1.4"))
 
     coordinator.installFromMenu()
@@ -441,7 +441,7 @@ struct UpdateCoordinatorProactiveCheckTests {
   func notificationTapRoutesWhenIdle() {
     let notifier = FakeNotifier()
     let coordinator = makeCoordinator(notifier: notifier)
-    coordinator.dictationActiveProvider = { false }
+    coordinator.workInFlightProvider = { false }
     coordinator.service.noteAvailable(availableUpdate("2.1.4"))
 
     notifier.onInstallTapped?()
@@ -457,7 +457,7 @@ struct UpdateCoordinatorProactiveCheckTests {
   func notificationTapIgnoredWhenNoUpdateAvailable() {
     let notifier = FakeNotifier()
     let coordinator = makeCoordinator(notifier: notifier)
-    coordinator.dictationActiveProvider = { false }
+    coordinator.workInFlightProvider = { false }
     // No `noteAvailable` → state is not `.available` (a stale delivered
     // notification whose version is already installed). With the tap delegate
     // active on every launch, this path is now reachable; it must NOT kick off

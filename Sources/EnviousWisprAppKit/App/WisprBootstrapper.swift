@@ -2155,10 +2155,14 @@ package final class WisprBootstrapper {
     // opens with the app menu, Dock icon and Cmd-Tab entry.
     appWindowCoordinator.beginLaunch()
     sparkleUpdateController.startUpdater()
-    // #1019: wire the active-dictation guard so the new install affordances
-    // (menu item / notification) never relaunch the app mid-capture.
-    sparkleUpdateController.updateCoordinator?.dictationActiveProvider = { [weak self] in
-      self?.liveRecordingState.isDictationActive ?? false
+    // #1019, #3194: the install affordances (menu item / notification) refuse while a relaunch
+    // would lose work, by the same owner as the language relaunch: dictation, a file
+    // transcription or speaker retry, a recovery replay or a recording starting.
+    sparkleUpdateController.updateCoordinator?.workInFlightProvider = { [weak self] in
+      guard let self else { return false }
+      return AppRelauncher.workInFlight(
+        dictationActive: liveRecordingState.isDictationActive, fileImport: fileImportCoordinator)
+        || AppRelauncher.backgroundWorkInFlight()
     }
     // #2197: same refusal while clipboard cleanup is pending (why: its own doc).
     sparkleUpdateController.updateCoordinator?
