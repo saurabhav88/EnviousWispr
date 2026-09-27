@@ -46,6 +46,10 @@ final class WordCheckRuntime {
   private var idleUnloadTask: Task<Void, Never>?
   /// A removal is draining the last load and deleting the files: no new load may start.
   private var removing = false
+  /// The app, not the user, cancelled a download because nothing needed it any more. The fetch
+  /// policy holds a user's cancel until they ask again; this one must resume on its own once the
+  /// check is wanted again (cloud review, PR #3245).
+  private var cancelledBecauseUnwanted = false
   /// Every load still running, cancelled or not, by generation. Cancellation does not stop a load:
   /// the weights are read on a background queue until it ends. A new load waits for these before
   /// reading (two never overlap in memory), and a removal waits for all of them before deleting.
@@ -90,6 +94,14 @@ final class WordCheckRuntime {
   func refresh(trigger: String, userInitiated: Bool = false) {
     guard wanted else {
       if activeSelections == 0 { unload(reason: "not_wanted") }
+      // The Dictionary switch is the off-switch for the download too: stop one in flight.
+      switch deliveryState {
+      case .preparing, .downloading, .verifying:
+        cancelledBecauseUnwanted = true
+        delivery.cancelWordCheckDownload()
+      case .notReady, .admitted, .failed, .cancelled:
+        break
+      }
       onStatusChange()
       return
     }
@@ -118,12 +130,15 @@ final class WordCheckRuntime {
         parakeetAdmitted: parakeetAdmitted,
         killSwitchOn: handle.isEnabled(),
         state: deliveryState,
-        userInitiated: userInitiated))
+        userInitiated: userInitiated || cancelledBecauseUnwanted))
     fetchDecisionsForTests.append(decision)
     Task {
       await AppLogger.shared.log("word check fetch \(trigger): \(decision)", category: "WordCheck")
     }
-    if decision == .start { delivery.startWordCheckDownload() }
+    if decision == .start {
+      cancelledBecauseUnwanted = false
+      delivery.startWordCheckDownload()
+    }
   }
 
   private func deliveryStateChanged(_ state: DeliveryState) {

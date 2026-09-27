@@ -692,6 +692,13 @@ public final class ModelDeliveryHome {
     Task { _ = await handle.ensureAvailable() }
   }
 
+  /// #3242: stop an in-flight word check download (the Dictionary went off, or no chosen engine
+  /// needs it any more). Resumable partials stay; the next start resumes.
+  public func cancelWordCheckDownload() {
+    guard let handle = wordCheckHandle else { return }
+    Task { await handle.cancelActiveFetch() }
+  }
+
   public func cancelEditJudgeDownload() {
     guard let handle = editJudgeHandle else { return }
     Task { await handle.cancelActiveFetch() }
