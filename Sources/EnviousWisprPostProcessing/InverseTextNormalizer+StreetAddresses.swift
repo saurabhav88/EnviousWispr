@@ -188,14 +188,19 @@ extension InverseTextNormalizer {
         out += rendered + Self.addressSeparator(m.g(5) ?? " ")
       }
       out += city + Self.addressSeparator(m.g(7) ?? " ") + state + Self.lineBreak(in: m.g(9) ?? " ", otherwise: " ") + zip
-      // The protected sentinel is padded with a space on each side; at the start of a line that
-      // leading pad would survive restoration as indentation ("here:\n 9 Main Street"), so drop it.
+      // The protected sentinel is padded with a space on each side, and restoration keeps that
+      // padding. Keep a pad only where the original text had a space or tab next to the address;
+      // otherwise it would survive as a stray space: indentation at a line start ("here:\n 9 Main
+      // Street") or a gap before a possessive or quote ("06103 's"; Codex review r20).
       var sentinel = protectFormatted(out)
-      if location > 0, m.ns.substring(with: NSRange(location: location - 1, length: 1))
-        .first?.isNewline == true, sentinel.first == " "
-      {
-        sentinel.removeFirst()
+      let end = m.result.range.location + m.result.range.length
+      let isSpace: (Int) -> Bool = { i in
+        guard i >= 0, i < m.ns.length else { return true }
+        let c = m.ns.character(at: i)
+        return c == 0x20 || c == 0x09
       }
+      if !isSpace(location - 1), sentinel.first == " " { sentinel.removeFirst() }
+      if !isSpace(end), sentinel.last == " " { sentinel.removeLast() }
       return sentinel
     }
   }

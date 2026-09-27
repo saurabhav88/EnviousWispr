@@ -138,6 +138,19 @@ struct InverseTextNormalizerStreetAddressTests {
       "Deliver it here:\n9 Main Street Hartford Connecticut 06103",
       "Deliver it here:\n9 Main Street, Hartford, Connecticut 06103"
     ),
+    // Codex diff review r20: no pad space against a possessive, a quote or a brace
+    (
+      "The address 9 Main Street Hartford Connecticut 06103's mailbox is full.",
+      "The address 9 Main Street, Hartford, Connecticut 06103's mailbox is full."
+    ),
+    (
+      "He wrote \"9 Main Street Hartford Connecticut 06103\" on it.",
+      "He wrote \"9 Main Street, Hartford, Connecticut 06103\" on it."
+    ),
+    (
+      "Send it to {9 Main Street Hartford Connecticut 06103} now.",
+      "Send it to {9 Main Street, Hartford, Connecticut 06103} now."
+    ),
     // "!" or "?" ends a sentence and lets the next address start
     (
       "Where is it? 9 Main Street Hartford Connecticut 06103 is the place.",
