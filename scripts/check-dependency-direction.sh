@@ -198,7 +198,7 @@ test_targets_and_permitted() {
     # Everything the unit suite legitimately links. EnviousWisprDesktopEffects and
     # EnviousWisprAppLive are ABSENT on purpose — that absence is the point.
     EnviousWisprDesktopEffectsTests) echo "EnviousWisprCore EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprDesktopEffects" ;;
-    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR" ;;
+    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck" ;;
     EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices" ;;
     # #3095: not a target. `Tests/Fixtures/` holds files a test launches at
     # runtime (`swift Tests/Fixtures/frozen-app/FrozenAppHelper.swift`, #2705);
