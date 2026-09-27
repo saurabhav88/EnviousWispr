@@ -157,7 +157,7 @@ extension InverseTextNormalizer {
         guard let rendered = Self.renderUnit(unit) else { return nil }
         out += rendered + Self.addressSeparator(m.g(5) ?? " ")
       }
-      out += city + Self.addressSeparator(m.g(7) ?? " ") + state + ((m.g(9) ?? " ").contains("\n") ? "\n" : " ") + zip
+      out += city + Self.addressSeparator(m.g(7) ?? " ") + state + Self.lineBreak(in: m.g(9) ?? " ", otherwise: " ") + zip
       return protectFormatted(out)
     }
   }
@@ -175,7 +175,14 @@ extension InverseTextNormalizer {
 
   /// A comma where the speaker gave none; a line break the recogniser wrote is kept.
   private static func addressSeparator(_ sep: String) -> String {
-    sep.contains("\n") ? (sep.contains(",") ? ",\n" : "\n") : ", "
+    let brk = lineBreak(in: sep, otherwise: "")
+    return brk.isEmpty ? ", " : (sep.contains(",") ? "," + brk : brk)
+  }
+
+  /// The line break a separator holds, exactly as written (`\n`, `\r\n` or `\r`), or `otherwise`.
+  private static func lineBreak(in sep: String, otherwise: String) -> String {
+    let brk = String(sep.filter(\.isNewline))
+    return brk.isEmpty ? otherwise : brk
   }
 
   /// House or unit number: written digits; a strict cardinal ("eleven", "four hundred"); a hundred

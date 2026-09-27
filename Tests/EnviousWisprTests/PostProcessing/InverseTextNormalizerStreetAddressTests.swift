@@ -124,6 +124,15 @@ struct InverseTextNormalizerStreetAddressTests {
       "Ship to 100 Market Street St. Louis Missouri 63101 today.",
       "Ship to 100 Market Street, St. Louis, Missouri 63101 today."
     ),
+    // Codex diff review r13: any line break is kept as written
+    (
+      "9 Main Street\rHartford Connecticut 06103",
+      "9 Main Street\rHartford, Connecticut 06103"
+    ),
+    (
+      "9 Main Street\r\nHartford\r\nConnecticut\r\n06103",
+      "9 Main Street\r\nHartford\r\nConnecticut\r\n06103"
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."
