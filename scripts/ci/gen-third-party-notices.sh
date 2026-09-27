@@ -42,6 +42,16 @@ COMPONENTS=(
   "Sentry Cocoa|9.26.1|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
   "Sparkle|2.9.6|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
   "swift-argument-parser|1.7.1|Apache-2.0|swift-argument-parser/LICENSE.txt|https://github.com/apple/swift-argument-parser|swift-argument-parser"
+  # #3242: the word check runs on MLX. Both pins are Envious Labs forks carrying one small change each
+  # (see Package.swift); the license texts are upstream's, unchanged. MLX core, mlx-c, nlohmann/json
+  # and fmt are compiled into Cmlx; swift-numerics is MLX's own dependency.
+  "mlx-swift|8746d3d8 (fork saurabhav88/mlx-swift of 0.31.6)|MIT|mlx-swift/LICENSE|https://github.com/saurabhav88/mlx-swift|mlx-swift"
+  "MLX core (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/mlx/LICENSE|https://github.com/ml-explore/mlx|"
+  "mlx-c (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/mlx-c/LICENSE|https://github.com/ml-explore/mlx-c|"
+  "nlohmann/json (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/json/LICENSE.MIT|https://github.com/nlohmann/json|"
+  "fmt (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/fmt/LICENSE|https://github.com/fmtlib/fmt|"
+  "mlx-swift-lm|644680cd (fork saurabhav88/mlx-swift-lm)|MIT|mlx-swift-lm/LICENSE|https://github.com/saurabhav88/mlx-swift-lm|mlx-swift-lm"
+  "swift-numerics|1.1.1|Apache-2.0|swift-numerics/LICENSE.txt|https://github.com/apple/swift-numerics|swift-numerics"
   # #1741: test-only — the freeze test's Swift parser. Never linked into the
   # shipped app (Package.swift depends on it solely from the EnviousWisprTests
   # test target). Credited anyway: the coverage cross-check keys off
