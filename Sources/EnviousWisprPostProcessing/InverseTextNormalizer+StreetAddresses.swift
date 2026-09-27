@@ -124,15 +124,15 @@ extension InverseTextNormalizer {
       let partOfLonger =
         #"(?i)(?:\b(?:"# + Self.unitsTensAlt + #"|hundred|thousand)(?:[^\S\n]+and)?|\d)[^\S\n]*$"#
       if before.range(of: partOfLonger, options: .regularExpression) != nil { return nil }
-      // Enumerated after the cloud review (docs/audits/2026-09-26-3211-cloud-class-enum.txt): a
-      // number after a lowercase label, the day of a written date, the far end of a range or ratio,
-      // and a time zone or unit read as a street word are not house numbers.
-      if before.range(
-        of: #"(?i)\b(?:room|apt|apartment|suite|unit|floor|exit|route|chapter|highway|mile|page|no)\.?\s+$"#,
-        options: .regularExpression) != nil
-      {
-        return nil
-      }
+      // An address starts where addresses are introduced: at the start of the text or a line,
+      // after a comma, colon, semicolon, bracket, quote or dash, after a sentence end, or after
+      // an introducing word ("to", "at", "for", "is", "from", "and", ...). Any other word before
+      // the number is its label ("section 9", "Room 12", "exit 9"), an open set no list closes
+      // (cloud review, class enumeration and Codex review r17).
+      if !Self.addressMayStart(before: before, atTextStart: windowStart == 0) { return nil }
+      // Enumerated after the cloud review (docs/audits/2026-09-26-3211-cloud-class-enum.txt): the
+      // day of a written date, the far end of a range or ratio, and a time zone or unit read as a
+      // street word are not house numbers.
       if before.range(of: #"\b[A-Z][a-z]+\s+\d{1,2},\s+$"#, options: .regularExpression) != nil {
         return nil
       }
@@ -146,11 +146,6 @@ extension InverseTextNormalizer {
         of: #"^(?:AM|PM|UTC|GMT|EST|EDT|CST|CDT|MST|MDT|PST|PDT|FT)\s"#, options: .regularExpression)
         != nil
       {
-        return nil
-      }
-      // A number right after a capitalized word is that word's label, not a house number
-      // ("Room 12 Main Street", "Chapter 9 Main Street", "Route 9"; cloud review lens).
-      if before.range(of: #"[A-Z][\p{L}'’-]*[\t\p{Zs}]+$"#, options: .regularExpression) != nil {
         return nil
       }
       // The city run must not hold a second street type: that split is ambiguous.
@@ -178,7 +173,7 @@ extension InverseTextNormalizer {
       // Street Bank", "In twenty twenty Main Street Bank"): read on the parsed value.
       if house.count == 4, let y = Int(house), (1900...2099).contains(y),
         before.range(
-          of: #"(?i)\b(?:in|since|by|from|until|till|before|after|during|around|circa|through|throughout|between|of)\s+$"#, options: .regularExpression)
+          of: #"(?i)\b(?:from|of|for|on)\s+$"#, options: .regularExpression)
           != nil
       {
         return nil
@@ -193,7 +188,15 @@ extension InverseTextNormalizer {
         out += rendered + Self.addressSeparator(m.g(5) ?? " ")
       }
       out += city + Self.addressSeparator(m.g(7) ?? " ") + state + Self.lineBreak(in: m.g(9) ?? " ", otherwise: " ") + zip
-      return protectFormatted(out)
+      // The protected sentinel is padded with a space on each side; at the start of a line that
+      // leading pad would survive restoration as indentation ("here:\n 9 Main Street"), so drop it.
+      var sentinel = protectFormatted(out)
+      if location > 0, m.ns.substring(with: NSRange(location: location - 1, length: 1))
+        .first?.isNewline == true, sentinel.first == " "
+      {
+        sentinel.removeFirst()
+      }
+      return sentinel
     }
   }
 
@@ -206,6 +209,27 @@ extension InverseTextNormalizer {
     else { return street }
     let between = whole[houseEnd..<streetStart].trimmingCharacters(in: .whitespaces)
     return between.isEmpty ? street : between + " " + street
+  }
+
+  /// Words after which a house number may begin an address.
+  static let addressIntroducers: Set<String> = [
+    "to", "at", "for", "is", "was", "are", "were", "be", "from", "on", "into", "onto", "via", "and",
+    "or", "near", "of", "as", "address",
+  ]
+
+  /// Whether the text right before a house number lets an address start there (see the call site).
+  static func addressMayStart(before: String, atTextStart: Bool) -> Bool {
+    let lead = before.replacingOccurrences(
+      of: #"[\t\p{Zs}]+$"#, with: "", options: .regularExpression)
+    guard let last = lead.last else { return atTextStart || before.contains(where: \.isNewline) }
+    if last.isNewline || ",:;([{\"“'‘—–-".contains(last) { return true }
+    // A sentence end, but not an abbreviation ("No.", "St.", "Dr."): two lowercase letters or more.
+    if ".!?".contains(last) {
+      return lead.range(of: #"[a-z]{2,}[.!?]$"#, options: .regularExpression) != nil
+        && lead.range(of: #"(?i)\bno\.$"#, options: .regularExpression) == nil
+    }
+    guard let word = lead.split(whereSeparator: { $0.isWhitespace }).last else { return atTextStart }
+    return addressIntroducers.contains(word.lowercased())
   }
 
   /// A comma where the speaker gave none; a line break the recogniser wrote is kept.

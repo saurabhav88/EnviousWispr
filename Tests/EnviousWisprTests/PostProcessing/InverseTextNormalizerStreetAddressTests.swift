@@ -133,6 +133,11 @@ struct InverseTextNormalizerStreetAddressTests {
       "9 Main Street\r\nHartford\r\nConnecticut\r\n06103",
       "9 Main Street\r\nHartford\r\nConnecticut\r\n06103"
     ),
+    // an address opening its own line keeps the line start tight (no pad space)
+    (
+      "Deliver it here:\n9 Main Street Hartford Connecticut 06103",
+      "Deliver it here:\n9 Main Street, Hartford, Connecticut 06103"
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."
@@ -166,7 +171,7 @@ struct InverseTextNormalizerStreetAddressTests {
     "Court Street, Brooklyn is where we met in 2019.",
     "She moved from Washington to Oregon in 2020 and back in 2021.",
     "The Main Street festival draws 50000 people.",
-    "It closed in 2019 Main Street Bank Denver Colorado 80203 opened.",
+    "Revenue for 2019 Main Street Bank Denver Colorado 80203 rose.",
     "Georgia Way told Indiana Place about the Virginia Court ruling.",
     "Ticket 48213 covers the Washington Court hearing.",
     "The Place Street sign in Virginia fell over.",
@@ -176,13 +181,13 @@ struct InverseTextNormalizerStreetAddressTests {
     "Meet me at 9 High Plains Road Shelton Connecticut.",
     "Room two twenty is booked for Friday.",
     "Take 9 High Plains Road toward Shelton Connecticut 06484 and turn left.",
-    "We log 9 High Plains Road Shelton Connecticut 064841 today.",
+    "Send it to 9 High Plains Road Shelton Connecticut 064841 today.",
     // Codex diff review r11: a name never runs through a time or a sentence end
     "We met at 9 A.M. Main Street Hartford Connecticut 06103 was the next topic.",
-    "The rope measures 9 Ft. Main Street Hartford Connecticut 06103 is the next entry.",
+    "The rope is 9 Ft. Main Street Hartford Connecticut 06103 is the next entry.",
     // Codex diff review r14: a street, unit or city name never spans a line break
-    "We log nine Main Street Hartford\nCourt Connecticut 06103 as two separate entries.",
-    "We log nine Main Street Hartford\nNew Haven Connecticut 06103 as two entries.",
+    "Send it to nine Main Street Hartford\nCourt Connecticut 06103 as two separate entries.",
+    "Send it to nine Main Street Hartford\nNew Haven Connecticut 06103 as two entries.",
     "Deliver to 9 Main Street Suite two\u{2028}twenty Hartford Connecticut 06103.",
   ]
 
@@ -213,21 +218,21 @@ struct InverseTextNormalizerStreetAddressTests {
   /// digit, are not addresses. The year and digit-read passes still write their numbers, as on main.
   nonisolated static let notAddresses: [(dictated: String, expected: String)] = [
     (
-      "It closed in twenty twenty Main Street Bank Denver Colorado 80203 opened.",
-      "It closed in 2020 Main Street Bank Denver Colorado 80203 opened."
+      "Revenue for twenty twenty Main Street Bank Denver Colorado 80203 rose.",
+      "Revenue for 2020 Main Street Bank Denver Colorado 80203 rose."
     ),
     (
-      "We log 9 Main Street Hartford Connecticut zero six four eight four 1 today.",
-      "We log 9 Main Street Hartford Connecticut 064841 today."
+      "Send it to 9 Main Street Hartford Connecticut zero six four eight four 1 today.",
+      "Send it to 9 Main Street Hartford Connecticut 064841 today."
     ),
-    // Codex diff review r6: a ZIP+4 cut short, and a year after "during"
+    // Codex diff review r6: a ZIP+4 cut short, and a year after a time word
     (
       "Send it to 9 Main Street Hartford Connecticut 02108 dash one two today.",
       "Send it to 9 Main Street Hartford Connecticut 02108 dash one two today."
     ),
     (
-      "It closed during 2019 Main Street Bank Denver Colorado 80203 opened.",
-      "It closed during 2019 Main Street Bank Denver Colorado 80203 opened."
+      "Figures from 2019 Main Street Bank Denver Colorado 80203 arrived.",
+      "Figures from 2019 Main Street Bank Denver Colorado 80203 arrived."
     ),
     // Codex diff review r10: a SPOKEN ZIP running into another digit word may be a longer number
     (
@@ -259,6 +264,10 @@ struct InverseTextNormalizerStreetAddressTests {
     ("Room 12 Main Street Hartford Connecticut 06103.", "Room 12 Main Street Hartford Connecticut 06103."),
     ("Chapter 9 Main Street Hartford Connecticut 06103.", "Chapter 9 Main Street Hartford Connecticut 06103."),
     ("Gate 9 Main Street Hartford Connecticut 06103.", "Gate 9 Main Street Hartford Connecticut 06103."),
+    // Codex diff review r17: any word that labels the number, not only listed ones
+    ("See section 9 Main Street Hartford Connecticut 06103 for details.", "See section 9 Main Street Hartford Connecticut 06103 for details."),
+    ("Ask about No. 9 Main Street Hartford Connecticut 06103 today.", "Ask about No. 9 Main Street Hartford Connecticut 06103 today."),
+    ("Ask about no. 9 Main Street Hartford Connecticut 06103 today.", "Ask about no. 9 Main Street Hartford Connecticut 06103 today."),
   ]
 
   @Test("a number that belongs to the words before it is not a house number", arguments: borrowedNumbers)
