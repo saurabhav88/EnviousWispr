@@ -55,6 +55,11 @@ public final class ModelDeliveryHome {
   /// this build. No mutation claim, no `ProgressFile` bridge: a limb.
   public private(set) var editJudgeHandle: DeliveredModelHandle?
   public private(set) var editJudgeRegistration: DeliveryRegistration?
+  /// #3242: the learned-word check for polish engines without their own (`word_check` family,
+  /// Kev on MLX). Its own sibling under `Models/` for the reason the judge's is. Nil when the
+  /// bundled manifest failed to load; `WordCheckRuntime` then reports the check unavailable.
+  public private(set) var wordCheckHandle: DeliveredModelHandle?
+  public private(set) var wordCheckRegistration: DeliveryRegistration?
   /// #3105: each local engine's learned-word checker, a sibling of that
   /// engine's shard directory with its own identity and admission marker.
   /// Registration alone starts no fetch; `ensureCheckerAdapter` does.
@@ -98,9 +103,16 @@ public final class ModelDeliveryHome {
   public private(set) var parakeetState: DeliveryState = .notReady
 
   /// #996 phase D: fired on every Parakeet `.admitted` (including the launch
-  /// replay of an already-admitted copy), so the judge's fetch policy can run
-  /// "after Parakeet" without polling the mirror. Set by `LearnFromEditsWiring`.
-  public var onParakeetAdmitted: (@MainActor () -> Void)?
+  /// replay of an already-admitted copy), so a companion model's fetch policy can
+  /// run "after Parakeet" without polling the mirror. A list because two owners
+  /// wait on it (`LearnFromEditsWiring` for the edit judge, `WordCheckRuntime` for
+  /// the word check, #3242); a single slot let the later assignment silently
+  /// replace the earlier one.
+  private var parakeetAdmittedObservers: [@MainActor () -> Void] = []
+
+  public func addParakeetAdmittedObserver(_ observer: @escaping @MainActor () -> Void) {
+    parakeetAdmittedObservers.append(observer)
+  }
 
   /// #996 phase D: whether Parakeet is admitted NOW, from the persisted marker,
   /// not the in-process mirror. A returning user's Parakeet was admitted in a
@@ -122,6 +134,12 @@ public final class ModelDeliveryHome {
     didSet { if editJudgeLaunchProbeDidFinishForTests { onEditJudgeLaunchProbeFinished?() } }
   }
   package private(set) var editJudgeLaunchProbeDidFinishForTests = false
+
+  /// #3242: the word check's launch probe finished (same contract as the judge's above).
+  public var onWordCheckLaunchProbeFinished: (@MainActor () -> Void)? {
+    didSet { if wordCheckLaunchProbeDidFinishForTests { onWordCheckLaunchProbeFinished?() } }
+  }
+  package private(set) var wordCheckLaunchProbeDidFinishForTests = false
 
   /// Observable mirror of the PREVIEW model's delivery state (#2123).
   ///
@@ -514,6 +532,39 @@ public final class ModelDeliveryHome {
       }
     }
 
+    // #3242: the word check for polish engines without their own. Same launch sequence as
+    // the judge above; whether a download STARTS is `WordCheckFetchPolicy`'s decision, made in
+    // `WordCheckRuntime`.
+    do {
+      let manifest = try DeliveryManifest.loadBundled(
+        resource: "word-check-delivery-manifest", bundle: manifestBundle)
+      let appSupport = appSupportRoot
+      let registration = DeliveryRegistration(
+        manifest: manifest,
+        installDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/Models/word-check", isDirectory: true),
+        metadataDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/ModelDelivery", isDirectory: true))
+      wordCheckRegistration = registration
+      Task { await controller.sweepSupersededStaging(registration) }
+      wordCheckHandle = DeliveredModelHandle(
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+      let wordCheckHome = self
+      Task {
+        await wordCheckHome.recordFirstRunBaseline(for: registration)
+        _ = await wordCheckHome.controller.admitIfComplete(registration)
+        wordCheckHome.wordCheckLaunchProbeDidFinishForTests = true
+        wordCheckHome.onWordCheckLaunchProbeFinished?()
+      }
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Word check delivery manifest unavailable: engines without their own check stay "
+            + "unchecked and no download can supply what this build never shipped: \(error)",
+          level: .info, category: "Delivery")
+      }
+    }
+
     // #3105: each engine's checker is a separate ModelIdentity and install
     // directory. The base registrations stay in WisprBootstrapper.
     let checkerDataDirectory = appSupportOverride == nil
@@ -619,6 +670,21 @@ public final class ModelDeliveryHome {
         await AppLogger.shared.log(
           "Correction judge download refused: the edit_judge delivery kill switch is off "
             + "(modelDelivery.edit_judge.enabled = false)",
+          level: .info, category: "Delivery")
+      }
+      return
+    }
+    Task { _ = await handle.ensureAvailable() }
+  }
+
+  /// #3242: start, resume or retry the word check download. Kill-switch guarded like the judge's.
+  public func startWordCheckDownload() {
+    guard let handle = wordCheckHandle else { return }
+    guard handle.isEnabled() else {
+      Task {
+        await AppLogger.shared.log(
+          "Word check download refused: the word_check delivery kill switch is off "
+            + "(modelDelivery.word_check.enabled = false)",
           level: .info, category: "Delivery")
       }
       return
@@ -748,7 +814,7 @@ public final class ModelDeliveryHome {
           home.parakeetStateUpdatesForTests += 1
           if case .admitted = state {
             home.firstRunByIdentity[observedIdentity] = false
-            home.onParakeetAdmitted?()
+            for observer in home.parakeetAdmittedObservers { observer() }
           }
         }
       }

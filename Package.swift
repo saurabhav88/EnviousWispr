@@ -40,6 +40,18 @@ let package = Package(
     .package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
       revision: "b29591ada1f70510c12c13b50ffae02052ff75c3"),
+    // #3242: the learned-word check for engines without their own (Kev, a Qwen3.5 decision model) runs on
+    // MLX, through two forks each carrying the smallest change on top of upstream:
+    // - mlx-swift-lm (upstream ee673d6): two access changes in Qwen35.swift so the final-norm hidden
+    //   states are reachable without lm_head, and its mlx-swift dependency pointed at the fork below.
+    // - mlx-swift (upstream 0.31.6): the CUDA build-tool plugin attached to Cmlx on Linux only. On Apple
+    //   platforms it generates nothing, but its presence made every xcodebuild stop at "Validate plug-in".
+    .package(
+      url: "https://github.com/saurabhav88/mlx-swift-lm.git",
+      revision: "644680cddf080bc3bfd1318798735646b184e127"),
+    .package(
+      url: "https://github.com/saurabhav88/mlx-swift",
+      revision: "8746d3d8d2f3a19c79276f6d884b8c9c02e751e2"),
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     .package(url: "https://github.com/getsentry/sentry-cocoa.git", from: "9.8.0"),
@@ -204,6 +216,21 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprLLM"
     ),
+    // #3242: the learned-word check for polish engines that have none of their own. A leaf over Core
+    // so MLX never reaches the eval harnesses that link EnviousWisprLLM or EnviousWisprPipeline.
+    .target(
+      name: "EnviousWisprWordCheck",
+      dependencies: [
+        "EnviousWisprCore",
+        .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "MLXNN", package: "mlx-swift"),
+        .product(name: "MLXLLM", package: "mlx-swift-lm"),
+        .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+        // Qwen's tokenizer through the same public Argmax surface the output classifier uses.
+        .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
+      ],
+      path: "Sources/EnviousWisprWordCheck"
+    ),
     .target(
       name: "EnviousWisprPipeline",
       dependencies: [
@@ -242,6 +269,8 @@ let package = Package(
         "EnviousWisprLLM",
         "EnviousWisprPipeline",
         "EnviousWisprContacts",
+        // #3242: composition only. `WordCheckRuntime` owns the Kev model's load and unload.
+        "EnviousWisprWordCheck",
         .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
         "Sparkle",

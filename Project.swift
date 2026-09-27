@@ -253,6 +253,7 @@ let firstPartyTargetDeps: [TargetDependency] = [
   .target(name: "EnviousWisprASR"),
   .target(name: "EnviousWisprLLM"),
   .target(name: "EnviousWisprPipeline"),
+  .target(name: "EnviousWisprWordCheck"),
 ]
 
 let project = Project(
@@ -342,6 +343,17 @@ let project = Project(
         // TokenizerWrapper) for the output-safety classifier's pair-encoder seam.
         .package(product: "ArgmaxOSS"),
       ]),
+    // #3242: Kev learned-word check on MLX (leaf over Core; see Package.swift).
+    firstPartyLibrary(
+      "EnviousWisprWordCheck",
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .package(product: "MLX"),
+        .package(product: "MLXNN"),
+        .package(product: "MLXLLM"),
+        .package(product: "MLXLMCommon"),
+        .package(product: "ArgmaxOSS"),
+      ]),
     firstPartyLibrary(
       "EnviousWisprPipeline",
       dependencies: [
@@ -425,6 +437,7 @@ let project = Project(
         .target(name: "EnviousWisprWhisperPreviewAdapter"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ],
       // #1487: bundled GPL-3.0.txt + THIRD-PARTY-NOTICES.txt for the in-app
@@ -461,6 +474,7 @@ let project = Project(
         .target(name: "EnviousWisprCore"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ],
       shipsInApp: false),
@@ -473,6 +487,7 @@ let project = Project(
         // Same transitive-propagation reason as AppLive below.
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ]),
 
@@ -489,6 +504,7 @@ let project = Project(
         // FluidAudio internal named nowhere in this project's source.
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ]),
 
@@ -581,6 +597,8 @@ let project = Project(
         // (`training-manifest-shaped.json`, bound to the package by digest),
         // so there is no second bundled file. Same Bundle.main route.
         "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json",
+        // #3242: Kev learned-word check (MLX) for polish engines without their own checker.
+        "Sources/EnviousWispr/Resources/word-check-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/S1-MINI-LICENSE.txt",
         "Sources/EnviousWispr/Resources/S1-MINI-NOTICE.txt",
         "Sources/EnviousWispr/Resources/llama-server",
@@ -683,6 +701,7 @@ let project = Project(
         .target(name: "EnviousWisprDesktopEffects"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ],
       settings: testTargetSettings
@@ -711,6 +730,7 @@ let project = Project(
         // ParakeetModelLoadSentryErrorTests import this directly.
         .target(name: "EnviousWisprFluidAudioBridge"),
         .package(product: "FluidAudio"),
+        .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
         // parser. Test-target-only — never reaches the app or XPC targets

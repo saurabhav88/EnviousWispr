@@ -785,6 +785,22 @@ package final class WisprBootstrapper {
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
     )
     settingsSync.applyInitialSettings(settings)
+    // #3242: the word check for polish engines without their own. Held by the eligibility
+    // owner (its only reader); driven by the Dictionary switch and both engine choices.
+    let wordCheck = WordCheckRuntime(
+      delivery: modelDelivery,
+      isDictionaryEnabled: { [weak settings] in settings?.wordCorrectionEnabled ?? false },
+      someEngineLacksOwnChecker: { [weak settings] in
+        guard let settings else { return false }
+        return LearnedWordCheckerEngine(provider: settings.llmProvider) == nil
+          || LearnedWordCheckerEngine(provider: settings.effectiveFileImportLLMProvider) == nil
+      },
+      isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
+    wordCheck.onStatusChange = { [checkerEligibility] in checkerEligibility.statusDidChange() }
+    checkerEligibility.wordCheck = wordCheck
+    settingsSync.onWordCheckInputsChanged = { [weak wordCheck] in
+      wordCheck?.refresh(trigger: "settings")
+    }
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
     //
@@ -1082,6 +1098,8 @@ package final class WisprBootstrapper {
         }
         // #996 phase D: the judge downloads after first-run setup, never during it.
         learnFromEdits?.onboardingDidComplete()
+        // #3242: so does the word check.
+        checkerEligibility.wordCheck?.onboardingDidComplete()
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
       // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first

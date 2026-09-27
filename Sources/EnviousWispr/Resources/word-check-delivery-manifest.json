@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "family": "word_check",
+    "name": "kev-wc",
+    "revision": "kev-wc-1-43a5a2e7",
+    "variant": "mlx-q4",
+    "runtimeABI": "mlx-kev-v1"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "installPath": "LICENSE",
+      "sizeBytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "component": "LICENSE"
+    },
+    {
+      "path": "NOTICE",
+      "installPath": "NOTICE",
+      "sizeBytes": 841,
+      "sha256": "9b47ec55276bfca2d4b0f355fa62cf1522fbe5fe7ca457e10ad77b422355ceb1",
+      "component": "NOTICE"
+    },
+    {
+      "path": "config.json",
+      "installPath": "config.json",
+      "sizeBytes": 2578,
+      "sha256": "5cc116030d3695c9aaeb606a2be35bdf137f6ff44694761b2edde4d8fde629da",
+      "component": "config.json"
+    },
+    {
+      "path": "head.safetensors",
+      "installPath": "head.safetensors",
+      "sizeBytes": 2099586,
+      "sha256": "923f8224d1ae358d24509bac4759b6bdc48c3a339312dd2ab7b457fcbae38457",
+      "component": "head.safetensors"
+    },
+    {
+      "path": "kev-contract.json",
+      "installPath": "kev-contract.json",
+      "sizeBytes": 1768,
+      "sha256": "a2609a69ea5dbf3f03cbcacc3142ddd534b4b76ccda8484d82fd57965499be34",
+      "component": "kev-contract.json"
+    },
+    {
+      "path": "model-00001-of-00002.safetensors",
+      "installPath": "model-00001-of-00002.safetensors",
+      "sizeBytes": 212133334,
+      "sha256": "9d1c60abc9965d9b78dcc76204cc4bf6aa91fe304bb732b77ab54ad407bce110",
+      "component": "model"
+    },
+    {
+      "path": "model-00002-of-00002.safetensors",
+      "installPath": "model-00002-of-00002.safetensors",
+      "sizeBytes": 211897741,
+      "sha256": "9408cc8a242c993a7133dc15b5d7ce988529e4a627bc5dadae0fa5c40e13e465",
+      "component": "model"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "installPath": "model.safetensors.index.json",
+      "sizeBytes": 66973,
+      "sha256": "a58478ae6b71e1ce2fab989c379bc4f8cd0c9db539d384cfeb9097a2933dd869",
+      "component": "model"
+    },
+    {
+      "path": "tokenizer.json",
+      "installPath": "tokenizer.json",
+      "sizeBytes": 12807196,
+      "sha256": "fe000e3ed39ed12b8d2481d527d44f93c65d37e87645d2dcc80d1bf9d50d2927",
+      "component": "tokenizer.json"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "installPath": "tokenizer_config.json",
+      "sizeBytes": 16712,
+      "sha256": "e611fbccc7c29ef3b1cafb1cb7ea548d189968632901d678fd62be68c47885de",
+      "component": "tokenizer_config.json"
+    }
+  ],
+  "optionalFiles": [],
+  "totalBytes": 439038087,
+  "sources": [
+    {
+      "id": "our_copy",
+      "baseURL": "https://models.enviouslabs.co/kev/kev-wc-1-43a5a2e7/"
+    }
+  ],
+  "license": {
+    "name": "Envious Labs weights; base model Qwen3.5-0.8B-Base and Kev-0.8B (Apache-2.0)",
+    "url": "https://huggingface.co/jaredpalmer/kev-0.8b"
+  },
+  "admission": {
+    "layout": "componentSet",
+    "installLocation": "wordCheckCache",
+    "diskHeadroomFactor": "2.2",
+    "evictPreviousRevisions": true,
+    "entrypointFile": "kev-contract.json"
+  },
+  "manifestDigest": "e94716aa11b04b36d92c00ae1a77a2e6532ba3dd22880e1366a0f778626f369e"
+}

@@ -154,10 +154,10 @@ struct LearningSection: View {
               Spacer(minLength: 8)
               SettingsActionButton(title: LearnedCheckerSettingsStatus.retryTitle,
                 isEnabled: true) {
-                // "Try again" retries the selected engine's word check (#3105).
-                if let engine = LearnedWordCheckerEngine(provider: settings.wrappedValue.llmProvider) {
-                  Task { await checkerEligibility.requestAdapterDownload(for: engine) }
-                }
+                // "Try again" retries the selected engine's word check (#3105), or the
+                // shared word check for an engine without its own (#3242).
+                let provider = settings.wrappedValue.llmProvider
+                Task { await checkerEligibility.retryDownload(for: provider) }
               }
             }
           }
