@@ -49,7 +49,9 @@ extension InverseTextNormalizer {
   static let streetAddressPattern: String = {
     let numWord = #"(?i:"# + unitsTensAlt + #"|hundred|thousand)"#
     let digitWord = #"(?i:zero|oh|o|one|two|three|four|five|six|seven|eight|nine)"#
-    let cap = #"[A-Z][\p{L}'’.-]*"#
+    // A capitalized word; a period only in St., Ft. or Mt. ("St. Louis"), so a name never runs
+    // through a sentence end or a time ("9 A.M. Main Street", Codex diff review r11).
+    let cap = #"(?:(?:St|Ft|Mt)\.|[A-Z][\p{L}'’-]*)"#
     let longestFirst: ([String]) -> String = { words in
       words.sorted { $0.count > $1.count }.map { NSRegularExpression.escapedPattern(for: $0) }
         .joined(separator: "|")
