@@ -73,7 +73,9 @@ extension InverseTextNormalizer {
       #"(?:((?:"# + streetUnitWords.joined(separator: "|") + #")\.?\s+"# + unitNum
       + #"|#\s?\d{1,5}[A-Z]?)"#
       + sep + #")?"#
-    let city = #"("# + cap + #"(?:\s+"# + cap + #"){0,2})"#
+    // A city may hold a lowercase connector between capitalized words ("City of Industry",
+    // "Stratford upon Avon"); a connector never opens or closes the city.
+    let city = #"("# + cap + #"(?:\s+(?:(?:of|on|upon|de|del|la|le|du|the)\s+)?"# + cap + #"){0,2})"#
     let state = #"("# + longestFirst(usStates) + #"|"# + usStateCodes.joined(separator: "|") + #")"#
     let zip =
       #"(\d{5}(?:-\d{4}|\s+(?i:dash|hyphen)\s+(?:\d{4}|"# + digitWord + #"(?:\s+"# + digitWord

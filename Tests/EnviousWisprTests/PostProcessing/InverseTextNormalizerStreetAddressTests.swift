@@ -105,6 +105,11 @@ struct InverseTextNormalizerStreetAddressTests {
       "Send it to one ten Main Street Hartford Connecticut 06103",
       "Send it to 110 Main Street, Hartford, Connecticut 06103"
     ),
+    // Codex diff review r9: a city with a lowercase connector
+    (
+      "nine Main Street City of Industry California 91744",
+      "9 Main Street, City of Industry, California 91744"
+    ),
     (
       "It goes to fifteen twenty Main Street Hartford Connecticut 06103.",
       "It goes to 1520 Main Street, Hartford, Connecticut 06103."
