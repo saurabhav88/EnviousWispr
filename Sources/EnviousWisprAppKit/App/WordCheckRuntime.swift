@@ -266,7 +266,7 @@ final class WordCheckRuntime {
   /// 1.6 s, past the 1.2 s selection deadline, so the first take after a quiet stretch went
   /// unchecked. Loading at record start hides that behind the dictation itself.
   /// `needsWordCheckForRecording`: this dictation's own polish engine has no checker. `wanted` alone
-  /// is also true when only Transcribe a File needs the check, and a dictation must not load 480 MB
+  /// is also true when only Transcribe a File needs the check, and a dictation must not load a model
   /// it will not use. The caller passes the take's FROZEN session provider, not the current setting.
   func recordingStarted(needsWordCheckForRecording: Bool) {
     guard needsWordCheckForRecording, wanted else { return }
@@ -344,7 +344,7 @@ final class WordCheckRuntime {
       identity: loaded.contract.revision, judge: Self.judge)
   }
 
-  /// The Dictionary row's line. Never loads the model: reading a status must not put 480 MB in
+  /// The Dictionary row's line. Never loads the model: reading a status must not put the model in
   /// memory, least of all right after the user turned the Dictionary off.
   func settingsStatus() -> LearnedCheckerSettingsStatus {
     if let absence = currentAbsence(triggerFetch: false) {

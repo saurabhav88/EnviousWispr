@@ -15,7 +15,7 @@ struct LearnedCheckerSettingsStatus: Equatable {
     comment: "Your Words, Learn from: the self-learning dictionary row: retry the word check download.")
   static let removeWordCheckTitle = LocalizedStringResource(
     "Remove word check",
-    comment: "Your Words, Learn from: the self-learning dictionary row: delete the downloaded word check (about 440 MB) when no chosen polish engine needs it.")
+    comment: "Your Words, Learn from: the self-learning dictionary row: delete the downloaded word check (about 500 MB) when no chosen polish engine needs it.")
 
   /// A check that is installed and ready, named by its owner. Used for the shared word check
   /// (#3242), whose status is read without loading its model.
