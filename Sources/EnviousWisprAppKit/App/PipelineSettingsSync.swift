@@ -90,7 +90,9 @@ final class PipelineSettingsSync {
     hotkeyService: HotkeyService,
     egOneRuntime: EGOneRuntime? = nil,
     s1MiniRuntime: EGOneRuntime? = nil,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
+    checkerSelectionProvider: (
+      @MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection
+    )? = nil,
     ollamaRemotenessLookup: @escaping (String) -> Bool?,
     /// #2648 — the bundled local polisher a RUNNING file import has frozen, or
     /// nil.
@@ -368,6 +370,10 @@ final class PipelineSettingsSync {
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
     case .learnFromEdits:
       break  // #996: read live by the edit watcher at each paste; nothing in the pipeline reads it.
+    case .shareUsageMetrics, .sendCrashReports:
+      // #3269: the privacy switches. Stored only for now; applying them to PostHog and
+      // Sentry arrives in #3269 chunk 3. The dictation pipeline never reads them.
+      break
     case .s1MiniStyling, .s1MiniStructure, .s1MiniContext:
       // #2649: frozen into `DictationSessionConfig` at recording start, like
       // provider and model, so a pick applies to the NEXT recording. Recovery
@@ -441,7 +447,8 @@ final class PipelineSettingsSync {
     // is never started while the other still holds the server — the coordinator
     // would then have to evict it mid-start, and the user would wait through a
     // stop the switch had already asked for.
-    reconcile(runtime: egOneRuntime, isSelected: settings.llmProvider == .egOne, deselectFirst: true)
+    reconcile(
+      runtime: egOneRuntime, isSelected: settings.llmProvider == .egOne, deselectFirst: true)
     reconcile(
       runtime: s1MiniRuntime, isSelected: settings.llmProvider == .s1Mini, deselectFirst: true)
     reconcile(runtime: egOneRuntime, isSelected: settings.llmProvider == .egOne)

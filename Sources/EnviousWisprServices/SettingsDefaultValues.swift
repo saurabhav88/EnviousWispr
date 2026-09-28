@@ -116,6 +116,13 @@ enum SettingsDefaultValues {
   // persist audio (the privacy-strict choice).
   static let crashRecoveryEnabled = true
 
+  // #3269: the two Settings > Permissions privacy switches. Both ON by default
+  // (founder 2026-09-28): users opt out themselves, nothing is opt-in.
+  // `shareUsageMetrics` gates PostHog; `sendCrashReports` gates Sentry crash and
+  // error reports (not `crashRecoveryEnabled`, the local audio spool above).
+  static let shareUsageMetrics = true
+  static let sendCrashReports = true
+
   // #996: learn from edits. ON by default (founder 2026-09-18): the card only
   // asks, nothing is remembered without a click. See `SettingsManager.learnFromEdits`.
   static let learnFromEdits = true

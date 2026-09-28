@@ -73,6 +73,25 @@ import Testing
       #expect(SettingsProjection.value(for: .smartInsertion, settings: settings) == "off")
     }
 
+    /// #3269: the privacy switches are never reported, so turning metrics off sends no final
+    /// "opted out" row (founder 2026-09-28). Smart insertion in the same flush is the positive
+    /// control: it proves the harness captured deltas, so an empty privacy result is not a
+    /// dead hook.
+    @Test("Privacy switches emit no settings delta while a tracked setting still does")
+    func privacySwitchesEmitNoDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.shareUsageMetrics = false
+      settings.sendCrashReports = false
+      settings.smartInsertion = false
+      telemetry.flush()
+
+      #expect(SettingsProjection.logicals(for: .shareUsageMetrics) == [])
+      #expect(SettingsProjection.logicals(for: .sendCrashReports) == [])
+      #expect(box.all.map { $0.stringProps["setting"] } == ["smart_insertion"])
+    }
+
     /// #2087. Off-to-on is the direction that matters: the feature ships OFF, so
     /// every real adoption event is this transition, and adoption is the single
     /// question that decides whether the rest of Escape Recovery earns its keep.
@@ -262,7 +281,7 @@ import Testing
           keychainManager: KeychainManager(),
           customWordsCoordinator: CustomWordsCoordinator(),
           permissions: PermissionsService(accessibilityReader: { true }),
-        snippetsCount: { 0 }, snippetsKeywordIsDefault: { true }
+          snippetsCount: { 0 }, snippetsKeywordIsDefault: { true }
         ).emit()
         return box.value
       }

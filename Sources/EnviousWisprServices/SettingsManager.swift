@@ -51,6 +51,10 @@ public final class SettingsManager {
     case emojiFormatterEnabled
     case spokenPunctuationEnabled
     case crashRecoveryEnabled
+    /// #3269: the PostHog usage-metrics switch.
+    case shareUsageMetrics
+    /// #3269: the Sentry crash-reports switch.
+    case sendCrashReports
     case contactsSyncOnLaunchEnabled
     case isDebugModeEnabled
     case isDictationAudioArchiveEnabled
@@ -115,7 +119,7 @@ public final class SettingsManager {
     "smartInsertion", "escapeRecoveryEnabled",
     "wordCorrectionEnabled",
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
-    "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
+    "crashRecoveryEnabled", "shareUsageMetrics", "sendCrashReports", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "whisperKitLanguage", "languageMode", "englishSpelling",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "inputChannelByDeviceUID",
@@ -748,6 +752,25 @@ public final class SettingsManager {
     }
   }
 
+  /// #3269 "Share usage metrics" (PostHog). Default ON; the user opts out. An absent
+  /// key reads as ON and is not written until the user changes it.
+  public var shareUsageMetrics: Bool {
+    didSet {
+      defaults.set(shareUsageMetrics, forKey: "shareUsageMetrics")
+      onChange?(.shareUsageMetrics)
+    }
+  }
+
+  /// #3269 "Send crash reports" (Sentry crashes and errors). Default ON; the user opts
+  /// out. Unrelated to `crashRecoveryEnabled`, which is the local audio spool. An absent
+  /// key reads as ON and is not written until the user changes it.
+  public var sendCrashReports: Bool {
+    didSet {
+      defaults.set(sendCrashReports, forKey: "sendCrashReports")
+      onChange?(.sendCrashReports)
+    }
+  }
+
   /// #996 learn from edits (plan §3.9). Default ON: nothing is saved without a
   /// click, so the persona harm that argued for OFF is gone. Read live by the
   /// App watcher at each paste; a change applies to the next paste. The key is
@@ -843,7 +866,8 @@ public final class SettingsManager {
   /// selections closure, never live-patched into a pill already on screen.
   package var recordingPillDesignWithoutWords: RecordingPillDesign {
     didSet {
-      defaults.set(recordingPillDesignWithoutWords.rawValue, forKey: "recordingPillDesignWithoutWords")
+      defaults.set(
+        recordingPillDesignWithoutWords.rawValue, forKey: "recordingPillDesignWithoutWords")
       onChange?(.recordingPillDesignWithoutWords)
     }
   }
@@ -1251,6 +1275,12 @@ public final class SettingsManager {
     crashRecoveryEnabled =
       defaults.object(forKey: "crashRecoveryEnabled") as? Bool
       ?? SettingsDefaultValues.crashRecoveryEnabled
+    shareUsageMetrics =
+      defaults.object(forKey: "shareUsageMetrics") as? Bool
+      ?? SettingsDefaultValues.shareUsageMetrics
+    sendCrashReports =
+      defaults.object(forKey: "sendCrashReports") as? Bool
+      ?? SettingsDefaultValues.sendCrashReports
     // #996: `object(forKey:)` tells an absent key from an explicit false; only
     // the absent case is written, so an upgrade never overwrites a choice.
     if let stored = defaults.object(forKey: "learnFromEdits") as? Bool {

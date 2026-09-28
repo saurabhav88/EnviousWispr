@@ -195,6 +195,11 @@ enum SettingsProjection {
       // whenever a consumer appears; it simply has not.
       .recordingPillDesignWithoutWords, .recordingPillDesignWithWords:
       return []
+    case .shareUsageMetrics, .sendCrashReports:
+      // #3269: the privacy switches themselves are never reported. The founder ruled out a
+      // final "opted out" event (2026-09-28), and a `Logical` here would also put the choice
+      // into every `settings.snapshot` config block.
+      return []
     }
   }
 
