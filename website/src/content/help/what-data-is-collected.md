@@ -46,12 +46,13 @@ Two switches control this, in the **Privacy** section of **Settings > Permission
 | Switch | What it covers | When a change applies |
 | :--- | :--- | :--- |
 | **Share usage metrics** | Anonymous counts and timings: that a dictation happened, how long it took, which engine ran. | Right away. Turning it off stops collection at once. If the app starts with it off, the usage service does not start at all. |
-| **Send crash reports** | Reports about crashes and errors, and a short note that the app is running, used to count sessions without a crash. | The next time EnviousWispr starts. After you change it, the switch shows **Restart now** so you can apply it straight away. |
+| **Send crash reports** | Reports about crashes and errors, and a short note that the app is running, used to count sessions without a crash. | The next time EnviousWispr starts. After you change it, the switch shows **Restart now** so you can apply it straight away. If the app starts with it off, the crash-reporting service does not start at all. |
 
 A few details are worth knowing before you rely on either switch:
 
 - **Something already on its way.** When you turn usage metrics off, a report that was already being sent may still arrive. Usage data that was queued but not yet sent stays on your Mac and may be sent if you turn the switch back on.
 - **Crash sessions have their own ID.** When crash reports are on, the short "app is running" notes sent to Sentry, the crash-reporting service, keep Sentry's random installation ID, even with usage metrics off. Turning off crash reports stops these notes after a restart.
+- **Reports saved before you turned it off.** A crash report the app saved but had not sent yet stays on your Mac while crash reports are off. It is not deleted, and it may be sent if you turn crash reports back on.
 - **Feedback still works.** With crash reports off, you can still send feedback, and feedback you already sent may be retried.
 - **The app still uses the network.** With both switches off, EnviousWispr still checks for updates, downloads the models you choose, sends your text to a cloud polish provider if you picked one, and sends a feedback report when you press Send.
 - **Only the app.** These switches cover the app. They do not change anything on this website.

@@ -7,8 +7,9 @@ import Testing
 /// #3153: freezes every place the app can put a value on a Sentry scope, and every producer of a
 /// pipeline breadcrumb, so a new one is a visible edit here.
 ///
-/// Why: user feedback skips `beforeSend`, and a feedback report carries the global scope. Values
-/// reach that scope unfiltered only through a writer that forgets `SentryEventSanitizer`. The
+/// Why: global-scope values are copied before `beforeSend` runs (SentryCrash's crash-time scope
+/// copy on disk), so they are filtered where they are written. Values reach that scope
+/// unfiltered only through a writer that forgets `SentryEventSanitizer`. The
 /// current writers filter at write time (`SentryScopeWriteSanitizationTests`); this suite makes
 /// adding a writer, or a new `SentryBreadcrumb.add` producer whose stage/message/data need a
 /// metadata-only review, fail until the inventory below is updated on purpose.

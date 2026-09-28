@@ -43,18 +43,16 @@ struct ObservabilityBootstrapTests {
   }
 
   private static let dsn = "https://key@o0.ingest.sentry.io/0"
-  private static let offCacheRoot = URL(fileURLWithPath: "/tmp/ew-3269-test/sentry-feedback-only")
 
-  private static func sentryOptions(crashReports: Bool) -> Options {
+  private static func sentryOptions() -> Options {
     let options = Options()
-    ObservabilityBootstrap.configureSentryOptions(
-      options, dsn: dsn, crashReports: crashReports, cacheRoot: offCacheRoot)
+    ObservabilityBootstrap.configureSentryOptions(options, dsn: dsn)
     return options
   }
 
   @Test("Sentry, crash reports ON: identity, crash reporting, breadcrumbs, default cache folder")
   func sentryCrashOnConfiguration() {
-    let options = Self.sentryOptions(crashReports: true)
+    let options = Self.sentryOptions()
 
     #expect(options.dsn == Self.dsn)
     #expect(options.releaseName == Self.expectedRelease)
@@ -85,67 +83,15 @@ struct ObservabilityBootstrapTests {
     #expect(options.enableLogs == false)
   }
 
-  @Test("Sentry, crash reports OFF: no crash handler, sessions or breadcrumbs, own cache folder")
-  func sentryCrashOffConfiguration() {
-    let options = Self.sentryOptions(crashReports: false)
-
-    // Identity and privacy settings are the same in both modes.
-    #expect(options.dsn == Self.dsn)
-    #expect(options.releaseName == Self.expectedRelease)
-    #expect(options.environment == Self.expectedEnvironment)
-    #expect(options.sendDefaultPii == false)
-
-    #expect(options.enableCrashHandler == false)
-    #expect(options.enableUncaughtNSExceptionReporting == false)
-    #expect(options.enableAutoSessionTracking == false)
-    #expect(options.maxBreadcrumbs == 0)
-    #expect(options.cacheDirectoryPath == "/tmp/ew-3269-test/sentry-feedback-only")
-
-    #expect(options.enableAutoBreadcrumbTracking == false)
-    #expect(options.enableNetworkBreadcrumbs == false)
-    #expect(options.enableCaptureFailedRequests == false)
-    #expect(options.enableSwizzling == false)
-    #expect(options.tracesSampleRate?.doubleValue == 0)
-
-    #expect(options.sendClientReports == false)
-    #expect(options.enableMetrics == false)
-    #expect(options.enableLogs == false)
-  }
-
-  @Test("The production crash-OFF cache folder is sentry-feedback-only under this bundle's Caches")
-  func productionFeedbackOnlyCacheRoot() {
-    let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-    let bundleID = Bundle.main.bundleIdentifier ?? "com.enviouswispr.app"
-    #expect(
-      ObservabilityBootstrap.feedbackOnlyCacheRoot.path
-        == caches.path + "/" + bundleID + "/sentry-feedback-only")
-    // The default argument is that folder, not the vendor default.
-    let options = Options()
-    ObservabilityBootstrap.configureSentryOptions(options, dsn: Self.dsn, crashReports: false)
-    #expect(options.cacheDirectoryPath == ObservabilityBootstrap.feedbackOnlyCacheRoot.path)
-  }
-
   @Test("Sentry, crash reports ON: the configured beforeSend redacts an email from the message")
   func sentryBeforeSendIsTheSanitizer() throws {
-    let beforeSend = try #require(Self.sentryOptions(crashReports: true).beforeSend)
+    let beforeSend = try #require(Self.sentryOptions().beforeSend)
 
     let event = Event()
     event.message = SentryMessage(formatted: "reach me at someone@example.com")
     let sent = try #require(beforeSend(event))
 
     #expect(sent.message?.formatted == "[REDACTED]")
-  }
-
-  @Test("Sentry, crash reports OFF: the configured beforeSend drops every ordinary event")
-  func sentryCrashOffDropsEvents() throws {
-    let beforeSend = try #require(Self.sentryOptions(crashReports: false).beforeSend)
-
-    let plain = Event()
-    plain.message = SentryMessage(formatted: "an ordinary handled error")
-    let crash = Event(level: .fatal)
-
-    #expect(beforeSend(plain) == nil)
-    #expect(beforeSend(crash) == nil)
   }
 
   // MARK: - Lifecycle (#3269)
@@ -183,8 +129,8 @@ struct ObservabilityBootstrapTests {
           savedID = id
         },
         closePostHog: { [unowned self] in calls.append("posthog.close") },
-        startSentry: { [unowned self] crashReports in
-          calls.append("sentry.start(crash:\(crashReports))")
+        startSentry: { [unowned self] in
+          calls.append("sentry.start")
           return sentryDSNPresent
         },
         writeLaunchTags: { [unowned self] joinKey in
@@ -215,7 +161,7 @@ struct ObservabilityBootstrapTests {
     #expect(
       log.calls == [
         "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID", "posthog.saveID(\(Self.id))",
-        "sentry.start(crash:true)", "sentry.launchTags(join:\(Self.id))",
+        "sentry.start", "sentry.launchTags(join:\(Self.id))",
       ])
     #expect(log.savedID == Self.id)
   }
@@ -225,13 +171,45 @@ struct ObservabilityBootstrapTests {
   func coldLaunchClearsStoredOptOut() {
     let log = SDKLog()
     log.storedOptOut = true
-    log.lifecycle.start(usageMetrics: true, crashReports: false)
+    log.lifecycle.start(usageMetrics: true, crashReports: true)
 
     #expect(
       log.calls == [
         "posthog.setup", "posthog.isOptOut", "posthog.optIn", "posthog.register",
-        "posthog.distinctID", "posthog.saveID(\(Self.id))", "sentry.start(crash:false)", "sentry.launchTags(join:\(Self.id))",
+        "posthog.distinctID", "posthog.saveID(\(Self.id))", "sentry.start", "sentry.launchTags(join:\(Self.id))",
       ])
+  }
+
+  @MainActor
+  @Test(
+    "Crash reports OFF at launch: Sentry is never started, and metrics changes make no Sentry call",
+    arguments: [true, false])
+  func crashOffNeverStartsSentry(usageMetrics: Bool) {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: usageMetrics, crashReports: false)
+    log.lifecycle.apply(usageMetrics: !usageMetrics, crashReports: false)
+    log.lifecycle.apply(usageMetrics: usageMetrics, crashReports: false)
+    log.lifecycle.apply(usageMetrics: !usageMetrics, crashReports: true)
+
+    #expect(log.calls.allSatisfy { !$0.hasPrefix("sentry.") })
+    #expect(log.lifecycle.launchedCrashReports == false)
+    // PostHog still follows the metrics switch.
+    #expect(log.calls.contains("posthog.setup"))
+    #expect(log.lifecycle.isPostHogRunning == !usageMetrics)
+  }
+
+  @MainActor
+  @Test(
+    "Each launch combination starts exactly the vendors its switches allow",
+    arguments: [(true, true), (true, false), (false, true), (false, false)])
+  func launchCombinations(usageMetrics: Bool, crashReports: Bool) {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: usageMetrics, crashReports: crashReports)
+
+    #expect(log.calls.contains("posthog.setup") == usageMetrics)
+    #expect(log.calls.contains("sentry.start") == crashReports)
+    #expect(log.calls.contains { $0.hasPrefix("sentry.") } == crashReports)
+    #expect(log.lifecycle.launchedCrashReports == crashReports)
   }
 
   @MainActor
@@ -242,7 +220,7 @@ struct ObservabilityBootstrapTests {
 
     #expect(
       log.calls == [
-        "sentry.start(crash:true)", "sentry.launchTags(join:none)", "sentry.user(\(Self.off1))",
+        "sentry.start", "sentry.launchTags(join:none)", "sentry.user(\(Self.off1))",
       ])
     #expect(log.savedID == nil)
   }
@@ -346,7 +324,7 @@ struct ObservabilityBootstrapTests {
 
     #expect(
       log.calls == [
-        "posthog.setup", "sentry.start(crash:true)", "sentry.launchTags(join:none)",
+        "posthog.setup", "sentry.start", "sentry.launchTags(join:none)",
         "sentry.join(remove)", "sentry.user(\(Self.off1))",
       ])
     #expect(log.savedID == nil)
@@ -397,7 +375,7 @@ struct ObservabilityBootstrapTests {
 
     #expect(
       log.calls == [
-        "sentry.start(crash:true)",
+        "sentry.start",
         "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID", "posthog.saveID(\(Self.id))",
         "posthog.close",
       ])
@@ -411,8 +389,8 @@ struct ObservabilityBootstrapTests {
     #expect(log.calls == [])
     #expect(log.lifecycle.launchedCrashReports == nil)
 
-    log.lifecycle.start(usageMetrics: false, crashReports: false)
-    #expect(log.calls.first == "sentry.start(crash:false)")
+    log.lifecycle.start(usageMetrics: false, crashReports: true)
+    #expect(log.calls.first == "sentry.start")
   }
 
   @MainActor
@@ -430,9 +408,9 @@ struct ObservabilityBootstrapTests {
   }
 
   /// A crash-switch change after launch must wait for a restart: flipping it, and flipping it
-  /// back, neither restarts Sentry nor changes the mode it runs in, in either launch mode.
+  /// back, neither starts, restarts nor stops Sentry, whichever value the app launched with.
   @MainActor
-  @Test("Crash-switch changes neither restart Sentry nor change the launch mode", arguments: [true, false])
+  @Test("Crash-switch changes neither start nor stop Sentry until a restart", arguments: [true, false])
   func crashSwitchWaitsForRestart(launchValue: Bool) {
     let log = SDKLog()
     log.lifecycle.start(usageMetrics: true, crashReports: launchValue)
@@ -443,5 +421,44 @@ struct ObservabilityBootstrapTests {
 
     #expect(log.calls == [])
     #expect(log.lifecycle.launchedCrashReports == launchValue)
+  }
+
+  // MARK: - The app's Sentry calls when the SDK never started (#3269, crash reports OFF)
+
+  /// The public calls the app makes (scope writers, handled-error capture) on an SDK that was
+  /// never started: nothing is kept or captured. Breadcrumbs are not asserted here: no public
+  /// call reads them back without a client. sentry-cocoa 9.26.1: `configureScope`
+  /// skips its callback without a client (`SentryHub.m:707-713`), breadcrumbs are not stored
+  /// (`SentryHub.m:656-660`), capture returns the empty id (`SentryHub.m:424-434`). The
+  /// capture-with-block form still runs its block on a throwaway scope
+  /// (`SentrySDKInternal.m:320-324`); the app's block only sets one context there.
+  @Test("An SDK that never started keeps no scope or event from the app's calls")
+  func unstartedSDKDoesNothing() throws {
+    try #require(SentrySDK.isEnabled == false)
+
+    let scopeRan = Flag()
+    SentrySDK.configureScope { _ in scopeRan.set() }
+    #expect(scopeRan.value == false)
+
+
+    let event = Event(level: .error)
+    event.message = SentryMessage(formatted: "ew-3269 unstarted capture")
+    #expect(SentrySDK.capture(event: event) == SentryId.empty)
+
+    let blockRan = Flag()
+    let withBlock = SentrySDK.capture(event: event) { scope in
+      blockRan.set()
+      scope.setContext(value: ["k": "v"], key: "recording_snapshot")
+    }
+    #expect(withBlock == SentryId.empty)
+    #expect(blockRan.value == true)
+    #expect(SentrySDK.isEnabled == false)
+  }
+
+  final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var raised = false
+    var value: Bool { lock.withLock { raised } }
+    func set() { lock.withLock { raised = true } }
   }
 }

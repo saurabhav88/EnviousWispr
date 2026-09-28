@@ -63,9 +63,12 @@ public enum SentryBreadcrumb {
   // MARK: - Persistent Global Scope (crash-relevant state)
   //
   // Every value written to the GLOBAL scope passes `SentryEventSanitizer` here, at write time
-  // (#3153). `beforeSend` filters error events, but Sentry skips it for user feedback
-  // (`SentryClient.m`, `eventIsNotUserFeedback`), and a feedback report carries the global
-  // scope. Filtering at the write sites is the only point both paths share. The sanitizer is
+  // (#3153). `beforeSend` filters each event at send time, but the global scope is also copied
+  // elsewhere first: SentryCrash keeps a crash-time copy of it on disk
+  // (`SentryCrashScopeObserver.m`) for a report sent at the next launch. Filtering at the write
+  // sites keeps every copy clean without depending on the send-time pass alone. (Before #3269
+  // this also covered Send Feedback, which skips `beforeSend`; feedback now goes through its own
+  // outbox and never carries the global scope.) The sanitizer is
   // idempotent, so an error event's final payload is unchanged by the second pass, except a
   // content-shaped breadcrumb stage, which the send-time pass never filtered.
   // Each `configureScope` closure calls a `write*` function so tests exercise the exact

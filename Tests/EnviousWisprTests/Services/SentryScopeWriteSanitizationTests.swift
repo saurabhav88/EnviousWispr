@@ -7,8 +7,8 @@ import Testing
 
 /// #3153: every value the app writes to the GLOBAL Sentry scope is filtered at write time.
 ///
-/// Sentry skips `beforeSend` for user feedback, and a feedback report carries the global scope,
-/// so the write sites are where the filter has to run. These tests call the exact production
+/// Global-scope values are copied before `beforeSend` runs (SentryCrash's crash-time scope copy
+/// on disk), so the write sites are where the filter has to run. These tests call the exact production
 /// writers (`SentryBreadcrumb.makeBreadcrumb`, the `write*` scope functions,
 /// `ObservabilityBootstrap.writeStableTags`) against a fresh `Scope`, with no SDK started and no
 /// copy of the filter. The stored-event read-back in Live UAT is the proof for the whole payload.

@@ -30,10 +30,11 @@ public enum ObservabilityBootstrap {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
   }
 
-  /// Starts PostHog (only when `usageMetrics` is ON), then Sentry, once per process, from the
-  /// two stored #3269 switches. `crashReports` picks Sentry's mode for this whole run: a later
-  /// change applies at the next launch, never to the running SDK (the Sentry maintainers advise
-  /// against a runtime close/start). A second call does nothing.
+  /// Starts PostHog (only when `usageMetrics` is ON), then Sentry (only when `crashReports` is
+  /// ON), once per process, from the two stored #3269 switches. `crashReports` holds for this
+  /// whole run: a later change applies at the next launch, never to the running SDK (the Sentry
+  /// maintainers advise against a runtime close/start). A second call does nothing. Send
+  /// Feedback does not need the SDK: it has its own outbox (`FeedbackOutbox`).
   @MainActor
   public static func initialize(usageMetrics: Bool, crashReports: Bool) {
     lifecycle.start(usageMetrics: usageMetrics, crashReports: crashReports)
@@ -48,8 +49,8 @@ public enum ObservabilityBootstrap {
     lifecycle.apply(usageMetrics: usageMetrics, crashReports: crashReports)
   }
 
-  /// The "Send crash reports" value Sentry was started with in this process, or nil before
-  /// `initialize`. Compare it with the stored switch to tell whether a change is still waiting
+  /// The "Send crash reports" value this process launched with (true: Sentry started or was
+  /// attempted; false: never started), or nil before `initialize`. Compare it with the stored switch to tell whether a change is still waiting
   /// for a restart.
   @MainActor
   public static var launchedCrashReports: Bool? { lifecycle.launchedCrashReports }
@@ -96,8 +97,9 @@ public enum ObservabilityBootstrap {
     /// Saves the canonical id read at setup for a consented feedback report; nil removes it.
     var savePostHogID: (_ id: String?) -> Void
     var closePostHog: () -> Void
-    /// Resolves the DSN and calls `SentrySDK.start`; false when the DSN is missing.
-    var startSentry: (_ crashReports: Bool) -> Bool
+    /// Resolves the DSN and calls `SentrySDK.start` with the crash-reporting configuration;
+    /// false when the DSN is missing. Called only when "Send crash reports" is ON at launch.
+    var startSentry: () -> Bool
     /// The launch-stable tags, with the join key when there is one.
     var writeLaunchTags: (_ joinKey: String?) -> Void
     var setJoinKey: (_ joinKey: String?) -> Void
@@ -130,7 +132,7 @@ public enum ObservabilityBootstrap {
       postHogDistinctID: { PostHogSDK.shared.getDistinctId() },
       savePostHogID: { id in ObservabilityBootstrap.savePostHogID(id) },
       closePostHog: { PostHogSDK.shared.close() },
-      startSentry: { crashReports in initializeSentry(crashReports: crashReports) },
+      startSentry: { initializeSentry() },
       writeLaunchTags: { joinKey in
         // Set stable tags that rarely change — available on every event including fatal crashes
         let isSynthetic = ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1"
@@ -151,7 +153,8 @@ public enum ObservabilityBootstrap {
   /// usage-metrics switch at runtime, and keeps Sentry's global identity in step with it:
   /// metrics ON carries the `analytics.distinct_id` join tag; metrics OFF carries no join tag and
   /// an explicit random user id, fresh for each OFF period, so the SDK never falls back to the
-  /// machine's installation id (`SentryClient.m:997-1009`). The crash mode is fixed at launch.
+  /// machine's installation id (`SentryClient.m:997-1009`). Whether Sentry runs is fixed at
+  /// launch; when it never started, metrics changes make no Sentry call.
   @MainActor
   final class Lifecycle {
     private(set) var launchedCrashReports: Bool?
@@ -175,8 +178,10 @@ public enum ObservabilityBootstrap {
       self.usageMetrics = usageMetrics
       // PostHog first: Sentry's launch tags read PostHog's anonymous id (#1846).
       if usageMetrics { startPostHog() }
-      // Started in both crash modes and both metrics states: Sentry carries Send Feedback.
-      isSentryRunning = operations.startSentry(crashReports)
+      // Crash reports OFF: the SDK is never started, so it installs no crash handler, keeps no
+      // session and reads no cached envelope. Send Feedback uses its own outbox either way.
+      guard crashReports else { return }
+      isSentryRunning = operations.startSentry()
       guard isSentryRunning else { return }
       operations.writeLaunchTags(currentJoinKey)
       if !usageMetrics { operations.setOffPeriodUser(makeUUID()) }
@@ -259,7 +264,7 @@ public enum ObservabilityBootstrap {
     return config
   }
 
-  private static func initializeSentry(crashReports: Bool) -> Bool {
+  private static func initializeSentry() -> Bool {
     guard let dsn = KeyResolver.resolveKey(plistKey: "SentryDSN", fileName: "sentry-dsn") else {
       print(
         "[ObservabilityBootstrap] Warning: Sentry DSN not found — skipping Sentry initialization")
@@ -267,34 +272,15 @@ public enum ObservabilityBootstrap {
     }
 
     SentrySDK.start { options in
-      configureSentryOptions(options, dsn: dsn, crashReports: crashReports)
+      configureSentryOptions(options, dsn: dsn)
     }
     return true
   }
 
-  /// Where crash-reports-OFF Sentry keeps its files: a folder of its own, so that mode never
-  /// reads or sends envelopes an earlier crash-reports-ON launch cached in the default folder.
-  /// A custom `cacheDirectoryPath` roots envelopes, sessions and `INSTALLATION`
-  /// (sentry-cocoa 9.26.1 `SentryFileManagerHelper.m:143-165`). Per bundle id, so dev and
-  /// release builds do not share it.
-  static var feedbackOnlyCacheRoot: URL {
-    let caches =
-      FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-      ?? URL(fileURLWithPath: NSTemporaryDirectory())
-    return
-      caches
-      .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.enviouswispr.app")
-      .appendingPathComponent("sentry-feedback-only")
-  }
-
   /// The one Sentry configuration the app ships, applied inside `SentrySDK.start`'s closure.
   /// Writes options only: it starts nothing and sends nothing, so a test can read exactly what
-  /// `start` receives. `crashReports` is the launch value of the "Send crash reports" switch
-  /// (#3269); OFF keeps Sentry running only to carry Send Feedback.
-  static func configureSentryOptions(
-    _ options: Options, dsn: String, crashReports: Bool,
-    cacheRoot: URL = feedbackOnlyCacheRoot
-  ) {
+  /// `start` receives. Used only when "Send crash reports" is ON at launch (#3269).
+  static func configureSentryOptions(_ options: Options, dsn: String) {
     options.dsn = dsn
     options.releaseName = "com.enviouswispr.app@\(appVersion)"
     options.environment = environment
@@ -328,27 +314,12 @@ public enum ObservabilityBootstrap {
       ObservabilityBootstrap.sanitizeSentryEvent(event)
     }
 
-    // #3269, both modes: the app calls no Sentry metrics or logs API, and client reports
-    // would report every event the crash-OFF `beforeSend` drops on a later envelope
+    // #3269: the app calls no Sentry metrics or logs API, and client reports (counts of events
+    // the SDK or `beforeSend` dropped) are not something the app needs to send
     // (sentry-cocoa 9.26.1 `Options.swift:530`, `SentryHttpTransport.m:264-281`).
     options.sendClientReports = false
     options.enableMetrics = false
     options.enableLogs = false
-
-    guard !crashReports else { return }
-
-    // #3269, "Send crash reports" OFF. No crash handler, no sessions, no uncaught-exception
-    // capture, no breadcrumbs kept, and every ordinary event dropped. User feedback still
-    // sends: it skips `beforeSend` (`SentryClient.m:856-865`), which is why this mode is a
-    // started SDK rather than none.
-    options.enableCrashHandler = false
-    options.enableAutoSessionTracking = false
-    #if os(macOS)
-      options.enableUncaughtNSExceptionReporting = false
-    #endif
-    options.maxBreadcrumbs = 0
-    options.beforeSend = { _ in nil }
-    options.cacheDirectoryPath = cacheRoot.path
   }
 
   /// The launch-stable global tags, each value through `SentryEventSanitizer.redactString` like
@@ -387,7 +358,8 @@ public enum ObservabilityBootstrap {
   }
 
   /// Sets the `analytics.distinct_id` join tag, or removes it for `nil` (#3269: metrics OFF).
-  /// Filtered at write time like every global-scope write, because feedback skips `beforeSend`.
+  /// Filtered at write time like every global-scope write (the reason is on `SentryBreadcrumb`'s
+  /// global-scope section).
   static func writeJoinKey(_ joinKey: String?, to scope: Scope) {
     if let joinKey {
       scope.setTag(value: SentryEventSanitizer.redactString(joinKey), key: "analytics.distinct_id")
