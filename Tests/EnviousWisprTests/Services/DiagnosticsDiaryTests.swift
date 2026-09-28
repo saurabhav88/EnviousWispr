@@ -322,6 +322,34 @@ struct DiagnosticsDiaryTests {
     #expect(try Self.takeIDs(await diary.snapshot()) == [Self.takeA])
   }
 
+  /// An existing diary that cannot be read for a moment must not be overwritten by the next
+  /// dictation: the write waits until the file can be read again.
+  @Test("A file that cannot be read yet is never replaced; its entries survive the next record")
+  func unreadableFileIsNotOverwritten() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let first = Self.makeDiary(directory, Clock(Self.start))
+    first.record(Self.terminal(Self.takeA))
+    await first.waitForPendingOperations()
+
+    let failReads = FailSwitch()
+    failReads.isOn = true
+    let later = Self.start.addingTimeInterval(60)
+    let second = DiagnosticsDiary(
+      directory: directory, now: { later },
+      readData: { url in
+        if failReads.isOn { throw CocoaError(.fileReadNoPermission) }
+        return try Data(contentsOf: url)
+      })
+    second.record(Self.terminal(Self.takeB))
+    #expect(await second.snapshot() == nil)
+    #expect(try Self.fileTakeIDs(directory) == [Self.takeA])
+
+    failReads.isOn = false
+    second.record(Self.terminal(Self.takeB))
+    #expect(try Self.takeIDs(await second.snapshot()) == [Self.takeB, Self.takeA])
+  }
+
   @Test("A stored entry with an extra field or raw content is cleaned when read back")
   func storedContentIsRevalidated() async throws {
     let directory = Self.tempDirectory()

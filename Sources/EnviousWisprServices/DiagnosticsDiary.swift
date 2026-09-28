@@ -137,9 +137,12 @@ final class DiagnosticsDiary: @unchecked Sendable {
     "salvaged_lead_trim_ms",
   ])
 
-  /// The diary file for this build: `<StorageRoot.standardDirectory>/Diagnostics/<bundle id>/`.
+  /// The diary file for this build: `<StorageRoot.live.dataDirectory>/Diagnostics/<bundle id>/`.
+  /// The resolved root, not the plain standard path the history stores still use (#2695): the
+  /// diary is short-lived and rebuilt by use, so following the home fallback loses nothing, while
+  /// staying on an unwritable standard folder would leave it permanently empty.
   static var productionDirectory: URL {
-    StorageRoot.standardDirectory
+    StorageRoot.live.dataDirectory
       .appendingPathComponent("Diagnostics", isDirectory: true)
       .appendingPathComponent(
         Bundle.main.bundleIdentifier ?? "com.enviouswispr.app", isDirectory: true)
@@ -206,6 +209,7 @@ final class DiagnosticsDiary: @unchecked Sendable {
   private let fileURL: URL
   private let now: @Sendable () -> Date
   private let writeData: @Sendable (Data, URL) throws -> Void
+  private let readData: @Sendable (URL) throws -> Data
   private let queue = DispatchQueue(label: "com.enviouswispr.diagnostics-diary", qos: .utility)
 
   // Queue-confined state.
@@ -217,17 +221,20 @@ final class DiagnosticsDiary: @unchecked Sendable {
   /// - Parameters:
   ///   - writeData: test seam for a failing write. Production always passes the durable writer,
   ///     which creates a unique 0600 temp file, syncs it and renames it into place.
+  ///   - readData: test seam for a failing read. Production always reads the file.
   init(
     directory: URL,
     now: @escaping @Sendable () -> Date = { Date() },
     writeData: @escaping @Sendable (Data, URL) throws -> Void = { data, url in
       try DurableJSONFile.write(data: data, to: url, tempPrefix: ".diary")
-    }
+    },
+    readData: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
   ) {
     self.directory = directory
     self.fileURL = directory.appendingPathComponent(Self.fileName)
     self.now = now
     self.writeData = writeData
+    self.readData = readData
   }
 
   static func production() -> DiagnosticsDiary {
@@ -264,21 +271,31 @@ final class DiagnosticsDiary: @unchecked Sendable {
 
   // MARK: - Queue-confined work
 
-  private func loadIfNeeded() {
-    guard !isLoaded else { return }
-    isLoaded = true
+  /// False when an existing file could not be read this time: nothing may merge or prune then,
+  /// so a passing read error can never let a write replace entries still on disk. The next call
+  /// tries again. A file that reads but does not decode is corrupt, and the next write may
+  /// replace it.
+  @discardableResult
+  private func loadIfNeeded() -> Bool {
+    guard !isLoaded else { return true }
     DurableJSONFile.prepareDirectory(at: directory)
     DurableJSONFile.tightenFileIfPresent(at: fileURL)
-    guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
-    guard let data = try? Data(contentsOf: fileURL), let decoded = Self.decode(data) else {
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+      isLoaded = true
+      return true
+    }
+    guard let data = try? readData(fileURL) else { return false }
+    isLoaded = true
+    guard let decoded = Self.decode(data) else {
       isUnavailable = true
-      return
+      return true
     }
     entries = decoded
+    return true
   }
 
   private func merge(_ event: Event, observedAt: Date) {
-    loadIfNeeded()
+    guard loadIfNeeded() else { return }
     var next = entries
     if let index = next.firstIndex(where: { $0.takeID == event.takeID }) {
       switch event.source {
@@ -301,7 +318,7 @@ final class DiagnosticsDiary: @unchecked Sendable {
 
   @discardableResult
   private func pruneAndPersist() -> Bool {
-    loadIfNeeded()
+    guard loadIfNeeded() else { return false }
     guard !isUnavailable else { return false }
     let next = Self.pruned(entries, now: now())
     guard next != entries else { return true }
