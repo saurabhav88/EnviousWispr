@@ -447,8 +447,8 @@ private struct ProminentHotkeyRow: View {
         } else if dictationRuntime.isCurrentBindingConflicted(role) {
           // #3273: the internal-conflict check above cannot see this — it only compares our own
           // 5 roles' bindings against each other and never asks Carbon. This is the OS-level case:
-          // Carbon refused this exact saved binding because something outside the app already
-          // holds it (issue #3266).
+          // Carbon refused this exact saved binding with -9878. The warning reports that refusal;
+          // it does not identify what holds the keys (issue #3266).
           Text(
             ExternalConflictCopy.notWorking(
               role: role, keys: KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
@@ -569,8 +569,9 @@ enum KeybindConflictCopy {
   }
 }
 
-/// The warning under a keybind that Carbon refused to register because something OUTSIDE this app
-/// — another program, or macOS itself — already holds those keys (#3273, issue #3266).
+/// The warning under a keybind that Carbon refused to register with -9878 (#3273, issue #3266).
+/// The cause is unknown: a live check on macOS 27.2 found a second process registering the same
+/// chord accepted, so this does not claim another program or macOS holds it.
 ///
 /// This is a DIFFERENT concern from `KeybindConflictCopy` above: that one compares our own 5
 /// roles against each other and can always name the taker; this one is a live OS refusal, and we
@@ -584,35 +585,35 @@ enum ExternalConflictCopy {
     case .record:
       return String(
         localized:
-          "The recording keybind (\(keys)) isn't working. This key combination is already used by something else on your Mac. Choose another.",
+          "The recording keybind (\(keys)) isn't working. macOS says this key combination is already taken. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
       )
     case .cancel:
       return String(
         localized:
-          "The cancel keybind (\(keys)) isn't working. This key combination is already used by something else on your Mac while you're recording. Choose another.",
+          "The cancel keybind (\(keys)) isn't working while you're recording. macOS says this key combination is already taken. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
       )
     case .quickAdd:
       return String(
         localized:
-          "The add-a-word keybind (\(keys)) isn't working. This key combination is already used by something else on your Mac. Choose another.",
+          "The add-a-word keybind (\(keys)) isn't working. macOS says this key combination is already taken. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
       )
     case .pasteLast:
       return String(
         localized:
-          "Paste last dictation (\(keys)) isn't working. This key combination is already used by something else on your Mac. Choose another.",
+          "Paste last dictation (\(keys)) isn't working. macOS says this key combination is already taken. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. Paste last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
       )
     case .copyLast:
       return String(
         localized:
-          "Copy last dictation (\(keys)) isn't working. This key combination is already used by something else on your Mac. Choose another.",
+          "Copy last dictation (\(keys)) isn't working. macOS says this key combination is already taken. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
       )

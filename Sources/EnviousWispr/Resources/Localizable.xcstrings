@@ -4700,13 +4700,13 @@
         }
       }
     },
-    "Copy last dictation (%@) isn't working. This key combination is already used by something else on your Mac. Choose another." : {
+    "Copy last dictation (%@) isn't working. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Tastenkürzel für „Letztes Diktat kopieren“ (%@) funktioniert nicht, weil die Tastenkombination auf deinem Mac bereits anderweitig belegt ist. Wähle eine andere."
+            "value" : "Das Tastenkürzel für „Letztes Diktat kopieren“ (%@) funktioniert nicht. macOS meldet, dass diese Tastenkombination bereits vergeben ist. Wähle eine andere."
           }
         }
       }
@@ -11254,13 +11254,13 @@
         }
       }
     },
-    "Paste last dictation (%@) isn't working. This key combination is already used by something else on your Mac. Choose another." : {
+    "Paste last dictation (%@) isn't working. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. Paste last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Tastenkürzel für „Letztes Diktat einfügen“ (%@) funktioniert nicht, weil die Tastenkombination auf deinem Mac bereits anderweitig belegt ist. Wähle eine andere."
+            "value" : "Das Tastenkürzel für „Letztes Diktat einfügen“ (%@) funktioniert nicht. macOS meldet, dass diese Tastenkombination bereits vergeben ist. Wähle eine andere."
           }
         }
       }
@@ -15047,13 +15047,13 @@
         }
       }
     },
-    "The add-a-word keybind (%@) isn't working. This key combination is already used by something else on your Mac. Choose another." : {
+    "The add-a-word keybind (%@) isn't working. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Tastenkürzel zum Hinzufügen eines Worts (%@) funktioniert nicht, weil die Tastenkombination auf deinem Mac bereits anderweitig belegt ist. Wähle eine andere."
+            "value" : "Das Tastenkürzel zum Hinzufügen eines Worts (%@) funktioniert nicht. macOS meldet, dass diese Tastenkombination bereits vergeben ist. Wähle eine andere."
           }
         }
       }
@@ -15069,13 +15069,13 @@
         }
       }
     },
-    "The cancel keybind (%@) isn't working. This key combination is already used by something else on your Mac while you're recording. Choose another." : {
+    "The cancel keybind (%@) isn't working while you're recording. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Tastenkürzel zum Abbrechen (%@) funktioniert nicht, weil die Tastenkombination während der Aufnahme auf deinem Mac bereits anderweitig belegt ist. Wähle eine andere."
+            "value" : "Das Tastenkürzel zum Abbrechen (%@) funktioniert während der Aufnahme nicht. macOS meldet, dass diese Tastenkombination bereits vergeben ist. Wähle eine andere."
           }
         }
       }
@@ -15496,13 +15496,13 @@
         }
       }
     },
-    "The recording keybind (%@) isn't working. This key combination is already used by something else on your Mac. Choose another." : {
+    "The recording keybind (%@) isn't working. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Tastenkürzel für die Aufnahme (%@) funktioniert nicht, weil die Tastenkombination auf deinem Mac bereits anderweitig belegt ist. Wähle eine andere."
+            "value" : "Das Tastenkürzel für die Aufnahme (%@) funktioniert nicht. macOS meldet, dass diese Tastenkombination bereits vergeben ist. Wähle eine andere."
           }
         }
       }

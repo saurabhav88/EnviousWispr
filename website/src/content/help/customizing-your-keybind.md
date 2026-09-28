@@ -6,7 +6,7 @@ section: "Recording"
 order: 4
 keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c"]
 related: ["adding-a-word-from-your-selection", "escape-recovery", "transcript-history"]
-updated: 2026-09-23
+updated: 2026-09-28
 ---
 Your keybind is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
 
@@ -67,4 +67,6 @@ A box also refuses a combination that includes a single key a more important key
 
 ### If your keybind stops working
 
-Another application or system feature is usually using the same key combination. macOS system shortcuts and other running apps take priority over EnviousWispr. Pick a different combination in **Keybinds** to resolve the conflict.
+If **Keybinds** warns that macOS reports your combination as already taken, pick a different combination there.
+
+If a keybind does nothing and no warning appears, another app or a macOS feature may be using the same combination. Try a different one.
