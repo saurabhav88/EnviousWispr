@@ -40,7 +40,7 @@ export const DURATIONS = {
   snippets: [1100, 500, 1350, 3200],
   quickadd: [1300, 3200, 700, 2600],
   correction: [1800, 850, 650, 3200],
-  selflearn: [1500, 2800, 1900, 3200],
+  selflearn: [1500, 2800, 3000, 3200],
   preview: [4800, 450, 450, 3000],
 };
 

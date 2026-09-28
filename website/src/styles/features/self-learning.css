@@ -25,8 +25,8 @@
 .sl-undo{flex:none;padding:3px 10px;border-radius:999px;background:#ffffff1f;font-size:13px;font-weight:600}
 .sl-timer{position:absolute;left:0;bottom:0;height:2px;width:100%;background:#9be3c5;transform-origin:left;transform:scaleX(1)}
 .film-selflearn:is([data-phase=writing],[data-phase=result]) .sl-pill{opacity:1;transform:none}
-.film-selflearn[data-phase=writing] .sl-timer{transform:scaleX(0);transition:transform 1.9s linear}
-.film-selflearn[data-phase=result] .sl-pill{opacity:.55}
+.film-selflearn[data-phase=writing] .sl-timer{transform:scaleX(0);transition:transform 3s linear}
+.film-selflearn[data-phase=result] .sl-pill{opacity:0;transform:translateY(-6px) scale(.97)}
 .film-selflearn[data-phase=result] .sl-timer{transform:scaleX(0)}
 .sl-next{opacity:.45;transition:opacity .3s}
 .film-selflearn[data-phase=result] .sl-next{opacity:1}
