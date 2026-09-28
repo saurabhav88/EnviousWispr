@@ -4,13 +4,18 @@
 // date two weeks older than its last edit. Features come from the catalog in
 // data/site-navigation.js, help articles from the help collection in category
 // order, blog posts from getPublishedPosts (so a future-dated post appears on the
-// day it publishes), and Last-updated is the newest content date among them.
+// day it publishes), and Last-updated is the newest content date among them
+// plus the comparison set's date (data/compare.js, the same date the sitemap
+// uses). The homepage, the speech-to-text guide, the per-competitor pages and
+// the legal pages carry no content date anywhere (seo-operations.md FACT:
+// sitemap-and-robots), so they cannot move it.
 // Only the summary, the comparison list and the fixed links are written by hand.
 import { getCollection } from 'astro:content';
 import { catalog } from '../data/site-navigation.js';
 import { HELP_CATEGORIES } from '../data/help-categories';
 import { BLOG_TOPICS } from '../data/blog-topics.js';
 import { getPublishedPosts } from '../utils/posts';
+import { updated as comparisonUpdated } from '../data/compare.js';
 
 const SITE = 'https://enviouswispr.com';
 
@@ -51,6 +56,7 @@ export async function GET() {
   const posts = await getPublishedPosts();
 
   const dates = [
+    comparisonUpdated,
     ...catalog.map((e) => e.updated),
     ...help.map((a) => iso(a.data.updated)),
     ...posts.map((p) => iso(p.data.updatedDate ?? p.data.pubDate)),
