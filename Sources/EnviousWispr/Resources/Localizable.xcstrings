@@ -20079,13 +20079,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Self-learning custom dictionary: Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary."
+            "value" : "Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Selbstlernendes Wörterbuch: Spracherkennungsmodelle wie Parakeet und WhisperKit verhören sich gelegentlich bei ähnlich klingenden Wörtern oder Fachbegriffen. Wenn du ein Ergebnis korrigierst, erkennt EnviousWispr die Änderung jetzt automatisch und übernimmt den gemeinten Begriff in dein Wörterbuch."
+            "value" : "Spracherkennungsmodelle wie Parakeet und WhisperKit verhören sich gelegentlich bei ähnlich klingenden Wörtern oder Fachbegriffen. Wenn du ein Ergebnis korrigierst, erkennt EnviousWispr die Änderung jetzt automatisch und übernimmt den gemeinten Begriff in dein Wörterbuch."
           }
         }
       }

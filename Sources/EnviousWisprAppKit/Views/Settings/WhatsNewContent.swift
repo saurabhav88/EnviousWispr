@@ -71,7 +71,7 @@ enum WhatsNewContent {
       icon: "text.badge.checkmark",
       title: "Self-Learning Dictionary",
       description:
-        "Self-learning custom dictionary: Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary.",
+        "Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary.",
       bullets: [
         "Context-aware replacement: The tool now recognizes when a standard dictionary word should be replaced with a specific term or proper noun (e.g., \"Twist\" to \"Tuist\") for more accurate future transcriptions.",
         "The Self-Learning Dictionary help article has more.",
