@@ -38,6 +38,13 @@ import Testing
 ///   notice. No new DictationRuntime collaborator, method, or import; the
 ///   value was already a DictationRuntime.init parameter, just not yet
 ///   passed to this one collaborator.
+/// - #3273 (issue #3266): non-private method cap 8 → 9. Adds
+///   `isCurrentBindingConflicted(_:)`, a one-line passthrough to
+///   `hotkeyController.isCurrentBindingConflicted(_:)` (the row-warning read
+///   for a shortcut Carbon refused because something outside the app already
+///   holds it), matching the existing `hotkeyDescription` passthrough's shape.
+///   No new collaborator, closure, or import. Codex grounded review, 6 rounds,
+///   `PROCEED-AS-PLANNED` — this exact addition was the reviewed design.
 @Suite struct DictationRuntimeCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift"
@@ -77,7 +84,8 @@ import Testing
     let total = RouterCeilingParser.storedDependencyCount(in: body)
     #expect(
       total <= 7,
-      "DictationRuntime total stored-dependency ceiling exceeded: \(total) > 7 (\(collaborators) collaborators + \(closures) closures).")
+      "DictationRuntime total stored-dependency ceiling exceeded: \(total) > 7 (\(collaborators) collaborators + \(closures) closures)."
+    )
   }
 
   @Test func nonPrivateMethodCount() throws {
@@ -93,15 +101,18 @@ import Testing
     // #1388: raised 7 → 8 for `cancelActiveEngineWarmupForOnboarding()` — the
     // install Cancel's seam, #879's cancel twin (thin forward to
     // `starter.activeDriver.cancelSessionlessWarmup()`, no new state).
+    // #3273: raised 8 → 9 for `isCurrentBindingConflicted(_:)` — a one-line
+    // passthrough to `hotkeyController.isCurrentBindingConflicted(_:)`.
     #expect(
-      count <= 8,
+      count <= 9,
       """
-      DictationRuntime non-private method ceiling exceeded: \(count) > 8 \
+      DictationRuntime non-private method ceiling exceeded: \(count) > 9 \
       non-private `func` declarations. PR10 baseline: \
       startHotkeyServiceIfEnabled, suspendHotkeys, resumeHotkeys, \
       toggleRecording, cancelRecording, resetActivePipeline; #879 added \
       ensureActiveEngineWarmForOnboarding; #1388 added \
-      cancelActiveEngineWarmupForOnboarding. Raising the ceiling requires a \
+      cancelActiveEngineWarmupForOnboarding; #3273 added \
+      isCurrentBindingConflicted. Raising the ceiling requires a \
       Bible §30 entry.
       """)
   }
