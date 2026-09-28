@@ -188,8 +188,8 @@ final class DictationRuntime {
 
   var hotkeyDescription: String { hotkeyController.hotkeyDescription }
 
-  /// #3273: is `role`'s currently saved shortcut the one Carbon most recently refused because
-  /// something outside this app already holds it?
+  /// #3273: is `role`'s currently saved shortcut the one Carbon most recently refused with -9878
+  /// (the cause is unknown)?
   func isCurrentBindingConflicted(_ role: ShortcutRole) -> Bool {
     hotkeyController.isCurrentBindingConflicted(role)
   }

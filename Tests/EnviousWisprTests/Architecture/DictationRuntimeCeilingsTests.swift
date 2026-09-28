@@ -41,8 +41,7 @@ import Testing
 /// - #3273 (issue #3266): non-private method cap 8 → 9. Adds
 ///   `isCurrentBindingConflicted(_:)`, a one-line passthrough to
 ///   `hotkeyController.isCurrentBindingConflicted(_:)` (the row-warning read
-///   for a shortcut Carbon refused because something outside the app already
-///   holds it), matching the existing `hotkeyDescription` passthrough's shape.
+///   for a shortcut Carbon refused with -9878; the cause is unknown), matching the existing `hotkeyDescription` passthrough's shape.
 ///   No new collaborator, closure, or import. Codex grounded review, 6 rounds,
 ///   `PROCEED-AS-PLANNED` — this exact addition was the reviewed design.
 @Suite struct DictationRuntimeCeilingsTests {

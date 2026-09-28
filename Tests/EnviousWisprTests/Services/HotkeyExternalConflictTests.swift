@@ -5,9 +5,9 @@ import Testing
 
 @testable import EnviousWisprServices
 
-/// #3273 (issue #3266): a Carbon registration refusal caused by `eventHotKeyExistsErr`
-/// (OSStatus -9878, "these keys are already claimed by something outside this app") is
-/// surfaced as `HotkeyService.isCurrentBindingConflicted(_:)`, read by the Keybinds row.
+/// #3273 (issue #3266): Carbon returned `eventHotKeyExistsErr` (OSStatus -9878) for a
+/// registration attempt. The underlying cause is unknown. The refusal is surfaced as
+/// `HotkeyService.isCurrentBindingConflicted(_:)`, read by the Keybinds row.
 ///
 /// Drives `HotkeyService.registerCancelHotkey()` against `RecordingDesktopHotkeyEffects`'
 /// programmable `nextResults` queue — the one seam the suite already uses for "the service's

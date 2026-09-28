@@ -1244,8 +1244,7 @@ public final class HotkeyService {
     installModifierMonitors()
   }
 
-  /// A binding that failed Carbon registration because something else already holds those keys
-  /// (`eventHotKeyExistsErr`, OSStatus -9878). Stored in CARBON's own modifier representation
+  /// A Carbon key chord, stored in CARBON's own modifier representation
   /// (`carbonModifiers`, the `UInt32` `registerHotkey` already receives) rather than
   /// `NSEvent.ModifierFlags`, because only the forward conversion (`carbonModifiers(from:)`
   /// below) exists — comparing in Carbon's shape needs no new, unproven inverse. #3273.
@@ -1264,11 +1263,11 @@ public final class HotkeyService {
   /// removal Carbon REFUSED (pre-existing, tracked by #3108), or a registration Carbon accepted
   /// without a token. `eventHotKeyExistsErr` documents "already registered in this process", so a
   /// -9878 for one of these chords, from ANY role, can be our own doing and must not be shown as
-  /// another app's. Cleared only when Carbon accepts that same chord again, the proof it is free.
+  /// a conflict with something outside this process. Cleared when Carbon accepts a registration for that same chord.
   private var possiblyRetainedChords: Set<ConflictedHotkey> = []
 
-  /// Every role whose MOST RECENT Carbon registration attempt was refused because the combo is
-  /// already claimed by something outside this app. #3273 (issue #3266).
+  /// Every role whose MOST RECENT Carbon registration attempt was refused with -9878. Carbon
+  /// refused this binding; the cause is unknown. #3273 (issue #3266).
   package private(set) var conflictedBindings: [ShortcutRole: ConflictedHotkey] = [:]
 
   /// True only when `role`'s CURRENTLY SAVED binding is the one that most recently failed — not
