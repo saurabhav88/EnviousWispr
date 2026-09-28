@@ -403,13 +403,10 @@ public final class HotkeyService {
   private func forgetHotkey(_ slot: inout DesktopEffectToken?, role: ShortcutRole) {
     guard let token = slot else { return }
     slot = nil
-    if effects.remove(token) {
-      // #3273: the OS resource is confirmed gone now, so a future `eventHotKeyExistsErr` for this
-      // role can no longer be explained by OUR OWN retained registration.
-      possiblyRetainedByUs.remove(role)
-      return
-    }
-    possiblyRetainedByUs.insert(role)
+    let chord = registeredChords.removeValue(forKey: role)
+    if effects.remove(token) { return }
+    // #3273: the OS registration outlives the dropped token; remember WHICH chord, not which role.
+    if let chord { possiblyRetainedChords.insert(chord) }
     Task {
       await AppLogger.shared.log(
         "Hotkey removal refused: role=\(role.rawValue); token dropped as before (#3108)",
@@ -1213,6 +1210,7 @@ public final class HotkeyService {
     release(&appShortcutTokens[role])
     guard appShortcutTokens[role] != nil else {
       appShortcutRegisteredBindings[role] = nil
+      registeredChords[role] = nil
       return
     }
     Task {
@@ -1251,20 +1249,23 @@ public final class HotkeyService {
   /// (`carbonModifiers`, the `UInt32` `registerHotkey` already receives) rather than
   /// `NSEvent.ModifierFlags`, because only the forward conversion (`carbonModifiers(from:)`
   /// below) exists — comparing in Carbon's shape needs no new, unproven inverse. #3273.
-  package struct ConflictedHotkey: Equatable, Sendable {
+  package struct ConflictedHotkey: Hashable, Sendable {
     package let keyCode: UInt16
     package let carbonModifiers: UInt32
   }
 
   private static let hotKeyExistsStatus: Int32 = -9878  // Carbon eventHotKeyExistsErr
 
-  /// Roles whose last `forgetHotkey` removal was REFUSED by Carbon, so the OS registration may
-  /// still be alive even though the local token was dropped (`forgetHotkey`'s own documented,
-  /// pre-existing behavior, tracked separately by #3108). Cloud review on #3273 caught the
-  /// consequence for this feature: a role in this set can hit `eventHotKeyExistsErr` on its NEXT
-  /// registration attempt because it still holds its OWN old chord — that is not an external
-  /// conflict, and must not be shown as one.
-  private var possiblyRetainedByUs: Set<ShortcutRole> = []
+  /// The chord each role's live Carbon registration holds. Only lets `forgetHotkey` name the chord
+  /// it is dropping, because the role's saved binding may already have moved on by then.
+  private var registeredChords: [ShortcutRole: ConflictedHotkey] = [:]
+
+  /// Chords this process may still hold in Carbon although no token names them: a `forgetHotkey`
+  /// removal Carbon REFUSED (pre-existing, tracked by #3108), or a registration Carbon accepted
+  /// without a token. `eventHotKeyExistsErr` documents "already registered in this process", so a
+  /// -9878 for one of these chords, from ANY role, can be our own doing and must not be shown as
+  /// another app's. Cleared only when Carbon accepts that same chord again, the proof it is free.
+  private var possiblyRetainedChords: Set<ConflictedHotkey> = []
 
   /// Every role whose MOST RECENT Carbon registration attempt was refused because the combo is
   /// already claimed by something outside this app. #3273 (issue #3266).
@@ -1289,10 +1290,13 @@ public final class HotkeyService {
     // `registrationFailed` events or none, depending on which side thought the
     // other had it — the #2381 defect class, one wire signal with two owners.
     let role = HotkeyID(rawValue: id)?.role ?? .record
+    let candidate = ConflictedHotkey(keyCode: keyCode, carbonModifiers: modifiers)
     switch effects.registerHotkey(
       id: id, keyCode: keyCode, rawModifiers: UInt64(modifiers))
     {
     case .registered(let token):
+      registeredChords[role] = candidate
+      possiblyRetainedChords.remove(candidate)
       // #3273: clear a stale external-conflict warning now that this role registered. Guarded
       // (not an unconditional `= nil`) because `@Observable` notifies on assignment regardless of
       // value equality, and `.registered` is the MOST common outcome in ordinary use.
@@ -1308,11 +1312,13 @@ public final class HotkeyService {
       let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
       telemetry.registrationFailed("carbon", kind, status, keyShape)
       // #3273: only `eventHotKeyExistsErr` means "already in use" — a different status has a
-      // different, unattributed cause and must not carry that specific claim to the user. AND
-      // (cloud review finding) a role whose last removal Carbon refused may be blocking ITSELF —
-      // that is not evidence of an external app and must not be shown as one.
-      if status == Self.hotKeyExistsStatus, !possiblyRetainedByUs.contains(role) {
-        let candidate = ConflictedHotkey(keyCode: keyCode, carbonModifiers: modifiers)
+      // different, unattributed cause and must not carry that specific claim to the user. AND a
+      // chord this process holds itself (live token in any role, or possibly retained) is not
+      // evidence of an external app and must not be shown as one.
+      if status == Self.hotKeyExistsStatus,
+        !possiblyRetainedChords.contains(candidate),
+        !registeredChords.values.contains(candidate)
+      {
         if conflictedBindings[role] != candidate {  // avoid re-notifying on an identical repeat
           conflictedBindings[role] = candidate
         }
@@ -1327,6 +1333,7 @@ public final class HotkeyService {
       // nothing. It is NOT a failure — emitting one would put a false alarm into
       // the signal that says a real user's shortcut died — and the caller's
       // occupancy guard sees nil and behaves exactly as it did before C2.
+      possiblyRetainedChords.insert(candidate)  // #3273: registered with no token to release it
       if conflictedBindings[role] != nil { conflictedBindings[role] = nil }  // #3273: clear stale warning
       return nil
     }

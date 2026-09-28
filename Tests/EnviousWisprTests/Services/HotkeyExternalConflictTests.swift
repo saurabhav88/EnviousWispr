@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import Testing
@@ -45,6 +46,57 @@ struct HotkeyExternalConflictTests {
     #expect(
       !service.isCurrentBindingConflicted(.cancel),
       "a role that may still hold its own old chord must not be shown as externally conflicted")
+  }
+
+  @Test("A chord retained after a refused removal stays excluded after another chord is removed")
+  func retainedChordSurvivesAnotherChordsSuccessfulRemoval() {
+    let (service, effects) = makeHotkeyService()
+    service.registerCancelHotkey()  // chord A (Escape) registered
+    effects.refuseRemovals = true
+    service.unregisterCancelHotkey()  // A's removal refused: A may still be ours
+    effects.refuseRemovals = false
+
+    service.cancelKeyCode = 1  // chord B
+    service.registerCancelHotkey()
+    service.unregisterCancelHotkey()  // B removed cleanly; says nothing about A
+
+    service.cancelKeyCode = ShortcutRole.cancel.defaultKeyCode  // back to A
+    effects.nextResults = [.refused(status: Self.hotKeyExistsStatus)]
+    service.registerCancelHotkey()
+    #expect(
+      !service.isCurrentBindingConflicted(.cancel),
+      "chord A is still possibly held by this app, so -9878 for it is not another app's")
+  }
+
+  @Test("A chord another role of this app already holds is not shown as external")
+  func chordHeldByAnotherRoleIsNotShownAsExternal() {
+    let (service, effects) = makeHotkeyService()
+    let mods: NSEvent.ModifierFlags = [.control, .option]
+    service.toggleKeyCode = 49
+    service.toggleModifiers = mods
+    service.start()  // Record registers chord 49+control+option
+
+    service.cancelKeyCode = 49
+    service.cancelModifiers = mods
+    effects.nextResults = [.refused(status: Self.hotKeyExistsStatus)]
+    service.registerCancelHotkey()
+
+    // Carbon id 3 is Cancel (`HotkeyID.cancel`, private to the service).
+    #expect(effects.registrations.last?.id == 3, "the scripted refusal must reach Cancel")
+    #expect(
+      !service.isCurrentBindingConflicted(.cancel),
+      "Record holds this chord in this process, so it is not another app's")
+  }
+
+  @Test("A chord accepted without a token is excluded from a later external claim")
+  func acceptedWithoutTokenChordIsNotShownAsExternalLater() {
+    let (service, effects) = makeHotkeyService()
+    effects.nextResults = [.acceptedWithoutToken]
+    service.registerCancelHotkey()  // registered with nothing to release it
+
+    effects.nextResults = [.refused(status: Self.hotKeyExistsStatus)]
+    service.registerCancelHotkey()  // token still nil, so it asks Carbon again
+    #expect(!service.isCurrentBindingConflicted(.cancel))
   }
 
   @Test("A successful registration clears a prior conflict")
