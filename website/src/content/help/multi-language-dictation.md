@@ -6,19 +6,19 @@ section: "Transcription"
 order: 2
 keywords: ["language", "languages", "spanish", "french", "german", "hindi", "not english", "foreign language", "bilingual", "multilingual", "change language", "accent", "british english", "british spelling", "uk english", "english uk", "colour", "organise", "american spelling"]
 related: ["choosing-a-speech-engine-parakeet-vs-whisperkit", "filler-word-removal", "live-preview-words-on-screen"]
-updated: 2026-09-24
+updated: 2026-09-27
 ---
 EnviousWispr handles dozens of languages without asking you to change a setting before every session. Parakeet, the transcription engine you start with, recognises 25 European languages and detects which one you are speaking on its own.
 
 ### Telling it your language
 
-Both engines let you lock a language under **Settings** \> **Transcription** \> **Language**, or leave it on **Auto-detect language**.
+Both engines let you lock a language under **Settings** \> **Transcription** \> **Language**, or leave it on **Auto-detect language**. This is the language you speak. The language EnviousWispr's own menus and settings are shown in is separate: see [the app's language](/help/sounds-and-appearance/).
 
 On Parakeet, locking a language narrows what the engine produces to your own alphabet, so a German dictation stops coming back with stray Greek or Cyrillic characters in it. It cannot separate two languages that share an alphabet, so it will not tell German from Dutch. On WhisperKit, locking a language gives higher accuracy than auto-detect.
 
 ### British spelling: English (UK)
 
-Both engines write English with American spelling. They hear you correctly and spell "organisation" as "organization". Choose **English (UK)** and the app gives you British spelling instead: colour, centre, organise, travelled, favourite.
+Both engines write English with American spelling. They hear you correctly and spell "organisation" as "organization". Choose **English (UK)** and the app gives you British spelling instead: colour, centre, organise, travelled, favourite. It applies to dictation and to Transcribe a File, with AI polish on or off.
 
 **Turn off auto-detect.** Go to **Settings** \> **Transcription** \> **Language** and switch off **Auto-detect language**.
 

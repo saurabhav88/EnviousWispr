@@ -6,7 +6,7 @@ section: "Input Configuration"
 order: 1
 keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube"]
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
-updated: 2026-09-16
+updated: 2026-09-27
 ---
 EnviousWispr can follow whichever microphone your Mac is set to, or use a specific device you name yourself. Both choices live under **Settings** \> **Microphone**.
 
@@ -50,7 +50,7 @@ If your AirPods are your Mac's input, EnviousWispr records from them, and your h
 
 ### Other audio while you dictate
 
-If you dictate with music, a podcast or a video playing, EnviousWispr can get that sound out of the way when you start talking and put it back when you stop. Go to **Settings**, then **Microphone**, and pick one of four choices under **Media during dictation**, just above Microphone readiness. The setting is off from the start, so nothing changes until you choose.
+If you dictate with music, a podcast or a video playing, EnviousWispr can get that sound out of the way when you start talking and put it back when you stop. Go to **Settings**, then **Microphone**, and pick one of four choices under **Media during dictation**, just above Microphone readiness. It starts on **Continue**, which leaves your audio playing, so nothing changes until you choose another option.
 
 - **Continue.** Music and other audio keep playing as they are.
 - **Lower.** Lowers what plays through your current speakers or headphones to about half for the whole take, then puts it back to exactly where it was.

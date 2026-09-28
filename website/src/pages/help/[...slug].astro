@@ -218,7 +218,8 @@ const alsoRead = article ? related(articles, article) : [];
         <section class="help-stuck">
           <h2>Still stuck?</h2>
           <p>
-            <a href={`/contact/?from=${article!.id}`}>Contact us</a>
+            <a href="/help/sending-feedback/">Send feedback from the app</a>,{' '}
+            <a href={`/contact/?from=${article!.id}`}>contact us</a>
             <span class="help-stuck-or">or</span>
             <a href={`https://github.com/saurabhav88/EnviousWispr/issues/new?title=${encodeURIComponent(`Help: ${article!.data.title}`)}`} target="_blank" rel="noopener">open an issue on GitHub</a>
           </p>

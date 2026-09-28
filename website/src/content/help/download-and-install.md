@@ -7,7 +7,7 @@ order: 3
 keywords: ["install", "download", "setup", "get started", "dmg", "first time", "where do i get it", "installation"]
 related: ["system-requirements", "granting-permissions-microphone-accessibility-and-automation", "your-first-dictation"]
 seeAlso: "getting-started-enviouswispr-under-2-minutes"
-updated: 2026-09-05
+updated: 2026-09-27
 ---
 EnviousWispr is a free, open-source dictation app for macOS. Installing it takes about two minutes, and there is no account to create and no subscription to start.
 
@@ -29,7 +29,7 @@ EnviousWispr then walks you through setup. It downloads the speech model, sets u
 
 ### How you know it worked
 
-Look at the top right of your screen in the menu bar. The EnviousWispr icon sits there quietly. Clicking that icon is how you open settings and history from now on. The application runs entirely from the menu bar, which means there is no Dock icon and no window left open on your desktop.
+Look at the top right of your screen in the menu bar. The EnviousWispr icon sits there, near your system icons; clicking it opens settings and history. EnviousWispr also shows in your Dock and the Command-Tab app switcher like any Mac app, and choosing it there brings its window to the front. Prefer it in the menu bar only? Turn off **Show app in Dock** under **Settings** \> **Appearance**.
 
 ### Updates
 

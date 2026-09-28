@@ -1,0 +1,43 @@
+/* Self-Learning Dictionary film (#996): the pasted sentence, the user's own fix,
+   the app's pill with its three-second Undo, then the next dictation. Phases come
+   from film-director.js: listening (pasted), working (the fix), writing (the pill),
+   result (the next dictation). */
+.sl-document{border:1px solid var(--line);background:var(--film-well);border-radius:13px;padding:17px 20px}
+.sl-label{display:block;font-size:12px;line-height:1.4;color:var(--body);margin-bottom:13px}
+.sl-document p{font-size:23px;line-height:1.5;letter-spacing:-.02em;color:var(--ink);margin:0;min-height:69px;overflow-wrap:anywhere}
+.sl-edit{white-space:nowrap}
+.sl-edit del{text-decoration:none;border-radius:4px;padding:0 3px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600;transition:color .3s,background .3s,opacity .3s}
+.sl-edit ins{text-decoration:none;display:inline-block;max-width:0;overflow:hidden;vertical-align:bottom;opacity:0;border-radius:4px;background:var(--green-soft);color:var(--green);font-weight:600;transition:max-width .5s ease,opacity .3s,padding .3s}
+.film-selflearn:not([data-phase=listening]) .sl-edit del{color:var(--rose);background:var(--rose-soft);text-decoration:line-through;text-decoration-thickness:1.5px;opacity:.75}
+.film-selflearn:not([data-phase=listening]) .sl-edit ins{max-width:9em;opacity:1;padding:0 3px;margin-left:4px}
+.sl-pill{display:flex;align-items:center;gap:10px;width:fit-content;max-width:100%;margin:16px auto;padding:9px 12px 9px 14px;border-radius:999px;background:#211a2c;color:#f4eff9;font:500 14px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 10px 26px #1b12262e;position:relative;overflow:hidden;opacity:0;transform:translateY(8px) scale(.97);transition:opacity .3s,transform .3s}
+.sl-pill svg{width:17px;height:17px;flex:none;color:#9be3c5}
+.sl-pill>span[data-sl-pill]{overflow-wrap:anywhere}
+.sl-undo{flex:none;padding:3px 10px;border-radius:999px;background:#ffffff1f;font-size:13px;font-weight:600}
+.sl-timer{position:absolute;left:0;bottom:0;height:2px;width:100%;background:#9be3c5;transform-origin:left;transform:scaleX(1)}
+.film-selflearn:is([data-phase=writing],[data-phase=result]) .sl-pill{opacity:1;transform:none}
+.film-selflearn[data-phase=writing] .sl-timer{transform:scaleX(0);transition:transform 1.9s linear}
+.film-selflearn[data-phase=result] .sl-pill{opacity:.55}
+.film-selflearn[data-phase=result] .sl-timer{transform:scaleX(0)}
+.sl-next{opacity:.45;transition:opacity .3s}
+.film-selflearn[data-phase=result] .sl-next{opacity:1}
+.film-selflearn[data-phase=result] .sl-next mark{background:var(--green-soft);color:var(--green)}
+html[data-theme=dark] .sl-pill{background:#f3eefa;color:#211a2c;box-shadow:0 10px 26px #0006}
+html[data-theme=dark] .sl-pill svg,html[data-theme=dark] .sl-timer{color:#287a63;background:#287a63}
+html[data-theme=dark] .sl-pill svg{background:none}
+html[data-theme=dark] .sl-undo{background:#211a2c14}
+@media(max-width:600px){.sl-document p{font-size:20px;min-height:60px}.sl-pill{font-size:13px}}
+@media(prefers-reduced-motion:reduce){.sl-edit del,.sl-edit ins,.sl-pill,.sl-timer,.sl-next{transition:none}}
+/* The "checked before it's used" visual: one approved spot, one left alone. */
+.sl-check{display:grid;gap:12px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--film-panel)}
+.sl-check-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:15px 16px;border:1px solid var(--line);border-radius:12px;background:var(--film-well)}
+.sl-check-row p{margin:0;font-size:19px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
+.sl-check-row small{font-size:12px;color:var(--body);text-align:right}
+.sl-check-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;font-weight:700;font-size:15px}
+.sl-check-mark svg{width:16px;height:16px}
+.sl-check-row.approved .sl-check-mark{background:var(--green-soft);color:var(--green)}
+.sl-check-row.approved mark{background:var(--green-soft);color:var(--green);border-radius:4px;padding:0 3px;font-weight:600}
+.sl-check-row.kept .sl-check-mark{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+.sl-check-row.kept mark{background:none;color:var(--ink);font-weight:500;text-decoration:underline dotted color-mix(in srgb,var(--accent) 60%,transparent);text-underline-offset:4px}
+.sl-check-note{font-size:12px;color:var(--body);padding-inline:4px}
+@media(max-width:600px){.sl-check{padding:14px}.sl-check-row{grid-template-columns:auto minmax(0,1fr)}.sl-check-row small{grid-column:2;text-align:left}.sl-check-row p{font-size:17px}}

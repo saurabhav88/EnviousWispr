@@ -1,5 +1,5 @@
 ---
-// Features directory (#2816), the mock's landing_page.py: loop hero, six
+// Features directory (#2816), the mock's landing_page.py: loop hero, seven
 // cards, benefits strip after the cards, then the landscape closing.
 import FeatureShell from '../../layouts/FeatureShell.astro';
 import '../../styles/features/lips-mascot.css';
@@ -43,7 +43,7 @@ const benefits = [
       <div class="landing-product-grid">
         {
           menuProducts.map((entry) => (
-            <a class="landing-product-card" href={entry.path}>
+            <a class="landing-product-card" href={entry.path} data-slug={entry.slug}>
               <div class="feature-card-top">
                 <span class="landing-card-icon">
                   <SiteIcon name={entry.slug} />

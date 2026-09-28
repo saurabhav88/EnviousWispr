@@ -5,7 +5,7 @@
 import { SCENES, NATIVE_PREVIEW_SNAPSHOT_BARS } from '../../data/features/films.js';
 import DemoIcon from './DemoIcon.astro';
 interface Props {
-  kind: 'dictionary' | 'snippets' | 'quickadd' | 'correction' | 'preview';
+  kind: 'dictionary' | 'snippets' | 'quickadd' | 'correction' | 'preview' | 'selflearn';
 }
 const { kind } = Astro.props;
 const scenes = SCENES[kind];
@@ -21,7 +21,7 @@ function highlighted(text, marks = []) {
     .map((part) => (marks.includes(part) ? `<mark>${escapeHtml(part)}</mark>` : escapeHtml(part)))
     .join('');
 }
-const symbol = kind === 'dictionary' || kind === 'quickadd' ? 'word' : 'wave';
+const symbol = kind === 'dictionary' || kind === 'quickadd' || kind === 'selflearn' ? 'word' : 'wave';
 const rawLabel = kind === 'quickadd' ? 'Your current draft' : kind === 'dictionary' ? 'Heard as' : 'You say';
 const outLabel = kind === 'quickadd' ? 'Your next dictation' : 'Your finished text';
 const encoded = JSON.stringify(scenes);
@@ -77,6 +77,33 @@ const encoded = JSON.stringify(scenes);
                 <i />
                 <i />
               </span>
+            </div>
+          </>
+        )
+      }
+      {
+        kind === 'selflearn' && (
+          <>
+            <div class="sl-document">
+              <span class="sl-label">Pasted a moment ago</span>
+              <p>
+                <span data-sl-pasted>{s.pasted}</span><span class="sl-edit"><del data-sl-wrong>{s.wrong}</del><ins data-sl-fixed>{s.fixed}</ins></span><span data-sl-tail>{s.tail}</span>
+              </p>
+            </div>
+            <div class="sl-pill">
+              <DemoIcon name="check" />
+              <span data-sl-pill>{s.pill}</span>
+              <span class="sl-undo">Undo</span>
+              <i class="sl-timer" />
+            </div>
+            <div class="result-well sl-next">
+              <div class="well-label">
+                <span>Your next dictation</span>
+                <span class="result-check">
+                  <DemoIcon name="check" />
+                </span>
+              </div>
+              <p data-film-out set:html={highlighted(s.out, s.out_marks)} />
             </div>
           </>
         )

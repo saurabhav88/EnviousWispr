@@ -19,6 +19,14 @@ export const SCENES = {
   correction: [
     { label: 'Self-correction', title: 'The thought you meant.', where: 'With AI polish', raw: 'Let’s meet Thursday, actually Friday.', out: 'Let’s meet Friday.', raw_marks: ['Thursday, actually '], out_marks: ['Friday'], saved: 'Keep the corrected detail', explain: 'Keep what you meant.' },
   ],
+  // Self-Learning Dictionary (#996): the pasted text, the user's own fix, the
+  // pill, then the next dictation. Pill wording is the app's own
+  // (help/self-learning-dictionary.md, "Read the pill").
+  selflearn: [
+    { label: 'Names', title: 'Fix a name once.', where: 'On your Mac', pasted: 'Send the draft to ', wrong: 'Sasha', fixed: 'Saoirse', tail: ' tonight.', pill: 'Added “Saoirse” to Dictionary', out: 'Saoirse signed off on the draft.', out_marks: ['Saoirse'], explain: 'Checked each time before it is used.' },
+    { label: 'Tools', title: 'Your tools, not look-alikes.', where: 'On your Mac', pasted: 'The build runs on ', wrong: 'Twist', fixed: 'Tuist', tail: ' now.', pill: 'Added “Tuist” to Dictionary', out: 'Run Tuist before you open the project.', out_marks: ['Tuist'], explain: 'Checked before it is used.' },
+    { label: 'Updates', title: 'A word you already had.', where: 'On your Mac', pasted: 'Ask ', wrong: 'Shivon', fixed: 'Siobhan', tail: ' about Friday.', pill: '“Siobhan” updated', out: 'Siobhan can make Friday.', out_marks: ['Siobhan'], explain: 'The mishearing joins your word.' },
+  ],
   preview: [
     { label: 'English', title: 'Your words, as you speak.', where: 'Live draft', raw: 'Hi Maya um for Friday please bring the design notes the launch checklist and the revised budget of six thousand two hundred thirty nine dollars thanks Amira', lang: 'en', explain: 'Your thought, in view.' },
     { label: 'Deutsch', title: 'Ein Gedanke nimmt Form an.', where: 'Live draft', raw: 'Ein bisschen Raum für den Gedanken, den du gerade hast.', lang: 'de', explain: 'A draft in your language.' },
@@ -32,11 +40,13 @@ export const DURATIONS = {
   snippets: [1100, 500, 1350, 3200],
   quickadd: [1300, 3200, 700, 2600],
   correction: [1800, 850, 650, 3200],
+  selflearn: [1500, 1700, 1900, 3200],
   preview: [4800, 450, 450, 3000],
 };
 
 export const STATUS_WORDS = {
   quickadd: ['Select the misheard words.', 'Pick the word you meant.', 'Press Return to add the spelling.', ''],
+  selflearn: ['EnviousWispr pastes your dictation…', 'You fix one word…', 'Saved, with three seconds to undo…', ''],
   snippets: ['A short spoken phrase…', 'Finding your saved text…', 'Your words, ready to use…', ''],
   preview: ['A thought takes shape…', 'The draft updates…', 'Keep it in view…', ''],
   default: ['Listening to the example…', 'Matching your words…', 'Your finished text…', ''],

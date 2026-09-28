@@ -6,7 +6,7 @@ section: "Transcribe a File"
 order: 8
 keywords: ["transcribe a file", "import audio", "voice memo", "meeting recording", "lecture", "podcast", "mp3", "m4a", "video to text", "transcript", "file transcription", "audio to text"]
 related: ["transcribe-a-file-speaker-labels", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "ai-polish-and-cloud-data"]
-updated: 2026-09-13
+updated: 2026-09-27
 ---
 Transcribe a File takes an audio or video file you already have and gives you back clean, readable text. The recording never leaves your Mac. When the recording has more than one voice and the app can tell them apart and match the words to them, the transcript comes back as speaker turns; see [speaker labels](/help/transcribe-a-file-speaker-labels/).
 
@@ -51,7 +51,7 @@ More on the two engines, including how their language counts compare, is in [cho
 
 ### Choosing the polisher
 
-Two kinds of cleanup run on a file. The automatic fixes run first, whichever polisher you pick, including **None**: numbers and dates are written as figures, your custom words are applied when **Enable Dictionary** is on under **Settings** \> **Dictionary**, and filler words are removed when **Remove filler words** is on in Speech Engine settings (spoken emoji has its own switch there). With a polisher selected, it then rewrites the text for punctuation, capitalisation and flow, and lays out lists. **The polisher you choose here is separate from the one your dictation uses**, so you can clean files with one and dictations with another. When you have made a separate choice for files, a link on the step, **Use dictation's polish settings**, makes files follow your dictation choice again.
+Two kinds of cleanup run on a file. The automatic fixes run first, whichever polisher you pick, including **None**: numbers and dates are written as figures, your custom words are applied when **Enable Dictionary** is on under **Settings** \> **Dictionary**, and filler words are removed when **Remove filler words** is on under **Settings** \> **Transcription** (spoken emoji has its own switch there). With a polisher selected, it then rewrites the text for punctuation, capitalisation and flow, and lays out lists. **The polisher you choose here is separate from the one your dictation uses**, so you can clean files with one and dictations with another. When you have made a separate choice for files, a link on the step, **Use dictation's polish settings**, makes files follow your dictation choice again.
 
 | Polisher | Where it runs | What the card says |
 |---|---|---|

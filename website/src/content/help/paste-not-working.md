@@ -6,7 +6,7 @@ section: "Paste System"
 order: 3
 keywords: ["paste not working", "wont paste", "nothing pastes", "text not appearing", "goes to the wrong app", "vs code", "slack", "discord", "notion", "no text in my app", "paste again", "paste last dictation", "dictation disappeared"]
 related: ["accessibility-permission-not-working", "how-text-gets-pasted-into-your-app", "transcript-history"]
-updated: 2026-09-23
+updated: 2026-09-27
 ---
 When your dictation does not appear in the app you were typing in, work through these steps in order.
 
@@ -28,7 +28,7 @@ EnviousWispr delivers text to whichever text field your cursor was in when you s
 
 ### 3. The text went to a different app
 
-If you switched windows while dictating, the text still goes to the app you were in when you started. That is deliberate. It makes sure a slow AI polish cannot drop your words into an unexpected window if you change tasks mid-sentence.
+If you switched windows while dictating, the text still goes to the window you were in when you started, even when you have several windows of the same app open, such as two browser windows. That is deliberate. It makes sure a slow AI polish cannot drop your words into an unexpected window if you change tasks mid-sentence. If that window has closed by the time your text is ready, EnviousWispr leaves the words on your clipboard and shows the Copied notice, so you can paste them yourself.
 
 ### 4. VS Code, Slack, Discord and similar apps
 

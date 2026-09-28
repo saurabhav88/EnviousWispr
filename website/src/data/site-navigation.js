@@ -21,7 +21,7 @@ export const catalog = [
     slug: 'features',
     path: '/features/',
     name: 'Features',
-    updated: '2026-09-12',
+    updated: '2026-09-27',
     menuFoot: 'Explore all features',
   },
   {
@@ -51,7 +51,17 @@ export const catalog = [
     menuTagline: 'Your vocabulary, spelled your way.',
     cardBenefit: 'Your names and specialist words, spelled your way.',
     heroTagline: 'Get your words right',
-    updated: '2026-09-12',
+    updated: '2026-09-27',
+    menuProduct: true,
+  },
+  {
+    slug: 'self-learning-dictionary',
+    path: '/features/self-learning-dictionary/',
+    name: 'Self-Learning Dictionary',
+    menuTagline: 'Fix a word once. It remembers.',
+    cardBenefit: 'Correct a misheard word once, and later dictations can use your spelling.',
+    heroTagline: 'Fix it once',
+    updated: '2026-09-27',
     menuProduct: true,
   },
   {
@@ -61,7 +71,7 @@ export const catalog = [
     menuTagline: 'Saved text, a spoken phrase away.',
     cardBenefit: 'Your saved text, a short spoken phrase away.',
     heroTagline: 'Say less. Reuse more.',
-    updated: '2026-09-12',
+    updated: '2026-09-27',
     menuProduct: true,
   },
   {

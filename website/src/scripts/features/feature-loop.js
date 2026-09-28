@@ -1,11 +1,13 @@
 // Directory page loop (#2816): cross-fades the lips, the "So many features"
-// message and the six feature cards. Ported from the mock's feature-loop.js.
+// message and every feature card. Ported from the mock's feature-loop.js.
 import { keepRoot } from './guard.js';
 
 export function init(root, motion, scope) {
   keepRoot(root, scope);
   const views = [...root.querySelectorAll('[data-loop-view]')];
-  const durations = [2700, 1500, 1450, 1450, 1450, 1450, 1450, 1450];
+  // Lips, message, then one turn per rendered card: derived from the views so a
+  // catalog change (#996 added a seventh card) never leaves a card without its turn.
+  const durations = views.map((_, i) => (i === 0 ? 2700 : i === 1 ? 1500 : 1450));
   const total = durations.reduce((a, b) => a + b, 0);
   const fade = 260;
   let elapsed = 0;

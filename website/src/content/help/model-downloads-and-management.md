@@ -6,7 +6,7 @@ section: "Transcription"
 order: 3
 keywords: ["download model", "model download", "stuck downloading", "how big", "disk space", "gb", "storage", "redownload", "model files", "where are the models"]
 related: ["uninstalling-enviouswispr"]
-updated: 2026-09-04
+updated: 2026-09-27
 ---
 EnviousWispr keeps its speech models on your own Mac rather than on a server, which is what lets your audio stay on the device. The trade for that is a download the first time and some disk space to manage afterwards.
 
@@ -17,6 +17,8 @@ EnviousWispr keeps its speech models on your own Mac rather than on a server, wh
 **WhisperKit.** This engine is not downloaded for you. If you switch to it, go to **Settings** \> **Transcription** and click **Download WhisperKit Model**. It is about 1.5 GB.
 
 Each download is checked before it is used, so a broken or half-finished file is never loaded.
+
+The [Self-Learning Dictionary](/help/self-learning-dictionary/) has models of its own, downloaded after setup: one that spots your corrections, and a word check that uses the words you taught it. That article lists their sizes, and **Settings** \> **Dictionary** \> **Learn from...** shows whether each is downloading, ready or needs a retry.
 
 ### If a download fails
 
