@@ -12,6 +12,14 @@ import Testing
 ///   `suspend`/`resume` as separate methods rather than bundling into
 ///   `setSuspended(_:)`; the hotkey-recorder UI calls them at different
 ///   points (council resolution §15.5).
+/// - #3273 (issue #3266): non-private methods 4 → 5. Adds
+///   `isCurrentBindingConflicted(_:)`, a one-line passthrough to
+///   `hotkeyService.isCurrentBindingConflicted(_:)` (the row-warning read for a
+///   shortcut Carbon refused because something outside the app already holds
+///   it), matching the existing `hotkeyDescription` passthrough's shape. No new
+///   stored dependency; collaborator/closure/import ceilings unchanged. Codex
+///   grounded review, 6 rounds, `PROCEED-AS-PLANNED` — this exact addition was
+///   the reviewed design.
 @Suite struct HotkeyControllerCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/DictationRuntime/HotkeyController.swift"
@@ -49,7 +57,8 @@ import Testing
     let total = RouterCeilingParser.storedDependencyCount(in: body)
     #expect(
       total <= 4,
-      "HotkeyController total stored-dependency ceiling exceeded: \(total) > 4 (\(collaborators) collaborators + \(closures) closures).")
+      "HotkeyController total stored-dependency ceiling exceeded: \(total) > 4 (\(collaborators) collaborators + \(closures) closures)."
+    )
   }
 
   @Test func nonPrivateMethodCount() throws {
@@ -57,11 +66,11 @@ import Testing
       named: "HotkeyController", at: Self.sourcePath)
     let count = RouterCeilingParser.nonPrivateMethodCount(in: body)
     #expect(
-      count <= 4,
+      count <= 5,
       """
-      HotkeyController non-private method ceiling exceeded: \(count) > 4 \
+      HotkeyController non-private method ceiling exceeded: \(count) > 5 \
       non-private `func` declarations. PR10 baseline: install, startIfEnabled, \
-      suspend, resume.
+      suspend, resume. #3273 added isCurrentBindingConflicted(_:).
       """)
   }
 

@@ -409,6 +409,7 @@ private struct ProminentHotkeyRow: View {
   let accessibilityLabel: LocalizedStringResource
 
   @Environment(SettingsManager.self) private var settings
+  @Environment(DictationRuntime.self) private var dictationRuntime
 
   /// "Not active: the recording keybind (Right ⌘) uses these keys. Choose another."
   ///
@@ -443,6 +444,17 @@ private struct ProminentHotkeyRow: View {
           Text(Self.notActiveMessage(taker: taker, bindings: settings.shortcutBindings))
             .font(.stHelper)
             .foregroundStyle(.stAccent)
+        } else if dictationRuntime.isCurrentBindingConflicted(role) {
+          // #3273: the internal-conflict check above cannot see this — it only compares our own
+          // 5 roles' bindings against each other and never asks Carbon. This is the OS-level case:
+          // Carbon refused this exact saved binding because something outside the app already
+          // holds it (issue #3266).
+          Text(
+            ExternalConflictCopy.notWorking(
+              role: role, keys: KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
+          )
+          .font(.stHelper)
+          .foregroundStyle(.stAccent)
         }
       }
       Spacer(minLength: 12)
@@ -552,6 +564,57 @@ enum KeybindConflictCopy {
         localized: "Not active: Copy last dictation (\(keys)) uses these keys. Choose another.",
         comment:
           "Keybinds settings: a conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
+      )
+    }
+  }
+}
+
+/// The warning under a keybind that Carbon refused to register because something OUTSIDE this app
+/// — another program, or macOS itself — already holds those keys (#3273, issue #3266).
+///
+/// This is a DIFFERENT concern from `KeybindConflictCopy` above: that one compares our own 5
+/// roles against each other and can always name the taker; this one is a live OS refusal, and we
+/// can never name what holds the combo — macOS exposes no such query, and we do not record the
+/// actual keys for any purpose beyond this row (`TelemetryService.swift`, "Metadata only — never
+/// the key codes"). One whole sentence per role for the same reason `KeybindConflictCopy` gives:
+/// grammar and the role's own name do not splice cleanly across languages.
+enum ExternalConflictCopy {
+  static func notWorking(role: ShortcutRole, keys: String) -> String {
+    switch role {
+    case .record:
+      return String(
+        localized:
+          "The recording keybind (\(keys)) isn't working — this key combination is already used by something else on your Mac. Choose another.",
+        comment:
+          "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
+      )
+    case .cancel:
+      return String(
+        localized:
+          "The cancel keybind (\(keys)) isn't working — this key combination is already used by something else on your Mac while you're recording. Choose another.",
+        comment:
+          "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
+      )
+    case .quickAdd:
+      return String(
+        localized:
+          "The add-a-word keybind (\(keys)) isn't working — this key combination is already used by something else on your Mac. Choose another.",
+        comment:
+          "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
+      )
+    case .pasteLast:
+      return String(
+        localized:
+          "Paste last dictation (\(keys)) isn't working — this key combination is already used by something else on your Mac. Choose another.",
+        comment:
+          "Keybinds settings: an external conflict warning. Paste last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
+      )
+    case .copyLast:
+      return String(
+        localized:
+          "Copy last dictation (\(keys)) isn't working — this key combination is already used by something else on your Mac. Choose another.",
+        comment:
+          "Keybinds settings: an external conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
       )
     }
   }
