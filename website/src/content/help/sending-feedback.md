@@ -6,7 +6,7 @@ section: "Getting Help"
 order: 9
 keywords: ["send feedback", "feedback", "report a bug", "bug report", "bug button", "ladybug", "feature request", "contact", "support", "reply", "suggestion"]
 related: ["what-data-is-collected", "source-code-and-contributing", "app-crashes-or-asr-engine-crashes", "privacy-overview"]
-updated: 2026-09-27
+updated: 2026-09-28
 ---
 Found a bug or have an idea? You can tell us from inside EnviousWispr. The message reaches the team directly, and we read every one.
 
@@ -35,6 +35,8 @@ If **Send** stays greyed out, check the email address or leave the field empty.
 ### What we receive
 
 We receive the message you write and, only if you add it, your email address. The message also carries technical details that help us find the problem, such as your app and macOS versions and whether a recording was in progress. It never includes your recordings or your History. The full list is in [what data is collected](/help/what-data-is-collected/).
+
+We also send the text of your message, without your email address, to TypeSafe, an AI service that works on our behalf. It guesses which help article might answer your message, so we can learn which questions our help pages already cover. TypeSafe does not use your message to train its models.
 
 ### Other ways to reach us
 

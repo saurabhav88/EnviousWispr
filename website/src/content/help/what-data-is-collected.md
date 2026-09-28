@@ -6,7 +6,7 @@ section: "Privacy"
 order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "tracking", "crash reports"]
 related: ["privacy-overview"]
-updated: 2026-09-25
+updated: 2026-09-28
 ---
 EnviousWispr collects anonymous usage data and crash reports. Nothing you say is part of that. Your audio never reaches Envious Labs, the company that makes the app, and the app never sends us your dictations or transcripts unless you include them in a feedback report yourself.
 
@@ -41,7 +41,7 @@ If you would rather run without it, EnviousWispr is open source under the GPLv3 
 
 ### Feedback you choose to send
 
-If you use Send Feedback, the bug button next to Record in the app window, we receive the message you write and, only if you add it, your email address so we can reply. It also carries the app and macOS version, basic details about your Mac, your locale and time zone, technical diagnostics such as the audio route, recording status and Apple Intelligence availability, and random IDs used by the app and Sentry. Your feedback is sent only after you press Send, and no recordings or History are attached. The privacy policy covers how long it is kept and how to have it deleted.
+If you use Send Feedback, the bug button next to Record in the app window, we receive the message you write and, only if you add it, your email address so we can reply. It also carries the app and macOS version, basic details about your Mac, your locale and time zone, technical diagnostics such as the audio route, recording status and Apple Intelligence availability, and random IDs used by the app and Sentry. Your feedback is sent only after you press Send, and no recordings or History are attached. The privacy policy covers how long your feedback is kept and how to have it deleted. We also send the text of your message, without your email address, to TypeSafe, an AI service that works on our behalf. It guesses which help article might answer your message, so we can learn which questions our help pages already cover. TypeSafe does not use your message to train its models.
 
 ### Where your text goes if you use cloud AI polish
 
