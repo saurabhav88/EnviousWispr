@@ -30,69 +30,180 @@ public enum ObservabilityBootstrap {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
   }
 
-  /// Starts PostHog, then Sentry, once per process. `crashReports` is the stored "Send crash
-  /// reports" switch (#3269) and picks Sentry's mode for this whole run: a later change to the
-  /// switch applies at the next launch, never to the running SDK (the Sentry maintainers advise
+  /// Starts PostHog (only when `usageMetrics` is ON), then Sentry, once per process, from the
+  /// two stored #3269 switches. `crashReports` picks Sentry's mode for this whole run: a later
+  /// change applies at the next launch, never to the running SDK (the Sentry maintainers advise
   /// against a runtime close/start). A second call does nothing.
   @MainActor
-  public static func initialize(crashReports: Bool) {
-    launch.start(crashReports: crashReports)
+  public static func initialize(usageMetrics: Bool, crashReports: Bool) {
+    lifecycle.start(usageMetrics: usageMetrics, crashReports: crashReports)
+  }
+
+  /// Applies a change to either #3269 switch while the app runs. Usage metrics apply now:
+  /// OFF closes PostHog, ON sets it up again. Crash reports never change the running SDK; they
+  /// wait for the next launch. Before `initialize` this does nothing, because `initialize` reads
+  /// the stored switches itself.
+  @MainActor
+  public static func apply(usageMetrics: Bool, crashReports: Bool) {
+    lifecycle.apply(usageMetrics: usageMetrics, crashReports: crashReports)
   }
 
   /// The "Send crash reports" value Sentry was started with in this process, or nil before
-  /// `initialize(crashReports:)`. Compare it with the stored switch to tell whether a change is
-  /// still waiting for a restart.
+  /// `initialize`. Compare it with the stored switch to tell whether a change is still waiting
+  /// for a restart.
   @MainActor
-  public static var launchedCrashReports: Bool? { launch.launchedCrashReports }
+  public static var launchedCrashReports: Bool? { lifecycle.launchedCrashReports }
+
+  /// The canonical PostHog anonymous id last read while PostHog was running in this process,
+  /// kept in memory after a close (PostHog's own getters return "" once closed,
+  /// `PostHogSDK.swift:306-332`). Nil on a launch that started with usage metrics OFF. Never
+  /// written to disk and never put back on the global scope while metrics are OFF.
+  @MainActor
+  static var lastKnownPostHogID: String? { lifecycle.lastKnownPostHogID }
 
   @MainActor
-  static let launch = LaunchOnce(
-    startPostHog: { initializePostHog() },
-    startSentry: { crashReports in initializeSentry(crashReports: crashReports) })
+  static let lifecycle = Lifecycle(operations: .live, makeUUID: makeOffPeriodUserID)
 
-  /// Runs the two SDK starts at most once and remembers the crash mode used. The starts are
-  /// injected so a test can drive this exact object without starting either SDK.
+  /// The production source of metrics-OFF Sentry user ids: a new random UUID per call, so each
+  /// OFF launch and each ON-to-OFF change gets its own.
+  static let makeOffPeriodUserID: @Sendable () -> UUID = { UUID() }
+
+  /// The SDK calls `Lifecycle` makes, one closure each, so a test can record the exact order the
+  /// production transitions use without starting either SDK.
+  struct Operations {
+    /// Resolves the key and calls `PostHogSDK.setup`; false when the key is missing.
+    var setUpPostHog: () -> Bool
+    var postHogIsOptOut: () -> Bool
+    var postHogOptIn: () -> Void
+    var registerPostHog: () -> Void
+    var postHogDistinctID: () -> String
+    var closePostHog: () -> Void
+    /// Resolves the DSN and calls `SentrySDK.start`; false when the DSN is missing.
+    var startSentry: (_ crashReports: Bool) -> Bool
+    /// The launch-stable tags, with the join key when there is one.
+    var writeLaunchTags: (_ joinKey: String?) -> Void
+    var setJoinKey: (_ joinKey: String?) -> Void
+    var setOffPeriodUser: (_ id: UUID?) -> Void
+
+    @MainActor static let live = Operations(
+      setUpPostHog: {
+        guard
+          let apiKey = KeyResolver.resolveKey(
+            plistKey: "PostHogAPIKey", fileName: "posthog-api-key")
+        else {
+          print(
+            "[ObservabilityBootstrap] Warning: PostHog API key not found — skipping PostHog initialization"
+          )
+          return false
+        }
+        PostHogSDK.shared.setup(makePostHogConfig(apiKey: apiKey))
+        return true
+      },
+      postHogIsOptOut: { PostHogSDK.shared.isOptOut() },
+      postHogOptIn: { PostHogSDK.shared.optIn() },
+      registerPostHog: {
+        // Tag environment so dev dogfooding doesn't muddy production dashboards, and
+        // `app` because project 354235 is shared with EnviousStaging (#2982; the
+        // shared-project rule: every Envious Labs product tags its source).
+        PostHogSDK.shared.register([
+          "environment": environment, "app_version": appVersion, "app": appTag,
+        ])
+      },
+      postHogDistinctID: { PostHogSDK.shared.getDistinctId() },
+      closePostHog: { PostHogSDK.shared.close() },
+      startSentry: { crashReports in initializeSentry(crashReports: crashReports) },
+      writeLaunchTags: { joinKey in
+        // Set stable tags that rarely change — available on every event including fatal crashes
+        let isSynthetic = ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1"
+        SentrySDK.configureScope { scope in
+          writeStableTags(
+            environment: environment, isSynthetic: isSynthetic, joinKey: joinKey, to: scope)
+        }
+      },
+      setJoinKey: { joinKey in
+        SentrySDK.configureScope { scope in writeJoinKey(joinKey, to: scope) }
+      },
+      setOffPeriodUser: { id in
+        SentrySDK.configureScope { scope in writeOffPeriodUser(id, to: scope) }
+      })
+  }
+
+  /// The one owner of PostHog and Sentry lifecycle (#3269). Starts both once, applies the
+  /// usage-metrics switch at runtime, and keeps Sentry's global identity in step with it:
+  /// metrics ON carries the `analytics.distinct_id` join tag; metrics OFF carries no join tag and
+  /// an explicit random user id, fresh for each OFF period, so the SDK never falls back to the
+  /// machine's installation id (`SentryClient.m:997-1009`). The crash mode is fixed at launch.
   @MainActor
-  final class LaunchOnce {
+  final class Lifecycle {
     private(set) var launchedCrashReports: Bool?
-    private let startPostHog: () -> Void
-    private let startSentry: (Bool) -> Void
+    private(set) var usageMetrics = false
+    private(set) var isPostHogRunning = false
+    private(set) var lastKnownPostHogID: String?
+    /// The id read at the latest PostHog setup, nil when that read was missing or invalid. Only
+    /// this drives the global join, so a stale `lastKnownPostHogID` is never re-tagged.
+    private var currentPostHogID: String?
+    private var isSentryRunning = false
+    private let operations: Operations
+    private let makeUUID: () -> UUID
 
-    init(startPostHog: @escaping () -> Void, startSentry: @escaping (Bool) -> Void) {
-      self.startPostHog = startPostHog
-      self.startSentry = startSentry
+    init(operations: Operations, makeUUID: @escaping () -> UUID) {
+      self.operations = operations
+      self.makeUUID = makeUUID
     }
 
-    func start(crashReports: Bool) {
+    func start(usageMetrics: Bool, crashReports: Bool) {
       guard launchedCrashReports == nil else { return }
       launchedCrashReports = crashReports
-      // PostHog first: Sentry's stable tags read PostHog's anonymous id (#1846).
-      startPostHog()
-      startSentry(crashReports)
+      self.usageMetrics = usageMetrics
+      // PostHog first: Sentry's launch tags read PostHog's anonymous id (#1846).
+      if usageMetrics { startPostHog() }
+      // Started in both crash modes and both metrics states: Sentry carries Send Feedback.
+      isSentryRunning = operations.startSentry(crashReports)
+      guard isSentryRunning else { return }
+      operations.writeLaunchTags(currentJoinKey)
+      if !usageMetrics { operations.setOffPeriodUser(makeUUID()) }
+    }
+
+    func apply(usageMetrics: Bool, crashReports _: Bool) {
+      // Before launch there is nothing to change; `start` reads the stored switches.
+      guard launchedCrashReports != nil, usageMetrics != self.usageMetrics else { return }
+      self.usageMetrics = usageMetrics
+      if usageMetrics {
+        startPostHog()
+        guard isSentryRunning else { return }
+        // Clear the OFF-period user before the join comes back, so no report carries both.
+        operations.setOffPeriodUser(nil)
+        operations.setJoinKey(currentJoinKey)
+      } else {
+        // Stops new capture and the flush timer. Rows already queued on disk stay there and a
+        // flush already under way may finish; the plan promises no exact cutoff.
+        if isPostHogRunning {
+          operations.closePostHog()
+          isPostHogRunning = false
+        }
+        guard isSentryRunning else { return }
+        operations.setJoinKey(nil)
+        operations.setOffPeriodUser(makeUUID())
+      }
+    }
+
+    /// The join key for the global scope right now: PostHog's id while it runs, else none.
+    private var currentJoinKey: String? { isPostHogRunning ? currentPostHogID : nil }
+
+    private func startPostHog() {
+      currentPostHogID = nil
+      guard operations.setUpPostHog() else { return }
+      isPostHogRunning = true
+      // A stored opt-out overrides config at setup (`PostHogSDK.swift:178`). The switch is the
+      // user's choice now, so an ON switch clears any opt-out an older build left behind.
+      if operations.postHogIsOptOut() { operations.postHogOptIn() }
+      operations.registerPostHog()
+      currentPostHogID = canonicalAnonymousPostHogID(operations.postHogDistinctID())
+      if let currentPostHogID { lastKnownPostHogID = currentPostHogID }
     }
   }
 
   // MARK: - Private
-
-  private static func initializePostHog() {
-    guard
-      let apiKey = KeyResolver.resolveKey(plistKey: "PostHogAPIKey", fileName: "posthog-api-key")
-    else {
-      print(
-        "[ObservabilityBootstrap] Warning: PostHog API key not found — skipping PostHog initialization"
-      )
-      return
-    }
-
-    PostHogSDK.shared.setup(makePostHogConfig(apiKey: apiKey))
-
-    // Tag environment so dev dogfooding doesn't muddy production dashboards, and
-    // `app` because project 354235 is shared with EnviousStaging (#2982; the
-    // shared-project rule: every Envious Labs product tags its source).
-    PostHogSDK.shared.register([
-      "environment": environment, "app_version": appVersion, "app": appTag,
-    ])
-  }
 
   /// The one PostHog configuration the app ships. Builds the config only: it starts nothing and
   /// sends nothing, so a test can read exactly what `setup` receives.
@@ -102,6 +213,9 @@ public enum ObservabilityBootstrap {
     config.enableSwizzling = false
     config.captureScreenViews = false
     config.sendFeatureFlagEvent = false
+    // #3269: the app reads no feature flags, so do not fetch them at every setup (the default
+    // is true, `PostHogConfig.swift:116`). A setup still fetches remote config.
+    config.preloadFeatureFlags = false
     // Sentry is this app's only crash handler. PostHog vendors PLCrashReporter, but
     // `PostHogConfig.getIntegrations()` is the sole construction site of its exception
     // autocapture integration and builds it only when this flag is true — it defaults
@@ -127,25 +241,17 @@ public enum ObservabilityBootstrap {
     return config
   }
 
-  private static func initializeSentry(crashReports: Bool) {
+  private static func initializeSentry(crashReports: Bool) -> Bool {
     guard let dsn = KeyResolver.resolveKey(plistKey: "SentryDSN", fileName: "sentry-dsn") else {
       print(
         "[ObservabilityBootstrap] Warning: Sentry DSN not found — skipping Sentry initialization")
-      return
+      return false
     }
 
-    // Started in both modes: with crash reports OFF, Sentry still carries Send Feedback.
     SentrySDK.start { options in
       configureSentryOptions(options, dsn: dsn, crashReports: crashReports)
     }
-
-    // Set stable tags that rarely change — available on every event including fatal crashes
-    let isSynthetic = ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1"
-    let joinKey = canonicalAnonymousPostHogID(PostHogSDK.shared.getDistinctId())
-    SentrySDK.configureScope { scope in
-      writeStableTags(
-        environment: environment, isSynthetic: isSynthetic, joinKey: joinKey, to: scope)
-    }
+    return true
   }
 
   /// Where crash-reports-OFF Sentry keeps its files: a folder of its own, so that mode never
@@ -249,7 +355,7 @@ public enum ObservabilityBootstrap {
       scope.setTag(value: SentryEventSanitizer.redactString("true"), key: "synthetic")
     }
     // #1846: the cross-vendor join key. PostHog is initialized first
-    // (`LaunchOnce.start` above) and its setup is synchronous, so the stored
+    // (`Lifecycle.start` above) and its setup is synchronous, so the stored
     // anonymous ID is readable here. Sentry adopts PostHog's ID rather than
     // the reverse because Sentry's own `user.id` is `SentryInstallation`'s
     // machine-wide `~/Library/Caches/INSTALLATION` UUID — shared across
@@ -259,9 +365,28 @@ public enum ObservabilityBootstrap {
     // disturb the sentry-triage worker's userCount severity thresholds.
     // A scope tag set here is present on every later event including fatal
     // crashes, and a replayed crash carries its own launch's value.
+    if let joinKey { writeJoinKey(joinKey, to: scope) }
+  }
+
+  /// Sets the `analytics.distinct_id` join tag, or removes it for `nil` (#3269: metrics OFF).
+  /// Filtered at write time like every global-scope write, because feedback skips `beforeSend`.
+  static func writeJoinKey(_ joinKey: String?, to scope: Scope) {
     if let joinKey {
       scope.setTag(value: SentryEventSanitizer.redactString(joinKey), key: "analytics.distinct_id")
+    } else {
+      scope.removeTag(key: "analytics.distinct_id")
     }
+  }
+
+  /// The metrics-OFF Sentry user (#3269): an explicit random id, so the SDK does not stamp the
+  /// machine's installation id on reports (`SentryClient.m:997-1009`). `nil` clears it back to
+  /// the SDK's normal handling when metrics turn ON. A hyphenated UUID passes the filter intact.
+  static func writeOffPeriodUser(_ id: UUID?, to scope: Scope) {
+    guard let id else {
+      scope.setUser(nil)
+      return
+    }
+    scope.setUser(User(userId: SentryEventSanitizer.redactString(id.uuidString)))
   }
 
   // MARK: - Cross-vendor join key (#1846)

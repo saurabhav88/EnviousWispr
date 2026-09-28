@@ -154,6 +154,41 @@ struct SentryScopeWriteSanitizationTests {
     #expect(bareTags["analytics.distinct_id"] == nil)
   }
 
+  // MARK: - Metrics switch identity (#3269)
+
+  /// The join tag comes off and the random user goes on, while the take tag, breadcrumbs and
+  /// other tags stay: the founder kept crash-report diagnostics unchanged (2026-09-28).
+  @Test("Metrics OFF: join removed, random user set, other scope data kept; ON clears the user")
+  func metricsIdentityWriters() throws {
+    let scope = Scope()
+    ObservabilityBootstrap.writeStableTags(
+      environment: "production", isSynthetic: false, joinKey: Self.joinKey, to: scope)
+    SentryBreadcrumb.writeTakeID("7F3C2A10-4B5D-4E6F-8A9B-0C1D2E3F4A5B", to: scope)
+    scope.addBreadcrumb(
+      SentryBreadcrumb.makeBreadcrumb(
+        stage: "pipeline", message: "started", level: .info, data: nil))
+    let offID = try #require(UUID(uuidString: "3E2D1C0B-9A8F-4E7D-8C6B-5A4F3E2D1C0B"))
+
+    ObservabilityBootstrap.writeJoinKey(nil, to: scope)
+    ObservabilityBootstrap.writeOffPeriodUser(offID, to: scope)
+
+    let off = scope.serialize()
+    let offTags = off["tags"] as? [String: String] ?? [:]
+    #expect(offTags["analytics.distinct_id"] == nil)
+    #expect(offTags["dictation.take_id"] == "7F3C2A10-4B5D-4E6F-8A9B-0C1D2E3F4A5B")
+    #expect(offTags["app.build_type"] == "release")
+    #expect((off["user"] as? [String: Any])?["id"] as? String == offID.uuidString)
+    #expect((off["breadcrumbs"] as? [[String: Any]])?.count == 1)
+
+    ObservabilityBootstrap.writeOffPeriodUser(nil, to: scope)
+    ObservabilityBootstrap.writeJoinKey(Self.joinKey, to: scope)
+
+    let on = scope.serialize()
+    #expect(on["user"] == nil)
+    #expect((on["tags"] as? [String: String])?["analytics.distinct_id"] == Self.joinKey)
+    #expect((on["breadcrumbs"] as? [[String: Any]])?.count == 1)
+  }
+
   // MARK: - Error events are unchanged
 
   /// One send-time pass over raw values (the pre-#3153 path) versus write-time plus send-time

@@ -58,7 +58,9 @@ public struct FeedbackDraft: Equatable, Sendable {
 ///
 /// With "Send crash reports" OFF (#3269) Sentry is still started, in a feedback-only mode that
 /// drops every ordinary event and keeps no breadcrumbs, so this path works the same way and a
-/// report carries no breadcrumbs.
+/// report carries no breadcrumbs. With "Share usage metrics" OFF the global scope has no
+/// `analytics.distinct_id` tag and an explicit random `user.id` instead of the install's
+/// (`ObservabilityBootstrap.Lifecycle`).
 public enum FeedbackReporter {
   public enum Outcome: Equatable, Sendable {
     /// Handed to Sentry for sending. Not a delivery receipt: Sentry writes and sends in the

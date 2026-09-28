@@ -36,7 +36,7 @@ struct SentryScopeWriterFreezeTests {
   /// SHA-256 of the sorted inventory lines. The failure message prints the inventory and the new
   /// value; update it only after reviewing the new site (filtered at write time? metadata only?).
   static let inventoryFingerprint =
-    "8c2a653beb09b961c4d2f9adf5c4b9f26242dd4142c3580e8b49901a49489195"
+    "7191b542b6d6a6bf163da84fd137ca74980facde089f0f889f0e646ac32b1fe3"
 
   struct Site: Hashable, Comparable {
     let file: String

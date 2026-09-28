@@ -38,8 +38,8 @@ struct ObservabilityBootstrapTests {
     #expect(config.flushAt == 20)
     #expect(config.flushIntervalSeconds == 30)
     #expect(config.maxQueueSize == 1000)
-    // Not set by the app today; a later #3269 chunk turns it off on purpose.
-    #expect(config.preloadFeatureFlags == true)
+    // #3269: the app reads no flags, so none are fetched at setup.
+    #expect(config.preloadFeatureFlags == false)
   }
 
   private static let dsn = "https://key@o0.ingest.sentry.io/0"
@@ -148,43 +148,263 @@ struct ObservabilityBootstrapTests {
     #expect(beforeSend(crash) == nil)
   }
 
-  // MARK: - Once per process (#3269)
+  // MARK: - Lifecycle (#3269)
 
-  /// Records the SDK starts a `LaunchOnce` performs, in order, instead of starting anything.
+  /// Records every SDK call a production `Lifecycle` makes, in order, and answers with scripted
+  /// values. It decides nothing: the order under test is the production transition code's.
   @MainActor
-  private final class StartLog {
+  private final class SDKLog {
     var calls: [String] = []
-    lazy var launch = ObservabilityBootstrap.LaunchOnce(
-      startPostHog: { [unowned self] in calls.append("posthog") },
-      startSentry: { [unowned self] crashReports in calls.append("sentry(\(crashReports))") })
+    var postHogKeyPresent = true
+    var sentryDSNPresent = true
+    var storedOptOut = false
+    var distinctID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+    private var uuidCount = 0
+
+    lazy var lifecycle = ObservabilityBootstrap.Lifecycle(
+      operations: ObservabilityBootstrap.Operations(
+        setUpPostHog: { [unowned self] in
+          calls.append("posthog.setup")
+          return postHogKeyPresent
+        },
+        postHogIsOptOut: { [unowned self] in
+          calls.append("posthog.isOptOut")
+          return storedOptOut
+        },
+        postHogOptIn: { [unowned self] in calls.append("posthog.optIn") },
+        registerPostHog: { [unowned self] in calls.append("posthog.register") },
+        postHogDistinctID: { [unowned self] in
+          calls.append("posthog.distinctID")
+          return distinctID
+        },
+        closePostHog: { [unowned self] in calls.append("posthog.close") },
+        startSentry: { [unowned self] crashReports in
+          calls.append("sentry.start(crash:\(crashReports))")
+          return sentryDSNPresent
+        },
+        writeLaunchTags: { [unowned self] joinKey in
+          calls.append("sentry.launchTags(join:\(joinKey ?? "none"))")
+        },
+        setJoinKey: { [unowned self] joinKey in
+          calls.append("sentry.join(\(joinKey ?? "remove"))")
+        },
+        setOffPeriodUser: { [unowned self] id in
+          calls.append("sentry.user(\(id?.uuidString ?? "clear"))")
+        }),
+      makeUUID: { [unowned self] in
+        uuidCount += 1
+        return UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", uuidCount))!
+      })
+  }
+
+  private static let id = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+  private static let off1 = "00000000-0000-0000-0000-000000000001"
+  private static let off2 = "00000000-0000-0000-0000-000000000002"
+
+  @MainActor
+  @Test("Cold launch, metrics ON: PostHog setup, register, id, then Sentry with the join")
+  func coldLaunchMetricsOn() {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: true, crashReports: true)
+
+    #expect(
+      log.calls == [
+        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID",
+        "sentry.start(crash:true)", "sentry.launchTags(join:\(Self.id))",
+      ])
+    #expect(log.lifecycle.lastKnownPostHogID == Self.id)
   }
 
   @MainActor
-  @Test("Starts PostHog then Sentry exactly once, in the launch crash mode", arguments: [true, false])
-  func startsOnceInLaunchMode(crashReports: Bool) {
-    let log = StartLog()
-    #expect(log.launch.launchedCrashReports == nil)
+  @Test("Cold launch, metrics ON with a stored PostHog opt-out: opt back in before registering")
+  func coldLaunchClearsStoredOptOut() {
+    let log = SDKLog()
+    log.storedOptOut = true
+    log.lifecycle.start(usageMetrics: true, crashReports: false)
 
-    log.launch.start(crashReports: crashReports)
-    log.launch.start(crashReports: crashReports)
-
-    #expect(log.calls == ["posthog", "sentry(\(crashReports))"])
-    #expect(log.launch.launchedCrashReports == crashReports)
+    #expect(
+      log.calls == [
+        "posthog.setup", "posthog.isOptOut", "posthog.optIn", "posthog.register",
+        "posthog.distinctID", "sentry.start(crash:false)", "sentry.launchTags(join:\(Self.id))",
+      ])
   }
 
-  /// A switch change after launch must wait for a restart: a later call with the other value, or
-  /// a flip and a flip back, neither restarts Sentry nor changes the mode it runs in.
   @MainActor
-  @Test("A later crash-switch value neither restarts Sentry nor changes the launch mode", arguments: [true, false])
-  func laterSwitchValueWaitsForRestart(launchValue: Bool) {
-    let log = StartLog()
-    log.launch.start(crashReports: launchValue)
+  @Test("Cold launch, metrics OFF: PostHog untouched; Sentry starts, no join, a random user")
+  func coldLaunchMetricsOff() {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: false, crashReports: true)
 
-    log.launch.start(crashReports: launchValue == false)
-    #expect(log.launch.launchedCrashReports == launchValue)
-    log.launch.start(crashReports: launchValue)
+    #expect(
+      log.calls == [
+        "sentry.start(crash:true)", "sentry.launchTags(join:none)", "sentry.user(\(Self.off1))",
+      ])
+    #expect(log.lifecycle.lastKnownPostHogID == nil)
+  }
 
-    #expect(log.calls == ["posthog", "sentry(\(launchValue))"])
-    #expect(log.launch.launchedCrashReports == launchValue)
+  @Test("The production OFF-period id source gives a new id on every call")
+  func productionOffPeriodIDsAreFresh() {
+    let ids = (0..<3).map { _ in ObservabilityBootstrap.makeOffPeriodUserID() }
+    #expect(Set(ids).count == 3)
+  }
+
+  @MainActor
+  @Test("Runtime ON to OFF closes PostHog once, removes the join, sets a random user; repeat is a no-op")
+  func runtimeOnToOff() {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: true, crashReports: true)
+    log.calls.removeAll()
+
+    log.lifecycle.apply(usageMetrics: false, crashReports: true)
+    log.lifecycle.apply(usageMetrics: false, crashReports: true)
+
+    #expect(log.calls == ["posthog.close", "sentry.join(remove)", "sentry.user(\(Self.off1))"])
+    #expect(log.lifecycle.isPostHogRunning == false)
+    // Kept in memory after close for an explicitly consented report; never re-tagged while OFF.
+    #expect(log.lifecycle.lastKnownPostHogID == Self.id)
+  }
+
+  @MainActor
+  @Test("Runtime OFF to ON sets PostHog up again, clears the OFF user, then restores the join")
+  func runtimeOffToOn() {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: false, crashReports: true)
+    log.calls.removeAll()
+
+    log.lifecycle.apply(usageMetrics: true, crashReports: true)
+
+    #expect(
+      log.calls == [
+        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID",
+        "sentry.user(clear)", "sentry.join(\(Self.id))",
+      ])
+  }
+
+  @MainActor
+  @Test("Repeated flips keep the order and give every OFF period a fresh user")
+  func repeatedFlips() {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: true, crashReports: true)
+    log.calls.removeAll()
+
+    log.lifecycle.apply(usageMetrics: false, crashReports: true)
+    log.lifecycle.apply(usageMetrics: true, crashReports: true)
+    log.lifecycle.apply(usageMetrics: false, crashReports: true)
+
+    #expect(
+      log.calls == [
+        "posthog.close", "sentry.join(remove)", "sentry.user(\(Self.off1))",
+        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID",
+        "sentry.user(clear)", "sentry.join(\(Self.id))",
+        "posthog.close", "sentry.join(remove)", "sentry.user(\(Self.off2))",
+      ])
+  }
+
+  @MainActor
+  @Test("A missing PostHog key: no register, no id read, no join, and nothing to close")
+  func missingPostHogKey() {
+    let log = SDKLog()
+    log.postHogKeyPresent = false
+    log.lifecycle.start(usageMetrics: true, crashReports: true)
+    log.lifecycle.apply(usageMetrics: false, crashReports: true)
+
+    #expect(
+      log.calls == [
+        "posthog.setup", "sentry.start(crash:true)", "sentry.launchTags(join:none)",
+        "sentry.join(remove)", "sentry.user(\(Self.off1))",
+      ])
+    #expect(log.lifecycle.lastKnownPostHogID == nil)
+  }
+
+  @MainActor
+  @Test(
+    "A non-canonical PostHog id yields no join, and turning ON removes any stale one",
+    arguments: ["", "someone@example.com", "0198a1b2c3d47e5f8a9b0c1d2e3f4a5b"])
+  func nonCanonicalIDYieldsNoJoin(distinctID: String) {
+    let log = SDKLog()
+    log.distinctID = distinctID
+    log.lifecycle.start(usageMetrics: false, crashReports: true)
+    log.calls.removeAll()
+
+    log.lifecycle.apply(usageMetrics: true, crashReports: true)
+
+    #expect(log.calls.last == "sentry.join(remove)")
+    #expect(log.lifecycle.lastKnownPostHogID == nil)
+  }
+
+  /// A valid id from an earlier ON period must not be re-tagged when the id read at a later setup
+  /// is invalid: the join is removed, while the earlier id stays in memory.
+  @MainActor
+  @Test("After a valid ON period, an invalid id at the next setup removes the join")
+  func invalidIDAfterValidPeriodRemovesJoin() {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: true, crashReports: true)
+    log.lifecycle.apply(usageMetrics: false, crashReports: true)
+    log.distinctID = ""
+    log.calls.removeAll()
+
+    log.lifecycle.apply(usageMetrics: true, crashReports: true)
+
+    #expect(log.calls.last == "sentry.join(remove)")
+    #expect(log.lifecycle.lastKnownPostHogID == Self.id)
+  }
+
+  @MainActor
+  @Test("A missing Sentry DSN: no scope writes in any transition")
+  func missingSentryDSN() {
+    let log = SDKLog()
+    log.sentryDSNPresent = false
+    log.lifecycle.start(usageMetrics: false, crashReports: true)
+    log.lifecycle.apply(usageMetrics: true, crashReports: true)
+    log.lifecycle.apply(usageMetrics: false, crashReports: true)
+
+    #expect(
+      log.calls == [
+        "sentry.start(crash:true)",
+        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID",
+        "posthog.close",
+      ])
+  }
+
+  @MainActor
+  @Test("Before launch, apply starts nothing; launch then reads its own values")
+  func applyBeforeLaunchIsANoOp() {
+    let log = SDKLog()
+    log.lifecycle.apply(usageMetrics: true, crashReports: true)
+    #expect(log.calls == [])
+    #expect(log.lifecycle.launchedCrashReports == nil)
+
+    log.lifecycle.start(usageMetrics: false, crashReports: false)
+    #expect(log.calls.first == "sentry.start(crash:false)")
+  }
+
+  @MainActor
+  @Test("A second launch call does nothing", arguments: [true, false])
+  func startsOnce(usageMetrics: Bool) {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: usageMetrics, crashReports: true)
+    let afterFirst = log.calls
+
+    log.lifecycle.start(usageMetrics: usageMetrics == false, crashReports: false)
+
+    #expect(log.calls == afterFirst)
+    #expect(log.lifecycle.launchedCrashReports == true)
+    #expect(log.lifecycle.usageMetrics == usageMetrics)
+  }
+
+  /// A crash-switch change after launch must wait for a restart: flipping it, and flipping it
+  /// back, neither restarts Sentry nor changes the mode it runs in, in either launch mode.
+  @MainActor
+  @Test("Crash-switch changes neither restart Sentry nor change the launch mode", arguments: [true, false])
+  func crashSwitchWaitsForRestart(launchValue: Bool) {
+    let log = SDKLog()
+    log.lifecycle.start(usageMetrics: true, crashReports: launchValue)
+    log.calls.removeAll()
+
+    log.lifecycle.apply(usageMetrics: true, crashReports: launchValue == false)
+    log.lifecycle.apply(usageMetrics: true, crashReports: launchValue)
+
+    #expect(log.calls == [])
+    #expect(log.lifecycle.launchedCrashReports == launchValue)
   }
 }

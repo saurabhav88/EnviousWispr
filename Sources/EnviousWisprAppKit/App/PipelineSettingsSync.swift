@@ -370,14 +370,12 @@ final class PipelineSettingsSync {
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
     case .learnFromEdits:
       break  // #996: read live by the edit watcher at each paste; nothing in the pipeline reads it.
-    case .sendCrashReports:
-      // #3269: restart-only by design. Sentry's mode is fixed at launch by
-      // `ObservabilityBootstrap.initialize(crashReports:)`; the next launch reads the stored value.
-      break
-    case .shareUsageMetrics:
-      // #3269: stored only for now; applying it to PostHog at runtime arrives in #3269
-      // chunk 3b. The dictation pipeline never reads it.
-      break
+    case .shareUsageMetrics, .sendCrashReports:
+      // #3269: `ObservabilityBootstrap` owns both. Usage metrics apply now (PostHog closes or
+      // starts); crash reports are restart-only and never change the running Sentry. The
+      // dictation pipeline never reads either.
+      ObservabilityBootstrap.apply(
+        usageMetrics: settings.shareUsageMetrics, crashReports: settings.sendCrashReports)
     case .s1MiniStyling, .s1MiniStructure, .s1MiniContext:
       // #2649: frozen into `DictationSessionConfig` at recording start, like
       // provider and model, so a pick applies to the NEXT recording. Recovery
