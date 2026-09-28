@@ -108,6 +108,55 @@ struct FeedbackReporterTests {
     #expect(reopened.email == "")
   }
 
+  @Test("When a save finishes: words typed meanwhile survive, and a closed form stays quiet")
+  func settleAfterSave() throws {
+    func store() -> (FeedbackDraftStore, String) {
+      let suite = "FeedbackDraftStoreTests.\(UUID().uuidString)"
+      return (FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! }), suite)
+    }
+
+    // Same form on screen, newer words typed that the store has not caught up with yet.
+    let (a, suiteA) = store()
+    defer { UserDefaults().removePersistentDomain(forName: suiteA) }
+    a.save(message: "sent words", email: "")
+    #expect(
+      a.settleAfterSave(
+        saved: true, isSendingFormOnScreen: true, form: ("sent words, and more", ""),
+        sent: ("sent words", "")) == true)
+    #expect(a.message == "sent words, and more")
+
+    // Same form, nothing typed since Send: the draft clears.
+    let (b, suiteB) = store()
+    defer { UserDefaults().removePersistentDomain(forName: suiteB) }
+    b.save(message: "sent words", email: "a@b.co")
+    #expect(
+      b.settleAfterSave(
+        saved: true, isSendingFormOnScreen: true, form: ("sent words", "a@b.co"),
+        sent: ("sent words", "a@b.co")) == true)
+    #expect(b.message == "")
+
+    // The sending form closed and a reopened one saved newer words: they survive, and the old
+    // form is told not to show a result or close anything.
+    let (c, suiteC) = store()
+    defer { UserDefaults().removePersistentDomain(forName: suiteC) }
+    c.save(message: "a second thought", email: "")
+    #expect(
+      c.settleAfterSave(
+        saved: true, isSendingFormOnScreen: false, form: ("sent words", ""),
+        sent: ("sent words", "")) == false)
+    #expect(c.message == "a second thought")
+
+    // Not saved (full or unavailable): the draft is untouched.
+    let (d, suiteD) = store()
+    defer { UserDefaults().removePersistentDomain(forName: suiteD) }
+    d.save(message: "sent words", email: "")
+    #expect(
+      d.settleAfterSave(
+        saved: false, isSendingFormOnScreen: true, form: ("sent words", ""),
+        sent: ("sent words", "")) == true)
+    #expect(d.message == "sent words")
+  }
+
   @Test("A message within 4,000 characters but over Sentry's 4,096 code points cannot be sent")
   func codePointLimit() {
     // Each flag is one character but two code points.

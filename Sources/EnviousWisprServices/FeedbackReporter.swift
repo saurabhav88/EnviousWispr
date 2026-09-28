@@ -171,4 +171,23 @@ public struct FeedbackDraftStore: Sendable {
     clear()
     return true
   }
+
+  /// What the form does when Send's save finishes. The form that sent it, still on screen, keeps
+  /// any words typed while saving (they may not have reached the store yet); any other case
+  /// clears the draft only if it still holds what was sent. Returns whether the sending form may
+  /// show the result and close: false once it has closed, so a reopened form is left alone.
+  @discardableResult
+  public func settleAfterSave(
+    saved: Bool, isSendingFormOnScreen: Bool,
+    form: (message: String, email: String), sent: (message: String, email: String)
+  ) -> Bool {
+    if saved {
+      if isSendingFormOnScreen, form != sent {
+        save(message: form.message, email: form.email)
+      } else {
+        clear(ifStill: sent.message, email: sent.email)
+      }
+    }
+    return isSendingFormOnScreen
+  }
 }

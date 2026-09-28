@@ -391,10 +391,13 @@ struct FeedbackForm: View {
     status = .sending
     Task { @MainActor in
       let outcome = await FeedbackReporter.send(draft, diagnostics: diagnostics)
-      // The saved draft, not this view's copy: every keystroke is saved, including any typed in
-      // a form reopened while this report was saving.
-      if case .saved = outcome { draftStore.clear(ifStill: sentMessage, email: sentEmail) }
-      guard presentation == submitted else { return }
+      let saved: Bool
+      if case .saved = outcome { saved = true } else { saved = false }
+      guard
+        draftStore.settleAfterSave(
+          saved: saved, isSendingFormOnScreen: presentation == submitted,
+          form: (message, email), sent: (sentMessage, sentEmail))
+      else { return }
       switch outcome {
       case .saved(let offline):
         status = .sent(offline: offline)
