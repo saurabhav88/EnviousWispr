@@ -669,6 +669,43 @@ struct FileImportCoordinatorSpeakerTests {
     )
   }
 
+  /// #3194: the relaunch owner that the update install and the language relaunch both read says
+  /// a file transcription is work in flight while the run waits on its speaker step, and releases
+  /// once the run finishes and the engine is let go. Before #3194 the update install read
+  /// dictation alone, so a Sparkle relaunch could take the transcription down.
+  @Test("a relaunch is refused while a file transcription runs, and allowed once it ends (#3194)")
+  func relaunchIsRefusedWhileAFileTranscriptionRuns() async {
+    let speakerGate = ManualGate()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      mergeSpeakerFields: { _, _, _ in true })
+    #expect(!AppRelauncher.workInFlight(dictationActive: false, fileImport: coordinator))
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
+    #expect(
+      AppRelauncher.workInFlight(dictationActive: false, fileImport: coordinator),
+      "a relaunch mid transcription would lose the run")
+
+    await speakerGate.open()
+    #expect(await settleUntil { coordinator.state == .finished })
+    let released = await settleUntil {
+      !AppRelauncher.workInFlight(dictationActive: false, fileImport: coordinator)
+    }
+    #expect(released, "a finished run with its engine released is not work in flight")
+  }
+
   // MARK: - Retry, rename, and the savePolishedToHistory race fix (#2811 phase 4 of #2807)
 
   /// A live, mutable simulation of the History store — closer to `TranscriptCoordinator`'s own

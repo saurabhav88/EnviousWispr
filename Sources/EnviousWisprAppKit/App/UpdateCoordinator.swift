@@ -57,16 +57,18 @@ final class UpdateCoordinator {
   /// moment availability changes, even with no window or menu open.
   var onAvailabilityChange: (() -> Void)?
 
-  /// #1019: reads whether dictation is currently active (recording / loading /
-  /// transcribing / polishing) so the install affordances never relaunch the
-  /// app mid-capture. Wired in `WisprBootstrapper` to `LiveRecordingState`.
-  var dictationActiveProvider: (() -> Bool)?
+  /// #1019, #3194: reads whether a relaunch now would lose work in flight, so the install
+  /// affordances never relaunch the app mid-capture, mid file transcription (engine still held
+  /// after Stop included) or mid speaker-analysis retry. Wired in `WisprBootstrapper` to
+  /// `AppRelauncher.workInFlight`, the one owner the language relaunch reads too, so the two
+  /// relaunch paths cannot disagree.
+  var workInFlightProvider: (() -> Bool)?
 
   /// #2197: reads whether clipboard cleanup is still outstanding.
   ///
   /// Since #2197 the clipboard restore runs just after a dictation finishes
   /// rather than inside it, so there is now a ~200 ms window where the session
-  /// is over — and `dictationActiveProvider` therefore reports false — while the
+  /// is over (and `workInFlightProvider` therefore reports false) while the
   /// user's clipboard has not been handed back yet. A Sparkle install relaunches
   /// the app, which would take the process down inside that window and lose it.
   ///
@@ -286,7 +288,18 @@ final class UpdateCoordinator {
   /// Anything that can refuse an install belongs here, not in a second copy of
   /// the condition.
   var installRefusedNow: Bool {
-    (dictationActiveProvider?() ?? false) || (clipboardCleanupPendingProvider?() ?? false)
+    (workInFlightProvider?() ?? false) || (clipboardCleanupPendingProvider?() ?? false)
+  }
+
+  /// #3194 (cloud review): the relaunch boundary. `installRefusedNow` gates the click, but Sparkle
+  /// confirms and relaunches later, so work that starts in between (a file transcription begun
+  /// while the update dialog resolves) would still be cut off. Sparkle asks
+  /// `shouldPostponeRelaunchForUpdate` right before it relaunches; the controller holds the
+  /// relaunch until this returns. Returns at once when nothing refuses.
+  func waitUntilRelaunchIsSafe(pollInterval: Duration = .milliseconds(500)) async {
+    while installRefusedNow {
+      try? await Task.sleep(for: pollInterval)
+    }
   }
 
   private func triggerGuardedInstall(source: String) {

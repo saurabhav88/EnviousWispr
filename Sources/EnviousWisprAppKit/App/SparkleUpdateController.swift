@@ -234,6 +234,33 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     TelemetryService.shared.flushTelemetry(reason: .updateInstall)
   }
 
+  /// #3194: Sparkle's last question before it relaunches into the new version. When a relaunch
+  /// now would lose work (`UpdateCoordinator.installRefusedNow`: a dictation, a file transcription
+  /// or speaker retry, a recovery replay, a recording starting, a pending clipboard restore), hold
+  /// it and relaunch the moment that work ends. Nothing refusing: relaunch as before.
+  func updater(
+    _ updater: SPUUpdater,
+    shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+    untilInvokingBlock installHandler: @escaping () -> Void
+  ) -> Bool {
+    guard let coordinator = updateCoordinator, coordinator.installRefusedNow else { return false }
+    Task { @MainActor in
+      await AppLogger.shared.log(
+        "update relaunch held: work in flight (\(item.versionString))", category: "Update")
+      // The last check and the relaunch share one main-actor stretch with no `await` between
+      // them, so work cannot start after the check and still be cut off (local Codex, r2).
+      while true {
+        await coordinator.waitUntilRelaunchIsSafe()
+        if !coordinator.installRefusedNow {
+          installHandler()
+          break
+        }
+      }
+      await AppLogger.shared.log("update relaunch released", category: "Update")
+    }
+    return true
+  }
+
   /// Issue #343: silent install-on-quit path. This is a separate Sparkle
   /// driver from `willInstallUpdate` — for automatically-downloaded updates
   /// that install when the user quits. Tag source explicitly so we can
