@@ -9,7 +9,7 @@ Last-updated: 2026-09-12
 
 ## Product
 
-- [Features](https://enviouswispr.com/features/): Every feature of the free Mac app, each on its own page: AI polished dictation, file transcription, dictionary, snippets, live preview, history, why offline, and customization.
+- [Features](https://enviouswispr.com/features/): Every feature of the free Mac app, each on its own page: AI polished dictation, file transcription, dictionary, self-learning dictionary, snippets, live preview, history, why offline, and customization.
 - [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
 - [Best dictation apps for Mac](https://enviouswispr.com/compare/best-dictation-apps-for-mac/): A practical 2026 guide to seven Mac dictation options, with honest picks by workflow.
 - [Compare to alternatives](https://enviouswispr.com/compare/): Side-by-side price, privacy and AI cleanup comparisons with Wispr Flow, Superwhisper, FluidVoice and Spokenly, plus the full comparison directory.
@@ -52,7 +52,8 @@ Last-updated: 2026-09-12
 - [AI polished dictation](https://enviouswispr.com/features/dictation/): Speak naturally, paste finished text; benchmark results, what was tested and graded, and why the on-device polish reads well.
 - [File transcription](https://enviouswispr.com/features/file-transcription/): Drop an audio or video file, get readable text; supported formats, local or cloud cleanup, and measured results on real interviews.
 - [Dictionary](https://enviouswispr.com/features/dictionary/): Names and specialist words spelled your way; quick add from a transcript, word packs, contacts import, aliases and fuzzy matching.
-- [Snippets](https://enviouswispr.com/features/snippets/): Save an email, address or calendar link once, then say a keyword to paste the whole thing at once.
+- [Self-Learning Dictionary](https://enviouswispr.com/features/self-learning-dictionary/): Fix a misheard word in text the app just pasted and it joins your dictionary, with three seconds to undo; a word check on your Mac decides where a learned word applies later.
+- [Snippets](https://enviouswispr.com/features/snippets/): Save an email, address or calendar link once, then say a keyword to paste the whole thing at once; import snippets from other apps.
 - [Live preview](https://enviouswispr.com/features/live-preview/): Watch your draft build on screen while you talk; English, German and Japanese with either speech engine.
 - [History](https://enviouswispr.com/features/history/): Transcripts kept on your Mac to read and copy; a cancelled recording's text can be kept for 24 hours.
 - [Why offline](https://enviouswispr.com/why-offline/): What cloud dictation sends away, what EnviousWispr keeps local, and what goes out only if you choose cloud text polish.
