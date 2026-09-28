@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from '../../data/entities.js';
 import { render } from 'astro:content';
 import HelpLayout from '../../layouts/HelpLayout.astro';
 import { HELP_CATEGORIES, helpCategory } from '../../data/help-categories';
@@ -88,7 +89,8 @@ if (props.kind === 'category') {
   ];
 } else {
   const a = props.article;
-  title = `${a.data.title}: EnviousWispr Help`;
+  // Brand suffix only while the whole title fits a search result (60 characters).
+  title = [`${a.data.title}: EnviousWispr Help`, `${a.data.title} | EnviousWispr`].find((t) => t.length <= 60) ?? a.data.title;
   description = a.data.description;
   canonicalPath = `/help/${a.id}/`;
   jsonLd = [
@@ -99,8 +101,8 @@ if (props.kind === 'category') {
       description: a.data.description,
       dateModified: a.data.updated.toISOString(),
       url: `${SITE}${canonicalPath}`,
-      author: { '@type': 'Organization', name: 'Envious Labs', url: SITE },
-      publisher: { '@type': 'Organization', name: 'Envious Labs', url: SITE },
+      author: ORG_REF,
+      publisher: ORG_REF,
       isPartOf: { '@type': 'CollectionPage', name: category.label, url: `${SITE}/help/${category.slug}/` },
       mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}${canonicalPath}` },
     }),

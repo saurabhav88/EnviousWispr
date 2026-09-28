@@ -57,6 +57,10 @@
       // #2953: defaults made explicit so a reader can see what is on.
       capture_dead_clicks: true,
       rageclick: true,
+      // The project has no surveys (API check 2026-09-28: count 0), and the
+      // survey bundle cost every visit ~28 KB of unused script (Lighthouse).
+      // Remove this line before launching a website survey.
+      disable_surveys: true,
       // #2953: replay is switched on project-side (sampled, minimum duration);
       // the client side masks every input and any editable text, and blocks
       // the whole Crisp chat surface so a typed or rendered message is never

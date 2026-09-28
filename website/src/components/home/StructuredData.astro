@@ -1,7 +1,9 @@
 ---
+import { ORG_REF, ORG_ID, APP_ID, ORG_SAME_AS } from '../../data/entities.js';
 const jsonLd = JSON.stringify({
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
+  '@id': APP_ID,
   name: 'EnviousWispr',
   operatingSystem: 'macOS 14+',
   applicationCategory: 'ProductivityApplication',
@@ -11,17 +13,15 @@ const jsonLd = JSON.stringify({
   downloadUrl:
     'https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg',
   image: 'https://enviouswispr.com/og-image.png',
-  author: {
-    '@type': 'Organization',
-    name: 'Envious Labs LLC',
-    url: 'https://enviouslabs.co',
-  },
+  author: ORG_REF,
+  publisher: ORG_REF,
   url: 'https://enviouswispr.com/',
 });
 
 const jsonLdOrg = JSON.stringify({
   '@context': 'https://schema.org',
   '@type': 'Organization',
+  '@id': ORG_ID,
   name: 'Envious Labs',
   legalName: 'Envious Labs LLC',
   url: 'https://enviouslabs.co',
@@ -45,13 +45,7 @@ const jsonLdOrg = JSON.stringify({
     name: 'Saurabh Vaish',
     url: 'https://enviouswispr.com/authors/saurabh-vaish/',
   },
-  sameAs: [
-    'https://x.com/EnviousLabs',
-    'https://www.youtube.com/@EnviousLabs',
-    'https://www.linkedin.com/company/envious-labs/',
-    'https://github.com/Envious-Labs-LLC',
-    'https://github.com/saurabhav88/EnviousWispr',
-  ],
+  sameAs: ORG_SAME_AS,
 });
 
 const jsonLdPerson = JSON.stringify({
@@ -60,11 +54,7 @@ const jsonLdPerson = JSON.stringify({
   name: 'Saurabh Vaish',
   jobTitle: 'Founder, Envious Labs',
   url: 'https://enviouswispr.com/authors/saurabh-vaish/',
-  worksFor: {
-    '@type': 'Organization',
-    name: 'Envious Labs LLC',
-    url: 'https://enviouslabs.co',
-  },
+  worksFor: ORG_REF,
   sameAs: [
     'https://github.com/saurabhav88',
     'https://www.linkedin.com/in/saurabh-a-vaish-568253a6/',
@@ -77,11 +67,7 @@ const jsonLdWebSite = JSON.stringify({
   '@type': 'WebSite',
   name: 'EnviousWispr',
   url: 'https://enviouswispr.com/',
-  publisher: {
-    '@type': 'Organization',
-    name: 'Envious Labs LLC',
-    url: 'https://enviouslabs.co',
-  },
+  publisher: ORG_REF,
 });
 ---
 

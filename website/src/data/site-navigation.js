@@ -128,7 +128,7 @@ export const catalog = [
     slug: 'privacy',
     path: '/why-offline/',
     name: 'Why Offline?',
-    updated: '2026-09-12',
+    updated: '2026-09-28',
     headerLink: true,
   },
   {

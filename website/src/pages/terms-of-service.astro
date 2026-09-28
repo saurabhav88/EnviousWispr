@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from '../data/entities.js';
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 const jsonLd = {
@@ -13,11 +14,7 @@ const jsonLd = {
     "name": "EnviousWispr",
     "url": "https://enviouswispr.com",
   },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs LLC",
-    "url": "https://enviouswispr.com",
-  },
+  "publisher": ORG_REF,
 };
 
 const breadcrumbJsonLd = {

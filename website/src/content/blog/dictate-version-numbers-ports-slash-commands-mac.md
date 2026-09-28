@@ -1,5 +1,5 @@
 ---
-title: "How to Dictate Version Numbers, Ports and Slash Commands on a Mac"
+title: "How to Dictate Version Numbers, Ports and Slash Commands"
 description: "Say localhost colon three thousand and get localhost:3000. What to say for versions, IPs, ports, dashed dates and slash commands."
 topic: writing-productivity
 pubDate: 2026-09-28

@@ -1,5 +1,5 @@
 ---
-title: "Dictated With No Text Box Selected? How to Get Your Words Back on a Mac"
+title: "Dictation Went Nowhere? How to Get Your Words Back on a Mac"
 description: "Where a dictation goes when no text box was selected, and the two shortcuts that bring it back without saying it all again."
 topic: tips-troubleshooting
 pubDate: 2026-09-28

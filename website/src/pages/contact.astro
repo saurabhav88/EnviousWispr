@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from '../data/entities.js';
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 const siteUrl = 'https://enviouswispr.com';
@@ -11,9 +12,7 @@ const contactPageJsonLd = JSON.stringify({
   "url": `${siteUrl}/contact/`,
   "isPartOf": { "@type": "WebSite", "url": siteUrl, "name": "EnviousWispr" },
   "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs LLC",
-    "url": "https://enviouslabs.co",
+    ...ORG_REF,
     "email": "hello@enviouslabs.co",
     "contactPoint": {
       "@type": "ContactPoint",

@@ -85,7 +85,7 @@ const SITES = [
   ['website/src/pages/features/languages.astro', 'It hears 25 European languages out of the box and 99+ with a second engine'],
   ['website/src/pages/features/languages.astro', '<span class="accent-ink">99+ when you need them.</span>'],
   ['website/src/pages/features/languages.astro', "copy: '99+ languages for everything else, as a one-time download.'"],
-  ['website/public/llms.txt', 'WhisperKit (99+ languages)'],
+  ['website/src/pages/llms.txt.ts', 'or WhisperKit (99+ languages). Optional AI polish'],
   ['website/src/content/blog/british-spelling-dictation-mac.md', 'and WhisperKit covers 99+.'],
 ];
 

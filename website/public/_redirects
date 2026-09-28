@@ -1,5 +1,7 @@
 /download https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg 302
 /download/ https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg 302
+# Tools that probe the default sitemap path find the real index.
+/sitemap.xml /sitemap-index.xml 301
 /pricing / 301
 /pricing/ / 301
 /changelog https://github.com/saurabhav88/EnviousWispr/releases 302
