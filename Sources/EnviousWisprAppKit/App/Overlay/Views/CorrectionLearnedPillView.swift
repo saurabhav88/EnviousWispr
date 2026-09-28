@@ -8,8 +8,11 @@ import SwiftUI
 /// error and never a sentence. Wording is the founder's (2026-09-21): the pill
 /// names the correct word only, never the mishearing.
 enum CorrectionLearnedPillCopy {
-  /// Plan §3.1 step 9: the Undo window. Hover does not pause it.
-  static let learnedDwellSeconds = 3.0
+  /// Plan §3.1 step 9: the Undo window. Hover does not pause it. Widened from
+  /// 3.0 to 4.0 (founder 2026-09-27, ENVIOUSWISPR-5E): the pill now draws a
+  /// countdown rail so the deadline is visible, and four seconds gives it room
+  /// to read before the offer closes.
+  static let learnedDwellSeconds = 4.0
   /// `Undone` shows for this long, without a button.
   static let undoneDwellSeconds = 1.5
   /// `Couldn’t undo` and `Couldn’t save “…”` show for this long.
@@ -81,12 +84,29 @@ enum CorrectionLearnedPillCopy {
   }
 }
 
-/// The three-second pill: one sentence and a bordered Undo button, drawn in the
-/// overlay's capsule. No timer, no hover logic, no focus: the director owns
-/// expiry, the reducer owns the phase, and the panel never activates.
+/// The four-second pill: one sentence and a bordered Undo button, drawn in the
+/// overlay's capsule. **This view owns no clock, same contract as
+/// `EscapeRecoveryPillView`.** `PillCatalog` arms the real dismissal at
+/// `CorrectionLearnedPillCopy.learnedDwellSeconds`, `PillExpiryClock` is the
+/// sole thing that dismisses, and this view only draws the REMAINDER of that
+/// dwell as a filling rail (founder 2026-09-27, ENVIOUSWISPR-5E: the Undo
+/// window closed with nothing on screen to say it was running out). The rail
+/// draws only while the Undo button itself shows — the `Undone` / `Couldn't
+/// undo` results are short, buttonless morphs with nothing left to act on.
 struct CorrectionLearnedPillView: View {
   let model: LearnedCorrectionPillModel
   let onUndo: () -> Void
+  /// The director's dwell, matched to this presentation. `nil` until it lands
+  /// (`OverlayRootView` passes `frame.dwell` straight through, the same
+  /// signal `EscapeRecoveryPillView` reads).
+  let dwell: OverlayDwellWindow?
+
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// How far the rail has travelled, 0 to 1. Driven by `dwell`, never by a
+  /// clock of its own — see `EscapeRecoveryPillView.progress` for why.
+  @State private var progress: Double = 0
+  /// One-shot: a pill that has already resolved draws no further rail motion.
+  @State private var scheduledForPillID: UUID?
 
   var body: some View {
     let line = CorrectionLearnedPillCopy.line(for: model)
@@ -115,6 +135,35 @@ struct CorrectionLearnedPillView: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
     .background(OverlayCapsuleBackground())
+    .overlay {
+      if line.showsUndo {
+        SpectralRail(
+          progress: progress, palette: .dark,
+          showsBloom: RailMotion.showsBloom(reduceMotion: reduceMotion)
+        )
+        .padding(1.5)
+      }
+    }
+    .onAppear { scheduleIfNeeded() }
+    .onChange(of: dwell) { _, _ in scheduleIfNeeded() }
+  }
+
+  /// Start the rail from wherever the dwell already is, at most once per pill
+  /// id — a same-identity repeat (the reducer keeps the original binding for
+  /// it) must not restart an animation that is already most of the way there.
+  private func scheduleIfNeeded() {
+    guard let dwell, scheduledForPillID != model.id else { return }
+    scheduledForPillID = model.id
+    let now = Date()
+    var instant = Transaction()
+    instant.disablesAnimations = true
+    withTransaction(instant) { progress = dwell.elapsedFraction(at: now) }
+    let remaining = dwell.remaining(at: now)
+    guard remaining > 0 else {
+      withTransaction(instant) { progress = 1 }
+      return
+    }
+    withAnimation(.linear(duration: remaining)) { progress = 1 }
   }
 }
 

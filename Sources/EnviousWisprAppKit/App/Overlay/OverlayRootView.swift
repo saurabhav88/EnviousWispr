@@ -165,7 +165,10 @@ struct OverlayRootView: View {
           if case .learned = model.phase {
             press(.undoLearnedCorrection(pillID: model.id), on: presentation)
           }
-        })
+        },
+        // Already matched to this presentation at publication — see
+        // `PillRenderState.dwell` and `EscapeRecoveryPillView`'s identical read.
+        dwell: frame.dwell)
 
     case .correctionLearnedSaveError(let error):
       CorrectionLearnedSaveErrorView(error: error)
