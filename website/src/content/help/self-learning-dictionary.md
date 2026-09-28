@@ -26,7 +26,7 @@ If the pill says **Couldn’t save “Saoirse”**, nothing was written: the mis
 
 ### How learned words fix later dictations
 
-A learned word never replaces text on its own. When a later dictation contains a spot that sounds like a learned word, or the exact mishearing you corrected, EnviousWispr asks a word check on your Mac one question about that spot: in this sentence, did you mean the learned word? Only the spots it approves change. That is what lets it swap an ordinary word for your term where you meant the term, for example "Twist" to "Tuist", and leave the ordinary word alone in a sentence where you meant it.
+A learned word never replaces text on its own. When a later dictation contains a mishearing you corrected before, EnviousWispr asks a word check on your Mac one question about that spot: in this sentence, did you mean the learned word? Only the spots it approves change. A mishearing it has not seen yet is left alone until you correct it once. The check is what lets it swap an ordinary word for your term where you meant the term, for example "Twist" to "Tuist", and leave the ordinary word alone in a sentence where you meant it.
 
 Which word check answers depends on the polish choice you use:
 
@@ -36,7 +36,7 @@ Which word check answers depends on the polish choice you use:
 | S1-mini | S1-mini's own word check |
 | Apple Intelligence, a cloud provider, Ollama, or no polish | Envious Word Check |
 
-The check works in every dictation language, for dictation and for Transcribe a File. If it cannot answer within about a second, your text arrives exactly as it would have without it, rather than late.
+The check works in every dictation language, for dictation and for Transcribe a File. If it cannot answer in time, your text arrives exactly as it would have without it, at most about two and a half seconds later, rather than waiting on the check.
 
 The row under the switch in **Settings** \> **Dictionary** \> **Learn from...** shows which check is in use, for example **Checked by: Envious Word Check. Learned words are checked before they're used.** While the check is downloading, or if it could not download or is not ready, the row starts with **Learn-only**: new words are still learned and saved, and they start fixing dictations once the check is ready. When a download or load failed, a **Try again** button appears.
 
