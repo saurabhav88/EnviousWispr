@@ -42,10 +42,11 @@ struct FeedbackDSN: Equatable, Sendable {
   let envelopeURL: URL
   let publicKey: String
 
-  /// `https://<key>@<host>[:port][/<path prefix>]/<project id>`. Nil for anything else.
+  /// `https://<key>@<host>[:port][/<path prefix>]/<project id>`. Nil for anything else,
+  /// including plain http: a report never travels unencrypted.
   init?(_ string: String) {
     guard var components = URLComponents(string: string),
-      components.scheme == "https" || components.scheme == "http",
+      components.scheme == "https",
       let key = components.user, !key.isEmpty, components.host?.isEmpty == false
     else { return nil }
     var segments = components.path.split(separator: "/").map(String.init)

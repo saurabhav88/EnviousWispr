@@ -65,6 +65,34 @@ struct FeedbackOutboxTests {
     }
   }
 
+  /// Holds the first request that enters until `release()`, so a test can act while a send is
+  /// in flight. Later requests pass straight through.
+  actor Gate {
+    private var entered = false
+    private var released = false
+    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+    func enter() async {
+      if released { return }
+      entered = true
+      for waiter in enteredWaiters { waiter.resume() }
+      enteredWaiters = []
+      await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitUntilEntered() async {
+      if entered { return }
+      await withCheckedContinuation { enteredWaiters.append($0) }
+    }
+
+    func release() {
+      released = true
+      releaseWaiter?.resume()
+      releaseWaiter = nil
+    }
+  }
+
   static let start = Date(timeIntervalSince1970: 1_790_000_000)
   static let dsn = FeedbackDSN("https://abc@o1.ingest.sentry.io/42")!
 
@@ -94,10 +122,17 @@ struct FeedbackOutboxTests {
     _ directory: URL, http: HTTP?, path: FakePath = FakePath(satisfied: true),
     clock: Clock = Clock(start),
     writeData: (@Sendable (Data, URL) throws -> Void)? = nil,
-    readData: (@Sendable (URL) throws -> Data)? = nil
+    readData: (@Sendable (URL) throws -> Data)? = nil,
+    gate: Gate? = nil,
+    maxEncodedBytes: Int = FeedbackOutbox.maxEncodedBytes
   ) -> FeedbackOutbox {
     let sender = http.map { http in
-      FeedbackSender(dsn: dsn, http: { try http.call($0) }, now: { clock.now })
+      FeedbackSender(
+        dsn: dsn,
+        http: { request in
+          await gate?.enter()
+          return try http.call(request)
+        }, now: { clock.now })
     }
     return FeedbackOutbox(
       directory: directory, sender: sender, path: path, now: { clock.now },
@@ -105,7 +140,7 @@ struct FeedbackOutboxTests {
       writeData: writeData ?? { data, url in
         try DurableJSONFile.write(data: data, to: url, tempPrefix: ".outbox")
       },
-      readData: readData ?? { try Data(contentsOf: $0) })
+      readData: readData ?? { try Data(contentsOf: $0) }, maxEncodedBytes: maxEncodedBytes)
   }
 
   // MARK: - Enqueue
@@ -129,8 +164,8 @@ struct FeedbackOutboxTests {
   func fullOutbox() async throws {
     let directory = Self.tempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
-    let outbox = Self.makeOutbox(directory, http: nil)
-    for n in 1...50 { #expect(await outbox.enqueue(Self.record(n)) == .saved(offline: false)) }
+    let outbox = Self.makeOutbox(directory, http: HTTP([]), path: FakePath(satisfied: false))
+    for n in 1...50 { #expect(await outbox.enqueue(Self.record(n)) == .saved(offline: true)) }
 
     #expect(await outbox.enqueue(Self.record(51)) == .full)
     #expect(try Self.records(in: directory).count == 50)
@@ -140,10 +175,12 @@ struct FeedbackOutboxTests {
   func unreadableFileIsKept() async throws {
     let directory = Self.tempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
-    let first = Self.makeOutbox(directory, http: nil)
-    _ = await first.enqueue(Self.record(1))
+    let offline = FakePath(satisfied: false)
+    let first = Self.makeOutbox(directory, http: HTTP([]), path: offline)
+    #expect(await first.enqueue(Self.record(1)) == .saved(offline: true))
     let blocked = Self.makeOutbox(
-      directory, http: nil, readData: { _ in throw CocoaError(.fileReadNoPermission) })
+      directory, http: HTTP([]), path: offline,
+      readData: { _ in throw CocoaError(.fileReadNoPermission) })
 
     #expect(await blocked.enqueue(Self.record(2)) == .unavailable)
     #expect(try Self.records(in: directory).map(\.message) == ["report 1"])
@@ -243,7 +280,7 @@ struct FeedbackOutboxTests {
     #expect(left.map(\.message) == ["report 1"])
     #expect(left.first?.state == .rejected)
     #expect(left.first?.rejectedStatus == 413)
-    #expect(await outbox.hasRejectedReports() == true)
+    #expect(await outbox.hasUndeliverableReports() == true)
 
     await outbox.drain()
     #expect(http.sent == [Self.eventID(1), Self.eventID(2)])
@@ -263,6 +300,7 @@ struct FeedbackOutboxTests {
     #expect(http.sent == [Self.eventID(1)])
     #expect(try Self.records(in: directory).map(\.state) == [.pending, .pending])
     #expect(await outbox.isPaused == true)
+    #expect(await outbox.hasUndeliverableReports() == true)
   }
 
   @Test(
@@ -347,6 +385,105 @@ struct FeedbackOutboxTests {
     #expect(path.wasCancelled)
     #expect(http.sent == [])
     #expect(try Self.records(in: directory).map(\.message) == ["report 1"])
+  }
+
+  @Test("Without a DSN a new report is refused, so the form keeps the words")
+  func missingDSNRefuses() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = Self.makeOutbox(directory, http: nil)
+
+    #expect(await outbox.enqueue(Self.record(1)) == .unavailable)
+    #expect(try Self.records(in: directory).isEmpty)
+  }
+
+  @Test(
+    "Shutdown or a lost network during a send: that report finishes, the next is not attempted",
+    arguments: [true, false])
+  func stopDuringSendHoldsTheNext(byShutdown: Bool) async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let http = HTTP([])
+    let gate = Gate()
+    let path = FakePath(satisfied: false)
+    let outbox = Self.makeOutbox(directory, http: http, path: path, gate: gate)
+    _ = await outbox.enqueue(Self.record(1))
+    _ = await outbox.enqueue(Self.record(2))
+    path.set(true)
+    let pass = Task { await outbox.drain() }
+    await gate.waitUntilEntered()
+
+    if byShutdown { await outbox.stop() } else { path.set(false) }
+    await gate.release()
+    await pass.value
+
+    #expect(http.sent == [Self.eventID(1)])
+    #expect(try Self.records(in: directory).map(\.message) == ["report 2"])
+  }
+
+  @Test("A rate limit that could not be written still holds every report until it expires")
+  func unwrittenRateLimitHoldsAll() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let clock = Clock(Self.start)
+    let http = HTTP([.status(200, ["X-Sentry-Rate-Limits": "600:feedback:organization"])])
+    let failWrites = WriteSwitch()
+    let path = FakePath(satisfied: false)
+    let outbox = Self.makeOutbox(
+      directory, http: http, path: path, clock: clock,
+      writeData: { data, url in
+        if failWrites.isOn { throw CocoaError(.fileWriteNoPermission) }
+        try DurableJSONFile.write(data: data, to: url, tempPrefix: ".outbox")
+      })
+    _ = await outbox.enqueue(Self.record(1))
+    _ = await outbox.enqueue(Self.record(2))
+    failWrites.isOn = true
+    // Not started, so this changes the path without triggering a pass of its own.
+    path.set(true)
+    await outbox.drain()
+    await outbox.drain()
+    #expect(http.sent == [Self.eventID(1)])
+
+    failWrites.isOn = false
+    clock.advance(599)
+    await outbox.drain()
+    #expect(http.sent == [Self.eventID(1)])
+
+    clock.advance(2)
+    await outbox.drain()
+    #expect(Set(http.sent) == [Self.eventID(1), Self.eventID(2)])
+    #expect(try Self.records(in: directory).isEmpty)
+  }
+
+  @Test("A full outbox stays within its byte limit after retries and rejections add details")
+  func byteLimitHoldsAfterMetadata() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let limit = 6000
+    let clock = Clock(Self.start)
+    let http = HTTP(
+      [.networkError] + Array(repeating: HTTP.Answer.status(400, [:]), count: 20))
+    let path = FakePath(satisfied: false)
+    let outbox = Self.makeOutbox(
+      directory, http: http, path: path, clock: clock, maxEncodedBytes: limit)
+    var admitted = 0
+    while await outbox.enqueue(Self.record(admitted + 1)) == .saved(offline: true) {
+      admitted += 1
+    }
+    #expect(admitted >= 2)
+
+    // Every report gains a rejection; the first also gains an attempt count and next attempt.
+    path.set(true)
+    await outbox.drain()
+    clock.advance(61)
+    await outbox.drain()
+
+    let records = try Self.records(in: directory)
+    #expect(records.count == admitted)
+    #expect(records.allSatisfy { $0.state == .rejected && $0.rejectedStatus == 400 })
+    #expect(records.first?.attempts == 1)
+    let bytes = try Data(contentsOf: directory.appendingPathComponent("outbox.json")).count
+    #expect(bytes <= limit)
   }
 
   final class WriteSwitch: @unchecked Sendable {

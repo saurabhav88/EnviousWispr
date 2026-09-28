@@ -62,6 +62,9 @@ struct FeedbackForm: View {
   /// The auto-close after "Thanks"; cancelled if the popover goes away first, so a quick reopen
   /// is never closed by the previous send.
   @State private var closeTask: Task<Void, Never>?
+  /// Renewed each time the popover appears or goes away, so a save that finishes after the
+  /// popover closed never changes or closes the one on screen now.
+  @State private var presentation = UUID()
   @FocusState private var focus: Field?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(SettingsManager.self) private var settings
@@ -88,12 +91,14 @@ struct FeedbackForm: View {
     .background(Color.stPageBg)
     .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: status)
     .onAppear {
+      presentation = UUID()
       message = draftStore.message
       email = draftStore.email
       focus = .message
       diagnosticsModel.open(usageMetrics: settings.shareUsageMetrics)
     }
     .onDisappear {
+      presentation = UUID()
       closeTask?.cancel()
       diagnosticsModel.formDidClose()
     }
@@ -382,11 +387,16 @@ struct FeedbackForm: View {
     // The report is frozen here; edits typed while it saves are not what was sent.
     let sentMessage = message
     let sentEmail = email
+    let submitted = presentation
     status = .sending
     Task { @MainActor in
-      switch await FeedbackReporter.send(draft, diagnostics: diagnostics) {
+      let outcome = await FeedbackReporter.send(draft, diagnostics: diagnostics)
+      // The saved draft, not this view's copy: every keystroke is saved, including any typed in
+      // a form reopened while this report was saving.
+      if case .saved = outcome { draftStore.clear(ifStill: sentMessage, email: sentEmail) }
+      guard presentation == submitted else { return }
+      switch outcome {
       case .saved(let offline):
-        if message == sentMessage, email == sentEmail { draftStore.clear() }
         status = .sent(offline: offline)
         AccessibilityNotification.Announcement(sentTitle).post()
         closeTask = Task { @MainActor in

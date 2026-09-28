@@ -42,7 +42,7 @@ struct FeedbackSenderTests {
     "A malformed DSN is refused",
     arguments: [
       "", "not a url", "https://host/42", "https://k@/42", "https://k@host/", "https://k@host/abc",
-      "ftp://k@host/1",
+      "ftp://k@host/1", "http://k@host/1",
     ])
   func malformedDSN(value: String) {
     #expect(FeedbackDSN(value) == nil)

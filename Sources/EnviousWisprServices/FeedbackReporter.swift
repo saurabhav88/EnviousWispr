@@ -105,9 +105,10 @@ public enum FeedbackReporter {
     await FeedbackOutbox.shared.stop()
   }
 
-  /// Whether a saved report was refused by Sentry and stays unsent on this Mac.
+  /// Whether a saved report stays unsent on this Mac without help: refused by Sentry, or
+  /// waiting behind a configuration failure.
   public static func hasUndeliverableReports() async -> Bool {
-    await FeedbackOutbox.shared.hasRejectedReports()
+    await FeedbackOutbox.shared.hasUndeliverableReports()
   }
 }
 
@@ -161,4 +162,13 @@ public struct FeedbackDraftStore: Sendable {
   }
 
   public func clear() { save(message: "", email: "") }
+
+  /// Clears only when the saved draft still holds what was sent, so a later edit (in this form
+  /// or one reopened while the report was saving) is kept. Returns whether it cleared.
+  @discardableResult
+  public func clear(ifStill message: String, email: String) -> Bool {
+    guard self.message == message, self.email == email else { return false }
+    clear()
+    return true
+  }
 }

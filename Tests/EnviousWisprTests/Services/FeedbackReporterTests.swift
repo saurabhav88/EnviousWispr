@@ -90,6 +90,24 @@ struct FeedbackReporterTests {
     #expect(UserDefaults(suiteName: suite)!.object(forKey: "feedback.draft.message") == nil)
   }
 
+  @Test("A saved report clears the draft only if it still holds what was sent")
+  func clearOnlyIfUnchanged() throws {
+    let suite = "FeedbackDraftStoreTests.\(UUID().uuidString)"
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let store = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    store.save(message: "first report", email: "a@b.co")
+
+    // A form reopened while the report was saving, and edited there.
+    let reopened = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    reopened.save(message: "a second thought", email: "a@b.co")
+    #expect(store.clear(ifStill: "first report", email: "a@b.co") == false)
+    #expect(reopened.message == "a second thought")
+
+    #expect(store.clear(ifStill: "a second thought", email: "a@b.co") == true)
+    #expect(reopened.message == "")
+    #expect(reopened.email == "")
+  }
+
   @Test("A message within 4,000 characters but over Sentry's 4,096 code points cannot be sent")
   func codePointLimit() {
     // Each flag is one character but two code points.
@@ -107,9 +125,14 @@ struct FeedbackReporterTests {
     appVersion: "2.5.2", appBuild: "252", release: "com.enviouswispr.app@2.5.2",
     environment: "development", osVersion: "15.4.0", osBuild: "24E248")
 
+  /// A sender that never gets through, so a saved report stays on disk to be read back.
+  nonisolated static let unreachable = FeedbackSender(
+    dsn: FeedbackOutboxTests.dsn, http: { _ in throw URLError(.notConnectedToInternet) },
+    now: { Date() })
+
   private static func outbox(online: Bool = true, directory: URL) -> FeedbackOutbox {
     let path = FeedbackOutboxTests.FakePath(satisfied: online)
-    return FeedbackOutbox(directory: directory, sender: nil, path: path)
+    return FeedbackOutbox(directory: directory, sender: unreachable, path: path)
   }
 
   private static func tempDirectory() -> URL {
@@ -165,7 +188,8 @@ struct FeedbackReporterTests {
     let directory = Self.tempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let outbox = FeedbackOutbox(
-      directory: directory, sender: nil, path: FeedbackOutboxTests.FakePath(satisfied: true),
+      directory: directory, sender: Self.unreachable,
+      path: FeedbackOutboxTests.FakePath(satisfied: true),
       writeData: { _, _ in throw CocoaError(.fileWriteNoPermission) })
     let draft = try #require(FeedbackDraft(message: "hi", email: ""))
 

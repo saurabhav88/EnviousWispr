@@ -48,7 +48,7 @@ You can send feedback without an internet connection. The form says **You're off
 
 If the form says **Couldn't send. Email hello@enviouslabs.co**, your draft stays in the form, so you can copy it into an email to hello@enviouslabs.co. The same applies if it says **Too much feedback is waiting to send**, which means many earlier reports are still waiting for a connection.
 
-If the form says **Some saved feedback could not be sent. It remains on this Mac.**, an earlier report was refused on delivery. It stays saved on your Mac; email hello@enviouslabs.co if it matters.
+If the form says **Some saved feedback could not be sent. It remains on this Mac.**, an earlier report could not be delivered. It stays saved on your Mac; email hello@enviouslabs.co if it matters.
 
 If **Send** stays greyed out, check the email address or leave the field empty.
 

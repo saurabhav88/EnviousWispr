@@ -15,6 +15,10 @@ import Foundation
 actor FeedbackOutbox {
   static let maxRecords = 50
   static let maxEncodedBytes = 20_000_000
+  /// Room kept per report, plus once for the document, for what delivery adds later (attempts,
+  /// next attempt, rejection, the shared rate limit: well under 200 bytes when measured), so a
+  /// full outbox stays within `maxEncodedBytes` after retries.
+  static let metadataReserveBytes = 512
   static let fileName = "outbox.json"
 
   enum EnqueueResult: Equatable, Sendable {
@@ -22,7 +26,8 @@ actor FeedbackOutbox {
     case saved(offline: Bool)
     /// 50 reports or 20 MB are already waiting; nothing was saved.
     case full
-    /// The outbox could not be read or written; nothing was saved.
+    /// The outbox could not be read or written, or reports cannot be delivered (no DSN);
+    /// nothing was saved.
     case unavailable
   }
 
@@ -47,17 +52,26 @@ actor FeedbackOutbox {
   private let sleep: @Sendable (TimeInterval) async throws -> Void
   private let writeData: @Sendable (Data, URL) throws -> Void
   private let readData: @Sendable (URL) throws -> Data
+  private let maxRecords: Int
+  private let maxEncodedBytes: Int
 
   /// The latest requested pass. Each request chains a new pass after it, so a report saved
   /// during a pass is never skipped and only one send is ever in flight.
   private var drainTask: Task<Void, Never>?
   /// Set by a configuration failure (bad DSN, 401/403/404); cleared only by a new launch.
   private(set) var isPaused: Bool
+  private var isStarted = false
+  /// Set by `stop()`: no further send starts; a report already in flight finishes or stays saved.
+  private var isStopped = false
   private var wakeTask: Task<Void, Never>?
   /// A retry deadline kept in memory when the deadline itself could not be written.
   private var memoryNotBefore: [UUID: Date] = [:]
+  /// Sentry's rate limit, kept in memory before it is written, so a failed write cannot let
+  /// another report through early.
+  private var memoryGlobalNotBefore: Date?
 
-  /// - Parameter sender: nil when the DSN is missing or malformed; reports are kept, not sent.
+  /// - Parameter sender: nil when the DSN is missing or malformed; new reports are refused as
+  ///   `.unavailable` (the form keeps the words) and any already saved are kept, not sent.
   init(
     directory: URL,
     sender: FeedbackSender?,
@@ -69,7 +83,9 @@ actor FeedbackOutbox {
     writeData: @escaping @Sendable (Data, URL) throws -> Void = { data, url in
       try DurableJSONFile.write(data: data, to: url, tempPrefix: ".outbox")
     },
-    readData: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
+    readData: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) },
+    maxRecords: Int = FeedbackOutbox.maxRecords,
+    maxEncodedBytes: Int = FeedbackOutbox.maxEncodedBytes
   ) {
     self.directory = directory
     self.fileURL = directory.appendingPathComponent(Self.fileName)
@@ -79,6 +95,8 @@ actor FeedbackOutbox {
     self.sleep = sleep
     self.writeData = writeData
     self.readData = readData
+    self.maxRecords = maxRecords
+    self.maxEncodedBytes = maxEncodedBytes
     self.isPaused = sender == nil
   }
 
@@ -102,8 +120,10 @@ actor FeedbackOutbox {
 
   // MARK: - Lifecycle
 
-  /// Launch: watch the network and try to send whatever is waiting.
+  /// Launch: watch the network and try to send whatever is waiting. Runs once per outbox.
   func start() {
+    guard !isStarted, !isStopped else { return }
+    isStarted = true
     path.start { [weak self] satisfied in
       guard satisfied, let self else { return }
       Task { await self.drain() }
@@ -111,8 +131,11 @@ actor FeedbackOutbox {
     Task { await drain() }
   }
 
-  /// Shutdown: stop the scheduled wake and the network watcher. Nothing on disk changes.
+  /// Shutdown: no new send starts, and the wake and network watcher stop. A send already in
+  /// flight completes or its report stays saved. Nothing on disk is removed.
   func stop() {
+    isStopped = true
+    drainTask?.cancel()
     wakeTask?.cancel()
     wakeTask = nil
     path.cancel()
@@ -121,15 +144,18 @@ actor FeedbackOutbox {
   // MARK: - Enqueue
 
   func enqueue(_ record: FeedbackRecord) async -> EnqueueResult {
+    guard sender != nil else { return .unavailable }
     let offline = !path.isSatisfied
+    let maxRecords = maxRecords
+    let maxEncodedBytes = maxEncodedBytes
     let result: EnqueueResult =
       mutate { document in
-        guard document.records.count < Self.maxRecords else { return .full }
+        guard document.records.count < maxRecords else { return .full }
         var next = document
         next.records.append(record)
-        guard let encoded = try? Self.encode(next), encoded.count <= Self.maxEncodedBytes else {
-          return .full
-        }
+        guard let encoded = try? Self.encode(next),
+          encoded.count + (next.records.count + 1) * Self.metadataReserveBytes <= maxEncodedBytes
+        else { return .full }
         document = next
         return .saved(offline: offline)
       } ?? .unavailable
@@ -137,9 +163,12 @@ actor FeedbackOutbox {
     return result
   }
 
-  /// Whether any report was refused by Sentry and is kept here unsent, for the form's notice.
-  func hasRejectedReports() -> Bool {
-    (try? load())?.records.contains { $0.state == .rejected } ?? false
+  /// Whether a saved report will not be delivered without help, for the form's notice: Sentry
+  /// refused it, or sending is paused by a configuration failure while reports wait.
+  func hasUndeliverableReports() -> Bool {
+    guard let records = (try? load())?.records else { return false }
+    if records.contains(where: { $0.state == .rejected }) { return true }
+    return isPaused && records.contains { $0.state == .pending }
   }
 
   // MARK: - Drain
@@ -159,11 +188,14 @@ actor FeedbackOutbox {
   }
 
   private func runPass() async {
-    guard !isPaused, let sender, path.isSatisfied else { return }
-    while true {
+    guard let sender else { return }
+    // Checked before every send, so shutdown, a lost network or a pause stops the next one.
+    while !isStopped, !Task.isCancelled, !isPaused, path.isSatisfied {
       guard let document = try? load() else { return }
       let current = now()
-      if let notBefore = document.notBefore, notBefore > current {
+      if let notBefore = [document.notBefore, memoryGlobalNotBefore].compactMap({ $0 }).max(),
+        notBefore > current
+      {
         scheduleWake(at: notBefore)
         return
       }
@@ -185,6 +217,9 @@ actor FeedbackOutbox {
           memoryNotBefore[record.id] = now().addingTimeInterval(Self.backoff(record.attempts + 1))
         }
       case .retry(let notBefore):
+        if let notBefore {
+          memoryGlobalNotBefore = max(memoryGlobalNotBefore ?? notBefore, notBefore)
+        }
         let backoff = now().addingTimeInterval(Self.backoff(record.attempts + 1))
         let deadline = max(backoff, notBefore ?? backoff)
         let saved: Bool =
@@ -231,6 +266,7 @@ actor FeedbackOutbox {
   }
 
   private func scheduleWake(at date: Date) {
+    guard !isStopped else { return }
     wakeTask?.cancel()
     let delay = max(date.timeIntervalSince(now()), 1)
     let sleep = self.sleep
