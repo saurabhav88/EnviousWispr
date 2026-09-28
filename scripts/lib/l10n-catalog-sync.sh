@@ -586,9 +586,14 @@ def main(argv):
         tables = [
             (args.catalog, committed, synced),
             (args.infoplist_catalog, *sync_seeded_table(args.infoplist_catalog, info_seed, info_plist_comment)),
-            (args.servicesmenu_catalog,
-             *sync_seeded_table(args.servicesmenu_catalog, services_seed, services_menu_comment)),
         ]
+        # No app declares NSServices today, so there is no seed; skip the ServicesMenu catalog
+        # rather than writing an empty one, unless a stale committed file still exists to reconcile.
+        if services_seed or args.servicesmenu_catalog.exists():
+            tables.append((
+                args.servicesmenu_catalog,
+                *sync_seeded_table(args.servicesmenu_catalog, services_seed, services_menu_comment),
+            ))
         print(f"inputs: {len(files)} .stringsdata from {len(PRODUCTION_TARGETS)} production targets")
         print(f"What's New: {len(seed)} keys from {args.whats_new_source.name}")
         print(f"{args.info_plist.name}: {len(info_seed)} InfoPlist keys, {len(services_seed)} ServicesMenu keys")

@@ -92,27 +92,13 @@ struct QuickAddCoordinatorTests {
     let (coordinator, _) = makeCoordinator()
 
     let model = try #require(
-      coordinator.begin(door: .menuBar, selection: .acquired(outcome(result))))
+      coordinator.begin(door: .menuBar, selection: outcome(result)))
 
     switch result {
     case .text(let text): #expect(model.heard == text)
     case .refused(let why): #expect(model.refusal == why)
     case .noSelection: #expect(model.refusal == .nothingSelected)
     }
-  }
-
-  /// The paired negative: door B is the one door that DOES transform what it is handed, because
-  /// macOS gives it whatever was on the pasteboard and the ceiling and the empty check are
-  /// properties of a selection rather than of the door it arrived through.
-  @Test("The Services door still classifies the raw text it is handed")
-  func theServiceDoorClassifies() throws {
-    let (coordinator, _) = makeCoordinator()
-
-    let padded = try #require(coordinator.begin(door: .service, selection: .text("   codecs \n")))
-    #expect(padded.heard == "codecs")
-
-    let empty = try #require(coordinator.begin(door: .service, selection: .text("   ")))
-    #expect(empty.refusal == .nothingSelected)
   }
 
   /// **Telemetry must name the application the READ sampled, not whoever is frontmost now (#2465).**
@@ -122,9 +108,6 @@ struct QuickAddCoordinatorTests {
   /// acquisition used to be attributed to us, which makes the one field that says WHICH APPS need
   /// the clipboard fallback answer "ours". After the shortcut door's asynchronous wait it can be
   /// wrong too.
-  ///
-  /// The fixture's live lookup returns a DIFFERENT identifier from the outcome's on purpose: with
-  /// both the same, this row would pass against the defect.
   @Test("An acquired outcome is attributed to the application it was sampled from")
   func acquiredOutcomesCarryTheirOwnBundleID() throws {
     let (coordinator, recorder) = makeCoordinator()
@@ -136,7 +119,7 @@ struct QuickAddCoordinatorTests {
       acquisitionMs: 41,
       clipboardRestore: .restored)
 
-    _ = coordinator.begin(door: .menuBar, selection: .acquired(outcome))
+    _ = coordinator.begin(door: .menuBar, selection: outcome)
     coordinator.didOpen()
 
     guard
@@ -146,32 +129,10 @@ struct QuickAddCoordinatorTests {
       Issue.record("not an opened event")
       return
     }
-    #expect(bundle == "net.whatsapp.WhatsApp", "the live lookup would have said com.apple.TextEdit")
+    #expect(bundle == "net.whatsapp.WhatsApp")
     #expect(acquired == .clipboardCopy)
     #expect(ms == 41)
     #expect(restore == .restored)
-  }
-
-  /// The pair: the Services door has no sample of its own, so the live lookup is the only answer
-  /// available and is still the right one. Without this row, "always use the outcome" would pass.
-  @Test("The Services door still uses the live lookup, because it has no sample")
-  func theServiceDoorUsesTheLiveLookup() throws {
-    let (coordinator, recorder) = makeCoordinator()
-
-    _ = coordinator.begin(door: .service, selection: .text("codecs"))
-    coordinator.didOpen()
-
-    guard
-      case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore) =
-        try #require(recorder.opened)
-    else {
-      Issue.record("not an opened event")
-      return
-    }
-    #expect(bundle == "com.apple.TextEdit")
-    #expect(acquired == .handed, "macOS handed this text over; nothing was acquired")
-    #expect(ms == nil, "a zero would be a real measurement of something that did not happen")
-    #expect(restore == .notTouched)
   }
 
   /// Build an acquisition outcome for a test, with the fields no row here is about left neutral.
@@ -188,18 +149,18 @@ struct QuickAddCoordinatorTests {
   /// fires when a panel is on screen. Emitting it from `begin` made a panel that could not be
   /// measured leave an open with nothing to resolve it.
   ///
-  /// `acquired` is what the SHORTCUT and MENU doors hand over since #2465: an outcome obtained
-  /// before `begin` was called at all. `selectionOverride` is still the Services door's raw text.
+  /// `acquired` is what the shortcut and menu doors hand over: an outcome obtained before `begin`
+  /// was called at all. `selectionOverride` is a raw-text convenience for the many rows that are
+  /// really about ranking/scoring rather than about acquisition — it runs the SAME classification
+  /// a real acquisition already applies (`SelectionReader.classify`), since `begin` itself no
+  /// longer classifies anything.
   private func beginAndShow(
     _ coordinator: QuickAddCoordinator, door: QuickAddDoor = .hotkey,
     selectionOverride: String? = nil,
     acquired: SelectionReader.Result = .text("codecs")
   ) -> QuickAddPanelModel? {
-    // The helper still takes text, because that is what almost every row is about. It maps to
-    // `.text`, which is the Services door's shape — classification still happens inside `begin`.
-    let model = coordinator.begin(
-      door: door,
-      selection: selectionOverride.map { .text($0) } ?? .acquired(outcome(acquired)))
+    let result = selectionOverride.map { SelectionReader.classify($0) } ?? acquired
+    let model = coordinator.begin(door: door, selection: outcome(result))
     if model != nil { coordinator.didOpen() }
     return model
   }
@@ -217,7 +178,6 @@ struct QuickAddCoordinatorTests {
     recorder.userWords = userWords
     var clock = Date(timeIntervalSince1970: 0)
     let environment = QuickAddCoordinator.Environment(
-      frontmostBundleID: { "com.apple.TextEdit" },
       refreshWords: {
         recorder.refreshCalls += 1
         return refreshSucceeds
@@ -730,31 +690,16 @@ struct QuickAddCoordinatorTests {
   func bothDoorsAreReported() throws {
     let (coordinator, recorder) = makeCoordinator()
 
-    _ = beginAndShow(coordinator, door: .service, selectionOverride: "codecs")
+    _ = beginAndShow(coordinator, door: .hotkey, selectionOverride: "codecs")
     guard case .opened(let door, _, _, _, _, _, _, _, _, _) = try #require(recorder.opened) else {
       return
     }
 
-    #expect(door == .service)
-    // Three since #2412 added the status-item menu. The count is here so a new door cannot be added
-    // without someone reading the funnel — which is what happened.
-    #expect(QuickAddDoor.allCases.count == 3)
+    #expect(door == .hotkey)
+    // Two: the shortcut and the status-item menu (#2412). The count is here so a new door cannot be
+    // added without someone reading the funnel — which is what happened.
+    #expect(QuickAddDoor.allCases.count == 2)
     #expect(QuickAddDoor.allCases.contains(.menuBar))
-  }
-
-  @Test("The Service door uses the pasteboard text and does not read Accessibility")
-  func theServiceDoorUsesItsOwnText() throws {
-    // A Service is HANDED the selection. Reading Accessibility as well would ask a second question
-    // whose answer is about whatever is frontmost now, which by then may be us.
-    let (coordinator, _) = makeCoordinator()
-
-    let model = try #require(
-      beginAndShow(
-        coordinator, door: .service, selectionOverride: "sarag",
-        acquired: .refused(.accessibilityNotTrusted)))
-
-    #expect(model.heard == "sarag")
-    #expect(model.refusal == nil, "the AX refusal is irrelevant when the text was handed to us")
   }
 
   @Test("Every outcome name is distinct")
@@ -767,43 +712,37 @@ struct QuickAddCoordinatorTests {
   }
   // MARK: - Round 1 of the whole-diff review (#2381)
 
-  @Test("A Service handing over whitespace opens on a stated reason, not on an empty word")
-  func serviceWhitespaceIsARefusal() throws {
-    // The Services system hands us whatever was on the pasteboard. Treating that as already-valid
-    // opened a panel reading `Heard: ` with the search field up, from which Return could write an
-    // alias the store then stripped while reporting success.
+  @Test("Whitespace opens on a stated reason, not on an empty word")
+  func whitespaceIsARefusal() throws {
+    // Treating unclassified whitespace as already-valid opened a panel reading `Heard: ` with the
+    // search field up, from which Return could write an alias the store then stripped while
+    // reporting success.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(beginAndShow(coordinator, door: .service, selectionOverride: "   "))
+    let model = try #require(beginAndShow(coordinator, selectionOverride: "   "))
 
     #expect(model.heard.isEmpty)
-    // The TWIN of the hotkey case, and it moved with it: whitespace classifies as no selection, so
-    // both doors now land on the reason that blames nobody rather than on the one naming terminals.
-    // Its sentence deliberately names no route, because a message telling a Services user to "press
-    // the shortcut again" is wrong about how they got here.
     #expect(model.refusal == .nothingSelected)
     #expect(model.ranking.candidates.isEmpty)
     #expect(recorder.outcomes.isEmpty)
   }
 
-  @Test("A Service handing over an oversized selection is refused at the store's own ceiling")
-  func serviceOversizedIsRefused() throws {
-    // Door A bounded this and door B did not, so the same selection was refused through one door
-    // and sent to the scorer through the other — where edit distance builds a matrix per candidate.
+  @Test("An oversized selection is refused at the store's own ceiling")
+  func oversizedIsRefused() throws {
     let huge = String(repeating: "a", count: SelectionReader.maximumSelectionScalars + 1)
     let (coordinator, _) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(beginAndShow(coordinator, door: .service, selectionOverride: huge))
+    let model = try #require(beginAndShow(coordinator, selectionOverride: huge))
 
     #expect(model.refusal == .selectionTooLong)
     #expect(model.ranking.candidates.isEmpty)
   }
 
-  @Test("A Service handing over a real word still ranks it, so the guard is not blanket refusal")
-  func serviceOrdinaryWordStillRanks() throws {
+  @Test("A real word still ranks it, so the guard is not blanket refusal")
+  func ordinaryWordStillRanks() throws {
     // The paired accepted case. Without it every assertion above passes against a door that refuses
     // everything, which is a check that never classifies anything.
     let (coordinator, _) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(
-      beginAndShow(coordinator, door: .service, selectionOverride: "  codecs  "))
+      beginAndShow(coordinator, selectionOverride: "  codecs  "))
 
     #expect(model.heard == "codecs")
     #expect(model.refusal == nil)
@@ -856,7 +795,7 @@ struct QuickAddCoordinatorTests {
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
 
     _ = try #require(
-      coordinator.begin(door: .hotkey, selection: .acquired(outcome(.text("codecs")))))
+      coordinator.begin(door: .hotkey, selection: outcome(.text("codecs"))))
     coordinator.failedToOpen()
 
     #expect(recorder.opened == nil)

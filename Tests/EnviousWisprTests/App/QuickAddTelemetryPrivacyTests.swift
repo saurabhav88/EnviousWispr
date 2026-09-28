@@ -89,7 +89,7 @@ import Testing
       // that is the question that decides whether terminals are worth revisiting.
       let events = captureEvents {
         TelemetryService.shared.quickAddOpened(
-          door: "service", hadSelection: true, refuseReason: nil, candidateCount: 1,
+          door: "hotkey", hadSelection: true, refuseReason: nil, candidateCount: 1,
           preselected: false, topScore: 0.4, sourceBundleID: "com.apple.TextEdit", heardLength: 6,
           acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored")
       }

@@ -389,7 +389,7 @@ enum QuickAddPanelCopy {
       // app — a confident diagnosis handed to someone whose only mistake was not highlighting a
       // word. So this one names no app, assigns no fault, and says the single thing that fixes it.
       // No route named ("press the shortcut again"), because BOTH doors reach here: the hotkey with
-      // nothing highlighted, and the Services menu handed whitespace. A sentence naming one of them
+      // nothing highlighted, and the status-item menu with whitespace. A sentence naming one of them
       // is wrong half the time it is shown.
       String(
         localized:

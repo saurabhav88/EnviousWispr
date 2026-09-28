@@ -10,10 +10,9 @@ import Testing
 @Suite("Interface catalog source", .tags(.driftGuard))
 struct InterfaceCatalogSourceTests {
   private static let catalogPath = "Sources/EnviousWispr/Resources/Localizable.xcstrings"
-  /// #3142 Phase 3: permission prompts and the Services menu item, written from Info.plist.
+  /// #3142 Phase 3: permission prompts, written from Info.plist.
   private static let infoPlistCatalogs = [
-    "Sources/EnviousWispr/Resources/InfoPlist.xcstrings",
-    "Sources/EnviousWispr/Resources/ServicesMenu.xcstrings",
+    "Sources/EnviousWispr/Resources/InfoPlist.xcstrings"
   ]
 
   // Literal oracle, independent of the catalog.
@@ -102,10 +101,10 @@ struct InterfaceCatalogSourceTests {
     }
   }
 
-  /// The permission prompts, the About box line and the Services menu item compile from the two
-  /// Info.plist catalogs to exactly the English in Info.plist, read here from the plist itself.
-  /// Their German tables carry exactly the same keys.
-  @Test("The built app's permission and Services tables equal Info.plist's English")
+  /// The permission prompts and the About box line compile from Info.plist's InfoPlist catalog to
+  /// exactly the English in Info.plist, read here from the plist itself. The German table carries
+  /// exactly the same keys.
+  @Test("The built app's permission table equals Info.plist's English")
   func builtAppShipsInfoPlistTables() throws {
     let plistData = try Data(
       contentsOf: Self.repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources/Info.plist"))
@@ -116,24 +115,15 @@ struct InterfaceCatalogSourceTests {
         || key == "NSHumanReadableCopyright"
     }
     .compactMapValues { $0 as? String }
-    let services = (plist["NSServices"] as? [[String: Any]] ?? [])
-      .compactMap { ($0["NSMenuItem"] as? [String: Any])?["default"] as? String }
     #expect(prompts.count >= 5, "Info.plist prompts read: \(prompts.keys.sorted())")
-    #expect(!services.isEmpty, "no Services titles read from Info.plist")
 
     let app = try Self.builtApp()
     #expect(try Self.compiledTable(in: app, language: "en", table: "InfoPlist") == prompts)
-    #expect(
-      try Self.compiledTable(in: app, language: "en", table: "ServicesMenu")
-        == Dictionary(uniqueKeysWithValues: services.map { ($0, $0) }))
     let germanPrompts = try Self.compiledTable(in: app, language: "de", table: "InfoPlist")
     #expect(Set(germanPrompts.keys) == Set(prompts.keys))
     #expect(
       germanPrompts["NSMicrophoneUsageDescription"]
         == "EnviousWispr benötigt Zugriff auf dein Mikrofon, um deine Sprache in Text umzuwandeln.")
-    let germanServices = try Self.compiledTable(in: app, language: "de", table: "ServicesMenu")
-    #expect(Set(germanServices.keys) == Set(services))
-    #expect(germanServices["Add to EnviousWispr Words"] == "Zu EnviousWispr-Wörtern hinzufügen")
   }
 
   private static func builtApp() throws -> URL {
