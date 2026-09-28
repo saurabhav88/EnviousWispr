@@ -2676,17 +2676,6 @@
         }
       }
     },
-    "Anonymous usage metrics and crash reports are on by default. You can turn them off in Settings > Permissions." : {
-      "comment" : "Onboarding welcome screen: first-run privacy notice above Get Started.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anonyme Nutzungsstatistiken und Absturzberichte sind standardmäßig aktiviert. Du kannst sie unter Einstellungen > Berechtigungen ausschalten."
-          }
-        }
-      }
-    },
     "Another app is using Ollama's port (11434). Close it and try again." : {
       "comment" : "AI Polish, Ollama setup: error. 11434 is a network port number.",
       "localizations" : {
