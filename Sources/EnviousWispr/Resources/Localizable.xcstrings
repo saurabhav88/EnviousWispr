@@ -20277,13 +20277,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Window Focus Memory: Remembers your exact starting window (even across multiple browser instances) with a fallback copy to clipboard if the box closes."
+            "value" : "EnviousWispr is now better at pasting where it's supposed to paste."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fenster merken: EnviousWispr merkt sich dein ursprüngliches Fenster (auch bei mehreren Browserfenstern) und legt den Text als Rückfall in die Zwischenablage, wenn sich das Textfeld schließt."
+            "value" : "EnviousWispr fügt jetzt zuverlässiger dort ein, wo es einfügen soll."
           }
         }
       }
@@ -20781,13 +20781,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Say slash, get a slash"
+            "value" : "Better support for /commands"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sag „Slash“ und erhalte einen Schrägstrich"
+            "value" : "Bessere Unterstützung für /Befehle"
           }
         }
       }
