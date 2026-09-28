@@ -47,6 +47,19 @@ public enum ObservabilityBootstrap {
       return
     }
 
+    PostHogSDK.shared.setup(makePostHogConfig(apiKey: apiKey))
+
+    // Tag environment so dev dogfooding doesn't muddy production dashboards, and
+    // `app` because project 354235 is shared with EnviousStaging (#2982; the
+    // shared-project rule: every Envious Labs product tags its source).
+    PostHogSDK.shared.register([
+      "environment": environment, "app_version": appVersion, "app": appTag,
+    ])
+  }
+
+  /// The one PostHog configuration the app ships. Builds the config only: it starts nothing and
+  /// sends nothing, so a test can read exactly what `setup` receives.
+  static func makePostHogConfig(apiKey: String) -> PostHogConfig {
     let config = PostHogConfig(apiKey: apiKey)
     config.captureApplicationLifecycleEvents = true
     config.enableSwizzling = false
@@ -74,15 +87,7 @@ public enum ObservabilityBootstrap {
       event.properties = properties
       return event
     }
-
-    PostHogSDK.shared.setup(config)
-
-    // Tag environment so dev dogfooding doesn't muddy production dashboards, and
-    // `app` because project 354235 is shared with EnviousStaging (#2982; the
-    // shared-project rule: every Envious Labs product tags its source).
-    PostHogSDK.shared.register([
-      "environment": environment, "app_version": appVersion, "app": appTag,
-    ])
+    return config
   }
 
   private static func initializeSentry() {
@@ -93,38 +98,7 @@ public enum ObservabilityBootstrap {
     }
 
     SentrySDK.start { options in
-      options.dsn = dsn
-      options.releaseName = "com.enviouswispr.app@\(appVersion)"
-      options.environment = environment
-
-      // Privacy: no PII, no default data collection
-      options.sendDefaultPii = false
-
-      // Crash reporting: the core reason Sentry exists here
-      #if os(macOS)
-        options.enableUncaughtNSExceptionReporting = true
-      #endif
-      options.enableAutoSessionTracking = true
-
-      // Manual-only instrumentation: we add our own breadcrumbs via SentryBreadcrumb.
-      // Disable all auto-collection to avoid surprise data, noise, and hidden swizzling.
-      options.enableAutoBreadcrumbTracking = false
-      options.enableNetworkBreadcrumbs = false
-      options.enableCaptureFailedRequests = false
-      options.enableSwizzling = false
-      options.enableFileIOTracing = false
-      options.enableCoreDataTracing = false
-      options.enableAppHangTracking = false
-      options.tracesSampleRate = NSNumber(value: 0)
-
-      // PII redaction: strip transcript content, API keys, emails, and
-      // username-bearing crash paths. Extracted into `sanitizeSentryEvent`
-      // (the FINAL payload seam) so the redaction tripwire test (#1095) can
-      // assert on the exact output the SDK transmits, not a pre-`beforeSend`
-      // hook. This is a limb — `sanitizeSentryEvent` must never throw or crash.
-      options.beforeSend = { event in
-        ObservabilityBootstrap.sanitizeSentryEvent(event)
-      }
+      configureSentryOptions(options, dsn: dsn)
     }
 
     // Set stable tags that rarely change — available on every event including fatal crashes
@@ -133,6 +107,44 @@ public enum ObservabilityBootstrap {
     SentrySDK.configureScope { scope in
       writeStableTags(
         environment: environment, isSynthetic: isSynthetic, joinKey: joinKey, to: scope)
+    }
+  }
+
+  /// The one Sentry configuration the app ships, applied inside `SentrySDK.start`'s closure.
+  /// Writes options only: it starts nothing and sends nothing, so a test can read exactly what
+  /// `start` receives.
+  static func configureSentryOptions(_ options: Options, dsn: String) {
+    options.dsn = dsn
+    options.releaseName = "com.enviouswispr.app@\(appVersion)"
+    options.environment = environment
+
+    // Privacy: no PII, no default data collection
+    options.sendDefaultPii = false
+
+    // Crash reporting: the core reason Sentry exists here
+    #if os(macOS)
+      options.enableUncaughtNSExceptionReporting = true
+    #endif
+    options.enableAutoSessionTracking = true
+
+    // Manual-only instrumentation: we add our own breadcrumbs via SentryBreadcrumb.
+    // Disable all auto-collection to avoid surprise data, noise, and hidden swizzling.
+    options.enableAutoBreadcrumbTracking = false
+    options.enableNetworkBreadcrumbs = false
+    options.enableCaptureFailedRequests = false
+    options.enableSwizzling = false
+    options.enableFileIOTracing = false
+    options.enableCoreDataTracing = false
+    options.enableAppHangTracking = false
+    options.tracesSampleRate = NSNumber(value: 0)
+
+    // PII redaction: strip transcript content, API keys, emails, and
+    // username-bearing crash paths. Extracted into `sanitizeSentryEvent`
+    // (the FINAL payload seam) so the redaction tripwire test (#1095) can
+    // assert on the exact output the SDK transmits, not a pre-`beforeSend`
+    // hook. This is a limb — `sanitizeSentryEvent` must never throw or crash.
+    options.beforeSend = { event in
+      ObservabilityBootstrap.sanitizeSentryEvent(event)
     }
   }
 
