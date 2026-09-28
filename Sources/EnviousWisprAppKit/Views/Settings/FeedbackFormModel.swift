@@ -31,7 +31,7 @@ final class FeedbackFormModel {
   private(set) var metricsDefault = false
 
   private let loadSnapshot: @MainActor () async -> FeedbackDiagnosticsSnapshot?
-  /// Bumped on every open, metrics change and close; a load that finishes under an older value
+  /// Bumped on every open, metrics change and form close; a load that finishes under an older value
   /// is dropped, so a slow load can never bring back old bytes or an old choice.
   private var generation = 0
   private var loadTask: Task<Void, Never>?
@@ -53,8 +53,9 @@ final class FeedbackFormModel {
     reset(usageMetrics: usageMetrics)
   }
 
-  /// The form went away: nothing pending may land afterwards.
-  func close() {
+  /// The form went away: nothing pending may land afterwards. Named for the form, not "close",
+  /// because `OverlayRetainedWindowTests` reads any close call in this module as a window close.
+  func formDidClose() {
     generation += 1
     loadTask?.cancel()
     loadTask = nil

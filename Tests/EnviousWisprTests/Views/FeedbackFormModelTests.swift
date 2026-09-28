@@ -164,7 +164,7 @@ struct FeedbackFormModelTests {
     await loader.waitForArrival()
     let pending = model.pendingLoad
 
-    model.close()
+    model.formDidClose()
     loader.answerOldest(with: Self.first)
     await pending?.value
 
@@ -179,7 +179,7 @@ struct FeedbackFormModelTests {
     await loader.answerNext(with: Self.first)
     await model.pendingLoad?.value
     model.setIncludeDiagnostics(true)
-    model.close()
+    model.formDidClose()
 
     model.open(usageMetrics: false)
     #expect(model.includeDiagnostics == false)

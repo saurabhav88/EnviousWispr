@@ -92,7 +92,7 @@ struct FeedbackForm: View {
     }
     .onDisappear {
       closeTask?.cancel()
-      diagnosticsModel.close()
+      diagnosticsModel.formDidClose()
     }
     .onChange(of: settings.shareUsageMetrics) { _, metrics in
       diagnosticsModel.usageMetricsChanged(to: metrics)
