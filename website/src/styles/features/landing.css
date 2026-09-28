@@ -96,7 +96,7 @@ html[data-motion=paused] :is(.landing-product-card,.loop-feature-card) *{animati
 /* Self-Learning Dictionary directory card (#996). */
 .preview-self-learning-dictionary{display:grid;gap:10px;align-content:center;border:1px solid var(--landing-border);border-radius:13px;padding:18px;background:color-mix(in srgb,var(--landing-tint) 55%,var(--landing-card))}
 .mini-fix{font-size:21px;line-height:1.35;color:var(--ink)}
-.mini-fix del{color:var(--rose);text-decoration:line-through;text-decoration-thickness:1.5px;margin-right:6px}
+.mini-caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-.1em;background:var(--ink)}
 .mini-fix ins{text-decoration:none;color:var(--green);font-weight:600}
 .mini-pill{display:inline-flex;align-items:center;gap:8px;width:fit-content;max-width:100%;padding:6px 10px;border-radius:999px;background:#211a2c;color:#f4eff9;font-size:12px;font-weight:500}
 .mini-pill svg{width:14px;height:14px;color:#9be3c5;flex:none}

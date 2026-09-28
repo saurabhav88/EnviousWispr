@@ -6,10 +6,19 @@
 .sl-label{display:block;font-size:12px;line-height:1.4;color:var(--body);margin-bottom:13px}
 .sl-document p{font-size:23px;line-height:1.5;letter-spacing:-.02em;color:var(--ink);margin:0;min-height:69px;overflow-wrap:anywhere}
 .sl-edit{white-space:nowrap}
-.sl-edit del{text-decoration:none;border-radius:4px;padding:0 3px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600;transition:color .3s,background .3s,opacity .3s}
-.sl-edit ins{text-decoration:none;display:inline-block;max-width:0;overflow:hidden;vertical-align:bottom;opacity:0;border-radius:4px;background:var(--green-soft);color:var(--green);font-weight:600;transition:max-width .5s ease,opacity .3s,padding .3s}
-.film-selflearn:not([data-phase=listening]) .sl-edit del{color:var(--rose);background:var(--rose-soft);text-decoration:line-through;text-decoration-thickness:1.5px;opacity:.75}
-.film-selflearn:not([data-phase=listening]) .sl-edit ins{max-width:9em;opacity:1;padding:0 3px;margin-left:4px}
+/* Build-time and finished frame: the fixed word, nothing else. */
+.sl-wrong{display:none;border-radius:3px}
+.sl-fixed{color:var(--green);font-weight:600}
+.sl-caret{display:none;width:2px;height:1.05em;margin-left:1px;vertical-align:-.12em;background:var(--ink);animation:sl-blink 1s steps(1) infinite}
+@keyframes sl-blink{50%{opacity:0}}
+/* Pasted: the misheard word as it came out. */
+.film-selflearn[data-edit=pasted] .sl-wrong,.film-selflearn[data-edit=selected] .sl-wrong{display:inline}
+.film-selflearn[data-edit=pasted] .sl-fixed,.film-selflearn[data-edit=selected] .sl-fixed{display:none}
+/* Selected: the system text-selection look. */
+.film-selflearn[data-edit=selected] .sl-wrong{background:color-mix(in srgb,#3b82f6 38%,transparent);color:var(--ink)}
+/* Deleted, then typed letter by letter, with a caret. */
+.film-selflearn:is([data-edit=deleted],[data-edit=typing]) .sl-caret{display:inline-block}
+.film-selflearn:is([data-edit=deleted],[data-edit=typing]) .sl-fixed{color:var(--ink);font-weight:400}
 .sl-pill{display:flex;align-items:center;gap:10px;width:fit-content;max-width:100%;margin:16px auto;padding:9px 12px 9px 14px;border-radius:999px;background:#211a2c;color:#f4eff9;font:500 14px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 10px 26px #1b12262e;position:relative;overflow:hidden;opacity:0;transform:translateY(8px) scale(.97);transition:opacity .3s,transform .3s}
 .sl-pill svg{width:17px;height:17px;flex:none;color:#9be3c5}
 .sl-pill>span[data-sl-pill]{overflow-wrap:anywhere}
@@ -27,7 +36,7 @@ html[data-theme=dark] .sl-pill svg,html[data-theme=dark] .sl-timer{color:#287a63
 html[data-theme=dark] .sl-pill svg{background:none}
 html[data-theme=dark] .sl-undo{background:#211a2c14}
 @media(max-width:600px){.sl-document p{font-size:20px;min-height:60px}.sl-pill{font-size:13px}}
-@media(prefers-reduced-motion:reduce){.sl-edit del,.sl-edit ins,.sl-pill,.sl-timer,.sl-next{transition:none}}
+@media(prefers-reduced-motion:reduce){.sl-pill,.sl-timer,.sl-next{transition:none}.sl-caret{animation:none}}
 /* The "checked before it's used" visual: one approved spot, one left alone. */
 .sl-check{display:grid;gap:12px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--film-panel)}
 .sl-check-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:15px 16px;border:1px solid var(--line);border-radius:12px;background:var(--film-well)}
