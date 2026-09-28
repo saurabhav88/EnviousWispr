@@ -18960,6 +18960,23 @@
         }
       }
     },
+    "feedback.full" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Too much feedback is waiting to send. Email hello@enviouslabs.co"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu viel Feedback wartet auf den Versand. Schreibe an hello@enviouslabs.co"
+          }
+        }
+      }
+    },
     "feedback.message.label" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -19045,6 +19062,23 @@
         }
       }
     },
+    "feedback.sent.offline" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You're offline. We'll send it when you're back online."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du bist offline. Wir senden dein Feedback, wenn du wieder online bist."
+          }
+        }
+      }
+    },
     "feedback.sent.title" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -19109,6 +19143,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Senden fehlgeschlagen. Schreibe an hello@enviouslabs.co"
+          }
+        }
+      }
+    },
+    "feedback.undeliverable" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Some saved feedback could not be sent. It remains on this Mac."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Teil des gespeicherten Feedbacks konnte nicht gesendet werden. Es bleibt auf diesem Mac."
           }
         }
       }
@@ -20302,16 +20353,16 @@
       "comment" : "Settings > What's New: the title of one feature announcement (entry privacy-controls).",
       "extractionState" : "manual",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Datenschutzeinstellungen"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Privacy controls"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutzeinstellungen"
           }
         }
       }
@@ -20320,16 +20371,16 @@
       "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry privacy-controls).",
       "extractionState" : "manual",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neu: „Datenschutzeinstellungen“. Unter Einstellungen > Berechtigungen legst du fest, ob du Nutzungsstatistiken teilst und Absturzberichte sendest. Änderungen an der Einstellung für Absturzberichte werden nach einem Neustart wirksam. Beim Senden von Feedback entscheidest du, ob Diagnosedaten angehängt werden, und kannst die Datei vorher ansehen."
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Introducing \"Privacy controls\". Choose whether to share usage metrics and crash reports in Settings > Permissions. Crash report changes apply after a restart. When sending feedback, choose whether to attach diagnostics and preview the file first."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu: „Datenschutzeinstellungen“. Unter Einstellungen > Berechtigungen legst du fest, ob du Nutzungsstatistiken teilst und Absturzberichte sendest. Änderungen an der Einstellung für Absturzberichte werden nach einem Neustart wirksam. Beim Senden von Feedback entscheidest du, ob Diagnosedaten angehängt werden, und kannst die Datei vorher ansehen."
           }
         }
       }

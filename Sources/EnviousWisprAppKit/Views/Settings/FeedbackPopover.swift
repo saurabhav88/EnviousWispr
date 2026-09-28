@@ -51,11 +51,14 @@ struct FeedbackForm: View {
   /// Closes the popover after the thank-you has been on screen for a moment.
   let onDone: () -> Void
 
-  private enum Status: Equatable { case editing, sent, unavailable }
+  /// `sent(offline:)`: saved to the outbox (#3269); `offline` picks the confirmation line.
+  private enum Status: Equatable { case editing, sending, sent(offline: Bool), unavailable, full }
 
   @State private var message = ""
   @State private var email = ""
   @State private var status: Status = .editing
+  /// A saved report Sentry refused stays on this Mac; say so once when the form opens (#3269).
+  @State private var hasUndeliverable = false
   /// The auto-close after "Thanks"; cancelled if the popover goes away first, so a quick reopen
   /// is never closed by the previous send.
   @State private var closeTask: Task<Void, Never>?
@@ -75,7 +78,7 @@ struct FeedbackForm: View {
 
   var body: some View {
     ZStack {
-      if status == .sent {
+      if isSent {
         thanks.transition(.opacity)
       } else {
         form.transition(.opacity)
@@ -98,8 +101,9 @@ struct FeedbackForm: View {
       diagnosticsModel.usageMetricsChanged(to: metrics)
     }
     // Every keystroke is kept, so closing the popover, the window or the app loses nothing.
-    .onChange(of: message) { _, _ in if status != .sent { draftStore.save(message: message, email: email) } }
-    .onChange(of: email) { _, _ in if status != .sent { draftStore.save(message: message, email: email) } }
+    .onChange(of: message) { _, _ in if !isSent { draftStore.save(message: message, email: email) } }
+    .onChange(of: email) { _, _ in if !isSent { draftStore.save(message: message, email: email) } }
+    .task { hasUndeliverable = await FeedbackReporter.hasUndeliverableReports() }
   }
 
   // MARK: - Form
@@ -282,15 +286,11 @@ struct FeedbackForm: View {
 
   private var footer: some View {
     HStack(alignment: .center, spacing: 10) {
-      if status == .unavailable {
-        Text(
-          String(
-            localized: "feedback.unavailable",
-            defaultValue: "Couldn't send. Email hello@enviouslabs.co")
-        )
-        .font(.stHelper)
-        .foregroundStyle(.stError)
-        .fixedSize(horizontal: false, vertical: true)
+      if let problem = footerProblem {
+        Text(problem)
+          .font(.stHelper)
+          .foregroundStyle(.stError)
+          .fixedSize(horizontal: false, vertical: true)
       } else {
         Text(verbatim: "⌘↩")
           .font(.stHelper)
@@ -303,7 +303,8 @@ struct FeedbackForm: View {
   }
 
   private var sendButton: some View {
-    let enabled = issue == nil && !diagnosticsModel.isWaitingForDiagnostics
+    let enabled =
+      issue == nil && !diagnosticsModel.isWaitingForDiagnostics && status != .sending
     return Button(action: send) {
       HStack(spacing: 7) {
         Image(systemName: "paperplane.fill")
@@ -349,8 +350,9 @@ struct FeedbackForm: View {
         .background(Circle().fill(Color.stSuccess))
         .shadow(color: Color.stSuccess.opacity(0.35), radius: 8, y: 3)
         .accessibilityHidden(true)
-      Text(Self.sentTitle)
+      Text(sentTitle)
         .font(.stRowTitle)
+        .multilineTextAlignment(.center)
         .foregroundStyle(.stTextPrimary)
       Text(
         String(
@@ -368,7 +370,8 @@ struct FeedbackForm: View {
   // MARK: - Actions
 
   private func send() {
-    guard status != .sent, let draft = FeedbackDraft(message: message, email: email) else { return }
+    guard status != .sending, !isSent, let draft = FeedbackDraft(message: message, email: email)
+    else { return }
     // Rechecks the live switch: a change the observer has not delivered yet resets the box and
     // preview instead of sending, so a new click is needed (#3269).
     let diagnostics: FeedbackDiagnosticsSnapshot?
@@ -376,18 +379,59 @@ struct FeedbackForm: View {
     case .metricsChanged, .waitingForDiagnostics: return
     case .send(let snapshot): diagnostics = snapshot
     }
-    switch FeedbackReporter.send(draft, diagnostics: diagnostics) {
-    case .queued:
-      draftStore.clear()
-      status = .sent
-      AccessibilityNotification.Announcement(Self.sentTitle).post()
-      closeTask = Task { @MainActor in
-        guard (try? await Task.sleep(for: .seconds(1.8))) != nil else { return }
-        onDone()
+    // The report is frozen here; edits typed while it saves are not what was sent.
+    let sentMessage = message
+    let sentEmail = email
+    status = .sending
+    Task { @MainActor in
+      switch await FeedbackReporter.send(draft, diagnostics: diagnostics) {
+      case .saved(let offline):
+        if message == sentMessage, email == sentEmail { draftStore.clear() }
+        status = .sent(offline: offline)
+        AccessibilityNotification.Announcement(sentTitle).post()
+        closeTask = Task { @MainActor in
+          guard (try? await Task.sleep(for: .seconds(offline ? 3 : 1.8))) != nil else { return }
+          onDone()
+        }
+      case .full:
+        status = .full
+      case .unavailable:
+        // Keep the words so they can be pasted into an email.
+        status = .unavailable
       }
+    }
+  }
+
+  private var isSent: Bool {
+    if case .sent = status { return true }
+    return false
+  }
+
+  /// The confirmation title: online, or saved while offline (founder, 2026-09-28).
+  private var sentTitle: String {
+    if case .sent(offline: true) = status {
+      return String(
+        localized: "feedback.sent.offline",
+        defaultValue: "You're offline. We'll send it when you're back online.")
+    }
+    return Self.sentTitle
+  }
+
+  /// The one problem line in the footer, if any.
+  private var footerProblem: String? {
+    switch status {
     case .unavailable:
-      // Keep the words so they can be pasted into an email.
-      status = .unavailable
+      return String(
+        localized: "feedback.unavailable", defaultValue: "Couldn't send. Email hello@enviouslabs.co")
+    case .full:
+      return String(
+        localized: "feedback.full",
+        defaultValue: "Too much feedback is waiting to send. Email hello@enviouslabs.co")
+    default:
+      guard hasUndeliverable else { return nil }
+      return String(
+        localized: "feedback.undeliverable",
+        defaultValue: "Some saved feedback could not be sent. It remains on this Mac.")
     }
   }
 

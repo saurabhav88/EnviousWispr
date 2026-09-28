@@ -38,17 +38,23 @@ Whatever you type into the message itself is sent as you wrote it, so leave out 
 
 ### Your draft is kept
 
-What you type is saved on your Mac as you type it. Close the form, or quit EnviousWispr, and your draft is still there the next time you open it. It clears when you press Send and EnviousWispr hands the message off for delivery.
+What you type is saved on your Mac as you type it. Close the form, or quit EnviousWispr, and your draft is still there the next time you open it. It clears when you press Send and EnviousWispr saves the report for delivery.
+
+### If you are offline
+
+You can send feedback without an internet connection. The form says **You're offline. We'll send it when you're back online.** The report waits on your Mac, even through a restart, and is sent once you are connected again.
 
 ### If it cannot send
 
-If the form says **Couldn't send. Email hello@enviouslabs.co**, your draft stays in the form, so you can copy it into an email to hello@enviouslabs.co.
+If the form says **Couldn't send. Email hello@enviouslabs.co**, your draft stays in the form, so you can copy it into an email to hello@enviouslabs.co. The same applies if it says **Too much feedback is waiting to send**, which means many earlier reports are still waiting for a connection.
+
+If the form says **Some saved feedback could not be sent. It remains on this Mac.**, an earlier report was refused on delivery. It stays saved on your Mac; email hello@enviouslabs.co if it matters.
 
 If **Send** stays greyed out, check the email address or leave the field empty.
 
 ### What we receive
 
-We receive the message you write and, only if you add it, your email address. The message also carries technical details that help us find the problem, such as your app and macOS versions and whether a recording was in progress, and the diagnostics file if you ticked the box. It never includes your recordings or your History. The full list, including which ID a report carries, is in [what data is collected](/help/what-data-is-collected/).
+We receive the message you write, your email address only if you add it, and your app and macOS versions. If you ticked **Include diagnostics**, we also receive the diagnostics file described above. Nothing else rides along, and the usage and crash-report switches never change what a report contains. It never includes your recordings or your History. See also [what data is collected](/help/what-data-is-collected/).
 
 We also send the text of your message, without your email address, to TypeSafe, an AI service that works on our behalf. It guesses which help article might answer your message, so we can learn which questions our help pages already cover. TypeSafe does not use your message to train its models.
 

@@ -1,11 +1,10 @@
 import Foundation
-import Sentry
 import Testing
 
 @testable import EnviousWisprServices
 
-/// #3269: the exact file a feedback report carries when the user ticks "Include diagnostics",
-/// and the attachment the report is built with. Expected bytes are literals.
+/// #3269: the exact file a feedback report carries when the user ticks "Include diagnostics".
+/// Expected bytes are literals. The envelope that carries it is FeedbackSenderTests.
 @Suite("Feedback diagnostics file (#3269)", .tags(.observabilityContract))
 struct FeedbackDiagnosticsSnapshotTests {
 
@@ -65,18 +64,5 @@ struct FeedbackDiagnosticsSnapshotTests {
     ])
   func noDiaryNoFile(diary: Data?) {
     #expect(FeedbackDiagnosticsSnapshot.make(diarySnapshot: diary, joinKey: Self.joinKey) == nil)
-  }
-
-  @Test("The attachment is the snapshot's exact bytes, named and typed as JSON; none without it")
-  func attachmentCarriesTheBytes() throws {
-    let snapshot = try #require(
-      FeedbackDiagnosticsSnapshot.make(diarySnapshot: Self.diary, joinKey: Self.joinKey))
-    let attachments = try #require(FeedbackReporter.attachments(for: snapshot))
-
-    #expect(attachments.count == 1)
-    #expect(attachments.first?.data == snapshot.data)
-    #expect(attachments.first?.filename == "enviouswispr-diagnostics.json")
-    #expect(attachments.first?.contentType == "application/json")
-    #expect(FeedbackReporter.attachments(for: nil) == nil)
   }
 }
