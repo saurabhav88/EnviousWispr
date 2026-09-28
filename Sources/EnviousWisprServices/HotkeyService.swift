@@ -403,7 +403,13 @@ public final class HotkeyService {
   private func forgetHotkey(_ slot: inout DesktopEffectToken?, role: ShortcutRole) {
     guard let token = slot else { return }
     slot = nil
-    guard !effects.remove(token) else { return }
+    if effects.remove(token) {
+      // #3273: the OS resource is confirmed gone now, so a future `eventHotKeyExistsErr` for this
+      // role can no longer be explained by OUR OWN retained registration.
+      possiblyRetainedByUs.remove(role)
+      return
+    }
+    possiblyRetainedByUs.insert(role)
     Task {
       await AppLogger.shared.log(
         "Hotkey removal refused: role=\(role.rawValue); token dropped as before (#3108)",
@@ -1252,6 +1258,14 @@ public final class HotkeyService {
 
   private static let hotKeyExistsStatus: Int32 = -9878  // Carbon eventHotKeyExistsErr
 
+  /// Roles whose last `forgetHotkey` removal was REFUSED by Carbon, so the OS registration may
+  /// still be alive even though the local token was dropped (`forgetHotkey`'s own documented,
+  /// pre-existing behavior, tracked separately by #3108). Cloud review on #3273 caught the
+  /// consequence for this feature: a role in this set can hit `eventHotKeyExistsErr` on its NEXT
+  /// registration attempt because it still holds its OWN old chord — that is not an external
+  /// conflict, and must not be shown as one.
+  private var possiblyRetainedByUs: Set<ShortcutRole> = []
+
   /// Every role whose MOST RECENT Carbon registration attempt was refused because the combo is
   /// already claimed by something outside this app. #3273 (issue #3266).
   package private(set) var conflictedBindings: [ShortcutRole: ConflictedHotkey] = [:]
@@ -1294,8 +1308,10 @@ public final class HotkeyService {
       let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
       telemetry.registrationFailed("carbon", kind, status, keyShape)
       // #3273: only `eventHotKeyExistsErr` means "already in use" — a different status has a
-      // different, unattributed cause and must not carry that specific claim to the user.
-      if status == Self.hotKeyExistsStatus {
+      // different, unattributed cause and must not carry that specific claim to the user. AND
+      // (cloud review finding) a role whose last removal Carbon refused may be blocking ITSELF —
+      // that is not evidence of an external app and must not be shown as one.
+      if status == Self.hotKeyExistsStatus, !possiblyRetainedByUs.contains(role) {
         let candidate = ConflictedHotkey(keyCode: keyCode, carbonModifiers: modifiers)
         if conflictedBindings[role] != candidate {  // avoid re-notifying on an identical repeat
           conflictedBindings[role] = candidate

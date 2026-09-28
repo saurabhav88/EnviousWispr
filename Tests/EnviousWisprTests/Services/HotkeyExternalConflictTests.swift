@@ -25,6 +25,28 @@ struct HotkeyExternalConflictTests {
     #expect(service.isCurrentBindingConflicted(.cancel))
   }
 
+  @Test(
+    "A role whose removal Carbon refused is excluded from the external-conflict claim on its next refusal"
+  )
+  func retainedOwnRegistrationIsNotShownAsExternal() {
+    // Cloud review finding (PR #3277): `forgetHotkey` drops the local token even when Carbon
+    // refuses the removal (#3108's known, pre-existing gap), so a later `eventHotKeyExistsErr`
+    // for the same role can mean "I am still holding my own old chord," not "something else is."
+    let (service, effects) = makeHotkeyService()
+    effects.nextResults = [.registered(DesktopEffectToken())]
+    service.registerCancelHotkey()
+
+    effects.refuseRemovals = true
+    service.unregisterCancelHotkey()  // forgetHotkey's removal is refused
+    effects.refuseRemovals = false
+
+    effects.nextResults = [.refused(status: Self.hotKeyExistsStatus)]
+    service.registerCancelHotkey()
+    #expect(
+      !service.isCurrentBindingConflicted(.cancel),
+      "a role that may still hold its own old chord must not be shown as externally conflicted")
+  }
+
   @Test("A successful registration clears a prior conflict")
   func successClearsConflict() {
     let (service, effects) = makeHotkeyService()
