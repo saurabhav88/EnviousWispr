@@ -71,7 +71,7 @@ enum WhatsNewContent {
       icon: "text.badge.checkmark",
       title: "Self-Learning Dictionary",
       description:
-        "Self-learning custom dictionary: Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary.",
+        "Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary.",
       bullets: [
         "Context-aware replacement: The tool now recognizes when a standard dictionary word should be replaced with a specific term or proper noun (e.g., \"Twist\" to \"Tuist\") for more accurate future transcriptions.",
         "The Self-Learning Dictionary help article has more.",
@@ -107,14 +107,15 @@ enum WhatsNewContent {
     ),
 
     // #3121 (#3129) same-app window paste, with the words kept on the clipboard when that window
-    // is gone. Founder's one line, 2026-09-27: the detail (VS Code and Excel excluded from #3123's
-    // retained paste, the Firefox duplicate fix #3148) is deliberately left out.
+    // is gone. Founder, 2026-09-27: "all that matters to the user is that it's going to be better
+    // about pasting where it's supposed to paste", so the detail (VS Code and Excel excluded from
+    // #3123's retained paste, the Firefox duplicate fix #3148) is deliberately left out.
     Entry(
       id: "paste-lands-where-you-started",
       icon: "macwindow.on.rectangle",
       title: "Improvements to \"remembering initial text box\"",
       description:
-        "Window Focus Memory: Remembers your exact starting window (even across multiple browser instances) with a fallback copy to clipboard if the box closes.",
+        "EnviousWispr is now better at pasting where it's supposed to paste.",
       version: "2.5.1"
     ),
 
@@ -242,7 +243,7 @@ enum WhatsNewContent {
     Entry(
       id: "say-slash-get-a-slash",
       icon: "slash.circle",
-      title: "Say slash, get a slash",
+      title: "Better support for /commands",
       description:
         "Context-aware slash formatting: Spoken slash commands and shorthand now format intelligently, even with Spoken punctuation turned off.",
       bullets: [

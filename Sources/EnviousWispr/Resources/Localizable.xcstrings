@@ -20079,13 +20079,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Self-learning custom dictionary: Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary."
+            "value" : "Transcription models like Parakeet and WhisperKit can occasionally mishear phonetically similar words or jargon. When you correct an output, the system now automatically detects the change and adds the intended term to your dictionary."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Selbstlernendes Wörterbuch: Spracherkennungsmodelle wie Parakeet und WhisperKit verhören sich gelegentlich bei ähnlich klingenden Wörtern oder Fachbegriffen. Wenn du ein Ergebnis korrigierst, erkennt EnviousWispr die Änderung jetzt automatisch und übernimmt den gemeinten Begriff in dein Wörterbuch."
+            "value" : "Spracherkennungsmodelle wie Parakeet und WhisperKit verhören sich gelegentlich bei ähnlich klingenden Wörtern oder Fachbegriffen. Wenn du ein Ergebnis korrigierst, erkennt EnviousWispr die Änderung jetzt automatisch und übernimmt den gemeinten Begriff in dein Wörterbuch."
           }
         }
       }
@@ -20277,13 +20277,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Window Focus Memory: Remembers your exact starting window (even across multiple browser instances) with a fallback copy to clipboard if the box closes."
+            "value" : "EnviousWispr is now better at pasting where it's supposed to paste."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fenster merken: EnviousWispr merkt sich dein ursprüngliches Fenster (auch bei mehreren Browserfenstern) und legt den Text als Rückfall in die Zwischenablage, wenn sich das Textfeld schließt."
+            "value" : "EnviousWispr fügt jetzt zuverlässiger dort ein, wo es einfügen soll."
           }
         }
       }
@@ -20781,13 +20781,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Say slash, get a slash"
+            "value" : "Better support for /commands"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sag „Slash“ und erhalte einen Schrägstrich"
+            "value" : "Bessere Unterstützung für /Befehle"
           }
         }
       }
