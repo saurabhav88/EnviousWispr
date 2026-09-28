@@ -25,10 +25,6 @@ final class QuickAddWiring {
   /// point rather than an inconvenience: a default-constructible host is one a
   /// test can build with the real desktop attached.
   private let panelHost: QuickAddPanelHost
-  /// Built in `install()`, not here: its whole job is to call back into this object, and `self` does
-  /// not exist yet during init. Constructing it early with a placeholder closure is how a door ships
-  /// registered, enabled, and wired to nothing.
-  private var serviceProvider: QuickAddServiceProvider?
   private let hotkeyService: HotkeyService
   private let customWords: CustomWordsCoordinator
   /// Read at the moment of each invocation rather than frozen, because Quick Add has no session to
@@ -81,7 +77,6 @@ final class QuickAddWiring {
     self.settings = settings
     self.coordinator = QuickAddCoordinator(
       environment: QuickAddCoordinator.Environment(
-        frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
         refreshWords: { customWords.refreshFromDiskIfPossible() },
         userWords: { customWords.customWords },
         packTerms: { packManager.enabledPackTerms() },
@@ -104,14 +99,9 @@ final class QuickAddWiring {
     }
   }
 
-  /// Install both doors. Call after launch: `NSApp.servicesProvider` set before the app has finished
-  /// launching is registered against an app that cannot yet answer.
+  /// Install both doors.
   func install() {
     hotkeyService.onQuickAdd = { [weak self] in self?.beginFromHotkey() }
-    let provider = QuickAddServiceProvider(
-      begin: { [weak self] text in self?.beginFromService(text: text) })
-    provider.install()
-    serviceProvider = provider
     panelHost.onDismiss = { [weak self] in self?.panelDismissed() }
     // Escape means "back to the list" while composing and "close" otherwise, and only the model
     // knows which. A missing wire here dismisses, which is the shipped behaviour rather than a trap.
@@ -120,8 +110,8 @@ final class QuickAddWiring {
 
   // MARK: - The two doors
 
-  /// Door A. Acquires BEFORE any panel exists, which is what keeps the answer about the user's own
-  /// application rather than about ours.
+  /// The shortcut. Acquires BEFORE any panel exists, which is what keeps the answer about the
+  /// user's own application rather than about ours.
   ///
   /// **Asynchronous since #2465, and the alternative was worse.** The clipboard fallback waits for
   /// the user's own shortcut modifiers to come up and then for the target app to answer a Copy.
@@ -142,14 +132,14 @@ final class QuickAddWiring {
         fallbackEnabled: self.settings.quickAddClipboardFallback)
       // Re-asked after the await: the user may have opened the panel another way while we waited.
       guard self.notAlreadyOpen() else { return }
-      self.present(self.coordinator.begin(door: .hotkey, selection: .acquired(outcome)))
+      self.present(self.coordinator.begin(door: .hotkey, selection: outcome))
     }
   }
 
-  /// Door B. Separate from the hotkey path only because the Service is HANDED its text.
-  /// The status-item menu handed us text it read while the menu was open.
+  /// The status-item menu. Separate from the hotkey path because the menu already read the
+  /// selection while it was open.
   ///
-  /// **Takes the text rather than reading it here, and that is the whole point of the door.** The
+  /// **Takes the reading rather than reading it here, and that is the whole point of the door.** The
   /// menu is rendered while the user's own application is still frontmost — measured, twice — so the
   /// read happens there, at the one moment the answer is about their document. Reading it from this
   /// side would run after the click, by which time the menu has closed and the answer is ours.
@@ -184,13 +174,8 @@ final class QuickAddWiring {
         following: selection, context: context,
         fallbackEnabled: self.settings.quickAddClipboardFallback)
       guard self.notAlreadyOpen() else { return }
-      self.present(self.coordinator.begin(door: .menuBar, selection: .acquired(outcome)))
+      self.present(self.coordinator.begin(door: .menuBar, selection: outcome))
     }
-  }
-
-  func beginFromService(text: String) {
-    guard notAlreadyOpen() else { return }
-    present(coordinator.begin(door: .service, selection: .text(text)))
   }
 
   /// Whether a new capture may start at all.
@@ -598,7 +583,6 @@ final class QuickAddWiring {
     // about the write and wrong about the panel. See the case docs above.
     return keptSpellings.isEmpty ? .alreadyPresent : .alreadyComplete
   }
-
 
   private func dismiss() {
     activeModel = nil

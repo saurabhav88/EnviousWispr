@@ -640,12 +640,11 @@ public enum SelectionReader {
 
   /// What a candidate selection IS, independent of where it came from.
   ///
-  /// **Extracted so the two doors cannot disagree, which they did.** Door A arrives here through
-  /// `resolve`; door B is HANDED text by the Services system and reached the coordinator as
-  /// `.text(raw)` with none of this applied — so a whitespace-only Service selection opened a panel
-  /// on an empty string with no stated reason, and an oversized one bypassed the ceiling entirely
-  /// and went to the scorer. Anything one door validates and the other does not is a defect by
-  /// construction; the fix is one function, not a second copy of three checks.
+  /// **Extracted so the doors cannot disagree, which they once did.** A door that skipped this
+  /// classification let a whitespace-only selection open a panel on an empty string with no stated
+  /// reason, and an oversized one bypassed the ceiling entirely and went to the scorer. Anything one
+  /// door validates and another does not is a defect by construction; the fix is one function, not a
+  /// second copy of three checks.
   ///
   /// TRIM FIRST, then measure. The ceiling exists to bound what gets STORED, and what gets stored is
   /// the trimmed string — so measuring the untrimmed one refuses a short word that happened to be

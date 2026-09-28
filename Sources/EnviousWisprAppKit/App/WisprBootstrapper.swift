@@ -429,9 +429,11 @@ package final class WisprBootstrapper {
     }
     #if DEBUG
       let debugScriptedChecker = LearnedWordCheckUATDoor.configuration()
-      let debugLearnedWordAdapter = debugScriptedChecker == nil
+      let debugLearnedWordAdapter =
+        debugScriptedChecker == nil
         ? LearnedWordCheckAdapterDoor.configuration(.egOne) : nil
-      let debugS1LearnedWordAdapter = debugScriptedChecker == nil
+      let debugS1LearnedWordAdapter =
+        debugScriptedChecker == nil
         ? LearnedWordCheckAdapterDoor.configuration(.s1Mini) : nil
     #else
       let debugScriptedChecker: (any LearnedWordChecking)? = nil
@@ -736,15 +738,18 @@ package final class WisprBootstrapper {
     // admission, which is what a first-time download of either engine reaches.
     // Selection and import activation never fetch.
     Task { await checkerEligibility.requestAdapterDownload(for: .s1Mini) }
-    let runtimes: [LearnedWordCheckerEngine: EGOneRuntime] = [.egOne: egOneRuntime, .s1Mini: s1MiniRuntime]
+    let runtimes: [LearnedWordCheckerEngine: EGOneRuntime] = [
+      .egOne: egOneRuntime, .s1Mini: s1MiniRuntime,
+    ]
     for engine in LearnedWordCheckerEngine.allCases {
       guard let checkerIdentity = modelDelivery.checkerRegistrations[engine]?.manifest.identity,
         let runtime = runtimes[engine]
       else { continue }
-      let baseIdentity: ModelIdentity? = switch engine {
-      case .egOne: egOneUpgrade?.registration.manifest.identity
-      case .s1Mini: s1BaseRegistration?.manifest.identity
-      }
+      let baseIdentity: ModelIdentity? =
+        switch engine {
+        case .egOne: egOneUpgrade?.registration.manifest.identity
+        case .s1Mini: s1BaseRegistration?.manifest.identity
+        }
       // Act on admission EDGES only. A runtime refresh can re-adopt the base,
       // which republishes `.admitted`; acting on every event would request the
       // checker again and refresh the runtime again (confirming review of #3227).
@@ -1206,7 +1211,8 @@ package final class WisprBootstrapper {
     // show `.error` while the kernel is still processing).
     checkerEligibility.wordCheck?.isDictationInFlight = {
       [weak kernelDriver, weak whisperKitKernelDriver] in
-      kernelDriver?.currentSessionConfig != nil || whisperKitKernelDriver?.currentSessionConfig != nil
+      kernelDriver?.currentSessionConfig != nil
+        || whisperKitKernelDriver?.currentSessionConfig != nil
     }
     checkerEligibility.wordCheck?.inFlightDictationNeedsWordCheck = {
       [weak kernelDriver, weak whisperKitKernelDriver] in
@@ -1647,7 +1653,10 @@ package final class WisprBootstrapper {
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
       onRecordingStarted: {
-        [weak learnFromEdits, weak checkerEligibility, weak kernelDriver, weak whisperKitKernelDriver] in
+        [
+          weak learnFromEdits, weak checkerEligibility, weak kernelDriver,
+          weak whisperKitKernelDriver
+        ] in
         learnFromEdits?.recordingStarted()
         // The take's frozen provider (set at arming), never the mutable setting.
         guard
@@ -2193,9 +2202,7 @@ package final class WisprBootstrapper {
     appLifecycleCoordinator.runDidFinishLaunching()
     // #2480: bring the launch window to the front.
     appWindowCoordinator.finishLaunch()
-    // #2381. AFTER launch, not during: `NSApp.servicesProvider` set before the app has finished
-    // launching is registered against an app that cannot yet answer, and the menu item is then
-    // present and inert.
+    // #2381.
     quickAdd.install()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
     // "recovering" pill. Strict limb, single-flight, one attempt per orphan.

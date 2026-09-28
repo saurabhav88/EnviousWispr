@@ -538,11 +538,10 @@ let project = Project(
         // static-framework modules resolves it through Bundle.main, their
         // default lookup bundle (measured 2026-09-24).
         "Sources/EnviousWispr/Resources/Localizable.xcstrings",
-        // #3142 Phase 3: permission prompts and the Services menu item. Info.plist stays
-        // their English source; scripts/lib/l10n-catalog-sync.sh writes these from it, and
-        // they compile to InfoPlist.strings and ServicesMenu.strings (measured 2026-09-25).
+        // #3142 Phase 3: permission prompts. Info.plist stays their English source;
+        // scripts/lib/l10n-catalog-sync.sh writes these from it, and they compile to
+        // InfoPlist.strings (measured 2026-09-25).
         "Sources/EnviousWispr/Resources/InfoPlist.xcstrings",
-        "Sources/EnviousWispr/Resources/ServicesMenu.xcstrings",
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage"),
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer"),
         // #1386: the bundled WhisperKit tokenizer (Apache-2.0, pinned to a

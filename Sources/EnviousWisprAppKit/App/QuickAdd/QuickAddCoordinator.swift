@@ -44,9 +44,7 @@ enum QuickAddEvent: Equatable, Sendable {
 /// Which door the user came through.
 enum QuickAddDoor: String, Equatable, Sendable, CaseIterable {
   case hotkey
-  case service
-  /// The status-item menu (#2412). A third door, and the only one no OS registration, cache or
-  /// default can filter out — which is what went wrong with `service`.
+  /// The status-item menu (#2412).
   case menuBar
 }
 
@@ -86,13 +84,6 @@ final class QuickAddCoordinator {
   /// and the shape `keep-central-types-thin` refuses. It also makes every branch below testable
   /// without a window, a words file, or a real selection.
   struct Environment {
-    /// **`readSelection` is GONE (#2465), not merely unused.** Every door now hands `begin` an
-    /// outcome somebody else obtained: the shortcut and the menu through `SelectionAcquisition`,
-    /// the Service through the text macOS passed it. A live read inside `begin` had exactly one
-    /// caller left and it could not stay, because the acquisition ladder has to await a synthetic
-    /// Copy and `begin` is synchronous. Leaving the seam behind would have been a second way in
-    /// that skips every guard the ladder adds.
-    var frontmostBundleID: () -> String?
     /// Returns false when the words file could not be re-read. The panel then says so rather than
     /// ranking a stale snapshot.
     var refreshWords: () -> Bool
@@ -142,79 +133,28 @@ final class QuickAddCoordinator {
   /// that caught the accept path reporting success without telling anyone caught this one branch
   /// over. A shortcut that emits telemetry and shows nothing is indistinguishable from a shortcut
   /// that is not registered.
-  /// Where `begin` gets the selection, with one case per door.
-  ///
-  /// **A type rather than a `String?`, because the read has THREE outcomes and an optional holds
-  /// two.** Passing nil to mean "refused" is what let the menu's bounded read be silently repeated
-  /// unbounded: `begin` could not tell "I have nothing for you, go and look" from "I looked, under a
-  /// cap, and was refused". Cloud review found it on PR #2427; it is the same three-state collapse
-  /// `QuickAddMenuState` fixed in the menu, one call later.
-  ///
-  /// `.text` is classified INSIDE `begin` rather than at the call site, so a future door cannot hand
-  /// over raw text and skip the ceiling and the empty check.
-  enum SelectionSource {
-    /// Raw text handed to us, to be classified here. The Services door.
-    case text(String)
-    /// An acquisition somebody else already performed, carried through as-is (#2465). The shortcut
-    /// and menu doors, both of which run the ladder before a panel exists — the shortcut because
-    /// the fallback has to await a synthetic Copy, the menu because its read happened while the
-    /// menu was open, at the one moment the answer was about the user's document rather than us.
-    case acquired(SelectionAcquisition.Outcome)
-  }
-
-  /// No default for `selection`, because there is no longer a live case to default to and a default
-  /// would have to invent one.
-  func begin(door: QuickAddDoor, selection source: SelectionSource) -> QuickAddPanelModel? {
+  /// Where `begin` gets the selection: an acquisition somebody else already performed, carried
+  /// through as-is (#2465). Both doors run the ladder before a panel exists — the shortcut because
+  /// the fallback has to await a synthetic Copy, the menu because its read happened while the menu
+  /// was open, at the one moment the answer was about the user's document rather than us.
+  func begin(door: QuickAddDoor, selection outcome: SelectionAcquisition.Outcome)
+    -> QuickAddPanelModel?
+  {
     let startedAt = environment.now()
 
-    // Read BEFORE anything activates our app — by the time a panel exists, the frontmost application
-    // is us and the answer would be about our own window.
-    //
-    // Door B's text goes through `SelectionReader.classify` rather than straight into `.text`. The
-    // Services system hands us whatever was on the pasteboard, and treating that as already-valid
-    // is what let a whitespace-only selection open a panel on an empty string and an oversized one
-    // reach the scorer — the ceiling and the empty check are properties of a SELECTION, not of the
-    // door it arrived through.
-    //
     // `.result` is carried UNTOUCHED. It is already a classified outcome, and re-reading it here
     // would both repeat a stalled read without the caller's cap and, once #2413 lands, risk
     // answering "EnviousWispr is in front" — true by then, and about the wrong subject.
-    // **The four facts come out of ONE switch**, so no door can report a path that disagrees with
-    // the result it arrived with. Split across four separate expressions, the Services door would
-    // be four independent chances to borrow a neighbouring value, which is the defect this cluster
-    // has already produced three times.
     //
-    // **The bundle id comes out of the SAME switch since #2465, and that is a fix rather than
+    // **The bundle id comes off the same outcome since #2465, and that is a fix rather than
     // tidying.** It used to be a live `frontmostBundleID()` read taken here. For the menu door that
     // is reliably WRONG — the comments two files over establish that EnviousWispr is frontmost by
     // click time, so every menu-route acquisition was attributed to us — and after the shortcut
     // door's asynchronous wait it can be wrong too. An acquisition already knows which application
     // answered, from the sample its own read used, so it carries it. Found by local Codex review,
     // round 2.
-    let acquisition:
-      (
-        result: SelectionReader.Result, acquired: SelectionAcquisition.Acquired,
-        milliseconds: Int?, restore: SelectionAcquisition.ClipboardRestore, bundleID: String?
-      ) = {
-        switch source {
-        case .text(let raw):
-          // The Services system hands us whatever was on the pasteboard. Nothing was acquired and
-          // no clipboard of the user's was ever ours, so both of those say so — and this is the one
-          // door with no sample of its own, so the live lookup is the only answer available and is
-          // still the right one: macOS handed us the text while the user's app was frontmost.
-          return (
-            SelectionReader.classify(raw), .handed, nil, .notTouched,
-            environment.frontmostBundleID()
-          )
-        case .acquired(let outcome):
-          return (
-            outcome.result, outcome.acquired, outcome.acquisitionMs, outcome.clipboardRestore,
-            outcome.context.bundleIdentifier
-          )
-        }
-      }()
-    var selection = acquisition.result
-    let bundleID = acquisition.bundleID
+    var selection = outcome.result
+    let bundleID = outcome.context.bundleIdentifier
 
     // Refresh before ranking, every invocation. A sibling instance or the Settings window can have
     // changed the library since launch, and ranking a stale snapshot offers words that no longer
@@ -280,9 +220,9 @@ final class QuickAddCoordinator {
         candidateCount: model.ranking.candidates.count,
         preselected: model.ranking.preselectedID != nil,
         topScore: model.ranking.topScore,
-        acquired: acquisition.acquired,
-        acquisitionMs: acquisition.milliseconds,
-        clipboardRestore: acquisition.restore)
+        acquired: outcome.acquired,
+        acquisitionMs: outcome.acquisitionMs,
+        clipboardRestore: outcome.clipboardRestore)
 
     self.startedAt = startedAt
     return model
@@ -307,7 +247,6 @@ final class QuickAddCoordinator {
     startedAt = nil
     environment.emit(.failed(stage: "present", reason: "unmeasurable_panel"))
   }
-
 
   /// What accepting a row actually did, which is not always what the row promised.
   ///

@@ -118,12 +118,6 @@ public enum SelectionAcquisition {
     case clipboardCopy = "copy"
     /// Neither did.
     case nothing = "none"
-    /// The text was HANDED to us by macOS rather than obtained at all.
-    ///
-    /// The Services door, which the system gives the user's selection directly. It belongs in this
-    /// set rather than borrowing `accessibility`, because "the clipboard was never touched" is true
-    /// of both and is not the question this field answers.
-    case handed
   }
 
   /// What became of the user's clipboard.
