@@ -23,7 +23,7 @@ export const SCENES = {
   // pill, then the next dictation. Pill wording is the app's own
   // (help/self-learning-dictionary.md, "Read the pill").
   selflearn: [
-    { label: 'Names', title: 'Fix a name once.', where: 'On your Mac', pasted: 'Send the draft to ', wrong: 'Sasha', fixed: 'Saoirse', tail: ' tonight.', pill: 'Added “Saoirse” to Dictionary', out: 'Saoirse signed off on the draft.', out_marks: ['Saoirse'], explain: 'Right from the next dictation.' },
+    { label: 'Names', title: 'Fix a name once.', where: 'On your Mac', pasted: 'Send the draft to ', wrong: 'Sasha', fixed: 'Saoirse', tail: ' tonight.', pill: 'Added “Saoirse” to Dictionary', out: 'Saoirse signed off on the draft.', out_marks: ['Saoirse'], explain: 'Used where you meant it, from then on.' },
     { label: 'Tools', title: 'Your tools, not look-alikes.', where: 'On your Mac', pasted: 'The build runs on ', wrong: 'Twist', fixed: 'Tuist', tail: ' now.', pill: 'Added “Tuist” to Dictionary', out: 'Run Tuist before you open the project.', out_marks: ['Tuist'], explain: 'Checked before it is used.' },
     { label: 'Updates', title: 'A word you already had.', where: 'On your Mac', pasted: 'Ask ', wrong: 'Shivon', fixed: 'Siobhan', tail: ' about Friday.', pill: '“Siobhan” updated', out: 'Siobhan can make Friday.', out_marks: ['Siobhan'], explain: 'The mishearing joins your word.' },
   ],

@@ -18,7 +18,7 @@ EnviousWispr keeps its speech models on your own Mac rather than on a server, wh
 
 Each download is checked before it is used, so a broken or half-finished file is never loaded.
 
-The [Self-Learning Dictionary](/help/self-learning-dictionary/) has models of its own, downloaded after setup: one that spots your corrections, and a word check that uses the words you taught it. That article lists their sizes, and **Settings** \> **Dictionary** \> **Learn from...** shows their download progress.
+The [Self-Learning Dictionary](/help/self-learning-dictionary/) has models of its own, downloaded after setup: one that spots your corrections, and a word check that uses the words you taught it. That article lists their sizes, and **Settings** \> **Dictionary** \> **Learn from...** shows whether each is downloading, ready or needs a retry.
 
 ### If a download fails
 

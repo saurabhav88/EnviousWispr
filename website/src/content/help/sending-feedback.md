@@ -18,17 +18,19 @@ Found a bug or have an idea? You can tell us from inside EnviousWispr. The messa
 
 **Write what happened.** Describe what you saw, or what you would like EnviousWispr to do. The more specific, the better: which app you were dictating into, what you said, and what came out. A message can be up to 4,000 characters.
 
-**Add your email if you want a reply.** The email field is optional. Leave it empty and your message still arrives; we just cannot write back.
+**Add your email if you want a reply.** The email field is optional. Leave it empty and your message is still sent; we just cannot write back.
 
 **Click Send.** The form says **Thanks, it's on its way**. If you left your email, we reply there.
 
 ### Your draft is kept
 
-What you type is saved on your Mac as you type it. Close the form, or quit EnviousWispr, and your draft is still there the next time you open it. It clears once the message is sent.
+What you type is saved on your Mac as you type it. Close the form, or quit EnviousWispr, and your draft is still there the next time you open it. It clears when you press Send and EnviousWispr hands the message off for delivery.
 
 ### If it cannot send
 
-If the form says **Couldn't send**, your draft stays in the form. You can try again later, or email us at hello@enviouslabs.co instead.
+If the form says **Couldn't send. Email hello@enviouslabs.co**, your draft stays in the form, so you can copy it into an email to hello@enviouslabs.co.
+
+If **Send** stays greyed out, check the email address or leave the field empty.
 
 ### What we receive
 
