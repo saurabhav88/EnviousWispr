@@ -200,12 +200,15 @@ test("the alert card is identical with and without the guess", async () => {
   const withGuess = harness();
   await run(withGuess, webhook(FEEDBACK_ISSUE));
   const without = harness();
+  await new Promise((r) => setTimeout(r, 5)); // force a different timestamp
   try {
     await handleTriage(webhook(FEEDBACK_ISSUE), without.env); // no ctx: nothing scheduled
   } finally {
     without.restore();
   }
-  assert.deepEqual(alertCards(withGuess), without.embeds);
+  // Each card stamps its own creation time; everything else must match exactly.
+  const untimed = (cards) => cards.map(({ timestamp, ...rest }) => (assert.ok(timestamp), rest));
+  assert.deepEqual(untimed(alertCards(withGuess)), untimed(without.embeds));
   assert.equal(without.typesafeBodies.length, 0);
 });
 
