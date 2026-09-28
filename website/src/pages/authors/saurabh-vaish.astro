@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from '../../data/entities.js';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getPublishedPosts } from '../../utils/posts';
 
@@ -18,11 +19,7 @@ const personJsonLd = JSON.stringify({
   "name": authorName,
   "url": authorUrl,
   "jobTitle": "Founder",
-  "worksFor": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": "https://enviouslabs.co",
-  },
+  "worksFor": ORG_REF,
   "sameAs": [
     "https://github.com/saurabhav88",
     "https://www.linkedin.com/in/saurabh-a-vaish-568253a6/",

@@ -5,7 +5,7 @@
 import { SCENES, NATIVE_PREVIEW_SNAPSHOT_BARS } from '../../data/features/films.js';
 import DemoIcon from './DemoIcon.astro';
 interface Props {
-  kind: 'dictionary' | 'snippets' | 'quickadd' | 'correction' | 'preview' | 'selflearn';
+  kind: 'dictionary' | 'snippets' | 'quickadd' | 'correction' | 'preview' | 'selflearn' | 'formatting' | 'languages';
 }
 const { kind } = Astro.props;
 const scenes = SCENES[kind];
@@ -47,7 +47,7 @@ const encoded = JSON.stringify(scenes);
     </div>
     <div class="film-stage">
       {
-        (kind === 'dictionary' || kind === 'correction') && (
+        (kind === 'dictionary' || kind === 'correction' || kind === 'formatting' || kind === 'languages') && (
           <>
             <div class="heard-well">
               <div class="well-label">

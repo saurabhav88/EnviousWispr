@@ -1,0 +1,108 @@
+---
+// Paste Last Dictation (2.5.1, #3106): paste or copy your newest dictation again
+// from two keybinds or the menu bar, and the paste goes back to the window you
+// started in. Every claim traces to help/transcript-history.md,
+// help/paste-not-working.md, help/customizing-your-keybind.md and
+// help/how-text-gets-pasted-into-your-app.md, which own the detail.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import '../../styles/features/everyday.css';
+import FeatureHero from '../../components/features/FeatureHero.astro';
+import ImportReassurance from '../../components/features/ImportReassurance.astro';
+import FeatureFaq from '../../components/features/FeatureFaq.astro';
+import DownloadClosing from '../../components/DownloadClosing.astro';
+const faq = [
+  {
+    q: 'How do I paste my last dictation again on a Mac?',
+    a: 'In EnviousWispr, a free dictation app for Mac, click into the text box and press Control Command V, or choose Paste Last Dictation from the EnviousWispr menu bar menu. Your newest dictation is pasted where your cursor is now, so you do not have to say it again.',
+  },
+  {
+    q: 'Where did my dictation go when nothing was pasted?',
+    a: 'When every way of delivering the text fails, EnviousWispr leaves your words on the clipboard and shows a Copied notice, so you can press Command V yourself. In most apps it does the same when it can see a paste went nowhere, for example with no text box selected. Some apps do not show enough to tell; Paste Last Dictation works there too.',
+  },
+  {
+    q: 'Can I change the Paste Last Dictation shortcut?',
+    a: 'Yes. Both keybinds live in Settings, Keybinds. Choose different keys if another app already uses them: in Terminal, Control Command V is normally Paste Escaped Text, and some apps such as Final Cut Pro use Control Command C.',
+  },
+  {
+    q: 'Which dictation counts as the last one?',
+    a: 'The newest dictation in History. Imported file transcripts, deleted items and a cancelled dictation still counting down are skipped. When there is nothing to reuse, the menu item is greyed out.',
+  },
+];
+---
+
+<FeatureShell
+  path="/features/paste-last-dictation/"
+  title="Paste Last Dictation: get your missed words back on Mac"
+  description="Dictated with no text box selected? Press Control Command V and EnviousWispr pastes your last dictation where your cursor is now. Free Mac dictation app."
+  ogImage="/images/og/paste-last-dictation.jpg"
+  ogImageAlt="EnviousWispr Paste Last Dictation: missed the text box? Paste it again"
+>
+  <FeatureHero
+    kind="paste-last-dictation"
+    label="Paste Last Dictation"
+    title={'Missed the text box?<br><span class="accent-ink">Paste it again.</span>'}
+    copy="EnviousWispr is a free dictation app for Mac. If you finish speaking and your cursor was not in a text box, your words are not gone. Click where they belong, press Control Command V, and your last dictation lands there."
+  >
+    <div class="key-panel" aria-label="The two Last Dictation keybinds">
+      <div class="key-row">
+        <span class="keys"><kbd>⌃</kbd><kbd>⌘</kbd><kbd>V</kbd></span>
+        <div>
+          <strong>Paste Last Dictation</strong>
+          <span class="key-note">Pastes your newest dictation where your cursor is now.</span>
+        </div>
+      </div>
+      <div class="key-row">
+        <span class="keys"><kbd>⌃</kbd><kbd>⌘</kbd><kbd>C</kbd></span>
+        <div>
+          <strong>Copy Last Dictation</strong>
+          <span class="key-note">Puts it on your clipboard, ready for Command V anywhere.</span>
+        </div>
+      </div>
+      <span class="key-panel-note">Default keys. Change either one in Settings, Keybinds.</span>
+    </div>
+  </FeatureHero>
+  <section class="benefit wrap reverse">
+    <div class="benefit-copy">
+      <span class="eyebrow">Where your words land</span>
+      <h2>A dictation goes where you<br /><span class="accent-ink">started talking.</span></h2>
+      <p>When a dictation finishes, EnviousWispr delivers it to the place you started. It remembers the app, window and text field that were in front when you pressed your recording key. AI polish can take a few seconds, and you might click somewhere else while you wait. Your words still go back to the window you started in, even when the app has several windows open, such as two browser windows.</p>
+      <p>If that window is gone by the time your text is ready, EnviousWispr does not paste into a different one. It leaves your words on the clipboard and shows the Copied notice, so nothing lands in the wrong place.</p>
+      <p>Paste Last Dictation is different on purpose: it pastes wherever your cursor is when you press it, so you choose the place.</p>
+    </div>
+    <div class="benefit-visual">
+      <ImportReassurance
+        wrap={false}
+        items={[
+          { title: 'Three ways to deliver', copy: 'It writes into the text box directly, then tries a normal paste, then the app’s own Edit, Paste menu.' },
+          { title: 'Nothing is thrown away', copy: 'If all three fail, your words stay on the clipboard and a notice tells you so. Where an app hides a missed paste, Paste Last Dictation still brings the words back.' },
+          { title: 'In the menu bar too', copy: 'Choose Paste Last Dictation from the menu. The start of the text is shown under it, so you can check before you click.' },
+        ]}
+      />
+    </div>
+  </section>
+  <section class="benefit wrap">
+    <div class="benefit-copy">
+      <span class="eyebrow">Say it once, use it twice</span>
+      <h2>Drop the same thought<br /><span class="accent-ink">into a second app.</span></h2>
+      <p>Dictated a status update into Slack and want it in an email as well? Click into the email and press Control Command V. The newest dictation in your History is pasted again, with no need to open History or repeat yourself.</p>
+      <p>Copy Last Dictation puts the same text on your clipboard instead, for apps where you want to paste it yourself. Your Restore clipboard after paste setting is respected here too.</p>
+    </div>
+    <div class="benefit-visual">
+      <ImportReassurance
+        wrap={false}
+        items={[
+          { title: 'Your keys, your choice', copy: 'In Terminal, Control Command V is normally Paste Escaped Text. If you rely on it, pick other keys in Settings, Keybinds.' },
+          { title: 'Only real dictations', copy: 'Imported file transcripts, deleted items and a cancelled dictation still counting down are skipped.' },
+          { title: 'Kept on your Mac', copy: 'History lives in your user folder. Envious Labs never receives a copy of it.' },
+        ]}
+      />
+    </div>
+  </section>
+  <section class="matching-story plain wrap">
+    <h2>Pasting needs one<br /><span class="accent-ink">macOS permission.</span></h2>
+    <p>EnviousWispr needs Accessibility permission to type into other apps. Without it, the Paste Last Dictation menu item opens the permission settings for you and the paste keys do nothing, while Copy Last Dictation still works.</p>
+    <a class="story-link" href="/help/paste-not-working/">What to do when your dictation does not paste <span aria-hidden="true">→</span></a>
+  </section>
+  <FeatureFaq items={faq} />
+  <DownloadClosing title="Never lose a spoken thought to a missed click." />
+</FeatureShell>

@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from '../../data/entities.js';
 import HelpLayout from '../../layouts/HelpLayout.astro';
 import HelpSearch from '../../components/HelpSearch.astro';
 import { HELP_CATEGORIES } from '../../data/help-categories';
@@ -24,7 +25,7 @@ const jsonLd = [
     description: 'Answers for setting up EnviousWispr, fixing problems, and every feature it ships with.',
     url: helpIndexUrl,
     isPartOf: { '@type': 'WebSite', url: SITE, name: 'EnviousWispr' },
-    publisher: { '@type': 'Organization', name: 'Envious Labs', url: SITE },
+    publisher: ORG_REF,
     hasPart: HELP_CATEGORIES.map((c) => ({
       '@type': 'CollectionPage', name: c.label, description: c.blurb, url: `${SITE}/help/${c.slug}/`,
     })),

@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from '../../data/entities.js';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
 const siteUrl = 'https://enviouswispr.com';
@@ -17,11 +18,7 @@ const articleJsonLd = JSON.stringify({
     "name": "Saurabh Vaish",
     "url": `${siteUrl}/authors/saurabh-vaish/`,
   },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
+  "publisher": ORG_REF,
   "isPartOf": {
     "@type": "WebSite",
     "url": siteUrl,

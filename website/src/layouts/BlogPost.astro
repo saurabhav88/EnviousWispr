@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from "../data/entities.js";
 import type { CollectionEntry } from "astro:content";
 import { getImage } from "astro:assets";
 import ThemedLayout from "./ThemedLayout.astro";
@@ -51,6 +52,9 @@ const formatDate = (date: Date) =>
     timeZone: "UTC",
   });
 const canonical = `https://enviouswispr.com${card.url}`;
+// The brand suffix is added only when the whole title still fits a search result
+// (60 characters); a long headline is not truncated to make room for it.
+const pageTitle = `${title} | EnviousWispr`.length <= 60 ? `${title} | EnviousWispr` : title;
 const ogImage = image || card.artwork?.social || "/og-image.png";
 const authorSchema = {
   "@type": author === "Envious Labs" ? "Organization" : "Person",
@@ -59,11 +63,7 @@ const authorSchema = {
   ...(isFounder
     ? {
         jobTitle: "Founder",
-        worksFor: {
-          "@type": "Organization",
-          name: "Envious Labs",
-          url: "https://enviouslabs.co",
-        },
+        worksFor: ORG_REF,
         sameAs: [
           "https://github.com/saurabhav88",
           "https://www.linkedin.com/in/saurabh-a-vaish-568253a6/",
@@ -107,17 +107,9 @@ const structured = JSON.stringify([
       ? ogImage
       : `https://enviouswispr.com${ogImage}`,
     datePublished: pubDate.toISOString(),
-    ...(updatedDate ? { dateModified: updatedDate.toISOString() } : {}),
+    dateModified: (updatedDate ?? pubDate).toISOString(),
     author: authorSchema,
-    publisher: {
-      "@type": "Organization",
-      name: "Envious Labs",
-      url: "https://enviouswispr.com",
-      logo: {
-        "@type": "ImageObject",
-        url: "https://enviouswispr.com/favicon.svg",
-      },
-    },
+    publisher: ORG_REF,
     mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
     ...(tags.length ? { keywords: tags.join(", ") } : {}),
   },
@@ -144,7 +136,7 @@ const structured = JSON.stringify([
 ---
 
 <ThemedLayout
-  title={`${title} | EnviousWispr`}
+  title={pageTitle}
   description={description}
   activePage="blog"
   canonicalPath={card.url}

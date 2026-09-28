@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from '../../data/entities.js';
 import ThemedLayout from '../../layouts/ThemedLayout.astro';
 import DownloadButton from '../../components/features/DownloadButton.astro';
 import DownloadClosing from '../../components/DownloadClosing.astro';
@@ -34,7 +35,7 @@ const collection = {
   url: `${siteUrl}/compare/`, name: title, description, dateModified: updated,
   inLanguage: 'en', mainEntity: { '@id': itemList['@id'] },
   isPartOf: { '@type': 'WebSite', name: 'EnviousWispr', url: `${siteUrl}/` },
-  publisher: { '@type': 'Organization', name: 'Envious Labs', url: siteUrl },
+  publisher: ORG_REF,
 };
 ---
 

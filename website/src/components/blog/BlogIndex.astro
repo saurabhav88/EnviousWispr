@@ -20,7 +20,9 @@ const title =
     ? "EnviousWispr Blog: Mac Dictation Guides and How-Tos"
     : `Mac Dictation Guides: Page ${page} | EnviousWispr Blog`;
 const description =
-  "Guides to writing by voice, working offline, and getting more from dictation on your Mac. Explore practical workflows and stories behind EnviousWispr.";
+  page === 1
+    ? "Guides to writing by voice, working offline, and getting more from dictation on your Mac. Explore practical workflows and stories behind EnviousWispr."
+    : `Page ${page} of the EnviousWispr blog: older guides to writing by voice, working offline, and getting more from dictation on your Mac.`;
 const structured = JSON.stringify([
   {
     "@context": "https://schema.org",

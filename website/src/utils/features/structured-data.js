@@ -3,6 +3,7 @@
 // speech-to-text-mac.astro and compare/index.astro: built in frontmatter,
 // injected through the head slot.
 import { catalog } from '../../data/site-navigation.js';
+import { APP_REF, ORG_REF } from '../../data/entities.js';
 
 const SITE = 'https://enviouswispr.com';
 
@@ -15,7 +16,8 @@ export function webPage({ path, name, description, updated }) {
     url: `${SITE}${path}`,
     dateModified: updated,
     isPartOf: { '@type': 'WebSite', name: 'EnviousWispr', url: `${SITE}/` },
-    about: { '@type': 'SoftwareApplication', name: 'EnviousWispr', operatingSystem: 'macOS 14+', applicationCategory: 'ProductivityApplication' },
+    about: APP_REF,
+    publisher: ORG_REF,
   };
 }
 

@@ -1,4 +1,5 @@
 ---
+import { ORG_REF } from '../data/entities.js';
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 const siteUrl = 'https://enviouswispr.com';
@@ -10,7 +11,7 @@ const webPageJsonLd = JSON.stringify({
   "description": "EnviousWispr privacy policy. All transcription happens on-device. No audio leaves your device.",
   "url": `${siteUrl}/privacy-policy/`,
   "isPartOf": { "@type": "WebSite", "url": siteUrl, "name": "EnviousWispr" },
-  "publisher": { "@type": "Organization", "name": "Envious Labs LLC", "url": "https://enviouslabs.co" },
+  "publisher": ORG_REF,
   "inLanguage": "en"
 });
 

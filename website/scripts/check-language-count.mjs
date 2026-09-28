@@ -79,6 +79,14 @@ const SITES = [
   ['website/src/pages/compare/willow-voice.astro', 'WhisperKit covers 99+ but with higher latency on less common ones'],
   ['website/src/pages/compare/wisprflow.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
   ['website/src/pages/speech-to-text-mac.astro', 'Runs on the GPU. Slower than Parakeet, covers 99+ languages, and this is the one'],
+  ['website/src/data/site-navigation.js', "cardBenefit: 'Dictate in 25 languages with Parakeet or 99+ with WhisperKit, with British spelling too.'"],
+  ['website/src/pages/features/languages.astro', 'switch to the WhisperKit engine in Settings, Transcription, which supports 99+ languages.'],
+  ['website/src/pages/features/languages.astro', 'description="Dictate in 25 European languages with Parakeet or 99+ with WhisperKit'],
+  ['website/src/pages/features/languages.astro', 'It hears 25 European languages out of the box and 99+ with a second engine'],
+  ['website/src/pages/features/languages.astro', '<span class="accent-ink">99+ when you need them.</span>'],
+  ['website/src/pages/features/languages.astro', "copy: '99+ languages for everything else, as a one-time download.'"],
+  ['website/src/pages/llms.txt.ts', 'or WhisperKit (99+ languages). Optional AI polish'],
+  ['website/src/content/blog/british-spelling-dictation-mac.md', 'and WhisperKit covers 99+.'],
 ];
 
 // A language count in prose: a 1-3 digit number (optionally +) within two

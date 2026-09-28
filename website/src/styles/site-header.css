@@ -179,7 +179,14 @@ html[data-theme='dark'] .site-chrome {
   left: -130px;
   z-index: 5;
   width: 650px;
-  overflow: hidden;
+  /* Ten features make the menu five rows tall; on a short desktop window it
+     scrolls inside itself so every entry stays reachable. The menu's top edge
+     sits 105px below the viewport top (header inset, header and the 22px gap,
+     measured at 1280 and 1440 wide); 16px more keeps a margin under it. */
+  max-height: calc(100dvh - 121px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--nav-line);
   border-radius: 18px;
   background: var(--nav-card);
@@ -197,7 +204,7 @@ html[data-theme='dark'] .site-chrome {
   gap: 3px;
   padding: 12px;
 }
-/* An odd count (seven features since #996) leaves the last entry alone; let it span. */
+/* An odd feature count leaves the last entry alone; let it span. */
 .chrome-header .menu-products > .menu-product:last-child:nth-child(odd) {
   grid-column: 1 / -1;
 }
@@ -421,6 +428,7 @@ html:not([data-nav-js]) .chrome-header .mega-menu,
 html:not([data-nav-js]) .chrome-header .resources-menu {
   position: static;
   width: 100%;
+  max-height: none;
   margin: 4px 0 10px;
   box-shadow: none;
 }
@@ -624,6 +632,8 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
   .chrome-header .mega-menu {
     position: static;
     width: 100%;
+    max-height: none;
+    overflow: hidden;
     margin: 7px 0;
     border-radius: 13px;
     box-shadow: none;
