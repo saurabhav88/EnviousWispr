@@ -59,7 +59,7 @@ export const catalog = [
     path: '/features/self-learning-dictionary/',
     name: 'Self-Learning Dictionary',
     menuTagline: 'Fix a word once. It remembers.',
-    cardBenefit: 'Correct a misheard word once, and later dictations use your spelling.',
+    cardBenefit: 'Correct a misheard word once, and later dictations can use your spelling.',
     heroTagline: 'Fix it once',
     updated: '2026-09-27',
     menuProduct: true,

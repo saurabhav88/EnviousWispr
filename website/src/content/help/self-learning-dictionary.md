@@ -8,7 +8,7 @@ keywords: ["self-learning dictionary", "learn from my edits", "learn from edits"
 related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-word-from-your-selection", "privacy-overview", "model-downloads-and-management"]
 updated: 2026-09-27
 ---
-When EnviousWispr pastes a dictation and you then fix one word in it by hand, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you three seconds to undo. Learned words are saved in Your Words, and from then on a word check on your Mac uses them to fix the same mishearing in later dictations. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
+When EnviousWispr pastes a dictation and you then fix one word in it by hand, and a check on your Mac agrees it was a correction, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you three seconds to undo. Learned words are saved in Your Words, and from then on, while **Enable Dictionary** is on, a word check on your Mac uses them to fix the same mishearing in later dictations. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
 
 ### What you see
 
@@ -26,7 +26,7 @@ If the pill says **Couldn’t save “Saoirse”**, nothing was written: the mis
 
 ### How learned words fix later dictations
 
-A learned word never replaces text on its own. When a later dictation contains a mishearing you corrected before, EnviousWispr asks a word check on your Mac one question about that spot: in this sentence, did you mean the learned word? Only the spots it approves change. A mishearing it has not seen yet is left alone until you correct it once. The check is what lets it swap an ordinary word for your term where you meant the term, for example "Twist" to "Tuist", and leave the ordinary word alone in a sentence where you meant it.
+A learned word never replaces text on its own, and it changes nothing while **Enable Dictionary** is off: words are still learned then, but never applied. When a later dictation contains a mishearing you corrected before, EnviousWispr asks a word check on your Mac one question about that spot: in this sentence, did you mean the learned word? Only the spots it approves change. A mishearing it has not seen yet is left alone until you correct it once. The check is what lets it swap an ordinary word for your term where you meant the term, for example "Twist" to "Tuist", and leave the ordinary word alone in a sentence where you meant it.
 
 Which word check answers depends on the polish choice you use:
 
@@ -36,9 +36,9 @@ Which word check answers depends on the polish choice you use:
 | S1-mini | S1-mini's own word check |
 | Apple Intelligence, a cloud provider, Ollama, or no polish | Envious Word Check |
 
-The check works in every dictation language, for dictation and for Transcribe a File. If it cannot answer in time, your text arrives exactly as it would have without it, at most about two and a half seconds later, rather than waiting on the check.
+The check works in every dictation language, for dictation and for Transcribe a File. If it cannot answer in time, your text arrives exactly as it would have without it, rather than waiting on the check: at most about two and a half seconds later for a dictation, and up to about a second more for each part a long file is split into. For Transcribe a File, if the check has not been used for about 10 minutes it may still be loading when the file starts, and the first part of the file is then left as it would be without it.
 
-The row under the switch in **Settings** \> **Dictionary** \> **Learn from...** shows which check is in use, for example **Checked by: Envious Word Check. Learned words are checked before they're used.** While the check is downloading, or if it could not download or is not ready, the row starts with **Learn-only**: new words are still learned and saved, and they start fixing dictations once the check is ready. When a download or load failed, a **Try again** button appears.
+The row under the switch in **Settings** \> **Dictionary** \> **Learn from...** shows which check is in use, for example **Checked by: Envious Word Check. Learned words are checked before they're used.** While the check is downloading, or if it could not download or is not ready, the row starts with **Learn-only**: new words are still learned and saved, and they start fixing dictations once the check is ready, as long as **Enable Dictionary** is on. When a download failed, or Envious Word Check could not load, a **Try again** button appears.
 
 ### Which apps it works in
 
@@ -61,7 +61,7 @@ Not every edit is a correction. Rewriting a sentence, changing your mind about a
 
 That model is about 320 MB. EnviousWispr normally starts its download after first-run setup and your speech model finish; you can cancel or retry the download from the same row. It runs on your Mac's own chip, on the Neural Engine where the Mac offers it and otherwise on the CPU, and answers in a fraction of a second. You can see its state in **Settings** \> **Dictionary** \> **Learn from...**: a download line with progress while it fetches, no extra line once it is ready, or a plain reason if it could not download or load, with a button to download, cancel or try again.
 
-The word check that uses learned words is a separate download: about 500 MB for Envious Word Check, 66 MB for EG-1's and 81 MB for S1-mini's. Envious Word Check downloads only while **Enable Dictionary** is on and a polish choice you use for dictation or Transcribe a File needs it. It loads into memory when a dictation is about to need it and is released after 10 minutes without one, or as soon as you turn off **Enable Dictionary**.
+The word check that uses learned words is a separate download: about 500 MB for Envious Word Check, 66 MB for EG-1's and 81 MB for S1-mini's. Envious Word Check downloads only while **Enable Dictionary** is on and a polish choice you use for dictation or Transcribe a File needs it. It loads into memory when EnviousWispr starts, when it finishes downloading, when a setting makes it needed, and when you start a recording. It is released after 10 minutes without a dictation, as soon as you turn off **Enable Dictionary**, or when no polish choice you use needs it any more.
 
 ### What stays on your Mac
 
@@ -73,4 +73,4 @@ Every word check runs locally, including when you use cloud polish. The text it 
 
 The judge model is approved for every macOS EnviousWispr supports, macOS 14 through macOS 27, so the Self-Learning Dictionary runs on any Apple silicon Mac. If a future macOS has not been examined yet, the row says **Not available on this version of macOS yet**; your choice is kept and applies as soon as your Mac qualifies.
 
-To stop it, open **Settings**, go to **Dictionary** \> **Learn from...**, and switch off **Self-Learning Dictionary**. The row under the switch reads: Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words. Words it already learned stay in Your Words until you remove them; the **Auto-learned** filter finds them all.
+To stop it, open **Settings**, go to **Dictionary** \> **Learn from...**, and switch off **Self-Learning Dictionary**. The row under the switch reads: Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words. Turning it off stops new learning only: words it already learned stay in Your Words and keep fixing dictations through the word check until you remove them or turn off **Enable Dictionary**; the **Auto-learned** filter finds them all.
