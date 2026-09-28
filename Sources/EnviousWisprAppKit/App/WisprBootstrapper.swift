@@ -2090,7 +2090,8 @@ package final class WisprBootstrapper {
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
     // #919: same timing as before — the shell's `App.init()` constructs this
     // bootstrapper synchronously, before any NSApplicationDelegate callback.
-    ObservabilityBootstrap.initialize()
+    // #3269: the stored "Send crash reports" switch picks Sentry's mode for this run.
+    ObservabilityBootstrap.initialize(crashReports: settings.sendCrashReports)
 
     // #832/#913 PR8: prewarm the output-safety classifier off the heart path.
     // Gated on Apple Intelligence (the only provider it scores); a later switch

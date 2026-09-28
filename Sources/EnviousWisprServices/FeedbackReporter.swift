@@ -55,6 +55,10 @@ public struct FeedbackDraft: Equatable, Sendable {
 /// tag, its Sentry `user.id`, OS and device contexts, and the recent pipeline breadcrumbs. Sentry
 /// skips `beforeSend` for feedback, which is why every global-scope write is filtered where it is
 /// written (`SentryBreadcrumb`, `ObservabilityBootstrap.writeStableTags`).
+///
+/// With "Send crash reports" OFF (#3269) Sentry is still started, in a feedback-only mode that
+/// drops every ordinary event and keeps no breadcrumbs, so this path works the same way and a
+/// report carries no breadcrumbs.
 public enum FeedbackReporter {
   public enum Outcome: Equatable, Sendable {
     /// Handed to Sentry for sending. Not a delivery receipt: Sentry writes and sends in the

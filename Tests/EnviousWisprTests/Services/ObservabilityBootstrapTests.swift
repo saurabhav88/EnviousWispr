@@ -42,12 +42,21 @@ struct ObservabilityBootstrapTests {
     #expect(config.preloadFeatureFlags == true)
   }
 
-  @Test("Sentry: identity, crash reporting on, auto-collection off, zero tracing")
-  func sentryConfiguration() {
-    let options = Options()
-    ObservabilityBootstrap.configureSentryOptions(options, dsn: "https://key@o0.ingest.sentry.io/0")
+  private static let dsn = "https://key@o0.ingest.sentry.io/0"
+  private static let offCacheRoot = URL(fileURLWithPath: "/tmp/ew-3269-test/sentry-feedback-only")
 
-    #expect(options.dsn == "https://key@o0.ingest.sentry.io/0")
+  private static func sentryOptions(crashReports: Bool) -> Options {
+    let options = Options()
+    ObservabilityBootstrap.configureSentryOptions(
+      options, dsn: dsn, crashReports: crashReports, cacheRoot: offCacheRoot)
+    return options
+  }
+
+  @Test("Sentry, crash reports ON: identity, crash reporting, breadcrumbs, default cache folder")
+  func sentryCrashOnConfiguration() {
+    let options = Self.sentryOptions(crashReports: true)
+
+    #expect(options.dsn == Self.dsn)
     #expect(options.releaseName == Self.expectedRelease)
     #expect(options.environment == Self.expectedEnvironment)
     #expect(options.sendDefaultPii == false)
@@ -55,7 +64,12 @@ struct ObservabilityBootstrapTests {
     #expect(options.enableCrashHandler == true)
     #expect(options.enableUncaughtNSExceptionReporting == true)
     #expect(options.enableAutoSessionTracking == true)
+    // Breadcrumbs stay for crash-reports-ON users (founder 2026-09-28): the vendor default.
     #expect(options.maxBreadcrumbs == 100)
+    // Not moved: crash-ON keeps the vendor's default folder and the envelopes cached there.
+    #expect(
+      options.cacheDirectoryPath
+        == NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).first)
 
     #expect(options.enableAutoBreadcrumbTracking == false)
     #expect(options.enableNetworkBreadcrumbs == false)
@@ -66,22 +80,111 @@ struct ObservabilityBootstrapTests {
     #expect(options.enableAppHangTracking == false)
     #expect(options.tracesSampleRate?.doubleValue == 0)
 
-    // Vendor defaults the app does not set today; a later #3269 chunk sets the first two to false.
-    #expect(options.sendClientReports == true)
-    #expect(options.enableMetrics == true)
+    #expect(options.sendClientReports == false)
+    #expect(options.enableMetrics == false)
     #expect(options.enableLogs == false)
   }
 
-  @Test("Sentry: the configured beforeSend redacts an email from the event message")
-  func sentryBeforeSendIsTheSanitizer() throws {
+  @Test("Sentry, crash reports OFF: no crash handler, sessions or breadcrumbs, own cache folder")
+  func sentryCrashOffConfiguration() {
+    let options = Self.sentryOptions(crashReports: false)
+
+    // Identity and privacy settings are the same in both modes.
+    #expect(options.dsn == Self.dsn)
+    #expect(options.releaseName == Self.expectedRelease)
+    #expect(options.environment == Self.expectedEnvironment)
+    #expect(options.sendDefaultPii == false)
+
+    #expect(options.enableCrashHandler == false)
+    #expect(options.enableUncaughtNSExceptionReporting == false)
+    #expect(options.enableAutoSessionTracking == false)
+    #expect(options.maxBreadcrumbs == 0)
+    #expect(options.cacheDirectoryPath == "/tmp/ew-3269-test/sentry-feedback-only")
+
+    #expect(options.enableAutoBreadcrumbTracking == false)
+    #expect(options.enableNetworkBreadcrumbs == false)
+    #expect(options.enableCaptureFailedRequests == false)
+    #expect(options.enableSwizzling == false)
+    #expect(options.tracesSampleRate?.doubleValue == 0)
+
+    #expect(options.sendClientReports == false)
+    #expect(options.enableMetrics == false)
+    #expect(options.enableLogs == false)
+  }
+
+  @Test("The production crash-OFF cache folder is sentry-feedback-only under this bundle's Caches")
+  func productionFeedbackOnlyCacheRoot() {
+    let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    let bundleID = Bundle.main.bundleIdentifier ?? "com.enviouswispr.app"
+    #expect(
+      ObservabilityBootstrap.feedbackOnlyCacheRoot.path
+        == caches.path + "/" + bundleID + "/sentry-feedback-only")
+    // The default argument is that folder, not the vendor default.
     let options = Options()
-    ObservabilityBootstrap.configureSentryOptions(options, dsn: "https://key@o0.ingest.sentry.io/0")
-    let beforeSend = try #require(options.beforeSend)
+    ObservabilityBootstrap.configureSentryOptions(options, dsn: Self.dsn, crashReports: false)
+    #expect(options.cacheDirectoryPath == ObservabilityBootstrap.feedbackOnlyCacheRoot.path)
+  }
+
+  @Test("Sentry, crash reports ON: the configured beforeSend redacts an email from the message")
+  func sentryBeforeSendIsTheSanitizer() throws {
+    let beforeSend = try #require(Self.sentryOptions(crashReports: true).beforeSend)
 
     let event = Event()
     event.message = SentryMessage(formatted: "reach me at someone@example.com")
     let sent = try #require(beforeSend(event))
 
     #expect(sent.message?.formatted == "[REDACTED]")
+  }
+
+  @Test("Sentry, crash reports OFF: the configured beforeSend drops every ordinary event")
+  func sentryCrashOffDropsEvents() throws {
+    let beforeSend = try #require(Self.sentryOptions(crashReports: false).beforeSend)
+
+    let plain = Event()
+    plain.message = SentryMessage(formatted: "an ordinary handled error")
+    let crash = Event(level: .fatal)
+
+    #expect(beforeSend(plain) == nil)
+    #expect(beforeSend(crash) == nil)
+  }
+
+  // MARK: - Once per process (#3269)
+
+  /// Records the SDK starts a `LaunchOnce` performs, in order, instead of starting anything.
+  @MainActor
+  private final class StartLog {
+    var calls: [String] = []
+    lazy var launch = ObservabilityBootstrap.LaunchOnce(
+      startPostHog: { [unowned self] in calls.append("posthog") },
+      startSentry: { [unowned self] crashReports in calls.append("sentry(\(crashReports))") })
+  }
+
+  @MainActor
+  @Test("Starts PostHog then Sentry exactly once, in the launch crash mode", arguments: [true, false])
+  func startsOnceInLaunchMode(crashReports: Bool) {
+    let log = StartLog()
+    #expect(log.launch.launchedCrashReports == nil)
+
+    log.launch.start(crashReports: crashReports)
+    log.launch.start(crashReports: crashReports)
+
+    #expect(log.calls == ["posthog", "sentry(\(crashReports))"])
+    #expect(log.launch.launchedCrashReports == crashReports)
+  }
+
+  /// A switch change after launch must wait for a restart: a later call with the other value, or
+  /// a flip and a flip back, neither restarts Sentry nor changes the mode it runs in.
+  @MainActor
+  @Test("A later crash-switch value neither restarts Sentry nor changes the launch mode", arguments: [true, false])
+  func laterSwitchValueWaitsForRestart(launchValue: Bool) {
+    let log = StartLog()
+    log.launch.start(crashReports: launchValue)
+
+    log.launch.start(crashReports: launchValue == false)
+    #expect(log.launch.launchedCrashReports == launchValue)
+    log.launch.start(crashReports: launchValue)
+
+    #expect(log.calls == ["posthog", "sentry(\(launchValue))"])
+    #expect(log.launch.launchedCrashReports == launchValue)
   }
 }
