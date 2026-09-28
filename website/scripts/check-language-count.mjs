@@ -86,6 +86,7 @@ const SITES = [
   ['website/src/pages/features/languages.astro', '<span class="accent-ink">99+ when you need them.</span>'],
   ['website/src/pages/features/languages.astro', "copy: '99+ languages for everything else, as a one-time download.'"],
   ['website/public/llms.txt', 'WhisperKit (99+ languages)'],
+  ['website/src/content/blog/british-spelling-dictation-mac.md', 'and WhisperKit covers 99+.'],
 ];
 
 // A language count in prose: a 1-3 digit number (optionally +) within two
