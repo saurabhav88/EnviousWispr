@@ -136,24 +136,28 @@ struct LearnedCorrectionPillCopyTests {
       CorrectionLearnedPillCopy.saveError(
         LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed))
         == "Couldn\u{2019}t save \u{201C}Tuist\u{201D}")
-    #expect(CorrectionLearnedPillCopy.learnedDwellSeconds == 3)
+    #expect(CorrectionLearnedPillCopy.learnedDwellSeconds == 4)
     #expect(CorrectionLearnedPillCopy.undoneDwellSeconds == 1.5)
     #expect(CorrectionLearnedPillCopy.errorDwellSeconds == 3)
     #expect(CorrectionLearnedPillCopy.minimumScale == 0.5)
   }
 
-  @Test("a very long word cannot push the Undo button off the screen: the pill's fitting width is capped")
+  @Test(
+    "a very long word cannot push the Undo button off the screen: the pill's fitting width is capped"
+  )
   @MainActor func longWordStaysOnScreen() {
     let long = String(repeating: "Supercalifragilistic", count: 25)  // 500 scalars, the stored limit's neighbourhood
     let model = LearnedPillFixture.model(canonical: long, kind: .added)
-    let host = NSHostingView(rootView: CorrectionLearnedPillView(model: model, onUndo: {}))
+    let host = NSHostingView(
+      rootView: CorrectionLearnedPillView(model: model, onUndo: {}, dwell: nil))
     host.layoutSubtreeIfNeeded()
     let width = host.fittingSize.width
     // The sentence is capped, and the button plus paddings ride beside it.
     #expect(width <= CorrectionLearnedPillCopy.maximumSentenceWidth + 140, "fitting width \(width)")
     // Control: a short word is narrower than the cap.
     let short = NSHostingView(
-      rootView: CorrectionLearnedPillView(model: LearnedPillFixture.model(canonical: "Tuist", kind: .added), onUndo: {}))
+      rootView: CorrectionLearnedPillView(
+        model: LearnedPillFixture.model(canonical: "Tuist", kind: .added), onUndo: {}, dwell: nil))
     short.layoutSubtreeIfNeeded()
     #expect(short.fittingSize.width < CorrectionLearnedPillCopy.maximumSentenceWidth)
   }
@@ -196,7 +200,7 @@ struct LearnedCorrectionPillReducerTests {
   }
 
   @Test(
-    "a learned pill is admitted on an idle, empty slot with a 3 s dwell that hover does not pause, measured width, and a spoken sentence"
+    "a learned pill is admitted on an idle, empty slot with a 4 s dwell that hover does not pause, measured width, and a spoken sentence"
   )
   func admittedWhenIdleAndEmpty() throws {
     let id = PresentationID()
@@ -206,9 +210,9 @@ struct LearnedCorrectionPillReducerTests {
     #expect(plan.didChange)
     let shown = try #require(plan.presentation)
     #expect(shown.id == id && shown.content == .correctionLearned(model))
-    #expect(shown.expiry == .after(seconds: 3, pausesOnHover: false))
+    #expect(shown.expiry == .after(seconds: 4, pausesOnHover: false))
     #expect(shown.requestedWidth == .measured && shown.reservesFixedHeight == nil)
-    #expect(plan.expiryCommand == .arm(id: id, seconds: 3, target: .presentation))
+    #expect(plan.expiryCommand == .arm(id: id, seconds: 4, target: .presentation))
     #expect(plan.announcement?.isHighPriority == false)
     #expect(plan.announcement?.text == "Added \u{201C}Tuist\u{201D} to Dictionary. Undo available.")
     #expect(r.state.featureSlotIsAvailable == false, "no other feature displaces it")
@@ -242,7 +246,7 @@ struct LearnedCorrectionPillReducerTests {
   }
 
   @Test(
-    "a different learned pill replaces the current one: new identity, fresh 3 s, one end effect for the outgoing offer; a same-pill repeat changes nothing"
+    "a different learned pill replaces the current one: new identity, fresh 4 s, one end effect for the outgoing offer; a same-pill repeat changes nothing"
   )
   func replacementAndRepeat() throws {
     var ids = [PresentationID(), PresentationID()]
@@ -259,7 +263,7 @@ struct LearnedCorrectionPillReducerTests {
     #expect(plan.didChange)
     let shown = try #require(plan.presentation)
     #expect(shown.id != firstID && shown.content == .correctionLearned(second))
-    #expect(plan.expiryCommand == .arm(id: shown.id, seconds: 3, target: .presentation))
+    #expect(plan.expiryCommand == .arm(id: shown.id, seconds: 4, target: .presentation))
     #expect(plan.effects == [.correctionLearnedEnded(pillID: first.id, presentation: firstID)])
     #expect(plan.announcement?.text == "\u{201C}Saira\u{201D} updated. Undo available.")
   }
@@ -441,7 +445,7 @@ struct LearnedCorrectionPillDirectorTests {
     return model
   }
 
-  @Test("the pill is on screen at 2.999 s after admission and gone at 3.000 s, reported ended once")
+  @Test("the pill is on screen at 3.999 s after admission and gone at 4.000 s, reported ended once")
   func undoWindow() throws {
     let clock = LearnedPillClock()
     let log = Log()
@@ -449,10 +453,10 @@ struct LearnedCorrectionPillDirectorTests {
     let model = LearnedPillFixture.model()
     let receipt = try #require(d.present(request(model, log)) { log.results.append($0) })
     #expect(log.results == [.presented(receipt)])
-    #expect(clock.armedSeconds == [3], "the dwell armed at admission, for exactly three seconds")
-    clock.advance(to: 2.999)
+    #expect(clock.armedSeconds == [4], "the dwell armed at admission, for exactly four seconds")
+    clock.advance(to: 3.999)
     #expect(shown(d)?.id == model.id && log.ended == 0)
-    clock.advance(to: 3.0)
+    clock.advance(to: 4.0)
     #expect(d.renderModel.state.presentation == nil)
     #expect(log.ended == 1 && log.undos == 0)
   }
@@ -491,9 +495,9 @@ struct LearnedCorrectionPillDirectorTests {
     clock.advance(to: 0.5)
     d.resolveLearnedCorrection(
       pillID: model.id, presentation: receipt.presentationID, phase: .undone)
-    #expect(clock.armedSeconds == [3, 1.5])
+    #expect(clock.armedSeconds == [4, 1.5])
     clock.advance(to: 1.999)
-    #expect(shown(d)?.phase == .undone, "the old 3 s deadline was cancelled")
+    #expect(shown(d)?.phase == .undone, "the old 4 s deadline was cancelled")
     clock.advance(to: 2.0)
     #expect(d.renderModel.state.presentation == nil, "1.5 s after the morph at 0.5 s")
     #expect(log.ended == 0, "a result is not an unanswered offer")
@@ -541,13 +545,15 @@ struct LearnedCorrectionPillDirectorTests {
     #expect(first.undos == 0, "the outgoing binding is gone")
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: m2.id), for: r2)
     #expect(second.undos == 1)
-    clock.advance(to: 3.999)
-    #expect(shown(d)?.id == m2.id, "the second pill's own three seconds run from 1.0 s")
-    clock.advance(to: 4.0)
+    clock.advance(to: 4.999)
+    #expect(shown(d)?.id == m2.id, "the second pill's own four seconds run from 1.0 s")
+    clock.advance(to: 5.0)
     #expect(d.renderModel.state.presentation == nil && first.ended == 1 && second.ended == 1)
   }
 
-  @Test("a same-pill repeat keeps the original binding: the press and the end still reach the first owner")
+  @Test(
+    "a same-pill repeat keeps the original binding: the press and the end still reach the first owner"
+  )
   func repeatKeepsTheOriginalBinding() throws {
     let clock = LearnedPillClock()
     let first = Log()
@@ -555,16 +561,20 @@ struct LearnedCorrectionPillDirectorTests {
     let (d, host) = director(clock, first)
     let model = LearnedPillFixture.model()
     let receipt = try #require(d.present(request(model, first)))
-    #expect(d.present(request(model, second)) == nil, "a repeat keeps the incumbent's receipt; it is not a new admission")
+    #expect(
+      d.present(request(model, second)) == nil,
+      "a repeat keeps the incumbent's receipt; it is not a new admission")
     #expect(shown(d)?.id == model.id && d.isCurrent(receipt))
-    #expect(clock.armedSeconds == [3], "the repeat did not re-arm the dwell")
+    #expect(clock.armedSeconds == [4], "the repeat did not re-arm the dwell")
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
     #expect(first.undos == 1 && second.undos == 0)
-    clock.advance(to: 3)
+    clock.advance(to: 4)
     #expect(first.ended == 1 && second.ended == 0)
   }
 
-  @Test("an end callback that presents a newer pill wins: the stale plan is discarded, not applied over it")
+  @Test(
+    "an end callback that presents a newer pill wins: the stale plan is discarded, not applied over it"
+  )
   func endCallbackMayReenter() throws {
     let clock = LearnedPillClock()
     let log = Log()
@@ -604,7 +614,9 @@ struct LearnedCorrectionPillDirectorTests {
     }
   }
 
-  @Test("an owner check that presents a newer pill from inside itself loses to that pill: no rollback, no render of the stale offer, whether it answers true or false")
+  @Test(
+    "an owner check that presents a newer pill from inside itself loses to that pill: no rollback, no render of the stale offer, whether it answers true or false"
+  )
   func ownerCheckMayReenter() {
     for answer in [true, false] {
       let clock = LearnedPillClock()
@@ -612,18 +624,24 @@ struct LearnedCorrectionPillDirectorTests {
       let (d, host) = director(clock, log)
       let model = LearnedPillFixture.model()
       // The check raises a warning as a side effect; that warning must win.
-      let request = request(model, log, stillWanted: {
-        d.present(.warning(reason: .polishFailed))
-        return answer
-      })
+      let request = request(
+        model, log,
+        stillWanted: {
+          d.present(.warning(reason: .polishFailed))
+          return answer
+        })
       _ = d.present(request) { log.results.append($0) }
-      #expect(log.results == [.notPresented], "the stale offer owes its caller only false (answer \(answer))")
+      #expect(
+        log.results == [.notPresented],
+        "the stale offer owes its caller only false (answer \(answer))")
       guard case .notice(let notice)? = d.renderModel.state.presentation?.content else {
         Issue.record("the re-entrant warning is not on screen (answer \(answer))")
         return
       }
       #expect(notice.kind == .notification)
-      #expect(d.renderModel.state.presentation?.id == d.renderModel.state.dwell?.id, "the warning keeps its own timer")
+      #expect(
+        d.renderModel.state.presentation?.id == d.renderModel.state.dwell?.id,
+        "the warning keeps its own timer")
       #expect(host.presented.count == 1 && host.isShowing, "exactly one render: the warning")
       // The reducer had admitted the offer before the render, so the warning
       // preempts it there and the end is reported once; the owner was answered
@@ -685,7 +703,9 @@ struct LearnedCorrectionOverlayPresenterTests {
       presenter: presenter)
   }
 
-  @Test("a presented pill counts learn_undo_shown once; a declined one ends the Undo record without counting")
+  @Test(
+    "a presented pill counts learn_undo_shown once; a declined one ends the Undo record without counting"
+  )
   func presentedAndDeclined() throws {
     let f = fixture()
     f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
@@ -701,7 +721,9 @@ struct LearnedCorrectionOverlayPresenterTests {
     #expect(g.coordinator.undoRecord == nil)
   }
 
-  @Test("the director's Undo press reaches the coordinator and the same-identity Undone morph comes back; the end callback drops the record")
+  @Test(
+    "the director's Undo press reaches the coordinator and the same-identity Undone morph comes back; the end callback drops the record"
+  )
   func undoForwardingAndResult() throws {
     let f = fixture()
     f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
@@ -724,7 +746,9 @@ struct LearnedCorrectionOverlayPresenterTests {
     #expect(g.host.closes.count == 1, "a stale Undo closes by id")
   }
 
-  @Test("an Undo that fails morphs to the error line on the same identity; an already-changed word closes the pill")
+  @Test(
+    "an Undo that fails morphs to the error line on the same identity; an already-changed word closes the pill"
+  )
   func undoErrorAndClose() throws {
     let f = fixture()
     f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
@@ -755,7 +779,9 @@ struct LearnedCorrectionOverlayPresenterTests {
     #expect(f.host.requests.isEmpty)
   }
 
-  @Test("a deferred first render is rolled back when a newer learn replaced the record, and only the newer pill is admitted")
+  @Test(
+    "a deferred first render is rolled back when a newer learn replaced the record, and only the newer pill is admitted"
+  )
   func deferredRenderFollowsTheRecord() throws {
     let host = LearnedOverlayHostFake()
     host.deferResult = true
