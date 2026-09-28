@@ -1,0 +1,31 @@
+---
+// Visible questions and answers for a feature page, with the FAQPage JSON-LD
+// built from the same array, so the markup and the page can never drift apart.
+// Answers are plain text: they ship verbatim into structured data.
+interface Props {
+  title?: string;
+  items: { q: string; a: string }[];
+}
+const { title = 'Questions people ask', items } = Astro.props;
+if (items.length < 2) throw new Error('FeatureFaq: at least two questions');
+const ld = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: items.map(({ q, a }) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+};
+---
+
+<section class="feature-faq wrap" aria-labelledby="feature-faq-title">
+  <h2 id="feature-faq-title">{title}</h2>
+  <div class="feature-faq-list">
+    {
+      items.map(({ q, a }) => (
+        <details>
+          <summary>{q}</summary>
+          <p>{a}</p>
+        </details>
+      ))
+    }
+  </div>
+  <script type="application/ld+json" set:html={JSON.stringify(ld)} />
+</section>

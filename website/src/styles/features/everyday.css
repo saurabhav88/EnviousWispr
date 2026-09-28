@@ -1,0 +1,24 @@
+/* Paste Last Dictation, Smart Formatting and Languages pages (2.5): the key panel,
+   the "you say, you get" table, language chips and the shared questions block. */
+.key-panel{display:grid;gap:12px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--film-panel)}
+.key-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:16px;padding:15px 16px;border:1px solid var(--line);border-radius:12px;background:var(--film-well)}
+.key-row .keys{display:flex;gap:6px}
+.key-row kbd{display:grid;place-items:center;min-width:40px;height:40px;padding:0 10px;border:1px solid var(--line);border-bottom-width:3px;border-radius:9px;background:var(--film-panel);font:600 17px/1 -apple-system,BlinkMacSystemFont,sans-serif;color:var(--ink)}
+.key-row strong{display:block;font-size:17px;color:var(--ink)}
+.key-row span.key-note{display:block;font-size:14px;line-height:1.45;color:var(--body);margin-top:3px}
+.key-panel-note{font-size:12px;color:var(--body);padding-inline:4px}
+.say-get{display:grid;gap:10px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--film-panel)}
+.say-get-row{display:grid;grid-template-columns:minmax(0,1.25fr) auto minmax(0,1fr);align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--line);border-radius:12px;background:var(--film-well)}
+.say-get-row .said{font-size:15px;line-height:1.45;color:var(--body);overflow-wrap:anywhere}
+.say-get-row .arrow{color:var(--accent);font-weight:600}
+.say-get-row .got{font:600 16px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--green);overflow-wrap:anywhere}
+.say-get-note{font-size:12px;color:var(--body);padding-inline:4px}
+.lang-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.lang-chips span{padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:var(--film-well);color:var(--ink);font-size:14px;font-weight:500}
+.feature-faq{padding-block:56px 24px;max-width:860px}
+.feature-faq h2{font-size:clamp(28px,3vw,38px);letter-spacing:-.03em;margin-bottom:22px}
+.feature-faq-list{display:grid;gap:10px}
+.feature-faq details{border:1px solid var(--line);border-radius:14px;background:var(--film-well);padding:0 20px}
+.feature-faq summary{cursor:pointer;padding:18px 0;font-size:17px;font-weight:600;color:var(--ink);list-style-position:outside}
+.feature-faq details p{margin:0 0 18px;font-size:16px;line-height:1.65;color:var(--body)}
+@media(max-width:600px){.key-panel,.say-get{padding:14px}.say-get-row{grid-template-columns:minmax(0,1fr);gap:4px}.say-get-row .arrow{display:none}.key-row{grid-template-columns:minmax(0,1fr)}.feature-faq{padding-block:40px 16px}.feature-faq summary{font-size:16px}}

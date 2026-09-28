@@ -19,6 +19,8 @@ function highlighted(text, marks = []) {
 const correction = SCENES.correction[0];
 const dictionary = SCENES.dictionary[2];
 const snippet = SCENES.snippets[0];
+const formatting = SCENES.formatting[1];
+const british = SCENES.languages[0];
 const audio = ['MP3', 'M4A', 'WAV', 'AIFF', 'CAF', 'FLAC'];
 const video = ['MP4', 'MOV'];
 ---
@@ -144,6 +146,54 @@ const video = ['MP4', 'MOV'];
           <small>Your words are still here.</small>
           <p>Let’s move the meeting to Friday.</p>
           <span>Ready to copy and use again.</span>
+        </div>
+      </>
+    )
+  }
+  {
+    kind === 'paste-last-dictation' && (
+      <>
+        <div class="mini-keys">
+          <kbd>⌃</kbd>
+          <kbd>⌘</kbd>
+          <kbd>V</kbd>
+          <small>Paste Last Dictation</small>
+        </div>
+        <div class="mini-after">
+          <small>Pasted again, where your cursor is</small>
+          <p>Let’s move the meeting to Friday.</p>
+        </div>
+      </>
+    )
+  }
+  {
+    kind === 'smart-formatting' && (
+      <>
+        <div class="mini-before">
+          <small>You say</small>
+          <p set:html={highlighted(formatting.raw, formatting.raw_marks)} />
+        </div>
+        <div class="mini-after">
+          <small>You get</small>
+          <p>{formatting.out}</p>
+        </div>
+      </>
+    )
+  }
+  {
+    kind === 'languages' && (
+      <>
+        <div class="mini-langs">
+          <span>English (UK)</span>
+          <span>Deutsch</span>
+          <span>Español</span>
+          <span>Français</span>
+          <span>Italiano</span>
+          <span>Polski</span>
+        </div>
+        <div class="mini-after" lang="en-GB">
+          <small>English (UK) spelling</small>
+          <p>{british.out}</p>
         </div>
       </>
     )

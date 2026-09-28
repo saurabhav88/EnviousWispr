@@ -1,6 +1,6 @@
 // Feature film scenes (#2816), copied from the approved mock's films.py. Only
-// the five kinds a page renders are kept: dictionary, snippets, quickadd,
-// correction, preview. The same data renders the finished frame at build time
+// the kinds a page renders are kept: dictionary, snippets, quickadd,
+// correction, selflearn, formatting, languages, preview. The same data renders the finished frame at build time
 // (FeatureFilm.astro) and drives the animation (scripts/features/film-director.js).
 export const SCENES = {
   dictionary: [
@@ -27,6 +27,24 @@ export const SCENES = {
     { label: 'Tools', title: 'Working in your daily apps', where: 'On your Mac', pasted: 'The build runs on ', wrong: 'Twist', fixed: 'Tuist', tail: ' now.', pill: 'Added “Tuist” to Dictionary', out: 'Run Tuist before you open the project.', out_marks: ['Tuist'], explain: 'Checked locally against context before it is applied.' },
     { label: 'Updates', title: 'Updating an existing word', where: 'On your Mac', pasted: 'Put the notes in ', wrong: 'Motion', fixed: 'Notion', tail: ' for now.', pill: '“Notion” updated', out: 'The roadmap lives in Notion.', out_marks: ['Notion'], explain: 'The new mishearing is attached to your existing word.' },
   ],
+  // Smart Formatting (2.5.0/2.5.1 What's New): spoken technical text written the
+  // way you would type it. Every example is a row in help/numbers-dates-and-times.md
+  // or help/spoken-punctuation-and-emoji.md, which own the behavior.
+  formatting: [
+    { label: 'Versions', title: 'Version numbers, whole.', where: 'On your Mac', raw: 'ship version two point five point zero tonight', out: 'Ship version 2.5.0 tonight.', raw_marks: ['version two point five point zero'], out_marks: ['version 2.5.0'], saved: 'Version number', explain: 'Formatted on your Mac, before any AI polish.' },
+    { label: 'Hosts', title: 'Hosts and ports.', where: 'On your Mac', raw: 'the app runs on localhost colon three thousand', out: 'The app runs on localhost:3000.', raw_marks: ['localhost colon three thousand'], out_marks: ['localhost:3000'], saved: 'Host and port', explain: 'Formatted on your Mac, before any AI polish.' },
+    { label: 'Commands', title: 'Slash commands.', where: 'On your Mac', raw: 'type slash clear and start again', out: 'Type /clear and start again.', raw_marks: ['slash clear'], out_marks: ['/clear'], saved: 'Slash command', explain: 'Works with Spoken punctuation on or off.' },
+    { label: 'Dates', title: 'Dates in the format you asked for.', where: 'On your Mac', raw: 'the release is twenty twenty six dash nine dash twenty six', out: 'The release is 2026-09-26.', raw_marks: ['twenty twenty six dash nine dash twenty six'], out_marks: ['2026-09-26'], saved: 'Dashed date', explain: 'Formatted on your Mac, before any AI polish.' },
+  ],
+  // Languages (2.5.1 What's New): British spelling and addresses said with each
+  // language's own words. Examples from help/multi-language-dictation.md and
+  // help/numbers-dates-and-times.md.
+  languages: [
+    { label: 'English (UK)', title: 'British spelling.', where: 'English (UK)', raw: 'we changed the color of the logo at the center', out: 'We changed the colour of the logo at the centre.', raw_marks: ['color', 'center'], out_marks: ['colour', 'centre'], saved: 'British spelling', lang: 'en-GB', explain: 'Choose English (UK) and the spelling follows.' },
+    { label: 'Español', title: 'Email addresses in Spanish.', where: 'Español', raw: 'maría punto lópez arroba gmail punto com', out: 'maría.lópez@gmail.com', raw_marks: ['punto', 'arroba'], out_marks: ['maría.lópez@gmail.com'], saved: 'Email address', lang: 'es', explain: 'The local words for at and dot, understood.' },
+    { label: 'Deutsch', title: 'Web addresses in German.', where: 'Deutsch', raw: 'beispiel Punkt de Schrägstrich hilfe', out: 'beispiel.de/hilfe', raw_marks: ['Punkt', 'Schrägstrich'], out_marks: ['beispiel.de/hilfe'], saved: 'Web address', lang: 'de', explain: 'The local words for dot and slash, understood.' },
+    { label: 'Italiano', title: 'Links in Italian.', where: 'Italiano', raw: 'https due punti barra barra esempio punto it', out: 'https://esempio.it', raw_marks: ['due punti', 'barra barra', 'punto'], out_marks: ['https://esempio.it'], saved: 'Web address', lang: 'it', explain: 'Set your dictation language so the app knows it.' },
+  ],
   preview: [
     { label: 'English', title: 'Your words, as you speak.', where: 'Live draft', raw: 'Hi Maya um for Friday please bring the design notes the launch checklist and the revised budget of six thousand two hundred thirty nine dollars thanks Amira', lang: 'en', explain: 'Your thought, in view.' },
     { label: 'Deutsch', title: 'Ein Gedanke nimmt Form an.', where: 'Live draft', raw: 'Ein bisschen Raum für den Gedanken, den du gerade hast.', lang: 'de', explain: 'A draft in your language.' },
@@ -40,6 +58,8 @@ export const DURATIONS = {
   snippets: [1100, 500, 1350, 3200],
   quickadd: [1300, 3200, 700, 2600],
   correction: [1800, 850, 650, 3200],
+  formatting: [1800, 850, 700, 3200],
+  languages: [1900, 850, 700, 3200],
   selflearn: [1500, 2800, 3000, 3200],
   preview: [4800, 450, 450, 3000],
 };
@@ -48,6 +68,8 @@ export const STATUS_WORDS = {
   quickadd: ['Select the misheard words.', 'Pick the word you meant.', 'Press Return to add the spelling.', ''],
   selflearn: ['Pasting the dictation', 'Editing the misheard word', 'Saved to dictionary, with three seconds to undo', ''],
   snippets: ['A short spoken phrase…', 'Finding your saved text…', 'Your words, ready to use…', ''],
+  formatting: ['Listening to the example…', 'Formatting on your Mac…', 'Written the way you would type it…', ''],
+  languages: ['Listening to the example…', 'Reading it in your language…', 'Written the way you would type it…', ''],
   preview: ['A thought takes shape…', 'The draft updates…', 'Keep it in view…', ''],
   default: ['Listening to the example…', 'Matching your words…', 'Your finished text…', ''],
 };

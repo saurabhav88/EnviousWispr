@@ -1,0 +1,126 @@
+---
+// Languages (2.5.1 What's New): two engines' language coverage, English (UK)
+// spelling, addresses and links said in eight languages' own words, and the app
+// itself in English or German. Claims trace to help/multi-language-dictation.md,
+// help/numbers-dates-and-times.md, help/sounds-and-appearance.md,
+// help/filler-word-removal.md and help/choosing-a-speech-engine-parakeet-vs-whisperkit.md.
+// The 99+ WhisperKit count is enforced by scripts/check-language-count.mjs.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import '../../styles/features/everyday.css';
+import FeatureHero from '../../components/features/FeatureHero.astro';
+import FeatureFilm from '../../components/features/FeatureFilm.astro';
+import ImportReassurance from '../../components/features/ImportReassurance.astro';
+import FeatureFaq from '../../components/features/FeatureFaq.astro';
+import DownloadClosing from '../../components/DownloadClosing.astro';
+const localWords = [
+  ['maría punto lópez arroba gmail punto com', 'maría.lópez@gmail.com', 'es'],
+  ['beispiel Punkt de Schrägstrich hilfe', 'beispiel.de/hilfe', 'de'],
+  ['www punt voorbeeld punt nl', 'www.voorbeeld.nl', 'nl'],
+  ['info собака yandex точка ру', 'info@yandex.ru', 'ru'],
+  ['2 kropka 5 kropka 0', '2.5.0', 'pl'],
+];
+const faq = [
+  {
+    q: 'Which languages can I dictate in on a Mac with EnviousWispr?',
+    a: 'EnviousWispr, a free dictation app for Mac, starts with the Parakeet engine, which recognises 25 European languages and detects which one you are speaking. For any other language, switch to the WhisperKit engine in Settings, Transcription, which supports 99+ languages.',
+  },
+  {
+    q: 'How do I get British spelling when I dictate on a Mac?',
+    a: 'In Settings, Transcription, Language, switch off Auto-detect language, click Change and choose English (UK). Your dictation then comes out as colour, centre and organise, with AI polish on or off, and in Transcribe a File too.',
+  },
+  {
+    q: 'Does EnviousWispr translate what I say?',
+    a: 'No. It writes what you said in the language you said it. AI polish cleans up grammar and filler words but does not translate, so dictating in French returns French text.',
+  },
+  {
+    q: 'Can I use the EnviousWispr app itself in German?',
+    a: 'Yes. Its menus, settings and messages come in English and German. Choose a language in Settings, Appearance, Language, then relaunch. System default follows your Mac. This is separate from the language you dictate in.',
+  },
+];
+---
+
+<FeatureShell
+  path="/features/languages/"
+  title="Languages: dictate in your language on Mac, UK spelling too"
+  description="Dictate in 25 European languages with Parakeet or 99+ with WhisperKit, get British spelling with English (UK), and use EnviousWispr in English or German."
+  ogImage="/images/og/languages.jpg"
+  ogImageAlt="EnviousWispr Languages: dictate in your language, spelled the way you spell it"
+>
+  <FeatureHero
+    kind="languages"
+    label="Languages"
+    title={'Dictate in your language.<br><span class="accent-ink">Spelled the way you spell it.</span>'}
+    copy="EnviousWispr is a free dictation app for Mac. It hears 25 European languages out of the box and 99+ with a second engine, writes British spelling when you ask for it, and understands email and web addresses said with your language’s own words."
+  >
+    <FeatureFilm kind="languages" />
+  </FeatureHero>
+  <section class="benefit wrap reverse">
+    <div class="benefit-copy">
+      <span class="eyebrow">Two engines</span>
+      <h2>25 languages to start.<br /><span class="accent-ink">99+ when you need them.</span></h2>
+      <p>Parakeet, the engine you start with, recognises 25 European languages and works out which one you are speaking on its own. If your language is not among them, switch to WhisperKit under Settings, Transcription, and download its model once.</p>
+      <p>You can also lock your language. On Parakeet, that keeps a German dictation free of stray Greek or Cyrillic letters. On WhisperKit, naming your language gives higher accuracy than auto-detect. Both engines run on your Mac, so your voice does not leave it.</p>
+    </div>
+    <div class="benefit-visual">
+      <ImportReassurance
+        wrap={false}
+        items={[
+          { title: 'Parakeet', copy: 'The default. Faster, 25 European languages, detects which one you speak.' },
+          { title: 'WhisperKit', copy: '99+ languages for everything else, as a one-time download.' },
+          { title: 'One language per sentence', copy: 'Auto-detect handles one language at a time, so switch between sentences rather than inside one.' },
+        ]}
+      />
+    </div>
+  </section>
+  <section class="benefit wrap">
+    <div class="benefit-copy">
+      <span class="eyebrow">English (UK)</span>
+      <h2>Colour, centre, organise.<br /><span class="accent-ink">British spelling on request.</span></h2>
+      <p>Both speech engines write English with American spelling. Choose English (UK) as your dictation language and EnviousWispr gives you British spelling instead, in dictation and in Transcribe a File, with AI polish on or off. The spelling is checked again after polish, which catches American spelling a polish model puts back.</p>
+      <p>Words whose spelling depends on meaning, such as "program", "check" and "license", are left as you said them. Names and your custom words are kept exactly as written.</p>
+    </div>
+    <div class="benefit-visual">
+      <div class="say-get" aria-label="British spelling examples" lang="en-GB">
+        <div class="say-get-row"><span class="said">color</span><span class="arrow" aria-hidden="true">→</span><span class="got">colour</span></div>
+        <div class="say-get-row"><span class="said">organization</span><span class="arrow" aria-hidden="true">→</span><span class="got">organisation</span></div>
+        <div class="say-get-row"><span class="said">center</span><span class="arrow" aria-hidden="true">→</span><span class="got">centre</span></div>
+        <div class="say-get-row"><span class="said">traveled</span><span class="arrow" aria-hidden="true">→</span><span class="got">travelled</span></div>
+        <div class="say-get-row"><span class="said">favorite</span><span class="arrow" aria-hidden="true">→</span><span class="got">favourite</span></div>
+        <span class="say-get-note">American spelling from the engine, and what English (UK) writes.</span>
+      </div>
+    </div>
+  </section>
+  <section class="benefit wrap reverse">
+    <div class="benefit-copy">
+      <span class="eyebrow">Your language’s own words</span>
+      <h2>Addresses and links,<br /><span class="accent-ink">said the way you say them.</span></h2>
+      <p>With your dictation language set to French, Spanish, Polish, Dutch, German, Russian, Portuguese or Italian, email addresses, web addresses and codes said with that language’s words for “at”, “dot” and “slash” come out written, accents included.</p>
+      <p>Filler removal reads your language too. It leaves “er” alone in German, Dutch, Danish and Norwegian, and “um” in German, because those are real words there.</p>
+    </div>
+    <div class="benefit-visual">
+      <div class="say-get" aria-label="Addresses said in other languages">
+        {
+          localWords.map(([said, got, lang]) => (
+            <div class="say-get-row" lang={lang}>
+              <span class="said">“{said}”</span>
+              <span class="arrow" aria-hidden="true">→</span>
+              <span class="got">{got}</span>
+            </div>
+          ))
+        }
+        <span class="say-get-note">Set your dictation language so EnviousWispr knows which words to read.</span>
+      </div>
+    </div>
+  </section>
+  <section class="matching-story plain wrap">
+    <h2>The app speaks<br /><span class="accent-ink">German too.</span></h2>
+    <p>EnviousWispr’s own menus, settings and messages come in English and German. Pick one under Settings, Appearance, Language, or leave it on System default to follow your Mac. The language you dictate in is a separate setting, so you can use the app in German and dictate in English, or the other way round.</p>
+    <div class="lang-chips" aria-label="App languages">
+      <span lang="en">English</span>
+      <span lang="de">Deutsch</span>
+    </div>
+    <a class="story-link" href="/help/multi-language-dictation/">How to set your dictation language <span aria-hidden="true">→</span></a>
+  </section>
+  <FeatureFaq items={faq} />
+  <DownloadClosing title="Dictation that speaks your language." />
+</FeatureShell>
