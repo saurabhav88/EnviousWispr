@@ -1347,6 +1347,18 @@ private struct WelcomeScreenV2: View {
 
       Spacer()
 
+      // #3269: both privacy switches ship ON; say so once, where to change it, before Get Started.
+      // "By default", so a rerun of onboarding stays true after the user changed a switch.
+      Text(
+        "Anonymous usage metrics and crash reports are on by default. You can turn them off in Settings > Permissions.",
+        comment: "Onboarding welcome screen: first-run privacy notice above Get Started."
+      )
+      .font(.obBody)
+      .foregroundStyle(Color.obTextSecondary)
+      .multilineTextAlignment(.center)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.bottom, 14)
+
       Button("Get Started") {
         TelemetryService.shared.onboardingStarted()
         viewModel.currentScreen = .settingUp

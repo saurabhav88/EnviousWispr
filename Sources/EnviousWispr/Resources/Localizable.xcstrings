@@ -2665,6 +2665,28 @@
         }
       }
     },
+    "Anonymous counts and timings that show me when a release breaks dictation. Never audio or text. Stops collecting right away." : {
+      "comment" : "Permissions settings, Privacy: explains the usage metrics switch.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anonyme Zählwerte und Zeitmessungen, die mir zeigen, wenn eine neue Version das Diktieren beeinträchtigt. Niemals Audio oder Text. Die Erfassung stoppt sofort."
+          }
+        }
+      }
+    },
+    "Anonymous usage metrics and crash reports are on by default. You can turn them off in Settings > Permissions." : {
+      "comment" : "Onboarding welcome screen: first-run privacy notice above Get Started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anonyme Nutzungsstatistiken und Absturzberichte sind standardmäßig aktiviert. Du kannst sie unter Einstellungen > Berechtigungen ausschalten."
+          }
+        }
+      }
+    },
     "Another app is using Ollama's port (11434). Close it and try again." : {
       "comment" : "AI Polish, Ollama setup: error. 11434 is a network port number.",
       "localizations" : {
@@ -5333,6 +5355,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auswahl aufheben"
+          }
+        }
+      }
+    },
+    "Details about crashes and errors so I can fix them." : {
+      "comment" : "Permissions settings, Privacy: explains the crash reports switch.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details zu Abstürzen und Fehlern, damit ich sie beheben kann."
           }
         }
       }
@@ -11871,6 +11904,16 @@
         }
       }
     },
+    "Privacy" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz"
+          }
+        }
+      }
+    },
     "Pro Tip" : {
       "localizations" : {
         "de" : {
@@ -12699,6 +12742,17 @@
         }
       }
     },
+    "Restart now" : {
+      "comment" : "Permissions settings, Privacy: button that quits and reopens the app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt neu starten"
+          }
+        }
+      }
+    },
     "Restore" : {
       "localizations" : {
         "de" : {
@@ -13456,6 +13510,17 @@
         }
       }
     },
+    "Send crash reports" : {
+      "comment" : "Permissions settings, Privacy: switch label.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Absturzberichte senden"
+          }
+        }
+      }
+    },
     "Sends transcribed text, never audio" : {
       "comment" : "AI Polish: privacy line under the selected provider.",
       "localizations" : {
@@ -13593,6 +13658,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeiteten Text teilen…"
+          }
+        }
+      }
+    },
+    "Share usage metrics" : {
+      "comment" : "Permissions settings, Privacy: switch label.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsstatistiken teilen"
           }
         }
       }
@@ -14468,6 +14544,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tadschikisch"
+          }
+        }
+      }
+    },
+    "Takes effect when EnviousWispr restarts" : {
+      "comment" : "Permissions settings, Privacy: shown after the crash reports switch changes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird nach einem Neustart von EnviousWispr wirksam"
           }
         }
       }
@@ -18740,16 +18827,16 @@
     "feedback.diagnostics.excluded" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Es werden keine Diagnosedaten angehängt"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "No diagnostics will be attached"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es werden keine Diagnosedaten angehängt"
           }
         }
       }
@@ -18757,16 +18844,16 @@
     "feedback.diagnostics.help" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Enthält Angaben zu den letzten Diktaten und, falls verfügbar, eine Kennung zur Zuordnung früherer Nutzungsberichte. Keine Audiodaten oder diktierten Texte."
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Includes recent dictation details and, when available, an ID linking earlier usage reports. No audio or dictated text."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Angaben zu den letzten Diktaten und, falls verfügbar, eine Kennung zur Zuordnung früherer Nutzungsberichte. Keine Audiodaten oder diktierten Texte."
           }
         }
       }
@@ -18774,16 +18861,16 @@
     "feedback.diagnostics.include" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Diagnosedaten mitsenden"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Include diagnostics"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten mitsenden"
           }
         }
       }
@@ -18791,16 +18878,16 @@
     "feedback.diagnostics.loading" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Diagnosedaten werden geladen..."
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Loading diagnostics..."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten werden geladen..."
           }
         }
       }
@@ -18808,16 +18895,16 @@
     "feedback.diagnostics.preview" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Diagnosedaten ansehen"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Preview diagnostics"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten ansehen"
           }
         }
       }
@@ -18825,16 +18912,16 @@
     "feedback.diagnostics.unavailable" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Keine Diagnosedaten verfügbar"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "No diagnostics available"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Diagnosedaten verfügbar"
           }
         }
       }
