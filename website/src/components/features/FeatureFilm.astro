@@ -87,7 +87,7 @@ const encoded = JSON.stringify(scenes);
             <div class="sl-document">
               <span class="sl-label">Pasted a moment ago</span>
               <p>
-                <span data-sl-pasted>{s.pasted}</span><span class="sl-edit"><del data-sl-wrong>{s.wrong}</del><ins data-sl-fixed>{s.fixed}</ins></span><span data-sl-tail>{s.tail}</span>
+                <span data-sl-pasted>{s.pasted}</span><span class="sl-edit"><span class="sl-wrong" data-sl-wrong>{s.wrong}</span><span class="sl-fixed" data-sl-fixed>{s.fixed}</span><i class="sl-caret" aria-hidden="true" /></span><span data-sl-tail>{s.tail}</span>
               </p>
             </div>
             <div class="sl-pill">

@@ -29,6 +29,8 @@ html[data-theme=dark] .button{background:#bf93fa;color:#24132f}
 .import-reassurance p{font-size:15px;line-height:1.7}
 .import-reassurance>div{border-left:0;border-top:2px solid var(--line);padding:17px 0 0}
 .matching-story{background:var(--surface);width:100%;padding:68px max(48px,calc((100% - 1200px)/2));border:0}
+/* A section that sits on the page ground, with no band, so it runs straight into the closing. */
+.matching-story.plain{background:transparent}
 .matching-story>p{font-size:18px;line-height:1.75;max-width:800px}
 .simple-aliases{margin:28px 0}
 .simple-aliases>span{background:var(--card);border-radius:10px;padding:12px 18px;font-size:16px}

@@ -97,10 +97,23 @@ export function init(node, motion, scope) {
       text(raw, sample.raw, sample.raw_marks || []);
       text(out, sample.out);
     } else if (kind === 'selflearn') {
-      for (const part of ['pasted', 'wrong', 'fixed', 'tail', 'pill']) {
+      // The fix as a person makes it: select the misheard word, delete it,
+      // type the right one, then the pill. Stages ride on data-edit for CSS.
+      const edit =
+        phase === 0 ? 'pasted' : phase > 1 ? 'done' : progress < 0.3 ? 'selected' : progress < 0.4 ? 'deleted' : 'typing';
+      node.dataset.edit = edit;
+      // The pill leaves after its three seconds only while the film plays; a
+      // settled or paused frame (reduced motion, Pause, no script) keeps it in view.
+      node.toggleAttribute('data-pill-gone', phase === 3 && !forceFinal && !stopped && motion.allowed());
+      const fixedChars = Array.from(sample.fixed);
+      const typed =
+        edit === 'done' ? fixedChars.length : edit === 'typing' ? Math.min(fixedChars.length, Math.ceil((fixedChars.length * (progress - 0.4)) / 0.5)) : 0;
+      for (const part of ['pasted', 'wrong', 'tail', 'pill']) {
         const el = node.querySelector(`[data-sl-${part}]`);
         if (el) el.textContent = sample[part];
       }
+      const fixed = node.querySelector('[data-sl-fixed]');
+      if (fixed) fixed.textContent = fixedChars.slice(0, typed).join('');
       text(out, sample.out, sample.out_marks || [], phase < 3 ? 0 : Math.max(1, Math.ceil(Array.from(sample.out).length * Math.min(1, progress * 3))));
     } else if (kind === 'preview') {
       const chars = Array.from(sample.raw);

@@ -14,41 +14,42 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
 
 <FeatureShell
   path="/features/self-learning-dictionary/"
-  title="Self-Learning Dictionary: fix a misheard word once"
-  description="Correct a misheard word in text EnviousWispr just pasted and it joins your dictionary on its own, with three seconds to undo. Checked on your Mac. Free."
+  title="Self-Learning Dictionary: EnviousWispr learns as you edit"
+  description="Fix a misheard word in a dictation EnviousWispr just pasted, and it notices and saves the spelling to your dictionary, with three seconds to undo. Free."
   ogImage="/images/og/self-learning-dictionary.jpg"
   ogImageAlt="EnviousWispr Self-Learning Dictionary: fix it once, it remembers"
 >
   <FeatureHero
     kind="self-learning-dictionary"
     label="Self-Learning Dictionary"
-    title={'Fix it once.<br><span class="accent-ink">It remembers.</span>'}
-    copy="Correct a misheard word in the text EnviousWispr just pasted, the way you would anyway. The right spelling joins your dictionary on its own, and, with your Dictionary on, a word check on your Mac uses it in later dictations where it agrees you meant it."
+    title={'A personal dictionary<br><span class="accent-ink">that builds itself from your edits.</span>'}
+    copy="Edit a misrecognized word in a dictation EnviousWispr just pasted, and it detects the correction entirely on-device. No manual list maintenance, no cloud sync required. It learns your unique vocabulary seamlessly in the background."
   >
     <FeatureFilm kind="selflearn" />
   </FeatureHero>
   <section class="benefit wrap reverse">
     <div class="benefit-copy">
-      <span class="eyebrow">Nothing to set up</span>
-      <h2>No settings to open.<br /><span class="accent-ink">No questions to answer.</span></h2>
-      <p>Dictate and paste as usual. When you fix a word in the pasted text, a small pill says what was saved, with an Undo button for three seconds. Leave it alone and the word stays. New words go into Your Words, and a word you already had simply gains the mishearing.</p>
+      <span class="eyebrow">Everyday editing</span>
+      <h2>Just edit your text<br /><span class="accent-ink">the way you normally would.</span></h2>
+      <p>Dictate something, let EnviousWispr paste it, and edit whatever is wrong. When EnviousWispr spots a correction, a small pill shows what it saved, such as Added “Saoirse” to Dictionary, or “Notion” updated for a word you already had, with an Undo button for three seconds. If you leave it alone, it stays. New words appear in Your Words, while existing words simply log the new mishearing.</p>
     </div>
     <div class="benefit-visual">
       <ImportReassurance
         wrap={false}
         items={[
-          { title: 'Undo in one click.', copy: 'The pill offers Undo for three seconds. A new word is removed; an updated word goes back to how it was.' },
-          { title: 'Easy to find later.', copy: 'Learned words carry a small sparkle in Your Words, and the Auto-learned filter shows only those.' },
-          { title: 'Works where you type.', copy: 'Mail, browsers, terminals and web-based apps like WhatsApp. Password fields are never watched.' },
+          { title: 'Three seconds to undo', copy: 'If it caught something you did not intend, click Undo on the pill. That removes a freshly added word or reverts an updated one back to where it was.' },
+          { title: 'Marked in your dictionary', copy: 'You can see what was picked up automatically at any time. Words added this way have a small sparkle icon in Your Words, and the Auto-learned filter lets you view just those.' },
+          { title: 'Supported apps', copy: 'It watches for corrections in Mail, your web browser, terminal windows, and web-based apps like WhatsApp. Password fields are never watched.' },
         ]}
       />
     </div>
   </section>
   <section class="benefit wrap">
     <div class="benefit-copy">
-      <span class="eyebrow">Checked before it's used</span>
-      <h2>Your term where you meant it.<br /><span class="accent-ink">Checked, spot by spot.</span></h2>
-      <p>A learned word never replaces text on its own. When a later dictation contains a mishearing you corrected before, a word check on your Mac looks at that one spot and asks whether you meant your word. Only the spots it approves change, in every dictation language, for dictation and Transcribe a File.</p>
+      <span class="eyebrow">Context checking</span>
+      <h2>Context-aware replacements,<br /><span class="accent-ink">verified locally.</span></h2>
+      <p>Traditional custom dictionaries have a major flaw: map "twist" to "Tuist," and you can never use the word "twist" normally again.</p>
+      <p>For words it learned from your edits, with Enable Dictionary on, EnviousWispr resolves phonetic collisions by looking at context. It evaluates both words against the sentence to know when you are talking about Xcode build systems and when you are talking about opening a jar.</p>
     </div>
     <div class="benefit-visual">
       <div class="sl-check" aria-label="Illustrative example of the word check">
@@ -66,10 +67,10 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
       </div>
     </div>
   </section>
-  <section class="matching-story wrap">
-    <h2>Learned on your Mac.<br /><span class="accent-ink">Kept on your Mac.</span></h2>
-    <p>Spotting your correction and checking a learned word both run on your Mac, whichever polish you choose, and Envious Labs never receives the text it watches, the word you fixed or the mishearing it saved. With cloud polish, your dictation, learned words included, goes to the provider you chose, under your key.</p>
-    <small><a href="/help/self-learning-dictionary/">How the Self-Learning Dictionary works</a>, including which apps it watches and how to turn it off.</small>
+  <section class="matching-story plain wrap">
+    <h2>Your corrections stay<br /><span class="accent-ink">on your computer.</span></h2>
+    <p>Detecting corrections and checking context happen entirely on your Mac, regardless of your polish settings. Envious Labs never receives the text being watched, the word you fixed, or the mishearing. If you choose cloud polish, your dictation, with any learned words in it, goes directly to your chosen provider under your personal key.</p>
+    <a class="story-link" href="/help/self-learning-dictionary/">Read how it works, which apps it watches and how to turn it off <span aria-hidden="true">→</span></a>
   </section>
-  <DownloadClosing title="Correct it once. Let it remember." />
+  <DownloadClosing title="The dictation app that actually gets your names and jargon." />
 </FeatureShell>
