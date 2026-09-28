@@ -7,7 +7,7 @@ order: 4
 keywords: ["street address", "mailing address", "zip code", "numbers", "dates", "times", "money", "dollars", "percent", "phone number", "email address", "url", "version number", "ip address", "formatting numbers", "writes out numbers", "spelled out"]
 related: ["spoken-punctuation-and-emoji", "how-text-gets-pasted-into-your-app"]
 seeAlso: "spoken-text-formatting-dates-numbers-emails"
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 Numbers, dates, and times are converted automatically from spoken words into the standard written forms. EnviousWispr writes numbers, money, dates, times, phone numbers, email addresses, and web addresses the way you would type them, rather than spelling out every word you said. It is switched on when you install the app, and there is nothing to configure.
 
@@ -21,6 +21,7 @@ Numbers, dates, and times are converted automatically from spoken words into the
 | "eight two four six one nine six one seven five" | 824-619-6175 |
 | "version two point five point zero" | version 2.5.0 |
 | "one nine two dot one six eight dot one dot one" | 192.168.1.1 |
+| "localhost colon three thousand" | localhost:3000 |
 | "S dash one" | S-1 |
 | "twenty twenty six dash nine dash twenty six" | 2026-09-26 |
 | "john dot smith at gmail dot com" | john.smith@gmail.com |
@@ -56,4 +57,4 @@ Spoken number words are converted only in English. When you dictate in another l
 - A version number or IP address with a spoken dot between digits: "2 Punkt 5 Punkt 0", "2 kropka 5 kropka 0" and "2 точка 5 точка 0" become 2.5.0.
 - A date the engine wrote without leading zeros.
 
-Set your dictation language in Speech Engine settings so EnviousWispr knows the language. A word the speech engine misheard is left as it is; add the right word to your custom words and it formats from then on. Other wording is left as you spoke it.
+Set your dictation language under **Settings** \> **Transcription** so EnviousWispr knows the language. A word the speech engine misheard is left as it is; add the right word to your custom words and it formats from then on. Other wording is left as you spoke it.

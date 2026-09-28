@@ -12,6 +12,7 @@ button:disabled{cursor:default}
 .product-icon{width:43px;height:43px;border-radius:12px;display:grid;place-items:center;background:var(--soft);color:var(--accent);flex-shrink:0}
 .product-icon.file-transcription{background:#e7f2fb;color:#487cab}
 .product-icon.dictionary{background:#e4f1ec;color:#287a63}
+.product-icon.self-learning-dictionary{background:#eaf2e0;color:#5b7d2e}
 .product-icon.snippets{background:#fff0e3;color:#b16c30}
 .product-icon.live-preview{background:#eceafb;color:#7561bb}
 .product-icon.history{background:#f9e9ef;color:#aa5a7f}

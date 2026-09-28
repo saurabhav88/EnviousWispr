@@ -6,13 +6,13 @@ section: "Paste System"
 order: 1
 keywords: ["paste", "how does it type", "where does the text go", "delivery", "spacing", "capitals", "capitalisation", "capitalization", "stop capitalising", "stop capitalizing", "capital letters", "extra space", "no space", "jams words together", "smart insertion", "middle of a sentence", "cursor"]
 related: ["clipboard-preservation", "paste-not-working", "using-snippets"]
-updated: 2026-09-05
+updated: 2026-09-27
 ---
-EnviousWispr remembers the app and text field that were focused when you started recording, and delivers your text there. It works anywhere you can type, including native Mac apps, web browsers, and apps built on web technology such as VS Code, Slack, Discord, and Notion.
+EnviousWispr remembers the app, window and text field that were focused when you started recording, and delivers your text there. It works anywhere you can type, including native Mac apps, web browsers, and apps built on web technology such as VS Code, Slack, Discord, and Notion.
 
 ### The destination is locked in at the start
 
-EnviousWispr captures your active text field when you begin recording rather than when you finish. AI polish can take a few seconds, and you might click into a different window while you wait. Locking the destination at the beginning is what makes sure your words land where you started talking. Keep that text field open until your text arrives.
+EnviousWispr captures your active text field when you begin recording rather than when you finish. AI polish can take a few seconds, and you might click into a different window while you wait. Locking the destination at the beginning is what makes sure your words land where you started talking, in the same window even when the app has several open, such as two browser windows. If that window is gone by the time your text is ready, EnviousWispr does not paste into another one: it leaves the words on your clipboard and shows the Copied notice.
 
 ### Three ways to deliver the text, tried in order
 

@@ -197,6 +197,10 @@ html[data-theme='dark'] .site-chrome {
   gap: 3px;
   padding: 12px;
 }
+/* An odd count (seven features since #996) leaves the last entry alone; let it span. */
+.chrome-header .menu-products > .menu-product:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
 .chrome-header .menu-product {
   display: flex;
   align-items: center;

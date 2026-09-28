@@ -1,13 +1,13 @@
 ---
 title: "Sounds and Appearance"
-description: "Light and dark mode, where the recording bar sits and how it looks, the Dock icon, recording sounds, and what happens to music while you dictate."
+description: "Light and dark mode, where the recording bar sits and how it looks, the Dock icon, the app's language (English or Deutsch), recording sounds, and what happens to music while you dictate."
 category: "features"
 section: "Appearance and Sounds"
 order: 5
-keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "pill design", "recording pill", "overlay", "bar position", "move the bar", "menu bar icon", "dock", "dock icon", "hide dock icon", "show in dock", "other audio"]
-updated: 2026-09-24
+keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "pill design", "recording pill", "overlay", "bar position", "move the bar", "menu bar icon", "dock", "dock icon", "hide dock icon", "show in dock", "language", "app language", "German", "Deutsch", "interface language", "other audio"]
+updated: 2026-09-27
 ---
-Six settings change how EnviousWispr looks and sounds while you use it. The first five affect only looks and sounds, never what you dictate or how accurately it is transcribed. The sixth, Other audio while you dictate, can quiet the music around you, which keeps background sound out of your recording.
+Seven settings change how EnviousWispr looks and sounds while you use it. The first six affect only looks, language and sounds, never what you dictate or how accurately it is transcribed. The seventh, Other audio while you dictate, can quiet the music around you, which keeps background sound out of your recording.
 
 ### Light or dark
 
@@ -28,6 +28,12 @@ The same **Appearance** page has a **Recording Pill** row with three designs: **
 ### The Dock icon
 
 EnviousWispr shows in the Dock and in the app switcher (Command-Tab) like any Mac app, and its window opens in front of your other windows. If you would rather keep it in the menu bar alone, go to **Settings**, then select **Appearance**, and switch off **Show app in Dock**. With that off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays, so you can always reach Settings from it.
+
+### The app's language
+
+EnviousWispr's menus, settings and messages come in English and German. Go to **Settings**, then select **Appearance**, and pick a language under **Language**: **System default** follows the language your Mac uses, or choose **English** or **Deutsch** to use that one no matter what your Mac is set to. EnviousWispr then shows **EnviousWispr uses the new language after it relaunches.** with a **Relaunch to apply** button. The button is unavailable while a dictation or file transcription is in progress, so a relaunch never cuts off what you are working on.
+
+This only changes the words EnviousWispr shows you. The language you dictate in is a separate setting; see [dictating in other languages](/help/multi-language-dictation/).
 
 ### Recording sounds
 

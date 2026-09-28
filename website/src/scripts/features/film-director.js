@@ -1,6 +1,6 @@
 // One feature film (#2816): the four-phase story (listening, working,
-// writing, result) for the dictionary, snippets, quick-add, correction and
-// live-preview shells. Ported from the mock's film-director.js; scene data
+// writing, result) for the dictionary, snippets, quick-add, correction,
+// self-learning and live-preview shells. Ported from the mock's film-director.js; scene data
 // comes from the node's data-scenes attribute, rendered by FeatureFilm.astro.
 // The live-preview renderer is imported only by the preview film, so pages
 // without it never load native-preview.js.
@@ -96,6 +96,12 @@ export function init(node, motion, scope) {
     if (kind === 'quickadd') {
       text(raw, sample.raw, sample.raw_marks || []);
       text(out, sample.out);
+    } else if (kind === 'selflearn') {
+      for (const part of ['pasted', 'wrong', 'fixed', 'tail', 'pill']) {
+        const el = node.querySelector(`[data-sl-${part}]`);
+        if (el) el.textContent = sample[part];
+      }
+      text(out, sample.out, sample.out_marks || [], phase < 3 ? 0 : Math.max(1, Math.ceil(Array.from(sample.out).length * Math.min(1, progress * 3))));
     } else if (kind === 'preview') {
       const chars = Array.from(sample.raw);
       const draft = phase === 0 ? chars.slice(0, Math.max(1, Math.floor(chars.length * progress))).join('') : sample.raw;

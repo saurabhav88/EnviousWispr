@@ -93,3 +93,18 @@ html[data-motion=paused] :is(.landing-product-card,.loop-feature-card) *{animati
 @media(max-width:850px){.directory-hero{grid-template-columns:1fr;padding-block:52px 25px;gap:35px}.directory-intro{max-width:600px}.directory-intro h1{font-size:62px}.directory-intro h1 br:first-child{display:none}}
 @media(max-width:600px){.directory-hero{padding-block:41px 15px;gap:29px}.directory-intro h1{font-size:46px;line-height:1.08}.directory-intro h1 br:first-child{display:initial}.directory-label{font-size:12px;margin-bottom:19px}.directory-intro>p{font-size:17px;line-height:1.7;margin-top:21px}.directory-jump{font-size:13px;margin-top:13px}.landing-products{padding-top:38px}}
 @media(max-width:360px){.directory-intro h1{font-size:40px}}
+/* Self-Learning Dictionary directory card (#996). */
+.preview-self-learning-dictionary{display:grid;gap:10px;align-content:center;border:1px solid var(--landing-border);border-radius:13px;padding:18px;background:color-mix(in srgb,var(--landing-tint) 55%,var(--landing-card))}
+.mini-fix{font-size:21px;line-height:1.35;color:var(--ink)}
+.mini-fix del{color:var(--rose);text-decoration:line-through;text-decoration-thickness:1.5px;margin-right:6px}
+.mini-fix ins{text-decoration:none;color:var(--green);font-weight:600}
+.mini-pill{display:inline-flex;align-items:center;gap:8px;width:fit-content;max-width:100%;padding:6px 10px;border-radius:999px;background:#211a2c;color:#f4eff9;font-size:12px;font-weight:500}
+.mini-pill svg{width:14px;height:14px;color:#9be3c5;flex:none}
+.mini-pill b{font-weight:600;padding:1px 7px;border-radius:999px;background:#ffffff1f}
+html[data-theme=dark] .mini-pill{background:#f3eefa;color:#211a2c}
+html[data-theme=dark] .mini-pill svg{color:#287a63}
+html[data-theme=dark] .mini-pill b{background:#211a2c14}
+/* Seven cards (#996 added the Self-Learning Dictionary): two wide cards fill three rows
+   of three; at two columns only Dictation is wide, so the other six pair up. */
+@media(min-width:1101px){.landing-product-grid>[data-slug=dictation],.landing-product-grid>[data-slug=self-learning-dictionary]{grid-column:span 2}}
+@media(min-width:601px) and (max-width:1100px){.landing-product-grid>[data-slug=dictation]{grid-column:1/-1}}

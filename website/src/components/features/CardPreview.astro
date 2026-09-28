@@ -78,6 +78,24 @@ const video = ['MP4', 'MOV'];
     )
   }
   {
+    kind === 'self-learning-dictionary' && (
+      <>
+        <div class="mini-heard">
+          <small>You fixed</small>
+        </div>
+        <div class="mini-fix">
+          <del>Sasha</del>
+          <ins>Saoirse</ins>
+        </div>
+        <div class="mini-pill">
+          <DemoIcon name="check" />
+          <span>Added “Saoirse” to Dictionary</span>
+          <b>Undo</b>
+        </div>
+      </>
+    )
+  }
+  {
     kind === 'snippets' && (
       <>
         <div class="mini-trigger">

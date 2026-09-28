@@ -1,0 +1,75 @@
+---
+// Self-Learning Dictionary (#996): fix a misheard word in pasted text and it joins
+// your dictionary, with a three-second Undo; a word check on the Mac decides where a
+// learned word applies later (#3105, #3242). Every claim traces to
+// help/self-learning-dictionary.md, which owns the detail.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import '../../styles/features/self-learning.css';
+import FeatureHero from '../../components/features/FeatureHero.astro';
+import FeatureFilm from '../../components/features/FeatureFilm.astro';
+import DemoIcon from '../../components/features/DemoIcon.astro';
+import ImportReassurance from '../../components/features/ImportReassurance.astro';
+import DownloadClosing from '../../components/DownloadClosing.astro';
+---
+
+<FeatureShell
+  path="/features/self-learning-dictionary/"
+  title="Self-Learning Dictionary: fix a misheard word once"
+  description="Correct a misheard word in text EnviousWispr just pasted and it joins your dictionary on its own, with three seconds to undo. Checked on your Mac. Free."
+  ogImage="/images/og/self-learning-dictionary.jpg"
+  ogImageAlt="EnviousWispr Self-Learning Dictionary: fix it once, it remembers"
+>
+  <FeatureHero
+    kind="self-learning-dictionary"
+    label="Self-Learning Dictionary"
+    title={'Fix it once.<br><span class="accent-ink">It remembers.</span>'}
+    copy="Correct a misheard word in the text EnviousWispr just pasted, the way you would anyway. The right spelling joins your dictionary on its own, and your next dictation gets it right."
+  >
+    <FeatureFilm kind="selflearn" />
+  </FeatureHero>
+  <section class="benefit wrap reverse">
+    <div class="benefit-copy">
+      <span class="eyebrow">Nothing to set up</span>
+      <h2>No settings to open.<br /><span class="accent-ink">No questions to answer.</span></h2>
+      <p>Dictate and paste as usual. When you fix a word in the pasted text, a small pill says what was saved, with an Undo button for three seconds. Leave it alone and the word stays. New words go into Your Words, and a word you already had simply gains the mishearing.</p>
+    </div>
+    <div class="benefit-visual">
+      <ImportReassurance
+        wrap={false}
+        items={[
+          { title: 'Undo in one click.', copy: 'The pill offers Undo for three seconds. A new word is removed; an updated word goes back to how it was.' },
+          { title: 'Easy to find later.', copy: 'Learned words carry a small sparkle in Your Words, and the Auto-learned filter shows only those.' },
+          { title: 'Works where you type.', copy: 'Mail, browsers, terminals and web-based apps like WhatsApp. Password fields are never watched.' },
+        ]}
+      />
+    </div>
+  </section>
+  <section class="benefit wrap">
+    <div class="benefit-copy">
+      <span class="eyebrow">Checked before it's used</span>
+      <h2>Your term where you meant it.<br /><span class="accent-ink">The ordinary word where you didn't.</span></h2>
+      <p>A learned word never replaces text on its own. When a later dictation contains something that sounds like it, a word check on your Mac looks at that one spot and asks whether you meant your word. Only the spots it approves change, in every dictation language, for dictation and Transcribe a File.</p>
+    </div>
+    <div class="benefit-visual">
+      <div class="sl-check" aria-label="Illustrative example of the word check">
+        <div class="sl-check-row approved">
+          <span class="sl-check-mark"><DemoIcon name="check" /></span>
+          <p>The build runs on <mark>Tuist</mark> now.</p>
+          <small>Changed</small>
+        </div>
+        <div class="sl-check-row kept">
+          <span class="sl-check-mark">=</span>
+          <p>Give the lid a <mark>twist</mark>.</p>
+          <small>Left as you said it</small>
+        </div>
+        <span class="sl-check-note">Learned word: Tuist, heard as “twist”. Illustrative example.</span>
+      </div>
+    </div>
+  </section>
+  <section class="matching-story wrap">
+    <h2>Learned on your Mac.<br /><span class="accent-ink">Kept on your Mac.</span></h2>
+    <p>Spotting your correction and checking a learned word both run on your Mac, whichever polish you choose. The text EnviousWispr watches, the word you fixed and the mishearing it saved never leave it.</p>
+    <small><a href="/help/self-learning-dictionary/">How the Self-Learning Dictionary works</a>, including which apps it watches and how to turn it off.</small>
+  </section>
+  <DownloadClosing title="Correct it once. Get it right from then on." />
+</FeatureShell>
