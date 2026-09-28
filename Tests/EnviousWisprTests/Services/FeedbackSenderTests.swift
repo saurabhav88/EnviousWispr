@@ -67,6 +67,7 @@ struct FeedbackSenderTests {
 
     let payload = try #require(try JSONSerialization.jsonObject(with: lines[2]) as? [String: Any])
     #expect(payload["level"] as? String == "error")
+    #expect(payload["type"] as? String == "feedback")
     #expect(payload["event_id"] as? String == "5d1e6a2b9c3f4e7a8b102f4c6d8e0a1b")
     #expect(payload["timestamp"] as? Double == 1_790_000_000)
     #expect(payload["release"] as? String == "com.enviouswispr.app@2.5.2")
@@ -79,7 +80,8 @@ struct FeedbackSenderTests {
     // Nothing from the telemetry lane rides along.
     #expect(
       Set(payload.keys) == [
-        "event_id", "timestamp", "platform", "level", "release", "environment", "contexts",
+        "event_id", "type", "timestamp", "platform", "level", "release", "environment",
+        "contexts",
       ])
     // Header, item header, payload, then the trailing newline: no attachment item.
     #expect(lines.count == 4)
@@ -89,17 +91,21 @@ struct FeedbackSenderTests {
   @Test("Ticked: the attachment item follows in the same envelope with the exact bytes")
   func envelopeWithAttachment() throws {
     let dsn = try #require(FeedbackDSN(Self.dsnString))
-    let bytes = Data(#"{"diary":{"entries":[]},"schema_version":1}"#.utf8)
+    // Pretty-printed like the real snapshot: newlines inside must not end the item.
+    let bytes = Data("{\n  \"diary\" : {\"entries\" : []},\n  \"schema_version\" : 1\n}".utf8)
     let data = FeedbackSender.envelope(
       for: Self.record(attachment: bytes), dsn: dsn, sentAt: Date(timeIntervalSince1970: 0))
     let lines = data.split(separator: 0x0A, omittingEmptySubsequences: false)
 
+    // The envelope ends with exactly the attachment bytes and one newline.
+    var expectedTail = bytes
+    expectedTail.append(0x0A)
+    #expect(Data(data.suffix(expectedTail.count)) == expectedTail)
     let attachmentHeader = try JSONSerialization.jsonObject(with: lines[3]) as? [String: Any]
     #expect(attachmentHeader?["type"] as? String == "attachment")
     #expect(attachmentHeader?["filename"] as? String == "enviouswispr-diagnostics.json")
     #expect(attachmentHeader?["content_type"] as? String == "application/json")
     #expect(attachmentHeader?["length"] as? Int == bytes.count)
-    #expect(Data(lines[4]) == bytes)
   }
 
   // MARK: - Answers

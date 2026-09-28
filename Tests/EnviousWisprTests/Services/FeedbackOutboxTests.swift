@@ -337,19 +337,42 @@ struct FeedbackOutboxTests {
     let directory = Self.tempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let http = HTTP([])
+    let gate = Gate()
     let path = FakePath(satisfied: false)
-    let outbox = Self.makeOutbox(directory, http: http, path: path)
-    await outbox.start()
+    let outbox = Self.makeOutbox(directory, http: http, path: path, gate: gate)
     _ = await outbox.enqueue(Self.record(1))
-    path.set(true)
-    path.set(false)
-    await outbox.drain()
-    #expect(try Self.records(in: directory).count <= 1)
+    _ = await outbox.enqueue(Self.record(2))
 
+    // Online just long enough for report 1 to start, then offline before it finishes.
+    path.set(true)
+    let firstPass = Task { await outbox.drain() }
+    await gate.waitUntilEntered()
+    path.set(false)
+    await gate.release()
+    await firstPass.value
+    #expect(http.sent == [Self.eventID(1)])
+    #expect(try Self.records(in: directory).map(\.id) == [Self.record(2).id])
+
+    // Only coming back online sends report 2.
     path.set(true)
     await outbox.drain()
+    #expect(http.sent == [Self.eventID(1), Self.eventID(2)])
     #expect(try Self.records(in: directory).isEmpty)
-    #expect(http.sent.contains(Self.eventID(1)))
+  }
+
+  @Test("An outbox file that cannot be read counts as undeliverable, for the form's notice")
+  func unreadableFileIsUndeliverable() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let offline = FakePath(satisfied: false)
+    let first = Self.makeOutbox(directory, http: HTTP([]), path: offline)
+    _ = await first.enqueue(Self.record(1))
+    #expect(await first.hasUndeliverableReports() == false)
+
+    let blocked = Self.makeOutbox(
+      directory, http: HTTP([]), path: offline,
+      readData: { _ in throw CocoaError(.fileReadNoPermission) })
+    #expect(await blocked.hasUndeliverableReports() == true)
   }
 
   @Test("Reports saved at the same time are all kept, and each is sent exactly once")

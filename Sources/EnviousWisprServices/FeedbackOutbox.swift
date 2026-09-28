@@ -164,11 +164,16 @@ actor FeedbackOutbox {
   }
 
   /// Whether a saved report will not be delivered without help, for the form's notice: Sentry
-  /// refused it, or sending is paused by a configuration failure while reports wait.
+  /// refused it, sending is paused by a configuration failure while reports wait, or the outbox
+  /// file exists but cannot be read (nothing in it can be sent).
   func hasUndeliverableReports() -> Bool {
-    guard let records = (try? load())?.records else { return false }
-    if records.contains(where: { $0.state == .rejected }) { return true }
-    return isPaused && records.contains { $0.state == .pending }
+    do {
+      let records = try load().records
+      if records.contains(where: { $0.state == .rejected }) { return true }
+      return isPaused && records.contains { $0.state == .pending }
+    } catch {
+      return FileManager.default.fileExists(atPath: fileURL.path)
+    }
   }
 
   // MARK: - Drain
@@ -316,7 +321,7 @@ actor FeedbackOutbox {
 }
 
 /// The production HTTP call: an ephemeral session that refuses redirects, so a report never
-/// follows a redirect to another host.
+/// follows a redirect to another host, and gives up on one request after 60 seconds.
 enum FeedbackHTTP {
   static let live: FeedbackSender.HTTP = { request in
     let (_, response) = try await session.data(for: request)
@@ -328,8 +333,13 @@ enum FeedbackHTTP {
     return (http.statusCode, headers)
   }
 
-  private static let session = URLSession(
-    configuration: .ephemeral, delegate: NoRedirects(), delegateQueue: nil)
+  /// The whole request, not only the gap between bytes, is capped (the default resource limit is
+  /// seven days), so a slow server cannot hold the one-at-a-time outbox. A timeout is a retry.
+  private static let session: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForResource = 60
+    return URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
+  }()
 
   private final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(

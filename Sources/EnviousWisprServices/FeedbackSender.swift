@@ -138,13 +138,14 @@ struct FeedbackSender: Sendable {
   }
 
   /// The feedback event: the user's words, the optional email, basic versions, and level error
-  /// (the sentry-triage Worker alerts only on error or fatal, #3275). No user, tags or
-  /// breadcrumbs.
+  /// (the sentry-triage Worker alerts only on error or fatal, #3275). `type` is "feedback" as the
+  /// SDK sets it (sentry-cocoa 9.26.1 `SentryClient.m:613`). No user, tags or breadcrumbs.
   static func feedbackPayload(for record: FeedbackRecord) -> [String: Any] {
     var feedback: [String: Any] = ["message": record.message, "source": "custom"]
     if let email = record.email { feedback["contact_email"] = email }
     return [
       "event_id": record.eventID,
+      "type": "feedback",
       "timestamp": record.submittedAt.timeIntervalSince1970,
       "platform": "cocoa",
       "level": "error",

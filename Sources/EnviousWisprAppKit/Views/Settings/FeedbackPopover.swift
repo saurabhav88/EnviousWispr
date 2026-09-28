@@ -91,7 +91,13 @@ struct FeedbackForm: View {
     .background(Color.stPageBg)
     .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: status)
     .onAppear {
+      // A form kept alive between openings starts fresh: a save still finishing belongs to the
+      // previous opening and changes nothing here (`presentation`).
       presentation = UUID()
+      closeTask?.cancel()
+      closeTask = nil
+      status = .editing
+      hasUndeliverable = false
       message = draftStore.message
       email = draftStore.email
       focus = .message
