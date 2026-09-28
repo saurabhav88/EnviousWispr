@@ -14,7 +14,7 @@ keywords:
   - "get dictation back mac"
 faqs:
   - question: "Where did my dictation go if nothing appeared on screen?"
-    answer: "In EnviousWispr, a free dictation app for Mac, a dictation that could not be delivered is left on your clipboard, and a notice reading Copied. Press ⌘V to paste appears. Click into a text box and press Command V. Every dictation is also kept in History on your Mac, so it is never lost."
+    answer: "In EnviousWispr, a free dictation app for Mac, a dictation that could not be delivered is usually left on your clipboard, with a notice reading Copied. Press ⌘V to paste. Click into a text box and press Command V. Your dictations are also saved in History on your Mac, and Control Command V pastes the newest one again wherever your cursor is."
   - question: "How do I paste my last dictation again?"
     answer: "Click where the text belongs and press Control Command V, or choose Paste Last Dictation from the EnviousWispr menu bar menu. Your newest dictation is pasted where your cursor is now. Control Command C copies it to the clipboard instead."
   - question: "Why did my dictation paste into a different window than the one I was looking at?"
@@ -43,15 +43,15 @@ That covers most cases, but a few still leave the text with nowhere to go:
 - **The window closed.** You started in a chat window and closed it before the text was ready. EnviousWispr does not guess and paste into a different window instead.
 - **The app refused the text.** Some apps block typed input. EnviousWispr tries three ways to deliver: writing into the text box directly, a normal paste, and the app's own Edit, Paste menu.
 
-In each of those cases your words are put on the clipboard and a notice appears: **Copied. Press ⌘V to paste.** Nothing has been thrown away.
+When every delivery method fails, your words are put on the clipboard and a notice appears: **Copied. Press ⌘V to paste.** In most apps EnviousWispr does the same when it can see that a paste went nowhere, for example when no text box was selected. Some apps do not show enough about where your cursor is for it to tell, so a missed paste there shows nothing; your words are still in History, and Paste Last Dictation brings them back.
 
 ## Three ways to get the words back
 
 **1. Paste Last Dictation.** Click where the text belongs and press Control Command V. This is the fastest route, and it works even if you have copied something else since.
 
-**2. Paste from the clipboard.** If you saw the Copied notice and have not copied anything since, Command V works too.
+**2. Paste from the clipboard.** If you saw the Copied notice and have not copied anything since, Command V works too. If there was no notice, your clipboard may hold what you copied before, so use Paste Last Dictation instead.
 
-**3. Open History.** EnviousWispr saves every dictation on your Mac in History. Click the EnviousWispr icon in your menu bar, choose **Settings**, go to **History**, find the dictation, and copy or paste it from there. History is also where a cancelled recording can be kept, which is covered in the [History feature page](/features/history/).
+**3. Open History.** EnviousWispr saves your dictations on your Mac in History (a recording with no speech in it is not saved). Click the EnviousWispr icon in your menu bar, choose **Settings**, go to **History**, find the dictation, and copy or paste it from there. History is also where a cancelled recording can be kept, which is covered in the [History feature page](/features/history/).
 
 ## Saying it once, using it twice
 
@@ -71,6 +71,6 @@ Open **System Settings, Privacy & Security, Accessibility**, find EnviousWispr, 
 
 ## The takeaway
 
-A dictation that lands nowhere is not lost. It is on your clipboard, in your History, and one shortcut away. Click where it belongs and press Control Command V.
+A dictation that lands nowhere is not lost. It is usually on your clipboard, it is saved in your History, and it is one shortcut away. Click where it belongs and press Control Command V.
 
 If you want to see the feature on its own page, the [Paste Last Dictation page](/features/paste-last-dictation/) shows both shortcuts, and [How Text Gets Pasted Into Your App](/help/how-text-gets-pasted-into-your-app/) explains where every dictation is delivered and why.

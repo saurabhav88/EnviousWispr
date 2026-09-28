@@ -16,7 +16,7 @@ faqs:
   - question: "How do I get British spelling from dictation on a Mac?"
     answer: "In EnviousWispr, a free dictation app for Mac, open Settings, Transcription, Language, switch off Auto-detect language, click Change and choose English (UK). Your next dictation writes colour, centre and organise instead of the American spellings."
   - question: "Why does my speech-to-text app spell colour as color?"
-    answer: "The speech engines EnviousWispr runs, Parakeet and WhisperKit, both write English with American spelling. They hear you correctly; the spelling is the one they learned. A separate step after transcription is what turns it into British spelling."
+    answer: "The speech engines EnviousWispr runs, Parakeet and WhisperKit, both write English with American spelling. They hear you correctly and spell the word the American way. A separate step after transcription is what turns it into British spelling."
   - question: "Does British spelling still work with AI polish on?"
     answer: "Yes. EnviousWispr changes the spelling before AI polish runs and checks it again after, which catches American spelling that a polish model puts back. It works with polish on or off, and in Transcribe a File too."
   - question: "Which words does it leave alone?"
@@ -29,9 +29,9 @@ This post explains why that happens and how to make dictation on your Mac write 
 
 ## Why dictation writes American spelling
 
-Modern speech engines learn to write from huge amounts of text, and most of that text uses American spelling. So when you say "colour", the engine hears the word perfectly and then writes the spelling it has seen most often: "color".
+Both speech engines write English with American spelling. When you say "colour", the engine hears the word correctly and writes "color", most likely because American spelling dominates the text such models learn from.
 
-The two engines EnviousWispr runs on your Mac, Parakeet and WhisperKit, both behave this way. Your accent has nothing to do with it. A speaker from Leeds and a speaker from Boston get the same spelling, because the spelling is a writing habit, not a listening one. The spelling differences themselves are well documented; [Wikipedia's page on them](https://en.wikipedia.org/wiki/American_and_British_English_spelling_differences) is a good overview.
+The two engines EnviousWispr runs on your Mac, Parakeet and WhisperKit, both behave this way. Your accent has nothing to do with it. A speaker from Leeds and a speaker from Boston get the same spelling, because the spelling comes from the engine, not from your voice. The spelling differences themselves are well documented; [Wikipedia's page on them](https://en.wikipedia.org/wiki/American_and_British_English_spelling_differences) is a good overview.
 
 ## How to switch to British spelling
 
@@ -51,7 +51,7 @@ The conversion covers the everyday spelling families: -our words (colour, favour
 |---|---|
 | AI polish is on | Spelling is changed before polish and checked again after, so a polish model cannot quietly put "color" back |
 | A word whose spelling depends on meaning | Left as you said it: program, check, practice, license, meter, story and tire |
-| A name in the middle of a sentence | Kept as written, so "Kennedy Center" stays "Center" |
+| A name in the middle of a sentence | Kept as written, so "Kennedy Center" stays "Center" (a name at the very start of a sentence can still change) |
 | A word in your Custom Words | Kept exactly as you saved it |
 | Vocabulary | Unchanged: "apartment" stays "apartment", it does not become "flat" |
 | Auto-detect is on | American spelling, because British spelling needs English (UK) chosen |
@@ -68,4 +68,4 @@ British spelling is one part of a wider set of language options. Parakeet recogn
 
 ## The takeaway
 
-Dictation writes American spelling because that is what speech engines learned, not because of how you speak. Choose English (UK) as your dictation language in EnviousWispr and it writes colour, centre and organise from the first word, including when AI polish is cleaning up the text.
+Dictation writes American spelling because that is how the speech engines spell English, not because of how you speak. Choose English (UK) as your dictation language in EnviousWispr and it writes colour, centre and organise from the first word, including when AI polish is cleaning up the text.

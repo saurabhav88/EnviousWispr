@@ -17,7 +17,7 @@ const faq = [
   },
   {
     q: 'Where did my dictation go when nothing was pasted?',
-    a: 'When no text box was selected, or every way of delivering the text failed, EnviousWispr leaves your words on the clipboard and shows a Copied notice, so you can press Command V yourself. In some apps a missed paste cannot be detected; Paste Last Dictation works there too.',
+    a: 'When every way of delivering the text fails, EnviousWispr leaves your words on the clipboard and shows a Copied notice, so you can press Command V yourself. In most apps it does the same when it can see a paste went nowhere, for example with no text box selected. Some apps do not show enough to tell; Paste Last Dictation works there too.',
   },
   {
     q: 'Can I change the Paste Last Dictation shortcut?',
@@ -64,16 +64,17 @@ const faq = [
   <section class="benefit wrap reverse">
     <div class="benefit-copy">
       <span class="eyebrow">Where your words land</span>
-      <h2>It pastes where you<br /><span class="accent-ink">started talking.</span></h2>
-      <p>EnviousWispr remembers the app, window and text field that were in front when you pressed your recording key. AI polish can take a few seconds, and you might click somewhere else while you wait. Your words still go back to the window you started in, even when the app has several windows open, such as two browser windows.</p>
+      <h2>A dictation goes where you<br /><span class="accent-ink">started talking.</span></h2>
+      <p>When a dictation finishes, EnviousWispr delivers it to the place you started. It remembers the app, window and text field that were in front when you pressed your recording key. AI polish can take a few seconds, and you might click somewhere else while you wait. Your words still go back to the window you started in, even when the app has several windows open, such as two browser windows.</p>
       <p>If that window is gone by the time your text is ready, EnviousWispr does not paste into a different one. It leaves your words on the clipboard and shows the Copied notice, so nothing lands in the wrong place.</p>
+      <p>Paste Last Dictation is different on purpose: it pastes wherever your cursor is when you press it, so you choose the place.</p>
     </div>
     <div class="benefit-visual">
       <ImportReassurance
         wrap={false}
         items={[
           { title: 'Three ways to deliver', copy: 'It writes into the text box directly, then tries a normal paste, then the app’s own Edit, Paste menu.' },
-          { title: 'Nothing is thrown away', copy: 'If all three fail, your words stay on the clipboard and a notice tells you so.' },
+          { title: 'Nothing is thrown away', copy: 'If all three fail, your words stay on the clipboard and a notice tells you so. Where an app hides a missed paste, Paste Last Dictation still brings the words back.' },
           { title: 'In the menu bar too', copy: 'Choose Paste Last Dictation from the menu. The start of the text is shown under it, so you can check before you click.' },
         ]}
       />

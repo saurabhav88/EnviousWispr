@@ -20,7 +20,7 @@ faqs:
   - question: "How do I dictate a slash command such as /clear?"
     answer: "Say \"slash clear\" and you get /clear, even with Convert spoken punctuation switched off. \"command is slash wfp\" gives command is /wfp, with the space kept. Ordinary phrases like \"slash the budget\" stay as words, though some verb uses such as \"slash prices\" can still become a symbol."
   - question: "Is this formatting done in the cloud?"
-    answer: "No. The formatting is a step that runs on your Mac before any AI polish, on every dictation. Transcription runs on your Mac too. Text leaves your Mac only if you choose a cloud polish provider under your own key, and then it goes directly to that provider."
+    answer: "No. The formatting is a step that runs on your Mac before any AI polish, automatically. Transcription runs on your Mac too. Text leaves your Mac only if you choose a cloud polish provider under your own key, and then it goes directly to that provider."
 ---
 
 Dictating prose is easy now. Dictating the things developers actually type between sentences is harder: a version number, a local server address, a slash command for a chat tool, a date in the format your logs use. Say "version two point five point zero" and dictation often hands the words back, spelled out, for you to fix by hand.
@@ -77,6 +77,6 @@ Formatting covers the shape of technical text. The names in it, like the build t
 
 ## Where it runs
 
-All of this formatting happens on your Mac, before any AI polish, on every dictation. If polish is off or fails, the formatted text is what gets pasted. Transcription runs on your Mac too, so your voice stays there. Text leaves your Mac only if you pick a cloud polish provider under your own key, and then it goes directly to that provider.
+All of this formatting happens on your Mac, before any AI polish, automatically. The spoken-number examples here are for English dictation; addresses, links and codes said with local words also work in French, Spanish, Polish, Dutch, German, Russian, Portuguese and Italian. If polish is off or fails, the formatted text is what gets pasted. Transcription runs on your Mac too, so your voice stays there. Text leaves your Mac only if you pick a cloud polish provider under your own key, and then it goes directly to that provider.
 
 For the feature at a glance, see the [Smart Formatting page](/features/smart-formatting/). If you dictate pull request descriptions and review comments, [Dictation for Developers](/blog/dictation-for-developers-code-reviews/) covers that workflow.
