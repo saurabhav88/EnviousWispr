@@ -332,11 +332,15 @@ final class DiagnosticsDiary: @unchecked Sendable {
   static func pruned(_ entries: [Entry], now: Date) -> [Entry] {
     let cutoff = now.addingTimeInterval(-maxAge)
     let fresh = entries.filter { $0.firstObservedAt >= cutoff }
-    let sorted = fresh.sorted {
+    return Array(ordered(fresh).prefix(maxEntries))
+  }
+
+  /// Newest first, ties broken by take id, so every encoding of the same entries is identical.
+  static func ordered(_ entries: [Entry]) -> [Entry] {
+    entries.sorted {
       $0.firstObservedAt != $1.firstObservedAt
         ? $0.firstObservedAt > $1.firstObservedAt : $0.takeID < $1.takeID
     }
-    return Array(sorted.prefix(maxEntries))
   }
 
   static func encode(_ entries: [Entry]) throws -> Data {

@@ -126,6 +126,34 @@ struct FeedbackReporterTests {
     #expect(payload["associated_event_id"] == nil)
   }
 
+  /// #3269: the attachment the report is built with, read at the public initializer through the
+  /// construction seam (a built `SentryFeedback` does not expose its attachments).
+  @Test("A ticked report is built with the snapshot's attachment; an unticked one with none")
+  func diagnosticsAttachmentFollowsTheChoice() throws {
+    let draft = try #require(FeedbackDraft(message: "it pasted twice", email: ""))
+    let snapshot = FeedbackDiagnosticsSnapshot(data: Data(#"{"schema_version":1}"#.utf8))
+    var built: [[Sentry.Attachment]?] = []
+    let record: (FeedbackDraft, [Sentry.Attachment]?) -> SentryFeedback = { draft, attachments in
+      built.append(attachments)
+      return FeedbackReporter.makeFeedback(draft, attachments: attachments)
+    }
+    var captured: [SentryFeedback] = []
+
+    _ = FeedbackReporter.send(
+      draft, diagnostics: snapshot, isEnabled: true, makeFeedback: record,
+      capture: { captured.append($0) })
+    _ = FeedbackReporter.send(
+      draft, diagnostics: nil, isEnabled: true, makeFeedback: record,
+      capture: { captured.append($0) })
+
+    #expect(captured.count == 2)
+    #expect(built.count == 2)
+    #expect(built.first??.map(\.data) == [snapshot.data])
+    #expect(built.first??.map(\.filename) == ["enviouswispr-diagnostics.json"])
+    #expect(built.last! == nil)
+    #expect(captured.first?.serialize()["message"] as? String == "it pasted twice")
+  }
+
   @Test("No email means no contact_email field, not an empty one")
   func noEmailNoField() throws {
     let draft = try #require(FeedbackDraft(message: "love it", email: ""))

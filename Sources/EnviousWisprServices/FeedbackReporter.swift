@@ -58,7 +58,9 @@ public struct FeedbackDraft: Equatable, Sendable {
 ///
 /// With "Send crash reports" OFF (#3269) Sentry is still started, in a feedback-only mode that
 /// drops every ordinary event and keeps no breadcrumbs, so this path works the same way and a
-/// report carries no breadcrumbs. With "Share usage metrics" OFF the global scope has no
+/// report carries no breadcrumbs. When the user ticks "Include diagnostics", the report also
+/// carries one `FeedbackDiagnosticsSnapshot` file, the bytes the form previewed; otherwise none.
+/// With "Share usage metrics" OFF the global scope has no
 /// `analytics.distinct_id` tag and an explicit random `user.id` instead of the install's
 /// (`ObservabilityBootstrap.Lifecycle`).
 public enum FeedbackReporter {
@@ -70,22 +72,47 @@ public enum FeedbackReporter {
     case unavailable
   }
 
+  /// Sends the report. `diagnostics` is the file the user previewed and chose to include (#3269);
+  /// nil sends the message alone.
   @MainActor @discardableResult
-  public static func send(_ draft: FeedbackDraft) -> Outcome {
-    send(draft, isEnabled: SentrySDK.isEnabled, capture: { SentrySDK.capture(feedback: $0) })
+  public static func send(
+    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot? = nil
+  ) -> Outcome {
+    send(
+      draft, diagnostics: diagnostics, isEnabled: SentrySDK.isEnabled,
+      capture: { SentrySDK.capture(feedback: $0) })
   }
 
   /// The decision and the report, with the SDK calls passed in so a test can observe exactly
-  /// what would be sent without starting Sentry or sending anything.
+  /// what would be sent without starting Sentry or sending anything. `makeFeedback` is the public
+  /// `SentryFeedback` initializer; a test wraps it to read the attachments it receives, which the
+  /// built report does not expose.
   @MainActor
   static func send(
-    _ draft: FeedbackDraft, isEnabled: Bool, capture: (SentryFeedback) -> Void
+    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot? = nil, isEnabled: Bool,
+    makeFeedback: (FeedbackDraft, [Attachment]?) -> SentryFeedback = Self.makeFeedback,
+    capture: (SentryFeedback) -> Void
   ) -> Outcome {
     // Without a started SDK the hub has no client and the capture would silently do nothing.
     guard isEnabled else { return .unavailable }
-    capture(
-      SentryFeedback(message: draft.message, name: nil, email: draft.email, source: .custom))
+    capture(makeFeedback(draft, attachments(for: diagnostics)))
     return .queued
+  }
+
+  static func makeFeedback(_ draft: FeedbackDraft, attachments: [Attachment]?) -> SentryFeedback {
+    SentryFeedback(
+      message: draft.message, name: nil, email: draft.email, source: .custom,
+      attachments: attachments)
+  }
+
+  /// The one attachment for a report with diagnostics, the snapshot's exact bytes; nil without.
+  static func attachments(for diagnostics: FeedbackDiagnosticsSnapshot?) -> [Attachment]? {
+    guard let diagnostics else { return nil }
+    return [
+      Attachment(
+        data: diagnostics.data, filename: FeedbackDiagnosticsSnapshot.filename,
+        contentType: FeedbackDiagnosticsSnapshot.contentType)
+    ]
   }
 }
 

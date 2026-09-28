@@ -54,12 +54,28 @@ public enum ObservabilityBootstrap {
   @MainActor
   public static var launchedCrashReports: Bool? { lifecycle.launchedCrashReports }
 
-  /// The canonical PostHog anonymous id last read while PostHog was running in this process,
-  /// kept in memory after a close (PostHog's own getters return "" once closed,
-  /// `PostHogSDK.swift:306-332`). Nil on a launch that started with usage metrics OFF. Never
-  /// written to disk and never put back on the global scope while metrics are OFF.
-  @MainActor
-  static var lastKnownPostHogID: String? { lifecycle.lastKnownPostHogID }
+  /// The app-defaults key holding the canonical PostHog anonymous id from the latest ON setup
+  /// (#3269). PostHog's own getters return "" while it is stopped (`PostHogSDK.swift:306-332`),
+  /// so this is how a feedback report the user ticked "Include diagnostics" on can still carry
+  /// the join key after a launch that started with usage metrics OFF. Local only: it never feeds
+  /// automatic telemetry or the global Sentry scope. Per build (`UserDefaults.standard`, not the
+  /// shared settings store), so dev and release PostHog identities stay apart.
+  static let savedPostHogIDKey = "feedback.lastKnownPostHogID"
+
+  /// The saved id, re-validated on every read; nil when absent or not a canonical UUID.
+  static func savedPostHogID(in defaults: UserDefaults = .standard) -> String? {
+    defaults.string(forKey: savedPostHogIDKey).flatMap(canonicalAnonymousPostHogID)
+  }
+
+  /// Saves the id read at an ON setup, or removes the saved one for `nil` (an invalid read), so a
+  /// stale id never stands in for a missing one.
+  static func savePostHogID(_ id: String?, in defaults: UserDefaults = .standard) {
+    if let id {
+      defaults.set(id, forKey: savedPostHogIDKey)
+    } else {
+      defaults.removeObject(forKey: savedPostHogIDKey)
+    }
+  }
 
   @MainActor
   static let lifecycle = Lifecycle(operations: .live, makeUUID: makeOffPeriodUserID)
@@ -77,6 +93,8 @@ public enum ObservabilityBootstrap {
     var postHogOptIn: () -> Void
     var registerPostHog: () -> Void
     var postHogDistinctID: () -> String
+    /// Saves the canonical id read at setup for a consented feedback report; nil removes it.
+    var savePostHogID: (_ id: String?) -> Void
     var closePostHog: () -> Void
     /// Resolves the DSN and calls `SentrySDK.start`; false when the DSN is missing.
     var startSentry: (_ crashReports: Bool) -> Bool
@@ -110,6 +128,7 @@ public enum ObservabilityBootstrap {
         ])
       },
       postHogDistinctID: { PostHogSDK.shared.getDistinctId() },
+      savePostHogID: { id in ObservabilityBootstrap.savePostHogID(id) },
       closePostHog: { PostHogSDK.shared.close() },
       startSentry: { crashReports in initializeSentry(crashReports: crashReports) },
       writeLaunchTags: { joinKey in
@@ -138,9 +157,8 @@ public enum ObservabilityBootstrap {
     private(set) var launchedCrashReports: Bool?
     private(set) var usageMetrics = false
     private(set) var isPostHogRunning = false
-    private(set) var lastKnownPostHogID: String?
     /// The id read at the latest PostHog setup, nil when that read was missing or invalid. Only
-    /// this drives the global join, so a stale `lastKnownPostHogID` is never re-tagged.
+    /// this drives the global join, so a stale id is never re-tagged.
     private var currentPostHogID: String?
     private var isSentryRunning = false
     private let operations: Operations
@@ -199,7 +217,7 @@ public enum ObservabilityBootstrap {
       if operations.postHogIsOptOut() { operations.postHogOptIn() }
       operations.registerPostHog()
       currentPostHogID = canonicalAnonymousPostHogID(operations.postHogDistinctID())
-      if let currentPostHogID { lastKnownPostHogID = currentPostHogID }
+      operations.savePostHogID(currentPostHogID)
     }
   }
 

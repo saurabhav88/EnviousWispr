@@ -18737,6 +18737,108 @@
         }
       }
     },
+    "feedback.diagnostics.excluded" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Es werden keine Diagnosedaten angehängt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No diagnostics will be attached"
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.help" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Enthält Angaben zu den letzten Diktaten und, falls verfügbar, eine Kennung zur Zuordnung früherer Nutzungsberichte. Keine Audiodaten oder diktierten Texte."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Includes recent dictation details and, when available, an ID linking earlier usage reports. No audio or dictated text."
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.include" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diagnosedaten mitsenden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Include diagnostics"
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.loading" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diagnosedaten werden geladen..."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Loading diagnostics..."
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.preview" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diagnosedaten ansehen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preview diagnostics"
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.unavailable" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Keine Diagnosedaten verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No diagnostics available"
+          }
+        }
+      }
+    },
     "feedback.email.invalid" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {

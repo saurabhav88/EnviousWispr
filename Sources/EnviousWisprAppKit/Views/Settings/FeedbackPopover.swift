@@ -7,6 +7,7 @@ import SwiftUI
 /// place, the familiar bug icon, a popover that closes itself once the report is on its way.
 struct FeedbackToolbarButton: View {
   @State private var isPresented = false
+  @Environment(SettingsManager.self) private var settings
 
   var body: some View {
     Button {
@@ -32,7 +33,9 @@ struct FeedbackToolbarButton: View {
     .help(Self.title)
     .accessibilityLabel(Self.title)
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+      // Passed on explicitly: the form reads the usage-metrics switch (#3269).
       FeedbackForm { isPresented = false }
+        .environment(settings)
     }
   }
 
@@ -41,8 +44,9 @@ struct FeedbackToolbarButton: View {
   }
 }
 
-/// The report itself: a message, an optional reply address, Send. `FeedbackReporter` owns the
-/// validity rule (`FeedbackDraft`) and the send; this view only renders them.
+/// The report itself: a message, an optional reply address, the "Include diagnostics" box, Send.
+/// `FeedbackReporter` owns the validity rule (`FeedbackDraft`) and the send, and
+/// `FeedbackFormModel` owns the diagnostics consent (#3269); this view only renders them.
 struct FeedbackForm: View {
   /// Closes the popover after the thank-you has been on screen for a moment.
   let onDone: () -> Void
@@ -57,6 +61,10 @@ struct FeedbackForm: View {
   @State private var closeTask: Task<Void, Never>?
   @FocusState private var focus: Field?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(SettingsManager.self) private var settings
+  @State private var diagnosticsModel = FeedbackFormModel(loadSnapshot: {
+    await FeedbackDiagnosticsSnapshot.load()
+  })
   private let draftStore = FeedbackDraftStore()
 
   private enum Field: Hashable { case message, email }
@@ -80,8 +88,15 @@ struct FeedbackForm: View {
       message = draftStore.message
       email = draftStore.email
       focus = .message
+      diagnosticsModel.open(usageMetrics: settings.shareUsageMetrics)
     }
-    .onDisappear { closeTask?.cancel() }
+    .onDisappear {
+      closeTask?.cancel()
+      diagnosticsModel.close()
+    }
+    .onChange(of: settings.shareUsageMetrics) { _, metrics in
+      diagnosticsModel.usageMetricsChanged(to: metrics)
+    }
     // Every keystroke is kept, so closing the popover, the window or the app loses nothing.
     .onChange(of: message) { _, _ in if status != .sent { draftStore.save(message: message, email: email) } }
     .onChange(of: email) { _, _ in if status != .sent { draftStore.save(message: message, email: email) } }
@@ -94,6 +109,7 @@ struct FeedbackForm: View {
       header
       messageEditor
       emailField
+      diagnosticsSection
       footer
     }
     .padding(18)
@@ -192,6 +208,78 @@ struct FeedbackForm: View {
     .accessibilityHint(Text(verbatim: issue == .invalidEmail ? Self.invalidEmailText : ""))
   }
 
+  // MARK: - Diagnostics (#3269)
+
+  private var diagnosticsSection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Toggle(
+        isOn: Binding(
+          get: { diagnosticsModel.includeDiagnostics },
+          set: { diagnosticsModel.setIncludeDiagnostics($0) })
+      ) {
+        Text(String(localized: "feedback.diagnostics.include", defaultValue: "Include diagnostics"))
+          .font(.stBody)
+          .foregroundStyle(.stTextPrimary)
+      }
+      .toggleStyle(.checkbox)
+      .disabled(diagnosticsModel.diagnostics == .unavailable)
+      Text(
+        String(
+          localized: "feedback.diagnostics.help",
+          defaultValue:
+            "Includes recent dictation details and, when available, an ID linking earlier usage reports. No audio or dictated text."
+        )
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+      if let status = diagnosticsStatus {
+        Text(status)
+          .font(.stHelper)
+          .foregroundStyle(.stTextTertiary)
+      }
+      if let snapshot = diagnosticsModel.previewSnapshot {
+        DisclosureGroup(
+          String(localized: "feedback.diagnostics.preview", defaultValue: "Preview diagnostics")
+        ) {
+          VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: FeedbackDiagnosticsSnapshot.filename)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+            // The exact bytes the report attaches, as text: never a summary.
+            ScrollView {
+              Text(verbatim: snapshot.text)
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundStyle(.stTextPrimary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+            }
+            .frame(height: 160)
+            .fieldChrome(focused: false, invalid: false)
+          }
+          .padding(.top, 4)
+        }
+        .font(.stHelper)
+      }
+    }
+  }
+
+  /// One line under the box: loading, nothing available, or nothing attached.
+  private var diagnosticsStatus: String? {
+    switch diagnosticsModel.diagnostics {
+    case .unavailable:
+      return String(
+        localized: "feedback.diagnostics.unavailable", defaultValue: "No diagnostics available")
+    case .loading where diagnosticsModel.includeDiagnostics:
+      return String(localized: "feedback.diagnostics.loading", defaultValue: "Loading diagnostics...")
+    default:
+      guard !diagnosticsModel.includeDiagnostics else { return nil }
+      return String(
+        localized: "feedback.diagnostics.excluded", defaultValue: "No diagnostics will be attached")
+    }
+  }
+
   private var footer: some View {
     HStack(alignment: .center, spacing: 10) {
       if status == .unavailable {
@@ -215,7 +303,7 @@ struct FeedbackForm: View {
   }
 
   private var sendButton: some View {
-    let enabled = issue == nil
+    let enabled = issue == nil && !diagnosticsModel.isWaitingForDiagnostics
     return Button(action: send) {
       HStack(spacing: 7) {
         Image(systemName: "paperplane.fill")
@@ -280,8 +368,15 @@ struct FeedbackForm: View {
   // MARK: - Actions
 
   private func send() {
-    guard let draft = FeedbackDraft(message: message, email: email) else { return }
-    switch FeedbackReporter.send(draft) {
+    guard status != .sent, let draft = FeedbackDraft(message: message, email: email) else { return }
+    // Rechecks the live switch: a change the observer has not delivered yet resets the box and
+    // preview instead of sending, so a new click is needed (#3269).
+    let diagnostics: FeedbackDiagnosticsSnapshot?
+    switch diagnosticsModel.decideSend(currentUsageMetrics: settings.shareUsageMetrics) {
+    case .metricsChanged, .waitingForDiagnostics: return
+    case .send(let snapshot): diagnostics = snapshot
+    }
+    switch FeedbackReporter.send(draft, diagnostics: diagnostics) {
     case .queued:
       draftStore.clear()
       status = .sent

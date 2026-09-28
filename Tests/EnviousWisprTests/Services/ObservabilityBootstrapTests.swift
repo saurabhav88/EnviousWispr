@@ -159,6 +159,7 @@ struct ObservabilityBootstrapTests {
     var sentryDSNPresent = true
     var storedOptOut = false
     var distinctID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+    var savedID: String?
     private var uuidCount = 0
 
     lazy var lifecycle = ObservabilityBootstrap.Lifecycle(
@@ -176,6 +177,10 @@ struct ObservabilityBootstrapTests {
         postHogDistinctID: { [unowned self] in
           calls.append("posthog.distinctID")
           return distinctID
+        },
+        savePostHogID: { [unowned self] id in
+          calls.append("posthog.saveID(\(id ?? "remove"))")
+          savedID = id
         },
         closePostHog: { [unowned self] in calls.append("posthog.close") },
         startSentry: { [unowned self] crashReports in
@@ -209,10 +214,10 @@ struct ObservabilityBootstrapTests {
 
     #expect(
       log.calls == [
-        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID",
+        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID", "posthog.saveID(\(Self.id))",
         "sentry.start(crash:true)", "sentry.launchTags(join:\(Self.id))",
       ])
-    #expect(log.lifecycle.lastKnownPostHogID == Self.id)
+    #expect(log.savedID == Self.id)
   }
 
   @MainActor
@@ -225,7 +230,7 @@ struct ObservabilityBootstrapTests {
     #expect(
       log.calls == [
         "posthog.setup", "posthog.isOptOut", "posthog.optIn", "posthog.register",
-        "posthog.distinctID", "sentry.start(crash:false)", "sentry.launchTags(join:\(Self.id))",
+        "posthog.distinctID", "posthog.saveID(\(Self.id))", "sentry.start(crash:false)", "sentry.launchTags(join:\(Self.id))",
       ])
   }
 
@@ -239,7 +244,38 @@ struct ObservabilityBootstrapTests {
       log.calls == [
         "sentry.start(crash:true)", "sentry.launchTags(join:none)", "sentry.user(\(Self.off1))",
       ])
-    #expect(log.lifecycle.lastKnownPostHogID == nil)
+    #expect(log.savedID == nil)
+  }
+
+  // MARK: - Saved PostHog id for consented feedback (#3269)
+
+  private static func isolatedDefaults() -> UserDefaults {
+    let name = "ew-3269-savedid-" + UUID().uuidString
+    let defaults = UserDefaults(suiteName: name)!
+    defaults.removePersistentDomain(forName: name)
+    return defaults
+  }
+
+  @Test("A saved id reads back verbatim; nil removes it; each store is separate")
+  func savedIDRoundTrip() {
+    let store = Self.isolatedDefaults()
+    let other = Self.isolatedDefaults()
+    #expect(ObservabilityBootstrap.savedPostHogID(in: store) == nil)
+
+    ObservabilityBootstrap.savePostHogID("0198A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B", in: store)
+    #expect(ObservabilityBootstrap.savedPostHogID(in: store) == "0198A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B")
+    #expect(store.string(forKey: "feedback.lastKnownPostHogID") == "0198A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B")
+    #expect(ObservabilityBootstrap.savedPostHogID(in: other) == nil)
+
+    ObservabilityBootstrap.savePostHogID(nil, in: store)
+    #expect(store.object(forKey: "feedback.lastKnownPostHogID") == nil)
+  }
+
+  @Test("A stored value that is not a canonical id reads as none", arguments: ["", "someone@example.com", "0198a1b2c3d47e5f8a9b0c1d2e3f4a5b"])
+  func savedIDIsRevalidated(stored: String) {
+    let store = Self.isolatedDefaults()
+    store.set(stored, forKey: "feedback.lastKnownPostHogID")
+    #expect(ObservabilityBootstrap.savedPostHogID(in: store) == nil)
   }
 
   @Test("The production OFF-period id source gives a new id on every call")
@@ -261,7 +297,7 @@ struct ObservabilityBootstrapTests {
     #expect(log.calls == ["posthog.close", "sentry.join(remove)", "sentry.user(\(Self.off1))"])
     #expect(log.lifecycle.isPostHogRunning == false)
     // Kept in memory after close for an explicitly consented report; never re-tagged while OFF.
-    #expect(log.lifecycle.lastKnownPostHogID == Self.id)
+    #expect(log.savedID == Self.id)
   }
 
   @MainActor
@@ -275,7 +311,7 @@ struct ObservabilityBootstrapTests {
 
     #expect(
       log.calls == [
-        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID",
+        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID", "posthog.saveID(\(Self.id))",
         "sentry.user(clear)", "sentry.join(\(Self.id))",
       ])
   }
@@ -294,7 +330,7 @@ struct ObservabilityBootstrapTests {
     #expect(
       log.calls == [
         "posthog.close", "sentry.join(remove)", "sentry.user(\(Self.off1))",
-        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID",
+        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID", "posthog.saveID(\(Self.id))",
         "sentry.user(clear)", "sentry.join(\(Self.id))",
         "posthog.close", "sentry.join(remove)", "sentry.user(\(Self.off2))",
       ])
@@ -313,7 +349,7 @@ struct ObservabilityBootstrapTests {
         "posthog.setup", "sentry.start(crash:true)", "sentry.launchTags(join:none)",
         "sentry.join(remove)", "sentry.user(\(Self.off1))",
       ])
-    #expect(log.lifecycle.lastKnownPostHogID == nil)
+    #expect(log.savedID == nil)
   }
 
   @MainActor
@@ -329,13 +365,13 @@ struct ObservabilityBootstrapTests {
     log.lifecycle.apply(usageMetrics: true, crashReports: true)
 
     #expect(log.calls.last == "sentry.join(remove)")
-    #expect(log.lifecycle.lastKnownPostHogID == nil)
+    #expect(log.savedID == nil)
   }
 
   /// A valid id from an earlier ON period must not be re-tagged when the id read at a later setup
-  /// is invalid: the join is removed, while the earlier id stays in memory.
+  /// is invalid: the join is removed, and so is the saved id, so it never stands in for the new one.
   @MainActor
-  @Test("After a valid ON period, an invalid id at the next setup removes the join")
+  @Test("After a valid ON period, an invalid id at the next setup removes the join and the saved id")
   func invalidIDAfterValidPeriodRemovesJoin() {
     let log = SDKLog()
     log.lifecycle.start(usageMetrics: true, crashReports: true)
@@ -346,7 +382,8 @@ struct ObservabilityBootstrapTests {
     log.lifecycle.apply(usageMetrics: true, crashReports: true)
 
     #expect(log.calls.last == "sentry.join(remove)")
-    #expect(log.lifecycle.lastKnownPostHogID == Self.id)
+    #expect(log.savedID == nil)
+    #expect(log.calls.contains("posthog.saveID(remove)"))
   }
 
   @MainActor
@@ -361,7 +398,7 @@ struct ObservabilityBootstrapTests {
     #expect(
       log.calls == [
         "sentry.start(crash:true)",
-        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID",
+        "posthog.setup", "posthog.isOptOut", "posthog.register", "posthog.distinctID", "posthog.saveID(\(Self.id))",
         "posthog.close",
       ])
   }
