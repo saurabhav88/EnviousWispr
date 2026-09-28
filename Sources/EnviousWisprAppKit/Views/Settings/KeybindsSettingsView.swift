@@ -584,35 +584,35 @@ enum ExternalConflictCopy {
     case .record:
       return String(
         localized:
-          "The recording keybind (\(keys)) isn't working — this key combination is already used by something else on your Mac. Choose another.",
+          "The recording keybind (\(keys)) isn't working. This key combination is already used by something else on your Mac. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
       )
     case .cancel:
       return String(
         localized:
-          "The cancel keybind (\(keys)) isn't working — this key combination is already used by something else on your Mac while you're recording. Choose another.",
+          "The cancel keybind (\(keys)) isn't working. This key combination is already used by something else on your Mac while you're recording. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
       )
     case .quickAdd:
       return String(
         localized:
-          "The add-a-word keybind (\(keys)) isn't working — this key combination is already used by something else on your Mac. Choose another.",
+          "The add-a-word keybind (\(keys)) isn't working. This key combination is already used by something else on your Mac. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘."
       )
     case .pasteLast:
       return String(
         localized:
-          "Paste last dictation (\(keys)) isn't working — this key combination is already used by something else on your Mac. Choose another.",
+          "Paste last dictation (\(keys)) isn't working. This key combination is already used by something else on your Mac. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. Paste last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
       )
     case .copyLast:
       return String(
         localized:
-          "Copy last dictation (\(keys)) isn't working — this key combination is already used by something else on your Mac. Choose another.",
+          "Copy last dictation (\(keys)) isn't working. This key combination is already used by something else on your Mac. Choose another.",
         comment:
           "Keybinds settings: an external conflict warning. Copy last dictation is the name of a keybind. %@ is a key combination, such as Right ⌘."
       )
