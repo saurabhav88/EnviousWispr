@@ -209,9 +209,40 @@ public final class TelemetryService {
   }
 
   /// Internal injection so a test can drive the real fold against an isolated
-  /// ledger instead of the shared service (#1413).
-  init(takeStages: TakeStageLedger) {
+  /// ledger instead of the shared service (#1413), and optionally an isolated
+  /// diagnostics diary (#3269).
+  init(takeStages: TakeStageLedger, diagnosticsDiary: DiagnosticsDiary? = nil) {
     self.takeStages = takeStages
+    self.diagnosticsDiary = diagnosticsDiary
+  }
+
+  /// #3269: the local diagnostics diary. Nil until `activateDiagnosticsDiary()`, so the shared
+  /// instance and test instances never touch production storage on their own.
+  private(set) var diagnosticsDiary: DiagnosticsDiary?
+
+  /// #3269: starts the production diary once, at app launch, whatever the privacy switches say.
+  /// It only records locally; nothing leaves the Mac unless the user ticks "Include diagnostics"
+  /// on a feedback report. Idempotent.
+  public func activateDiagnosticsDiary() {
+    guard diagnosticsDiary == nil else { return }
+    let diary = DiagnosticsDiary.production()
+    diagnosticsDiary = diary
+    diary.activate()
+  }
+
+  /// #3269: the pruned diary as JSON for a feedback report's preview and attachment, or nil when
+  /// it is empty or unavailable.
+  public func diagnosticsSnapshot() async -> Data? {
+    await diagnosticsDiary?.snapshot()
+  }
+
+  /// #3269: hands one dictation row to the diary. The projection runs here; the disk work runs on
+  /// the diary's own queue. The vendor payload is not changed.
+  private func recordInDiagnosticsDiary(_ source: DiagnosticsDiary.Source, _ props: [String: Any]) {
+    guard let diagnosticsDiary,
+      let event = DiagnosticsDiary.event(source: source, properties: props)
+    else { return }
+    diagnosticsDiary.record(event)
   }
 
   /// #2958: per-take record-start summary, opened at `dictation.started`, written by the
@@ -1598,6 +1629,7 @@ public final class TelemetryService {
           level: .info, category: "Telemetry")
       }
     #endif
+    recordInDiagnosticsDiary(.terminal, props)
     PostHogSDK.shared.capture(event, properties: props)
   }
 
@@ -1879,6 +1911,7 @@ public final class TelemetryService {
           doubleProps: props.compactMapValues { $0 as? Double },
           boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
+    recordInDiagnosticsDiary(.completed, props)
     PostHogSDK.shared.capture("dictation.completed", properties: props)
   }
 

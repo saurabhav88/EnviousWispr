@@ -2093,6 +2093,8 @@ package final class WisprBootstrapper {
     // #3269: the stored switches decide whether PostHog starts and Sentry's mode for this run.
     ObservabilityBootstrap.initialize(
       usageMetrics: settings.shareUsageMetrics, crashReports: settings.sendCrashReports)
+    // #3269: the local diagnostics diary records whatever the switches say; it never uploads.
+    TelemetryService.shared.activateDiagnosticsDiary()
 
     // #832/#913 PR8: prewarm the output-safety classifier off the heart path.
     // Gated on Apple Intelligence (the only provider it scores); a later switch
