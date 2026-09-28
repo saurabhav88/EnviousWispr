@@ -29,6 +29,13 @@
 #     open sentry-triage ticket (exact `<!-- sentry-issue-id: {shortId} -->`
 #     marker) before buzzing Discord. GCP secret: github-issues-read-token-sentry-triage.
 #     Record its expiry + rotation command in sentry-triage-pipeline.md.
+#   TYPESAFE_API_KEY — GCP secret `typesafe-api-key`, the founder's own TypeSafe
+#     account (#3275). Feedback reports only: the Worker sends the report's
+#     message text (never the reply email) to Jev to guess a matching help
+#     article and posts the guess to Discord. Founder approved the standing spend
+#     at Gate 2, 2026-09-28 (~$0.0002 per report). Missing or rejected key: the
+#     guess card reads "none (config)"; the alert is unaffected. Install with
+#       ~/.claude/bin/get-key launch typesafe-api-key K -- sh -c 'printf %s "$K" | npx wrangler secret put TYPESAFE_API_KEY'
 #   ROUTINE_TOKEN / ROUTINE_TRIGGER_ID — RETIRED (#1470). The worker no longer
 #     wakes the TIK routine; TIK's daily run is the sole sentry-triage ticket
 #     writer. Delete both from the deployed worker after a post-deploy grep
