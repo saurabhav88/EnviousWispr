@@ -139,7 +139,10 @@ struct FeedbackSender: Sendable {
 
   /// The feedback event: the user's words, the optional email, basic versions, and level error
   /// (the sentry-triage Worker alerts only on error or fatal, #3275). `type` is "feedback" as the
-  /// SDK sets it (sentry-cocoa 9.26.1 `SentryClient.m:613`). No user, tags or breadcrumbs.
+  /// SDK sets it (sentry-cocoa 9.26.1 `SentryClient.m:613`). `sdk.settings.infer_ip` is "never",
+  /// as the SDK sends it with `sendDefaultPii` off (`SentrySDKSettings.swift:27`): without it
+  /// Sentry stores the connection's IP address on a cocoa event (measured on the dev project,
+  /// 2026-09-28). No user, tags or breadcrumbs.
   static func feedbackPayload(for record: FeedbackRecord) -> [String: Any] {
     var feedback: [String: Any] = ["message": record.message, "source": "custom"]
     if let email = record.email { feedback["contact_email"] = email }
@@ -151,6 +154,10 @@ struct FeedbackSender: Sendable {
       "level": "error",
       "release": record.context.release,
       "environment": record.context.environment,
+      "sdk": [
+        "name": "enviouswispr-feedback", "version": record.context.appVersion,
+        "settings": ["infer_ip": "never"],
+      ],
       "contexts": [
         "feedback": feedback,
         "app": ["app_version": record.context.appVersion, "app_build": record.context.appBuild],

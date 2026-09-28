@@ -68,6 +68,9 @@ struct FeedbackSenderTests {
     let payload = try #require(try JSONSerialization.jsonObject(with: lines[2]) as? [String: Any])
     #expect(payload["level"] as? String == "error")
     #expect(payload["type"] as? String == "feedback")
+    // Sentry must not store the sender's IP address (the SDK's own setting with PII off).
+    let sdk = try #require(payload["sdk"] as? [String: Any])
+    #expect((sdk["settings"] as? [String: Any])?["infer_ip"] as? String == "never")
     #expect(payload["event_id"] as? String == "5d1e6a2b9c3f4e7a8b102f4c6d8e0a1b")
     #expect(payload["timestamp"] as? Double == 1_790_000_000)
     #expect(payload["release"] as? String == "com.enviouswispr.app@2.5.2")
@@ -80,7 +83,7 @@ struct FeedbackSenderTests {
     // Nothing from the telemetry lane rides along.
     #expect(
       Set(payload.keys) == [
-        "event_id", "type", "timestamp", "platform", "level", "release", "environment",
+        "event_id", "type", "timestamp", "platform", "level", "release", "environment", "sdk",
         "contexts",
       ])
     // Header, item header, payload, then the trailing newline: no attachment item.
