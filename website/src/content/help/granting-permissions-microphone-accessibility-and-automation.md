@@ -6,9 +6,9 @@ section: "Basics"
 order: 5
 keywords: ["permissions", "permission", "allow", "access", "microphone access", "accessibility", "privacy settings", "system settings", "grant", "it is asking for permission", "blocked", "denied"]
 related: ["accessibility-permission-not-working", "paste-not-working"]
-updated: 2026-09-05
+updated: 2026-09-28
 ---
-Because EnviousWispr listens to your microphone and types into other apps, macOS requires you to grant specific permissions first. Two permissions are always needed, and a third is required only in rare cases. Setup asks for the two before the practice dictation at the end, so most people grant both there. The **Permissions** page in EnviousWispr settings always shows the current status of each one.
+Because EnviousWispr listens to your microphone and types into other apps, macOS requires you to grant specific permissions first. Two permissions are always needed, and a third is required only in rare cases. Setup asks for the two before the practice dictation at the end, so most people grant both there. The **Permissions** page in EnviousWispr settings always shows the current status of each one. The same page also has the **Privacy** switches for usage data and crash reports; those are EnviousWispr settings, not macOS permissions, and are covered in [_What Data Is Collected_](/help/what-data-is-collected/).
 
 ### Microphone
 

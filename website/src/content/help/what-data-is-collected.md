@@ -4,11 +4,11 @@ description: "What stays on your Mac, what the app never sends, and what it does
 category: "privacy-and-security"
 section: "Privacy"
 order: 2
-keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "tracking", "crash reports"]
+keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "turn off", "tracking", "crash reports", "usage metrics", "diagnostics"]
 related: ["privacy-overview"]
 updated: 2026-09-28
 ---
-EnviousWispr collects anonymous usage data and crash reports. Nothing you say is part of that. Your audio never reaches Envious Labs, the company that makes the app, and the app never sends us your dictations or transcripts unless you include them in a feedback report yourself.
+EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Your audio never reaches Envious Labs, the company that makes the app, and the app never sends us your dictations or transcripts unless you include them in a feedback report yourself.
 
 ### What stays on your Mac
 
@@ -19,6 +19,8 @@ Your dictations and transcripts are saved to your History so you can find them l
 While you dictate, the app keeps an encrypted backup of the recording. Once your text is safely saved, the app requests deletion of that backup. If the app quits first, EnviousWispr makes one recovery attempt the next time it runs, then requests deletion whether that recovery succeeded or failed.
 
 Your custom words, settings, and API keys live here too. They stay on your Mac unless you turn on cloud polish, which is covered below.
+
+The app also keeps a short diagnostics diary here, described below. It stays on your Mac unless you choose to attach it to a feedback report.
 
 ### What the app never sends automatically
 
@@ -33,15 +35,42 @@ None of these is ever attached to feedback. Anything you type into a feedback re
 
 ### What the app does collect
 
-The app collects anonymous usage and crash data. That data shows whether a release broke dictation on a particular macOS version, or whether anyone ever opens a setting that took a month to build. It is on by default and cannot be turned off.
+The app collects anonymous usage and crash data. That data shows whether a release broke dictation on a particular macOS version, or whether anyone ever opens a setting that took a month to build. Both are on by default, and you can turn either one off.
 
 The app records how you use it, never what you said. There is no account, and nothing in the data names you, although each installation gets a random ID so that one Mac counts as one user. The privacy policy has the full detail.
 
-If you would rather run without it, EnviousWispr is open source under the GPLv3 license. You can build the app yourself, and dictation works in exactly the same way.
+### Turning usage data or crash reports off
+
+Two switches control this, in the **Privacy** section of **Settings > Permissions** in EnviousWispr. Each one works on its own.
+
+| Switch | What it covers | When a change applies |
+| :--- | :--- | :--- |
+| **Share usage metrics** | Anonymous counts and timings: that a dictation happened, how long it took, which engine ran. | Right away. Turning it off stops collection at once. If the app starts with it off, the usage service does not start at all. |
+| **Send crash reports** | Reports about crashes and errors, and a short note that the app is running, used to count sessions without a crash. | The next time EnviousWispr starts. After you change it, the switch shows **Restart now** so you can apply it straight away. |
+
+A few details are worth knowing before you rely on either switch:
+
+- **Something already on its way.** When you turn usage metrics off, a report that was already being sent may still arrive. Usage data that was queued but not yet sent stays on your Mac and may be sent if you turn the switch back on.
+- **Crash sessions have their own ID.** When crash reports are on, the short "app is running" notes sent to Sentry, the crash-reporting service, keep Sentry's random installation ID, even with usage metrics off. Turning off crash reports stops these notes after a restart.
+- **Feedback still works.** With crash reports off, you can still send feedback, and feedback you already sent may be retried.
+- **The app still uses the network.** With both switches off, EnviousWispr still checks for updates, downloads the models you choose, sends your text to a cloud polish provider if you picked one, and sends a feedback report when you press Send.
+- **Only the app.** These switches cover the app. They do not change anything on this website.
+
+### The diagnostics diary
+
+The app keeps a private, content-free record of up to 20 of your most recent dictations on your Mac: which engine ran, how long each step took, whether the paste worked, the app you dictated into, and a random ID and time for each dictation. It never holds your audio or your words.
+
+Entries older than 7 days are removed when the app starts, when it adds an entry, and when the diary is read. Nothing is removed while the app is closed, and a storage error can delay this cleanup.
+
+The diary is kept whatever the two switches say, because it never leaves your Mac on its own. It is sent only if you tick **Include diagnostics** in a feedback report.
 
 ### Feedback you choose to send
 
 If you use Send Feedback, the bug button next to Record in the app window, we receive the message you write and, only if you add it, your email address so we can reply. It also carries the app and macOS version, basic details about your Mac, your locale and time zone, technical diagnostics such as the audio route, recording status and Apple Intelligence availability, and random IDs used by the app and Sentry. Your feedback is sent only after you press Send, and no recordings or History are attached. The privacy policy covers how long your feedback is kept and how to have it deleted. We also send the text of your message, without your email address, to TypeSafe, an AI service that works on our behalf. It guesses which help article might answer your message, so we can learn which questions our help pages already cover. TypeSafe does not use your message to train its models.
+
+**Include diagnostics.** The feedback form has an **Include diagnostics** box. It starts ticked when usage metrics are on and unticked when they are off, and it never remembers your last choice. If you tick it, the report also carries one file, `enviouswispr-diagnostics.json`: the diagnostics diary and, when the app has it, the random ID that links the report to your earlier usage data. **Preview diagnostics** shows you the whole file before you send. If the diary is empty, nothing is attached. With the box unticked, no file is attached.
+
+**Which ID feedback carries.** With usage metrics on, feedback includes the ID that links it to your usage data, when the app has one. With usage metrics off, feedback leaves that link out and carries a random ID made for that period instead. If you tick **Include diagnostics**, the attached file can still include the saved link ID. Details from recent dictations can also connect a report to earlier activity.
 
 ### Where your text goes if you use cloud AI polish
 

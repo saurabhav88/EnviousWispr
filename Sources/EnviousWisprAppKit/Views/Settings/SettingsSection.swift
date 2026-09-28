@@ -182,7 +182,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         comment: "Settings: the one-line description under a page title.")
     case .permissions:
       return String(
-        localized: "The microphone and accessibility access EnviousWispr needs.",
+        localized: "Manage app permissions and privacy settings.",
         comment: "Settings: the one-line description under a page title.")
     case .checkForUpdates: return ""
     case .openSourceLicenses:

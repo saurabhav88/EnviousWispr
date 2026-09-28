@@ -5,7 +5,7 @@ category: "troubleshooting"
 section: "Recording Issues"
 order: 8
 keywords: ["crash", "crashes", "quits", "closes by itself", "keeps crashing", "stopped working", "disappeared", "not responding"]
-updated: 2026-09-05
+updated: 2026-09-28
 ---
 EnviousWispr keeps its transcription engine separate from the rest of the app, so a failure in one does not take the other down with it.
 
@@ -25,4 +25,4 @@ EnviousWispr keeps a protected copy of your audio while you speak, and deletes t
 
 ### Crash reports
 
-Crash reports are sent to Envious Labs automatically so the cause can be diagnosed and fixed. A crash report describes what the application code was doing at the moment of failure. It never includes what you said. Audio recordings and text transcripts are never part of a crash report.
+Crash reports are sent to Envious Labs automatically so the cause can be diagnosed and fixed, unless you turn off **Send crash reports** in **Settings > Permissions** (the change applies after EnviousWispr restarts). A crash report describes what the application code was doing at the moment of failure. It never includes what you said. Audio recordings and text transcripts are never part of a crash report.

@@ -9038,6 +9038,17 @@
         }
       }
     },
+    "Manage app permissions and privacy settings." : {
+      "comment" : "Settings: the one-line description under a page title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Berechtigungen und Datenschutzeinstellungen verwalten."
+          }
+        }
+      }
+    },
     "Maori" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -15431,17 +15442,6 @@
         }
       }
     },
-    "The microphone and accessibility access EnviousWispr needs." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Zugriff auf Mikrofon und Bedienungshilfen, den EnviousWispr benötigt."
-          }
-        }
-      }
-    },
     "The model could not be removed. Please try again." : {
       "localizations" : {
         "de" : {
@@ -20294,6 +20294,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏎"
+          }
+        }
+      }
+    },
+    "whatsNew.privacy-controls.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry privacy-controls).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutzeinstellungen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy controls"
+          }
+        }
+      }
+    },
+    "whatsNew.privacy-controls.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry privacy-controls).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu: „Datenschutzeinstellungen“. Unter Einstellungen > Berechtigungen legst du fest, ob du Nutzungsstatistiken teilst und Absturzberichte sendest. Änderungen an der Einstellung für Absturzberichte werden nach einem Neustart wirksam. Beim Senden von Feedback entscheidest du, ob Diagnosedaten angehängt werden, und kannst die Datei vorher ansehen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Privacy controls\". Choose whether to share usage metrics and crash reports in Settings > Permissions. Crash report changes apply after a restart. When sending feedback, choose whether to attach diagnostics and preview the file first."
           }
         }
       }

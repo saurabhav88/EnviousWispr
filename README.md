@@ -218,10 +218,10 @@ This project uses conventional commits: `feat(scope):`, `fix(scope):`, `refactor
 
 EnviousWispr is built on a simple principle: **your voice is yours.**
 
-- Audio is captured, transcribed, and discarded locally. Nothing is uploaded, stored, or shared.
+- Audio is processed locally and is not uploaded. Local recovery can temporarily retain audio.
 - LLM polish (if enabled) can run entirely on your Mac with EG-1 (our own model), Apple Intelligence, or a local Ollama model, so the polish step makes no network call. If you pick OpenAI, Gemini, or Claude, only text is sent (your transcript plus the polish instructions) using your own API key. If you pick a hosted Ollama model, the same text is sent to Ollama using your Ollama sign-in. Audio is never sent.
-- Anonymous product analytics (PostHog) can be disabled in Settings.
-- Crash reporting (Sentry) contains no dictation or transcript content, audio, or personal data.
+- Anonymous product analytics (PostHog) and crash reporting (Sentry) are on by default, and each can be turned off in Settings > Permissions. A crash-reporting change applies after the app restarts.
+- Crash reports exclude dictated text and audio. Technical context and identifiers are described in [What Data Is Collected](https://enviouswispr.com/help/what-data-is-collected/).
 
 ## Connect
 
