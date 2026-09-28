@@ -25,7 +25,7 @@ export const SCENES = {
   selflearn: [
     { label: 'Names', title: 'Correcting a name', where: 'On your Mac', pasted: 'Send the draft to ', wrong: 'Sasha', fixed: 'Saoirse', tail: ' tonight.', pill: 'Added “Saoirse” to Dictionary', out: 'Saoirse signed off on the draft.', out_marks: ['Saoirse'], explain: 'Checked locally each time before changing your text.' },
     { label: 'Tools', title: 'Working in your daily apps', where: 'On your Mac', pasted: 'The build runs on ', wrong: 'Twist', fixed: 'Tuist', tail: ' now.', pill: 'Added “Tuist” to Dictionary', out: 'Run Tuist before you open the project.', out_marks: ['Tuist'], explain: 'Checked locally against context before it is applied.' },
-    { label: 'Updates', title: 'Updating an existing word', where: 'On your Mac', pasted: 'Ask ', wrong: 'Shivon', fixed: 'Siobhan', tail: ' about Friday.', pill: '“Siobhan” updated', out: 'Siobhan can make Friday.', out_marks: ['Siobhan'], explain: 'The new mishearing is attached to your existing word.' },
+    { label: 'Updates', title: 'Updating an existing word', where: 'On your Mac', pasted: 'Put the notes in ', wrong: 'Motion', fixed: 'Notion', tail: ' for now.', pill: '“Notion” updated', out: 'The roadmap lives in Notion.', out_marks: ['Notion'], explain: 'The new mishearing is attached to your existing word.' },
   ],
   preview: [
     { label: 'English', title: 'Your words, as you speak.', where: 'Live draft', raw: 'Hi Maya um for Friday please bring the design notes the launch checklist and the revised budget of six thousand two hundred thirty nine dollars thanks Amira', lang: 'en', explain: 'Your thought, in view.' },
