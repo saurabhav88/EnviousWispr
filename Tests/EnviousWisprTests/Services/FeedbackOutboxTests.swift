@@ -19,7 +19,9 @@ struct FeedbackOutboxTests {
     func start(onChange: @escaping @Sendable (Bool) -> Void) {
       lock.withLock { handler = onChange }
     }
-    func cancel() { lock.withLock { handler = nil } }
+    func cancel() { lock.withLock { handler = nil; cancelled = true } }
+    private var cancelled = false
+    var wasCancelled: Bool { lock.withLock { cancelled } }
     func set(_ value: Bool) {
       let callback = lock.withLock { () -> (@Sendable (Bool) -> Void)? in
         satisfied = value
@@ -310,6 +312,41 @@ struct FeedbackOutboxTests {
     await outbox.drain()
     #expect(try Self.records(in: directory).isEmpty)
     #expect(http.sent.contains(Self.eventID(1)))
+  }
+
+  @Test("Reports saved at the same time are all kept, and each is sent exactly once")
+  func concurrentEnqueueAndDrain() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let http = HTTP([])
+    let outbox = Self.makeOutbox(directory, http: http)
+    await withTaskGroup(of: Void.self) { group in
+      for n in 1...20 { group.addTask { _ = await outbox.enqueue(Self.record(n)) } }
+      for _ in 1...5 { group.addTask { await outbox.drain() } }
+    }
+    // Chained after every pass already requested, so it sends whatever they left.
+    await outbox.drain()
+
+    #expect(try Self.records(in: directory).isEmpty)
+    #expect(http.sent.count == 20)
+    #expect(Set(http.sent) == Set((1...20).map(Self.eventID)))
+  }
+
+  @Test("Shutdown stops watching the network and leaves saved reports on disk")
+  func stopKeepsReports() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let http = HTTP([])
+    let path = FakePath(satisfied: false)
+    let outbox = Self.makeOutbox(directory, http: http, path: path)
+    await outbox.start()
+    _ = await outbox.enqueue(Self.record(1))
+
+    await outbox.stop()
+
+    #expect(path.wasCancelled)
+    #expect(http.sent == [])
+    #expect(try Self.records(in: directory).map(\.message) == ["report 1"])
   }
 
   final class WriteSwitch: @unchecked Sendable {
