@@ -7,8 +7,9 @@ import Testing
 /// #3153: freezes every place the app can put a value on a Sentry scope, and every producer of a
 /// pipeline breadcrumb, so a new one is a visible edit here.
 ///
-/// Why: user feedback skips `beforeSend`, and a feedback report carries the global scope. Values
-/// reach that scope unfiltered only through a writer that forgets `SentryEventSanitizer`. The
+/// Why: global-scope values are copied before `beforeSend` runs (SentryCrash's crash-time scope
+/// copy on disk), so they are filtered where they are written. Values reach that scope
+/// unfiltered only through a writer that forgets `SentryEventSanitizer`. The
 /// current writers filter at write time (`SentryScopeWriteSanitizationTests`); this suite makes
 /// adding a writer, or a new `SentryBreadcrumb.add` producer whose stage/message/data need a
 /// metadata-only review, fail until the inventory below is updated on purpose.
@@ -36,7 +37,7 @@ struct SentryScopeWriterFreezeTests {
   /// SHA-256 of the sorted inventory lines. The failure message prints the inventory and the new
   /// value; update it only after reviewing the new site (filtered at write time? metadata only?).
   static let inventoryFingerprint =
-    "8c2a653beb09b961c4d2f9adf5c4b9f26242dd4142c3580e8b49901a49489195"
+    "7191b542b6d6a6bf163da84fd137ca74980facde089f0f889f0e646ac32b1fe3"
 
   struct Site: Hashable, Comparable {
     let file: String

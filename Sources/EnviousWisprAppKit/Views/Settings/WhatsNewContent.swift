@@ -55,6 +55,20 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.5.2
+
+    // #3269: the two privacy switches (Settings > Permissions > Privacy, both ON by default;
+    // crash-report changes apply at the next launch) and the per-report "Include diagnostics"
+    // box with its exact-file preview. First release of both, so no repair copy.
+    Entry(
+      id: "privacy-controls",
+      icon: "hand.raised",
+      title: "Privacy controls",
+      description:
+        "Introducing \"Privacy controls\". Choose whether to share usage metrics and crash reports in Settings > Permissions. Crash report changes apply after a restart. When sending feedback, choose whether to attach diagnostics and preview the file first.",
+      version: "2.5.2"
+    ),
+
     // MARK: - v2.5.1
 
     // Founder-edited group, 2026-09-27 (Claude Doc "EnviousWispr 2.5.1 Release Notes"). Cards

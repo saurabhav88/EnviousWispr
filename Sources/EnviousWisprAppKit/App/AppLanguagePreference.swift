@@ -90,7 +90,8 @@ struct AppLanguagePreference {
   }
 }
 
-/// Quits EnviousWispr and opens it again once it has gone, so a new interface language applies.
+/// Quits EnviousWispr and opens it again once it has gone, so a setting read only at launch
+/// applies: a new interface language, or a changed "Send crash reports" switch (#3269).
 enum AppRelauncher {
   /// Whether quitting now would lose work in flight that SwiftUI can observe: a dictation
   /// (recording to polishing), a file transcription (reading the chosen file, transcribing or
@@ -98,7 +99,7 @@ enum AppRelauncher {
   /// written its result yet. Model downloads resume on their own after a relaunch. The clipboard
   /// restore just after a dictation is not observable, so `relaunchWhenSafe` waits it out at the
   /// click instead of it disabling the button (which could then stay disabled). The ONE owner
-  /// for the language relaunch.
+  /// for every relaunch the user asks for from Settings.
   @MainActor static func workInFlight(
     dictationActive: Bool, fileImport: FileImportCoordinator?
   ) -> Bool {
@@ -160,7 +161,7 @@ enum AppRelauncher {
     }
     Task {
       await AppLogger.shared.log(
-        "[AppLanguage] relaunching for a new interface language", level: .info,
+        "[AppLanguage] relaunching to apply a launch-time setting", level: .info,
         category: "AppLanguage")
     }
     NSApp.terminate(nil)

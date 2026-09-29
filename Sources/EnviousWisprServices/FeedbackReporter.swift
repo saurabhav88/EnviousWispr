@@ -1,5 +1,4 @@
 import Foundation
-import Sentry
 
 /// One user-written feedback report (#3153): the message, and an email only if they want a reply.
 ///
@@ -8,6 +7,8 @@ public struct FeedbackDraft: Equatable, Sendable {
   /// Longest message accepted. Generous for a pasted log or a long description; Live UAT must
   /// read a 3,900-character report back from Sentry intact.
   public static let maxMessageLength = 4000
+  /// Sentry's own feedback message limit, in Unicode code points.
+  static let maxMessageCodePoints = 4096
 
   public let message: String
   /// `nil` when the field was left empty; never an empty string.
@@ -38,7 +39,11 @@ public struct FeedbackDraft: Equatable, Sendable {
   public static func issue(message: String, email: String) -> Issue? {
     let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.isEmpty { return .emptyMessage }
-    if trimmed.count > maxMessageLength { return .messageTooLong }
+    // Sentry's feedback limit counts Unicode code points (4,096); the form's counts characters.
+    // An emoji-heavy message can pass one and not the other, so both apply and nothing is cut.
+    if trimmed.count > maxMessageLength || trimmed.unicodeScalars.count > maxMessageCodePoints {
+      return .messageTooLong
+    }
     let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
     if !trimmedEmail.isEmpty,
       trimmedEmail.range(of: emailPattern, options: .regularExpression) == nil
@@ -49,42 +54,90 @@ public struct FeedbackDraft: Equatable, Sendable {
   }
 }
 
-/// Sends a feedback report through the app's Sentry client (#3153).
-///
-/// The report rides the global scope like any other event: the install's `analytics.distinct_id`
-/// tag, its Sentry `user.id`, OS and device contexts, and the recent pipeline breadcrumbs. Sentry
-/// skips `beforeSend` for feedback, which is why every global-scope write is filtered where it is
-/// written (`SentryBreadcrumb`, `ObservabilityBootstrap.writeStableTags`).
+/// Submits a bug report (#3153) into the app-owned outbox (#3269), which delivers it to Sentry
+/// on its own, independent of both privacy switches (founder, 2026-09-28: bug reports are their
+/// own lane). The report is frozen here: the message, the optional email, basic app and macOS
+/// versions, and the diagnostics file only when the user ticked "Include diagnostics", exactly as
+/// previewed. It carries no Sentry scope: no user id, tags, breadcrumbs or install join outside
+/// that file.
 public enum FeedbackReporter {
   public enum Outcome: Equatable, Sendable {
-    /// Handed to Sentry for sending. Not a delivery receipt: Sentry writes and sends in the
-    /// background, and a rate limit, a failed write or a quit before the write can still lose it.
-    case queued
-    /// Sentry is not running in this process (no DSN), so nothing was sent.
+    /// Saved on this Mac for delivery. `offline` is true when there was no network at Send.
+    /// Not a delivery receipt: the outbox sends when it can and retries until Sentry accepts.
+    case saved(offline: Bool)
+    /// Too many reports are already waiting; nothing was saved and the draft is kept.
+    case full
+    /// The report could not be saved; nothing was saved and the draft is kept.
     case unavailable
   }
 
-  @MainActor @discardableResult
-  public static func send(_ draft: FeedbackDraft) -> Outcome {
-    send(draft, isEnabled: SentrySDK.isEnabled, capture: { SentrySDK.capture(feedback: $0) })
+  /// Saves the report. `diagnostics` is the file the user previewed and chose to include; nil
+  /// saves the message alone.
+  public static func send(
+    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot? = nil
+  ) async -> Outcome {
+    await send(draft, diagnostics: diagnostics, outbox: .shared, now: Date(), id: UUID())
   }
 
-  /// The decision and the report, with the SDK calls passed in so a test can observe exactly
-  /// what would be sent without starting Sentry or sending anything.
-  @MainActor
   static func send(
-    _ draft: FeedbackDraft, isEnabled: Bool, capture: (SentryFeedback) -> Void
-  ) -> Outcome {
-    // Without a started SDK the hub has no client and the capture would silently do nothing.
-    guard isEnabled else { return .unavailable }
-    capture(
-      SentryFeedback(message: draft.message, name: nil, email: draft.email, source: .custom))
-    return .queued
+    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?, outbox: FeedbackOutbox,
+    now: Date, id: UUID, context: FeedbackRecord.Context = .current
+  ) async -> Outcome {
+    let record = FeedbackRecord(
+      id: id, submittedAt: now, message: draft.message, email: draft.email,
+      attachment: diagnostics?.data, context: context, attempts: 0, nextAttemptAt: nil,
+      state: .pending, rejectedStatus: nil)
+    switch await outbox.enqueue(record) {
+    case .saved(let offline): return .saved(offline: offline)
+    case .full: return .full
+    case .unavailable: return .unavailable
+    }
+  }
+
+  /// Launch: start delivering saved reports and watching the network. Whatever the privacy
+  /// switches say: bug reports are their own lane.
+  public static func startDelivery() async {
+    await FeedbackOutbox.shared.start()
+  }
+
+  /// Quit: stop the scheduled retry and the network watcher. Saved reports stay on disk.
+  public static func stopDelivery() async {
+    await FeedbackOutbox.shared.stop()
+  }
+
+  /// Whether a saved report stays unsent on this Mac without help: refused by Sentry, or
+  /// waiting behind a configuration failure.
+  public static func hasUndeliverableReports() async -> Bool {
+    await FeedbackOutbox.shared.hasUndeliverableReports()
+  }
+}
+
+extension FeedbackRecord.Context {
+  /// This build's versions at the moment of Send.
+  static var current: Self {
+    let bundle = Bundle.main
+    let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+    let os = ProcessInfo.processInfo.operatingSystemVersion
+    return Self(
+      appVersion: version ?? "unknown", appBuild: build ?? "unknown",
+      release: "com.enviouswispr.app@\(version ?? "unknown")",
+      environment: ObservabilityBootstrap.currentEnvironment,
+      osVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)",
+      osBuild: Self.osBuild)
+  }
+
+  private static var osBuild: String {
+    var size = 0
+    sysctlbyname("kern.osversion", nil, &size, nil, 0)
+    var buffer = [CChar](repeating: 0, count: max(size, 1))
+    guard sysctlbyname("kern.osversion", &buffer, &size, nil, 0) == 0 else { return "unknown" }
+    return String(cString: buffer)
   }
 }
 
 /// The unsent feedback text, kept on this Mac so closing the popover, the window or the app does
-/// not lose it (founder, 2026-09-25). Cleared only once a report is handed to Sentry. Local
+/// not lose it (founder, 2026-09-25). Cleared only once a report is saved to the outbox. Local
 /// storage of the user's own words is inside the privacy boundary: nothing here leaves the Mac.
 public struct FeedbackDraftStore: Sendable {
   static let messageKey = "feedback.draft.message"
@@ -109,4 +162,32 @@ public struct FeedbackDraftStore: Sendable {
   }
 
   public func clear() { save(message: "", email: "") }
+
+  /// Clears only when the saved draft still holds what was sent, so a later edit (in this form
+  /// or one reopened while the report was saving) is kept. Returns whether it cleared.
+  @discardableResult
+  public func clear(ifStill message: String, email: String) -> Bool {
+    guard self.message == message, self.email == email else { return false }
+    clear()
+    return true
+  }
+
+  /// What the form does when Send's save finishes. The form that sent it, still on screen, keeps
+  /// any words typed while saving (they may not have reached the store yet); any other case
+  /// clears the draft only if it still holds what was sent. Returns whether the sending form may
+  /// show the result and close: false once it has closed, so a reopened form is left alone.
+  @discardableResult
+  public func settleAfterSave(
+    saved: Bool, isSendingFormOnScreen: Bool,
+    form: (message: String, email: String), sent: (message: String, email: String)
+  ) -> Bool {
+    if saved {
+      if isSendingFormOnScreen, form != sent {
+        save(message: form.message, email: form.email)
+      } else {
+        clear(ifStill: sent.message, email: sent.email)
+      }
+    }
+    return isSendingFormOnScreen
+  }
 }

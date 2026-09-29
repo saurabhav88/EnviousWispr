@@ -7,6 +7,7 @@ import SwiftUI
 /// place, the familiar bug icon, a popover that closes itself once the report is on its way.
 struct FeedbackToolbarButton: View {
   @State private var isPresented = false
+  @Environment(SettingsManager.self) private var settings
 
   var body: some View {
     Button {
@@ -32,7 +33,9 @@ struct FeedbackToolbarButton: View {
     .help(Self.title)
     .accessibilityLabel(Self.title)
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+      // Passed on explicitly: the form reads the usage-metrics switch (#3269).
       FeedbackForm { isPresented = false }
+        .environment(settings)
     }
   }
 
@@ -41,23 +44,37 @@ struct FeedbackToolbarButton: View {
   }
 }
 
-/// The report itself: a message, an optional reply address, Send. `FeedbackReporter` owns the
-/// validity rule (`FeedbackDraft`) and the send; this view only renders them.
+/// The report itself: a message, an optional reply address, the "Include diagnostics" box, Send.
+/// `FeedbackReporter` owns the validity rule (`FeedbackDraft`) and the send, and
+/// `FeedbackFormModel` owns the diagnostics consent (#3269); this view only renders them.
 struct FeedbackForm: View {
   /// Closes the popover after the thank-you has been on screen for a moment.
   let onDone: () -> Void
 
-  private enum Status: Equatable { case editing, sent, unavailable }
+  /// `sent(offline:)`: saved to the outbox (#3269); `offline` picks the confirmation line.
+  private enum Status: Equatable { case editing, sending, sent(offline: Bool), unavailable, full }
 
   @State private var message = ""
   @State private var email = ""
   @State private var status: Status = .editing
+  /// A saved report Sentry refused stays on this Mac; say so once when the form opens (#3269).
+  @State private var hasUndeliverable = false
   /// The auto-close after "Thanks"; cancelled if the popover goes away first, so a quick reopen
   /// is never closed by the previous send.
   @State private var closeTask: Task<Void, Never>?
+  /// Renewed each time the popover appears or goes away, so a save that finishes after the
+  /// popover closed never changes or closes the one on screen now.
+  @State private var presentation = UUID()
   @FocusState private var focus: Field?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  private let draftStore = FeedbackDraftStore()
+  @Environment(SettingsManager.self) private var settings
+  @State private var diagnosticsModel = FeedbackFormModel(loadSnapshot: {
+    await FeedbackDiagnosticsSnapshot.load()
+  })
+  /// Shared by every opening of the form, so a save still running blocks a reopened form's Send
+  /// and reconciles its words when it finishes (#3269).
+  @State private var submission = FeedbackSubmission.shared
+  private var draftStore: FeedbackDraftStore { submission.store }
 
   private enum Field: Hashable { case message, email }
 
@@ -67,7 +84,7 @@ struct FeedbackForm: View {
 
   var body: some View {
     ZStack {
-      if status == .sent {
+      if isSent {
         thanks.transition(.opacity)
       } else {
         form.transition(.opacity)
@@ -77,14 +94,37 @@ struct FeedbackForm: View {
     .background(Color.stPageBg)
     .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: status)
     .onAppear {
+      // A form kept alive between openings starts fresh: a save still finishing belongs to the
+      // previous opening and changes nothing here (`presentation`).
+      presentation = UUID()
+      closeTask?.cancel()
+      closeTask = nil
+      status = submission.isSaving ? .sending : .editing
+      hasUndeliverable = false
       message = draftStore.message
       email = draftStore.email
       focus = .message
+      diagnosticsModel.open(usageMetrics: settings.shareUsageMetrics)
     }
-    .onDisappear { closeTask?.cancel() }
-    // Every keystroke is kept, so closing the popover, the window or the app loses nothing.
-    .onChange(of: message) { _, _ in if status != .sent { draftStore.save(message: message, email: email) } }
-    .onChange(of: email) { _, _ in if status != .sent { draftStore.save(message: message, email: email) } }
+    .onDisappear {
+      presentation = UUID()
+      closeTask?.cancel()
+      diagnosticsModel.formDidClose()
+    }
+    // A save another opening started has finished: show the saved draft (cleared when unchanged,
+    // or the words typed meanwhile) and allow Send again.
+    .onChange(of: submission.completions) { _, _ in
+      guard status == .sending, let words = submission.reconciledDraft(for: presentation) else {
+        return
+      }
+      message = words.message
+      email = words.email
+      status = .editing
+    }
+    .onChange(of: settings.shareUsageMetrics) { _, metrics in
+      diagnosticsModel.usageMetricsChanged(to: metrics)
+    }
+    .task { hasUndeliverable = await FeedbackReporter.hasUndeliverableReports() }
   }
 
   // MARK: - Form
@@ -94,6 +134,7 @@ struct FeedbackForm: View {
       header
       messageEditor
       emailField
+      diagnosticsSection
       footer
     }
     .padding(18)
@@ -134,7 +175,7 @@ struct FeedbackForm: View {
   }
 
   private var messageEditor: some View {
-    TextEditor(text: $message)
+    TextEditor(text: messageBinding)
       .font(.stBody)
       .scrollContentBackground(.hidden)
       .focused($focus, equals: .message)
@@ -176,7 +217,7 @@ struct FeedbackForm: View {
         String(
           localized: "feedback.email.placeholder",
           defaultValue: "Email (optional, if you'd like a reply)"),
-        text: $email
+        text: emailBinding
       )
       .textFieldStyle(.plain)
       .font(.stBody)
@@ -192,17 +233,85 @@ struct FeedbackForm: View {
     .accessibilityHint(Text(verbatim: issue == .invalidEmail ? Self.invalidEmailText : ""))
   }
 
+  // MARK: - Diagnostics (#3269)
+
+  private var diagnosticsSection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Toggle(
+        isOn: Binding(
+          get: { diagnosticsModel.includeDiagnostics },
+          set: { diagnosticsModel.setIncludeDiagnostics($0) })
+      ) {
+        Text(String(localized: "feedback.diagnostics.include", defaultValue: "Include diagnostics"))
+          .font(.stBody)
+          .foregroundStyle(.stTextPrimary)
+      }
+      .toggleStyle(.checkbox)
+      .disabled(diagnosticsModel.diagnostics == .unavailable)
+      Text(
+        String(
+          localized: "feedback.diagnostics.help",
+          defaultValue:
+            "Includes recent dictation details and, when available, an ID linking earlier usage reports. No audio or dictated text."
+        )
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+      if let status = diagnosticsStatus {
+        Text(status)
+          .font(.stHelper)
+          .foregroundStyle(.stTextTertiary)
+      }
+      if let snapshot = diagnosticsModel.previewSnapshot {
+        DisclosureGroup(
+          String(localized: "feedback.diagnostics.preview", defaultValue: "Preview diagnostics")
+        ) {
+          VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: FeedbackDiagnosticsSnapshot.filename)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+            // The exact bytes the report attaches, as text: never a summary.
+            ScrollView {
+              Text(verbatim: snapshot.text)
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundStyle(.stTextPrimary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+            }
+            .frame(height: 160)
+            .fieldChrome(focused: false, invalid: false)
+          }
+          .padding(.top, 4)
+        }
+        .font(.stHelper)
+      }
+    }
+  }
+
+  /// One line under the box: loading, nothing available, or nothing attached.
+  private var diagnosticsStatus: String? {
+    switch diagnosticsModel.diagnostics {
+    case .unavailable:
+      return String(
+        localized: "feedback.diagnostics.unavailable", defaultValue: "No diagnostics available")
+    case .loading where diagnosticsModel.includeDiagnostics:
+      return String(localized: "feedback.diagnostics.loading", defaultValue: "Loading diagnostics...")
+    default:
+      guard !diagnosticsModel.includeDiagnostics else { return nil }
+      return String(
+        localized: "feedback.diagnostics.excluded", defaultValue: "No diagnostics will be attached")
+    }
+  }
+
   private var footer: some View {
     HStack(alignment: .center, spacing: 10) {
-      if status == .unavailable {
-        Text(
-          String(
-            localized: "feedback.unavailable",
-            defaultValue: "Couldn't send. Email hello@enviouslabs.co")
-        )
-        .font(.stHelper)
-        .foregroundStyle(.stError)
-        .fixedSize(horizontal: false, vertical: true)
+      if let problem = footerProblem {
+        Text(problem)
+          .font(.stHelper)
+          .foregroundStyle(.stError)
+          .fixedSize(horizontal: false, vertical: true)
       } else {
         Text(verbatim: "⌘↩")
           .font(.stHelper)
@@ -215,7 +324,9 @@ struct FeedbackForm: View {
   }
 
   private var sendButton: some View {
-    let enabled = issue == nil
+    let enabled =
+      issue == nil && !diagnosticsModel.isWaitingForDiagnostics && status != .sending
+      && !submission.isSaving
     return Button(action: send) {
       HStack(spacing: 7) {
         Image(systemName: "paperplane.fill")
@@ -261,8 +372,9 @@ struct FeedbackForm: View {
         .background(Circle().fill(Color.stSuccess))
         .shadow(color: Color.stSuccess.opacity(0.35), radius: 8, y: 3)
         .accessibilityHidden(true)
-      Text(Self.sentTitle)
+      Text(sentTitle)
         .font(.stRowTitle)
+        .multilineTextAlignment(.center)
         .foregroundStyle(.stTextPrimary)
       Text(
         String(
@@ -280,19 +392,96 @@ struct FeedbackForm: View {
   // MARK: - Actions
 
   private func send() {
-    guard let draft = FeedbackDraft(message: message, email: email) else { return }
-    switch FeedbackReporter.send(draft) {
-    case .queued:
-      draftStore.clear()
-      status = .sent
-      AccessibilityNotification.Announcement(Self.sentTitle).post()
-      closeTask = Task { @MainActor in
-        guard (try? await Task.sleep(for: .seconds(1.8))) != nil else { return }
-        onDone()
+    guard status != .sending, !isSent, !submission.isSaving,
+      let draft = FeedbackDraft(message: message, email: email)
+    else { return }
+    // Rechecks the live switch: a change the observer has not delivered yet resets the box and
+    // preview instead of sending, so a new click is needed (#3269).
+    let diagnostics: FeedbackDiagnosticsSnapshot?
+    switch diagnosticsModel.decideSend(currentUsageMetrics: settings.shareUsageMetrics) {
+    case .metricsChanged, .waitingForDiagnostics: return
+    case .send(let snapshot): diagnostics = snapshot
+    }
+    // The report is frozen here; edits typed while it saves are not what was sent.
+    let sentMessage = message
+    let sentEmail = email
+    let submitted = presentation
+    status = .sending
+    Task { @MainActor in
+      // Nil when this opening closed before the save finished; the reopened one reconciles.
+      guard
+        let outcome = await submission.submit(
+          draft, diagnostics: diagnostics, from: submitted, sent: (sentMessage, sentEmail),
+          current: { .init(presentation: presentation, message: message, email: email) })
+      else { return }
+      switch outcome {
+      case .saved(let offline):
+        status = .sent(offline: offline)
+        AccessibilityNotification.Announcement(sentTitle).post()
+        closeTask = Task { @MainActor in
+          guard (try? await Task.sleep(for: .seconds(offline ? 3 : 1.8))) != nil else { return }
+          onDone()
+        }
+      case .full:
+        status = .full
+      case .unavailable:
+        // Keep the words so they can be pasted into an email.
+        status = .unavailable
       }
+    }
+  }
+
+  // Every keystroke is saved at once through the binding (not a later `onChange`), so a save that
+  // finishes mid-edit reconciles against the words already typed, and a reconcile that sets the
+  // words programmatically writes nothing back (#3269).
+  private var messageBinding: Binding<String> {
+    Binding(
+      get: { message },
+      set: { value in
+        message = value
+        if !isSent { submission.recordEdit(message: value, email: email) }
+      })
+  }
+
+  private var emailBinding: Binding<String> {
+    Binding(
+      get: { email },
+      set: { value in
+        email = value
+        if !isSent { submission.recordEdit(message: message, email: value) }
+      })
+  }
+
+  private var isSent: Bool {
+    if case .sent = status { return true }
+    return false
+  }
+
+  /// The confirmation title: online, or saved while offline (founder, 2026-09-28).
+  private var sentTitle: String {
+    if case .sent(offline: true) = status {
+      return String(
+        localized: "feedback.sent.offline",
+        defaultValue: "You're offline. We'll send it when you're back online.")
+    }
+    return Self.sentTitle
+  }
+
+  /// The one problem line in the footer, if any.
+  private var footerProblem: String? {
+    switch status {
     case .unavailable:
-      // Keep the words so they can be pasted into an email.
-      status = .unavailable
+      return String(
+        localized: "feedback.unavailable", defaultValue: "Couldn't send. Email hello@enviouslabs.co")
+    case .full:
+      return String(
+        localized: "feedback.full",
+        defaultValue: "Too much feedback is waiting to send. Email hello@enviouslabs.co")
+    default:
+      guard hasUndeliverable else { return nil }
+      return String(
+        localized: "feedback.undeliverable",
+        defaultValue: "Some saved feedback could not be sent. It remains on this Mac.")
     }
   }
 

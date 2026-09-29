@@ -2090,7 +2090,13 @@ package final class WisprBootstrapper {
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
     // #919: same timing as before — the shell's `App.init()` constructs this
     // bootstrapper synchronously, before any NSApplicationDelegate callback.
-    ObservabilityBootstrap.initialize()
+    // #3269: the stored switches decide whether PostHog starts and Sentry's mode for this run.
+    ObservabilityBootstrap.initialize(
+      usageMetrics: settings.shareUsageMetrics, crashReports: settings.sendCrashReports)
+    // #3269: the local diagnostics diary records whatever the switches say; it never uploads.
+    TelemetryService.shared.activateDiagnosticsDiary()
+    // #3269: saved bug reports are delivered on their own, independent of both switches.
+    Task { await FeedbackReporter.startDelivery() }
 
     // #832/#913 PR8: prewarm the output-safety classifier off the heart path.
     // Gated on Apple Intelligence (the only provider it scores); a later switch
@@ -2249,6 +2255,8 @@ package final class WisprBootstrapper {
     // a Cocoa quit concludes no take, so this is the only path that restores
     // the volume for a quit mid-dictation.
     dictationRuntime.otherAudioHold.finishForTermination()
+    // #3269: best effort; the process may exit first, and every outbox write is atomic anyway.
+    Task { await FeedbackReporter.stopDelivery() }
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
     // the stale-sweep in EGOneServerManager.start on next launch.

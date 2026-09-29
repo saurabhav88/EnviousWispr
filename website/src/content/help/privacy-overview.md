@@ -7,7 +7,7 @@ order: 1
 keywords: ["privacy", "private", "is it private", "does it spy", "does it send my text anywhere", "data", "offline", "internet", "cloud", "tracking", "who can see my dictation"]
 related: ["what-data-is-collected", "ai-polish-and-cloud-data"]
 seeAlso: "on-device-vs-cloud-dictation-privacy"
-updated: 2026-09-04
+updated: 2026-09-28
 ---
 EnviousWispr is a free dictation app for macOS. Your voice becomes text on your own Mac, and the audio never leaves it. There is no account and nothing to sign up for.
 
@@ -24,7 +24,7 @@ You can use the app without an internet connection at all, and your dictation st
 The app connects to the internet only for specific tasks that genuinely need it.
 
 - **Updates and downloads.** The app checks for new versions, and downloads the speech and AI models you choose.
-- **Anonymous usage and crash data.** This is on by default. It reports which app and macOS versions were involved in a problem, and it never reports what you said. See [_What Data Is Collected_](/help/what-data-is-collected/).
+- **Anonymous usage and crash data.** Both are on by default, and you can turn either one off in **Settings > Permissions**. They report which app and macOS versions were involved in a problem, and never what you said. See [_What Data Is Collected_](/help/what-data-is-collected/).
 - **Cloud AI Polish, only if you choose it.** If you pick OpenAI, Gemini, Claude, or one of Ollama's hosted models, your text goes to that company under your own account with them. Your audio never does. See [_AI Polish and Cloud Data_](/help/ai-polish-and-cloud-data/).
 
 ### Where your text goes with each polish option

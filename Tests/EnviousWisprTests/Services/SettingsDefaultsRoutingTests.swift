@@ -129,6 +129,105 @@ struct SettingsDefaultsRoutingTests {
     #expect(matchingChanges == 1)
   }
 
+  // MARK: - Privacy switches (#3269)
+
+  /// Both switches ship ON and the user opts out (founder 2026-09-28). A fresh install
+  /// must read ON without writing either key, so a later default change could still
+  /// reach an install that never touched the switch.
+  @Test("Both privacy switches read ON on a fresh install and write nothing")
+  func privacySwitchesDefaultOnWithoutWriting() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+
+    #expect(settings.shareUsageMetrics == true)
+    #expect(settings.sendCrashReports == true)
+    #expect(suite.object(forKey: "shareUsageMetrics") == nil)
+    #expect(suite.object(forKey: "sendCrashReports") == nil)
+  }
+
+  /// Tested OFF then back ON: ON is the default, so an ON write alone would pass even if
+  /// the store dropped it.
+  @Test(
+    "Each privacy switch persists OFF and back ON across a relaunch, alone",
+    arguments: ["shareUsageMetrics", "sendCrashReports"])
+  func privacySwitchPersistsAlone(key: String) {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    let otherKey = key == "shareUsageMetrics" ? "sendCrashReports" : "shareUsageMetrics"
+
+    Self.setPrivacySwitch(key, to: false, on: settings)
+    #expect(suite.object(forKey: key) as? Bool == false)
+    #expect(Self.privacySwitch(key, on: SettingsManager(defaults: suite)) == false)
+    #expect(Self.privacySwitch(otherKey, on: SettingsManager(defaults: suite)) == true)
+    #expect(suite.object(forKey: otherKey) == nil)
+
+    Self.setPrivacySwitch(key, to: true, on: settings)
+    #expect(suite.object(forKey: key) as? Bool == true)
+    #expect(Self.privacySwitch(key, on: SettingsManager(defaults: suite)) == true)
+  }
+
+  @Test("Each privacy switch key appears exactly once in the unified key set")
+  func privacySwitchKeysAreUnified() {
+    #expect(SettingsManager.unifiedDefaultsKeys.filter { $0 == "shareUsageMetrics" }.count == 1)
+    #expect(SettingsManager.unifiedDefaultsKeys.filter { $0 == "sendCrashReports" }.count == 1)
+  }
+
+  /// The callback must see the value already on disk: chunk 3 reads the stored switch when
+  /// it applies it to PostHog and Sentry.
+  @Test(
+    "Each privacy switch change emits only its own SettingKey, once, after the write",
+    arguments: ["shareUsageMetrics", "sendCrashReports"])
+  func privacySwitchNotifiesAfterPersisting(key: String) {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    var seen: [String] = []
+    var storedAtCallback: [Bool?] = []
+    settings.onChange = { changed in
+      switch changed {
+      case .shareUsageMetrics:
+        seen.append("shareUsageMetrics")
+        storedAtCallback.append(suite.object(forKey: "shareUsageMetrics") as? Bool)
+      case .sendCrashReports:
+        seen.append("sendCrashReports")
+        storedAtCallback.append(suite.object(forKey: "sendCrashReports") as? Bool)
+      default:
+        seen.append("other")
+      }
+    }
+
+    Self.setPrivacySwitch(key, to: false, on: settings)
+
+    #expect(seen == [key])
+    #expect(storedAtCallback == [false])
+  }
+
+  @Test("Dev migration carries an explicit privacy OFF into the shared store")
+  func migrationCarriesPrivacyOff() {
+    let dev = Self.freshSuite()
+    let shared = Self.freshSuite()
+    dev.set(false, forKey: "shareUsageMetrics")
+    dev.set(false, forKey: "sendCrashReports")
+
+    SettingsDefaultsMigration.migrateIfNeeded(
+      bundleID: "com.enviouswispr.app.dev", devStore: dev, shared: shared)
+
+    #expect(shared.object(forKey: "shareUsageMetrics") as? Bool == false)
+    #expect(shared.object(forKey: "sendCrashReports") as? Bool == false)
+  }
+
+  private static func setPrivacySwitch(_ key: String, to value: Bool, on settings: SettingsManager)
+  {
+    if key == "shareUsageMetrics" {
+      settings.shareUsageMetrics = value
+    } else {
+      settings.sendCrashReports = value
+    }
+  }
+
+  private static func privacySwitch(_ key: String, on settings: SettingsManager) -> Bool {
+    key == "shareUsageMetrics" ? settings.shareUsageMetrics : settings.sendCrashReports
+  }
+
   // MARK: - Quick Add's shortcut (#2381)
 
   @Test("Quick Add ships on Control-Shift-W and belongs to unified defaults")
@@ -192,7 +291,9 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.pasteLastModifiers == [.control, .command])
     #expect(settings.copyLastKeyCode == 8)
     #expect(settings.copyLastModifiers == [.control, .command])
-    for key in ["pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw"] {
+    for key in [
+      "pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw",
+    ] {
       #expect(
         SettingsManager.unifiedDefaultsKeys.filter { $0 == key }.count == 1,
         "\(key): missing from unified keys means it never migrates to the shared suite (#923)")

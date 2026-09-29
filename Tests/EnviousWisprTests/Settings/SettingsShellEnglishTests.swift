@@ -63,7 +63,7 @@ struct SettingsShellEnglishTests {
         == "How your dictation reaches the clipboard and the app you're in.")
     #expect(
       SettingsSection.permissions.subtitle
-        == "The microphone and accessibility access EnviousWispr needs.")
+        == "Manage app permissions and privacy settings.")
     #expect(SettingsSection.checkForUpdates.subtitle == "")
     #expect(
       SettingsSection.openSourceLicenses.subtitle

@@ -1,10 +1,9 @@
 import Foundation
-import Sentry
 import Testing
 
 @testable import EnviousWisprServices
 
-/// #3153: what the Send Feedback form accepts, and what it hands to Sentry.
+/// #3153: what the Send Feedback form accepts, and (#3269) what it saves to the outbox.
 @Suite("Feedback reporter (#3153)", .tags(.productOutcome))
 @MainActor
 struct FeedbackReporterTests {
@@ -91,48 +90,162 @@ struct FeedbackReporterTests {
     #expect(UserDefaults(suiteName: suite)!.object(forKey: "feedback.draft.message") == nil)
   }
 
-  // MARK: - Send
+  @Test("A saved report clears the draft only if it still holds what was sent")
+  func clearOnlyIfUnchanged() throws {
+    let suite = "FeedbackDraftStoreTests.\(UUID().uuidString)"
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let store = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    store.save(message: "first report", email: "a@b.co")
 
-  @Test("With Sentry not running, nothing is captured and the form is told so")
-  func unavailableWhenSentryOff() throws {
-    let draft = try #require(FeedbackDraft(message: "hi", email: ""))
-    var captured: [SentryFeedback] = []
-    let outcome = FeedbackReporter.send(draft, isEnabled: false, capture: { captured.append($0) })
-    #expect(outcome == .unavailable)
-    #expect(captured.isEmpty)
+    // A form reopened while the report was saving, and edited there.
+    let reopened = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    reopened.save(message: "a second thought", email: "a@b.co")
+    #expect(store.clear(ifStill: "first report", email: "a@b.co") == false)
+    #expect(reopened.message == "a second thought")
+
+    #expect(store.clear(ifStill: "a second thought", email: "a@b.co") == true)
+    #expect(reopened.message == "")
+    #expect(reopened.email == "")
   }
 
-  @Test("The real entry point reports unavailable in a process where Sentry never started")
-  func realEntryPointInTestProcess() throws {
-    // The unit-test process does not run the app's launch, so no DSN and no started SDK.
-    try #require(!SentrySDK.isEnabled)
-    let draft = try #require(FeedbackDraft(message: "hi", email: ""))
-    #expect(FeedbackReporter.send(draft) == .unavailable)
+  @Test("When a save finishes: words typed meanwhile survive, and a closed form stays quiet")
+  func settleAfterSave() throws {
+    func store() -> (FeedbackDraftStore, String) {
+      let suite = "FeedbackDraftStoreTests.\(UUID().uuidString)"
+      return (FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! }), suite)
+    }
+
+    // Same form on screen, newer words typed that the store has not caught up with yet.
+    let (a, suiteA) = store()
+    defer { UserDefaults().removePersistentDomain(forName: suiteA) }
+    a.save(message: "sent words", email: "")
+    #expect(
+      a.settleAfterSave(
+        saved: true, isSendingFormOnScreen: true, form: ("sent words, and more", ""),
+        sent: ("sent words", "")) == true)
+    #expect(a.message == "sent words, and more")
+
+    // Same form, nothing typed since Send: the draft clears.
+    let (b, suiteB) = store()
+    defer { UserDefaults().removePersistentDomain(forName: suiteB) }
+    b.save(message: "sent words", email: "a@b.co")
+    #expect(
+      b.settleAfterSave(
+        saved: true, isSendingFormOnScreen: true, form: ("sent words", "a@b.co"),
+        sent: ("sent words", "a@b.co")) == true)
+    #expect(b.message == "")
+
+    // The sending form closed and a reopened one saved newer words: they survive, and the old
+    // form is told not to show a result or close anything.
+    let (c, suiteC) = store()
+    defer { UserDefaults().removePersistentDomain(forName: suiteC) }
+    c.save(message: "a second thought", email: "")
+    #expect(
+      c.settleAfterSave(
+        saved: true, isSendingFormOnScreen: false, form: ("sent words", ""),
+        sent: ("sent words", "")) == false)
+    #expect(c.message == "a second thought")
+
+    // Not saved (full or unavailable): the draft is untouched.
+    let (d, suiteD) = store()
+    defer { UserDefaults().removePersistentDomain(forName: suiteD) }
+    d.save(message: "sent words", email: "")
+    #expect(
+      d.settleAfterSave(
+        saved: false, isSendingFormOnScreen: true, form: ("sent words", ""),
+        sent: ("sent words", "")) == true)
+    #expect(d.message == "sent words")
   }
 
-  @Test("With Sentry running, exactly one report carries the message, the email and no name")
-  func queuedCarriesDraft() throws {
+  @Test("A message within 4,000 characters but over Sentry's 4,096 code points cannot be sent")
+  func codePointLimit() {
+    // Each flag is one character but two code points.
+    let flags = String(repeating: "🇩🇪", count: 2049)
+    #expect(flags.count == 2049)
+    #expect(flags.unicodeScalars.count == 4098)
+    #expect(FeedbackDraft.issue(message: flags, email: "") == .messageTooLong)
+    let fits = String(repeating: "🇩🇪", count: 2048)
+    #expect(FeedbackDraft.issue(message: fits, email: "") == nil)
+  }
+
+  // MARK: - Send (#3269: the outbox)
+
+  nonisolated static let context = FeedbackRecord.Context(
+    appVersion: "2.5.2", appBuild: "252", release: "com.enviouswispr.app@2.5.2",
+    environment: "development", osVersion: "15.4.0", osBuild: "24E248")
+
+  /// A sender that never gets through, so a saved report stays on disk to be read back.
+  nonisolated static let unreachable = FeedbackSender(
+    dsn: FeedbackOutboxTests.dsn, http: { _ in throw URLError(.notConnectedToInternet) },
+    now: { Date() })
+
+  private static func outbox(online: Bool = true, directory: URL) -> FeedbackOutbox {
+    let path = FeedbackOutboxTests.FakePath(satisfied: online)
+    return FeedbackOutbox(directory: directory, sender: unreachable, path: path)
+  }
+
+  private static func tempDirectory() -> URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3269-reporter-\(UUID().uuidString)", isDirectory: true)
+  }
+
+  @Test("Send freezes exactly the form's choices into the saved report")
+  func sendFreezesTheReport() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = Self.outbox(directory: directory)
     let draft = try #require(
       FeedbackDraft(message: "  it pasted twice in slack  ", email: " someone@example.com "))
-    var captured: [SentryFeedback] = []
-    let outcome = FeedbackReporter.send(draft, isEnabled: true, capture: { captured.append($0) })
-    #expect(outcome == .queued)
-    let feedback = try #require(captured.count == 1 ? captured.first : nil)
-    let payload = feedback.serialize()
-    #expect(payload["message"] as? String == "it pasted twice in slack")
-    #expect(payload["contact_email"] as? String == "someone@example.com")
-    #expect(payload["name"] == nil)
-    #expect(payload["source"] as? String == "custom")
-    #expect(payload["associated_event_id"] == nil)
+    let snapshot = FeedbackDiagnosticsSnapshot(data: Data(#"{"schema_version":1}"#.utf8))
+    let id = try #require(UUID(uuidString: "5D1E6A2B-9C3F-4E7A-8B10-2F4C6D8E0A1B"))
+    let when = Date(timeIntervalSince1970: 1_790_000_000)
+
+    let outcome = await FeedbackReporter.send(
+      draft, diagnostics: snapshot, outbox: outbox, now: when, id: id, context: Self.context)
+
+    #expect(outcome == .saved(offline: false))
+    let saved = try FeedbackOutboxTests.records(in: directory)
+    #expect(saved.count == 1)
+    let record = try #require(saved.first)
+    #expect(record.id == id)
+    #expect(record.submittedAt == when)
+    #expect(record.message == "it pasted twice in slack")
+    #expect(record.email == "someone@example.com")
+    #expect(record.attachment == snapshot.data)
+    #expect(record.context == Self.context)
+    #expect(record.state == .pending)
   }
 
-  @Test("No email means no contact_email field, not an empty one")
-  func noEmailNoField() throws {
+  @Test("Unticked means no attachment; offline at Send is reported for the confirmation line")
+  func uncheckedAndOffline() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = Self.outbox(online: false, directory: directory)
     let draft = try #require(FeedbackDraft(message: "love it", email: ""))
-    var captured: [SentryFeedback] = []
-    _ = FeedbackReporter.send(draft, isEnabled: true, capture: { captured.append($0) })
-    let payload = try #require(captured.first).serialize()
-    #expect(payload["contact_email"] == nil)
-    #expect(payload["message"] as? String == "love it")
+
+    let outcome = await FeedbackReporter.send(
+      draft, diagnostics: nil, outbox: outbox, now: Date(), id: UUID(), context: Self.context)
+
+    #expect(outcome == .saved(offline: true))
+    let record = try #require(try FeedbackOutboxTests.records(in: directory).first)
+    #expect(record.attachment == nil)
+    #expect(record.email == nil)
+  }
+
+  @Test("A report that cannot be saved says so, and nothing is kept")
+  func unavailableStorage() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = FeedbackOutbox(
+      directory: directory, sender: Self.unreachable,
+      path: FeedbackOutboxTests.FakePath(satisfied: true),
+      writeData: { _, _ in throw CocoaError(.fileWriteNoPermission) })
+    let draft = try #require(FeedbackDraft(message: "hi", email: ""))
+
+    let outcome = await FeedbackReporter.send(
+      draft, diagnostics: nil, outbox: outbox, now: Date(), id: UUID(), context: Self.context)
+
+    #expect(outcome == .unavailable)
+    #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent("outbox.json").path) == false)
   }
 }

@@ -2665,6 +2665,17 @@
         }
       }
     },
+    "Anonymous counts and timings that show me when a release breaks dictation. Never audio or text. Stops collecting right away." : {
+      "comment" : "Permissions settings, Privacy: explains the usage metrics switch.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anonyme Zählwerte und Zeitmessungen, die mir zeigen, wenn eine neue Version das Diktieren beeinträchtigt. Niemals Audio oder Text. Die Erfassung stoppt sofort."
+          }
+        }
+      }
+    },
     "Another app is using Ollama's port (11434). Close it and try again." : {
       "comment" : "AI Polish, Ollama setup: error. 11434 is a network port number.",
       "localizations" : {
@@ -5333,6 +5344,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auswahl aufheben"
+          }
+        }
+      }
+    },
+    "Details about crashes and errors so I can fix them." : {
+      "comment" : "Permissions settings, Privacy: explains the crash reports switch.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details zu Abstürzen und Fehlern, damit ich sie beheben kann."
           }
         }
       }
@@ -9005,6 +9027,17 @@
         }
       }
     },
+    "Manage app permissions and privacy settings." : {
+      "comment" : "Settings: the one-line description under a page title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Berechtigungen und Datenschutzeinstellungen verwalten."
+          }
+        }
+      }
+    },
     "Maori" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -11871,6 +11904,16 @@
         }
       }
     },
+    "Privacy" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz"
+          }
+        }
+      }
+    },
     "Pro Tip" : {
       "localizations" : {
         "de" : {
@@ -12699,6 +12742,17 @@
         }
       }
     },
+    "Restart now" : {
+      "comment" : "Permissions settings, Privacy: button that quits and reopens the app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt neu starten"
+          }
+        }
+      }
+    },
     "Restore" : {
       "localizations" : {
         "de" : {
@@ -13456,6 +13510,17 @@
         }
       }
     },
+    "Send crash reports" : {
+      "comment" : "Permissions settings, Privacy: switch label.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Absturzberichte senden"
+          }
+        }
+      }
+    },
     "Sends transcribed text, never audio" : {
       "comment" : "AI Polish: privacy line under the selected provider.",
       "localizations" : {
@@ -13593,6 +13658,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeiteten Text teilen…"
+          }
+        }
+      }
+    },
+    "Share usage metrics" : {
+      "comment" : "Permissions settings, Privacy: switch label.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsstatistiken teilen"
           }
         }
       }
@@ -14472,6 +14548,17 @@
         }
       }
     },
+    "Takes effect when EnviousWispr restarts" : {
+      "comment" : "Permissions settings, Privacy: shown after the crash reports switch changes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird nach einem Neustart von EnviousWispr wirksam"
+          }
+        }
+      }
+    },
     "Tamil" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -15340,17 +15427,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die neuesten Verbesserungen und Fehlerbehebungen dieser Version."
-          }
-        }
-      }
-    },
-    "The microphone and accessibility access EnviousWispr needs." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Zugriff auf Mikrofon und Bedienungshilfen, den EnviousWispr benötigt."
           }
         }
       }
@@ -18737,6 +18813,108 @@
         }
       }
     },
+    "feedback.diagnostics.excluded" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No diagnostics will be attached"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es werden keine Diagnosedaten angehängt"
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.help" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Includes recent dictation details and, when available, an ID linking earlier usage reports. No audio or dictated text."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Angaben zu den letzten Diktaten und, falls verfügbar, eine Kennung zur Zuordnung früherer Nutzungsberichte. Keine Audiodaten oder diktierten Texte."
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.include" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Include diagnostics"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten mitsenden"
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.loading" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Loading diagnostics..."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten werden geladen..."
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.preview" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preview diagnostics"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten ansehen"
+          }
+        }
+      }
+    },
+    "feedback.diagnostics.unavailable" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No diagnostics available"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Diagnosedaten verfügbar"
+          }
+        }
+      }
+    },
     "feedback.email.invalid" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -18767,6 +18945,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "E-Mail (optional, falls du eine Antwort möchtest)"
+          }
+        }
+      }
+    },
+    "feedback.full" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Too much feedback is waiting to send. Email hello@enviouslabs.co"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu viel Feedback wartet auf den Versand. Schreibe an hello@enviouslabs.co"
           }
         }
       }
@@ -18856,6 +19051,23 @@
         }
       }
     },
+    "feedback.sent.offline" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You're offline. We'll send it when you're back online."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du bist offline. Wir senden dein Feedback, wenn du wieder online bist."
+          }
+        }
+      }
+    },
     "feedback.sent.title" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -18920,6 +19132,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Senden fehlgeschlagen. Schreibe an hello@enviouslabs.co"
+          }
+        }
+      }
+    },
+    "feedback.undeliverable" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Some saved feedback could not be sent. It remains on this Mac."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Teil des gespeicherten Feedbacks konnte nicht gesendet werden. Es bleibt auf diesem Mac."
           }
         }
       }
@@ -20105,6 +20334,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏎"
+          }
+        }
+      }
+    },
+    "whatsNew.privacy-controls.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry privacy-controls).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy controls"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutzeinstellungen"
+          }
+        }
+      }
+    },
+    "whatsNew.privacy-controls.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry privacy-controls).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Privacy controls\". Choose whether to share usage metrics and crash reports in Settings > Permissions. Crash report changes apply after a restart. When sending feedback, choose whether to attach diagnostics and preview the file first."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu: „Datenschutzeinstellungen“. Unter Einstellungen > Berechtigungen legst du fest, ob du Nutzungsstatistiken teilst und Absturzberichte sendest. Änderungen an der Einstellung für Absturzberichte werden nach einem Neustart wirksam. Beim Senden von Feedback entscheidest du, ob Diagnosedaten angehängt werden, und kannst die Datei vorher ansehen."
           }
         }
       }
