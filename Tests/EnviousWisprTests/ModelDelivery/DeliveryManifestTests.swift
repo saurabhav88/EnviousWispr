@@ -435,7 +435,7 @@ enum ManifestFixture {
       "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json")
   }
 
-  static let goldenDigest = "9e7558a65ec7a47bc546c84206e6fc9b50c4a03a7032ee0723af45ca31dfcd78"
+  static let goldenDigest = "8177cb992bfa084d3a1c647b8c3bffd0395626e03a1e8ac90da45325a29087a4"
   static let weightsSHA256 = "b43396668bcf616113fe2ecd4b2e2a6186a8105e0345c9c20f94d878683c65a9"
 
   @Test func editJudgeManifestLoadsAndMatchesGoldenDigest() throws {
@@ -517,7 +517,7 @@ enum ManifestFixture {
     #expect(manifest.sources.first?.id == "our_copy")
     #expect(
       manifest.sources.first?.baseURL.absoluteString
-        == "https://models.enviouslabs.co/edit-judge/dbc928ac-668f45b8/")
+        == "https://models.enviouswispr.com/edit-judge/dbc928ac-668f45b8/")
   }
 
   @Test func editJudgeManifestIsDeclaredAsAppResource() throws {
@@ -579,7 +579,7 @@ enum ManifestFixture {
   // chunk-text assembly half of the fresh-state carry retired). Identical model bytes
   // (`identity.revision` unchanged) — the same re-admission-without-re-download case.
   // Regenerated with `scripts/regen-delivery-manifest-digest.py --write`, control OK.
-  static let goldenDigest = "ed66a393964e8901e1502b5acde82033a5902b112db2b1057b1fbd1b10d69e23"
+  static let goldenDigest = "2564836e6f6e1eaffda0485d2bef49cc9bbcfb654a49737ae820320a9d3bdcc6"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)
@@ -752,7 +752,7 @@ struct S1MiniShippedManifestTests {
   /// The committed golden digest: the Python authoring validator and the Swift
   /// loader must both reproduce it, or a valid manifest is rejected on every
   /// launch.
-  static let goldenDigest = "602b8cf6eb7112ff919f3e5cd5e8a86b2c9e70bba571edc27d36a87f1e89b2b1"
+  static let goldenDigest = "f93dde3ffd3f87ec51c4b05b987d3520b06bbb9d53d62fcab876a01cb307a683"
 
   /// The byte constants were MEASURED, not transcribed: the file was hashed
   /// locally with `shasum -a 256` and the same value read back independently
@@ -928,7 +928,7 @@ struct S1MiniShippedManifestTests {
     #expect(manifest.files.count == 10)
     #expect(manifest.totalBytes == 501_240_383)
     #expect(manifest.sources.map(\.baseURL.absoluteString) == [
-      "https://models.enviouslabs.co/kev/kev-wc-2-bf2af137/"
+      "https://models.enviouswispr.com/kev/kev-wc-2-bf2af137/"
     ])
     // The runtime reads these by name; a manifest that drops one admits a folder the loader refuses.
     let names = Set(manifest.files.map(\.path))

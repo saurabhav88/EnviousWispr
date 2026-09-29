@@ -70,13 +70,20 @@ public final class ModelDeliveryHome {
   /// (`modelDelivery.<family>.enabled`), shared by the ensure path and the
   /// eligibility owner so they cannot disagree.
   func checkerDeliveryEnabled(_ engine: LearnedWordCheckerEngine) -> Bool {
-    let defaults = checkerDeliveryDefaults
+    let defaults =
+      checkerDeliveryDefaults
       ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
     return DeliveryFlags.snapshot(family: engine.checkerFamily, defaults: defaults).familyEnabled
   }
 
+  /// Our own model mirror, the host every bundled `our_copy` source names.
+  /// #3271 moved it from `models.enviouslabs.co`, which stays live for
+  /// installed older builds; `DeliveryManifestSourcePinningTests` pins the
+  /// manifests to the same literal.
+  static let ownedModelHost = "models.enviouswispr.com"
+
   /// A checker downloads only from our own mirror, under the prefix its base
-  /// model already uses: one `our_copy` source on `models.enviouslabs.co`.
+  /// model already uses: one `our_copy` source on `ownedModelHost`.
   static func checkerHostIsConfigured(
     _ manifest: DeliveryManifest, engine: LearnedWordCheckerEngine
   ) -> Bool {
@@ -86,7 +93,7 @@ public final class ModelDeliveryHome {
       source.id == "our_copy"
     else { return false }
     return source.baseURL.scheme == "https"
-      && source.baseURL.host == "models.enviouslabs.co"
+      && source.baseURL.host == ownedModelHost
       && source.baseURL.path.hasPrefix(engine.hostPathPrefix)
   }
 
@@ -567,13 +574,15 @@ public final class ModelDeliveryHome {
 
     // #3105: each engine's checker is a separate ModelIdentity and install
     // directory. The base registrations stay in WisprBootstrapper.
-    let checkerDataDirectory = appSupportOverride == nil
+    let checkerDataDirectory =
+      appSupportOverride == nil
       ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("EnviousWispr", isDirectory: true)
       : storage.dataDirectory
     for engine in LearnedWordCheckerEngine.allCases {
-      guard let manifest = try? DeliveryManifest.loadBundled(
-        resource: engine.manifestResource, bundle: manifestBundle),
+      guard
+        let manifest = try? DeliveryManifest.loadBundled(
+          resource: engine.manifestResource, bundle: manifestBundle),
         manifest.identity.family == engine.checkerFamily
       else { continue }
       checkerRegistrations[engine] = DeliveryRegistration(
@@ -757,9 +766,11 @@ public final class ModelDeliveryHome {
         // the drain is EITHER a failed delete OR the switch flipping off during
         // the drain (round 19); re-read it to say which.
         let removed = await handle.remove()
-        deliveredOutcome = removed ? nil : (handle.isEnabled() ? .deliveryRemovalFailed : .killSwitchOff)
+        deliveredOutcome =
+          removed ? nil : (handle.isEnabled() ? .deliveryRemovalFailed : .killSwitchOff)
       }
-      self?.editJudgeRemovalStepsForTests.append(deliveredOutcome == nil ? "delete" : "delete_failed")
+      self?.editJudgeRemovalStepsForTests.append(
+        deliveredOutcome == nil ? "delete" : "delete_failed")
       if !runtimeRemoved { return .runtimeCleanupFailed }
       return deliveredOutcome ?? .removed
     }

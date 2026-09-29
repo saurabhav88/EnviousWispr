@@ -99,7 +99,7 @@ struct DeliveryManifestSourcePinningTests {
   /// Our own mirror. Revision-scoping is per-family and not asserted here; the sibling
   /// suites own that.
   private static var mirrorPattern: String {
-    "^https://models\\.enviouslabs\\.co/(\(segment)/)+$"
+    "^https://models\\.enviouswispr\\.com/(\(segment)/)+$"
   }
 
   /// `https://huggingface.co/<owner>/<repo>/resolve/<revision>/[<path>/]*`. The revision
@@ -151,5 +151,35 @@ struct DeliveryManifestSourcePinningTests {
       huggingFaceSourcesSeen > 0,
       "no pinned Hugging Face source was found in the whole folder — this guard passed without guarding anything"
     )
+  }
+
+  /// #3271: every `our_copy` source names the one mirror host, and no bundled model
+  /// list names the pre-#3271 host, which stays live only for installed older builds.
+  /// A literal on purpose: `ModelDeliveryHome.ownedModelHost` is what the checker gate
+  /// reads, and `ModelDeliveryHomeTests` pins that constant to this same literal, so
+  /// data and code are each checked against an oracle neither of them produced.
+  @Test("every our_copy source is on models.enviouswispr.com and no model list names the old host")
+  func ourCopySourcesUseTheOneMirrorHost() throws {
+    var ourCopySeen = 0
+    for (path, manifest) in try Self.deliveryManifests() {
+      for source in manifest.sources ?? [] where source.id == "our_copy" {
+        ourCopySeen += 1
+        #expect(
+          URL(string: source.baseURL)?.host == "models.enviouswispr.com",
+          "\(path): our_copy baseURL \(source.baseURL) is not on models.enviouswispr.com")
+      }
+    }
+    #expect(ourCopySeen > 0, "no our_copy source was found — this guard passed without guarding anything")
+
+    // Raw bytes of EVERY bundled model list, delivery or plain (`eg1-manifest.json`,
+    // `s1-manifest.json`), so a URL outside `sources` cannot keep the old host.
+    let dir = Self.resourcesDirectory
+    let lists = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+      .filter { $0.hasSuffix("manifest.json") }
+    try #require(!lists.isEmpty, "no *manifest.json found under \(dir.path)")
+    for name in lists {
+      let text = try String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)
+      #expect(!text.contains("models.enviouslabs.co"), "\(name) still names models.enviouslabs.co")
+    }
   }
 }

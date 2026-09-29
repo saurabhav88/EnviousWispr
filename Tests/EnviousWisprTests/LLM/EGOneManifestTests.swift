@@ -19,7 +19,7 @@ struct EGOneManifestTests {
   static func makeManifest(
     modelName: String = "eg-1",
     promptTemplateID: String = "eg1-v1",
-    downloadURL: String = "https://models.enviouslabs.co/eg1/eg-1-v1-q5km.gguf"
+    downloadURL: String = "https://models.enviouswispr.com/eg1/eg-1-v1-q5km.gguf"
   ) -> EGOneManifest {
     EGOneManifest(
       modelName: modelName, version: "v1",
@@ -43,7 +43,7 @@ struct EGOneManifestTests {
       modelName: "eg-1", version: "v3-eg2",
       contextTokens: 16384, promptTemplateID: "eg1-v1",
       minAppVersion: "2.3.0",
-      downloadURL: URL(string: "https://models.enviouslabs.co/eg1/x.gguf")!,
+      downloadURL: URL(string: "https://models.enviouswispr.com/eg1/x.gguf")!,
       displayVersion: "1.1")
 
     #expect(manifest.artifactFileName == "eg-1-v3-eg2.gguf")
@@ -56,7 +56,7 @@ struct EGOneManifestTests {
     let json = """
       {"modelName":"eg-1","version":"v3-eg2","contextTokens":16384,
        "promptTemplateID":"eg1-v1","minAppVersion":"2.3.0",
-       "downloadURL":"https://models.enviouslabs.co/eg1/x.gguf"}
+       "downloadURL":"https://models.enviouswispr.com/eg1/x.gguf"}
       """
     let manifest = try JSONDecoder().decode(EGOneManifest.self, from: Data(json.utf8))
     #expect(manifest.displayVersion == nil)
@@ -67,7 +67,7 @@ struct EGOneManifestTests {
     let json = """
       {"modelName":"eg-1","version":"v3-eg2","contextTokens":16384,
        "promptTemplateID":"eg1-v1","minAppVersion":"2.3.0",
-       "downloadURL":"https://models.enviouslabs.co/eg1/x.gguf",
+       "downloadURL":"https://models.enviouswispr.com/eg1/x.gguf",
        "displayVersion":"1.1"}
       """
     let manifest = try JSONDecoder().decode(EGOneManifest.self, from: Data(json.utf8))
@@ -82,7 +82,7 @@ struct EGOneManifestTests {
       modelName: "eg-1", version: "v3-eg2",
       contextTokens: 16384, promptTemplateID: "eg1-v1",
       minAppVersion: "2.3.0",
-      downloadURL: URL(string: "https://models.enviouslabs.co/eg1/x.gguf")!,
+      downloadURL: URL(string: "https://models.enviouswispr.com/eg1/x.gguf")!,
       displayVersion: raw)
     #expect(manifest.resolvedDisplayVersion == nil)
   }
@@ -99,7 +99,7 @@ struct EGOneManifestTests {
   }
 
   @Test func nonHTTPSRefusesActivation() {
-    let manifest = Self.makeManifest(downloadURL: "http://models.enviouslabs.co/x.gguf")
+    let manifest = Self.makeManifest(downloadURL: "http://models.enviouswispr.com/x.gguf")
     #expect(manifest.activationBlockers(expectedModelName: LLMProvider.egOneModelName).contains("non_https_url"))
   }
 
@@ -111,7 +111,7 @@ struct EGOneManifestTests {
     let json = """
       {"modelName":"eg-1","version":"v1","sha256":"\(String(repeating: "b", count: 64))",
        "sizeBytes":5,"contextTokens":32768,"promptTemplateID":"eg1-v1",
-       "minAppVersion":"2.3.0","downloadURL":"https://models.enviouslabs.co/x.gguf",
+       "minAppVersion":"2.3.0","downloadURL":"https://models.enviouswispr.com/x.gguf",
        "futureField":"ignored","anotherThing":42}
       """
     let manifest = try JSONDecoder().decode(EGOneManifest.self, from: Data(json.utf8))
@@ -143,7 +143,7 @@ struct EGOneManifestTests {
     let manifest = try JSONDecoder().decode(EGOneManifest.self, from: data)
 
     #expect(manifest.downloadURL.scheme == "https")
-    #expect(manifest.downloadURL.host == "models.enviouslabs.co")
+    #expect(manifest.downloadURL.host == "models.enviouswispr.com")
     let forbidden = ["stub", "example", "invalid", "localhost", "placeholder"]
     for token in forbidden {
       #expect(!manifest.downloadURL.absoluteString.lowercased().contains(token))

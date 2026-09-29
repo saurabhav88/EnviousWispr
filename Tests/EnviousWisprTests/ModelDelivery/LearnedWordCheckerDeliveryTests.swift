@@ -56,13 +56,13 @@ struct LearnedWordCheckerDeliveryTests {
     Shipped(
       checker: "eg1-checker-delivery-manifest", base: "eg1-delivery-manifest",
       runtime: "eg1-manifest", family: .egOneChecker,
-      digest: "d513891ad8724243dce3d139410a97bb44f7104aac57cea3f19c80fe0e3f6fb0",
+      digest: "d911630224094b506c1bf3552487a711b280f9716ed5124b76b35870f6fcd034",
       sha256: "c36e831adb4d35ccbde46fb15567de2fe42d343859a20a78402bd1ffa6a24e83",
       size: 66_094_912, threshold: "0.481"),
     Shipped(
       checker: "s1-checker-delivery-manifest", base: "s1-delivery-manifest",
       runtime: "s1-manifest", family: .s1MiniChecker,
-      digest: "e8c33bc88ee58300731f2143f8708de6eca4f6d6750b2bee5c617e90ab984cb4",
+      digest: "ec9a1f070cf78296a4ad88eae955fc2936888c224f9824e80828c9b96f8cd7dc",
       sha256: "43da0f1ceda643a26a20898e3577476d4eedace5ff8b0f1ab03e9ff84f54f825",
       size: 80_767_264, threshold: "0.858"),
   ]
@@ -94,7 +94,7 @@ struct LearnedWordCheckerDeliveryTests {
     #expect(contract.base.runtimeABI == base.identity.runtimeABI)
     // Hosted beside the base on our own mirror; the digest pins the URL too.
     #expect(checker.sources.map(\.id) == ["our_copy"])
-    #expect(checker.sources[0].baseURL.host == "models.enviouslabs.co")
+    #expect(checker.sources[0].baseURL.host == "models.enviouswispr.com")
     #expect(
       checker.sources[0].baseURL.path.hasPrefix(
         base.sources[0].baseURL.path.split(separator: "/").first.map { "/\($0)/" } ?? "?"))

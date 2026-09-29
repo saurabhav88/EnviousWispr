@@ -256,7 +256,7 @@ private enum InstallPathFixture {
   // The shards were proved equivalent to the unsplit model by running 40 real email cases
   // through both at temperature 0 and requiring byte-identical output, because
   // split-then-merge rewrites headers and so is NOT byte-identical to the original.
-  static let goldenDigest = "52405c2e71d8bee1a24c9b06c31a84de5df5021a6a7914ebb019c0376d678038"
+  static let goldenDigest = "2bf469a2ee0b0bb551a0f0cb9bd25284f4e96afe79a6ff4f4faaef56280de065"
 
   @Test func shippedDeliveryManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.deliveryManifestURL)

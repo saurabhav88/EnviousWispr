@@ -24,7 +24,7 @@
   "sources": [
     {
       "id": "our_copy",
-      "baseURL": "https://models.enviouslabs.co/s1/34add00a48a2e5d24e5a4ee5405a99620a3a240c/"
+      "baseURL": "https://models.enviouswispr.com/s1/34add00a48a2e5d24e5a4ee5405a99620a3a240c/"
     },
     {
       "id": "backup",
@@ -42,5 +42,5 @@
     "evictPreviousRevisions": true,
     "entrypointFile": "s1-mini-1.0.gguf"
   },
-  "manifestDigest": "602b8cf6eb7112ff919f3e5cd5e8a86b2c9e70bba571edc27d36a87f1e89b2b1"
+  "manifestDigest": "f93dde3ffd3f87ec51c4b05b987d3520b06bbb9d53d62fcab876a01cb307a683"
 }

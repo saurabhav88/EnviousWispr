@@ -4,7 +4,7 @@
   "contextTokens": 16384,
   "promptTemplateID": "eg1-v2-named-language",
   "minAppVersion": "2.3.0",
-  "downloadURL": "https://models.enviouslabs.co/eg1/eg1-1.2-c003/eg1-1.2-c003-00001-of-00008.gguf",
-  "licenseURL": "https://models.enviouslabs.co/eg1/EG-1-MODEL-LICENSE.txt",
+  "downloadURL": "https://models.enviouswispr.com/eg1/eg1-1.2-c003/eg1-1.2-c003-00001-of-00008.gguf",
+  "licenseURL": "https://models.enviouswispr.com/eg1/EG-1-MODEL-LICENSE.txt",
   "displayVersion": "1.2"
 }

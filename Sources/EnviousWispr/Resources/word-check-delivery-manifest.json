@@ -84,7 +84,7 @@
   "sources": [
     {
       "id": "our_copy",
-      "baseURL": "https://models.enviouslabs.co/kev/kev-wc-2-bf2af137/"
+      "baseURL": "https://models.enviouswispr.com/kev/kev-wc-2-bf2af137/"
     }
   ],
   "license": {
@@ -98,5 +98,5 @@
     "evictPreviousRevisions": true,
     "entrypointFile": "kev-contract.json"
   },
-  "manifestDigest": "4a98d211c7117ddd07a853696379a6f5e41469329d7772e443a83a5b4fd55ee6"
+  "manifestDigest": "05cc9026b59099de65d86b201d8c31b1bd44d3ef2a52817684ff429f3792e5a1"
 }

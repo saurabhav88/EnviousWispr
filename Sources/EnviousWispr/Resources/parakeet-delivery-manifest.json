@@ -155,7 +155,7 @@
   "sources": [
     {
       "id": "our_copy",
-      "baseURL": "https://models.enviouslabs.co/parakeet/FluidInference/parakeet-tdt-0.6b-v3-coreml/"
+      "baseURL": "https://models.enviouswispr.com/parakeet/FluidInference/parakeet-tdt-0.6b-v3-coreml/"
     },
     {
       "id": "backup",
@@ -172,5 +172,5 @@
     "diskHeadroomFactor": "2.2",
     "evictPreviousRevisions": false
   },
-  "manifestDigest": "ed66a393964e8901e1502b5acde82033a5902b112db2b1057b1fbd1b10d69e23"
+  "manifestDigest": "2564836e6f6e1eaffda0485d2bef49cc9bbcfb654a49737ae820320a9d3bdcc6"
 }
