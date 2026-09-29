@@ -132,7 +132,8 @@ public struct HelpCheck: Sendable {
       guard reply.status == .ok else {
         return Self.fallback(
           Self.serverReason(reply.reason), mode: request.mode, splitFailure: splitFailure,
-          overflow: request.overflow, versions: reply.versions)
+          overflow: request.overflow, versions: reply.versions,
+          coveragePassed: reply.coverage.map { $0 >= HelpCheckReply.coverageGate })
       }
       let suggestions = HelpCheckSuggestions(
         mode: request.mode, overflow: request.overflow, reply: reply, anchored: anchored,
@@ -154,7 +155,7 @@ public struct HelpCheck: Sendable {
   static func fallback(
     _ reason: FeedbackHelpOutcome.FailureReason, mode: FeedbackHelpOutcome.Mode,
     splitFailure: FeedbackHelpOutcome.FailureReason? = nil, overflow: Bool = false,
-    versions: FeedbackHelpOutcome.Versions? = nil
+    versions: FeedbackHelpOutcome.Versions? = nil, coveragePassed: Bool? = nil
   ) -> Conclusion {
     // Everything known when the check stopped is kept (the path, the split's failure, whether
     // the split was cut short, the server's version stamps), so failures count against the
@@ -162,7 +163,7 @@ public struct HelpCheck: Sendable {
     .send(
       FeedbackHelpOutcome(
         terminalOutcome: .fallbackSent, failureReason: reason, mode: mode, overflow: overflow,
-        coveragePassed: nil, versions: versions, shownCardCount: 0, issues: [])!,
+        coveragePassed: coveragePassed, versions: versions, shownCardCount: 0, issues: [])!,
       splitFailure: splitFailure)
   }
 
@@ -353,7 +354,8 @@ public struct HelpCheckSuggestions: Equatable, Sendable {
     assertionFailure("help outcome out of bounds from a decoded reply")
     return FeedbackHelpOutcome(
       terminalOutcome: .fallbackSent, failureReason: .badReply, mode: mode, overflow: overflow,
-      coveragePassed: nil, versions: reply.versions, shownCardCount: 0, issues: [])!
+      coveragePassed: reply.coverage.map { $0 >= HelpCheckReply.coverageGate },
+      versions: reply.versions, shownCardCount: 0, issues: [])!
   }
 }
 

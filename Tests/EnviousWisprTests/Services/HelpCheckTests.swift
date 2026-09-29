@@ -509,6 +509,7 @@ struct HelpCheckTests {
     // A server that answered keeps its version stamps on the fallback; a transport failure has none.
     let serverAnswered = ["disabled", "http_503", "strange"].contains(answer)
     #expect((outcome.versions?.kb == "72134d105fb3") == serverAnswered, "\(answer)")
+    #expect(outcome.coveragePassed == (serverAnswered ? true : nil), "\(answer)")
   }
 
   @Test("A split cut short at the cap is still recorded as overflow when the check then fails")
