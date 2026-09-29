@@ -4764,13 +4764,13 @@
         }
       }
     },
-    "Could not download the model from models.enviouslabs.co. Check your connection. On a managed network, ask IT to allow this domain." : {
-      "comment" : "AI Polish, local model card: why the model download failed. Keep models.enviouslabs.co exactly; it is a web address.",
+    "Could not download the model. Check your connection. On a managed network, ask IT whether models.enviouswispr.com is allowed." : {
+      "comment" : "AI Polish, local model card: why the model download failed. Keep models.enviouswispr.com exactly; it is a web address.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Modell konnte nicht von models.enviouslabs.co heruntergeladen werden. Prüfe deine Verbindung. In einem verwalteten Netzwerk bitte die IT, diese Domain freizugeben."
+            "value" : "Das Modell konnte nicht heruntergeladen werden. Prüfe deine Verbindung. Frage in einem verwalteten Netzwerk die IT, ob models.enviouswispr.com freigegeben ist."
           }
         }
       }

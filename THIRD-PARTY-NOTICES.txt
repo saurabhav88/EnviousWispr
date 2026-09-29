@@ -2748,7 +2748,7 @@ S1-mini by Superwhisper (polish model, downloaded at runtime from Envious Labs)
 --------------------------------------------------------------------------------
 
 EnviousWispr downloads S1-mini only when a user selects it. The file is
-served from models.enviouslabs.co and is byte-identical to the publisher
+served from models.enviouswispr.com and is byte-identical to the publisher
 build; it is not distributed inside this disk image. Because Envious Labs
 serves those bytes, the full licence and notice follow.
 
@@ -2999,7 +2999,7 @@ mmBERT-small by JHU CLSP (base of the correction judge, downloaded at runtime fr
 
 EnviousWispr downloads its correction judge after the speech model. The
 judge is a small classifier Envious Labs trained on top of mmBERT-small;
-the file is served from models.enviouslabs.co and is not distributed
+the file is served from models.enviouswispr.com and is not distributed
 inside this disk image. mmBERT-small is Copyright the Johns Hopkins
 Center for Language and Speech Processing, licensed under the Apache
 License, Version 2.0, reproduced in full in the S1-mini section above.

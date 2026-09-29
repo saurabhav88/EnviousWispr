@@ -20,7 +20,7 @@
   "sources": [
     {
       "id": "our_copy",
-      "baseURL": "https://models.enviouslabs.co/s1/checker/s1c-d5/"
+      "baseURL": "https://models.enviouswispr.com/s1/checker/s1c-d5/"
     }
   ],
   "admission": {
@@ -47,5 +47,5 @@
       "runtimeABI": "llamacpp-eg1-v1"
     }
   },
-  "manifestDigest": "e8c33bc88ee58300731f2143f8708de6eca4f6d6750b2bee5c617e90ab984cb4"
+  "manifestDigest": "ec9a1f070cf78296a4ad88eae955fc2936888c224f9824e80828c9b96f8cd7dc"
 }

@@ -44,18 +44,22 @@ struct ModelDeliveryHomeTests {
         manifestDigest: checker.manifest.manifestDigest)
     }
     let prefix = engine.hostPathPrefix
+    // #3271: the literal is the oracle; the constant is what the gate reads.
+    #expect(ModelDeliveryHome.ownedModelHost == "models.enviouswispr.com")
     #expect(ModelDeliveryHome.checkerHostIsConfigured(
-      try hosted("https://models.enviouslabs.co\(prefix)checker/next/"), engine: engine))
+      try hosted("https://models.enviouswispr.com\(prefix)checker/next/"), engine: engine))
     for refused in [
-      "https://models.enviouslabs.co/edit-judge/x/", "http://models.enviouslabs.co\(prefix)x/",
-      "https://models.enviouslabs.co.evil.test\(prefix)x/", "https://adapter-host-pending.invalid\(prefix)",
+      "https://models.enviouswispr.com/edit-judge/x/", "http://models.enviouswispr.com\(prefix)x/",
+      "https://models.enviouswispr.com.evil.test\(prefix)x/", "https://adapter-host-pending.invalid\(prefix)",
+      // The pre-#3271 host: installed older builds still use it, new builds must not.
+      "https://models.enviouslabs.co\(prefix)x/",
     ] {
       #expect(
         ModelDeliveryHome.checkerHostIsConfigured(try hosted(refused), engine: engine) == false,
         "\(refused)")
     }
     #expect(ModelDeliveryHome.checkerHostIsConfigured(
-      try hosted("https://models.enviouslabs.co\(prefix)x/", id: "backup"), engine: engine) == false)
+      try hosted("https://models.enviouswispr.com\(prefix)x/", id: "backup"), engine: engine) == false)
 
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()

@@ -73,12 +73,12 @@
   "sources": [
     {
       "id": "our_copy",
-      "baseURL": "https://models.enviouslabs.co/eg1/"
+      "baseURL": "https://models.enviouswispr.com/eg1/"
     }
   ],
   "license": {
     "name": "EG-1 Model License",
-    "url": "https://models.enviouslabs.co/eg1/EG-1-MODEL-LICENSE.txt"
+    "url": "https://models.enviouswispr.com/eg1/EG-1-MODEL-LICENSE.txt"
   },
   "admission": {
     "layout": "componentSet",
@@ -87,5 +87,5 @@
     "evictPreviousRevisions": true,
     "entrypointFile": "eg1-1.2-c003-00001-of-00008.gguf"
   },
-  "manifestDigest": "52405c2e71d8bee1a24c9b06c31a84de5df5021a6a7914ebb019c0376d678038"
+  "manifestDigest": "2bf469a2ee0b0bb551a0f0cb9bd25284f4e96afe79a6ff4f4faaef56280de065"
 }

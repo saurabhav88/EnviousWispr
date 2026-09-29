@@ -302,7 +302,7 @@ struct PromptPlannerTests {
       EGOneManifest(
         modelName: "eg-1", version: "test", contextTokens: 16384,
         promptTemplateID: id, minAppVersion: "2.3.0",
-        downloadURL: URL(string: "https://models.enviouslabs.co/eg1/x.gguf")!)
+        downloadURL: URL(string: "https://models.enviouswispr.com/eg1/x.gguf")!)
     }
     #expect(manifest("eg1-v1").promptFamily == .egOneFixed)
     #expect(manifest("eg1-v2").promptFamily == .egOneEnvelope)
@@ -651,7 +651,7 @@ struct EGOneNamedLanguagePromptTests {
       EGOneManifest(
         modelName: "eg-1", version: "test", contextTokens: 16384,
         promptTemplateID: id, minAppVersion: "2.3.0",
-        downloadURL: URL(string: "https://models.enviouslabs.co/eg1/x.gguf")!)
+        downloadURL: URL(string: "https://models.enviouswispr.com/eg1/x.gguf")!)
     }
     #expect(manifest("eg1-v2-named-language").promptFamily == .egOneEnvelopeNamedLanguage)
     #expect(manifest("eg1-v2").promptFamily == .egOneEnvelope)

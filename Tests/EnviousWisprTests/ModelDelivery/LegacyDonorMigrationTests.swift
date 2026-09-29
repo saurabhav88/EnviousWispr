@@ -158,6 +158,58 @@ struct LegacyDonorMigrationTests {
     #expect(!FileManager.default.fileExists(atPath: world.install.path))
   }
 
+  /// #3271: moving the mirror host changes every manifest's digest while the
+  /// identity and bytes stay the same. A removal recorded against the old digest
+  /// must still hold, or the next launch clones the model back from the donor.
+  @Test("a deletion survives a source-URL change that alters only the manifest digest")
+  func declinedSurvivesDigestOnlyChange() async throws {
+    let world = try makeWorld()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: world.donor, path: f.path) }
+    let before = try ManifestFixture.manifest(files: files)
+    let after = try DeliveryManifest.load(
+      from: ManifestFixture.manifestJSON(
+        files: files,
+        sources: [
+          ["id": "our_copy", "baseURL": "https://moved-mirror.invalid.example/base/"],
+          ["id": "backup", "baseURL": "https://upstream.invalid.example/base/"],
+        ]))
+    #expect(before.identity == after.identity)
+    #expect(before.manifestDigest != after.manifestDigest, "the fixture must change the digest")
+    LegacyDonorMigration.record(.declined, metadataDirectory: world.metadata, manifest: before)
+
+    #expect(
+      LegacyDonorMigration.recordedState(metadataDirectory: world.metadata, manifest: after)
+        == .declined)
+    let outcome = await LegacyDonorMigration.migrate(
+      registration: registration(world, manifest: after))
+
+    #expect(outcome == .none)
+    #expect(!FileManager.default.fileExists(atPath: world.install.path))
+  }
+
+  /// The other half of #3271's split: `completed` still re-opens on a digest
+  /// change, so the cheap admitted check runs again against the new manifest.
+  @Test("a completed record does not carry over to a changed manifest")
+  func completedReopensOnDigestChange() throws {
+    let world = try makeWorld(withDonor: false)
+    let files = ManifestFixture.smallFiles
+    let before = try ManifestFixture.manifest(files: files)
+    let after = try DeliveryManifest.load(
+      from: ManifestFixture.manifestJSON(
+        files: files,
+        sources: [["id": "our_copy", "baseURL": "https://moved-mirror.invalid.example/base/"]]))
+    #expect(before.manifestDigest != after.manifestDigest, "the fixture must change the digest")
+    LegacyDonorMigration.record(.completed, metadataDirectory: world.metadata, manifest: before)
+
+    #expect(
+      LegacyDonorMigration.recordedState(metadataDirectory: world.metadata, manifest: before)
+        == .completed)
+    #expect(
+      LegacyDonorMigration.recordedState(metadataDirectory: world.metadata, manifest: after)
+        == nil)
+  }
+
   @Test("an UNREADABLE donor is never recorded as \"nothing to migrate\"")
   func unreadableDonorIsNotRecorded() async throws {
     let world = try makeWorld()
@@ -217,32 +269,32 @@ struct LegacyDonorMigrationTests {
   // build never does — so an unguarded reference builds clean locally and
   // fails only in CI.
   #if DEBUG
-  @Test("a removal during a migration is not overwritten by that migration")
-  func declinedIsNotOverwrittenByAnInFlightMigration() async throws {
-    let world = try makeWorld()
-    let files = ManifestFixture.smallFiles
-    for f in files { try write(f.content, under: world.donor, path: f.path) }
-    let manifest = try ManifestFixture.manifest(files: files)
+    @Test("a removal during a migration is not overwritten by that migration")
+    func declinedIsNotOverwrittenByAnInFlightMigration() async throws {
+      let world = try makeWorld()
+      let files = ManifestFixture.smallFiles
+      for f in files { try write(f.content, under: world.donor, path: f.path) }
+      let manifest = try ManifestFixture.manifest(files: files)
 
-    // A removal lands while the migration is between publishing and recording.
-    // The migration must not write `completed` over the `declined` the removal
-    // just wrote: a decision outranks a stale observation, whichever finished
-    // first.
-    LegacyDonorMigration.stallHook = { point in
-      if point == "after_publish" {
-        LegacyDonorMigration.record(
-          .declined, metadataDirectory: world.metadata, manifest: manifest)
+      // A removal lands while the migration is between publishing and recording.
+      // The migration must not write `completed` over the `declined` the removal
+      // just wrote: a decision outranks a stale observation, whichever finished
+      // first.
+      LegacyDonorMigration.stallHook = { point in
+        if point == "after_publish" {
+          LegacyDonorMigration.record(
+            .declined, metadataDirectory: world.metadata, manifest: manifest)
+        }
       }
+      defer { LegacyDonorMigration.stallHook = nil }
+
+      _ = await LegacyDonorMigration.migrate(registration: registration(world, manifest: manifest))
+
+      #expect(
+        LegacyDonorMigration.recordedState(
+          metadataDirectory: world.metadata, manifest: manifest) == .declined,
+        "a deliberate removal must survive a migration that was already running")
     }
-    defer { LegacyDonorMigration.stallHook = nil }
-
-    _ = await LegacyDonorMigration.migrate(registration: registration(world, manifest: manifest))
-
-    #expect(
-      LegacyDonorMigration.recordedState(
-        metadataDirectory: world.metadata, manifest: manifest) == .declined,
-      "a deliberate removal must survive a migration that was already running")
-  }
   #endif
 
   @Test("an EMPTY or truncated record reads as absent, not as a claim")
@@ -312,41 +364,41 @@ struct LegacyDonorMigrationTests {
   // build never does — so an unguarded reference builds clean locally and
   // fails only in CI.
   #if DEBUG
-  @Test("an interruption after cloning leaves nothing half-installed")
-  func interruptionPublishesNothing() async throws {
-    let world = try makeWorld()
-    let files = ManifestFixture.smallFiles
-    for f in files { try write(f.content, under: world.donor, path: f.path) }
-    let manifest = try ManifestFixture.manifest(files: files)
+    @Test("an interruption after cloning leaves nothing half-installed")
+    func interruptionPublishesNothing() async throws {
+      let world = try makeWorld()
+      let files = ManifestFixture.smallFiles
+      for f in files { try write(f.content, under: world.donor, path: f.path) }
+      let manifest = try ManifestFixture.manifest(files: files)
 
-    final class Box: @unchecked Sendable { var task: Task<Void, Never>? }
-    let box = Box()
-    LegacyDonorMigration.stallHook = { point in
-      if point == "after_clone" { box.task?.cancel() }
-    }
-    defer { LegacyDonorMigration.stallHook = nil }
+      final class Box: @unchecked Sendable { var task: Task<Void, Never>? }
+      let box = Box()
+      LegacyDonorMigration.stallHook = { point in
+        if point == "after_clone" { box.task?.cancel() }
+      }
+      defer { LegacyDonorMigration.stallHook = nil }
 
-    let reg = registration(world, manifest: manifest)
-    box.task = Task { _ = await LegacyDonorMigration.migrate(registration: reg) }
-    await box.task?.value
+      let reg = registration(world, manifest: manifest)
+      box.task = Task { _ = await LegacyDonorMigration.migrate(registration: reg) }
+      await box.task?.value
 
-    #expect(
-      LegacyDonorMigration.recordedState(
-        metadataDirectory: world.metadata, manifest: manifest) == nil,
-      "a cancelled migration must not record completion")
-    // Whatever was published is COMPLETE and correct. Nothing partial is visible.
-    for (component, componentFiles) in manifest.filesByComponent {
-      let root = world.install.appendingPathComponent(component)
-      guard FileManager.default.fileExists(atPath: root.path) else { continue }
-      for f in componentFiles {
-        let landed = world.install.appendingPathComponent(f.resolvedInstallPath)
-        let expected = world.donor.appendingPathComponent(f.resolvedInstallPath)
-        #expect(
-          try Data(contentsOf: landed) == (try Data(contentsOf: expected)),
-          "a published component must be complete and correct at \(f.resolvedInstallPath)")
+      #expect(
+        LegacyDonorMigration.recordedState(
+          metadataDirectory: world.metadata, manifest: manifest) == nil,
+        "a cancelled migration must not record completion")
+      // Whatever was published is COMPLETE and correct. Nothing partial is visible.
+      for (component, componentFiles) in manifest.filesByComponent {
+        let root = world.install.appendingPathComponent(component)
+        guard FileManager.default.fileExists(atPath: root.path) else { continue }
+        for f in componentFiles {
+          let landed = world.install.appendingPathComponent(f.resolvedInstallPath)
+          let expected = world.donor.appendingPathComponent(f.resolvedInstallPath)
+          #expect(
+            try Data(contentsOf: landed) == (try Data(contentsOf: expected)),
+            "a published component must be complete and correct at \(f.resolvedInstallPath)")
+        }
       }
     }
-  }
   #endif
 
   // #if DEBUG because `stallHook` is DEBUG-only: it is a lifecycle pause for
@@ -355,35 +407,35 @@ struct LegacyDonorMigrationTests {
   // build never does — so an unguarded reference builds clean locally and
   // fails only in CI.
   #if DEBUG
-  @Test("a cancel between verifying and publishing publishes nothing")
-  func cancelAfterVerifyPublishesNothing() async throws {
-    let world = try makeWorld()
-    let files = ManifestFixture.smallFiles
-    for f in files { try write(f.content, under: world.donor, path: f.path) }
-    let manifest = try ManifestFixture.manifest(files: files)
+    @Test("a cancel between verifying and publishing publishes nothing")
+    func cancelAfterVerifyPublishesNothing() async throws {
+      let world = try makeWorld()
+      let files = ManifestFixture.smallFiles
+      for f in files { try write(f.content, under: world.donor, path: f.path) }
+      let manifest = try ManifestFixture.manifest(files: files)
 
-    // The tightest window there is: the bytes are cloned AND proven, and the
-    // only thing left is the write that leaves the candidate directory. This is
-    // the instant `remove()` has to win, or a user who deleted the model gets a
-    // component put back moments later.
-    final class Box: @unchecked Sendable { var task: Task<Void, Never>? }
-    let box = Box()
-    LegacyDonorMigration.stallHook = { point in
-      if point == "after_verify" { box.task?.cancel() }
+      // The tightest window there is: the bytes are cloned AND proven, and the
+      // only thing left is the write that leaves the candidate directory. This is
+      // the instant `remove()` has to win, or a user who deleted the model gets a
+      // component put back moments later.
+      final class Box: @unchecked Sendable { var task: Task<Void, Never>? }
+      let box = Box()
+      LegacyDonorMigration.stallHook = { point in
+        if point == "after_verify" { box.task?.cancel() }
+      }
+      defer { LegacyDonorMigration.stallHook = nil }
+
+      let reg = registration(world, manifest: manifest)
+      box.task = Task { _ = await LegacyDonorMigration.migrate(registration: reg) }
+      await box.task?.value
+
+      #expect(
+        !FileManager.default.fileExists(atPath: world.install.path),
+        "nothing may be published after the caller has cancelled")
+      #expect(
+        LegacyDonorMigration.recordedState(
+          metadataDirectory: world.metadata, manifest: manifest) == nil)
     }
-    defer { LegacyDonorMigration.stallHook = nil }
-
-    let reg = registration(world, manifest: manifest)
-    box.task = Task { _ = await LegacyDonorMigration.migrate(registration: reg) }
-    await box.task?.value
-
-    #expect(
-      !FileManager.default.fileExists(atPath: world.install.path),
-      "nothing may be published after the caller has cancelled")
-    #expect(
-      LegacyDonorMigration.recordedState(
-        metadataDirectory: world.metadata, manifest: manifest) == nil)
-  }
   #endif
 
   @Test("an install directory resolving inside the donor is refused")

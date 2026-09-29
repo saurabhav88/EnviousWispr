@@ -24,7 +24,7 @@ imported, so there is one implementation of it).
                --revision <id> --min-app-version <x.y.z>
                [--run <dir>]   (default: three levels above --export, the trainer's layout)
                [--out Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json]
-               [--base-url https://models.enviouslabs.co/edit-judge/<revision>/]
+               [--base-url https://models.enviouswispr.com/edit-judge/<revision>/]
 
 Refuses (exit 2): a stage dir that exists, an export with no
 `training-manifest-shaped.json` or no `.mlpackage`, a run with no
@@ -184,7 +184,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--base-url", default=None)
     a = p.parse_args(argv[1:])
-    base_url = a.base_url or f"https://models.enviouslabs.co/edit-judge/{a.revision}/"
+    base_url = a.base_url or f"https://models.enviouswispr.com/edit-judge/{a.revision}/"
     if not base_url.endswith("/"):
         raise SystemExit("refused: --base-url must end with /")
     export = a.export.resolve()
