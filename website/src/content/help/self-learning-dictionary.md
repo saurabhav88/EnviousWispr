@@ -7,7 +7,7 @@ order: 5
 keywords: ["self-learning dictionary", "learn from my edits", "learn from edits", "undo", "auto-learned", "correction", "misheard word", "custom words", "on-device", "local classifier", "word check", "Envious Word Check", "checked by", "learn-only", "privacy", "which apps", "word not learned", "remove a learned word", "turn off learning", "wrong word added to dictionary"]
 related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-word-from-your-selection", "privacy-overview", "model-downloads-and-management"]
 updated: 2026-09-29
-deflection: "show_but_always_send"
+deflection: "can_resolve"
 ---
 The Self-Learning Dictionary adds words to your dictionary for you. When you fix a misheard word in text EnviousWispr pasted a moment ago, and a check on your Mac agrees it was a correction, the word you typed is saved in Your Words with the mishearing attached. A small pill gives you four seconds to undo it. You never have to open Settings to teach it a name.
 

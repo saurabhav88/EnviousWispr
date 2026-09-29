@@ -7,7 +7,7 @@ order: 6
 keywords: ["uninstall", "remove", "delete", "get rid of it", "clean up", "free up space", "leftover files", "models taking up space", "delete EnviousWispr", "remove models", "reinstall", "start fresh", "Trash"]
 related: ["model-downloads-and-management"]
 updated: 2026-09-29
-deflection: "never_intervene"
+deflection: "show_but_always_send"
 ---
 Removing EnviousWispr takes two parts: deleting the application, and deleting the support files it saved on your Mac. Deleting the application alone leaves your history, custom words, snippets, and downloaded models in place.
 

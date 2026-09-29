@@ -7,7 +7,7 @@ order: 3
 keywords: ["download model", "model download", "stuck downloading", "download failed", "try again", "resume download", "how big", "disk space", "gb", "storage", "redownload", "model files", "where are the models", "unload model", "free memory", "remove model"]
 related: ["uninstalling-enviouswispr"]
 updated: 2026-09-29
-deflection: "show_but_always_send"
+deflection: "can_resolve"
 ---
 EnviousWispr keeps its speech models on your own Mac rather than on a server, which is what lets your audio stay on the device. The trade is a download the first time and some disk space to manage afterwards.
 

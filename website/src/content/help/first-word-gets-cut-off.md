@@ -6,7 +6,7 @@ section: "Transcription Issues"
 order: 4
 keywords: ["first word", "cut off", "clipped", "missing the beginning", "loses the start", "chops the first word", "beginning missing", "first word missing", "start of sentence missing", "microphone readiness", "airpods first word"]
 updated: 2026-09-29
-deflection: "show_but_always_send"
+deflection: "can_resolve"
 ---
 When the start of your speech goes missing, the microphone was still waking up as you began to talk. Two fixes work: pause briefly after pressing your keybind, or keep the microphone awake for longer.
 
