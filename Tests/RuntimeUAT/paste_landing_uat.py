@@ -336,11 +336,12 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
                 u.sentence_overlap(value) >= 5, repr(value[:80]))
         u.check(f"{name}: observed=found", observed == "found", f"{observed}/{reason}")
     else:
-        # Chrome reports the page's web area as focused here (measured 2026-09-23: AXWebArea,
-        # value ''), so `absent` is as true an answer as `no_target`: the paste went nowhere and
-        # the field did not change. PR B (G5): that miss must KEEP the words and show the pill.
-        u.check(f"{name}: observed is a miss (absent or no_target)",
-                observed in ("absent", "no_target"), f"{observed}/{reason}")
+        # An awake Chrome reports the page's web area as focused here (measured 2026-09-23:
+        # AXWebArea, value ''), so the paste went nowhere into a readable field: `absent`. PR B (G5):
+        # that miss must KEEP the words and show the pill. `no_target` would mean Chrome's
+        # accessibility was asleep, which never keeps the words (#3286): a failed precondition.
+        u.check(f"{name}: observed is a readable-field miss (absent)",
+                observed == "absent", f"{observed}/{reason}")
         if name == "readonly":
             # The miss must be REAL: the refusing field is still empty, read independently.
             value = textbox_value()
@@ -424,8 +425,8 @@ def phase_new_take_after_miss():
     lines, cascades = take("new-take", base, expected_takes=2)
     watcher.join(timeout=10)
     u.check("newtake: the second take started right after the paste", started["at"] is not None)
-    u.check("newtake: the first paste was a miss",
-            len(lines) >= 1 and lines[0][1] in ("absent", "no_target"), str(lines))
+    u.check("newtake: the first paste was a readable-field miss (absent; no_target never keeps, #3286)",
+            len(lines) >= 1 and lines[0][1] == "absent", str(lines))
     u.wait_for("the notice verdict", lambda: NOTICE.search(u.log_since(base)), deadline=10.0)
     notices = NOTICE.findall(u.log_since(base))
     u.check("newtake: the old take's notice was not shown",
@@ -461,8 +462,8 @@ def phase_copy_during_wait():
     lines, cascades = take("copy-during-wait", base)
     watcher.join(timeout=5)
     u.check("copy: the user's copy was made after the paste", copied["at"] is not None)
-    u.check("copy: one landing line, a miss",
-            len(lines) == 1 and lines[0][1] in ("absent", "no_target"), str(lines))
+    u.check("copy: one landing line, a readable-field miss (absent; no_target never keeps, #3286)",
+            len(lines) == 1 and lines[0][1] == "absent", str(lines))
     u.wait_for("the checked cleanup's line", lambda: KEPT.search(u.log_since(base)), deadline=10.0)
     kept = KEPT.findall(u.log_since(base))
     u.check("copy: the checked cleanup yielded to the user's copy",
@@ -840,8 +841,312 @@ def verify_click_out(name, lines, cascades, moved, box):
     verify_kept(name)
 
 
+# ── #3286: a Chromium host whose accessibility is asleep ─────────────────────────────────────
+#
+# A Chrome that no assistive client has woken reports NO focused element, with its box focused
+# (measured 2026-09-29: `AXFocusedUIElement` -25212 for 12 s of polling on a fresh profile; the
+# founder's everyday Chrome is already awake, so it cannot show this). The arrival session then
+# reads `no_target`, which must never keep the dictation in place of the user's clipboard.
+#
+# Each phase runs in its OWN Chrome process (`--user-data-dir` in /tmp) so the founder's Chrome is
+# never touched, and nothing reads that process's accessibility tree before the landing verdict is
+# written: any AX read could be what wakes it. Only after the verdict does the driver request
+# `AXEnhancedUserInterface` (Chromium acts on it about two seconds later) and read the boxes.
+
+class SleepingChrome:
+    """One isolated Chrome process, found by its own profile directory."""
+
+    def __init__(self, label):
+        import tempfile
+        self.label = label
+        self.profile = tempfile.mkdtemp(prefix=f"ew-uat-3286-{label}-{u.RUN_ID}-", dir="/tmp")
+        self.pid = None
+
+    def open(self, url):
+        """Open `url` in this profile: the first call launches the process, later calls add a NEW
+        WINDOW to it (Chrome hands a same-profile launch to the running process; without
+        `--new-window` it may open a tab in the front window instead)."""
+        extra = ["--new-window"] if self.pid is not None else []
+        subprocess.run(["open", "-na", "Google Chrome", "--args", f"--user-data-dir={self.profile}",
+                        "--no-first-run", "--no-default-browser-check", *extra, url], check=True)
+        if self.pid is None:
+            if not u.wait_for(f"{self.label}: its Chrome process", self._find_pid, deadline=15.0):
+                raise u.Aborted(f"{self.label}: the isolated Chrome did not start")
+            self.pid = self._find_pid()
+
+    def _profile_pids(self):
+        """Every process whose command line names this run's unique profile directory (Chrome and
+        its helpers). `--` ends pgrep's options: the pattern itself starts with dashes."""
+        r = subprocess.run(["pgrep", "-f", "--", f"--user-data-dir={self.profile}"],
+                           capture_output=True, text=True)
+        if r.returncode not in (0, 1):
+            raise u.Aborted(f"{self.label}: pgrep failed: {r.stderr.strip()}")
+        return [int(x) for x in r.stdout.split()]
+
+    def _find_pid(self):
+        for pid in self._profile_pids():
+            cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True,
+                                 text=True).stdout
+            if cmd.startswith("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"):
+                return pid
+        return None
+
+    def front(self):
+        from AppKit import NSRunningApplication
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(self.pid)
+        if app is None:
+            raise u.Aborted(f"{self.label}: its Chrome process is gone")
+        app.activateWithOptions_(0)
+        if not u.wait_for(f"{self.label}: its Chrome frontmost", self.is_front, deadline=5.0):
+            raise u.Aborted(f"{self.label}: its Chrome did not come front (pid {frontmost_pid()})")
+
+    def is_front(self):
+        return frontmost_pid() == self.pid
+
+    def wake(self):
+        """After the verdict only. True once the process exposes a focused element."""
+        from ApplicationServices import (AXUIElementCopyAttributeValue,
+                                         AXUIElementCreateApplication, AXUIElementSetAttributeValue)
+        from CoreFoundation import kCFBooleanTrue
+        app = AXUIElementCreateApplication(self.pid)
+        # Returns kAXErrorNotImplemented (-25208) on macOS 26+ and Chrome acts on it anyway.
+        AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface", kCFBooleanTrue)
+        return u.wait_for(f"{self.label}: its accessibility awake",
+                          lambda: AXUIElementCopyAttributeValue(app, "AXFocusedUIElement", None)[0]
+                          == 0, deadline=8.0)
+
+    def boxes(self):
+        """[(window title, box text)] for every window, after `wake`. A box is the first text area
+        (ChatGPT's composer, a local page's textarea); an unreadable one reads None."""
+        from ui_helpers import get_attr, get_ax_app
+        found = []
+        for window in get_attr(get_ax_app(self.pid), "AXWindows") or []:
+            hit = []
+
+            def walk(element, depth=0):
+                if element is None or depth > 40 or hit:
+                    return
+                if get_attr(element, "AXRole") == "AXTextArea":
+                    value = get_attr(element, "AXValue")
+                    hit.append(None if value is None else str(value))
+                    return
+                for child in get_attr(element, "AXChildren") or []:
+                    walk(child, depth + 1)
+            walk(window)
+            found.append((str(get_attr(window, "AXTitle") or ""), hit[0] if hit else None))
+        return found
+
+    def close(self):
+        """TERM this profile's Chrome only, then delete its profile: never a mount point, and never
+        while ANY process still names the profile (a Chrome found late, or one that did not quit,
+        keeps it). Found by the profile path, so it works even when `self.pid` was never set."""
+        main = self._find_pid()
+        if main is not None:
+            os.kill(main, 15)
+        if not u.wait_for(f"{self.label}: every process of its profile gone",
+                          lambda: not self._profile_pids(), deadline=15.0):
+            print(f"    {self.label}: processes {self._profile_pids()} still use {self.profile}; "
+                  "profile kept")
+            return False
+        if os.path.ismount(self.profile):
+            return False
+        subprocess.run(["find", self.profile, "-xdev", "-delete"], capture_output=True)
+        return not os.path.exists(self.profile)
+
+
+def frontmost_pid():
+    from AppKit import NSDate, NSDefaultRunLoopMode, NSRunLoop, NSWorkspace
+    NSRunLoop.currentRunLoop().runMode_beforeDate_(
+        NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(0.05))
+    app = NSWorkspace.sharedWorkspace().frontmostApplication()
+    return int(app.processIdentifier()) if app else None
+
+
+def set_clipboard_image():
+    """Put a small PNG on the clipboard, the reporter's screenshot, and return its snapshot."""
+    from AppKit import (NSBitmapImageRep, NSCalibratedRGBColorSpace, NSPasteboard,
+                        NSPasteboardItem, NSPasteboardTypePNG, NSPNGFileType)
+    rep_ = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
+        None, 16, 16, 8, 4, True, False, NSCalibratedRGBColorSpace, 0, 0)
+    png = rep_.representationUsingType_properties_(NSPNGFileType, {})
+    item = NSPasteboardItem.alloc().init()
+    item.setData_forType_(png, NSPasteboardTypePNG)
+    board = NSPasteboard.generalPasteboard()
+    board.clearContents()
+    if not board.writeObjects_([item]):
+        raise u.Aborted("could not put the test image on the clipboard")
+    return u.pasteboard_snapshot()
+
+
+def same_board(expected):
+    """Every item, every type, every byte of the clipboard equals `expected`."""
+    got = u.pasteboard_snapshot()
+    return len(got) == len(expected) and all(
+        set(g) == set(e) and all(bytes(g[k]) == bytes(e[k]) for k in e)
+        for g, e in zip(got, expected))
+
+
+def sleeping_take(label, chrome, before_hold=None):
+    """One take into the isolated Chrome with the image on the clipboard. Returns (lines,
+    cascades, image) or raises Aborted. Nothing here reads that Chrome's accessibility tree."""
+    # With restore OFF the cleanup rewrites the board to the dictation by design (legacy_rewrite),
+    # so the image-comes-back checks only mean something with restore ON.
+    if u.defaults_value("restoreClipboardAfterPaste") not in (None, "1"):
+        raise u.Aborted(f"{label}: needs Restore clipboard after paste ON (it is off)")
+    image = set_clipboard_image()
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+
+    def hold_check():
+        if not chrome.is_front():
+            raise u.Aborted(f"{label}: the isolated Chrome is not front (pid {frontmost_pid()})")
+        if before_hold is not None:
+            before_hold()
+    lines, cascades = take(label, base, bundle=CHROME, before_hold=hold_check)
+    return lines, cascades, image, base
+
+
+def verify_sleeping_cleanup(label, image, base):
+    u.wait_for("the checked cleanup's line", lambda: KEPT.search(u.log_since(base)), deadline=10.0)
+    kept = KEPT.findall(u.log_since(base))
+    u.check(f"{label}: the checked cleanup restored, never kept (#3286)",
+            [k[0] for k in kept] == ["restore"], str(kept))
+    u.check(f"{label}: no Copied notice was asked for", NOTICE.findall(u.log_since(base)) == [],
+            str(NOTICE.findall(u.log_since(base))))
+    u.check(f"{label}: the copied image is back on the clipboard, every byte",
+            u.wait_for("the image restore", lambda: same_board(image), deadline=5.0),
+            f"{len(u.pasteboard_snapshot())} item(s) now")
+
+
+def phase_sleeping(attempts=3):
+    """#3286 primary: ChatGPT in a Chrome whose accessibility was never woken. The words land in
+    ChatGPT's box and the copied image comes back, with no notice."""
+    print("\n== sleeping: dictate into ChatGPT in a Chrome that no accessibility client has woken")
+    for attempt in range(1, attempts + 1):
+        chrome = SleepingChrome(f"sleeping-{attempt}")
+        try:
+            chrome.open("https://chatgpt.com/")
+            time.sleep(8)  # settle: ChatGPT loads and focuses its composer; nothing is read
+            chrome.front()
+            lines, cascades, image, base = sleeping_take(f"sleeping-{attempt}", chrome)
+            chrome_tiers = [t for t, app in cascades if app.strip() == CHROME]
+            observed = lines[0][1] if len(lines) == 1 else None
+            print(f"    attempt {attempt}: tiers={chrome_tiers} landing={lines}")
+            if observed != "no_target":
+                u.record(f"sleeping attempt {attempt}", "SKIP",
+                         f"precondition: observed={observed}, not no_target; a new instance follows")
+                continue
+            u.check("sleeping: one Cmd+V paste into the isolated Chrome", chrome_tiers == ["cgevent"],
+                    str(cascades))
+            u.check("sleeping: observed=no_target (the asleep state #3286 is about)", True)
+            verify_sleeping_cleanup("sleeping", image, base)
+            u.check("sleeping: its accessibility woke after the verdict", chrome.wake())
+            boxes = chrome.boxes()
+            landed = [t for t, v in boxes if v and u.sentence_overlap(v) >= 5]
+            u.check("sleeping: the words landed in ChatGPT's box (5+ of 7 words)", len(landed) == 1,
+                    str([(t[:40], (v or "")[:60]) for t, v in boxes]))
+            return
+        finally:
+            u.check(f"sleeping-{attempt}: its Chrome closed and its profile removed", chrome.close())
+    u.record("sleeping", "FAIL", f"no attempt of {attempts} reached no_target")
+
+
+SWITCH_PAGE = ('<!doctype html><meta charset="utf-8"><title>{title}</title>'
+               '<body style="font:18px sans-serif;padding:24px"><p>{title} (local page).</p>'
+               '<textarea id="t" autofocus rows="6" cols="70"></textarea>'
+               '<script>document.getElementById("t").focus()</script></body>')
+
+
+def phase_sleeping_switch():
+    """#3286 known limit, stated in the plan: with Chrome asleep there is no captured field, so the
+    #3121 window check has nothing to compare, and a switch to another window of the same Chrome
+    before the paste lands the words THERE. The clipboard still comes back, and Paste Last
+    Dictation delivers the words into the intended window."""
+    print("\n== sleeping-switch: dictate in window A of a sleeping Chrome, switch to window B mid-take")
+    chrome = SleepingChrome("sleeping-switch")
+    titles = {k: f"ew 3286 {k} {u.RUN_ID}" for k in ("A", "B")}
+    paths = {}
+    for k, title in titles.items():
+        paths[k] = f"/tmp/ew-uat-3286-switch-{k}-{u.RUN_ID}.html"
+        with open(paths[k], "w") as fh:
+            fh.write(SWITCH_PAGE.format(title=title))
+    import threading
+    stop = threading.Event()  # set before cleanup, so the worker can never open a window after it
+    thread = None
+    try:
+        chrome.open(f"file://{paths['A']}")
+        time.sleep(4)  # settle: page A loads and focuses its box; nothing is read
+        chrome.front()
+        done = {}
+
+        def open_b():  # a new window of the SAME Chrome, front, its box focused
+            deadline = time.time() + 20.0
+            while "Recording started" not in u.log_since(PHASE_BASE["offset"]):
+                if time.time() > deadline or stop.wait(0.05):
+                    return
+            if stop.wait(0.6):  # settle: switch 0.6 s into the take, unless the phase is ending
+                return
+            chrome.open(f"file://{paths['B']}")
+            done["opened"] = True
+        thread = threading.Thread(target=open_b, daemon=True)
+        PHASE_BASE["offset"] = u.log_size()
+        thread.start()
+        lines, cascades, image, base = sleeping_take("sleeping-switch", chrome)
+        thread.join(timeout=10)
+        u.check("sleeping-switch: window B opened mid-take", done.get("opened") is True)
+        observed = lines[0][1] if len(lines) == 1 else None
+        u.check("sleeping-switch: observed=no_target (Chrome asleep)", observed == "no_target",
+                str(lines))
+        verify_sleeping_cleanup("sleeping-switch", image, base)
+        u.check("sleeping-switch: its accessibility woke after the verdict", chrome.wake())
+        boxes = dict(chrome.boxes())
+        u.check("sleeping-switch: windows A and B are both separate windows of this Chrome",
+                any(t.startswith(titles["A"]) for t in boxes)
+                and any(t.startswith(titles["B"]) for t in boxes), str(list(boxes)))
+        a = next((v for t, v in boxes.items() if t.startswith(titles["A"])), None)
+        b = next((v for t, v in boxes.items() if t.startswith(titles["B"])), None)
+        print(f"    window A box={a!r:.60} window B box={b!r:.60}")
+        u.check("sleeping-switch: KNOWN LIMIT recorded: the words landed in the front window B",
+                b is not None and u.sentence_overlap(b) >= 5, repr(b))
+        u.check("sleeping-switch: window A is still empty", a == "", repr(a))
+        # Recovery: bring window A front and press Paste Last Dictation (Control+Command+V).
+        from ui_helpers import get_attr, get_ax_app, perform_action, set_attr
+        for window in get_attr(get_ax_app(chrome.pid), "AXWindows") or []:
+            if str(get_attr(window, "AXTitle") or "").startswith(titles["A"]):
+                perform_action(window, "AXRaise")
+                set_attr(window, "AXMain", True)
+        chrome.front()
+        app_ax = get_ax_app(chrome.pid)
+        focused_window = get_attr(app_ax, "AXFocusedWindow")
+        focused = get_attr(app_ax, "AXFocusedUIElement")
+        window_title = str(get_attr(focused_window, "AXTitle") or "") if focused_window else ""
+        focused_role_ = get_attr(focused, "AXRole") if focused is not None else None
+        if not (window_title.startswith(titles["A"]) and focused_role_ == "AXTextArea"):
+            raise u.Aborted(f"sleeping-switch: window A's box is not focused before Paste Last "
+                            f"(window {window_title!r}, focus {focused_role_!r})")
+        reuse_base = u.log_size()
+        if not chrome.is_front():  # the founder may have switched apps during the checks above
+            raise u.Aborted("sleeping-switch: the isolated Chrome lost the front before Paste Last")
+        u.chord("v")
+        u.wait_for("the Paste Last outcome", lambda: u.reuse_lines(reuse_base), deadline=5.0)
+        pasted = u.wait_for(
+            "the recovered words in window A",
+            lambda: u.sentence_overlap(next((v or "" for t, v in chrome.boxes()
+                                             if t.startswith(titles["A"])), "")) >= 5, deadline=5.0)
+        u.check("sleeping-switch: Paste Last Dictation put the words into window A", pasted,
+                str(u.reuse_lines(reuse_base)))
+    finally:
+        stop.set()
+        if thread is not None:
+            thread.join()
+        u.check("sleeping-switch: its Chrome closed and its profile removed", chrome.close())
+        for path in paths.values():
+            if os.path.exists(path):
+                os.remove(path)
+
+
 PHASES = ["focused", "nofocus", "textedit", "readonly", "copy", "newtake", "otherwindow",
-          "closedwindow", "reuseafter", "clickout"]
+          "closedwindow", "reuseafter", "clickout", "sleeping", "sleepingswitch"]
 
 
 def main():
@@ -887,6 +1192,10 @@ def main():
                 phase_click_out()
             elif name in ("otherwindow", "closedwindow"):
                 phase_other_window(close_target=name == "closedwindow")
+            elif name == "sleeping":
+                phase_sleeping()
+            elif name == "sleepingswitch":
+                phase_sleeping_switch()
             else:
                 phase(name)
     except u.Aborted as e:
