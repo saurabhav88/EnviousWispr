@@ -7,6 +7,7 @@ order: 5
 keywords: ["ollama not working", "ollama error", "cant connect to ollama", "ollama failed", "local ai broken"]
 related: ["using-ollama-for-fully-offline-ai-polish"]
 updated: 2026-08-11
+deflection: "show_but_always_send"
 ---
 When Ollama polish fails to tidy up your dictation, the cause is nearly always that Ollama itself is not running.
 

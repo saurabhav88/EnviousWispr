@@ -7,6 +7,7 @@ order: 5
 keywords: ["apple intelligence", "apple ai", "on device ai", "free ai", "macos 26", "set up apple intelligence", "enable apple intelligence"]
 related: ["apple-intelligence-not-available", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "s1-mini-by-superwhisper-and-writing-style"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 Apple Intelligence is Apple's built-in system for processing language on your Mac, and EnviousWispr can use it to tidy up your dictation by removing filler words and fixing punctuation. This option is free to use, requires no API key, and keeps your text on your Mac.
 

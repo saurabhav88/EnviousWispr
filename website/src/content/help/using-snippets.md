@@ -7,6 +7,7 @@ order: 7
 keywords: ["snippets", "text expansion", "voice shortcut", "paste my email", "keyword", "backslash", "signature", "expand phrase", "saved text", "today's date", "paste the time", "paste what I copied", "clipboard snippet", "fill-in"]
 related: ["adding-custom-words", "ai-polish-and-cloud-data"]
 updated: 2026-09-17
+deflection: "can_resolve"
 ---
 A snippet is a voice shortcut. You save a piece of text once, then say a short phrase to paste it. An email address, a sign-off, a link you send people every week.
 

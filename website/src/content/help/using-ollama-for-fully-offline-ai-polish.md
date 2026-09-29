@@ -7,6 +7,7 @@ order: 6
 keywords: ["ollama", "offline ai", "local ai", "local model", "llama", "run ai locally", "no internet ai", "free local"]
 related: ["ollama-polish-not-working"]
 updated: 2026-09-04
+deflection: "can_resolve"
 ---
 Ollama is a separate free application that runs language models directly on your Mac, and EnviousWispr can hand your dictation to one of those models for tidying up. Once you have completed the setup, you do not need an API key or an account, and your transcribed text stays on your Mac.
 

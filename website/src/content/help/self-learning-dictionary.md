@@ -7,6 +7,7 @@ order: 5
 keywords: ["self-learning dictionary", "learn from my edits", "learn from edits", "undo", "auto-learned", "correction", "misheard word", "custom words", "on-device", "local classifier", "word check", "Envious Word Check", "checked by", "learn-only", "privacy", "which apps"]
 related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-word-from-your-selection", "privacy-overview", "model-downloads-and-management"]
 updated: 2026-09-27
+deflection: "show_but_always_send"
 ---
 When EnviousWispr pastes a dictation and you then fix one word in it by hand, and a check on your Mac agrees it was a correction, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you three seconds to undo. Learned words are saved in Your Words, and from then on, while **Enable Dictionary** is on, a word check on your Mac uses them to fix the same mishearing in later dictations. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
 

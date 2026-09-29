@@ -7,6 +7,7 @@ order: 8
 keywords: ["transcribe a file", "import audio", "voice memo", "meeting recording", "lecture", "podcast", "mp3", "m4a", "video to text", "transcript", "file transcription", "audio to text"]
 related: ["transcribe-a-file-speaker-labels", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "ai-polish-and-cloud-data"]
 updated: 2026-09-27
+deflection: "can_resolve"
 ---
 Transcribe a File takes an audio or video file you already have and gives you back clean, readable text. The recording never leaves your Mac. When the recording has more than one voice and the app can tell them apart and match the words to them, the transcript comes back as speaker turns; see [speaker labels](/help/transcribe-a-file-speaker-labels/).
 

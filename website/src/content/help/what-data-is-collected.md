@@ -7,6 +7,7 @@ order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "turn off", "tracking", "crash reports", "usage metrics", "diagnostics"]
 related: ["privacy-overview"]
 updated: 2026-09-28
+deflection: "show_but_always_send"
 ---
 EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Your audio never reaches Envious Labs, the company that makes the app, and the app never sends us your dictations or transcripts unless you include them in a feedback report yourself.
 

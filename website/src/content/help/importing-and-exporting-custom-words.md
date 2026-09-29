@@ -7,6 +7,7 @@ order: 3
 keywords: ["import", "export", "backup my words", "csv", "move to a new mac", "transfer", "share my word list"]
 related: ["adding-custom-words", "using-snippets"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 Your custom words are the names and specialised words you have taught EnviousWispr to recognise. You can move them to another Mac or bring them in from another dictation app. Every control mentioned on this page lives under **Settings** \> **Dictionary** \> **Your Words**.
 

@@ -7,6 +7,7 @@ order: 1
 keywords: ["parakeet", "whisperkit", "whisper", "which engine", "engine", "speech engine", "model", "accuracy vs speed", "switch engine", "transcription engine", "which is better"]
 related: ["multi-language-dictation", "why-is-my-dictation-inaccurate", "using-snippets"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 You can choose between two speech engines for transcription, Parakeet or WhisperKit. Both run entirely on your Mac. Neither sends your audio anywhere, and neither needs an internet connection once its model has been downloaded.
 

@@ -7,6 +7,7 @@ order: 6
 keywords: ["apple intelligence missing", "apple intelligence greyed out", "cant use apple intelligence", "not available", "unavailable", "why cant i pick apple"]
 related: ["apple-intelligence-setup", "system-requirements"]
 updated: 2026-09-04
+deflection: "show_but_always_send"
 ---
 Apple Intelligence is one of the polish options EnviousWispr can use to tidy up your dictation, but Apple restricts the feature to specific hardware and software versions. Dictation itself keeps working normally even when Apple Intelligence is unavailable on your Mac.
 

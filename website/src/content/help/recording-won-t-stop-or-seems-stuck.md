@@ -8,6 +8,7 @@ keywords: ["wont stop", "stuck", "keeps recording", "frozen", "hung", "still rec
 related: ["canceling-a-recording", "app-crashes-or-asr-engine-crashes"]
 seeAlso: "mac-dictation-keeps-stopping"
 updated: 2026-09-10
+deflection: "show_but_always_send"
 ---
 If a recording will not stop, press **Escape**. This ends any recording in progress, in every recording mode. The on-screen bar disappears, which confirms it worked.
 

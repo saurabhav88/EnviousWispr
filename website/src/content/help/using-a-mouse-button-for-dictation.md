@@ -7,6 +7,7 @@ order: 7
 keywords: ["mouse", "mouse button", "gaming mouse", "side buttons", "thumb buttons", "razer", "naga", "logitech", "mmo mouse", "extra buttons", "bind mouse button", "middle click", "scroll wheel click", "start dictation with mouse", "hotkey on mouse", "keybind on mouse", "bind mouse to keybind"]
 related: ["customizing-your-keybind"]
 updated: 2026-08-10
+deflection: "can_resolve"
 ---
 The **Keybinds** page accepts keyboard keys, so there is no mouse button to pick from a list. Most extra buttons on a gaming mouse can still start dictation, because those buttons already send keyboard keys rather than mouse clicks.
 

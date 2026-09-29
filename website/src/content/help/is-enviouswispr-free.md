@@ -7,6 +7,7 @@ order: 1
 keywords: ["free", "is this free", "price", "cost", "pricing", "subscription", "pay", "trial", "how much", "premium", "hidden costs", "catch"]
 related: ["source-code-and-contributing", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 EnviousWispr is a free dictation app for macOS, and free means all of it. There is no subscription, no trial period, and no account to create.
 

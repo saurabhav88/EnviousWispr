@@ -8,6 +8,7 @@ keywords: ["first dictation", "how to use", "getting started", "try it", "how do
 related: ["push-to-talk-mode", "how-text-gets-pasted-into-your-app", "live-preview-words-on-screen", "escape-recovery"]
 seeAlso: "getting-started-enviouswispr-under-2-minutes"
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 You dictate by holding a key, speaking, and letting go. Your first attempt takes about ten seconds, and you can do it in whatever app you already have open.
 

@@ -7,6 +7,7 @@ order: 2
 keywords: ["clipboard", "copied text", "lost what i copied", "overwrites clipboard", "restore clipboard", "cmd v", "pasteboard"]
 related: ["how-text-gets-pasted-into-your-app", "adding-a-word-from-your-selection"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 When you dictate, your text often has to travel through your clipboard to reach the app you are working in. EnviousWispr handles that by recording whatever is on your clipboard first, and putting it back immediately afterwards.
 

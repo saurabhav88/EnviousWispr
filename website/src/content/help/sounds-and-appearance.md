@@ -6,6 +6,7 @@ section: "Appearance and Sounds"
 order: 5
 keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "pill design", "recording pill", "overlay", "bar position", "move the bar", "menu bar icon", "dock", "dock icon", "hide dock icon", "show in dock", "language", "app language", "German", "Deutsch", "interface language", "other audio"]
 updated: 2026-09-27
+deflection: "can_resolve"
 ---
 Seven settings change how EnviousWispr looks and sounds while you use it. The first six affect only looks, language and sounds, never what you dictate or how accurately it is transcribed. The seventh, Other audio while you dictate, can quiet the music around you, which keeps background sound out of your recording.
 

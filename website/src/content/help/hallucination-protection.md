@@ -7,6 +7,7 @@ order: 7
 keywords: ["hallucination", "made up words", "invented text", "wrong words added", "ai changed my meaning", "extra text", "it added things i didnt say"]
 related: ["why-is-my-dictation-inaccurate"]
 updated: 2026-08-06
+deflection: "show_but_always_send"
 ---
 EnviousWispr can hand your dictation to an AI model to tidy up, and AI models sometimes invent content you never spoke. EnviousWispr checks the result before it reaches your cursor and throws out the clear failures.
 

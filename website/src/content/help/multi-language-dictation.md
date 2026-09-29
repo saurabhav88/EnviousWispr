@@ -7,6 +7,7 @@ order: 2
 keywords: ["language", "languages", "spanish", "french", "german", "hindi", "not english", "foreign language", "bilingual", "multilingual", "change language", "accent", "british english", "british spelling", "uk english", "english uk", "colour", "organise", "american spelling"]
 related: ["choosing-a-speech-engine-parakeet-vs-whisperkit", "filler-word-removal", "live-preview-words-on-screen"]
 updated: 2026-09-27
+deflection: "can_resolve"
 ---
 EnviousWispr handles dozens of languages without asking you to change a setting before every session. Parakeet, the transcription engine you start with, recognises 25 European languages and detects which one you are speaking on its own.
 

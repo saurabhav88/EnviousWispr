@@ -8,6 +8,7 @@ keywords: ["cloud", "does it send my text anywhere", "sent to openai", "sent to 
 related: ["privacy-overview", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
 seeAlso: "cloud-ai-polish-not-stored"
 updated: 2026-09-04
+deflection: "show_but_always_send"
 ---
 Whether any of your text leaves your Mac depends entirely on which AI Polish option you picked. Go to **Settings** \> **AI Polish** to check your current selection.
 

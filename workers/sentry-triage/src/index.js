@@ -18,9 +18,6 @@
  * (category, stage, environment, build type, OS, device) from the Sentry events we
  * already fetched for scoring, so no extra subrequest is spent. It fails open to a
  * basic embed when event data is unavailable — an alert is never lost.
- *
- * A new FEEDBACK report also gets a help-article guess on a separate card
- * (#3275, feedbackMatch.js), scheduled beside the alert and never awaited by it.
  */
 
 // The SHARED Sentry transport, and nothing else from workers/. This worker does
@@ -30,7 +27,6 @@
 // would add a third independently-deployed consumer of that module without
 // removing any real duplicate authority (#1965).
 import { discoverAggregate } from "../../shared/sentry.js";
-import { buildFeedbackMatchEmbed, isFeedbackIssue, matchFeedbackArticle } from "./feedbackMatch.js";
 
 const DISCORD_COLOR = { P0: 0xe74c3c, P1: 0xe67e22, P2: 0xf1c40f, P3: 0x95a5a6 };
 const SENTRY_ORG = "envious-labs-llc";
@@ -43,9 +39,6 @@ const FIELD_MAX_CHARS = 200;
 // the 202 response; we leave ~2s headroom for logging + KV cleanup.
 const LOOKUP_DEADLINE_MS = 20_000;
 const OPERATION_DEADLINE_MS = 28_000;
-// The feedback article match (#3275) must finish its issue fetch and TypeSafe call
-// by here, leaving the rest of the operation budget for its own Discord post.
-const FEEDBACK_MATCH_DEADLINE_MS = 18_000;
 
 // Per-invocation hard caps (§3.3): 10 Sentry pages + 5 GitHub pages + 2 Discord
 // attempts = 17 external subrequests, below the Workers Free limit of 50.
@@ -133,7 +126,7 @@ export default {
 
     // Return 202 immediately — Sentry retries if we take >10s. All Sentry/GitHub/
     // Discord I/O happens in the background, so it never touches Sentry's budget.
-    ctx.waitUntil(handleTriage(body, env, ctx));
+    ctx.waitUntil(handleTriage(body, env));
     return new Response("Accepted", { status: 202 });
   },
 };
@@ -141,37 +134,6 @@ export default {
 /** Sorted header NAMES, comma-joined. Never values: one of them is a credential. */
 export function headerNames(request) {
   return [...request.headers.keys()].sort().join(",");
-}
-
-// ── Feedback article match (#3275) ────────────────────────────────────────────
-
-/**
- * Guess, then post the guess as a separate card. Best-effort by construction: it
- * shares this invocation's post-response budget with the alert, so the card may
- * land before the alert, after it, or not at all if Cloudflare cancels the work.
- * Worst case adds 4 subrequests (issue, TypeSafe, 2 Discord attempts) to the
- * alert path's 17, still under the Workers Free limit of 50.
- */
-export async function runFeedbackMatch({ issue, issueId, env, startedAt, operationDeadlineAt }) {
-  try {
-    const matchDeadlineAt = startedAt + FEEDBACK_MATCH_DEADLINE_MS;
-    const result = await matchFeedbackArticle({
-      issue,
-      env,
-      deadlineAt: matchDeadlineAt,
-      fetchFullIssue: (id) => fetchIssueById(id, env, matchDeadlineAt),
-      fetchBefore,
-    });
-    // The result holds scores and a slug, never the report text or email.
-    console.log(JSON.stringify({ event: "feedback_match", issueId, ...result }));
-    const embed = buildFeedbackMatchEmbed(result, {
-      shortId: typeof issue.shortId === "string" ? issue.shortId : null,
-      permalink: issue.permalink ?? issue.web_url ?? "",
-    });
-    await postDiscord(env.DISCORD_WEBHOOK_URL, embed, { issueId, deadlineAt: operationDeadlineAt });
-  } catch (error) {
-    console.error(`[sentry-triage] feedback match for ${issueId} failed: ${error?.name ?? "error"}`);
-  }
 }
 
 // ── HMAC verification ─────────────────────────────────────────────────────────
@@ -214,7 +176,7 @@ async function verifyHmac(body, sigHeader, secret) {
 
 // ── Main triage handler (orchestration only) ───────────────────────────────────
 
-export async function handleTriage(body, env, ctx) {
+export async function handleTriage(body, env) {
   let payload;
   try {
     payload = JSON.parse(body);
@@ -337,16 +299,6 @@ export async function handleTriage(body, env, ctx) {
   if (action === "assigned") {
     console.log(`[sentry-triage] Issue ${issueId} assigned — skipping`);
     return;
-  }
-
-  // A NEW feedback report also gets a help-article guess, posted as its own card
-  // (#3275). Scheduled here, before the lookups and the notification decision, on
-  // its OWN waitUntil and never awaited: the alert below neither waits for it nor
-  // depends on it, and it runs whether or not the alert is suppressed. `created`
-  // only, so a flap back to unresolved does not guess again. Without a ctx (unit
-  // tests calling handleTriage directly) nothing is scheduled.
-  if (ctx && action === "created" && isFeedbackIssue(issue)) {
-    ctx.waitUntil(runFeedbackMatch({ issue, issueId, env, startedAt, operationDeadlineAt }));
   }
 
   // Gather typed lookups. The Sentry-event and GitHub-ticket reads are independent,

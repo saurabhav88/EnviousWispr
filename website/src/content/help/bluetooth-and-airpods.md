@@ -7,6 +7,7 @@ order: 2
 keywords: ["airpods", "air pods", "bluetooth", "wireless headphones", "headphones", "earbuds", "sounds muffled", "quality drops", "music stops", "beats", "headset"]
 related: ["choosing-your-microphone"]
 updated: 2026-09-16
+deflection: "show_but_always_send"
 ---
 AirPods and Bluetooth headsets work with EnviousWispr, and there are two things worth knowing before you rely on them.
 

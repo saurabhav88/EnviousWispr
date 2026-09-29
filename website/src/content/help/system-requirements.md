@@ -6,6 +6,7 @@ section: "Basics"
 order: 2
 keywords: ["requirements", "supported macs", "will it run", "intel", "apple silicon", "m1", "m2", "m3", "m4", "macos version", "sonoma", "sequoia", "compatible", "does it work on my mac", "old mac"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 EnviousWispr is a free dictation app for macOS. It runs on any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or later. Intel Macs are not supported.
 

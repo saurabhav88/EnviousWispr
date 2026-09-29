@@ -7,6 +7,7 @@ order: 4
 keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c"]
 related: ["adding-a-word-from-your-selection", "escape-recovery", "transcript-history"]
 updated: 2026-09-28
+deflection: "can_resolve"
 ---
 Your keybind is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
 

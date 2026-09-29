@@ -7,6 +7,7 @@ order: 1
 keywords: ["paste", "how does it type", "where does the text go", "delivery", "spacing", "capitals", "capitalisation", "capitalization", "stop capitalising", "stop capitalizing", "capital letters", "extra space", "no space", "jams words together", "smart insertion", "middle of a sentence", "cursor"]
 related: ["clipboard-preservation", "paste-not-working", "using-snippets"]
 updated: 2026-09-27
+deflection: "can_resolve"
 ---
 EnviousWispr remembers the app, window and text field that were focused when you started recording, and delivers your text there. It works anywhere you can type, including native Mac apps, web browsers, and apps built on web technology such as VS Code, Slack, Discord, and Notion.
 

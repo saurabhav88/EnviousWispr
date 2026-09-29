@@ -6,6 +6,7 @@ section: "Recording"
 order: 6
 keywords: ["live preview", "preview", "see words as i speak", "see my words", "words on screen", "on screen preview", "while i speak", "recording pill", "watch it type", "is it hearing me", "nothing appears", "no words showing"]
 updated: 2026-09-01
+deflection: "can_resolve"
 ---
 Live Preview shows your words in the recording pill while you are still speaking, so you can see that EnviousWispr is hearing you. It is on unless you switch it off. On a Mac that cannot run it, EnviousWispr behaves as though it were off: you get the ordinary recording bar and no message.
 

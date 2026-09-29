@@ -7,6 +7,7 @@ order: 2
 keywords: ["turn off ai", "turn ai off", "disable ai", "no ai", "provider", "openai", "chatgpt", "gemini", "claude", "apple intelligence", "ollama", "s1-mini", "superwhisper", "eg-1", "which ai", "api key", "change provider", "stop rewriting my words"]
 related: ["ai-polish-and-cloud-data", "api-key-security", "s1-mini-by-superwhisper-and-writing-style"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 AI Polish is the step that tidies up your dictation after transcription, and you choose which provider does the work. Your transcription audio stays on your Mac on every one of these options. Open **Settings**, then select **AI Polish** to make your choice.
 

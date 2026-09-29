@@ -7,6 +7,7 @@ order: 6
 keywords: ["escape recovery", "cancelled by mistake", "i cancelled by accident", "get my dictation back", "undo cancel", "recover a cancelled recording", "keep a cancelled recording", "pressed escape by mistake", "lost what i said", "accidental cancel"]
 related: ["canceling-a-recording", "transcript-history"]
 updated: 2026-09-01
+deflection: "can_resolve"
 ---
 If you have ever pressed your cancel keybind and wished a second later that you had not, Escape Recovery is what saves you. It is on from the start. Your cancel keybind keeps the recording and offers it back to you instead of throwing it away. Switch it off and cancelling discards immediately, exactly as it used to.
 

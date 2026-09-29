@@ -7,6 +7,7 @@ order: 1
 keywords: ["accessibility not working", "permission wont stick", "toggle keeps turning off", "already allowed but still broken", "granted but not working", "reset permission"]
 related: ["granting-permissions-microphone-accessibility-and-automation", "paste-not-working"]
 updated: 2026-08-06
+deflection: "show_but_always_send"
 ---
 EnviousWispr uses the Accessibility permission to put your finished text into whatever app you are working in. Without that permission, your words are transcribed but nothing is pasted.
 

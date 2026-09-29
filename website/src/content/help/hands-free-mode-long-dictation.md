@@ -7,6 +7,7 @@ order: 2
 keywords: ["hands free", "handsfree", "long dictation", "dont want to hold", "without holding", "let go", "keep recording", "long recording", "stop holding the key"]
 related: ["voice-activity-detection-and-auto-stop", "recording-won-t-stop-or-seems-stuck"]
 updated: 2026-09-01
+deflection: "can_resolve"
 ---
 Hands-free mode locks recording on, for when you do not want to hold the key down while you talk. This mode suits any text longer than a sentence or two, such as a blog post, a long email, or meeting notes.
 

@@ -7,6 +7,7 @@ order: 1
 keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube"]
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
 updated: 2026-09-27
+deflection: "can_resolve"
 ---
 EnviousWispr can follow whichever microphone your Mac is set to, or use a specific device you name yourself. Both choices live under **Settings** \> **Microphone**.
 
