@@ -138,6 +138,7 @@ public final class FeedbackSubmission {
         await submit(draft, diagnostics: diagnostics, from: presentation, sent: sent, current: current))
     }
     let generation = UUID()
+    activePresentation = presentation
     frozen = Frozen(
       draft: draft, diagnostics: diagnostics, sent: sent, generation: generation, startedAt: clock())
     sender = presentation
@@ -168,6 +169,22 @@ public final class FeedbackSubmission {
   /// showing them. A press from an older check or a closed opening changes nothing.
   private func isCurrent(generation: UUID, from presentation: UUID, current: FormState) -> Bool {
     frozen?.generation == generation && current.presentation == presentation
+      && activePresentation == presentation
+  }
+
+  /// The popover opening on screen now, nil while none is. Only its presses may act on the
+  /// cards: a closed opening keeps its closures (and can renew its own id), so the owner, not the
+  /// caller, says which opening is live. The cards themselves outlive a close (minimize).
+  public private(set) var activePresentation: UUID?
+
+  /// An opening appeared on screen.
+  public func presentationAppeared(_ presentation: UUID) {
+    activePresentation = presentation
+  }
+
+  /// An opening went away; the cards and marks stay for the next one.
+  public func presentationDisappeared(_ presentation: UUID) {
+    if activePresentation == presentation { activePresentation = nil }
   }
 
   /// The user pressed Send on the cards: `solved` holds the concerns they marked solved (the rest

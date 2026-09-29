@@ -703,6 +703,8 @@ struct HelpCheckTests {
     let submission = try await Self.withCards(store, recorder, message: message, presentation: a)
     let generation = try #require(submission.helpGeneration)
     // Opening A closed; opening B shows the same cards.
+    submission.presentationDisappeared(a)
+    submission.presentationAppeared(b)
     let onScreenB: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
       .init(presentation: b, message: message, email: "")
     }
@@ -761,9 +763,29 @@ struct HelpCheckTests {
     submission.setHelpMark("i0", solved: false, generation: UUID(), from: a, current: onScreenA)
     #expect(submission.helpMarks == ["i0", "i1"], "unknown concerns and older checks change nothing")
     // Opening A closed with the cards up (minimized); B reopened from the bug icon. A stale
-    // press from A changes nothing; B sees and changes the same marks.
+    // press from A changes nothing, even when A's closed view pairs its own renewed id with
+    // itself; B sees and changes the same marks.
+    submission.presentationDisappeared(a)
+    let renewedA = UUID()
+    let onScreenRenewedA: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
+      .init(presentation: renewedA, message: message, email: "")
+    }
+    submission.presentationAppeared(b)
     submission.setHelpMark("i1", solved: false, generation: generation, from: a, current: onScreenB)
+    submission.setHelpMark(
+      "i1", solved: false, generation: generation, from: renewedA, current: onScreenRenewedA)
     #expect(submission.helpMarks == ["i0", "i1"])
+    #expect(
+      !submission.endWithAllSolved(
+        confirmed: ["i0", "i1"], generation: generation, from: renewedA, current: onScreenRenewedA))
+    #expect(
+      !submission.dismissSuggestions(
+        generation: generation, from: renewedA, current: onScreenRenewedA))
+    #expect(
+      await submission.finishSuggestions(
+        solved: ["i0", "i1"], generation: generation, from: renewedA, current: onScreenRenewedA)
+        == nil)
+    #expect(recorder.saves.isEmpty)
     submission.setHelpMark("i1", solved: false, generation: generation, from: b, current: onScreenB)
     #expect(submission.helpMarks == ["i0"])
     // An all-solved or send built from older marks is refused and records nothing.

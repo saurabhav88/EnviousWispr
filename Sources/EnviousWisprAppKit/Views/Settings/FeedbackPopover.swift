@@ -143,6 +143,7 @@ struct FeedbackForm: View {
       // A form kept alive between openings starts fresh: a save still finishing belongs to the
       // previous opening and changes nothing here (`presentation`).
       presentation = UUID()
+      submission.presentationAppeared(presentation)
       closeTask?.cancel()
       closeTask = nil
       status = submission.isSaving ? .sending : .editing
@@ -155,7 +156,9 @@ struct FeedbackForm: View {
     }
     .onDisappear {
       // Closing the popover on the help cards keeps them (#3275, founder 2026-09-29): nothing is
-      // sent, and the bug icon reopens the same cards with the same marks.
+      // sent, and the bug icon reopens the same cards with the same marks. A late press from this
+      // closed opening is refused: the shared owner no longer lists it as on screen.
+      submission.presentationDisappeared(presentation)
       presentation = UUID()
       closeTask?.cancel()
       diagnosticsModel.formDidClose()
