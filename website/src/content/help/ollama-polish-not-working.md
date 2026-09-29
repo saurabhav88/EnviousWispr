@@ -7,7 +7,7 @@ order: 5
 keywords: ["ollama not working", "ollama error", "cant connect to ollama", "ollama failed", "local ai broken", "ollama isn't signed in", "ollama signin", "ollama timeout", "ollama not running", "polish skipped ollama"]
 related: ["using-ollama-for-fully-offline-ai-polish"]
 updated: 2026-09-29
-deflection: "show_but_always_send"
+deflection: "can_resolve"
 ---
 When Ollama polish fails to tidy up your dictation, the cause is nearly always that the Ollama app is not running. Work through this checklist in order. Your dictation still arrives while you fix it.
 

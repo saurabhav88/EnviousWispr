@@ -7,7 +7,7 @@ order: 6
 keywords: ["apple intelligence missing", "apple intelligence greyed out", "cant use apple intelligence", "not available", "unavailable", "why cant i pick apple", "polish does nothing", "macos 15 apple intelligence"]
 related: ["apple-intelligence-setup", "system-requirements"]
 updated: 2026-09-29
-deflection: "show_but_always_send"
+deflection: "can_resolve"
 ---
 Apple Intelligence polish needs macOS 26 or later, on a Mac that supports Apple Intelligence. Dictation keeps working normally when it is unavailable. Below macOS 26, the AI step is skipped and you get your cleaned-up text without AI polish. To keep AI polish, choose EG-1 or another option.
 

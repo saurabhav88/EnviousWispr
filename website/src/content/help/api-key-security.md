@@ -7,7 +7,7 @@ order: 4
 keywords: ["api key", "where is my key stored", "keychain", "secret", "token", "is my key safe", "billing", "remove api key", "delete api key", "revoke key", "clear key"]
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
 updated: 2026-09-29
-deflection: "show_but_always_send"
+deflection: "can_resolve"
 ---
 An API key is a private password that lets EnviousWispr use your own account with OpenAI, Gemini or Claude to polish your dictation. This page covers where that key is kept and how to take it back out. The on-device options, EG-1, Apple Intelligence and S1-mini, need no key at all.
 
