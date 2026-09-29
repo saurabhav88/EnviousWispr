@@ -103,6 +103,13 @@ test("a table becomes one labeled line per row, and the page check accepts its b
   assert.equal(catalog.articles[0].sections[0].text, "Feature: Speed; Parakeet: Faster\nFeature: Setup; Parakeet: Downloaded for you");
   const built = page('<h2 id="engines">Engines</h2><table><thead><tr><th>Feature</th><th>Parakeet</th></tr></thead><tbody><tr><td>Speed</td><td><strong>Faster</strong></td></tr><tr><td>Setup</td><td>Downloaded for you</td></tr></tbody></table>');
   assert.deepEqual(compareCatalogToPages(catalog, () => built).failures, []);
+  // The same values in the wrong rows: every cell is still on the page, so only a
+  // whole-row comparison catches it.
+  const swapped = built.replace("<strong>Faster</strong>", "Downloaded for you").replace("<td>Downloaded for you</td></tr></tbody>", "<td>Faster</td></tr></tbody>");
+  assert.deepEqual(compareCatalogToPages(catalog, () => swapped).failures, [
+    'a#engines: table row not in this section of the page: "Feature: Speed; Parakeet: Faster"',
+    'a#engines: table row not in this section of the page: "Feature: Setup; Parakeet: Downloaded for you"',
+  ]);
 });
 
 test("every real help article is in the catalog with a policy", () => {

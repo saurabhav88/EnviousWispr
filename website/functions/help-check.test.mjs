@@ -234,10 +234,16 @@ test("section gates at their boundaries, then the page-link fallback", async () 
 });
 
 test("page gates at their boundaries decide whether the second request happens", async () => {
-  for (const [p, conf, expectedCalls] of [[GATES.pageP, GATES.pageConf, 2], [GATES.pageP - 0.01, 0.9, 1], [0.9, GATES.pageConf - 0.01, 1]]) {
-    const jev = fakeJev(firstReply({ page_0: choice(RESOLVE.slug, p, conf), useful_0: noul(0.1) }), sectionAnswer(RESOLVE.sections[0].id));
+  const cases = [
+    [GATES.pageP, GATES.pageConf, GATES.useful, 2],
+    [GATES.pageP - 0.01, 0.9, 0.9, 1],
+    [0.9, GATES.pageConf - 0.01, 0.9, 1],
+    [0.9, 0.9, GATES.useful - 0.01, 1],
+  ];
+  for (const [p, conf, useful, expectedCalls] of cases) {
+    const jev = fakeJev(firstReply({ page_0: choice(RESOLVE.slug, p, conf), useful_0: noul(useful) }), sectionAnswer(RESOLVE.sections[0].id));
     await runHelpCheck(body(), ENV, { fetchImpl: jev.fetchImpl });
-    assert.equal(jev.calls.length, expectedCalls, `${p} ${conf}`);
+    assert.equal(jev.calls.length, expectedCalls, `${p} ${conf} ${useful}`);
   }
 });
 
@@ -320,7 +326,7 @@ test("TypeSafe failures fail open with a closed reason", async () => {
     [{ status: 500, ok: false }, "http_500"],
     [() => Promise.reject(new TypeError("fetch failed")), "network"],
     [firstReply({ page_0: choice(RESOLVE.slug), useful_0: noul() }, 0.9, "jev-1.14.0"), "bad_reply"],
-    [{ status: 200, ok: true, json: async () => { throw new SyntaxError("bad json"); } }, "network"],
+    [{ status: 200, ok: true, json: async () => { throw new SyntaxError("bad json"); } }, "bad_reply"],
     [firstReply({ page_0: choice(RESOLVE.slug, 1.5), useful_0: noul() }), "bad_reply"],
     [firstReply({ page_0: choice(RESOLVE.slug, 0.9, "high"), useful_0: noul() }), "bad_reply"],
     [firstReply({ page_0: choice("not-a-page"), useful_0: noul() }), "bad_reply"],
@@ -339,6 +345,11 @@ test("TypeSafe failures fail open with a closed reason", async () => {
   const wrongSection = fakeJev(pageAnswer(RESOLVE.slug), sectionAnswer(ALWAYS_SEND.sections[0].id));
   assert.equal((await runHelpCheck(body(), ENV, { fetchImpl: wrongSection.fetchImpl })).reason, "bad_reply");
   assert.ok(failures.length >= 15);
+  // A reply that says no article is useful cannot also produce a card.
+  const contradictory = fakeJev(firstReply({ page_0: choice(RESOLVE.slug), useful_0: noul(GATES.useful - 0.01) }));
+  const noCard = await runHelpCheck(body(), ENV, { fetchImpl: contradictory.fetchImpl });
+  assert.equal(noCard.issues[0].match_type, "none");
+  assert.equal(contradictory.calls.length, 1);
 });
 
 test("both requests share one 2.0-second deadline", async () => {
@@ -374,6 +385,17 @@ test("both requests share one 2.0-second deadline", async () => {
   assert.equal(lateOut.status, "send_feedback");
   assert.equal(lateOut.reason, "timeout");
   assert.equal(lateNoMatch.calls.length, 1);
+
+  // A fetch that never settles and ignores its abort signal still ends at the deadline.
+  clock = 0;
+  const hung = fakeJev(() => new Promise(() => {}));
+  const hungStarted = Date.now();
+  const hungOut = await runHelpCheck(body(), ENV, { fetchImpl: hung.fetchImpl, now: () => Date.now() });
+  assert.equal(hungOut.reason, "timeout");
+  assert.ok(Date.now() - hungStarted < INFERENCE_DEADLINE_MS + 500);
+  // So does a body read that never settles.
+  const hungBody = fakeJev({ status: 200, ok: true, json: () => new Promise(() => {}) });
+  assert.equal((await runHelpCheck(body(), ENV, { fetchImpl: hungBody.fetchImpl, now: () => Date.now() })).reason, "timeout");
 
   clock = 0;
   const spent = fakeJev(async () => {

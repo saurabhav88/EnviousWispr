@@ -57,12 +57,25 @@ export function builtSections(html) {
     from = m.index + m[0].length;
   }
   parts.set(key, (parts.get(key) ?? "") + body.slice(from));
-  return new Map([...parts].map(([k, v]) => [k, norm(visibleText(v))]));
+  return new Map([...parts].map(([k, v]) => [k, { text: norm(visibleText(v)), rows: tableRows(v) }]));
 }
 
-// Pieces of one generated line that must appear verbatim on the page. Table rows
-// are generated as "Column: value; Column: value", so labels and values are
-// checked separately; plain sentences split the same way stay verbatim pieces.
+// Each built table body row in the generator's form, "Header: value; Header: value",
+// with the header cells it was labeled from, so a generated table line can be
+// matched to one whole row rather than to cells scattered across the table.
+export function tableRows(html) {
+  const cell = (c) => norm(visibleText(c));
+  return [...html.matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)].flatMap(([, table]) => {
+    const heads = [...table.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/gi)].map(([, c]) => cell(c));
+    return [...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
+      .map(([, row]) => [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(([, c]) => cell(c)))
+      .filter((cells) => cells.length)
+      .map((cells) => ({ firstHead: heads[0], text: cells.map((v, i) => (heads[i] ? `${heads[i]}: ${v}` : v)).join("; ") }));
+  });
+}
+
+// Pieces of one generated prose line that must appear verbatim on the page, split
+// on "; " and ": " because a line may quote a list or a label.
 function pieces(line) {
   return line.split(/;\s+|:\s+/).map((p) => p.trim()).filter(Boolean);
 }
@@ -83,14 +96,14 @@ export function compareCatalogToPages(catalog, readPage) {
       continue;
     }
     const generated = new Set(article.sections.map((sec) => sec.anchor ?? ""));
-    for (const [key, text] of parts) {
+    for (const [key, { text }] of parts) {
       if (!generated.has(key) && text) failures.push(`${article.slug}: built section "${key || "intro"}" is missing from the catalog`);
     }
     for (const section of article.sections) {
       const key = section.anchor ?? "";
       if (section.anchor !== null) anchors++;
-      const text = parts.get(key);
-      if (text === undefined) {
+      const part = parts.get(key);
+      if (part === undefined) {
         failures.push(`${section.id}: no heading with id="${section.anchor}"`);
         continue;
       }
@@ -98,7 +111,12 @@ export function compareCatalogToPages(catalog, readPage) {
         const line = norm(raw.replace(/^\s*(?:[-*+]|\d+\.)\s+/, ""));
         if (!line) continue;
         lines++;
-        const missing = pieces(line).find((p) => !text.includes(p));
+        // A line that starts like a row of a table in this section must equal a whole row.
+        if (part.rows.some((r) => r.firstHead && line.startsWith(`${r.firstHead}: `))) {
+          if (!part.rows.some((r) => r.text === line)) failures.push(`${section.id}: table row not in this section of the page: "${line.slice(0, 80)}"`);
+          continue;
+        }
+        const missing = pieces(line).find((p) => !part.text.includes(p));
         if (missing !== undefined) failures.push(`${section.id}: text not in this section of the page: "${missing.slice(0, 80)}"`);
       }
     }

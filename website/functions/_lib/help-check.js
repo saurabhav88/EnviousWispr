@@ -2,7 +2,8 @@
 // Mac and sends them here; this asks TypeSafe's Jev model, in at most two requests,
 // which help section answers each concern, and returns suggestions the app may show.
 // Every failure answers `send_feedback`: the app then sends the report unchanged.
-// Nothing the user wrote is logged or stored; the count line below carries no text.
+// This Function logs counts only and stores nothing; TypeSafe receives the message
+// text for inference.
 //
 // Proven design, thresholds and request wording: docs/audits/2026-09-28-issue-3275-
 // benchmark/ (jev_batch.py, e2e_grade.py) and the #3275 plan's Gate 2 sections.
@@ -28,11 +29,13 @@ const VERSION_PATTERN = /^[A-Za-z0-9._+-]{1,64}$/;
 
 export const DECISION_VERSION = "2026-09-28.1";
 // e2e_grade.py gates: page p, page confidence, section p, section confidence,
-// resolves, page-link p. `covered` gates suppression only: the whole issue list must
+// resolves, page-link p. `useful` must agree with the page pick: every card in the
+// real-endpoint run already had useful >= 0.5, so it removes none and blocks a reply
+// that says "no useful article" while picking one. `covered` gates suppression only: the whole issue list must
 // cover the message (coverage_run.py: at 0.5 it caught 55 of 57 lists missing a real
 // concern and blocked about 1 in 7 complete lists, which then send).
-export const GATES = { pageP: 0.5, pageConf: 0.5, sectionP: 0.5, sectionConf: 0.7, resolves: 0.7, pageLinkP: 0.8, covered: 0.5 };
-export const THRESHOLD_VERSION = "g2-0.5-0.5-0.5-0.7-0.7-0.8-c0.5";
+export const GATES = { pageP: 0.5, pageConf: 0.5, useful: 0.5, sectionP: 0.5, sectionConf: 0.7, resolves: 0.7, pageLinkP: 0.8, covered: 0.5 };
+export const THRESHOLD_VERSION = "g3-0.5-0.5-u0.5-0.5-0.7-0.7-0.8-c0.5";
 
 // Candidates exclude never_intervene pages: they are never offered as cards.
 const CANDIDATES = CATALOG.articles.filter((a) => a.deflection !== "never_intervene");
@@ -218,19 +221,34 @@ async function callJev(body, env, fetchImpl, deadlineAt, now) {
   const remaining = deadlineAt - now();
   if (remaining <= 0) throw new ReplyError("timeout");
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), remaining);
-  let res;
+  let timer;
+  // Settles at the deadline even if a fetch or body read ignores the abort signal.
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new ReplyError("timeout"));
+    }, remaining);
+  });
+  deadline.catch(() => {}); // Handled by the races below; never an unhandled rejection.
   try {
-    res = await fetchImpl(TYPESAFE_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.TYPESAFE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    const res = await Promise.race([
+      fetchImpl(TYPESAFE_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.TYPESAFE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }),
+      deadline,
+    ]);
     if (res.status === 401 || res.status === 403) throw new ReplyError("config");
     if (res.status === 402 || res.status === 429) throw new ReplyError("unavailable");
     if (!res.ok) throw new ReplyError(`http_${res.status}`);
-    const json = await res.json();
+    let json;
+    try {
+      json = await Promise.race([res.json(), deadline]);
+    } catch (error) {
+      throw error instanceof ReplyError ? error : new ReplyError("bad_reply");
+    }
     // A reply that lands after the shared budget is late even if it arrived whole.
     if (controller.signal.aborted || now() >= deadlineAt) throw new ReplyError("timeout");
     if (json?.model !== JEV_MODEL || !json.answers || typeof json.answers !== "object") throw new ReplyError("bad_reply");
@@ -272,7 +290,9 @@ export async function runHelpCheck(body, env, { fetchImpl = fetch, now = Date.no
     if (!page || useful === null) return sendFeedback("bad_reply", request);
     pages.push({ ...page, useful });
   }
-  const picks = pages.map((pg) => (pg.choice !== NO_MATCH && pg.p >= GATES.pageP && pg.confidence >= GATES.pageConf ? pg.choice : null));
+  const picks = pages.map((pg) =>
+    pg.choice !== NO_MATCH && pg.p >= GATES.pageP && pg.confidence >= GATES.pageConf && pg.useful >= GATES.useful ? pg.choice : null,
+  );
 
   let sectionAnswers = {};
   if (picks.some(Boolean)) {
