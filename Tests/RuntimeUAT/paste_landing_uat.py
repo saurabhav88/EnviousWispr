@@ -1193,8 +1193,11 @@ def phase_sleeping(attempts=3):
                 continue
             u.check("sleeping: one Cmd+V paste into the isolated Chrome", chrome_tiers == ["cgevent"],
                     str(cascades))
-            u.check("sleeping: observed=no_target (#3286: never kept)", observed == "no_target",
-                    str(lines))
+            # #3286: an asleep take must never read as a keepable miss. On this Mac an asleep Chrome
+            # reads no_target or inconclusive/focus_changed (both seen on main before #3304,
+            # app.log 2026-09-29 13:10-13:11); neither retains. `absent` would be the defect.
+            u.check("sleeping: the landing verdict is not a keepable miss (never absent)",
+                    observed in ("no_target", "inconclusive"), str(lines))
             verify_recorded_window("sleeping", text)
             verify_sleeping_cleanup("sleeping", image, base)
             u.check("sleeping: the words landed once in ChatGPT's box", len(landed) == 1,
@@ -1491,8 +1494,14 @@ def phase_sleeping_closed():
                 and window_named(chrome, titles["A"]) is None)
         tiers = [t for t, app in cascades if app.strip() == CHROME]
         refused = REFUSED.findall(text)
-        u.check("sleeping-closed: refused on a positive window mismatch",
-                bool(refused) and all(r == "window_mismatch" for _, r in refused), str(refused))
+        # With a recorded window only a READ different window may refuse (window_mismatch). An
+        # awake Chrome captured the field itself, and the #3121 field-window gate reports a closed
+        # window as window_unreadable_focus_mismatch (measured 2026-09-29): also a correct refusal.
+        allowed = ({"window_mismatch"} if recorded_window_in(text)
+                   else {"window_mismatch", "window_unreadable_focus_mismatch"})
+        u.check("sleeping-closed: refused because A's window is gone",
+                bool(refused) and all(r in allowed for _, r in refused),
+                f"{refused} recorded_window={recorded_window_in(text)}")
         u.check("sleeping-closed: no key paste, clipboard only", tiers == ["clipboard_only"],
                 str(cascades))
         u.check("sleeping-closed: no PASTE_LANDING line (nothing was pasted)", lines == [], str(lines))
