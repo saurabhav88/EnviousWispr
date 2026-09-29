@@ -4,6 +4,13 @@
     python3 Tests/RuntimeUAT/paste_landing_uat.py            # all three phases
     python3 Tests/RuntimeUAT/paste_landing_uat.py focused    # one phase
     python3 Tests/RuntimeUAT/paste_landing_uat.py otherwindow closedwindow   # #3121 window phases
+    python3 Tests/RuntimeUAT/paste_landing_uat.py sleepingswitch sleepingclosed sleepingstay  # #3304
+
+Exit status: 0 all passed, 1 anything failed, 3 a required proof was INCONCLUSIVE (a sleeping
+phase whose Chrome was not asleep at record start and just before the stop). On the dev Mac a
+second Chrome window wakes Chrome's accessibility (measured 2026-09-29), so sleepingswitch and
+sleepingclosed report INCONCLUSIVE there; sleepingstay (one window) can prove its case. The
+harness's own contract: `python3 Tests/RuntimeUAT/test_paste_landing_harness.py`.
 
 Run with the screen UNLOCKED and THIS worktree's Debug build running with Debug Mode on
 (`PASTE_LANDING` is a DEBUG `app.log` line).
@@ -201,7 +208,7 @@ TAKE_STUCK = {"stuck": False}
 
 
 def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landing=True,
-         before_hold=None):
+         before_hold=None, before_release=None):
     """One silent push-to-talk take into whatever `bundle` (Chrome unless given) has focused.
     Returns every landing line and paste-cascade line written since `base`.
 
@@ -232,7 +239,8 @@ def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landin
         if before_hold is not None:
             before_hold()  # raises Aborted when the phase's own precondition no longer holds
         hold["entered"] = True
-        w.record_tts(SENTENCE)
+        # `before_release` runs while the key is still held, just before the stop (#3304).
+        w.record_tts(SENTENCE, before_release=before_release)
         hold["completed"] = True
         time.sleep(2.0)  # settle: a second, unrequested take would start inside this window (#3107)
         virtual, transports = take_was_virtual(base)
@@ -310,6 +318,13 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
             (chrome_tiers == wanted) if wanted else
             (len(chrome_tiers) == 1 and chrome_tiers[0] in ("cgevent", "applescript", "menu_paste")),
             str(cascades))
+    # Step 0 (#3304) first, so no early return can skip it. Destination evidence is raw: any change
+    # to the address bar or the box counts as an insertion, and an unreadable one counts too.
+    take_text = u.log_since(PHASE_BASE["offset"])
+    bar_now = address_bar_value()
+    box_now = textbox_value() if name in ("focused", "readonly") else ""
+    check_step0(name, take_text, cascades,
+                inserted=bar_before is None or bar_now != bar_before or box_now != "")
     u.check(f"{name}: exactly one PASTE_LANDING line", len(lines) == 1, str(lines))
     if len(lines) != 1:
         return
@@ -342,11 +357,12 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
         # accessibility was asleep, which never keeps the words (#3286): a failed precondition.
         u.check(f"{name}: observed is a readable-field miss (absent)",
                 observed == "absent", f"{observed}/{reason}")
+        box = None
         if name == "readonly":
             # The miss must be REAL: the refusing field is still empty, read independently.
-            value = textbox_value()
+            box = textbox_value()
             u.check(f"{name}: the read-only box is still empty (read, not unreadable)",
-                    value == "", repr(value if value is None else value[:80]))
+                    box == "", repr(box if box is None else box[:80]))
         verify_kept(name)
         return
     if restore_on:
@@ -421,9 +437,16 @@ def phase_new_take_after_miss():
                 return
             time.sleep(0.005)
     watcher = threading.Thread(target=second_take_on_paste, daemon=True)
+    bar_before = address_bar_value()
     watcher.start()
     lines, cascades = take("new-take", base, expected_takes=2)
     watcher.join(timeout=10)
+    # Step 0 (#3304) over BOTH takes at once, a CONSERVATIVE check. Their events interleave (take
+    # 1's late notice lands after take 2 starts), so no boundary can split them. Its PASS proves
+    # neither take violated step 0 (no insertion or no shown notice anywhere); its FAIL may come
+    # from events of different takes and does not say which take did what.
+    check_step0("newtake (both takes)", u.log_since(base), cascades,
+                inserted=bar_before is None or address_bar_value() != bar_before)
     u.check("newtake: the second take started right after the paste", started["at"] is not None)
     u.check("newtake: the first paste was a readable-field miss (absent; no_target never keeps, #3286)",
             len(lines) >= 1 and lines[0][1] == "absent", str(lines))
@@ -458,9 +481,13 @@ def phase_copy_during_wait():
                 return
             time.sleep(0.01)
     watcher = threading.Thread(target=copy_on_paste, daemon=True)
+    bar_before = address_bar_value()
     watcher.start()
     lines, cascades = take("copy-during-wait", base)
     watcher.join(timeout=5)
+    # Step 0 (#3304): the only destination on the no-focus page is the address bar.
+    check_step0("copy", u.log_since(base), cascades,
+                inserted=bar_before is None or address_bar_value() != bar_before)
     u.check("copy: the user's copy was made after the paste", copied["at"] is not None)
     u.check("copy: one landing line, a readable-field miss (absent; no_target never keeps, #3286)",
             len(lines) == 1 and lines[0][1] == "absent", str(lines))
@@ -494,6 +521,9 @@ def phase_textedit():
     ok = u.wait_for("the dictation to land in the document",
                     lambda: u.sentence_overlap(u.doc_text(path)) >= 5, deadline=20.0)
     delivered = u.doc_text(path)
+    # Step 0 (#3304) before the abort below: ANY text in the fresh document is an insertion.
+    step0_text = u.log_since(base)
+    check_step0("textedit", step0_text, CASCADE.findall(step0_text), inserted=delivered != "")
     u.check("textedit: the take landed in the document (5+ of the sentence's 7 words)", ok,
             f"{u.sentence_overlap(delivered)}/7 {delivered[:80]!r}")
     if not ok:
@@ -660,8 +690,10 @@ def verify_other_window(name, close_target, lines, cascades, done, restore_on, s
     decoy_value = window_box_value(decoy)
     u.check(f"{name}: nothing landed in the window switched to",
             decoy_value == "", repr(None if decoy_value is None else decoy_value[:80]))
+    target_raw = "" if close_target else window_box_value(target)
+    check_step0(name, log, cascades, inserted=decoy_value != "" or target_raw != "")
     if not close_target:
-        value = window_box_value(target) or ""
+        value = target_raw or ""
         u.check(f"{name}: the words landed in the dictation's own window (5+ of 7 words)",
                 u.sentence_overlap(value) >= 5, repr(value[:80]))
         u.check(f"{name}: that window is front again",
@@ -709,9 +741,14 @@ def phase_reuse_right_after():
             pressed["at"] = time.monotonic()
             u.chord("v")
     thread = threading.Thread(target=press_when_pasted, daemon=True)
+    bar_before = address_bar_value()
     thread.start()
-    take(name, base)
+    _, cascades = take(name, base)
     thread.join(timeout=5.0)
+    # Step 0 (#3304): the take and its Paste Last both target the no-focus page, whose only
+    # destination is the address bar.
+    check_step0(name, u.log_since(base), cascades,
+                inserted=bar_before is None or address_bar_value() != bar_before)
     u.check(f"{name}: Paste Last was pressed right after the key paste", "at" in pressed)
     u.wait_for("the reuse outcome", lambda: u.reuse_lines(base), deadline=8.0)
     reuses = u.reuse_lines(base)
@@ -825,6 +862,9 @@ def verify_click_out(name, lines, cascades, moved, box):
     chrome_tiers = [t for t, app in cascades if app.strip() == CHROME]
     u.check(f"{name}: one Cmd+V into Chrome (the box was captured at the start)",
             chrome_tiers == ["cgevent"], str(cascades))
+    # Step 0 (#3304) before any early return: the box's raw value (unreadable counts as text).
+    check_step0(name, u.log_since(PHASE_BASE["offset"]), cascades,
+                inserted=get_attr(box, "AXValue") != "")
     u.check(f"{name}: exactly one PASTE_LANDING line", len(lines) == 1, str(lines))
     if len(lines) != 1:
         return
@@ -986,9 +1026,11 @@ def same_board(expected):
         for g, e in zip(got, expected))
 
 
-def sleeping_take(label, chrome, before_hold=None):
+def sleeping_take(label, chrome, before_hold=None, samples=None, expect_landing=True):
     """One take into the isolated Chrome with the image on the clipboard. Returns (lines,
-    cascades, image) or raises Aborted. Nothing here reads that Chrome's accessibility tree."""
+    cascades, image, base) or raises Aborted. Nothing here reads that Chrome's accessibility tree
+    beyond the one focus read (`focus_code`) sampled into `samples` before the recording and again
+    just before the stop (#3304)."""
     # With restore OFF the cleanup rewrites the board to the dictation by design (legacy_rewrite),
     # so the image-comes-back checks only mean something with restore ON.
     if u.defaults_value("restoreClipboardAfterPaste") not in (None, "1"):
@@ -997,79 +1039,366 @@ def sleeping_take(label, chrome, before_hold=None):
     base = u.log_size()
     PHASE_BASE["offset"] = base
 
+    samples = {} if samples is None else samples
+
     def hold_check():
         if not chrome.is_front():
             raise u.Aborted(f"{label}: the isolated Chrome is not front (pid {frontmost_pid()})")
+        samples["before_record"] = focus_code(chrome.pid)
         if before_hold is not None:
             before_hold()
-    lines, cascades = take(label, base, bundle=CHROME, before_hold=hold_check)
+
+    def stop_check():
+        samples["before_stop"] = focus_code(chrome.pid)
+    lines, cascades = take(label, base, bundle=CHROME, before_hold=hold_check,
+                           before_release=stop_check, expect_landing=expect_landing)
     return lines, cascades, image, base
 
 
+# #3304: every cleanup line, checked or not. A recorded-window session gets no landing check, so its
+# cleanup logs WITHOUT `checked=true`; `KEPT` above stays the checked-only parser for PR B's phases.
+CLEANUP = re.compile(r"Clipboard cleanup: op=(keep_dictation|yield|restore|legacy_rewrite), "
+                     r"applied=(\w+), delay=\d+ms, tier=(\w+)(, checked=true)?")
+# #3304 app.log lines: the record-start window capture, the dispatch gate's decision, a refusal.
+CAPTURE = re.compile(r"AXDiag capture: (recorded window \(no field\)|no recorded window "
+                     r"reason=\w+) elapsed_ms=(\d+)")
+GATE = re.compile(r"WINDOW_GATE dispatch target=(\w+) result=(\w+) take_id=\S+ bundle_id=(\S+)")
+REFUSED = re.compile(r"WINDOW_GATE refused stage=(\w+) reason=target_window_not_confirmed\((\w+)\)")
+KEY_TIERS = ("cgevent", "applescript", "menu_paste")
+# `AXFocusedUIElement` answers kAXErrorNoValue (-25212) while a text box is focused in a Chromium
+# host whose accessibility sleeps (accessibility-macos.md FACT: electron-accessibility-switches-on-
+# macos-26). Any other answer means awake (0) or a failed read: the sleeping proof is then
+# INCONCLUSIVE, never PASS.
+SLEEP_CODE = -25212
+
+
+def focus_code(pid):
+    """The raw `AXFocusedUIElement` error of `pid`'s application: one read, no role or tree read."""
+    from ApplicationServices import AXUIElementCopyAttributeValue, AXUIElementCreateApplication
+    try:
+        return int(AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid),
+                                                 "AXFocusedUIElement", None)[0])
+    except Exception:
+        return None
+
+
+def inconclusive(name, detail):
+    """Neither PASS nor FAIL: the precondition the proof needs was not there. Counted apart in the
+    summary, and a run with one exits 3, never 0."""
+    u.record(name, "INCONCLUSIVE", detail)
+
+
+def asleep_detail(samples):
+    return ", ".join(f"{k}={v}" for k, v in samples.items())
+
+
+def is_asleep(samples):
+    return bool(samples) and all(v == SLEEP_CODE for v in samples.values())
+
+
+def single_insertion(value, times=1):
+    """The sentence landed exactly `times` times: 5+ of its words present, and its distinctive
+    word ('tomorrow') exactly `times` times, so a doubled paste fails."""
+    text = (value or "").lower()
+    return u.sentence_overlap(text) >= 5 and len(re.findall(r"\btomorrow\b", text)) == times
+
+
+def notice_shown(text):
+    return any(shown == "true" for _, shown, _ in NOTICE.findall(text))
+
+
+def any_text(boxes):
+    """Step 0 evidence from [(window title, box text)]: ANY text in any box is an insertion (a
+    partial or doubled paste is still one), and an unreadable box or no box at all counts too."""
+    return not boxes or any(v != "" for _, v in boxes)
+
+
+def recorded_window_in(text):
+    """Whether any take in `text` recorded a window at record start (its capture line says so)."""
+    return any(c[0] == "recorded window (no field)" for c in CAPTURE.findall(text))
+
+
+def check_step0(label, text, cascades, inserted):
+    """Plan §11.1 step 0, per take: text OBSERVED in the destination plus a retained-paste Copied
+    notice is a FAIL (the 2.5.1 regression). A take whose own log shows a recorded window also
+    fails on a key paste followed by a retention or a notice request, whether or not the text was
+    seen to land. `inserted` must come from the destination itself, never from the tier."""
+    shown = notice_shown(text)
+    u.check(f"{label}: step 0: never pasted AND Copied", not (inserted and shown),
+            f"inserted={inserted} notice_shown={shown}")
+    if recorded_window_in(text):
+        dispatched = any(t in KEY_TIERS for t, _ in cascades)
+        kept = any(c[0] == "keep_dictation" for c in CLEANUP.findall(text))
+        requested = bool(NOTICE.findall(text))
+        u.check(f"{label}: step 0: a recorded-window key paste is never kept or noticed",
+                not (dispatched and (kept or requested)),
+                f"dispatched={dispatched} kept={kept} notice_requested={requested}")
+
+
 def verify_sleeping_cleanup(label, image, base):
-    u.wait_for("the checked cleanup's line", lambda: KEPT.search(u.log_since(base)), deadline=10.0)
-    kept = KEPT.findall(u.log_since(base))
-    u.check(f"{label}: the checked cleanup restored, never kept (#3286)",
-            [k[0] for k in kept] == ["restore"], str(kept))
-    u.check(f"{label}: no Copied notice was asked for", NOTICE.findall(u.log_since(base)) == [],
-            str(NOTICE.findall(u.log_since(base))))
+    """The cleanup restored the copied image: exactly one restore line, applied, whether checked or
+    not (a recorded-window session has no landing check, #3304), with no keep and no notice."""
+    u.wait_for("the cleanup's line", lambda: CLEANUP.search(u.log_since(base)), deadline=10.0)
+    text = u.log_since(base)
+    lines = CLEANUP.findall(text)
+    u.check(f"{label}: the cleanup restored, applied, never kept",
+            [(c[0], c[1]) for c in lines] == [("restore", "true")], str(lines))
+    u.check(f"{label}: no Copied notice was asked for", NOTICE.findall(text) == [],
+            str(NOTICE.findall(text)))
     u.check(f"{label}: the copied image is back on the clipboard, every byte",
             u.wait_for("the image restore", lambda: same_board(image), deadline=5.0),
             f"{len(u.pasteboard_snapshot())} item(s) now")
 
 
+def verify_recorded_window(label, text, want_gate="pass_same_window"):
+    """The take recorded its window at start and, unless `want_gate` is None (a take refused at
+    activation never reaches the dispatch gate), the dispatch gate decided on it as expected."""
+    captures = CAPTURE.findall(text)
+    u.check(f"{label}: record start recorded the window (no field)",
+            [c[0] for c in captures] == ["recorded window (no field)"], str(captures))
+    if want_gate is None:
+        return
+    gates = [(t, r) for t, r, app in GATE.findall(text) if app == CHROME]
+    u.check(f"{label}: the dispatch gate read {want_gate} on the recorded window",
+            bool(gates) and all(g == ("recorded_window", want_gate) for g in gates), str(gates))
+
+
 def phase_sleeping(attempts=3):
     """#3286 primary: ChatGPT in a Chrome whose accessibility was never woken. The words land in
-    ChatGPT's box and the copied image comes back, with no notice."""
+    ChatGPT's box and the copied image comes back, with no notice. Since #3304 the take records
+    the window (no field) and its gate reads the same window. ChatGPT is a third-party page, so its
+    box is read after the verdict and judged by the sentence (5+ words, 'tomorrow' once)."""
     print("\n== sleeping: dictate into ChatGPT in a Chrome that no accessibility client has woken")
     for attempt in range(1, attempts + 1):
-        chrome = SleepingChrome(f"sleeping-{attempt}")
+        label = f"sleeping-{attempt}"
+        chrome = SleepingChrome(label)
         try:
             chrome.open("https://chatgpt.com/")
             time.sleep(8)  # settle: ChatGPT loads and focuses its composer; nothing is read
             chrome.front()
-            lines, cascades, image, base = sleeping_take(f"sleeping-{attempt}", chrome)
+            samples = {}
+            lines, cascades, image, base = sleeping_take(label, chrome, samples=samples)
+            text = u.log_since(base)
             chrome_tiers = [t for t, app in cascades if app.strip() == CHROME]
             observed = lines[0][1] if len(lines) == 1 else None
-            print(f"    attempt {attempt}: tiers={chrome_tiers} landing={lines}")
-            if observed != "no_target":
-                u.record(f"sleeping attempt {attempt}", "SKIP",
-                         f"precondition: observed={observed}, not no_target; a new instance follows")
+            print(f"    attempt {attempt}: tiers={chrome_tiers} landing={lines} {asleep_detail(samples)}")
+            u.check(f"{label}: its accessibility woke after the verdict", chrome.wake())
+            boxes = chrome.boxes()
+            landed = [t for t, v in boxes if single_insertion(v)]
+            # Step 0 evidence is ANY text in any box (a partial or doubled paste is still one), and
+            # a box that cannot be read counts as text, so it can never hide a paste.
+            check_step0(label, text, cascades, inserted=any_text(boxes))
+            if not is_asleep(samples):
+                inconclusive(f"{label}: sleeping proof", f"Chrome was not asleep ({asleep_detail(samples)})")
                 continue
             u.check("sleeping: one Cmd+V paste into the isolated Chrome", chrome_tiers == ["cgevent"],
                     str(cascades))
-            u.check("sleeping: observed=no_target (the asleep state #3286 is about)", True)
+            u.check("sleeping: observed=no_target (#3286: never kept)", observed == "no_target",
+                    str(lines))
+            verify_recorded_window("sleeping", text)
             verify_sleeping_cleanup("sleeping", image, base)
-            u.check("sleeping: its accessibility woke after the verdict", chrome.wake())
-            boxes = chrome.boxes()
-            landed = [t for t, v in boxes if v and u.sentence_overlap(v) >= 5]
-            u.check("sleeping: the words landed in ChatGPT's box (5+ of 7 words)", len(landed) == 1,
+            u.check("sleeping: the words landed once in ChatGPT's box", len(landed) == 1,
                     str([(t[:40], (v or "")[:60]) for t, v in boxes]))
             return
         finally:
-            u.check(f"sleeping-{attempt}: its Chrome closed and its profile removed", chrome.close())
-    u.record("sleeping", "FAIL", f"no attempt of {attempts} reached no_target")
+            u.check(f"{label}: its Chrome closed and its profile removed", chrome.close())
+    inconclusive("sleeping", f"no attempt of {attempts} kept Chrome asleep")
 
 
+# Window A: a box focused at load. Window B: nothing focusable, nothing focused (the founder's
+# LinkedIn case, #3304; the #3286 version focused a box in B).
+#
+# Both pages are PASSIVE observers (never focus after load, never preventDefault, never insert) and
+# write what they saw into the window title, which stays readable while Chrome's accessibility
+# sleeps (a title read does not wake it, measured 2026-09-29): `p` = paste events the page received,
+# `len` = A's box length (ANY change is an insertion, right or wrong: step 0's evidence), `ok` = 1
+# when A's box holds exactly the concatenation of the texts those pastes carried and none of them
+# was empty (so an empty, truncated, doubled or extra insertion reads 0). Each take is checked by
+# its own delta. `calibrate_pages()` proves those answers in a real headless Chrome.
 SWITCH_PAGE = ('<!doctype html><meta charset="utf-8"><title>{title}</title>'
                '<body style="font:18px sans-serif;padding:24px"><p>{title} (local page).</p>'
-               '<textarea id="t" autofocus rows="6" cols="70"></textarea>'
-               '<script>document.getElementById("t").focus()</script></body>')
+               '<textarea id="t" autofocus rows="6" cols="70"></textarea><script>'
+               'var t=document.getElementById("t"),got=[];'
+               'function up(){{document.title="{title} |p="+got.length+"|len="+t.value.length'
+               '+"|ok="+(t.value===got.join("")&&got.every(function(x){{return x.length>0;}})'
+               '?1:0)+"|end";}}'
+               'document.addEventListener("paste",function(e){{got.push(e.clipboardData.getData('
+               '"text/plain"));setTimeout(up,0);}});t.addEventListener("input",up);t.focus();up();'
+               '</script></body>')
+BLANK_PAGE = ('<!doctype html><meta charset="utf-8"><title>{title}</title>'
+              '<body style="font:18px sans-serif;padding:24px"><p>{title} (local page, nothing to '
+              'type into).</p><script>var n=0;function up(){{document.title="{title} |p="+n+"|end";}}'
+              'document.addEventListener("paste",function(){{n++;up();}});up();</script></body>')
+PAGE_STATE = re.compile(r"\|p=(\d+)(?:\|len=(\d+)\|ok=([01]))?\|end")
+
+
+def page_state(title_text):
+    """(pastes, ok, box length) from an instrumented page's window title; ok and length are None
+    for page B. None when the title carries no state (not loaded, or not our page)."""
+    m = PAGE_STATE.search(title_text or "")
+    if not m:
+        return None
+    if m.group(2) is None:
+        return int(m.group(1)), None, None
+    return int(m.group(1)), m.group(3) == "1", int(m.group(2))
+
+
+def changed(before, after):
+    """Step 0's insertion evidence from a page: ANY paste event or box change counts, right or
+    wrong. An unreadable page counts as changed, so a missing reading can never hide a paste."""
+    if before is None or after is None:
+        return True
+    return after[0] != before[0] or after[2] != before[2]
+
+
+def exact_take(before, after, times=1):
+    """A's state moved by exactly `times` paste events, its box grew, and it holds exactly what
+    they carried (none empty)."""
+    return (before is not None and after is not None and after[0] - before[0] == times
+            and after[1] is True and after[2] > before[2])
+
+
+def profile_pids(profile):
+    """Every process naming `profile` as its user data directory, or raises: a failed probe is
+    not "none left"."""
+    r = subprocess.run(["pgrep", "-f", "--", f"--user-data-dir={profile}"],
+                       capture_output=True, text=True)
+    if r.returncode not in (0, 1):
+        raise u.Aborted(f"pgrep failed for {profile}: {r.stderr.strip()}")
+    return [int(x) for x in r.stdout.split()]
+
+
+def remove_owned_profile_dir(directory, profile):
+    """The isolated-Chrome cleanup policy for a directory this run created: TERM what still names
+    its profile, wait (bounded) until nothing does, and only then delete it (never a mount point,
+    never through a symlink). Kept, with the reason printed, whenever exit is uncertain."""
+    try:
+        for pid in profile_pids(profile):  # its own helpers, found by this run's unique path
+            try:
+                os.kill(pid, 15)
+            except ProcessLookupError:
+                pass
+        gone = u.wait_for("every process of the calibration profile gone",
+                          lambda: not profile_pids(profile), deadline=15.0)
+    except u.Aborted as exc:
+        print(f"    calibration directory kept at {directory}: {exc}")
+        return False
+    if not gone or os.path.islink(directory) or os.path.ismount(directory):
+        print(f"    calibration directory kept at {directory}: processes {profile_pids(profile)}")
+        return False
+    subprocess.run(["find", directory, "-xdev", "-delete"], capture_output=True)
+    return not os.path.exists(directory)
+
+
+def calibrate_pages():
+    """Runs page A's REAL observer in a headless Chrome (no window, no key, no clipboard) against
+    synthetic paste events and returns {case: (pastes, ok, length)}: one exact paste, an empty
+    payload, a truncated box, a doubled box. The caller compares with the expected answers."""
+    cases = {"exact": ("hello", "hello"), "empty": ("", ""), "truncated": ("hello", "hell"),
+             "doubled": ("hello", "hellohello")}
+    script = ("<script>var R={};function run(k,pay,val){var t=document.getElementById('t');"
+              "t.value='';got.length=0;var dt=new DataTransfer();dt.setData('text/plain',pay);"
+              "document.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt}));"
+              "t.value=val;up();R[k]=document.title;}"
+              + "".join(f"run({k!r},{p!r},{v!r});" for k, (p, v) in cases.items())
+              + "document.body.setAttribute('data-r',JSON.stringify(R));</script>")
+    page = SWITCH_PAGE.format(title="calibration").replace("</body>", script + "</body>")
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="ew-uat-3304-calib-", dir="/tmp")
+    profile = os.path.join(tmp, "profile")
+    try:
+        path = os.path.join(tmp, "a.html")
+        with open(path, "w") as fh:
+            fh.write(page)
+        # Headless Chrome prints the DOM and then lingers (measured 2026-09-29): read until the
+        # document is complete, then stop exactly this process (owned Popen pid) and wait for it.
+        proc = subprocess.Popen(
+            ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--headless=new",
+             f"--user-data-dir={tmp}/profile", "--no-first-run", "--disable-gpu",
+             "--dump-dom", f"file://{path}"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True)
+        dom = ""
+        try:
+            for line in proc.stdout:
+                dom += line
+                if "</html>" in line:
+                    break
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+    finally:
+        remove_owned_profile_dir(tmp, profile)
+    import html
+    import json
+    m = re.search(r"data-r=\"([^\"]*)\"", dom)
+    if not m:
+        raise u.Aborted(f"page calibration produced no result: {dom[-300:]}")
+    return {k: page_state(v) for k, v in json.loads(html.unescape(m.group(1))).items()}
+
+
+def untouched(before, after):
+    """B's state is unchanged: no paste event reached it."""
+    return before is not None and after is not None and after[0] == before[0]
+
+
+def write_switch_pages(tag):
+    titles = {k: f"ew 3304 {tag} {k} {u.RUN_ID}" for k in ("A", "B")}
+    paths = {}
+    for k, title in titles.items():
+        paths[k] = f"/tmp/ew-uat-3304-{tag}-{k}-{u.RUN_ID}.html"
+        with open(paths[k], "w") as fh:
+            fh.write((SWITCH_PAGE if k == "A" else BLANK_PAGE).format(title=title))
+    return titles, paths
+
+
+def window_named(chrome, title):
+    """The AX window of the isolated Chrome whose title starts with `title` (window attributes
+    only; never the page's tree)."""
+    from ui_helpers import get_attr, get_ax_app
+    for window in get_attr(get_ax_app(chrome.pid), "AXWindows") or []:
+        if str(get_attr(window, "AXTitle") or "").startswith(title):
+            return window
+    return None
+
+
+def state_of(chrome, title):
+    """The instrumented page's (pastes, ok) read from its window title, or None."""
+    from ui_helpers import get_attr
+    window = window_named(chrome, title)
+    return page_state(str(get_attr(window, "AXTitle") or "")) if window is not None else None
+
+
+def run_mid_take(stop, action, done):
+    """A worker that runs `action` 0.6 s into the take (a user move), unless the phase is ending."""
+    import threading
+
+    def run():
+        deadline = time.time() + 20.0
+        while "Recording started" not in u.log_since(PHASE_BASE["offset"]):
+            if time.time() > deadline or stop.wait(0.05):
+                return
+        if stop.wait(0.6):  # settle: the move happens 0.6 s into the take
+            return
+        action()
+        done["moved"] = True
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread
 
 
 def phase_sleeping_switch():
-    """#3286 known limit, stated in the plan: with Chrome asleep there is no captured field, so the
-    #3121 window check has nothing to compare, and a switch to another window of the same Chrome
-    before the paste lands the words THERE. The clipboard still comes back, and Paste Last
-    Dictation delivers the words into the intended window."""
-    print("\n== sleeping-switch: dictate in window A of a sleeping Chrome, switch to window B mid-take")
+    """#3304 step 1: dictate in window A of a sleeping Chrome, open window B (nothing focused)
+    mid-take, stop. The recorded window A is raised and the words land in A's box exactly once; B
+    receives no paste; the copied image comes back; no notice. On a Mac where a second window wakes
+    Chrome (the dev Mac, measured 2026-09-29) the sleeping proof is INCONCLUSIVE, and any proven
+    failure still counts."""
+    print("\n== sleepingswitch: dictate in window A of a sleeping Chrome, open window B mid-take")
     chrome = SleepingChrome("sleeping-switch")
-    titles = {k: f"ew 3286 {k} {u.RUN_ID}" for k in ("A", "B")}
-    paths = {}
-    for k, title in titles.items():
-        paths[k] = f"/tmp/ew-uat-3286-switch-{k}-{u.RUN_ID}.html"
-        with open(paths[k], "w") as fh:
-            fh.write(SWITCH_PAGE.format(title=title))
+    titles, paths = write_switch_pages("switch")
     import threading
     stop = threading.Event()  # set before cleanup, so the worker can never open a window after it
     thread = None
@@ -1077,64 +1406,38 @@ def phase_sleeping_switch():
         chrome.open(f"file://{paths['A']}")
         time.sleep(4)  # settle: page A loads and focuses its box; nothing is read
         chrome.front()
+        a_before = state_of(chrome, titles["A"])
         done = {}
-
-        def open_b():  # a new window of the SAME Chrome, front, its box focused
-            deadline = time.time() + 20.0
-            while "Recording started" not in u.log_since(PHASE_BASE["offset"]):
-                if time.time() > deadline or stop.wait(0.05):
-                    return
-            if stop.wait(0.6):  # settle: switch 0.6 s into the take, unless the phase is ending
-                return
-            chrome.open(f"file://{paths['B']}")
-            done["opened"] = True
-        thread = threading.Thread(target=open_b, daemon=True)
         PHASE_BASE["offset"] = u.log_size()
-        thread.start()
-        lines, cascades, image, base = sleeping_take("sleeping-switch", chrome)
+        thread = run_mid_take(stop, lambda: chrome.open(f"file://{paths['B']}"), done)
+        samples = {}
+        lines, cascades, image, base = sleeping_take("sleeping-switch", chrome, samples=samples)
         thread.join(timeout=10)
-        u.check("sleeping-switch: window B opened mid-take", done.get("opened") is True)
-        observed = lines[0][1] if len(lines) == 1 else None
-        u.check("sleeping-switch: observed=no_target (Chrome asleep)", observed == "no_target",
-                str(lines))
+        text = u.log_since(base)
+        u.wait_for("page A's state", lambda: state_of(chrome, titles["A"]) != a_before, deadline=3.0)
+        a_after = state_of(chrome, titles["A"])
+        b_after = state_of(chrome, titles["B"])
+        print(f"    page A before={a_before} after={a_after}; page B={b_after} {asleep_detail(samples)}")
+        inserted = exact_take(a_before, a_after)
+        check_step0("sleeping-switch", text, cascades,
+                    inserted=changed(a_before, a_after) or not untouched((0, None, None), b_after))
+        u.check("sleeping-switch: window B opened mid-take", done.get("moved") is True and b_after is not None,
+                f"moved={done.get('moved')} B={b_after}")
+        u.check("sleeping-switch: B received no paste", untouched((0, None, None), b_after), str(b_after))
+        refused = REFUSED.findall(text)
+        u.check("sleeping-switch: no window refusal (A came back)", refused == [], str(refused))
+        if not is_asleep(samples):
+            inconclusive("sleeping-switch: sleeping proof (paste-back into A)",
+                         f"Chrome was not asleep ({asleep_detail(samples)}); A {a_before}->{a_after}")
+            return
+        verify_recorded_window("sleeping-switch", text)
+        u.check("sleeping-switch: the words landed in window A's box exactly once", inserted,
+                f"{a_before}->{a_after}")
         verify_sleeping_cleanup("sleeping-switch", image, base)
         u.check("sleeping-switch: its accessibility woke after the verdict", chrome.wake())
-        boxes = dict(chrome.boxes())
-        u.check("sleeping-switch: windows A and B are both separate windows of this Chrome",
-                any(t.startswith(titles["A"]) for t in boxes)
-                and any(t.startswith(titles["B"]) for t in boxes), str(list(boxes)))
-        a = next((v for t, v in boxes.items() if t.startswith(titles["A"])), None)
-        b = next((v for t, v in boxes.items() if t.startswith(titles["B"])), None)
-        print(f"    window A box={a!r:.60} window B box={b!r:.60}")
-        u.check("sleeping-switch: KNOWN LIMIT recorded: the words landed in the front window B",
-                b is not None and u.sentence_overlap(b) >= 5, repr(b))
-        u.check("sleeping-switch: window A is still empty", a == "", repr(a))
-        # Recovery: bring window A front and press Paste Last Dictation (Control+Command+V).
-        from ui_helpers import get_attr, get_ax_app, perform_action, set_attr
-        for window in get_attr(get_ax_app(chrome.pid), "AXWindows") or []:
-            if str(get_attr(window, "AXTitle") or "").startswith(titles["A"]):
-                perform_action(window, "AXRaise")
-                set_attr(window, "AXMain", True)
-        chrome.front()
-        app_ax = get_ax_app(chrome.pid)
-        focused_window = get_attr(app_ax, "AXFocusedWindow")
-        focused = get_attr(app_ax, "AXFocusedUIElement")
-        window_title = str(get_attr(focused_window, "AXTitle") or "") if focused_window else ""
-        focused_role_ = get_attr(focused, "AXRole") if focused is not None else None
-        if not (window_title.startswith(titles["A"]) and focused_role_ == "AXTextArea"):
-            raise u.Aborted(f"sleeping-switch: window A's box is not focused before Paste Last "
-                            f"(window {window_title!r}, focus {focused_role_!r})")
-        reuse_base = u.log_size()
-        if not chrome.is_front():  # the founder may have switched apps during the checks above
-            raise u.Aborted("sleeping-switch: the isolated Chrome lost the front before Paste Last")
-        u.chord("v")
-        u.wait_for("the Paste Last outcome", lambda: u.reuse_lines(reuse_base), deadline=5.0)
-        pasted = u.wait_for(
-            "the recovered words in window A",
-            lambda: u.sentence_overlap(next((v or "" for t, v in chrome.boxes()
-                                             if t.startswith(titles["A"])), "")) >= 5, deadline=5.0)
-        u.check("sleeping-switch: Paste Last Dictation put the words into window A", pasted,
-                str(u.reuse_lines(reuse_base)))
+        a_box = next((v for t, v in chrome.boxes() if t.startswith(titles["A"])), None)
+        u.check("sleeping-switch: A's box holds the dictated sentence", single_insertion(a_box),
+                repr((a_box or "")[:80]))
     finally:
         stop.set()
         if thread is not None:
@@ -1145,8 +1448,129 @@ def phase_sleeping_switch():
                 os.remove(path)
 
 
+def phase_sleeping_closed():
+    """#3304 step 2: window A of a sleeping Chrome is closed mid-take while window B (nothing
+    focused) is front. The gate reads B, a positive mismatch: no key paste, Tier 3 keeps the words
+    on the clipboard; B receives no paste. Tier 3's Copied notice writes no app.log line (the
+    retained-paste notice's RETAINED_NOTICE is a different path), so it is a visual check by eye,
+    as in the #3121 closedwindow phase."""
+    print("\n== sleepingclosed: window A of a sleeping Chrome is closed mid-take")
+    chrome = SleepingChrome("sleeping-closed")
+    titles, paths = write_switch_pages("closed")
+    import threading
+    stop = threading.Event()
+    thread = None
+    try:
+        chrome.open(f"file://{paths['A']}")
+        time.sleep(4)  # settle: page A loads and focuses its box; nothing is read
+        chrome.open(f"file://{paths['B']}")
+        time.sleep(2)  # settle: window B opens; nothing is read
+        window_a = window_named(chrome, titles["A"])
+        if window_a is None:
+            raise u.Aborted("sleeping-closed: window A not found")
+        from ui_helpers import get_attr, perform_action, set_attr
+        perform_action(window_a, "AXRaise")  # the dictation starts in A
+        set_attr(window_a, "AXMain", True)
+        chrome.front()
+        b_before = state_of(chrome, titles["B"])
+        done = {}
+
+        def close_a():
+            close = get_attr(window_a, "AXCloseButton")
+            if close is not None:
+                perform_action(close, "AXPress")
+        PHASE_BASE["offset"] = u.log_size()
+        thread = run_mid_take(stop, close_a, done)
+        samples = {}
+        lines, cascades, image, base = sleeping_take(
+            "sleeping-closed", chrome, samples=samples, expect_landing=False)
+        thread.join(timeout=10)
+        text = u.log_since(base)
+        b_after = state_of(chrome, titles["B"])
+        u.check("sleeping-closed: window A closed mid-take", done.get("moved") is True
+                and window_named(chrome, titles["A"]) is None)
+        tiers = [t for t, app in cascades if app.strip() == CHROME]
+        refused = REFUSED.findall(text)
+        u.check("sleeping-closed: refused on a positive window mismatch",
+                bool(refused) and all(r == "window_mismatch" for _, r in refused), str(refused))
+        u.check("sleeping-closed: no key paste, clipboard only", tiers == ["clipboard_only"],
+                str(cascades))
+        u.check("sleeping-closed: no PASTE_LANDING line (nothing was pasted)", lines == [], str(lines))
+        u.check("sleeping-closed: B received no paste", untouched(b_before, b_after),
+                f"{b_before}->{b_after}")
+        clip = u.clipboard_text() or ""
+        u.check("sleeping-closed: the dictation is kept on the clipboard (5+ of 7 words)",
+                u.sentence_overlap(clip) >= 5, repr(clip[:80]))
+        inconclusive("sleeping-closed: the Copied notice on screen",
+                     "Tier 3's notice writes no app.log line: awaiting manual verification by eye")
+        check_step0("sleeping-closed", text, cascades, inserted=not untouched(b_before, b_after))
+        if not is_asleep(samples):
+            # Awake, the field itself was captured and the #3121 field-window gate refused: the
+            # checks above hold, but they do not prove the recorded-window path.
+            inconclusive("sleeping-closed: sleeping proof (refusal on the recorded window)",
+                         f"Chrome was not asleep ({asleep_detail(samples)})")
+            return
+        # Refused inside the activation loop, so no dispatch-gate line: the capture is the proof.
+        verify_recorded_window("sleeping-closed", text, want_gate=None)
+    finally:
+        stop.set()
+        if thread is not None:
+            thread.join()
+        u.check("sleeping-closed: its Chrome closed and its profile removed", chrome.close())
+        for path in paths.values():
+            if os.path.exists(path):
+                os.remove(path)
+
+
+def phase_sleeping_stay(takes=5):
+    """#3304 step 3: five takes into window A of a sleeping Chrome, staying in A. Each take, read
+    from page A's title right after its verdict: exactly one paste event and a box holding exactly
+    what the pastes carried; plus the recorded window, pass_same_window, one Cmd+V, the image back,
+    no notice. A take whose Chrome was not asleep is INCONCLUSIVE, and its checks still run."""
+    print(f"\n== sleepingstay: {takes} takes into window A of a sleeping Chrome, no switch")
+    chrome = SleepingChrome("sleeping-stay")
+    titles, paths = write_switch_pages("stay")
+    qualifying = 0
+    try:
+        chrome.open(f"file://{paths['A']}")
+        time.sleep(4)  # settle: page A loads and focuses its box; nothing is read
+        chrome.front()
+        for n in range(1, takes + 1):
+            label = f"sleeping-stay-{n}"
+            before = state_of(chrome, titles["A"])
+            samples = {}
+            lines, cascades, image, base = sleeping_take(label, chrome, samples=samples)
+            text = u.log_since(base)
+            u.wait_for(f"{label}: page A's state", lambda: state_of(chrome, titles["A"]) != before,
+                       deadline=3.0)
+            after = state_of(chrome, titles["A"])
+            inserted = exact_take(before, after)
+            tiers = [t for t, app in cascades if app.strip() == CHROME]
+            print(f"    {label}: page A {before}->{after} tiers={tiers} {asleep_detail(samples)}")
+            check_step0(label, text, cascades, inserted=changed(before, after))
+            u.check(f"{label}: exactly one insertion, exactly the pasted text", inserted,
+                    f"{before}->{after}")
+            u.check(f"{label}: one Cmd+V paste into the isolated Chrome", tiers == ["cgevent"],
+                    str(cascades))
+            u.check(f"{label}: no window refusal", REFUSED.findall(text) == [], str(REFUSED.findall(text)))
+            verify_sleeping_cleanup(label, image, base)
+            if not is_asleep(samples):
+                inconclusive(f"{label}: sleeping proof", f"Chrome was not asleep ({asleep_detail(samples)})")
+                continue
+            qualifying += 1
+            verify_recorded_window(label, text)
+        if qualifying < takes:
+            inconclusive("sleeping-stay: five sleeping takes", f"{qualifying} of {takes} kept Chrome asleep")
+    finally:
+        u.check("sleeping-stay: its Chrome closed and its profile removed", chrome.close())
+        for path in paths.values():
+            if os.path.exists(path):
+                os.remove(path)
+
+
 PHASES = ["focused", "nofocus", "textedit", "readonly", "copy", "newtake", "otherwindow",
-          "closedwindow", "reuseafter", "clickout", "sleeping", "sleepingswitch"]
+          "closedwindow", "reuseafter", "clickout", "sleeping", "sleepingswitch", "sleepingclosed",
+          "sleepingstay"]
 
 
 def main():
@@ -1196,6 +1620,10 @@ def main():
                 phase_sleeping()
             elif name == "sleepingswitch":
                 phase_sleeping_switch()
+            elif name == "sleepingclosed":
+                phase_sleeping_closed()
+            elif name == "sleepingstay":
+                phase_sleeping_stay()
             else:
                 phase(name)
     except u.Aborted as e:
@@ -1232,8 +1660,19 @@ def main():
     passed = sum(1 for _, s, _ in u.results if s == "PASS")
     failed = [r for r in u.results if r[1] in ("FAIL", "ABORT")]
     skipped = sum(1 for _, s, _ in u.results if s == "SKIP")
-    print(f"\n{passed} passed, {len(failed)} failed, {skipped} skipped")
-    return 1 if failed else 0
+    unsure = [r for r in u.results if r[1] == "INCONCLUSIVE"]
+    print(f"\n{passed} passed, {len(failed)} failed, {skipped} skipped, {len(unsure)} inconclusive")
+    return exit_status(u.results)
+
+
+def exit_status(results):
+    """1 when anything failed (a proven failure outranks an inconclusive one), 3 when a required
+    proof was INCONCLUSIVE, else 0. An inconclusive run is never a pass."""
+    if any(status in ("FAIL", "ABORT") for _, status, _ in results):
+        return 1
+    if any(status == "INCONCLUSIVE" for _, status, _ in results):
+        return 3
+    return 0
 
 
 if __name__ == "__main__":
