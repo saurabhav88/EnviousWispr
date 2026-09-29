@@ -87,7 +87,7 @@ struct FeedbackHelpCheckingView: View {
   static var detail: String {
     String(
       localized: "feedback.help.checking.detail",
-      defaultValue: "Takes a second. Your message won't be lost."
+      defaultValue: "This can take a few seconds. Your message won't be lost."
     )
   }
 }
@@ -172,6 +172,11 @@ struct FeedbackHelpResultsView: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   /// Drives the entrance: the header, each card and the footer rise in turn.
   @State private var shown = false
+  /// The cards' natural height, measured, so the list grows to fit and scrolls only past the cap.
+  /// A bare ScrollView in a popover collapses to a sliver (live UAT), so its height is set here.
+  @State private var cardsHeight: CGFloat = 0
+  /// Tallest the card list grows before it scrolls, so the buttons stay on screen.
+  private static let maxCardsHeight: CGFloat = 440
 
   /// One concern, verified and suppressible: the single yes-or-send choice, no marks.
   private var isSingleQuestion: Bool {
@@ -197,6 +202,27 @@ struct FeedbackHelpResultsView: View {
           .foregroundStyle(.stTextSecondary)
           .rise(shown, index: 1, reduceMotion: reduceMotion)
       }
+      ScrollView {
+        cardList
+          .background(
+            GeometryReader { proxy in
+              Color.clear.preference(key: FeedbackCardsHeightKey.self, value: proxy.size.height)
+            })
+      }
+      .scrollIndicators(cardsHeight > Self.maxCardsHeight ? .automatic : .never)
+      .frame(height: min(max(cardsHeight, 1), Self.maxCardsHeight))
+      .onPreferenceChange(FeedbackCardsHeightKey.self) { cardsHeight = $0 }
+      VStack(spacing: 10) {
+        footer
+        caption
+      }
+      .rise(shown, index: suggestions.cards.count + 1, reduceMotion: reduceMotion)
+    }
+    .padding(20)
+    .onAppear { shown = true }
+  }
+
+  private var cardList: some View {
       VStack(alignment: .leading, spacing: 10) {
         ForEach(Array(suggestions.cards.enumerated()), id: \.element.result.id) { index, card in
           FeedbackHelpCard(
@@ -218,14 +244,6 @@ struct FeedbackHelpResultsView: View {
         }
       }
       .fixedSize(horizontal: false, vertical: true)
-      VStack(spacing: 10) {
-        footer
-        caption
-      }
-      .rise(shown, index: suggestions.cards.count + 1, reduceMotion: reduceMotion)
-    }
-    .padding(20)
-    .onAppear { shown = true }
   }
 
   private var header: some View {
@@ -314,11 +332,11 @@ struct FeedbackHelpResultsView: View {
       return String(
         localized: "feedback.help.unmatched.generic",
         defaultValue:
-          "We couldn't find a reliable answer for part of your message. We'll send your message.")
+          "We couldn't find a reliable answer for part of your message. You can still send your message.")
     }
     return String(
       localized: "feedback.help.unmatched",
-      defaultValue: "We couldn't find a reliable answer for \(concern). We'll send your message.")
+      defaultValue: "We couldn't find a reliable answer for \(concern). You can still send your message.")
   }
 
   private func primaryButton(action: @escaping () -> Void) -> some View {
@@ -401,6 +419,7 @@ struct FeedbackHelpCard: View {
   let marks: Set<String>
   let showsMarks: Bool
   let onMark: (String, Bool) -> Void
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var markable: [String] {
     showsMarks ? card.issueIDs.filter(suggestions.canMarkSolved) : []
@@ -465,7 +484,7 @@ struct FeedbackHelpCard: View {
         )
         .allowsHitTesting(false)
     )
-    .animation(.easeOut(duration: 0.2), value: allMarked)
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: allMarked)
   }
 
   private var allMarked: Bool {
@@ -498,12 +517,12 @@ struct FeedbackHelpCard: View {
   static var pageText: String {
     String(
       localized: "feedback.help.page",
-      defaultValue: "This page might help. We'll still send your message.")
+      defaultValue: "This page might help. You can still send your message.")
   }
   static var stillSentText: String {
     String(
       localized: "feedback.help.stillSent",
-      defaultValue: "This might help. We'll still send your message.")
+      defaultValue: "This might help. You can still send your message.")
   }
 }
 
@@ -629,4 +648,10 @@ private struct FeedbackCheckShape: Shape {
     path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
     return path
   }
+}
+
+/// The measured height of the help card list.
+private struct FeedbackCardsHeightKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

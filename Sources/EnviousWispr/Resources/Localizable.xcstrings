@@ -19006,13 +19006,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Takes a second. Your message won't be lost."
+            "value" : "This can take a few seconds. Your message won't be lost."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dauert nur einen Moment. Deine Nachricht geht nicht verloren."
+            "value" : "Das kann ein paar Sekunden dauern. Deine Nachricht geht nicht verloren."
           }
         }
       }
@@ -19210,13 +19210,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "This page might help. We'll still send your message."
+            "value" : "This page might help. You can still send your message."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Seite könnte helfen. Wir senden deine Nachricht trotzdem."
+            "value" : "Diese Seite könnte helfen. Du kannst deine Nachricht trotzdem senden."
           }
         }
       }
@@ -19329,13 +19329,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "This might help. We'll still send your message."
+            "value" : "This might help. You can still send your message."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das könnte helfen. Wir senden deine Nachricht trotzdem."
+            "value" : "Das könnte helfen. Du kannst deine Nachricht trotzdem senden."
           }
         }
       }
@@ -19346,13 +19346,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "We couldn't find a reliable answer for %@. We'll send your message."
+            "value" : "We couldn't find a reliable answer for %@. You can still send your message."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für „%@“ haben wir keine verlässliche Antwort gefunden. Wir senden deine Nachricht."
+            "value" : "Für „%@“ haben wir keine verlässliche Antwort gefunden. Du kannst deine Nachricht trotzdem senden."
           }
         }
       }
@@ -19363,13 +19363,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "We couldn't find a reliable answer for part of your message. We'll send your message."
+            "value" : "We couldn't find a reliable answer for part of your message. You can still send your message."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für einen Teil deiner Nachricht haben wir keine verlässliche Antwort gefunden. Wir senden deine Nachricht."
+            "value" : "Für einen Teil deiner Nachricht haben wir keine verlässliche Antwort gefunden. Du kannst deine Nachricht trotzdem senden."
           }
         }
       }

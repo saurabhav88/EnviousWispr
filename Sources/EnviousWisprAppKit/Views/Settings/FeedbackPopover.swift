@@ -9,6 +9,7 @@ struct FeedbackToolbarButton: View {
   @State private var isPresented = false
   @Environment(SettingsManager.self) private var settings
   @State private var submission = FeedbackSubmission.shared
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   /// Help cards are waiting behind a closed popover (#3275): the dot says the message is unsent.
   private var isWaiting: Bool {
@@ -45,7 +46,7 @@ struct FeedbackToolbarButton: View {
               .allowsHitTesting(false)
           }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isWaiting)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.6), value: isWaiting)
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)

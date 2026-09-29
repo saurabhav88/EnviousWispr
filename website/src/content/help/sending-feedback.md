@@ -29,14 +29,14 @@ Found a bug or have an idea? You can tell us from inside EnviousWispr. Every mes
 
 In recent versions, when you click **Send**, EnviousWispr first looks for help pages that might answer your message. The form says **Checking help articles…** for a few seconds at most.
 
-- **If it finds help**, you see up to three short answers from the help center, each with a **Read the full article** link. If your message had more than one part, you can mark each part **Solved**.
+- **If it finds help**, you see up to three short answers from the help center, each with a **Read the full article** link. If your message had more than one part, you can mark a matched part **Solved** when that option appears.
 - **To send your message**, click **Send my message**. Your report is sent exactly as you wrote it, with your email and diagnostics if you added them, and it notes which answers you marked solved.
 - **If everything is solved**, and the app could match every part of your message to an answer, you can click **Solved, don't send** (or **All solved, don't send**). Nothing is sent and your draft is cleared.
 - **To change your message**, click **Edit message**. Nothing is sent and your draft stays as it was.
 - **To come back later**, close the answers. Nothing is sent, and a dot on the bug icon shows your message is waiting. Click the bug icon to pick up where you left off. If you quit EnviousWispr first, your draft is kept and the check runs again when you click **Send**.
 - **If nothing fits, or the check fails**, your report is sent as usual, without any extra step.
 
-Some answers, such as pages about crashes or privacy, are shown for reference only: your message is still sent.
+Some answers, such as pages about crashes or privacy, are shown for reference only and can't be marked solved. Click **Send my message** if you still want to report the issue.
 
 ### Include diagnostics
 
