@@ -481,7 +481,9 @@ struct FeedbackForm: View {
     case .send(let snapshot): diagnostics = snapshot
     }
     showsUnsentNote = false
-    // The report is frozen here; edits typed while it saves are not what was sent.
+    // The report is frozen here; edits typed while it saves are not what was sent. The switch is
+    // read with the diagnostics decision, never later in the task, so the two always agree.
+    let metricsAtSend = settings.shareUsageMetrics
     let sentMessage = message
     let sentEmail = email
     let submitted = presentation
@@ -492,7 +494,7 @@ struct FeedbackForm: View {
       // finished; the reopened one reconciles.
       let step = await submission.send(
         draft, diagnostics: diagnostics, from: submitted, sent: (sentMessage, sentEmail),
-        usageMetrics: settings.shareUsageMetrics,
+        usageMetrics: metricsAtSend,
         current: { .init(presentation: presentation, message: message, email: email) })
       switch step {
       case .sent(let outcome, _):
