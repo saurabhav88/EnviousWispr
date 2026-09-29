@@ -26,6 +26,7 @@ ai_diagnostics.run_completed	ungraded	ungraded	-	pre-#2987
 api_key.changed	ungraded	ungraded	-	pre-#2987
 api_key.validation_completed	ungraded	ungraded	-	pre-#2987
 app.launched	ungraded	ungraded	-	pre-#2987
+app.idle_memory	per_launch	keep	median idle footprint_mb by app version and word_check_wanted, at the first weekly release review	#3289
 asr.retry_deadline_observed	ungraded	ungraded	-	pre-#2987
 audio.capture_interrupted	ungraded	ungraded	-	pre-#2987
 audio.dead_mic_recovery	ungraded	ungraded	-	pre-#2987
@@ -54,8 +55,8 @@ dictation.canceled	ungraded	ungraded	-	pre-#2987
 dictation.completed	ungraded	ungraded	-	pre-#2987
 dictation.invoked	ungraded	ungraded	-	pre-#2987
 dictation.last_reused	per_user_action	keep	analytics-operations.md FACT: app-posthog-events ("Last dictation reuse" insight: weekly users with a dispatched or copied outcome over users with a dictation.completed, read at the first release review, #3106)	#3106
-paste.landing_observed	per_take	sampled	analytics-operations.md FACT: app-posthog-events ("Paste landing" insight, floored at telemetry_policy_version 5: miss rate (absent + no_target) by tier and app_class with sampled early found rows weighted, late-hit rate from late_check_status/late_found_ms, read before PR B's default-on decision and at each release after)	#3106
-paste.landing_retained	per_take	keep	analytics-operations.md FACT: app-posthog-events (#3106 release review: retained over trustworthy observed misses from paste.landing_observed, a lower bound since excluded apps stay in that denominator; pill_shown rate among retained; yielded rate)	#3106
+paste.landing_observed	per_take	sampled	analytics-operations.md FACT: app-posthog-events ("Paste landing" insight, floored at telemetry_policy_version 5: miss rate (absent; no_target is an unreadable host, not a trustworthy miss, #3286) by tier and app_class with sampled early found rows weighted, late-hit rate from late_check_status/late_found_ms, read before PR B's default-on decision and at each release after)	#3106
+paste.landing_retained	per_take	keep	analytics-operations.md FACT: app-posthog-events (#3106 release review: retained over trustworthy observed misses (absent only; no_target never retains, #3286) from paste.landing_observed, a lower bound since excluded apps stay in that denominator; pill_shown rate among retained; yielded rate)	#3106
 dictation.started	ungraded	ungraded	-	pre-#2987
 dictation.terminal	per_take	folded	analytics-operations.md FACT: app-posthog-events (one terminal per accepted take; learned check readiness and absence by selected engine, #3105)	#3105
 eg1.*	ungraded	ungraded	-	pre-#2987

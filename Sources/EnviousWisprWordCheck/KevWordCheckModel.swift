@@ -1,6 +1,7 @@
 // `internal import`: MLX appears in no public signature here, so modules that import this one
 // never need MLX's C modules (Cmlx, _NumericsShims) on their own search paths.
 internal import ArgmaxCore
+import EnviousWisprCore
 import Foundation
 internal import MLX
 internal import MLXLLM
@@ -14,11 +15,24 @@ internal import MLXNN
 /// answered in one batched pass, so a take costs one actor hop, not sixteen.
 public actor KevWordCheckModel {
   public let contract: KevContract
-  private let model: Qwen35Model
+  /// Every MLX buffer the model owns, in ONE releasable place (#3289). A Swift deinit body runs
+  /// before stored properties are destroyed. Drop the MLX-bearing weights before clearing the cache
+  /// so their buffers are eligible for cleanup (#3289).
+  private struct Weights {
+    let model: Qwen35Model
+    let head: (qWeight: MLXArray, qBias: MLXArray, kWeight: MLXArray, kBias: MLXArray)
+  }
+  /// `nonisolated(unsafe)` only so `deinit` can drop it: a plain actor deinit is nonisolated, and
+  /// Swift 6 refuses a non-Sendable stored property there, while `isolated deinit` needs macOS 15.4
+  /// (the app supports 14). Safe because a deinit has the only reference; every other access is on
+  /// the actor.
+  nonisolated(unsafe) private var weights: Weights?
   private let tokenizer: ArgmaxKevTokenizer
-  private let head: (qWeight: MLXArray, qBias: MLXArray, kWeight: MLXArray, kBias: MLXArray)
   private let temperature: Float
   private let padID: Int
+  /// Called from deinit after the cache is cleared, with MLX's active bytes before the weights were
+  /// dropped and active and cache bytes after. Production passes nil; tests watch the release.
+  private let onRelease: (@Sendable (_ activeBefore: Int, _ activeAfter: Int, _ cacheAfter: Int) -> Void)?
 
   /// MLX keeps freed GPU buffers for reuse; a take's buffers differ in shape, so an unbounded
   /// cache grows with every new length. Kev bounds it the same way for serving (1 GB for its 4B);
@@ -30,11 +44,16 @@ public actor KevWordCheckModel {
     case headTensorMissing(String)
     case headShapeMismatch
     case padTokenMissing
+    /// Asked a question after its weights were released (only reachable from deinit's own actor).
+    case released
   }
 
   /// Loads the admitted folder. Throws rather than returning a half-built model: selection turns
   /// a failed load into "no checker", never into a checker that answers wrongly.
-  public init(folder: URL) async throws {
+  public init(
+    folder: URL,
+    onRelease: (@Sendable (_ activeBefore: Int, _ activeAfter: Int, _ cacheAfter: Int) -> Void)? = nil
+  ) async throws {
     let loadedContract = try KevContract.load(from: folder)
     let configData = try Data(contentsOf: folder.appendingPathComponent("config.json"))
     let configuration = try JSONDecoder().decode(Qwen35Configuration.self, from: configData)
@@ -68,11 +87,44 @@ public actor KevWordCheckModel {
       throw LoadError.padTokenMissing
     }
     self.contract = loadedContract
-    self.model = model
+    self.weights = Weights(model: model, head: head)
     self.tokenizer = tokenizer
-    self.head = head
     self.temperature = temperature
     self.padID = padID
+    self.onRelease = onRelease
+  }
+
+  /// A plain deinit, not `isolated deinit`: the isolated form needs macOS 15.4 and the app supports
+  /// macOS 14 (#3289, found by the Release build). None is needed: a deinit runs only once the last
+  /// reference is gone, and every evaluation holds one, so this cannot overlap one of this model's
+  /// own evaluations (see `weights`). The weights go first, THEN the cache is cleared: in the other order their
+  /// buffers would land in the cache after it was emptied. `Memory.clearCache()` takes MLX's
+  /// `evalLock` in the pinned mlx-swift, so it cannot run inside another model's evaluation either.
+  /// Kev is the only MLX user in the app.
+  deinit {
+    let before = Memory.snapshot()
+    weights = nil
+    Memory.clearCache()
+    let after = Memory.snapshot()
+    onRelease?(before.activeMemory, after.activeMemory, after.cacheMemory)
+    #if DEBUG
+      let line =
+        "word check model released mlx_active_before=\(before.activeMemory) mlx_cache_before=\(before.cacheMemory) mlx_active_after=\(after.activeMemory) mlx_cache_after=\(after.cacheMemory)"
+      Task { await AppLogger.shared.log(line, category: "WordCheck") }
+    #endif
+  }
+
+  /// A load that throws after reading weights never produces an instance, so no deinit runs; its
+  /// arrays are freed as the initializer unwinds and their buffers wait in MLX's cache. The runtime
+  /// calls this in its load failure path (#3289).
+  public static func releaseCachedBuffers() {
+    Memory.clearCache()
+  }
+
+  /// MLX's active and cached bytes, numbers only, for DEBUG log lines.
+  public static func memorySnapshotForLog() -> (active: Int, cache: Int) {
+    let snapshot = Memory.snapshot()
+    return (snapshot.activeMemory, snapshot.cacheMemory)
   }
 
   private static func tensor(_ name: String, in tensors: [String: MLXArray]) throws -> MLXArray {
@@ -95,6 +147,9 @@ public actor KevWordCheckModel {
   /// sit after every real token and both layer kinds are causal, so no real token sees a pad.
   public func probabilities(forStates states: [String]) throws -> [Double] {
     guard !states.isEmpty else { return [] }
+    guard let weights else { throw LoadError.released }
+    let model = weights.model
+    let head = weights.head
     let encoded = try states.map {
       try KevEncoding.encode(
         state: $0, question: contract.question, tokens: contract.specialTokens,

@@ -159,7 +159,9 @@ struct RecoverySpoolReplayerTests {
   /// every pre-existing test keeps its exact behaviour.
   private static func makeHarness(
     transcriptDir: URL? = nil,
-    now: @escaping @Sendable () -> Date = { Date() }
+    now: @escaping @Sendable () -> Date = { Date() },
+    onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
+    onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil
   ) -> Harness {
     let spoolDir = tempDir()
     let keyStore = RecoveryKeyStore(backend: .file, fileDirectory: tempDir())
@@ -180,6 +182,8 @@ struct RecoverySpoolReplayerTests {
       transcriptCoordinator: transcriptCoordinator,
       keychainManager: KeychainManager(),
       outputClassifierHolder: OutputClassifierHolder(),
+      onReplayWillTranscribe: onReplayWillTranscribe,
+      onReplayFinished: onReplayFinished,
       now: now,
       currentVocabulary: { (.empty, .empty) },
       currentSnippets: { .empty })
@@ -234,6 +238,44 @@ struct RecoverySpoolReplayerTests {
     // returns, so the spool + key are STILL PRESENT here.
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
     #expect((try? h.keyStore.retrieve(for: id)) != nil)
+  }
+
+  /// #3289: the word check is no longer in memory at launch, so a replay tells the app its
+  /// recording's frozen polish engine BEFORE transcribing, and the check loads behind the
+  /// transcription. When this fails, a recovered dictation misses its learned-word fixes.
+  @Test("a replay reports the recording's frozen polish engine before it transcribes")
+  func replayReportsEngineBeforeTranscribing() async throws {
+    var reported: [(LLMProvider, Int)] = []
+    var asrRef: FakeBatchASR?
+    let h = Self.makeHarness(onReplayWillTranscribe: { provider in
+      reported.append((provider, asrRef?.transcribeCallCount ?? -1))
+    })
+    asrRef = h.asr
+    let id = "hook-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    #expect(outcome == .recovered)
+    #expect(reported.count == 1)
+    #expect(reported.first?.0 == LLMProvider(rawValue: Self.snapshot().llmProvider))
+    #expect(reported.first?.1 == 0, "the engine was reported after transcription started")
+    #expect(h.asr.transcribeCallCount == 1)
+  }
+
+  /// The word check counts a replay as work that needs it from the first hook to the second, so
+  /// the second must follow the first on every path, a failed transcription included.
+  @Test("a replay that reports its engine reports its end too, when transcription succeeds or fails")
+  func replayReportsEndOnEveryPath() async throws {
+    for fails in [false, true] {
+      var events: [String] = []
+      let h = Self.makeHarness(
+        onReplayWillTranscribe: { _ in events.append("start") },
+        onReplayFinished: { _ in events.append("end") })
+      if fails { h.asr.transcribeError = CancellationError() }
+      let id = "end-\(fails)-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+      _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      #expect(events == ["start", "end"], "transcription failed: \(fails)")
+    }
   }
 
   @Test("one-attempt guard: a marker present on entry ABANDONS (no transcribe, no delete)")

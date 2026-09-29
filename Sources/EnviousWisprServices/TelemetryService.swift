@@ -692,6 +692,28 @@ public final class TelemetryService {
       ])
   }
 
+  /// #3289: one sample per launch after 12 idle minutes: does an idle app give its memory back?
+  /// Numbers and booleans only. `footprint_mb` is this process's `phys_footprint` in MiB and does
+  /// not include the EG-1/S1-mini `llama-server` child process. Launch-scoped: no join key.
+  public func appIdleMemory(
+    footprintMB: Int, minutesSinceLaunch: Int, wordCheckLoaded: Bool, wordCheckWanted: Bool
+  ) {
+    let props: [String: Any] = [
+      "footprint_mb": footprintMB,
+      "minutes_since_launch": minutesSinceLaunch,
+      "word_check_loaded": wordCheckLoaded,
+      "word_check_wanted": wordCheckWanted,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "app.idle_memory",
+          intProps: props.compactMapValues { $0 as? Int },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("app.idle_memory", properties: props)
+  }
+
   public func providerChanged(from: String, to: String) {
     PostHogSDK.shared.capture(
       "provider.changed",

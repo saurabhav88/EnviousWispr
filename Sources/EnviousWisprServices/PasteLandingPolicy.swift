@@ -1,12 +1,9 @@
 import Foundation
 
-/// Which landing results are a MISS the app may act on (#3106): the one tuning table.
+/// Interprets landing observations and decides whether they may keep a dictation (#3106, #3286).
 ///
-/// The arrival session reports what it observed; this decides which observations are trustworthy
-/// misses for a destination class. It starts narrow: a readable field that stayed without the text,
-/// or no focus at all in an app whose focus can be read without opting it in. Everything else,
-/// including every `cannotRead` and `inconclusive`, is not a miss: the app then does what it does
-/// today. Changing eligibility is an edit to `isMiss`, nowhere else.
+/// `isMiss` also controls the late-hit shadow; keep it observational. `mayRetain` is the
+/// clipboard permission and may reject an observed miss when it is not proof of failure.
 package enum PasteLandingPolicy {
 
   package static func isMiss(
@@ -79,6 +76,11 @@ package enum PasteLandingPolicy {
   /// late-hit shadow, so an exclusion placed there would stop collecting the very evidence that could
   /// lift it. Only routes that put the dictation on the board and posted a paste can retain it:
   /// Tier 1 never wrote the board, and clipboard-only already leaves the dictation there.
+  ///
+  /// `noTarget` cannot prove a miss while a Chromium host's accessibility is asleep (#3286): Chrome,
+  /// Brave, Edge and the ChatGPT app report no focused element with their box focused and the paste
+  /// landing (453 of 569 retained takes in 2.5.1). Only a permitted key route with an
+  /// evidence-backed miss may retain.
   package static func mayRetain(
     _ landing: PasteArrivalLanding,
     bundleID: String?,
@@ -86,7 +88,8 @@ package enum PasteLandingPolicy {
     tier: PasteTier,
     excluded: Set<Exclusion> = excludedRoutes
   ) -> Bool {
-    routeMayRetain(bundleID: bundleID, tier: tier, excluded: excluded)
+    guard landing != .noTarget else { return false }
+    return routeMayRetain(bundleID: bundleID, tier: tier, excluded: excluded)
       && isMiss(landing, appClass: appClass)
   }
 

@@ -98,6 +98,16 @@ public final class FileImportRunner {
   /// later Spanish part must not reuse a checker built for an English one.
   /// Key "" is an unresolved language.
   private var frozenCheckerSelections: [String: LearnedWordCheckerSelection] = [:]
+  /// Bumped by every freeze and every release (#3289). A selection that returns after either
+  /// belongs to a run that no longer owns the cache, so it must not write into it: a stale checker
+  /// parked there would keep the word check's model in memory after the job ended.
+  private var checkerSelectionGeneration: UInt64 = 0
+
+  /// The polish engine this import was frozen with, for the word check's residency (#3289): a held
+  /// run keeps needing the check its frozen engine selects, whatever the settings say now.
+  public var frozenLLMProvider: LLMProvider? {
+    frozenSettings.map { LLMProvider(rawValue: $0.llmProvider) ?? .none }
+  }
 
   public convenience init(
     keychainManager: KeychainManager,
@@ -139,6 +149,16 @@ public final class FileImportRunner {
     frozenSettings = settings
     frozenVocabulary = vocabulary
     frozenCheckerSelections = [:]
+    checkerSelectionGeneration &+= 1
+  }
+
+  /// The job's engine hold ended (#3289): drop the cached checker selections, so the word check's
+  /// model is no longer held by an import that has finished. Called after the physical work exits;
+  /// a late checker answer still holds its own reference until it returns. A later Clean it again
+  /// freezes again and asks the selection provider afresh.
+  public func releaseCheckerSelections() {
+    frozenCheckerSelections = [:]
+    checkerSelectionGeneration &+= 1
   }
 
   /// Runs one part through the shipped chain.
@@ -267,9 +287,14 @@ public final class FileImportRunner {
       guard let self else { return .init(absence: .serverUnavailable) }
       let key = language ?? ""
       if let frozen = self.frozenCheckerSelections[key] { return frozen }
+      let generation = self.checkerSelectionGeneration
       let selection = await self.checkerSelectionProvider?(provider, language)
         ?? .init(absence: .serverUnavailable)
-      self.frozenCheckerSelections[key] = selection
+      // A release or a newer freeze happened while this selection was out: it answers this part
+      // only, and never refills a cache that belongs to nobody or to a newer run.
+      if self.checkerSelectionGeneration == generation {
+        self.frozenCheckerSelections[key] = selection
+      }
       return selection
     }
     learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled

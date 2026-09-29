@@ -20407,6 +20407,42 @@
         }
       }
     },
+    "whatsNew.word-check-memory.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry word-check-memory).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Word check loads on demand"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wortprüfung wird bei Bedarf geladen"
+          }
+        }
+      }
+    },
+    "whatsNew.word-check-memory.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry word-check-memory).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envious Word Check now loads on demand instead of loading when EnviousWispr starts. It normally leaves memory after about 10 minutes without use; a dictation or file transcription still using it can keep it longer. EG-1 and S1-mini dictations use their own word checks."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envious Word Check wird jetzt bei Bedarf geladen und nicht mehr beim Start von EnviousWispr. Normalerweise wird er nach etwa 10 Minuten ohne Nutzung wieder aus dem Arbeitsspeicher entfernt. Wenn ein Diktat oder eine Dateitranskription ihn noch nutzt, bleibt er länger im Arbeitsspeicher. Diktate mit EG-1 und S1-mini verwenden ihre eigene Wortprüfung."
+          }
+        }
+      }
+    },
     "whatsNew.self-learning-dictionary.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry self-learning-dictionary).",
       "extractionState" : "manual",

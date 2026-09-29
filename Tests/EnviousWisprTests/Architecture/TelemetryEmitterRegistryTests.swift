@@ -103,8 +103,15 @@ struct TelemetryEmitterRegistryTests {
   /// No new site, no new event, same cadences (checklist: existing rows; `take_id` is the join key
   /// already on every take row and the three events join TAKE_KEYED_EVENTS; the loss detail is
   /// counts and one closed side token, Int or String on the wire, no text; registry readers updated).
+  /// #3289 §8b: one NEW site, `app.idle_memory` in `appIdleMemory`, per_launch (at most one row per
+  /// process, after 12 idle minutes; 4,838 production launches in the 14 days to 2026-09-29, so at
+  /// most about 10.4k rows a month: about 0.9% of the modeled 1.14M-row monthly budget, and under
+  /// 0.5% of the about 2.7M production rows observed that fortnight). Numbers and booleans only,
+  /// launch-scoped (no
+  /// join key); registry row `keep`, reader the median idle footprint by version and
+  /// `word_check_wanted`.
   static let sitesFingerprint =
-    "49b60a4f37e37310700bfd8defd135e04a6ef0cd0e3a17d1e78e7da565bc2f4d"
+    "8263e9b837412f157af4e90d7e9e72970b646b950ecda51000e1fdd38521e016"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

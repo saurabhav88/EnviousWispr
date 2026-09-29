@@ -52,16 +52,14 @@ struct PasteLandingPolicyTests {
     return all
   }
 
-  @Test("A key route retains exactly the misses; Tier 1 and clipboard-only never do")
+  @Test("A key route retains only evidence-backed misses; Tier 1 and clipboard-only never do")
   func retainsOnlyMissesOnKeyRoutes() {
     let landings = Self.allLandings()
     #expect(landings.count == 2 + 1 + 5 + 17)
     var retained = 0
     for landing in landings {
       for appClass in AppClass.allCases {
-        let miss =
-          (landing == .absent && Self.eligibleAbsent.contains(appClass))
-          || (landing == .noTarget && Self.eligibleNoTarget.contains(appClass))
+        let miss = landing == .absent && Self.eligibleAbsent.contains(appClass)
         for tier in Self.keyRoutes {
           let got = PasteLandingPolicy.mayRetain(
             landing, bundleID: "com.example.app", appClass: appClass, tier: tier, excluded: [])
@@ -77,8 +75,26 @@ struct PasteLandingPolicyTests {
         }
       }
     }
-    // 3 absent classes + 2 no_target classes, on 3 key routes.
-    #expect(retained == (3 + 2) * 3)
+    // Three absent classes on three key routes; no_target never retains.
+    #expect(retained == 3 * 3)
+  }
+
+  /// #3286: a Chromium host (Chrome, Brave, Edge, the ChatGPT app) reports no focused element while
+  /// its accessibility is asleep, with the box focused and the paste landing. That is not proof of a
+  /// miss, so it must never keep the dictation in place of the user's clipboard.
+  @Test("no_target never retains for any class, app identity or route")
+  func noTargetNeverRetains() {
+    let bundleIDs: [String?] = [nil, "com.example.app"]
+    for appClass in AppClass.allCases {
+      for bundleID in bundleIDs {
+        for tier in Self.keyRoutes + Self.otherRoutes {
+          #expect(
+            PasteLandingPolicy.mayRetain(
+              .noTarget, bundleID: bundleID, appClass: appClass, tier: tier, excluded: []) == false,
+            "no_target retained in \(appClass.rawValue) \(bundleID ?? "nil") via \(tier.rawValue)")
+        }
+      }
+    }
   }
 
   @Test("An excluded app, or one excluded route in it, does not retain; other routes still do")

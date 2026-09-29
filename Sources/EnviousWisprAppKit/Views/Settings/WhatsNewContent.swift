@@ -69,6 +69,21 @@ enum WhatsNewContent {
       version: "2.5.2"
     ),
 
+    // #3289 (Sentry ENVIOUSWISPR-5Y): Envious Word Check loads only for work that uses it
+    // (recording start, Transcribe a File Start and Clean it again, a take's selection, Try
+    // again), never at launch, on download or on a settings change. Its idle timer releases it
+    // about 10 minutes after its last use and defers while a dictation or an import is still
+    // running. Before, a Mac held it (about 500 MB of weights) with nobody dictating; no
+    // measurement is quoted in the card.
+    Entry(
+      id: "word-check-memory",
+      icon: "memorychip",
+      title: "Word check loads on demand",
+      description:
+        "Envious Word Check now loads on demand instead of loading when EnviousWispr starts. It normally leaves memory after about 10 minutes without use; a dictation or file transcription still using it can keep it longer. EG-1 and S1-mini dictations use their own word checks.",
+      version: "2.5.2"
+    ),
+
     // MARK: - v2.5.1
 
     // Founder-edited group, 2026-09-27 (Claude Doc "EnviousWispr 2.5.1 Release Notes"). Cards
