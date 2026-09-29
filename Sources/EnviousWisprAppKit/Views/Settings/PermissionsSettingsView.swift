@@ -167,7 +167,7 @@ enum PrivacySettingsCopy {
   static var promise: String {
     String(
       localized:
-        "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are feedback you choose to send.",
+        "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are what you type into the feedback form, once you click Send.",
       comment: "Permissions settings, Privacy: the section's privacy promise, above both switches.")
   }
   static var openSource: String {
