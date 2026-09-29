@@ -52,15 +52,39 @@ public struct HelpCheck: Sendable {
   /// Runs the check against the untouched message. Always returns within `overallDeadline` (plus
   /// scheduling), whatever the split or the network does; late work is cancelled, not awaited.
   public func run(_ message: String) async -> Conclusion {
-    let fallback = Self.fallback(.timeout, mode: .decomposed)
-    return await Self.first(
-      within: Self.overallDeadline, sleep: sleep, orElse: fallback
+    // The overall deadline's fallback names the path actually taken: a split that timed out
+    // and then a request that ran out the clock is whole-message, with the split's failure.
+    let stage = Stage()
+    let finished: Conclusion? = await Self.first(
+      within: Self.overallDeadline, sleep: sleep, orElse: nil
     ) { [self] in
-      await self.check(message)
+      await self.check(message, stage: stage)
+    }
+    if let finished { return finished }
+    let (mode, splitFailure) = stage.value
+    return Self.fallback(.timeout, mode: mode, splitFailure: splitFailure)
+  }
+
+  /// Which path the check is on, for the overall deadline's fallback: decomposed until the split
+  /// says otherwise.
+  private final class Stage: @unchecked Sendable {
+    private let lock = NSLock()
+    private var mode: FeedbackHelpOutcome.Mode = .decomposed
+    private var splitFailure: FeedbackHelpOutcome.FailureReason?
+
+    var value: (FeedbackHelpOutcome.Mode, FeedbackHelpOutcome.FailureReason?) {
+      lock.withLock { (mode, splitFailure) }
+    }
+
+    func set(_ mode: FeedbackHelpOutcome.Mode, _ splitFailure: FeedbackHelpOutcome.FailureReason?) {
+      lock.withLock {
+        self.mode = mode
+        self.splitFailure = splitFailure
+      }
     }
   }
 
-  private func check(_ message: String) async -> Conclusion {
+  private func check(_ message: String, stage: Stage) async -> Conclusion {
     let split = await Self.first(
       within: Self.decompositionDeadline, sleep: sleep,
       orElse: HelpCheckDecomposition.unavailable(.afmTimeout)
@@ -92,6 +116,7 @@ public struct HelpCheck: Sendable {
       anchored = [false]
       splitFailure = reason
     }
+    stage.set(request.mode, splitFailure)
     guard !Task.isCancelled else {
       return Self.fallback(.timeout, mode: request.mode, splitFailure: splitFailure)
     }

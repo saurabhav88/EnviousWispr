@@ -81,6 +81,11 @@ public final class FeedbackSubmission {
   /// The check the cards on screen belong to. An action from an older check is ignored.
   public var helpGeneration: UUID? { frozen?.generation }
 
+  /// The "Share usage metrics" switch when the waiting report was frozen. Cards can wait behind
+  /// a closed popover, so the switch may have changed before "Send my message": the form then
+  /// returns to the draft for a fresh diagnostics preview instead of sending the old one.
+  public var helpUsageMetricsAtSend: Bool? { frozen?.usageMetrics }
+
   /// The concerns marked solved on the cards now on offer. Kept here, not in the view, so the
   /// popover can close and reopen from the bug icon with the same marks; cleared when the cards
   /// go away or a new check starts.
@@ -119,6 +124,9 @@ public final class FeedbackSubmission {
     let sent: (message: String, email: String)
     let generation: UUID
     let startedAt: Date
+    /// The "Share usage metrics" switch when Send was pressed; the diagnostics were previewed and
+    /// consented to under it.
+    let usageMetrics: Bool?
     /// Filled when the check concludes: its duration and the split's failure, for the event.
     var checkSeconds: Double = 0
     var splitFailure: FeedbackHelpOutcome.FailureReason?
@@ -129,7 +137,7 @@ public final class FeedbackSubmission {
   /// or has nothing to show saves the report as written.
   public func send(
     _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
-    from presentation: UUID, sent: (message: String, email: String),
+    from presentation: UUID, sent: (message: String, email: String), usageMetrics: Bool? = nil,
     current: @MainActor () -> FormState
   ) async -> SendStep {
     guard !isSaving, helpPhase == .idle else { return .busy }
@@ -139,7 +147,8 @@ public final class FeedbackSubmission {
     }
     let generation = UUID()
     frozen = Frozen(
-      draft: draft, diagnostics: diagnostics, sent: sent, generation: generation, startedAt: clock())
+      draft: draft, diagnostics: diagnostics, sent: sent, generation: generation, startedAt: clock(),
+      usageMetrics: usageMetrics)
     sender = presentation
     helpPhase = .checking
     let conclusion = await helpCheck.run(draft.message)

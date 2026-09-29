@@ -443,6 +443,37 @@ struct HelpCheckTests {
     #expect(outcome.failureReason == .timeout)
   }
 
+  @Test("A split that timed out and a request that then runs out the clock are recorded as such")
+  func overallTimeoutAfterSplitTimeout() async {
+    // The overall deadline fires only once the whole-message request is on the wire.
+    let (requested, opened) = AsyncStream<Void>.makeStream()
+    let check = HelpCheck(
+      decompose: { _ in
+        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+        return .concerns([], hitCap: false)
+      }, decompositionVersion: "afm-kit-1",
+      client: HelpCheckClient(transport: { _ in
+        opened.yield()
+        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+        throw URLError(.timedOut)
+      }),
+      appVersion: "2.6.0",
+      sleep: { duration in
+        if duration == HelpCheck.decompositionDeadline { return }
+        if duration == HelpCheck.overallDeadline {
+          for await _ in requested { return }
+        }
+        try await Task.sleep(for: .seconds(3600))  // test-fixture-timer: no other deadline may fire here
+      })
+    guard case .send(let outcome, let splitFailure) = await check.run("Paste fails.") else {
+      Issue.record("expected send")
+      return
+    }
+    #expect(outcome.failureReason == .timeout)
+    #expect(outcome.mode == .wholeMessageAlwaysSend)
+    #expect(splitFailure == .afmTimeout)
+  }
+
   @Test(
     "Network and server failures send the report as written with a closed reason",
     arguments: [
@@ -807,6 +838,35 @@ struct HelpCheckTests {
       submission.endWithAllSolved(
         confirmed: submission.helpMarks, generation: generation, from: b, current: onScreenB))
     #expect(submission.helpMarks.isEmpty)
+    #expect(recorder.saves.isEmpty)
+  }
+
+  @Test("The usage-metrics switch at Send travels with the waiting cards and clears with them")
+  @MainActor
+  func usageMetricsAtSend() async throws {
+    let (store, suite) = Self.makeStore()
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let recorder = RecordingSave()
+    let a = UUID()
+    let message = "Keybind broke."
+    let submission = FeedbackSubmission(
+      store: store, save: recorder.save,
+      helpCheck: Self.check(
+        .concerns([Concern(summary: "Keybind", evidence: message, kind: .bug)], hitCap: false),
+        FakeTransport([.reply(200, Self.reply([Self.section("i0")]))])))
+    store.save(message: message, email: "")
+    submission.presentationAppeared(a)
+    let screen: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
+      .init(presentation: a, message: message, email: "")
+    }
+    #expect(submission.helpUsageMetricsAtSend == nil)
+    _ = await submission.send(
+      try #require(FeedbackDraft(message: message, email: "")), diagnostics: nil, from: a,
+      sent: (message, ""), usageMetrics: true, current: screen)
+    #expect(submission.helpUsageMetricsAtSend == true)
+    let generation = try #require(submission.helpGeneration)
+    #expect(submission.dismissSuggestions(generation: generation, from: a, current: screen))
+    #expect(submission.helpUsageMetricsAtSend == nil)
     #expect(recorder.saves.isEmpty)
   }
 

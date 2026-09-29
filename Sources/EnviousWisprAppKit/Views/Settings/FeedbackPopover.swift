@@ -492,6 +492,7 @@ struct FeedbackForm: View {
       // finished; the reopened one reconciles.
       let step = await submission.send(
         draft, diagnostics: diagnostics, from: submitted, sent: (sentMessage, sentEmail),
+        usageMetrics: settings.shareUsageMetrics,
         current: { .init(presentation: presentation, message: message, email: email) })
       switch step {
       case .sent(let outcome, _):
@@ -509,6 +510,12 @@ struct FeedbackForm: View {
   private func finishHelp(solved: Set<String>) {
     guard let generation = submission.helpGeneration, case .suggestions = submission.helpPhase
     else { return }
+    // "Share usage metrics" changed while the cards waited: the diagnostics consented to at Send
+    // no longer match the switch (#3269), so go back to the draft for a fresh preview and Send.
+    if let atSend = submission.helpUsageMetricsAtSend, atSend != settings.shareUsageMetrics {
+      closeHelp()
+      return
+    }
     let opening = presentation
     let before = status
     status = .sending
