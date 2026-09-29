@@ -863,10 +863,12 @@ class SleepingChrome:
         self.pid = None
 
     def open(self, url):
-        """Open `url` in this profile: the first call launches the process, later calls add a
-        window to it (Chrome hands a same-profile launch to the running process)."""
+        """Open `url` in this profile: the first call launches the process, later calls add a NEW
+        WINDOW to it (Chrome hands a same-profile launch to the running process; without
+        `--new-window` it may open a tab in the front window instead)."""
+        extra = ["--new-window"] if self.pid is not None else []
         subprocess.run(["open", "-na", "Google Chrome", "--args", f"--user-data-dir={self.profile}",
-                        "--no-first-run", "--no-default-browser-check", url], check=True)
+                        "--no-first-run", "--no-default-browser-check", *extra, url], check=True)
         if self.pid is None:
             if not u.wait_for(f"{self.label}: its Chrome process", self._find_pid, deadline=15.0):
                 raise u.Aborted(f"{self.label}: the isolated Chrome did not start")
@@ -928,16 +930,19 @@ class SleepingChrome:
         return found
 
     def close(self):
-        """TERM this process only, then delete its profile (never a mount point)."""
-        ok = True
+        """TERM this process only, then delete its profile (never a mount point, and never while
+        the process may still be using it: a Chrome that did not quit keeps its profile)."""
         if self.pid is not None and self._find_pid() == self.pid:
             os.kill(self.pid, 15)
-            ok = u.wait_for(f"{self.label}: its Chrome quit", lambda: self._find_pid() is None,
-                            deadline=10.0)
+            if not u.wait_for(f"{self.label}: its Chrome quit", lambda: self._find_pid() is None,
+                              deadline=10.0):
+                print(f"    {self.label}: Chrome pid {self.pid} did not quit; profile kept at "
+                      f"{self.profile}")
+                return False
         if os.path.ismount(self.profile):
             return False
         subprocess.run(["find", self.profile, "-xdev", "-delete"], capture_output=True)
-        return ok and not os.path.exists(self.profile)
+        return not os.path.exists(self.profile)
 
 
 def frontmost_pid():
@@ -1077,6 +1082,9 @@ def phase_sleeping_switch():
         verify_sleeping_cleanup("sleeping-switch", image, base)
         u.check("sleeping-switch: its accessibility woke after the verdict", chrome.wake())
         boxes = dict(chrome.boxes())
+        u.check("sleeping-switch: windows A and B are both separate windows of this Chrome",
+                any(t.startswith(titles["A"]) for t in boxes)
+                and any(t.startswith(titles["B"]) for t in boxes), str(list(boxes)))
         a = next((v for t, v in boxes.items() if t.startswith(titles["A"])), None)
         b = next((v for t, v in boxes.items() if t.startswith(titles["B"])), None)
         print(f"    window A box={a!r:.60} window B box={b!r:.60}")
