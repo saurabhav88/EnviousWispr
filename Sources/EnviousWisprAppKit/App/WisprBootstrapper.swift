@@ -804,7 +804,7 @@ package final class WisprBootstrapper {
     wordCheck.onStatusChange = { [checkerEligibility] in checkerEligibility.statusDidChange() }
     checkerEligibility.wordCheck = wordCheck
     settingsSync.onWordCheckInputsChanged = { [weak wordCheck] in
-      wordCheck?.refresh(trigger: "settings")
+      wordCheck?.refresh(trigger: .settingsChanged)
     }
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
@@ -1061,6 +1061,9 @@ package final class WisprBootstrapper {
     // #1480: late-binding bridge so this early-assigned onChange closure can
     // forward setting-change facts to the (later-constructed) presenter.
     let bluetoothAwarenessPresenterHolder = BluetoothAwarenessPresenterHolder()
+    // #3289 §8b: the same late binding for the idle-memory observer, built further down; a usage
+    // metrics change restarts its idle stretch.
+    weak var idleMemoryObserverForSettings: IdleMemoryObserver?
 
     settings.onChange = {
       [
@@ -1071,6 +1074,7 @@ package final class WisprBootstrapper {
       in
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
+      if key == .shareUsageMetrics { idleMemoryObserverForSettings?.usageMetricsChanged() }
       // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
       // throws/awaits into the setter path).
       settingsChangeTelemetry?.handle(key)
@@ -1099,7 +1103,7 @@ package final class WisprBootstrapper {
       // #3242: the word check needs first-run setup done, so every onboarding change (completion,
       // or a Diagnostics reset) re-evaluates its download and residency.
       if key == .onboardingState {
-        checkerEligibility.wordCheck?.refresh(trigger: "onboarding_changed")
+        checkerEligibility.wordCheck?.refresh(trigger: .onboardingChanged)
       }
       if key == .onboardingState, settings.onboardingState == .completed {
         Task {
@@ -1205,21 +1209,6 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager
     )
-    // #3242: the word check never idle-unloads while a dictation is in flight, and a take keeps the
-    // check its FROZEN provider selects. The drivers' session config is the in-flight authority: it
-    // lives from arming to the terminal, unlike the published pipeline state (an external error can
-    // show `.error` while the kernel is still processing).
-    checkerEligibility.wordCheck?.isDictationInFlight = {
-      [weak kernelDriver, weak whisperKitKernelDriver] in
-      kernelDriver?.currentSessionConfig != nil
-        || whisperKitKernelDriver?.currentSessionConfig != nil
-    }
-    checkerEligibility.wordCheck?.inFlightDictationNeedsWordCheck = {
-      [weak kernelDriver, weak whisperKitKernelDriver] in
-      [kernelDriver?.currentSessionConfig, whisperKitKernelDriver?.currentSessionConfig]
-        .compactMap { $0 }
-        .contains { LearnedWordCheckerEngine(provider: $0.llmProvider) == nil }
-    }
     // #1063 PR2: crash-recovery owner. The per-orphan replayer (decrypt →
     // transcribe → polish → save) is built from existing app deps; the coordinator
     // owns the launch scan, the recording gate, dedup, and cleanup routing. The
@@ -1238,6 +1227,16 @@ package final class WisprBootstrapper {
       s1MiniRuntime: s1MiniRuntime,
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         await checkerEligibility.selection(provider: provider, language: language)
+      },
+      // #3289: start loading the word check behind the recovered recording's transcription when
+      // its frozen polish engine uses it (the model is no longer loaded at launch).
+      onReplayWillTranscribe: { [weak checkerEligibility] provider in
+        checkerEligibility?.wordCheck?.recoveryStarted(
+          needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
+      },
+      onReplayFinished: { [weak checkerEligibility] provider in
+        checkerEligibility?.wordCheck?.recoveryFinished(
+          needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
       },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
@@ -1624,6 +1623,45 @@ package final class WisprBootstrapper {
     )
     bluetoothAwarenessPresenterHolder.presenter = bluetoothAwarenessPresenter
 
+    // #3289 §8b: is the app working, for the idle-memory sample. A dictation is in flight from
+    // arming to its terminal (the drivers' session config, which outlives an `.error` the pipeline
+    // may publish early); anything else that works holds the engine lease (a file import until its
+    // work exits, which outlasts Stop; crash recovery; an abandoned decode), and a running import
+    // counts from Start, before its claim. The word check's idle
+    // timer asks a narrower question, work that uses THAT check (`inFlightWorkNeedsWordCheck`).
+    let isWorkInFlight: @MainActor () -> Bool = {
+      [weak kernelDriver, weak whisperKitKernelDriver, weak engineLease] in
+      kernelDriver?.currentSessionConfig != nil
+        || whisperKitKernelDriver?.currentSessionConfig != nil
+        || engineLease?.isBusy == true
+        // An import is running from Start, including while it readies the engine before it claims
+        // the lease (#3289 final review).
+        || fileImportCoordinatorForGates?.isRunning == true
+    }
+    // #3289 §8b: one idle-memory sample per launch. Its task keeps it alive until it sends.
+    let idleMemoryObserver = IdleMemoryObserver(
+      isWorkInFlight: isWorkInFlight,
+      // Every engine claim, plus every Transcribe a File action (choose, Start, Stop, start over,
+      // Clean it again move its `generation`), including a Start that ends before its claim. Both
+      // only increase, so any activity changes the sum.
+      workEpoch: { [weak engineLease] in
+        (engineLease?.admissionEpoch ?? 0) &+ (fileImportCoordinatorForGates?.generation ?? 0)
+      },
+      usageMetricsOn: { [settings] in settings.shareUsageMetrics },
+      wordCheckState: { [weak checkerEligibility] in
+        (
+          checkerEligibility?.wordCheck?.isLoadedForTelemetry ?? false,
+          checkerEligibility?.wordCheck?.isWantedForTelemetry ?? false
+        )
+      },
+      emit: { sample in
+        TelemetryService.shared.appIdleMemory(
+          footprintMB: sample.footprintMB, minutesSinceLaunch: sample.minutesSinceLaunch,
+          wordCheckLoaded: sample.wordCheckLoaded, wordCheckWanted: sample.wordCheckWanted)
+      })
+    idleMemoryObserver.start()
+    idleMemoryObserverForSettings = idleMemoryObserver
+
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
@@ -1862,6 +1900,9 @@ package final class WisprBootstrapper {
         // import's hold can never be the one released, and the forced reconcile
         // waits for the release rather than being deferred behind it.
         let releaseHold = localPolishRuntimes.releaseImportHold()
+        // #3289: the job is over, so its cached checker selections go; the word check's model is
+        // then held only by the runtime (idle timer) and by any late answer still returning.
+        fileImportRunner.releaseCheckerSelections()
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         Task { @MainActor in
@@ -1889,6 +1930,12 @@ package final class WisprBootstrapper {
       beginRun: { [settings, customWordsPropagator, localPolishRuntimes] in
         let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
         fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
+        // #3289: Start and Clean it again both come through here, after the claim; preload the word
+        // check now for a run whose FROZEN engine has no checker of its own, so the first part finds
+        // it loading or ready. Opening the page or a refused claim never reaches this line.
+        checkerEligibility.wordCheck?.fileImportStarted(
+          needsWordCheck: LearnedWordCheckerEngine(
+            provider: LLMProvider(rawValue: snapshot.llmProvider) ?? .none) == nil)
         let configuration = FileImportSettingsFreeze.configuration(
           for: snapshot,
           ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
@@ -1977,6 +2024,21 @@ package final class WisprBootstrapper {
     }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
+    // #3242: the word check never idle-unloads while a dictation that uses it is in flight, and a
+    // take keeps the check its FROZEN provider selects. The drivers' session config is the in-flight
+    // authority: it lives from arming to the terminal, unlike the published pipeline state (an
+    // external error can show `.error` while the kernel is still processing).
+    // #3289: a file import holding the engine counts too, from its claim until its work exits (which
+    // outlasts Stop), with the need read from the run's FROZEN provider. Wired here, after the
+    // coordinator exists, so the closure can see it.
+    checkerEligibility.wordCheck?.inFlightWorkNeedsWordCheck = {
+      [weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator, weak fileImportRunner] in
+      WordCheckRuntime.workNeedsWordCheck(
+        dictationProviders: [kernelDriver?.currentSessionConfig, whisperKitKernelDriver?.currentSessionConfig]
+          .compactMap { $0?.llmProvider },
+        importHoldsEngine: fileImportCoordinator?.isEngineHeld == true,
+        importProvider: fileImportRunner?.frozenLLMProvider)
+    }
     #if DEBUG
       self.debugImportDoor = DebugImportDoor(
         coordinator: fileImportCoordinator,

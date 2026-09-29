@@ -103,7 +103,9 @@ struct FileImportCoordinatorTests {
     },
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
-    }
+    },
+    engineIsLoaded: @escaping @MainActor () async -> Bool = { true },
+    onEngineReleased: @escaping @MainActor () -> Void = {}
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: decode,
@@ -121,7 +123,9 @@ struct FileImportCoordinatorTests {
           processingTime: 0, backendType: .parakeet)
       },
       engineAdmission: .live(lease: lease, as: .fileImport),
+      engineIsLoaded: engineIsLoaded,
       ensureEngineReady: ensureEngineReady,
+      onEngineReleased: onEngineReleased,
       beginRun: beginRun,
       // History is SIMULATED here, deliberately: these rows are about the run, and
       // `FileImportHistoryTests` owns what reaches History. A no-op save that reports
@@ -139,9 +143,11 @@ struct FileImportCoordinatorTests {
     lease: EngineLease,
     transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in
       "One. Two. Three."
-    }
+    },
+    onEngineReleased: @escaping @MainActor () -> Void = {}
   ) async -> FileImportCoordinator {
-    let coordinator = makeCoordinator(lease: lease, transcribe: transcribe)
+    let coordinator = makeCoordinator(
+      lease: lease, transcribe: transcribe, onEngineReleased: onEngineReleased)
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {
       if case .ready = coordinator.state { return true } else { return false }
@@ -1313,5 +1319,131 @@ struct FileImportCoordinatorTests {
     #expect(await decodes.count == 1, "changing the polisher read the file again")
     #expect(!coordinator.parts.isEmpty)
     #expect(lease.isBusy == false, "the re-polish left the engine claimed")
+  }
+
+  // MARK: - #3289: every run that took the engine hands the word check back
+
+  /// The engine-release hook is where the app drops an import's cached word-check selection, so
+  /// the word check's model is not held after the job. When one of these fails, a finished,
+  /// stopped, rejected or failed import keeps about 500 MB in memory, or a refused Start releases
+  /// something it never held. These pass on the code before #3289: they guard the terminals the
+  /// new release call relies on, not the call itself.
+  @MainActor private final class ReleaseCount { var value = 0 }
+
+  private func readyCoordinator(
+    lease: EngineLease, count: ReleaseCount,
+    transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in "One. Two. Three." },
+    processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome = {
+      Self.outcome($0)
+    },
+    engineIsLoaded: @escaping @MainActor () async -> Bool = { true },
+    ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
+      .ready
+    }
+  ) async -> FileImportCoordinator {
+    let coordinator = makeCoordinator(
+      lease: lease, transcribe: transcribe, processPart: processPart,
+      ensureEngineReady: ensureEngineReady, engineIsLoaded: engineIsLoaded,
+      onEngineReleased: { count.value += 1 })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    return coordinator
+  }
+
+  @Test("a finished run fires the engine-release hook once")
+  func releaseHookOnFinish() async {
+    let count = ReleaseCount()
+    let coordinator = await readyCoordinator(lease: EngineLease(), count: count)
+    coordinator.start()
+    _ = await settleUntil { count.value >= 1 && coordinator.state == .finished }
+    #expect(coordinator.state == .finished)
+    #expect(count.value == 1)
+  }
+
+  @Test("a stopped run fires the hook once, only after its work exits")
+  func releaseHookOnStop() async {
+    let count = ReleaseCount()
+    let gate = PartGate()
+    let coordinator = await readyCoordinator(
+      lease: EngineLease(), count: count,
+      processPart: { text in
+        await gate.wait()
+        return Self.outcome(text)
+      })
+    coordinator.start()
+    _ = await settleUntil { await gate.entered == 1 }
+    coordinator.stop()
+    #expect(count.value == 0, "released while a part was still inside the engine")
+    await gate.releaseAll()
+    _ = await settleUntil { count.value >= 1 }
+    #expect(count.value == 1)
+  }
+
+  @Test("Clean it again fires the hook once more")
+  func releaseHookOnRePolish() async {
+    let count = ReleaseCount()
+    let coordinator = await finishedCoordinator(
+      lease: EngineLease(), onEngineReleased: { count.value += 1 })
+    #expect(count.value == 1)
+    coordinator.rePolish()
+    _ = await settleUntil { count.value >= 2 && coordinator.state == .finished }
+    #expect(coordinator.state == .finished)
+    #expect(count.value == 2)
+  }
+
+  @Test("a rejection after the claim fires the hook once")
+  func releaseHookOnPostClaimRejection() async {
+    let count = ReleaseCount()
+    let readinessCalls = Counter()
+    let coordinator = await readyCoordinator(
+      lease: EngineLease(), count: count,
+      // Loaded at the first check, unloaded by the time the claim is taken, and not ready again.
+      engineIsLoaded: { false },
+      ensureEngineReady: {
+        await readinessCalls.bump()
+        return await readinessCalls.count == 1 ? .ready : .notReady
+      })
+    coordinator.start()
+    _ = await settleUntil { count.value >= 1 }
+    #expect(coordinator.state == .rejected(.engineNotReady))
+    #expect(count.value == 1)
+  }
+
+  @Test("a run that fails after the claim fires the hook once")
+  func releaseHookOnFailure() async {
+    struct EngineBroke: Error {}
+    let count = ReleaseCount()
+    let coordinator = await readyCoordinator(
+      lease: EngineLease(), count: count, transcribe: { _ in throw EngineBroke() })
+    coordinator.start()
+    _ = await settleUntil { count.value >= 1 }
+    #expect(coordinator.isEngineHeld == false)
+    #expect(count.value == 1)
+  }
+
+  @Test("a refused Start and a refused Clean it again never fire the hook")
+  func releaseHookNeverOnRefusal() async {
+    let lease = EngineLease()
+    let count = ReleaseCount()
+    let refused = await readyCoordinator(lease: lease, count: count)
+    guard case .granted(let dictation) = lease.admit(.dictation) else {
+      Issue.record("a fresh lease refused the first claim")
+      return
+    }
+    refused.start()
+    #expect(refused.state == .rejected(.engineBusy(.dictation)))
+    #expect(count.value == 0)
+    _ = lease.release(dictation)
+
+    let finished = await finishedCoordinator(lease: lease, onEngineReleased: { count.value += 1 })
+    #expect(count.value == 1)
+    guard case .granted = lease.admit(.dictation) else {
+      Issue.record("the fixture could not take the engine")
+      return
+    }
+    finished.rePolish()
+    #expect(count.value == 1, "a refused Clean it again released a claim it never took")
   }
 }

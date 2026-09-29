@@ -10,10 +10,11 @@ import Foundation
 /// row cannot disagree.
 ///
 /// Memory: kev-wc-2's weights are 486 MB (embedding 4-bit, layers 5-bit); kev-wc-1's 424 MB of
-/// 4-bit weights held about 480 MB while loaded (measured on an M5 Max). It is loaded
-/// when a take needs it or when the inputs say one soon will (launch, admission, a settings
-/// change), and released after `idleUnloadDelay` without a take, when the Dictionary switch goes
-/// off, or when no chosen engine needs it any more.
+/// 4-bit weights held about 480 MB while loaded (measured on an M5 Max). It is loaded only
+/// by work that will use it (`WordCheckResidencyPolicy`: a recording or file import whose engine
+/// has no checker, a take's selection, Try again), never because the settings say some engine
+/// might (#3289), and released after `idleUnloadDelay` without a take, when the Dictionary switch
+/// goes off, or when no chosen engine needs it any more.
 ///
 /// Ownership of a load is a GENERATION, never the task handle: `unload` bumps it, and a
 /// load that finishes under an older generation publishes nothing (a Dictionary off-and-on during
@@ -32,15 +33,21 @@ final class WordCheckRuntime {
   private let isOnboardingComplete: @MainActor () -> Bool
   /// The Dictionary row re-reads its status when this fires.
   var onStatusChange: @MainActor () -> Void = {}
-  /// Whether a dictation is in flight (recording, transcribing or polishing). The idle timer never
-  /// unloads during one: a take that crosses `idleUnloadDelay`, whether while recording or while its
-  /// transcription runs, would otherwise lose the model it pre-loaded at record start (cloud review,
-  /// PR #3246).
-  var isDictationInFlight: @MainActor () -> Bool = { false }
-  /// Whether the dictation in flight polishes (by its FROZEN session provider) with an engine that
-  /// has no checker of its own. A provider switch mid-take changes the settings but not the take, so
-  /// the take keeps the check it will select (local review, PR #3246).
-  var inFlightDictationNeedsWordCheck: @MainActor () -> Bool = { false }
+  /// Whether the work in flight polishes (by its FROZEN provider: the dictation's session provider,
+  /// the import's run provider) with an engine that has no checker of its own. A provider switch
+  /// mid-take changes the settings but not the take, so the take keeps the check it will select
+  /// (local review, PR #3246); the same holds for an import's remaining parts (#3289).
+  /// The idle timer never unloads while this is true: a take that crosses `idleUnloadDelay`,
+  /// whether while recording or while its transcription runs, would otherwise lose the model it
+  /// pre-loaded at record start (cloud review, PR #3246), and an import would lose it between
+  /// parts (#3289). Work that does NOT use this check (an EG-1 or S1-mini dictation or import)
+  /// does not hold it in memory (#3289 final review).
+  var inFlightWorkNeedsWordCheck: @MainActor () -> Bool = { false }
+  /// Crash-recovery replays in progress whose recording's frozen engine uses this check, counted
+  /// from `recoveryStarted` to `recoveryFinished` (#3289 final review): work in flight, like a
+  /// dictation, for the idle timer and for admission.
+  private var recoveriesNeedingCheck = 0
+  private var workNeedsCheck: Bool { inFlightWorkNeedsWordCheck() || recoveriesNeedingCheck > 0 }
 
   private var deliveryState: DeliveryState = .notReady
   private var launchProbeFinished = false
@@ -64,6 +71,8 @@ final class WordCheckRuntime {
   private var runningLoads: [UInt64: Task<Void, Never>] = [:]
 
   package private(set) var fetchDecisionsForTests: [WordCheckFetchPolicy.Decision] = []
+  /// Load tasks created, counted where one is created (#3289): the residency tests' observable.
+  package private(set) var loadAttemptsForTests = 0
 
   init(
     delivery: ModelDeliveryHome,
@@ -82,8 +91,12 @@ final class WordCheckRuntime {
   /// (a Diagnostics onboarding reset takes the check back out, download and memory both).
   private var wanted: Bool {
     isDictionaryEnabled() && isOnboardingComplete()
-      && (someEngineLacksOwnChecker() || inFlightDictationNeedsWordCheck())
+      && (someEngineLacksOwnChecker() || workNeedsCheck)
   }
+  /// Read-only, for the idle-memory sample (#3289 §8b): is the model in memory, and would
+  /// the current settings or work in flight use it.
+  var isLoadedForTelemetry: Bool { loaded != nil }
+  var isWantedForTelemetry: Bool { wanted }
   private var isAdmitted: Bool {
     if case .admitted = deliveryState { return true }
     return false
@@ -94,17 +107,19 @@ final class WordCheckRuntime {
     // The controller replays each identity's current state to a late observer.
     handle.observeState { [weak self] state in self?.deliveryStateChanged(state) }
     delivery.addParakeetAdmittedObserver { [weak self] in
-      self?.refresh(trigger: "parakeet_admitted")
+      self?.refresh(trigger: .parakeetAdmitted)
     }
     delivery.onWordCheckLaunchProbeFinished = { [weak self] in
       self?.launchProbeFinished = true
-      self?.refresh(trigger: "launch")
+      self?.refresh(trigger: .launch)
     }
   }
 
   /// Re-evaluate download and residency. Called at launch, on onboarding completion, on
-  /// Parakeet admission, and when the Dictionary switch or a polish engine choice changes.
-  func refresh(trigger: String, userInitiated: Bool = false) {
+  /// Parakeet admission, and when the Dictionary switch or a polish engine choice changes. It
+  /// decides the download and unloads a model nobody wants; it never loads one (#3289): memory is
+  /// for work, and the work entry points below load for themselves.
+  func refresh(trigger: WordCheckResidencyPolicy.Trigger, userInitiated: Bool = false) {
     guard wanted else {
       if activeSelections == 0 { unload(reason: "not_wanted") }
       // The Dictionary switch is the off-switch for the download too: stop one in flight.
@@ -113,7 +128,7 @@ final class WordCheckRuntime {
       return
     }
     if isAdmitted {
-      startLoadIfNeeded()
+      onStatusChange()
       return
     }
     guard userInitiated || launchProbeFinished else { return }
@@ -125,7 +140,7 @@ final class WordCheckRuntime {
     }
   }
 
-  private func decideFetch(trigger: String, userInitiated: Bool, parakeetAdmitted: Bool) {
+  private func decideFetch(trigger: WordCheckResidencyPolicy.Trigger, userInitiated: Bool, parakeetAdmitted: Bool) {
     guard let handle = delivery.wordCheckHandle else { return }
     let decision = WordCheckFetchPolicy.decide(
       .init(
@@ -138,7 +153,8 @@ final class WordCheckRuntime {
         userInitiated: userInitiated || cancelledBecauseUnwanted))
     fetchDecisionsForTests.append(decision)
     Task {
-      await AppLogger.shared.log("word check fetch \(trigger): \(decision)", category: "WordCheck")
+      await AppLogger.shared.log(
+        "word check fetch \(trigger.rawValue): \(decision)", category: "WordCheck")
     }
     if decision == .start {
       cancelledBecauseUnwanted = false
@@ -162,8 +178,12 @@ final class WordCheckRuntime {
     deliveryState = state
     if isAdmitted {
       cancelledBecauseUnwanted = false  // a cancel that lost the race to admission
-      if !wasAdmitted { failedLoadRevision = nil }
-      if wanted { startLoadIfNeeded() }
+      if !wasAdmitted {
+        failedLoadRevision = nil
+        // A dictation or import that started while the model was still downloading could not
+        // preload it; load now for that work only (#3289 final review).
+        if wanted { load(for: .deliveryAdmitted, needsWordCheck: workNeedsCheck) }
+      }
     } else if wasAdmitted {
       // Removed or superseded: the loaded model may point at deleted files.
       unload(reason: "delivery_\(state)")
@@ -173,9 +193,21 @@ final class WordCheckRuntime {
     if !wanted {
       cancelFetchIfInFlight()
     } else if case .cancelled = state, cancelledBecauseUnwanted {
-      refresh(trigger: "app_cancel_finished")
+      refresh(trigger: .appCancelFinished)
     }
     onStatusChange()
+  }
+
+  /// The residency tests drive the delivery state the handle would report; a test cannot put real
+  /// model files through the delivery controller.
+  package func deliveryStateChangedForTests(_ state: DeliveryState) { deliveryStateChanged(state) }
+
+  /// The one way into a load: the policy decides, `startLoadIfNeeded` guards the state.
+  private func load(for trigger: WordCheckResidencyPolicy.Trigger, needsWordCheck: Bool = true) {
+    guard WordCheckResidencyPolicy.shouldLoad(trigger, needsWordCheck: needsWordCheck) else {
+      return
+    }
+    startLoadIfNeeded()
   }
 
   private func startLoadIfNeeded() {
@@ -188,6 +220,7 @@ final class WordCheckRuntime {
     loadGeneration &+= 1
     let generation = loadGeneration
     let predecessors = Array(runningLoads.values)
+    loadAttemptsForTests += 1
     let task = Task { [weak self] in
       for predecessor in predecessors { await predecessor.value }
       // This task runs on the main actor (created there), so the bookkeeping is ordered with it.
@@ -212,6 +245,18 @@ final class WordCheckRuntime {
           "word check loaded revision=\(contract.revision) ms=\(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)",
           category: "WordCheck")
       } catch {
+        // BEFORE the generation guard (#3289): a failed load never produced a model, so no deinit
+        // clears what its weights left in MLX's cache, and a cancelled or superseded failure leaves
+        // the same buffers as a current one.
+        KevWordCheckModel.releaseCachedBuffers()
+        #if DEBUG
+          let memory = KevWordCheckModel.memorySnapshotForLog()
+          Task {
+            await AppLogger.shared.log(
+              "word check load failure cleanup mlx_active=\(memory.active) mlx_cache=\(memory.cache)",
+              category: "WordCheck")
+          }
+        #endif
         guard let self, self.loadGeneration == generation else { return }
         self.loadTask = nil
         self.failedLoadRevision = revision
@@ -233,22 +278,59 @@ final class WordCheckRuntime {
     loadTask = nil
     guard loaded != nil else { return }
     loaded = nil
-    Task {
-      await AppLogger.shared.log("word check unloaded reason=\(reason)", category: "WordCheck")
-    }
+    // The runtime's reference is gone; the model itself is freed (and MLX's cache cleared, in its
+    // deinit) only when its last holder lets go: a take, an import part or a late answer may still
+    // hold it.
+    #if DEBUG
+      let memory = KevWordCheckModel.memorySnapshotForLog()
+      Task {
+        await AppLogger.shared.log(
+          "word check unloaded reason=\(reason) mlx_active=\(memory.active) mlx_cache=\(memory.cache)",
+          category: "WordCheck")
+      }
+    #else
+      Task {
+        await AppLogger.shared.log("word check unloaded reason=\(reason)", category: "WordCheck")
+      }
+    #endif
   }
 
   private func scheduleIdleUnload() {
     idleUnloadTask?.cancel()
     idleUnloadTask = Task { [weak self] in
       try? await Task.sleep(for: Self.idleUnloadDelay)
-      guard !Task.isCancelled, let self, self.activeSelections == 0 else { return }
-      if self.isDictationInFlight() {
-        self.scheduleIdleUnload()
-        return
+      guard !Task.isCancelled, let self else { return }
+      switch Self.idleExpiry(
+        activeSelections: self.activeSelections, workNeedsCheck: self.workNeedsCheck)
+      {
+      case .keep: return
+      case .reschedule: self.scheduleIdleUnload()
+      case .release:
+        self.unload(reason: "idle")
       }
-      self.unload(reason: "idle")
     }
+  }
+
+  enum IdleExpiry: Equatable { case keep, reschedule, release }
+
+  /// What the idle timer does when it fires. A take waiting on a load keeps the model (its selection
+  /// reschedules the timer); work in flight that uses this check, a dictation or an engine-held
+  /// import, defers the unload by another full delay (#3242, #3289).
+  static func idleExpiry(activeSelections: Int, workNeedsCheck: Bool) -> IdleExpiry {
+    if activeSelections > 0 { return .keep }
+    return workNeedsCheck ? .reschedule : .release
+  }
+
+  /// Whether the work in flight needs this check, by each piece of work's FROZEN polish engine: the
+  /// dictations' session providers and, while an import holds the engine, the import's run provider
+  /// (#3289). The composition root feeds `inFlightWorkNeedsWordCheck` through this.
+  static func workNeedsWordCheck(
+    dictationProviders: [LLMProvider], importHoldsEngine: Bool, importProvider: LLMProvider?
+  ) -> Bool {
+    let needs = { (provider: LLMProvider) in LearnedWordCheckerEngine(provider: provider) == nil }
+    if dictationProviders.contains(where: needs) { return true }
+    guard importHoldsEngine, let importProvider else { return false }
+    return needs(importProvider)
   }
 
   /// A recording just started: load the model now, while the user is still speaking, so the take's
@@ -259,11 +341,34 @@ final class WordCheckRuntime {
   /// is also true when only Transcribe a File needs the check, and a dictation must not load a model
   /// it will not use. The caller passes the take's FROZEN session provider, not the current setting.
   func recordingStarted(needsWordCheckForRecording: Bool) {
-    guard needsWordCheckForRecording, wanted else { return }
+    workStarted(.recordingStarted, needsWordCheck: needsWordCheckForRecording)
+  }
+
+  /// A file transcription just started (Start or Clean it again): the same preload, for the run's
+  /// FROZEN polish engine, so the first part finds the check loading or ready (#3289, #3256).
+  func fileImportStarted(needsWordCheck: Bool) {
+    workStarted(.fileImportStarted, needsWordCheck: needsWordCheck)
+  }
+
+  /// A crash-recovery replay is about to transcribe a recovered recording: the same preload, for
+  /// the recording's FROZEN polish engine, hidden behind that transcription (#3289 final review).
+  /// Before #3289 the model was already in memory from launch.
+  func recoveryStarted(needsWordCheck: Bool) {
+    if needsWordCheck { recoveriesNeedingCheck += 1 }
+    workStarted(.recoveryStarted, needsWordCheck: needsWordCheck)
+  }
+
+  /// The replay that called `recoveryStarted` with the same answer has ended, on any path.
+  func recoveryFinished(needsWordCheck: Bool) {
+    if needsWordCheck { recoveriesNeedingCheck = max(0, recoveriesNeedingCheck - 1) }
+  }
+
+  private func workStarted(_ trigger: WordCheckResidencyPolicy.Trigger, needsWordCheck: Bool) {
+    guard needsWordCheck, wanted else { return }
     if loaded != nil {
       scheduleIdleUnload()
     } else {
-      startLoadIfNeeded()
+      load(for: trigger, needsWordCheck: needsWordCheck)
     }
   }
 
@@ -273,10 +378,10 @@ final class WordCheckRuntime {
   func retryDownload() {
     if isAdmitted {
       failedLoadRevision = nil
-      startLoadIfNeeded()
+      load(for: .userRetry)
       onStatusChange()
     } else {
-      refresh(trigger: "settings_retry", userInitiated: true)
+      refresh(trigger: .userRetry, userInitiated: true)
     }
   }
 
@@ -290,7 +395,7 @@ final class WordCheckRuntime {
     if loaded == nil {
       activeSelections += 1
       defer { activeSelections -= 1 }
-      startLoadIfNeeded()
+      load(for: .takeSelection)
       await loadTask?.value
     }
     guard let loaded else { return Self.absent(.serverUnavailable) }
@@ -336,7 +441,7 @@ final class WordCheckRuntime {
         ? Self.absent(.adapterDeliveryFailed, retry: true) : Self.absent(.deliveryDisabled)
     case .notReady, .preparing, .downloading, .verifying:
       guard handle.isEnabled() else { return Self.absent(.deliveryDisabled) }
-      if triggerFetch { refresh(trigger: "take") }
+      if triggerFetch { refresh(trigger: .takeSelection) }
       return Self.absent(.adapterDownloading)
     }
   }
