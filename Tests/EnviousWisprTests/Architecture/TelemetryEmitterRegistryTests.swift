@@ -116,7 +116,7 @@ struct TelemetryEmitterRegistryTests {
   /// review; counts, closed outcome/reason enums and version stamps only, no message or card
   /// text; Int/Bool/Double on the wire; launch-scoped (no take_id); registry row added.
   static let sitesFingerprint =
-    "d75cf36c800f5cdea6423aace315b632a5ae9852037ec99e49d030b19f9c12fe"
+    "45cadb7aef0490aa52bc11c62a9efb00644890d69b421211236d6162c4e0df3c"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
