@@ -210,10 +210,15 @@ actor FeedbackOutbox {
       }
       let result = await sender.send(record)
       switch result {
-      case .accepted:
+      case .accepted(let holdUntil):
+        // Delivered. A limit in the same answer holds only the reports after this one.
+        if let holdUntil {
+          memoryGlobalNotBefore = max(memoryGlobalNotBefore ?? holdUntil, holdUntil)
+        }
         let removed: Bool =
           mutate { doc in
             doc.records.removeAll { $0.id == record.id }
+            if let holdUntil { doc.notBefore = max(doc.notBefore ?? holdUntil, holdUntil) }
             return true
           } ?? false
         if removed {

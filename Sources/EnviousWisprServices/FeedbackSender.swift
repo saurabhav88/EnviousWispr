@@ -76,8 +76,10 @@ struct FeedbackSender: Sendable {
 
   /// What one attempt concluded.
   enum Result: Equatable, Sendable {
-    /// Sentry accepted the envelope. Not a guarantee it is visible in Sentry yet.
-    case accepted
+    /// Sentry accepted the envelope (any 2xx, as the SDK treats it: `SentryHttpTransport.m:443-446`).
+    /// Not a guarantee it is visible in Sentry yet. `holdUntil` is a rate limit the answer set for
+    /// LATER sends; this report is done either way.
+    case accepted(holdUntil: Date?)
     /// Keep the report; try again no earlier than `notBefore` (nil = the outbox's own backoff).
     case retry(notBefore: Date?)
     /// Sentry refused this payload; keep it and stop retrying it.
@@ -184,28 +186,40 @@ struct FeedbackSender: Sendable {
   /// and attachments.
   static let limitingCategories: Set<String> = ["", "feedback", "user_report_v2", "attachment"]
 
-  /// Reads the status and rate-limit headers. A limit that applies to feedback holds the report
-  /// even on a 200, because Sentry reports quota rejections that way.
+  /// Reads the status and rate-limit headers, the way the SDK's transport does: every 2xx
+  /// delivers the report, and a limit that applies to feedback holds only the sends after it.
   static func classify(status: Int, headers: [String: String], now: Date) -> Result {
     let lowered = Dictionary(headers.map { ($0.key.lowercased(), $0.value) }) { a, _ in a }
-    if let limits = lowered["x-sentry-rate-limits"],
-      let seconds = longestApplicableLimit(limits)
-    {
-      return .retry(notBefore: now.addingTimeInterval(seconds))
-    }
+    let limit = lowered["x-sentry-rate-limits"].flatMap(longestApplicableLimit)
+      .map { now.addingTimeInterval($0) }
     switch status {
     case 200..<300:
-      return .accepted
+      return .accepted(holdUntil: limit)
     case 429:
-      let seconds = lowered["retry-after"].flatMap(TimeInterval.init) ?? 60
-      return .retry(notBefore: now.addingTimeInterval(max(seconds, 1)))
+      let after = retryAfter(lowered["retry-after"], now: now) ?? now.addingTimeInterval(60)
+      let wait = max(after, now.addingTimeInterval(1))
+      return .retry(notBefore: max(wait, limit ?? wait))
     case 401, 403, 404:
       return .configurationFailure
     case 400, 413:
       return .rejected(status: status)
     default:
-      return .retry(notBefore: nil)
+      return .retry(notBefore: limit)
     }
+  }
+
+  /// `Retry-After` as seconds or as an HTTP date (RFC 9110), like the SDK's
+  /// `RetryAfterHeaderParser`. Nil when absent or unreadable.
+  static func retryAfter(_ value: String?, now: Date) -> Date? {
+    guard let value = value?.trimmingCharacters(in: .whitespaces), !value.isEmpty else {
+      return nil
+    }
+    if let seconds = TimeInterval(value) { return now.addingTimeInterval(seconds) }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(identifier: "GMT")
+    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+    return formatter.date(from: value)
   }
 
   /// `X-Sentry-Rate-Limits: <seconds>:<categories>:<scope>[:...], ...`, categories separated by

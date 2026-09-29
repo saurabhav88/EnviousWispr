@@ -243,7 +243,7 @@ struct FeedbackOutboxTests {
     #expect(try Self.records(in: directory).isEmpty)
   }
 
-  @Test("A rate limit on a 200 holds every report until it expires, across a relaunch")
+  @Test("A 200 with a rate limit delivers that report and holds the rest until it expires")
   func rateLimitHoldsAll() async throws {
     let directory = Self.tempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -253,8 +253,9 @@ struct FeedbackOutboxTests {
     _ = await outbox.enqueue(Self.record(1))
     _ = await outbox.enqueue(Self.record(2))
     await outbox.drain()
+    // The 200 delivered report 1; its rate limit holds report 2.
     #expect(http.sent == [Self.eventID(1)])
-    #expect(try Self.records(in: directory).count == 2)
+    #expect(try Self.records(in: directory).map(\.message) == ["report 2"])
 
     clock.advance(300)
     let relaunched = Self.makeOutbox(directory, http: http, clock: clock)
@@ -263,6 +264,7 @@ struct FeedbackOutboxTests {
 
     clock.advance(301)
     await relaunched.drain()
+    #expect(http.sent == [Self.eventID(1), Self.eventID(2)])
     #expect(try Self.records(in: directory).isEmpty)
   }
 

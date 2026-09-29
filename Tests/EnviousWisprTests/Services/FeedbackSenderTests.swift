@@ -115,17 +115,19 @@ struct FeedbackSenderTests {
 
   @Test("A plain 2xx is accepted")
   func accepted() {
-    #expect(FeedbackSender.classify(status: 200, headers: [:], now: .distantPast) == .accepted)
+    #expect(
+      FeedbackSender.classify(status: 200, headers: [:], now: .distantPast)
+        == .accepted(holdUntil: nil))
   }
 
-  @Test("A rate limit on feedback holds the report even on a 200, for the longest limit")
+  @Test("A 200 delivers the report; a feedback rate limit in it holds later sends, longest wins")
   func rateLimitOn200() {
     let now = Date(timeIntervalSince1970: 1000)
     let result = FeedbackSender.classify(
       status: 200,
       headers: ["X-Sentry-Rate-Limits": "60:transaction:key, 120:feedback:organization, 30::key"],
       now: now)
-    #expect(result == .retry(notBefore: now.addingTimeInterval(120)))
+    #expect(result == .accepted(holdUntil: now.addingTimeInterval(120)))
   }
 
   @Test("A rate limit on other categories does not hold feedback")
@@ -133,7 +135,7 @@ struct FeedbackSenderTests {
     let result = FeedbackSender.classify(
       status: 200, headers: ["x-sentry-rate-limits": "600:transaction;session:key"],
       now: .distantPast)
-    #expect(result == .accepted)
+    #expect(result == .accepted(holdUntil: nil))
   }
 
   @Test("A 429 waits for Retry-After, or 60 seconds without it")
@@ -145,6 +147,12 @@ struct FeedbackSenderTests {
     #expect(
       FeedbackSender.classify(status: 429, headers: [:], now: now)
         == .retry(notBefore: now.addingTimeInterval(60)))
+    // The HTTP-date form waits until that moment, not the 60 s fallback.
+    #expect(
+      FeedbackSender.classify(
+        status: 429, headers: ["Retry-After": "Fri, 11 Sep 2026 19:00:00 GMT"],
+        now: Date(timeIntervalSince1970: 1_789_146_000))
+        == .retry(notBefore: Date(timeIntervalSince1970: 1_789_153_200)))
   }
 
   @Test(
