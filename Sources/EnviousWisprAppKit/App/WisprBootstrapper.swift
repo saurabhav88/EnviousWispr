@@ -804,7 +804,7 @@ package final class WisprBootstrapper {
     wordCheck.onStatusChange = { [checkerEligibility] in checkerEligibility.statusDidChange() }
     checkerEligibility.wordCheck = wordCheck
     settingsSync.onWordCheckInputsChanged = { [weak wordCheck] in
-      wordCheck?.refresh(trigger: "settings")
+      wordCheck?.refresh(trigger: .settingsChanged)
     }
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
@@ -1099,7 +1099,7 @@ package final class WisprBootstrapper {
       // #3242: the word check needs first-run setup done, so every onboarding change (completion,
       // or a Diagnostics reset) re-evaluates its download and residency.
       if key == .onboardingState {
-        checkerEligibility.wordCheck?.refresh(trigger: "onboarding_changed")
+        checkerEligibility.wordCheck?.refresh(trigger: .onboardingChanged)
       }
       if key == .onboardingState, settings.onboardingState == .completed {
         Task {
