@@ -49,7 +49,7 @@ EnviousWispr is open source, so you do not have to take our word for any of this
 - [`TelemetryService.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/TelemetryService.swift) builds the usage events the app sends. The PostHog library adds its standard lifecycle events: app installed or updated, opened, and moved to the background.
 - [`SentryEventSanitizer.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprObservabilityCore/SentryEventSanitizer.swift) removes text, email addresses, API keys, and your Mac user name from crash reports before they are sent.
 
-You can also watch the traffic with a network monitor. Usage data goes to PostHog (`us.i.posthog.com`) and crash reports go to Sentry (an `ingest.us.sentry.io` address). With a switch off, the app stops sending anything to that service, as the table below describes.
+You can also watch the traffic with a network monitor. Usage data goes to PostHog (`us.i.posthog.com`) and crash reports go to Sentry (an `ingest.us.sentry.io` address). With a switch off, the app stops sending that kind of data, as the table below describes. Feedback you choose to send still goes to Sentry, whatever the switches say.
 
 ### Turning usage data or crash reports off
 
