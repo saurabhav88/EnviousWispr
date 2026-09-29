@@ -18966,6 +18966,295 @@
         }
       }
     },
+    "feedback.help.allSolved" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Yes, that solved everything"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ja, damit ist alles gelöst"
+          }
+        }
+      }
+    },
+    "feedback.help.checking" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Checking for helpful answers…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche nach hilfreichen Antworten…"
+          }
+        }
+      }
+    },
+    "feedback.help.close" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Close and keep editing"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen und weiterbearbeiten"
+          }
+        }
+      }
+    },
+    "feedback.help.helped" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Glad that helped"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schön, dass es geholfen hat"
+          }
+        }
+      }
+    },
+    "feedback.help.page" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This page might help. We'll still send your message."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Seite könnte helfen. Wir senden deine Nachricht trotzdem."
+          }
+        }
+      }
+    },
+    "feedback.help.question" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Did this fix %@?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist „%@“ damit behoben?"
+          }
+        }
+      }
+    },
+    "feedback.help.question.generic" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Did this fix it?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hat das dein Problem behoben?"
+          }
+        }
+      }
+    },
+    "feedback.help.read" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Read in the help center"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Hilfecenter lesen"
+          }
+        }
+      }
+    },
+    "feedback.help.send" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Send my feedback"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mein Feedback senden"
+          }
+        }
+      }
+    },
+    "feedback.help.several.title" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "We found help for parts of your message."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wir haben Hilfe für Teile deiner Nachricht gefunden."
+          }
+        }
+      }
+    },
+    "feedback.help.single.question" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Does this solve everything you wanted to report?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist damit alles erledigt, was du melden wolltest?"
+          }
+        }
+      }
+    },
+    "feedback.help.solved" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Solved"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gelöst"
+          }
+        }
+      }
+    },
+    "feedback.help.stillHappening" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Still happening"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht gelöst"
+          }
+        }
+      }
+    },
+    "feedback.help.stillSend" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Still send my feedback"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feedback trotzdem senden"
+          }
+        }
+      }
+    },
+    "feedback.help.stillSent" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This might help. We'll still send your message."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das könnte helfen. Wir senden deine Nachricht trotzdem."
+          }
+        }
+      }
+    },
+    "feedback.help.unmatched" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "We couldn't find a reliable answer for %@. We'll send your message."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für „%@“ haben wir keine verlässliche Antwort gefunden. Wir senden deine Nachricht."
+          }
+        }
+      }
+    },
+    "feedback.help.unmatched.generic" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "We couldn't find a reliable answer for part of your message. We'll send your message."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für einen Teil deiner Nachricht haben wir keine verlässliche Antwort gefunden. Wir senden deine Nachricht."
+          }
+        }
+      }
+    },
     "feedback.message.label" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {

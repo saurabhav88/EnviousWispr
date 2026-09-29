@@ -5,6 +5,30 @@ import Foundation
 /// Joins the on-device concern split (LLM) to the help check (Services) for #3275. Services does
 /// not import LLM and LLM does not import Services, so the translation lives here.
 enum HelpCheckWiring {
+  /// At launch: the live check on the shared submission, and its one terminal usage event.
+  @MainActor
+  static func install(on submission: FeedbackSubmission, settings: SettingsManager) {
+    let version =
+      Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+    submission.helpCheck = make(appVersion: version)
+    submission.onHelpTerminal = terminalSink(
+      usageMetrics: { settings.shareUsageMetrics },
+      emit: { TelemetryService.shared.helpCheckTerminal($0) })
+  }
+
+  /// The terminal event's gate: "Share usage metrics" is read when the check ENDS, so a switch
+  /// turned off while a check runs sends nothing. The report itself never depends on it.
+  @MainActor
+  static func terminalSink(
+    usageMetrics: @escaping @MainActor () -> Bool,
+    emit: @escaping @MainActor (HelpCheckTerminal) -> Void
+  ) -> @MainActor (HelpCheckTerminal) -> Void {
+    { terminal in
+      guard usageMetrics() else { return }
+      emit(terminal)
+    }
+  }
+
   /// The live check: Apple's on-device split, then enviouswispr.com.
   static func make(appVersion: String) -> HelpCheck {
     HelpCheck(

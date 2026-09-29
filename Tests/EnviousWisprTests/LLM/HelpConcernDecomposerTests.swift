@@ -1,4 +1,4 @@
-import EnviousWisprServices
+@testable import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -69,5 +69,24 @@ struct HelpConcernDecomposerTests {
     #expect(HelpCheckWiring.decomposition(.failed(.tooLong)) == .unavailable(.afmUnavailable))
     #expect(HelpCheckWiring.decomposition(.failed(.refused)) == .unavailable(.afmRefused))
     #expect(HelpCheckWiring.decomposition(.failed(.error)) == .unavailable(.afmError))
+  }
+
+  @Test("The terminal event reads Share usage metrics when the check ends")
+  @MainActor
+  func terminalRespectsMetricsSwitch() throws {
+    var metricsOn = true
+    var emitted = 0
+    let sink = HelpCheckWiring.terminalSink(usageMetrics: { metricsOn }, emit: { _ in emitted += 1 })
+    let record = try #require(
+      FeedbackHelpOutcome(
+        terminalOutcome: .stillSent, failureReason: nil, mode: .decomposed, overflow: false,
+        coveragePassed: nil, versions: nil, shownCardCount: 0, issues: []))
+    let terminal = HelpCheckTerminal(.stillSent, record: record, splitFailure: nil, checkSeconds: 1)
+    sink(terminal)
+    #expect(emitted == 1)
+    // Turned off while a check was running: the end of that check sends nothing.
+    metricsOn = false
+    sink(terminal)
+    #expect(emitted == 1)
   }
 }

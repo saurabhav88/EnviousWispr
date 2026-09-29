@@ -110,8 +110,13 @@ struct TelemetryEmitterRegistryTests {
   /// launch-scoped (no
   /// join key); registry row `keep`, reader the median idle footprint by version and
   /// `word_check_wanted`.
+  /// #3275: one new site, `helpCheckTerminal` for the new `feedback.help_check_terminal` row.
+  /// Checklist: per_user_action (one per completed in-app help check, a few per install per
+  /// year); no existing feedback row to fold into; reader: analytics-operations.md help-check
+  /// review; counts, closed outcome/reason enums and version stamps only, no message or card
+  /// text; Int/Bool/Double on the wire; launch-scoped (no take_id); registry row added.
   static let sitesFingerprint =
-    "8263e9b837412f157af4e90d7e9e72970b646b950ecda51000e1fdd38521e016"
+    "d75cf36c800f5cdea6423aace315b632a5ae9852037ec99e49d030b19f9c12fe"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

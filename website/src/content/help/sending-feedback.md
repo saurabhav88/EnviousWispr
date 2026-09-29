@@ -6,10 +6,10 @@ section: "Getting Help"
 order: 9
 keywords: ["send feedback", "feedback", "report a bug", "bug report", "bug button", "ladybug", "feature request", "contact", "support", "reply", "suggestion", "include diagnostics", "diagnostics"]
 related: ["what-data-is-collected", "source-code-and-contributing", "app-crashes-or-asr-engine-crashes", "privacy-overview"]
-updated: 2026-09-28
+updated: 2026-09-29
 deflection: "never_intervene"
 ---
-Found a bug or have an idea? You can tell us from inside EnviousWispr. The message reaches the team directly, and we read every one.
+Found a bug or have an idea? You can tell us from inside EnviousWispr. Every message you send reaches the team directly, and we read every one.
 
 ### Sending a message
 
@@ -23,7 +23,19 @@ Found a bug or have an idea? You can tell us from inside EnviousWispr. The messa
 
 **Choose whether to include diagnostics.** Tick **Include diagnostics** to attach a short record of your recent dictations, which helps us find the problem. See the section below.
 
-**Click Send.** The form says **Thanks, it's on its way**. If you left your email, we reply there.
+**Click Send.** When your message is sent, the form says **Thanks, it's on its way**. If you left your email, we reply there. In recent versions, EnviousWispr may first show you help from the help center, described below, and you choose whether to send.
+
+### Help before you send
+
+In recent versions, when you click **Send**, EnviousWispr first looks for help pages that might answer your message. The form says **Checking for helpful answers…** for a few seconds at most.
+
+- **If it finds help**, you see up to three short answers from the help center, each with a link to read more. Where an answer might fix a problem you described, you can mark it **Solved** or **Still happening**.
+- **To send your message**, click **Send my feedback**. Your report is sent exactly as you wrote it, with your email and diagnostics if you added them, and it notes which answers you marked solved.
+- **If everything is solved**, and the app could match every part of your message to an answer, you can click **Yes, that solved everything**. Nothing is sent and your draft is cleared.
+- **To go back and edit**, close the answers. Nothing is sent and your draft stays as it was.
+- **If nothing fits, or the check fails**, your report is sent as usual, without any extra step.
+
+Some answers, such as pages about crashes or privacy, are shown for reference only: your message is still sent.
 
 ### Include diagnostics
 
@@ -39,7 +51,7 @@ Whatever you type into the message itself is sent as you wrote it, so leave out 
 
 ### Your draft is kept
 
-What you type is saved on your Mac as you type it. Close the form, or quit EnviousWispr, and your draft is still there the next time you open it. It clears when you press Send and EnviousWispr saves the report for delivery.
+What you type is saved on your Mac as you type it. Close the form, or quit EnviousWispr, and your draft is still there the next time you open it. It clears when EnviousWispr saves the report for delivery, or when you confirm that the help solved everything.
 
 ### If you are offline
 
@@ -55,9 +67,9 @@ If **Send** stays greyed out, check the email address or leave the field empty.
 
 ### What we receive
 
-We receive the message you write, your email address only if you add it, and your app and macOS versions. If you ticked **Include diagnostics**, we also receive the diagnostics file described above. Nothing else rides along, and the usage and crash-report switches never change what a report contains. It never includes your recordings or your History. See also [what data is collected](/help/what-data-is-collected/).
+If you choose to send your report, we receive the message you write, your email address only if you add it, and your app and macOS versions. If you ticked **Include diagnostics**, we also receive the diagnostics file described above. Nothing else rides along, and the usage and crash-report switches never change what a report contains. It never includes your recordings or your History. See also [what data is collected](/help/what-data-is-collected/).
 
-We also send the text of your message, without your email address, to TypeSafe, an AI service that works on our behalf. It guesses which help article might answer your message, so we can learn which questions our help pages already cover. TypeSafe does not use your message to train its models.
+To look for help before you send, recent versions send the text of your message, without your email address or diagnostics, through our website to TypeSafe, an AI service that works on our behalf. This happens when you click **Send**, before you decide whether to send the report, so it applies even if the help solves everything and no report is sent. TypeSafe does not use your message to train its models.
 
 ### Other ways to reach us
 

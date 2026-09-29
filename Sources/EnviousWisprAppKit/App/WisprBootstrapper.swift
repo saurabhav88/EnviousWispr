@@ -2159,6 +2159,9 @@ package final class WisprBootstrapper {
     TelemetryService.shared.activateDiagnosticsDiary()
     // #3269: saved bug reports are delivered on their own, independent of both switches.
     Task { await FeedbackReporter.startDelivery() }
+    // #3275: Send Feedback checks the help center first. Whether it runs for anyone is the
+    // server's kill switch; the app always asks and sends the report unchanged when told to.
+    HelpCheckWiring.install(on: FeedbackSubmission.shared, settings: settings)
 
     // #832/#913 PR8: prewarm the output-safety classifier off the heart path.
     // Gated on Apple Intelligence (the only provider it scores); a later switch

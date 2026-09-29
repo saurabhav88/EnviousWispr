@@ -52,7 +52,10 @@ struct FeedbackForm: View {
   let onDone: () -> Void
 
   /// `sent(offline:)`: saved to the outbox (#3269); `offline` picks the confirmation line.
-  private enum Status: Equatable { case editing, sending, sent(offline: Bool), unavailable, full }
+  /// `helped`: the user confirmed the help check solved everything; nothing was sent (#3275).
+  private enum Status: Equatable {
+    case editing, sending, sent(offline: Bool), helped, unavailable, full
+  }
 
   @State private var message = ""
   @State private var email = ""
@@ -87,12 +90,26 @@ struct FeedbackForm: View {
       if isSent {
         thanks.transition(.opacity)
       } else {
-        form.transition(.opacity)
+        switch submission.helpPhase {
+        case .checking:
+          FeedbackHelpCheckingView().transition(.opacity)
+        case .suggestions(let suggestions):
+          FeedbackHelpResultsView(
+            suggestions: suggestions, isSaving: submission.isSaving,
+            onSend: { finishHelp(solved: $0) }, onAllSolved: { endHelp(confirmed: $0) },
+            onClose: closeHelp
+          )
+          .id(submission.helpGeneration)
+          .transition(.opacity)
+        case .idle:
+          form.transition(.opacity)
+        }
       }
     }
     .frame(width: 400)
     .background(Color.stPageBg)
     .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: status)
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: submission.helpPhase)
     .onAppear {
       // A form kept alive between openings starts fresh: a save still finishing belongs to the
       // previous opening and changes nothing here (`presentation`).
@@ -107,6 +124,13 @@ struct FeedbackForm: View {
       diagnosticsModel.open(usageMetrics: settings.shareUsageMetrics)
     }
     .onDisappear {
+      // Closing the popover on the help cards closes them too (#3275): nothing is sent, the
+      // draft is kept, and the shared check does not wait for an opening that is gone.
+      if case .suggestions = submission.helpPhase, let generation = submission.helpGeneration {
+        submission.dismissSuggestions(
+          generation: generation, from: presentation,
+          current: { .init(presentation: presentation, message: message, email: email) })
+      }
       presentation = UUID()
       closeTask?.cancel()
       diagnosticsModel.formDidClose()
@@ -376,13 +400,15 @@ struct FeedbackForm: View {
         .font(.stRowTitle)
         .multilineTextAlignment(.center)
         .foregroundStyle(.stTextPrimary)
-      Text(
-        String(
-          localized: "feedback.sent.detail",
-          defaultValue: "If you left your email, we'll reply there.")
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
+      if status != .helped {
+        Text(
+          String(
+            localized: "feedback.sent.detail",
+            defaultValue: "If you left your email, we'll reply there.")
+        )
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+      }
     }
     .frame(maxWidth: .infinity)
     .padding(.vertical, 40)
@@ -408,26 +434,92 @@ struct FeedbackForm: View {
     let submitted = presentation
     status = .sending
     Task { @MainActor in
-      // Nil when this opening closed before the save finished; the reopened one reconciles.
-      guard
-        let outcome = await submission.submit(
-          draft, diagnostics: diagnostics, from: submitted, sent: (sentMessage, sentEmail),
-          current: { .init(presentation: presentation, message: message, email: email) })
-      else { return }
-      switch outcome {
-      case .saved(let offline):
-        status = .sent(offline: offline)
-        AccessibilityNotification.Announcement(sentTitle).post()
-        closeTask = Task { @MainActor in
-          guard (try? await Task.sleep(for: .seconds(offline ? 3 : 1.8))) != nil else { return }
-          onDone()
-        }
-      case .full:
-        status = .full
-      case .unavailable:
-        // Keep the words so they can be pasted into an email.
-        status = .unavailable
+      // With the help check (#3275) Send may first show cards; those finish through
+      // `finishHelp`, `endHelp` or `closeHelp`. Nil when this opening closed before the save
+      // finished; the reopened one reconciles.
+      let step = await submission.send(
+        draft, diagnostics: diagnostics, from: submitted, sent: (sentMessage, sentEmail),
+        current: { .init(presentation: presentation, message: message, email: email) })
+      switch step {
+      case .sent(let outcome, _):
+        guard let outcome else { return }
+        show(outcome)
+      case .suggestions:
+        status = .editing
+      case .busy:
+        if !submission.isSaving, submission.helpPhase == .idle { status = .editing }
       }
+    }
+  }
+
+  /// The cards' Send: the report is saved with the concerns marked solved.
+  private func finishHelp(solved: Set<String>) {
+    guard let generation = submission.helpGeneration, case .suggestions = submission.helpPhase
+    else { return }
+    let opening = presentation
+    let before = status
+    status = .sending
+    Task { @MainActor in
+      let outcome = await submission.finishSuggestions(
+        solved: solved, generation: generation, from: opening,
+        current: { .init(presentation: presentation, message: message, email: email) })
+      guard let outcome else {
+        // Refused (an older check or a closed opening) with the cards still up: nothing
+        // changed, so this opening goes back to what it showed. A save that finished for an
+        // opening now closed reconciles through `completions`.
+        if case .suggestions = submission.helpPhase, presentation == opening { status = before }
+        return
+      }
+      show(outcome)
+    }
+  }
+
+  /// Every concern confirmed solved: nothing is sent, the draft is cleared, and the popover
+  /// thanks the user and closes.
+  private func endHelp(confirmed: Set<String>) {
+    guard let generation = submission.helpGeneration,
+      submission.endWithAllSolved(
+        confirmed: confirmed, generation: generation, from: presentation,
+        current: { .init(presentation: presentation, message: message, email: email) })
+    else { return }
+    message = ""
+    email = ""
+    status = .helped
+    AccessibilityNotification.Announcement(Self.helpedTitle).post()
+    closeTask = Task { @MainActor in
+      guard (try? await Task.sleep(for: .seconds(1.8))) != nil else { return }
+      onDone()
+    }
+  }
+
+  /// The cards' close button: back to the form with the draft as it is; nothing is sent.
+  private func closeHelp() {
+    guard let generation = submission.helpGeneration,
+      submission.dismissSuggestions(
+        generation: generation, from: presentation,
+        current: { .init(presentation: presentation, message: message, email: email) })
+    else { return }
+    message = draftStore.message
+    email = draftStore.email
+    status = .editing
+    focus = .message
+  }
+
+  /// Shows a save's outcome: the thank-you and auto-close, or the form's problem line.
+  private func show(_ outcome: FeedbackReporter.Outcome) {
+    switch outcome {
+    case .saved(let offline):
+      status = .sent(offline: offline)
+      AccessibilityNotification.Announcement(sentTitle).post()
+      closeTask = Task { @MainActor in
+        guard (try? await Task.sleep(for: .seconds(offline ? 3 : 1.8))) != nil else { return }
+        onDone()
+      }
+    case .full:
+      status = .full
+    case .unavailable:
+      // Keep the words so they can be pasted into an email.
+      status = .unavailable
     }
   }
 
@@ -454,11 +546,12 @@ struct FeedbackForm: View {
 
   private var isSent: Bool {
     if case .sent = status { return true }
-    return false
+    return status == .helped
   }
 
   /// The confirmation title: online, or saved while offline (founder, 2026-09-28).
   private var sentTitle: String {
+    if status == .helped { return Self.helpedTitle }
     if case .sent(offline: true) = status {
       return String(
         localized: "feedback.sent.offline",
@@ -489,6 +582,10 @@ struct FeedbackForm: View {
 
   private static var sentTitle: String {
     String(localized: "feedback.sent.title", defaultValue: "Thanks, it's on its way")
+  }
+
+  private static var helpedTitle: String {
+    String(localized: "feedback.help.helped", defaultValue: "Glad that helped")
   }
 
   private static var invalidEmailText: String {

@@ -724,6 +724,88 @@ struct HelpCheckTests {
     #expect(help.coveragePassed == false)
   }
 
+  @MainActor
+  final class Terminals {
+    private(set) var all: [HelpCheckTerminal] = []
+    func record(_ t: HelpCheckTerminal) { all.append(t) }
+  }
+
+  @Test("Each ending reports exactly once: helped, still sent, dismissed, not saved")
+  @MainActor
+  func terminalEvents() async throws {
+    let message = "Keybind broke."
+    let a = UUID()
+    let screen: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
+      .init(presentation: a, message: message, email: "")
+    }
+    for ending in ["helped", "still_sent", "dismissed", "not_saved"] {
+      let (store, suite) = Self.makeStore()
+      defer { UserDefaults().removePersistentDomain(forName: suite) }
+      let terminals = Terminals()
+      let transport = FakeTransport([.reply(200, Self.reply([Self.section("i0")]))])
+      let refuse = ending == "not_saved"
+      var clockValue = Date(timeIntervalSince1970: 1_000)
+      let submission = FeedbackSubmission(
+        store: store,
+        save: { _, _, _ in refuse ? .full : .saved(offline: false) },
+        helpCheck: Self.check(
+          .concerns([Concern(summary: "Keybind", evidence: message, kind: .bug)], hitCap: false),
+          transport),
+        clock: {
+          defer { clockValue += 2.5 }
+          return clockValue
+        })
+      submission.onHelpTerminal = { terminals.record($0) }
+      store.save(message: message, email: "")
+      _ = await submission.send(
+        try #require(FeedbackDraft(message: message, email: "")), diagnostics: nil, from: a,
+        sent: (message, ""), current: screen)
+      #expect(terminals.all.isEmpty, "nothing ends while the cards wait")
+      let generation = try #require(submission.helpGeneration)
+      switch ending {
+      case "helped":
+        #expect(submission.endWithAllSolved(confirmed: ["i0"], generation: generation, from: a, current: screen))
+      case "dismissed":
+        #expect(submission.dismissSuggestions(generation: generation, from: a, current: screen))
+      default:
+        _ = await submission.finishSuggestions(solved: [], generation: generation, from: a, current: screen)
+      }
+      // A repeated press after the ending changes nothing and reports nothing more.
+      _ = submission.dismissSuggestions(generation: generation, from: a, current: screen)
+      #expect(terminals.all.count == 1, "\(ending)")
+      let t = try #require(terminals.all.first)
+      #expect(t.outcome.rawValue == ending)
+      #expect(t.issues == 1)
+      #expect(t.cards == 1)
+      #expect(t.solved == (ending == "helped" ? 1 : 0))
+      #expect(t.checkSeconds == 2.5)
+      #expect(t.durationBucket == "2_4s")
+      #expect(t.versions?.kb == "72134d105fb3")
+    }
+  }
+
+  @Test("An immediate send reports once, with the split's failure")
+  @MainActor
+  func terminalOnImmediateSend() async throws {
+    let (store, suite) = Self.makeStore()
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let terminals = Terminals()
+    let recorder = RecordingSave()
+    let submission = FeedbackSubmission(
+      store: store, save: recorder.save,
+      helpCheck: Self.check(.unavailable(.afmTimeout), FakeTransport([.fail(URLError(.notConnectedToInternet))])))
+    submission.onHelpTerminal = { terminals.record($0) }
+    let a = UUID()
+    _ = await submission.send(
+      try #require(FeedbackDraft(message: "hi there", email: "")), diagnostics: nil, from: a,
+      sent: ("hi there", ""), current: { .init(presentation: a, message: "hi there", email: "") })
+    #expect(terminals.all.count == 1)
+    #expect(terminals.all.first?.outcome == .stillSent)
+    #expect(terminals.all.first?.failure == .network)
+    #expect(terminals.all.first?.splitFailure == .afmTimeout)
+    #expect(terminals.all.first?.mode == .wholeMessageAlwaysSend)
+  }
+
   @Test("A failed check saves the report at once with its fallback reason")
   @MainActor
   func fallbackSaves() async throws {

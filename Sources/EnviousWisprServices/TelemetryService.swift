@@ -1132,6 +1132,60 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("hotkey.lock_resolved", properties: props)
   }
 
+  /// #3275: how one in-app help check ended, once per check, from `FeedbackSubmission`. Counts,
+  /// closed values and version stamps only: never the message, a concern, a quote, card text or a
+  /// link (the message goes to TypeSafe for the check; none of it comes here). Fires only while
+  /// PostHog runs, which the "Share usage metrics" switch controls; the feedback report and its
+  /// Sentry tags do not depend on it. `$value` is the check's duration in seconds.
+  public func helpCheckTerminal(_ terminal: HelpCheckTerminal) {
+    var strings: [String: String] = [
+      "outcome": terminal.outcome.rawValue, "mode": terminal.mode.rawValue,
+      "duration_bucket": terminal.durationBucket, "os_version": Self.osVersionString,
+      "device_model": Self.deviceModel,
+    ]
+    if let failure = terminal.failure { strings["failure"] = failure.rawValue }
+    if let split = terminal.splitFailure { strings["split_failure"] = split.rawValue }
+    if let v = terminal.versions {
+      strings["kb_version"] = v.kb
+      strings["jev_version"] = v.jevModel
+      strings["decomposition_version"] = v.decomposition
+      strings["decision_version"] = v.decision
+      strings["threshold_version"] = v.threshold
+    }
+    let ints: [String: Int] = [
+      "issue_count": terminal.issues, "card_count": terminal.cards,
+      "section_count": terminal.sections, "page_count": terminal.pages,
+      "solved_count": terminal.solved, "unmatched_count": terminal.unmatched,
+    ]
+    var bools: [String: Bool] = ["overflow": terminal.overflow]
+    if let coverage = terminal.coveragePassed { bools["coverage_passed"] = coverage }
+    var props: [String: Any] = ["$value": terminal.checkSeconds]
+    for (k, v) in strings { props[k] = v }
+    for (k, v) in ints { props[k] = v }
+    for (k, v) in bools { props[k] = v }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "feedback.help_check_terminal", stringProps: strings, intProps: ints,
+          doubleProps: ["$value": terminal.checkSeconds], boolProps: bools))
+    #endif
+    PostHogSDK.shared.capture("feedback.help_check_terminal", properties: props)
+  }
+
+  private static let osVersionString: String = {
+    let os = ProcessInfo.processInfo.operatingSystemVersion
+    return "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
+  }()
+
+  /// The Mac's model identifier (`Mac16,12`): hardware, not content.
+  private static let deviceModel: String = {
+    var size = 0
+    guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return "unknown" }
+    var buffer = [CChar](repeating: 0, count: size)
+    guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return "unknown" }
+    return String(cString: buffer)
+  }()
+
   /// #1177 (Telemetry Bible Phase 8): a limb failed quietly — the user still got
   /// raw text or a small glitch, but until now we had zero signal. ONE event for
   /// every quiet-limb site (ASR streaming finalize, output-safety classifier

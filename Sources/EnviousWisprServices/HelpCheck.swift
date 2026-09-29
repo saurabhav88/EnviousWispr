@@ -69,6 +69,7 @@ public struct HelpCheck: Sendable {
     }
     let request: HelpCheckRequest
     let anchored: [Bool]
+    var summaries: [String] = []
     let splitFailure: FeedbackHelpOutcome.FailureReason?
     switch split {
     case .concerns(let concerns, let hitCap):
@@ -83,6 +84,7 @@ public struct HelpCheck: Sendable {
         return String(decoding: units[start..<end], as: UTF16.self) == issue.evidence
       }
       splitFailure = nil
+      summaries = prepared.issues.map(\.summary)
     case .unavailable(let reason):
       request = HelpCheckRequest(
         originalMessage: message, mode: .wholeMessageAlwaysSend, issues: [], overflow: false,
@@ -104,7 +106,7 @@ public struct HelpCheck: Sendable {
       }
       let suggestions = HelpCheckSuggestions(
         mode: request.mode, overflow: request.overflow, reply: reply, anchored: anchored,
-        splitFailure: splitFailure)
+        splitFailure: splitFailure, summaries: summaries)
       if suggestions.cards.isEmpty {
         // Nothing worth showing (praise, or no match): send now, recording what was checked.
         return .send(suggestions.outcome(solved: []), splitFailure: splitFailure)
@@ -217,6 +219,18 @@ public struct HelpCheckSuggestions: Equatable, Sendable {
   public let anchored: [Bool]
   /// Why the split was skipped, when it was (whole-message mode).
   public let splitFailure: FeedbackHelpOutcome.FailureReason?
+  /// Each concern's short name from the on-device split, in order, for the cards' wording
+  /// ("Did this fix …?"). Written by the model on this Mac; empty in whole-message mode.
+  public var summaries: [String] = []
+
+  /// The concern's short name for the cards, or nil when there is none to show.
+  public func summary(for issueID: String) -> String? {
+    guard let index = reply.results.firstIndex(where: { $0.id == issueID }),
+      index < summaries.count
+    else { return nil }
+    let text = summaries[index].trimmingCharacters(in: .whitespacesAndNewlines)
+    return text.isEmpty ? nil : text
+  }
 
   public static let maxCards = FeedbackHelpOutcome.maxShownCards
 
@@ -306,5 +320,68 @@ public struct HelpCheckSuggestions: Equatable, Sendable {
     return FeedbackHelpOutcome(
       terminalOutcome: .fallbackSent, failureReason: .badReply, mode: mode, overflow: overflow,
       coveragePassed: nil, versions: nil, shownCardCount: 0, issues: [])!
+  }
+}
+
+/// How one help check ended (#3275), for the one terminal usage event. Counts and closed values
+/// only: never the message, a summary, a quote, card text or a link.
+public struct HelpCheckTerminal: Equatable, Sendable {
+  public enum Outcome: String, Sendable {
+    /// Every concern confirmed solved; nothing was sent.
+    case helped
+    /// The report was saved for sending (with or without cards, some solved or none).
+    case stillSent = "still_sent"
+    /// The cards were closed; nothing was sent and the draft stays.
+    case dismissed
+    /// The report was meant to send but the outbox refused it (full or unavailable).
+    case notSaved = "not_saved"
+  }
+
+  public let outcome: Outcome
+  public let mode: FeedbackHelpOutcome.Mode
+  public let overflow: Bool
+  public let coveragePassed: Bool?
+  public let issues: Int
+  public let cards: Int
+  public let sections: Int
+  public let pages: Int
+  public let solved: Int
+  public let unmatched: Int
+  public let failure: FeedbackHelpOutcome.FailureReason?
+  public let splitFailure: FeedbackHelpOutcome.FailureReason?
+  /// Seconds from Send to cards or sending.
+  public let checkSeconds: Double
+  public let versions: FeedbackHelpOutcome.Versions?
+
+  /// A closed bucket for the check's duration, against the 4 s split and 7 s overall deadlines.
+  public var durationBucket: String {
+    switch checkSeconds {
+    case ..<1: "lt_1s"
+    case ..<2: "1_2s"
+    case ..<4: "2_4s"
+    case ..<7: "4_7s"
+    default: "ge_7s"
+    }
+  }
+
+  /// From the outcome frozen with a sent (or refused) report.
+  init(
+    _ outcome: Outcome, record: FeedbackHelpOutcome,
+    splitFailure: FeedbackHelpOutcome.FailureReason?, checkSeconds: Double
+  ) {
+    self.outcome = outcome
+    self.mode = record.mode
+    self.overflow = record.overflow
+    self.coveragePassed = record.coveragePassed
+    self.issues = record.issueCount
+    self.cards = record.shownCardCount
+    self.sections = record.sectionMatchCount
+    self.pages = record.pageOnlyCount
+    self.solved = record.solvedIssueCount
+    self.unmatched = record.unmatchedIssueCount
+    self.failure = record.failureReason
+    self.splitFailure = splitFailure
+    self.checkSeconds = checkSeconds
+    self.versions = record.versions
   }
 }

@@ -48,11 +48,20 @@ public final class FeedbackSubmission {
   private let save: Save
   /// The in-app help check (#3275), when this Mac runs one; nil sends directly.
   public var helpCheck: HelpCheck?
+  /// Called once per check when it ends (helped, sent, dismissed or not saved), for the terminal
+  /// usage event. The event lives here, not in the view, so closing and reopening the popover can
+  /// neither repeat nor lose it.
+  public var onHelpTerminal: (@MainActor (HelpCheckTerminal) -> Void)?
+  private let clock: @MainActor () -> Date
 
-  public init(store: FeedbackDraftStore, save: @escaping Save, helpCheck: HelpCheck? = nil) {
+  public init(
+    store: FeedbackDraftStore, save: @escaping Save, helpCheck: HelpCheck? = nil,
+    clock: @escaping @MainActor () -> Date = { Date() }
+  ) {
     self.store = store
     self.save = save
     self.helpCheck = helpCheck
+    self.clock = clock
   }
 
   // MARK: - Help check (#3275)
@@ -88,6 +97,10 @@ public final class FeedbackSubmission {
     let diagnostics: FeedbackDiagnosticsSnapshot?
     let sent: (message: String, email: String)
     let generation: UUID
+    let startedAt: Date
+    /// Filled when the check concludes: its duration and the split's failure, for the event.
+    var checkSeconds: Double = 0
+    var splitFailure: FeedbackHelpOutcome.FailureReason?
   }
   private var frozen: Frozen?
 
@@ -104,19 +117,24 @@ public final class FeedbackSubmission {
         await submit(draft, diagnostics: diagnostics, from: presentation, sent: sent, current: current))
     }
     let generation = UUID()
-    frozen = Frozen(draft: draft, diagnostics: diagnostics, sent: sent, generation: generation)
+    frozen = Frozen(
+      draft: draft, diagnostics: diagnostics, sent: sent, generation: generation, startedAt: clock())
     sender = presentation
     helpPhase = .checking
     let conclusion = await helpCheck.run(draft.message)
     // Only this generation's result may move the state; anything else is stale.
-    guard let held = frozen, held.generation == generation, helpPhase == .checking else {
+    guard var held = frozen, held.generation == generation, helpPhase == .checking else {
       return .busy
     }
+    held.checkSeconds = clock().timeIntervalSince(held.startedAt)
     switch conclusion {
     case .suggestions(let suggestions):
+      held.splitFailure = suggestions.splitFailure
+      frozen = held
       helpPhase = .suggestions(suggestions)
       return .suggestions(suggestions)
     case .send(let outcome, let splitFailure):
+      held.splitFailure = splitFailure
       helpPhase = .idle
       frozen = nil
       return .sent(
@@ -153,11 +171,15 @@ public final class FeedbackSubmission {
   public func dismissSuggestions(
     generation: UUID, from presentation: UUID, current: @MainActor () -> FormState
   ) -> Bool {
-    guard case .suggestions = helpPhase,
+    guard case .suggestions(let suggestions) = helpPhase, let held = frozen,
       isCurrent(generation: generation, from: presentation, current: current())
     else { return false }
     helpPhase = .idle
     frozen = nil
+    onHelpTerminal?(
+      HelpCheckTerminal(
+        .dismissed, record: suggestions.outcome(solved: []), splitFailure: held.splitFailure,
+        checkSeconds: held.checkSeconds))
     return true
   }
 
@@ -180,16 +202,30 @@ public final class FeedbackSubmission {
       saved: true, isSendingFormOnScreen: now.presentation == presentation,
       form: (now.message, now.email), sent: held.sent)
     completions += 1
+    onHelpTerminal?(
+      HelpCheckTerminal(
+        .helped, record: suggestions.outcome(solved: confirmed), splitFailure: held.splitFailure,
+        checkSeconds: held.checkSeconds))
     return true
   }
 
+  /// Saves the frozen report with its outcome and reports how the check ended. The event reads
+  /// the save's own result, so a report the outbox refused is never counted as sent.
   private func saveFrozen(
     _ held: Frozen, outcome: FeedbackHelpOutcome, from presentation: UUID,
     current: @MainActor () -> FormState
   ) async -> FeedbackReporter.Outcome? {
-    await submit(
+    var result: FeedbackReporter.Outcome?
+    let shown = await submit(
       held.draft, diagnostics: held.diagnostics, helpOutcome: outcome, from: presentation,
-      sent: held.sent, current: current)
+      sent: held.sent, current: current, result: { result = $0 })
+    let terminal: HelpCheckTerminal.Outcome =
+      if case .saved = result { .stillSent } else { .notSaved }
+    onHelpTerminal?(
+      HelpCheckTerminal(
+        terminal, record: outcome, splitFailure: held.splitFailure,
+        checkSeconds: held.checkSeconds))
+    return shown
   }
 
   /// Saves one report. `current` is read when the save finishes: the opening on screen then and
@@ -202,10 +238,23 @@ public final class FeedbackSubmission {
     from presentation: UUID, sent: (message: String, email: String),
     current: @MainActor () -> FormState
   ) async -> FeedbackReporter.Outcome? {
+    await submit(
+      draft, diagnostics: diagnostics, helpOutcome: helpOutcome, from: presentation, sent: sent,
+      current: current, result: { _ in })
+  }
+
+  /// `result` receives the save's outcome even when the sending opening has closed.
+  private func submit(
+    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
+    helpOutcome: FeedbackHelpOutcome?,
+    from presentation: UUID, sent: (message: String, email: String),
+    current: @MainActor () -> FormState, result: (FeedbackReporter.Outcome) -> Void
+  ) async -> FeedbackReporter.Outcome? {
     guard !isSaving, helpPhase == .idle else { return nil }
     isSaving = true
     sender = presentation
     let outcome = await save(draft, diagnostics, helpOutcome)
+    result(outcome)
     let now = current()
     let saved: Bool
     if case .saved = outcome { saved = true } else { saved = false }
