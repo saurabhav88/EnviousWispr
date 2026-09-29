@@ -51,9 +51,13 @@ public enum LegacyDonorMigration {
 
   private struct Record: Codable {
     let state: RecordedState
-    /// Ties the record to the manifest it was taken against, so a model revision
-    /// bump re-opens the question instead of inheriting an answer about
-    /// different bytes.
+    /// Ties a `completed` record to the manifest it was taken against, so any
+    /// manifest change re-opens that question instead of inheriting an answer
+    /// about different bytes. A `declined` record is NOT tied to it (#3271): the
+    /// record file is already per identity (`cacheKey` includes the revision), so
+    /// the same file can only see a digest change that leaves the bytes alone,
+    /// such as a source-URL move, and re-opening then would clone back a model
+    /// the user deliberately removed.
     let manifestDigest: String
   }
 
@@ -62,19 +66,21 @@ public enum LegacyDonorMigration {
       "\(manifest.identity.cacheKey).legacy-migration.json")
   }
 
-  /// The recorded state, or `nil` when there is none, it is unreadable, or it
-  /// describes a different manifest. Every one of those means "ask again", which
-  /// is the fail-safe direction: re-running a clone costs almost nothing, while
-  /// trusting an unreadable record would strand a user with no model.
+  /// The recorded state, or `nil` when there is none, it is unreadable, or it is
+  /// a `completed` record for a different manifest. Every one of those means "ask
+  /// again", which is the fail-safe direction: re-running a clone costs almost
+  /// nothing, while trusting an unreadable record would strand a user with no
+  /// model. `declined` survives a digest change for the same identity (#3271;
+  /// see `Record.manifestDigest`).
   public static func recordedState(
     metadataDirectory: URL, manifest: DeliveryManifest
   ) -> RecordedState? {
     let url = recordURL(metadataDirectory: metadataDirectory, manifest: manifest)
     guard let data = try? Data(contentsOf: url),
-      let record = try? JSONDecoder().decode(Record.self, from: data),
-      record.manifestDigest == manifest.manifestDigest
+      let record = try? JSONDecoder().decode(Record.self, from: data)
     else { return nil }
-    return record.state
+    if record.state == .declined { return .declined }
+    return record.manifestDigest == manifest.manifestDigest ? .completed : nil
   }
 
   /// Writes the record durably.
