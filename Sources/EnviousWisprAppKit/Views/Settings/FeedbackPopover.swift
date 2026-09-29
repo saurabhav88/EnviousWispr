@@ -71,7 +71,10 @@ struct FeedbackForm: View {
   @State private var diagnosticsModel = FeedbackFormModel(loadSnapshot: {
     await FeedbackDiagnosticsSnapshot.load()
   })
-  private let draftStore = FeedbackDraftStore()
+  /// Shared by every opening of the form, so a save still running blocks a reopened form's Send
+  /// and reconciles its words when it finishes (#3269).
+  @State private var submission = FeedbackSubmission.shared
+  private var draftStore: FeedbackDraftStore { submission.store }
 
   private enum Field: Hashable { case message, email }
 
@@ -96,7 +99,7 @@ struct FeedbackForm: View {
       presentation = UUID()
       closeTask?.cancel()
       closeTask = nil
-      status = .editing
+      status = submission.isSaving ? .sending : .editing
       hasUndeliverable = false
       message = draftStore.message
       email = draftStore.email
@@ -107,6 +110,16 @@ struct FeedbackForm: View {
       presentation = UUID()
       closeTask?.cancel()
       diagnosticsModel.formDidClose()
+    }
+    // A save another opening started has finished: show the saved draft (cleared when unchanged,
+    // or the words typed meanwhile) and allow Send again.
+    .onChange(of: submission.completions) { _, _ in
+      guard status == .sending, let words = submission.reconciledDraft(for: presentation) else {
+        return
+      }
+      message = words.message
+      email = words.email
+      status = .editing
     }
     .onChange(of: settings.shareUsageMetrics) { _, metrics in
       diagnosticsModel.usageMetricsChanged(to: metrics)
@@ -316,6 +329,7 @@ struct FeedbackForm: View {
   private var sendButton: some View {
     let enabled =
       issue == nil && !diagnosticsModel.isWaitingForDiagnostics && status != .sending
+      && !submission.isSaving
     return Button(action: send) {
       HStack(spacing: 7) {
         Image(systemName: "paperplane.fill")
@@ -381,7 +395,8 @@ struct FeedbackForm: View {
   // MARK: - Actions
 
   private func send() {
-    guard status != .sending, !isSent, let draft = FeedbackDraft(message: message, email: email)
+    guard status != .sending, !isSent, !submission.isSaving,
+      let draft = FeedbackDraft(message: message, email: email)
     else { return }
     // Rechecks the live switch: a change the observer has not delivered yet resets the box and
     // preview instead of sending, so a new click is needed (#3269).
@@ -396,13 +411,11 @@ struct FeedbackForm: View {
     let submitted = presentation
     status = .sending
     Task { @MainActor in
-      let outcome = await FeedbackReporter.send(draft, diagnostics: diagnostics)
-      let saved: Bool
-      if case .saved = outcome { saved = true } else { saved = false }
+      // Nil when this opening closed before the save finished; the reopened one reconciles.
       guard
-        draftStore.settleAfterSave(
-          saved: saved, isSendingFormOnScreen: presentation == submitted,
-          form: (message, email), sent: (sentMessage, sentEmail))
+        let outcome = await submission.submit(
+          draft, diagnostics: diagnostics, from: submitted, sent: (sentMessage, sentEmail),
+          current: { .init(presentation: presentation, message: message, email: email) })
       else { return }
       switch outcome {
       case .saved(let offline):
