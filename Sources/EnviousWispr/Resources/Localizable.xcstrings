@@ -14227,13 +14227,13 @@
         }
       }
     },
-    "Stack traces and diagnostic details to help us fix crashes." : {
+    "Stack traces and diagnostic details to help us fix crashes and errors." : {
       "comment" : "Permissions settings, Privacy: explains the crash reports switch.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stacktraces und Diagnosedetails, die uns helfen, Abstürze zu beheben."
+            "value" : "Stacktraces und Diagnosedetails, die uns helfen, Abstürze und Fehler zu beheben."
           }
         }
       }

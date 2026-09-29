@@ -46,8 +46,8 @@ The app records how you use it, never what you said. There is no account, and no
 EnviousWispr is open source, so you do not have to take our word for any of this. The code that decides what leaves your Mac is public:
 
 - [`ObservabilityBootstrap.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/ObservabilityBootstrap.swift) starts or skips the usage and crash-reporting services, depending on the two switches below.
-- [`TelemetryService.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/TelemetryService.swift) builds the usage events the app sends. The PostHog library adds its standard lifecycle events: app installed or updated, opened, and moved to the background.
-- [`SentryEventSanitizer.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprObservabilityCore/SentryEventSanitizer.swift) checks crash reports before they are sent and removes long text, email addresses, key-like values, and your Mac user name in file paths.
+- [`TelemetryService.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/TelemetryService.swift) builds the usage events the app sends. The PostHog library adds its standard lifecycle events for when the app is installed, updated, or launched.
+- [`SentryEventSanitizer.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprObservabilityCore/SentryEventSanitizer.swift) checks crash reports before they are sent. It removes email addresses, common API-key formats, your Mac user name in file paths, and any text longer than 100 characters that is not a web address.
 
 You can also watch the traffic with a network monitor. Usage data goes to PostHog (`us.i.posthog.com`) and crash reports go to Sentry (an `ingest.us.sentry.io` address). With a switch off, the app stops sending that kind of data, as the table below describes. Feedback you choose to send still goes to Sentry, whatever the switches say.
 

@@ -194,7 +194,7 @@ enum PrivacySettingsCopy {
   }
   static var crashHelp: String {
     String(
-      localized: "Stack traces and diagnostic details to help us fix crashes.",
+      localized: "Stack traces and diagnostic details to help us fix crashes and errors.",
       comment: "Permissions settings, Privacy: explains the crash reports switch.")
   }
   static var restartNotice: String {
