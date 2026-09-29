@@ -247,7 +247,8 @@ async function callJev(body, env, fetchImpl, deadlineAt, now) {
     try {
       json = await Promise.race([res.json(), deadline]);
     } catch (error) {
-      throw error instanceof ReplyError ? error : new ReplyError("bad_reply");
+      if (error instanceof ReplyError) throw error;
+      throw new ReplyError(controller.signal.aborted ? "timeout" : "bad_reply");
     }
     // A reply that lands after the shared budget is late even if it arrived whole.
     if (controller.signal.aborted || now() >= deadlineAt) throw new ReplyError("timeout");

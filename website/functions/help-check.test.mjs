@@ -396,6 +396,13 @@ test("both requests share one 2.0-second deadline", async () => {
   // So does a body read that never settles.
   const hungBody = fakeJev({ status: 200, ok: true, json: () => new Promise(() => {}) });
   assert.equal((await runHelpCheck(body(), ENV, { fetchImpl: hungBody.fetchImpl, now: () => Date.now() })).reason, "timeout");
+  // A body read that the abort ends (rejecting before the deadline race does) is a timeout too.
+  const abortedBody = fakeJev((init) => ({
+    status: 200,
+    ok: true,
+    json: () => new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))),
+  }));
+  assert.equal((await runHelpCheck(body(), ENV, { fetchImpl: abortedBody.fetchImpl, now: () => Date.now() })).reason, "timeout");
 
   clock = 0;
   const spent = fakeJev(async () => {
