@@ -233,6 +233,9 @@ struct FeedbackOutboxTests {
     #expect(kept.attempts == 1)
     #expect(kept.nextAttemptAt == Self.start.addingTimeInterval(60))
 
+    // A relaunch replaces the old outbox. Stop it first, as quitting does: enqueue's own
+    // background drain could otherwise run after the clock moves and send again (#3290).
+    await outbox.stop()
     let relaunched = Self.makeOutbox(directory, http: http, clock: clock)
     await relaunched.drain()
     #expect(http.sent.count == 1)
@@ -258,6 +261,9 @@ struct FeedbackOutboxTests {
     #expect(try Self.records(in: directory).map(\.message) == ["report 2"])
 
     clock.advance(300)
+    // A relaunch replaces the old outbox. Stop it first, as quitting does: enqueue's own
+    // background drain could otherwise run after the clock moves and send again (#3290).
+    await outbox.stop()
     let relaunched = Self.makeOutbox(directory, http: http, clock: clock)
     await relaunched.drain()
     #expect(http.sent.count == 1)
@@ -556,6 +562,9 @@ struct FeedbackOutboxTests {
 
     // A new launch is no longer paused, but the stored limit still holds the report.
     clock.advance(300)
+    // A relaunch replaces the old outbox. Stop it first, as quitting does: enqueue's own
+    // background drain could otherwise run after the clock moves and send again (#3290).
+    await outbox.stop()
     let relaunched = Self.makeOutbox(directory, http: http, clock: clock)
     await relaunched.drain()
     #expect(http.sent == [Self.eventID(1)])
