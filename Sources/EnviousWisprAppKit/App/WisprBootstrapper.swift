@@ -1641,7 +1641,12 @@ package final class WisprBootstrapper {
     // #3289 §8b: one idle-memory sample per launch. Its task keeps it alive until it sends.
     let idleMemoryObserver = IdleMemoryObserver(
       isWorkInFlight: isWorkInFlight,
-      workEpoch: { [weak engineLease] in engineLease?.admissionEpoch ?? 0 },
+      // Every engine claim, plus every Transcribe a File action (choose, Start, Stop, start over,
+      // Clean it again move its `generation`), including a Start that ends before its claim. Both
+      // only increase, so any activity changes the sum.
+      workEpoch: { [weak engineLease] in
+        (engineLease?.admissionEpoch ?? 0) &+ (fileImportCoordinatorForGates?.generation ?? 0)
+      },
       usageMetricsOn: { [settings] in settings.shareUsageMetrics },
       wordCheckState: { [weak checkerEligibility] in
         (

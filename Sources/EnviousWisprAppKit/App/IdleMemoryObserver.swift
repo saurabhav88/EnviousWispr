@@ -9,7 +9,8 @@ import Foundation
 /// work exits, crash recovery, an abandoned decode). The word check's idle timer asks a narrower
 /// question (work that uses that check), so any stretch idle here is also idle for it. Work is
 /// seen two ways, and both count as a
-/// busy tick: the predicate true at a tick, or the engine lease's `admissionEpoch` changed since the
+/// busy tick: the predicate true at a tick, or the work epoch (the engine lease's `admissionEpoch`
+/// plus Transcribe a File's action counter, so a Start that ends before its claim counts) changed since the
 /// last tick. Every workload claims that one lease before it touches the engine (dictation at
 /// arming, Transcribe a File at Start and Clean it again, crash recovery), so the epoch sees work
 /// that started and ended between two ticks, however short, with no signal wired per entry point.
