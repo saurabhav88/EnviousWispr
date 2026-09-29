@@ -18966,19 +18966,19 @@
         }
       }
     },
-    "feedback.help.allSolved" : {
+    "feedback.help.allSolvedDontSend" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Yes, that solved everything"
+            "value" : "All solved, don't send"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ja, damit ist alles gelöst"
+            "value" : "Alles gelöst, nicht senden"
           }
         }
       }
@@ -18989,30 +18989,115 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Checking for helpful answers…"
+            "value" : "Checking help articles…"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Suche nach hilfreichen Antworten…"
+            "value" : "Hilfeartikel werden geprüft…"
           }
         }
       }
     },
-    "feedback.help.close" : {
+    "feedback.help.checking.detail" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Close and keep editing"
+            "value" : "Takes a second. Your message won't be lost."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schließen und weiterbearbeiten"
+            "value" : "Dauert nur einen Moment. Deine Nachricht geht nicht verloren."
+          }
+        }
+      }
+    },
+    "feedback.help.checking.reading" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reading your message…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Nachricht wird gelesen…"
+          }
+        }
+      }
+    },
+    "feedback.help.edit" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Edit message"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachricht bearbeiten"
+          }
+        }
+      }
+    },
+    "feedback.help.exactWords" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Send delivers your words exactly as you wrote them."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Senden kommt deine Nachricht genau so an, wie du sie geschrieben hast."
+          }
+        }
+      }
+    },
+    "feedback.help.found.one" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "We found an article that might help"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wir haben einen Artikel gefunden, der helfen könnte"
+          }
+        }
+      }
+    },
+    "feedback.help.found.several" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "We found articles that might help"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wir haben Artikel gefunden, die helfen könnten"
           }
         }
       }
@@ -19030,6 +19115,91 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schön, dass es geholfen hat"
+          }
+        }
+      }
+    },
+    "feedback.help.helped.detail" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Your feedback wasn't sent."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Feedback wurde nicht gesendet."
+          }
+        }
+      }
+    },
+    "feedback.help.markEach" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mark each part you've solved."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markiere alle Punkte, die für dich gelöst sind."
+          }
+        }
+      }
+    },
+    "feedback.help.markSolved" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mark solved"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als gelöst markieren"
+          }
+        }
+      }
+    },
+    "feedback.help.minimize" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Close for now. Click the bug icon to come back."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorerst schließen. Über das Marienkäfer-Symbol kommst du zurück."
+          }
+        }
+      }
+    },
+    "feedback.help.notSentYet" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not sent yet. Your message is still here."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht gesendet. Deine Nachricht ist noch da."
           }
         }
       }
@@ -19091,64 +19261,30 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Read in the help center"
+            "value" : "Read the full article"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Im Hilfecenter lesen"
+            "value" : "Ganzen Artikel lesen"
           }
         }
       }
     },
-    "feedback.help.send" : {
+    "feedback.help.sendMessage" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Send my feedback"
+            "value" : "Send my message"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mein Feedback senden"
-          }
-        }
-      }
-    },
-    "feedback.help.several.title" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "We found some help"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wir haben etwas Hilfe gefunden"
-          }
-        }
-      }
-    },
-    "feedback.help.single.question" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Did this solve it?"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hat das dein Problem gelöst?"
+            "value" : "Nachricht senden"
           }
         }
       }
@@ -19170,36 +19306,19 @@
         }
       }
     },
-    "feedback.help.stillHappening" : {
+    "feedback.help.solvedDontSend" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Still happening"
+            "value" : "Solved, don't send"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Noch nicht gelöst"
-          }
-        }
-      }
-    },
-    "feedback.help.stillSend" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Still send my feedback"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Feedback trotzdem senden"
+            "value" : "Gelöst, nicht senden"
           }
         }
       }
@@ -19251,6 +19370,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Für einen Teil deiner Nachricht haben wir keine verlässliche Antwort gefunden. Wir senden deine Nachricht."
+          }
+        }
+      }
+    },
+    "feedback.help.waiting" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Send feedback: your message is waiting"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feedback senden: Deine Nachricht liegt bereit"
           }
         }
       }

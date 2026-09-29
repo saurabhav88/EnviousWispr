@@ -8,6 +8,13 @@ import SwiftUI
 struct FeedbackToolbarButton: View {
   @State private var isPresented = false
   @Environment(SettingsManager.self) private var settings
+  @State private var submission = FeedbackSubmission.shared
+
+  /// Help cards are waiting behind a closed popover (#3275): the dot says the message is unsent.
+  private var isWaiting: Bool {
+    guard !isPresented, case .suggestions = submission.helpPhase else { return false }
+    return true
+  }
 
   var body: some View {
     Button {
@@ -27,11 +34,23 @@ struct FeedbackToolbarButton: View {
             .allowsHitTesting(false)
         )
         .settingsHoverRow(cornerRadius: 8)
+        .overlay(alignment: .topTrailing) {
+          if isWaiting {
+            Circle()
+              .fill(Color.stWarning)
+              .frame(width: 9, height: 9)
+              .overlay(Circle().strokeBorder(Color.stWindowBg, lineWidth: 1.5))
+              .offset(x: 3, y: -3)
+              .transition(.scale.combined(with: .opacity))
+              .allowsHitTesting(false)
+          }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isWaiting)
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)
-    .help(Self.title)
-    .accessibilityLabel(Self.title)
+    .help(isWaiting ? Self.waitingTitle : Self.title)
+    .accessibilityLabel(isWaiting ? Self.waitingTitle : Self.title)
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
       // Passed on explicitly: the form reads the usage-metrics switch (#3269).
       FeedbackForm { isPresented = false }
@@ -41,6 +60,11 @@ struct FeedbackToolbarButton: View {
 
   static var title: String {
     String(localized: "feedback.title", defaultValue: "Send feedback")
+  }
+
+  static var waitingTitle: String {
+    String(
+      localized: "feedback.help.waiting", defaultValue: "Send feedback: your message is waiting")
   }
 }
 
@@ -62,6 +86,8 @@ struct FeedbackForm: View {
   @State private var status: Status = .editing
   /// A saved report Sentry refused stays on this Mac; say so once when the form opens (#3269).
   @State private var hasUndeliverable = false
+  /// Back from the help cards through "Edit message": say the message was not sent (#3275).
+  @State private var showsUnsentNote = false
   /// The auto-close after "Thanks"; cancelled if the popover goes away first, so a quick reopen
   /// is never closed by the previous send.
   @State private var closeTask: Task<Void, Never>?
@@ -92,24 +118,26 @@ struct FeedbackForm: View {
       } else {
         switch submission.helpPhase {
         case .checking:
-          FeedbackHelpCheckingView().transition(.opacity)
+          FeedbackHelpCheckingView(message: message)
+            .transition(.opacity.combined(with: .scale(scale: 0.98)))
         case .suggestions(let suggestions):
           FeedbackHelpResultsView(
-            suggestions: suggestions, isSaving: submission.isSaving,
-            onSend: { finishHelp(solved: $0) }, onAllSolved: { endHelp(confirmed: $0) },
-            onClose: closeHelp
+            suggestions: suggestions, marks: submission.helpMarks, isSaving: submission.isSaving,
+            onMark: markHelp, onSend: { finishHelp(solved: $0) },
+            onAllSolved: { endHelp(confirmed: $0) }, onMinimize: onDone, onEdit: closeHelp
           )
           .id(submission.helpGeneration)
-          .transition(.opacity)
+          .transition(.opacity.combined(with: .scale(scale: 0.98)))
         case .idle:
           form.transition(.opacity)
         }
       }
     }
-    .frame(width: 400)
+    .frame(width: 480)
     .background(Color.stPageBg)
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: status)
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: submission.helpPhase)
+    .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.86), value: status)
+    .animation(
+      reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.86), value: submission.helpPhase)
     .onAppear {
       // A form kept alive between openings starts fresh: a save still finishing belongs to the
       // previous opening and changes nothing here (`presentation`).
@@ -118,19 +146,15 @@ struct FeedbackForm: View {
       closeTask = nil
       status = submission.isSaving ? .sending : .editing
       hasUndeliverable = false
+      showsUnsentNote = false
       message = draftStore.message
       email = draftStore.email
       focus = .message
       diagnosticsModel.open(usageMetrics: settings.shareUsageMetrics)
     }
     .onDisappear {
-      // Closing the popover on the help cards closes them too (#3275): nothing is sent, the
-      // draft is kept, and the shared check does not wait for an opening that is gone.
-      if case .suggestions = submission.helpPhase, let generation = submission.helpGeneration {
-        submission.dismissSuggestions(
-          generation: generation, from: presentation,
-          current: { .init(presentation: presentation, message: message, email: email) })
-      }
+      // Closing the popover on the help cards keeps them (#3275, founder 2026-09-29): nothing is
+      // sent, and the bug icon reopens the same cards with the same marks.
       presentation = UUID()
       closeTask?.cancel()
       diagnosticsModel.formDidClose()
@@ -156,6 +180,7 @@ struct FeedbackForm: View {
   private var form: some View {
     VStack(alignment: .leading, spacing: 14) {
       header
+      if showsUnsentNote { unsentNote.transition(.move(edge: .top).combined(with: .opacity)) }
       messageEditor
       emailField
       diagnosticsSection
@@ -196,6 +221,25 @@ struct FeedbackForm: View {
         .fixedSize(horizontal: false, vertical: true)
       }
     }
+  }
+
+  /// "Not sent yet": shown after leaving the help cards through "Edit message" (#3275).
+  private var unsentNote: some View {
+    Label {
+      Text(
+        String(
+          localized: "feedback.help.notSentYet",
+          defaultValue: "Not sent yet. Your message is still here.")
+      )
+      .font(.stHelper.weight(.semibold))
+      .foregroundStyle(.stTextPrimary)
+    } icon: {
+      Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Color.stWarning)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 9)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.stWarningSoft))
   }
 
   private var messageEditor: some View {
@@ -389,18 +433,17 @@ struct FeedbackForm: View {
 
   private var thanks: some View {
     VStack(spacing: 12) {
-      Image(systemName: "checkmark")
-        .font(.system(size: 22, weight: .bold))
-        .foregroundStyle(.white)
-        .frame(width: 52, height: 52)
-        .background(Circle().fill(Color.stSuccess))
-        .shadow(color: Color.stSuccess.opacity(0.35), radius: 8, y: 3)
-        .accessibilityHidden(true)
+      FeedbackDoneMark(isHelped: status == .helped).accessibilityHidden(true)
       Text(sentTitle)
         .font(.stRowTitle)
         .multilineTextAlignment(.center)
         .foregroundStyle(.stTextPrimary)
-      if status != .helped {
+      if status == .helped {
+        Text(
+          String(localized: "feedback.help.helped.detail", defaultValue: "Your feedback wasn't sent."))
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      } else {
         Text(
           String(
             localized: "feedback.sent.detail",
@@ -428,6 +471,7 @@ struct FeedbackForm: View {
     case .metricsChanged, .waitingForDiagnostics: return
     case .send(let snapshot): diagnostics = snapshot
     }
+    showsUnsentNote = false
     // The report is frozen here; edits typed while it saves are not what was sent.
     let sentMessage = message
     let sentEmail = email
@@ -492,7 +536,7 @@ struct FeedbackForm: View {
     }
   }
 
-  /// The cards' close button: back to the form with the draft as it is; nothing is sent.
+  /// The cards' "Edit message": back to the form with the draft as it is; nothing is sent.
   private func closeHelp() {
     guard let generation = submission.helpGeneration,
       submission.dismissSuggestions(
@@ -502,7 +546,14 @@ struct FeedbackForm: View {
     message = draftStore.message
     email = draftStore.email
     status = .editing
+    showsUnsentNote = true
     focus = .message
+  }
+
+  /// A concern marked solved or still happening on the cards; kept by the shared submission.
+  private func markHelp(_ issueID: String, solved: Bool) {
+    guard let generation = submission.helpGeneration else { return }
+    submission.setHelpMark(issueID, solved: solved, generation: generation)
   }
 
   /// Shows a save's outcome: the thank-you and auto-close, or the form's problem line.

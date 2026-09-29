@@ -90,6 +90,8 @@ public struct HelpCheckReply: Equatable, Sendable {
     public let id: String
     public let matchType: MatchType
     public let pageSlug: String?
+    /// The help page's title, for the card's title; nil from a server that does not send it.
+    public let pageTitle: String?
     public let sectionID: String?
     public let heading: String?
     public let text: String?
@@ -183,6 +185,7 @@ extension HelpCheckReply {
       let id: String
       let match_type: Result.MatchType
       let page_slug: String?
+      let page_title: String?
       let section_id: String?
       let heading: String?
       let text: String?
@@ -221,13 +224,14 @@ extension HelpCheckReply {
       let url = issue.url.flatMap(URL.init(string:))
       switch issue.match_type {
       case .none:
-        guard issue.page_slug == nil, issue.section_id == nil, issue.url == nil,
+        guard issue.page_slug == nil, issue.page_title == nil, issue.section_id == nil, issue.url == nil,
           deflection == nil, !issue.resolution_eligible, issue.requires_send
         else { return nil }
       case .page, .section:
         guard let slug = issue.page_slug, FeedbackHelpOutcome.Issue.isSlug(slug), deflection != nil,
           let raw = issue.url, url != nil,
-          (issue.heading?.count ?? 0) <= maxTextLength, (issue.text?.count ?? 0) <= maxTextLength
+          (issue.heading?.count ?? 0) <= maxTextLength, (issue.text?.count ?? 0) <= maxTextLength,
+          (issue.page_title?.count ?? 0) <= maxTextLength
         else { return nil }
         if issue.match_type == .section {
           guard let section = issue.section_id, section.hasPrefix(slug + "#"),
@@ -248,7 +252,7 @@ extension HelpCheckReply {
       results.append(
         Result(
           id: issue.id, matchType: issue.match_type, pageSlug: issue.page_slug,
-          sectionID: issue.section_id, heading: issue.heading, text: issue.text, url: url,
+          pageTitle: issue.page_title, sectionID: issue.section_id, heading: issue.heading, text: issue.text, url: url,
           deflection: deflection, resolutionEligible: issue.resolution_eligible,
           requiresSend: issue.requires_send, scores: issue.scores))
     }

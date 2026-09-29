@@ -75,9 +75,25 @@ public final class FeedbackSubmission {
     case suggestions(HelpCheckSuggestions)
   }
 
-  public private(set) var helpPhase: HelpPhase = .idle
+  public private(set) var helpPhase: HelpPhase = .idle {
+    didSet { if helpPhase == .idle || oldValue == .checking { helpMarks = [] } }
+  }
   /// The check the cards on screen belong to. An action from an older check is ignored.
   public var helpGeneration: UUID? { frozen?.generation }
+
+  /// The concerns marked solved on the cards now on offer. Kept here, not in the view, so the
+  /// popover can close and reopen from the bug icon with the same marks; cleared when the cards
+  /// go away or a new check starts.
+  public private(set) var helpMarks: Set<String> = []
+
+  /// Marks one concern solved or still happening. Ignored unless the cards on offer are from
+  /// `generation` and that concern may be marked solved.
+  public func setHelpMark(_ issueID: String, solved: Bool, generation: UUID) {
+    guard case .suggestions(let suggestions) = helpPhase, frozen?.generation == generation,
+      suggestions.canMarkSolved(issueID)
+    else { return }
+    if solved { helpMarks.insert(issueID) } else { helpMarks.remove(issueID) }
+  }
 
   /// What Send did.
   public enum SendStep: Equatable, Sendable {

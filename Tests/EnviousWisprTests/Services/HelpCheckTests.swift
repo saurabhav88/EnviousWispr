@@ -210,6 +210,22 @@ struct HelpCheckTests {
         == "https://enviouswispr.com/help/toggle-mode/#turning-it-on")
     #expect(reply.coverage == 0.9)
     #expect(reply.versions?.kb == "72134d105fb3")
+    // A server that does not send page titles still decodes; the card falls back to the heading.
+    #expect(reply.results.map(\.pageTitle) == [nil, nil, nil])
+  }
+
+  @Test("A page title travels with a match, and a title on an unmatched concern is refused")
+  func pageTitle() throws {
+    var section = Self.section("i0")
+    section["page_title"] = "Toggle Mode"
+    var page = Self.page("i1")
+    page["page_title"] = "Paste Not Working"
+    let reply = try #require(
+      HelpCheckReply.decode(Self.reply([section, page], suppression: false), expectedIssues: 2))
+    #expect(reply.results.map(\.pageTitle) == ["Toggle Mode", "Paste Not Working"])
+    var none = Self.none("i0")
+    none["page_title"] = "Toggle Mode"
+    #expect(HelpCheckReply.decode(Self.reply([none], suppression: false), expectedIssues: 1) == nil)
   }
 
   @Test(
@@ -698,6 +714,34 @@ struct HelpCheckTests {
       submission.endWithAllSolved(confirmed: ["i0"], generation: generation, from: b, current: onScreenB))
     #expect(recorder.saves.isEmpty)
     #expect(store.message == "")
+  }
+
+  @Test("Solved marks outlive a closed popover, take only markable concerns, and clear with the cards")
+  @MainActor
+  func marksResume() async throws {
+    let (store, suite) = Self.makeStore()
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let recorder = RecordingSave()
+    let a = UUID()
+    let b = UUID()
+    let message = "Keybind broke."
+    let submission = try await Self.withCards(store, recorder, message: message, presentation: a)
+    let generation = try #require(submission.helpGeneration)
+    #expect(submission.helpMarks.isEmpty)
+    submission.setHelpMark("i0", solved: true, generation: generation)
+    submission.setHelpMark("i9", solved: true, generation: generation)
+    submission.setHelpMark("i0", solved: false, generation: UUID())
+    #expect(submission.helpMarks == ["i0"], "unknown concerns and older checks change nothing")
+    // Opening A closed with the cards up; opening B, reopened from the bug icon, sees the marks
+    // and can end the report with them.
+    let onScreenB: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
+      .init(presentation: b, message: message, email: "")
+    }
+    #expect(
+      submission.endWithAllSolved(
+        confirmed: submission.helpMarks, generation: generation, from: b, current: onScreenB))
+    #expect(submission.helpMarks.isEmpty)
+    #expect(recorder.saves.isEmpty)
   }
 
   @Test("Every concern marked solved but the list not confirmed complete: sent, and recorded as solved")
