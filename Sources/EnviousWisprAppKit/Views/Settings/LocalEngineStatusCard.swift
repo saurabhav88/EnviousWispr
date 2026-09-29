@@ -186,8 +186,8 @@ struct LocalEngineStatusCard: View {
           Spacer()
           if presentation.showsRemove {
             Button("Remove Model") { onRemove() }
-            .buttonStyle(.borderless)
-            .font(.stHelper)
+              .buttonStyle(.borderless)
+              .font(.stHelper)
           }
         }
       }
@@ -251,8 +251,8 @@ struct LocalEngineStatusCard: View {
       }
       if presentation.showsRemove {
         Button("Remove Model") { onRemove() }
-        .buttonStyle(.borderless)
-        .font(.stHelper)
+          .buttonStyle(.borderless)
+          .font(.stHelper)
       }
     }
   }
@@ -368,9 +368,9 @@ struct LocalEngineStatusCard: View {
     case .network:
       return String(
         localized:
-          "Could not download the model from models.enviouslabs.co. Check your connection. On a managed network, ask IT to allow this domain.",
+          "Could not download the model. Check your connection. On a managed network, ask IT whether models.enviouswispr.com is allowed.",
         comment:
-          "AI Polish, local model card: why the model download failed. Keep models.enviouslabs.co exactly; it is a web address."
+          "AI Polish, local model card: why the model download failed. Keep models.enviouswispr.com exactly; it is a web address."
       )
     case .checksum:
       return String(
