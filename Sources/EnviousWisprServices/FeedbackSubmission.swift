@@ -46,10 +46,150 @@ public final class FeedbackSubmission {
 
   public let store: FeedbackDraftStore
   private let save: Save
+  /// The in-app help check (#3275), when this Mac runs one; nil sends directly.
+  public var helpCheck: HelpCheck?
 
-  public init(store: FeedbackDraftStore, save: @escaping Save) {
+  public init(store: FeedbackDraftStore, save: @escaping Save, helpCheck: HelpCheck? = nil) {
     self.store = store
     self.save = save
+    self.helpCheck = helpCheck
+  }
+
+  // MARK: - Help check (#3275)
+
+  /// Where the help check stands. Shared by every opening, like `isSaving`.
+  public enum HelpPhase: Equatable, Sendable {
+    case idle
+    /// Send was pressed and the check is running; nothing is sent yet.
+    case checking
+    /// Cards are on offer; the report waits for the user.
+    case suggestions(HelpCheckSuggestions)
+  }
+
+  public private(set) var helpPhase: HelpPhase = .idle
+  /// The check the cards on screen belong to. An action from an older check is ignored.
+  public var helpGeneration: UUID? { frozen?.generation }
+
+  /// What Send did.
+  public enum SendStep: Equatable, Sendable {
+    /// The report was saved (or not); the outcome, or nil when the sending opening closed.
+    /// `splitFailure` is why the on-device split was skipped, when it was (for counting).
+    case sent(FeedbackReporter.Outcome?, splitFailure: FeedbackHelpOutcome.FailureReason? = nil)
+    /// Cards are on offer; call `finishSuggestions` or `endWithAllSolved`.
+    case suggestions(HelpCheckSuggestions)
+    /// A check or save is already running; nothing happened.
+    case busy
+  }
+
+  /// The report frozen at Send: the words, email and diagnostics exactly as sent. Later edits go
+  /// to the draft through `recordEdit` and never reach this report.
+  private struct Frozen {
+    let draft: FeedbackDraft
+    let diagnostics: FeedbackDiagnosticsSnapshot?
+    let sent: (message: String, email: String)
+    let generation: UUID
+  }
+  private var frozen: Frozen?
+
+  /// Send with the help check when one is set, else save directly. A check that fails, times out
+  /// or has nothing to show saves the report as written.
+  public func send(
+    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
+    from presentation: UUID, sent: (message: String, email: String),
+    current: @MainActor () -> FormState
+  ) async -> SendStep {
+    guard !isSaving, helpPhase == .idle else { return .busy }
+    guard let helpCheck else {
+      return .sent(
+        await submit(draft, diagnostics: diagnostics, from: presentation, sent: sent, current: current))
+    }
+    let generation = UUID()
+    frozen = Frozen(draft: draft, diagnostics: diagnostics, sent: sent, generation: generation)
+    sender = presentation
+    helpPhase = .checking
+    let conclusion = await helpCheck.run(draft.message)
+    // Only this generation's result may move the state; anything else is stale.
+    guard let held = frozen, held.generation == generation, helpPhase == .checking else {
+      return .busy
+    }
+    switch conclusion {
+    case .suggestions(let suggestions):
+      helpPhase = .suggestions(suggestions)
+      return .suggestions(suggestions)
+    case .send(let outcome, let splitFailure):
+      helpPhase = .idle
+      frozen = nil
+      return .sent(
+        await saveFrozen(held, outcome: outcome, from: presentation, current: current),
+        splitFailure: splitFailure)
+    }
+  }
+
+  /// Whether an action comes from the cards now on screen: this check, from the opening that is
+  /// showing them. A press from an older check or a closed opening changes nothing.
+  private func isCurrent(generation: UUID, from presentation: UUID, current: FormState) -> Bool {
+    frozen?.generation == generation && current.presentation == presentation
+  }
+
+  /// The user pressed Send on the cards: `solved` holds the concerns they marked solved (the rest
+  /// are still happening), and the report is saved as frozen at Send.
+  public func finishSuggestions(
+    solved: Set<String>, generation: UUID, from presentation: UUID,
+    current: @MainActor () -> FormState
+  ) async -> FeedbackReporter.Outcome? {
+    guard case .suggestions(let suggestions) = helpPhase, let held = frozen,
+      isCurrent(generation: generation, from: presentation, current: current())
+    else { return nil }
+    helpPhase = .idle
+    frozen = nil
+    return await saveFrozen(
+      held, outcome: suggestions.outcome(solved: solved), from: presentation,
+      current: current)
+  }
+
+  /// The user closed the cards without sending: nothing is saved and the draft stays as it is, to
+  /// edit or send again. Returns whether the cards were closed.
+  @discardableResult
+  public func dismissSuggestions(
+    generation: UUID, from presentation: UUID, current: @MainActor () -> FormState
+  ) -> Bool {
+    guard case .suggestions = helpPhase,
+      isCurrent(generation: generation, from: presentation, current: current())
+    else { return false }
+    helpPhase = .idle
+    frozen = nil
+    return true
+  }
+
+  /// The user confirmed every concern solved: nothing is sent and the draft is settled as if
+  /// saved. Refused (false) unless the check allows it, `confirmed` names every concern, each can
+  /// be marked solved, and `generation` is the current check's.
+  @discardableResult
+  public func endWithAllSolved(
+    confirmed: Set<String>, generation: UUID, from presentation: UUID,
+    current: @MainActor () -> FormState
+  ) -> Bool {
+    let now = current()
+    guard case .suggestions(let suggestions) = helpPhase, suggestions.suppressionAllowed,
+      let held = frozen, isCurrent(generation: generation, from: presentation, current: now),
+      confirmed == suggestions.issueIDs, confirmed.allSatisfy(suggestions.canMarkSolved)
+    else { return false }
+    helpPhase = .idle
+    frozen = nil
+    store.settleAfterSave(
+      saved: true, isSendingFormOnScreen: now.presentation == presentation,
+      form: (now.message, now.email), sent: held.sent)
+    completions += 1
+    return true
+  }
+
+  private func saveFrozen(
+    _ held: Frozen, outcome: FeedbackHelpOutcome, from presentation: UUID,
+    current: @MainActor () -> FormState
+  ) async -> FeedbackReporter.Outcome? {
+    await submit(
+      held.draft, diagnostics: held.diagnostics, helpOutcome: outcome, from: presentation,
+      sent: held.sent, current: current)
   }
 
   /// Saves one report. `current` is read when the save finishes: the opening on screen then and
@@ -62,7 +202,7 @@ public final class FeedbackSubmission {
     from presentation: UUID, sent: (message: String, email: String),
     current: @MainActor () -> FormState
   ) async -> FeedbackReporter.Outcome? {
-    guard !isSaving else { return nil }
+    guard !isSaving, helpPhase == .idle else { return nil }
     isSaving = true
     sender = presentation
     let outcome = await save(draft, diagnostics, helpOutcome)

@@ -232,6 +232,8 @@ struct FeedbackSenderTests {
     #expect(make(.fallbackSent, nil, .decomposed, 0, []) == nil)
     #expect(make(.stillSent, nil, .wholeMessageAlwaysSend, 1, [section(0), section(1)]) == nil)
     #expect(make(.partialSent, nil, .decomposed, 1, [section(0)]) == nil)
+    // Every concern solved and still sent (the list could not be confirmed complete) is partial.
+    #expect(make(.partialSent, nil, .decomposed, 1, [solved]) != nil)
     // Solved exists only where the form offers it: a decomposed check that reached its cards.
     #expect(make(.stillSent, nil, .decomposed, 1, [solved]) != nil)
     #expect(make(.stillSent, nil, .wholeMessageAlwaysSend, 1, [solved]) == nil)

@@ -15,10 +15,9 @@ public struct FeedbackHelpOutcome: Codable, Equatable, Sendable {
   public enum TerminalOutcome: String, Codable, Sendable {
     /// Cards were shown and the user sent the report without marking everything solved.
     case stillSent = "still_sent"
-    /// Some concerns were marked solved; the rest were sent.
+    /// Some, or all, concerns were marked solved and the report was still sent: all solved is sent
+    /// when the check could not confirm the list was complete (coverage or overflow).
     case partialSent = "partial_sent"
-    /// The user closed the suggestions and the report was sent.
-    case dismissedSent = "dismissed_sent"
     /// The check could not run or failed; the report was sent as written.
     case fallbackSent = "fallback_sent"
   }
@@ -215,9 +214,7 @@ public struct FeedbackHelpOutcome: Codable, Equatable, Sendable {
       mode == .decomposed || !issues.contains { $0.resolution == .solved },
       terminalOutcome != .fallbackSent
         || (shownCardCount == 0 && !issues.contains { $0.resolution == .solved }),
-      terminalOutcome != .partialSent
-        || (issues.contains { $0.resolution == .solved }
-          && issues.contains { $0.resolution != .solved })
+      terminalOutcome != .partialSent || issues.contains(where: { $0.resolution == .solved })
     else { return nil }
     self.schemaVersion = Self.schemaVersion
     self.terminalOutcome = terminalOutcome
