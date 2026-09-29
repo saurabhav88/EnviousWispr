@@ -72,21 +72,26 @@ public enum FeedbackReporter {
   }
 
   /// Saves the report. `diagnostics` is the file the user previewed and chose to include; nil
-  /// saves the message alone.
+  /// saves the message alone. `helpOutcome` is what the in-app help check did (#3275), frozen with
+  /// the report; nil when no check ran.
   public static func send(
-    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot? = nil
+    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot? = nil,
+    helpOutcome: FeedbackHelpOutcome? = nil
   ) async -> Outcome {
-    await send(draft, diagnostics: diagnostics, outbox: .shared, now: Date(), id: UUID())
+    await send(
+      draft, diagnostics: diagnostics, helpOutcome: helpOutcome, outbox: .shared, now: Date(),
+      id: UUID())
   }
 
   static func send(
-    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?, outbox: FeedbackOutbox,
-    now: Date, id: UUID, context: FeedbackRecord.Context = .current
+    _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
+    helpOutcome: FeedbackHelpOutcome? = nil, outbox: FeedbackOutbox, now: Date, id: UUID,
+    context: FeedbackRecord.Context = .current
   ) async -> Outcome {
     let record = FeedbackRecord(
       id: id, submittedAt: now, message: draft.message, email: draft.email,
       attachment: diagnostics?.data, context: context, attempts: 0, nextAttemptAt: nil,
-      state: .pending, rejectedStatus: nil)
+      state: .pending, rejectedStatus: nil, helpOutcome: helpOutcome)
     switch await outbox.enqueue(record) {
     case .saved(let offline): return .saved(offline: offline)
     case .full: return .full

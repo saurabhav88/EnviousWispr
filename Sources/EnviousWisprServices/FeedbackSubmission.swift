@@ -16,7 +16,9 @@ public final class FeedbackSubmission {
   private static func makeShared() -> FeedbackSubmission {
     FeedbackSubmission(
       store: FeedbackDraftStore(),
-      save: { draft, diagnostics in await FeedbackReporter.send(draft, diagnostics: diagnostics) })
+      save: { draft, diagnostics, helpOutcome in
+        await FeedbackReporter.send(draft, diagnostics: diagnostics, helpOutcome: helpOutcome)
+      })
   }
 
   /// What the form on screen shows when a save finishes.
@@ -32,7 +34,8 @@ public final class FeedbackSubmission {
   }
 
   public typealias Save =
-    @MainActor (FeedbackDraft, FeedbackDiagnosticsSnapshot?) async -> FeedbackReporter.Outcome
+    @MainActor (FeedbackDraft, FeedbackDiagnosticsSnapshot?, FeedbackHelpOutcome?) async ->
+      FeedbackReporter.Outcome
 
   /// True from Send until the save has an outcome and the draft is settled.
   public private(set) var isSaving = false
@@ -52,15 +55,17 @@ public final class FeedbackSubmission {
   /// Saves one report. `current` is read when the save finishes: the opening on screen then and
   /// its words. Returns the outcome for the sending opening, or nil when that opening has closed
   /// (another opening reconciles through `completions`). Nil also when a save is already running.
+  /// `helpOutcome` is frozen into the report as passed; nil when no help check ran (#3275).
   public func submit(
     _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
+    helpOutcome: FeedbackHelpOutcome? = nil,
     from presentation: UUID, sent: (message: String, email: String),
     current: @MainActor () -> FormState
   ) async -> FeedbackReporter.Outcome? {
     guard !isSaving else { return nil }
     isSaving = true
     sender = presentation
-    let outcome = await save(draft, diagnostics)
+    let outcome = await save(draft, diagnostics, helpOutcome)
     let now = current()
     let saved: Bool
     if case .saved = outcome { saved = true } else { saved = false }
