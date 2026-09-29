@@ -100,15 +100,36 @@ struct FeedbackSubmissionTests {
     store.save(message: "first report", email: "")
 
     let (_, task) = await Self.sendThenReopen(submission, held, screen, words: "first report")
-    // Typing in the reopened form saves each keystroke to the store, as the view does.
+    // The reopened form's production edit path, then the save completes at once.
     screen.message = "a second thought"
-    store.save(message: "a second thought", email: "")
+    submission.recordEdit(message: "a second thought", email: "")
 
     held.finish(.saved(offline: false))
     _ = await task.value
     let words = try #require(submission.reconciledDraft(for: screen.presentation))
     #expect(words.message == "a second thought")
     #expect(store.message == "a second thought")
+  }
+
+  @Test("An email typed in the reopened form while saving is kept")
+  func newerEmailKept() async throws {
+    let (store, suite) = Self.makeStore()
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let held = HeldSave()
+    let submission = FeedbackSubmission(store: store, save: held.save)
+    let screen = Screen()
+    store.save(message: "first report", email: "")
+
+    let (_, task) = await Self.sendThenReopen(submission, held, screen, words: "first report")
+    screen.message = "first report"
+    screen.email = "me@example.com"
+    submission.recordEdit(message: "first report", email: "me@example.com")
+
+    held.finish(.saved(offline: false))
+    _ = await task.value
+    let words = try #require(submission.reconciledDraft(for: screen.presentation))
+    #expect(words.message == "first report")
+    #expect(words.email == "me@example.com")
   }
 
   @Test("A failed save keeps the words for the reopened form")

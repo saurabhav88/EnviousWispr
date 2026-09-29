@@ -124,9 +124,6 @@ struct FeedbackForm: View {
     .onChange(of: settings.shareUsageMetrics) { _, metrics in
       diagnosticsModel.usageMetricsChanged(to: metrics)
     }
-    // Every keystroke is kept, so closing the popover, the window or the app loses nothing.
-    .onChange(of: message) { _, _ in if !isSent { draftStore.save(message: message, email: email) } }
-    .onChange(of: email) { _, _ in if !isSent { draftStore.save(message: message, email: email) } }
     .task { hasUndeliverable = await FeedbackReporter.hasUndeliverableReports() }
   }
 
@@ -178,7 +175,7 @@ struct FeedbackForm: View {
   }
 
   private var messageEditor: some View {
-    TextEditor(text: $message)
+    TextEditor(text: messageBinding)
       .font(.stBody)
       .scrollContentBackground(.hidden)
       .focused($focus, equals: .message)
@@ -220,7 +217,7 @@ struct FeedbackForm: View {
         String(
           localized: "feedback.email.placeholder",
           defaultValue: "Email (optional, if you'd like a reply)"),
-        text: $email
+        text: emailBinding
       )
       .textFieldStyle(.plain)
       .font(.stBody)
@@ -432,6 +429,27 @@ struct FeedbackForm: View {
         status = .unavailable
       }
     }
+  }
+
+  // Every keystroke is saved at once through the binding (not a later `onChange`), so a save that
+  // finishes mid-edit reconciles against the words already typed, and a reconcile that sets the
+  // words programmatically writes nothing back (#3269).
+  private var messageBinding: Binding<String> {
+    Binding(
+      get: { message },
+      set: { value in
+        message = value
+        if !isSent { submission.recordEdit(message: value, email: email) }
+      })
+  }
+
+  private var emailBinding: Binding<String> {
+    Binding(
+      get: { email },
+      set: { value in
+        email = value
+        if !isSent { submission.recordEdit(message: message, email: value) }
+      })
   }
 
   private var isSent: Bool {

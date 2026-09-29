@@ -72,6 +72,12 @@ public final class FeedbackSubmission {
     return onScreen ? outcome : nil
   }
 
+  /// The form's edit path: every keystroke of the message or email is saved to the draft at once,
+  /// so a save finishing mid-edit settles against the words already typed.
+  public func recordEdit(message: String, email: String) {
+    store.save(message: message, email: email)
+  }
+
   /// For an opening that did not send: the words to show once a save finished, from the saved
   /// draft. Nil for the sending opening, which already has its outcome.
   public func reconciledDraft(for presentation: UUID) -> (message: String, email: String)? {
