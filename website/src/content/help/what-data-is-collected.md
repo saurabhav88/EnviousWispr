@@ -6,7 +6,7 @@ section: "Privacy"
 order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "turn off", "tracking", "crash reports", "usage metrics", "diagnostics"]
 related: ["privacy-overview"]
-updated: 2026-09-28
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
 EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Your audio never reaches Envious Labs, the company that makes the app, and the app never sends us your dictations or transcripts unless you include them in a feedback report yourself.
@@ -28,9 +28,10 @@ The app also keeps a short diagnostics diary here, described below. It stays on 
 None of these is ever attached to feedback. Anything you type into a feedback report yourself is covered below.
 
 - Your audio
-- Your dictations and transcripts, before or after polish
-- Your custom words
-- The text around your cursor
+- Your dictations and transcripts, before or after polish, including files you transcribe
+- Your History
+- Your custom words and snippets
+- The text around your cursor, or anything else on your screen
 - Your API keys
 - Your name or email address, unless you choose to include either in a feedback report (below)
 
@@ -39,6 +40,16 @@ None of these is ever attached to feedback. Anything you type into a feedback re
 The app collects anonymous usage and crash data. That data shows whether a release broke dictation on a particular macOS version, or whether anyone ever opens a setting that took a month to build. Both are on by default, and you can turn either one off.
 
 The app records how you use it, never what you said. There is no account, and nothing in the data names you, although each installation gets a random ID so that one Mac counts as one user. The privacy policy has the full detail.
+
+### Check it yourself
+
+EnviousWispr is open source, so you do not have to take our word for any of this. The code that decides what leaves your Mac is public:
+
+- [`ObservabilityBootstrap.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/ObservabilityBootstrap.swift) starts or skips the usage and crash-reporting services, depending on the two switches below.
+- [`TelemetryService.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/TelemetryService.swift) builds the usage events the app sends. The PostHog library adds its standard lifecycle events: app installed or updated, opened, and moved to the background.
+- [`SentryEventSanitizer.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprObservabilityCore/SentryEventSanitizer.swift) removes text, email addresses, API keys, and your Mac user name from crash reports before they are sent.
+
+You can also watch the traffic with a network monitor. Usage data goes to PostHog (`us.i.posthog.com`) and crash reports go to Sentry (an `ingest.us.sentry.io` address). With a switch off, the app stops sending anything to that service, as the table below describes.
 
 ### Turning usage data or crash reports off
 

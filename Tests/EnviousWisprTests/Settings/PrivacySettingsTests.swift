@@ -83,10 +83,18 @@ struct PrivacySettingsTests {
     #expect(PrivacySettingsCopy.metricsLabel == "Share usage metrics")
     #expect(
       PrivacySettingsCopy.metricsHelp
-        == "Anonymous counts and timings that show me when a release breaks dictation. Never audio or text. Stops collecting right away."
-    )
+        == "Anonymous performance data and error counts to help us catch broken updates.")
     #expect(PrivacySettingsCopy.crashLabel == "Send crash reports")
-    #expect(PrivacySettingsCopy.crashHelp == "Details about crashes and errors so I can fix them.")
+    #expect(PrivacySettingsCopy.crashHelp == "Stack traces and diagnostic details to help us fix crashes.")
+    #expect(
+      PrivacySettingsCopy.promise
+        == "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or anything on your screen. The only words that reach us are feedback you choose to send."
+    )
+    #expect(
+      PrivacySettingsCopy.openSource
+        == "EnviousWispr is open source, so you can check exactly what we send.")
+    #expect(PrivacySettingsCopy.learnMoreLabel == "See what we collect")
+    #expect(PrivacySettingsCopy.learnMoreURL == "https://enviouswispr.com/help/what-data-is-collected/")
     #expect(PrivacySettingsCopy.restartNotice == "Takes effect when EnviousWispr restarts")
     #expect(PrivacySettingsCopy.restartAction == "Restart now")
   }

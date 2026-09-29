@@ -88,6 +88,26 @@ struct PermissionsSettingsView: View {
       }
 
       BrandedSection(header: "Privacy") {
+        // The promise is stated once for the section, so each switch says only what it sends.
+        BrandedRow {
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "lock.shield")
+            VStack(alignment: .leading, spacing: 6) {
+              Text(PrivacySettingsCopy.promise)
+                .settingsReadingCopy()
+              Text(PrivacySettingsCopy.openSource)
+                .settingsReadingCopy()
+              Link(destination: URL(string: PrivacySettingsCopy.learnMoreURL)!) {
+                HStack(spacing: 4) {
+                  Text(PrivacySettingsCopy.learnMoreLabel)
+                  Image(systemName: "arrow.up.right")
+                }
+                .font(.stHelper)
+              }
+              .foregroundStyle(.stAccent)
+            }
+          }
+        }
         BrandedRow {
           HStack(alignment: .top, spacing: 11) {
             SettingsRowIcon(systemName: "chart.bar")
@@ -142,13 +162,31 @@ struct PermissionsSettingsView: View {
 /// The Privacy section's words (#3269), one owner so the view and its tests read the same
 /// localized values. English is the catalog key, as elsewhere in Settings.
 enum PrivacySettingsCopy {
+  /// The help article that lists exactly what each switch sends.
+  static let learnMoreURL = "https://enviouswispr.com/help/what-data-is-collected/"
+  static var promise: String {
+    String(
+      localized:
+        "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or anything on your screen. The only words that reach us are feedback you choose to send.",
+      comment: "Permissions settings, Privacy: the section's privacy promise, above both switches.")
+  }
+  static var openSource: String {
+    String(
+      localized: "EnviousWispr is open source, so you can check exactly what we send.",
+      comment: "Permissions settings, Privacy: line before the link to the data help article.")
+  }
+  static var learnMoreLabel: String {
+    String(
+      localized: "See what we collect",
+      comment: "Permissions settings, Privacy: link to the What Data Is Collected help article.")
+  }
   static var metricsLabel: String {
     String(localized: "Share usage metrics", comment: "Permissions settings, Privacy: switch label.")
   }
   static var metricsHelp: String {
     String(
       localized:
-        "Anonymous counts and timings that show me when a release breaks dictation. Never audio or text. Stops collecting right away.",
+        "Anonymous performance data and error counts to help us catch broken updates.",
       comment: "Permissions settings, Privacy: explains the usage metrics switch.")
   }
   static var crashLabel: String {
@@ -156,7 +194,7 @@ enum PrivacySettingsCopy {
   }
   static var crashHelp: String {
     String(
-      localized: "Details about crashes and errors so I can fix them.",
+      localized: "Stack traces and diagnostic details to help us fix crashes.",
       comment: "Permissions settings, Privacy: explains the crash reports switch.")
   }
   static var restartNotice: String {

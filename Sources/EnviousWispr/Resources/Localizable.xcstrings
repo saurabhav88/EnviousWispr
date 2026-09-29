@@ -2665,13 +2665,13 @@
         }
       }
     },
-    "Anonymous counts and timings that show me when a release breaks dictation. Never audio or text. Stops collecting right away." : {
+    "Anonymous performance data and error counts to help us catch broken updates." : {
       "comment" : "Permissions settings, Privacy: explains the usage metrics switch.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anonyme Zählwerte und Zeitmessungen, die mir zeigen, wenn eine neue Version das Diktieren beeinträchtigt. Niemals Audio oder Text. Die Erfassung stoppt sofort."
+            "value" : "Anonyme Leistungsdaten und Fehlerzahlen, die uns helfen, fehlerhafte Updates zu erkennen."
           }
         }
       }
@@ -5348,17 +5348,6 @@
         }
       }
     },
-    "Details about crashes and errors so I can fix them." : {
-      "comment" : "Permissions settings, Privacy: explains the crash reports switch.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Details zu Abstürzen und Fehlern, damit ich sie beheben kann."
-          }
-        }
-      }
-    },
     "Detected %@" : {
       "comment" : "VoiceOver announcement from the recording overlay: a language was detected. %@ is the language name.",
       "localizations" : {
@@ -6280,6 +6269,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr befindet sich jetzt in deinem Ordner „Programme“."
+          }
+        }
+      }
+    },
+    "EnviousWispr is open source, so you can check exactly what we send." : {
+      "comment" : "Permissions settings, Privacy: line before the link to the data help article.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr ist Open Source, du kannst also genau prüfen, was wir senden."
           }
         }
       }
@@ -13329,6 +13329,17 @@
         }
       }
     },
+    "See what we collect" : {
+      "comment" : "Permissions settings, Privacy: link to the What Data Is Collected help article.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sieh dir an, was wir erfassen"
+          }
+        }
+      }
+    },
     "See your words on screen while you are still speaking." : {
       "comment" : "Settings: the one-line description under a page title.",
       "localizations" : {
@@ -14212,6 +14223,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tabellendateien werden noch nicht unterstützt."
+          }
+        }
+      }
+    },
+    "Stack traces and diagnostic details to help us fix crashes." : {
+      "comment" : "Permissions settings, Privacy: explains the crash reports switch.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stacktraces und Diagnosedetails, die uns helfen, Abstürze zu beheben."
           }
         }
       }
@@ -17341,6 +17363,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wir nutzen den Zugriff auf Bedienungshilfen nur, wenn wir dein Diktat einfügen. Wir lesen damit keine Tastatureingaben und beobachten keine anderen Apps."
+          }
+        }
+      }
+    },
+    "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or anything on your screen. The only words that reach us are feedback you choose to send." : {
+      "comment" : "Permissions settings, Privacy: the section's privacy promise, above both switches.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Privatsphäre ist uns wichtig. Wir erfassen niemals deine Audioaufnahmen, diktierten oder transkribierten Text, deinen Verlauf, deine Textbausteine, Wörter aus deinem Wörterbuch, API-Schlüssel oder irgendetwas auf deinem Bildschirm. Die einzigen Wörter, die uns erreichen, stammen aus Feedback, das du selbst sendest."
           }
         }
       }
