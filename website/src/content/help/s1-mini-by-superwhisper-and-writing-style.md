@@ -7,6 +7,7 @@ order: 4
 keywords: ["s1-mini", "s1 mini", "superwhisper", "writing style", "tone", "casual", "formal", "lists", "prose", "email", "context", "lightweight", "small model", "8 gb mac", "on-device polish"]
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "model-downloads-and-management", "using-ollama-for-fully-offline-ai-polish"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 S1-mini is a small open model made by Superwhisper for one job: tidying up dictated text. EnviousWispr offers it as a second on-device polish option beside EG-1. It runs entirely on your Mac, it is free, and there is no API key to manage. Open **Settings**, then **AI Polish**, and pick **S1-mini** to use it.
 

@@ -7,6 +7,7 @@ order: 6
 keywords: ["uninstall", "remove", "delete", "get rid of it", "clean up", "free up space", "leftover files", "models taking up space"]
 related: ["model-downloads-and-management"]
 updated: 2026-09-05
+deflection: "never_intervene"
 ---
 Removing the app involves two parts: deleting the application itself, and deleting the support files it saved on your Mac.
 

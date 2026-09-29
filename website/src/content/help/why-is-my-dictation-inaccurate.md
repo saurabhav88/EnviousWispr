@@ -7,6 +7,7 @@ order: 2
 keywords: ["inaccurate", "wrong words", "typos", "bad accuracy", "not accurate", "gets my words wrong", "misheard", "poor quality", "garbled", "names spelled wrong", "improve accuracy"]
 related: ["adding-custom-words", "choosing-your-microphone"]
 updated: 2026-09-01
+deflection: "show_but_always_send"
 ---
 Dictation accuracy drops when the audio is weak, the input microphone is the wrong one, the language setting does not match your speech, or the engine meets an unfamiliar word. Work through these steps in order to improve accuracy.
 

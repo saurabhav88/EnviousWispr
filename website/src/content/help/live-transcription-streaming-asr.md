@@ -7,6 +7,7 @@ order: 4
 keywords: ["live transcription", "live", "live text", "real time", "realtime", "streaming", "as you talk", "write while i talk", "text appears while speaking", "faster transcription"]
 seeAlso: "live-transcription-that-keeps-up-with-you"
 updated: 2026-08-06
+deflection: "can_resolve"
 ---
 EnviousWispr normally writes your text once you stop talking. Faster Transcription, which was called Live transcription until recently, writes it while you are still speaking, and it is off unless you turn it on.
 

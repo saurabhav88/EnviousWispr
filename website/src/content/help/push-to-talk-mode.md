@@ -7,6 +7,7 @@ order: 1
 keywords: ["push to talk", "hold to talk", "hold the key", "ptt", "press and hold", "default mode", "recording mode"]
 related: ["customizing-your-keybind", "first-word-gets-cut-off", "escape-recovery"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 Push-to-talk is the default recording mode. You hold your keybind down for as long as you are speaking. Letting go ends the recording, and your transcribed words appear at your cursor once EnviousWispr has worked out what you said.
 

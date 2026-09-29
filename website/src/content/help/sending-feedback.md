@@ -7,6 +7,7 @@ order: 9
 keywords: ["send feedback", "feedback", "report a bug", "bug report", "bug button", "ladybug", "feature request", "contact", "support", "reply", "suggestion", "include diagnostics", "diagnostics"]
 related: ["what-data-is-collected", "source-code-and-contributing", "app-crashes-or-asr-engine-crashes", "privacy-overview"]
 updated: 2026-09-28
+deflection: "never_intervene"
 ---
 Found a bug or have an idea? You can tell us from inside EnviousWispr. The message reaches the team directly, and we read every one.
 

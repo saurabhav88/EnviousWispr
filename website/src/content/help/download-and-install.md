@@ -8,6 +8,7 @@ keywords: ["install", "download", "setup", "get started", "dmg", "first time", "
 related: ["system-requirements", "granting-permissions-microphone-accessibility-and-automation", "your-first-dictation"]
 seeAlso: "getting-started-enviouswispr-under-2-minutes"
 updated: 2026-09-27
+deflection: "can_resolve"
 ---
 EnviousWispr is a free, open-source dictation app for macOS. Installing it takes about two minutes, and there is no account to create and no subscription to start.
 

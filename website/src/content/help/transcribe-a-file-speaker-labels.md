@@ -7,6 +7,7 @@ order: 9
 keywords: ["speaker labels", "speakers", "who said what", "Speaker 1", "Speaker 2", "rename speaker", "Both", "Not fully polished", "transcribe a file", "diarization", "two people", "interview", "meeting recording", "podcast"]
 related: ["transcribe-a-file", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "ai-polish-and-cloud-data"]
 updated: 2026-09-13
+deflection: "show_but_always_send"
 ---
 When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/) and the app can tell the voices apart and match the words to them, the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. A turn also shows the time in the recording where it starts, when the app has a time for it and **Times** is on. A recording with one voice comes back as plain text with no labels.
 

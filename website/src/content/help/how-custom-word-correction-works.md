@@ -7,6 +7,7 @@ order: 2
 keywords: ["how correction works", "why didnt my word work", "fuzzy match", "sounds like", "replacement rules"]
 related: ["adding-custom-words", "using-snippets"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 When you teach EnviousWispr a custom word, you give it one correct spelling, and it then recognises the many ways that word can come out wrong during transcription and corrects them for you.
 

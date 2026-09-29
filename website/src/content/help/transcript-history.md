@@ -7,6 +7,7 @@ order: 1
 keywords: ["history", "past dictations", "transcripts", "speaker labels", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log", "paste again", "paste last dictation", "copy last dictation"]
 related: ["transcribe-a-file", "transcribe-a-file-speaker-labels", "clipboard-preservation", "escape-recovery"]
 updated: 2026-09-23
+deflection: "can_resolve"
 ---
 EnviousWispr saves everything it transcribes so you can find it again later. History holds two kinds of item. A **dictation** is a recording you made with your keybind. A **transcript** is a recording you imported with [Transcribe a File](/help/transcribe-a-file/). To see them, click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **History**.
 

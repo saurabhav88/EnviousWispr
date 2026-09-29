@@ -6,6 +6,7 @@ section: "Transcription Issues"
 order: 4
 keywords: ["first word", "cut off", "clipped", "missing the beginning", "loses the start", "chops the first word", "beginning missing"]
 updated: 2026-09-16
+deflection: "show_but_always_send"
 ---
 When the start of your speech goes missing, it is because the microphone was still waking up as you began to talk.
 

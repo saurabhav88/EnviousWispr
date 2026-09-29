@@ -7,6 +7,7 @@ order: 1
 keywords: ["polish", "ai polish", "cleanup", "clean up my text", "grammar", "punctuation", "tidy", "what does ai do", "editing", "email", "dictate an email", "email formatting", "paragraphs", "paragraph breaks", "bullet list", "make a list"]
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "s1-mini-by-superwhisper-and-writing-style"]
 updated: 2026-09-06
+deflection: "can_resolve"
 ---
 AI Polish is the optional step EnviousWispr runs after transcribing your speech, to tidy up what you said. It fixes grammar and punctuation, cuts filler words, and is instructed to keep your exact meaning and your language.
 

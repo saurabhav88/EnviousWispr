@@ -8,6 +8,7 @@ keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslas
 related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
 updated: 2026-09-18
+deflection: "can_resolve"
 ---
 Two transcription settings let you speak a phrase and get a symbol or a line break instead of the words you said. Both live under **Settings** \> **Transcription**.
 

@@ -7,6 +7,7 @@ order: 5
 keywords: ["cancel", "stop without pasting", "throw away", "discard", "escape", "abort", "undo", "didnt mean to record", "delete recording"]
 related: ["recording-won-t-stop-or-seems-stuck", "escape-recovery"]
 updated: 2026-09-01
+deflection: "can_resolve"
 ---
 If you misspeak, get interrupted, or start recording by accident, you can stop the recording without any text landing where you were typing. Nothing is pasted and your cursor is left untouched. This works in every recording mode and at any point during a recording.
 

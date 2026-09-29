@@ -8,6 +8,7 @@ keywords: ["street address", "mailing address", "zip code", "numbers", "dates", 
 related: ["spoken-punctuation-and-emoji", "how-text-gets-pasted-into-your-app"]
 seeAlso: "spoken-text-formatting-dates-numbers-emails"
 updated: 2026-09-27
+deflection: "show_but_always_send"
 ---
 Numbers, dates, and times are converted automatically from spoken words into the standard written forms. EnviousWispr writes numbers, money, dates, times, phone numbers, email addresses, and web addresses the way you would type them, rather than spelling out every word you said. It is switched on when you install the app, and there is nothing to configure.
 

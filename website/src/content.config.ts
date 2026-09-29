@@ -2,6 +2,7 @@ import { defineCollection, z } from "astro:content";
 import { glob } from "astro/loaders";
 import { BLOG_TOPICS } from "./data/blog-topics.js";
 import { HELP_CATEGORY_SLUGS } from "./data/help-categories";
+import { DEFLECTION_POLICIES } from "./data/help-deflection.js";
 
 const blog = defineCollection({
   loader: glob({ pattern: "**/*.md", base: "./src/content/blog" }),
@@ -52,6 +53,8 @@ const help = defineCollection({
     seeAlso: z.string().optional(),
     /** Drives sitemap lastmod and the visible "last checked" line. */
     updated: z.coerce.date(),
+    /** What the in-app help check may do with this article; see help-deflection.js. */
+    deflection: z.enum(DEFLECTION_POLICIES),
   }),
 });
 

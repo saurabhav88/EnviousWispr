@@ -7,6 +7,7 @@ order: 3
 keywords: ["paste not working", "wont paste", "nothing pastes", "text not appearing", "goes to the wrong app", "vs code", "slack", "discord", "notion", "no text in my app", "paste again", "paste last dictation", "dictation disappeared"]
 related: ["accessibility-permission-not-working", "how-text-gets-pasted-into-your-app", "transcript-history"]
 updated: 2026-09-27
+deflection: "show_but_always_send"
 ---
 When your dictation does not appear in the app you were typing in, work through these steps in order.
 

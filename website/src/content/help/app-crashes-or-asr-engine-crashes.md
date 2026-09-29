@@ -6,6 +6,7 @@ section: "Recording Issues"
 order: 8
 keywords: ["crash", "crashes", "quits", "closes by itself", "keeps crashing", "stopped working", "disappeared", "not responding"]
 updated: 2026-09-28
+deflection: "show_but_always_send"
 ---
 EnviousWispr keeps its transcription engine separate from the rest of the app, so a failure in one does not take the other down with it.
 

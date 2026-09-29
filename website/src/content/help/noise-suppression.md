@@ -7,6 +7,7 @@ order: 3
 keywords: ["noise", "background noise", "noisy room", "cafe", "fan", "noise cancelling", "suppression", "echo"]
 related: ["voice-activity-detection-and-auto-stop"]
 updated: 2026-09-05
+deflection: "show_but_always_send"
 ---
 EnviousWispr has no noise suppression setting. It records your microphone as it is and lets the speech model handle the audio directly.
 

@@ -7,6 +7,7 @@ order: 3
 keywords: ["toggle", "press once", "click to start click to stop", "on off mode", "start stop"]
 related: ["customizing-your-keybind"]
 updated: 2026-09-01
+deflection: "can_resolve"
 ---
 Toggle mode changes how you interact with your recording keybind. Instead of holding the key down for every sentence, you press the keybind once to start recording and press it again to stop.
 

@@ -6,6 +6,7 @@ section: "Updates"
 order: 1
 keywords: ["update", "updates", "new version", "upgrade", "auto update", "check for updates", "latest version"]
 updated: 2026-08-06
+deflection: "can_resolve"
 ---
 EnviousWispr checks for updates by itself and tells you when a new version is ready to install. When one arrives, you click to install it, and the app restarts into the updated version.
 

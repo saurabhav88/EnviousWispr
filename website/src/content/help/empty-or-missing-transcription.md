@@ -7,6 +7,7 @@ order: 3
 keywords: ["nothing happens", "no text", "empty", "microphone not working", "mic not working", "not hearing me", "no output", "blank", "nothing appears", "not transcribing", "not working at all", "silent", "no sound"]
 related: ["choosing-your-microphone", "granting-permissions-microphone-accessibility-and-automation"]
 updated: 2026-09-05
+deflection: "show_but_always_send"
 ---
 When a recording finishes and no text appears, something between your microphone and the speech model did not deliver. These checks run from the most common cause to the least, so work through them in order.
 

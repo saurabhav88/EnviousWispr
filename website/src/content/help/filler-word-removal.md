@@ -6,6 +6,7 @@ section: "Text Processing"
 order: 2
 keywords: ["um", "uh", "filler", "filler words", "remove um", "you know", "like", "stop words", "cleaner speech"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 EnviousWispr automatically removes spoken noises like "um", "uh", "hmm", and "er" from your dictated text before it reaches your app. This is on by default.
 

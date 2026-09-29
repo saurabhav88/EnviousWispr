@@ -8,6 +8,7 @@ keywords: ["privacy", "private", "is it private", "does it spy", "does it send m
 related: ["what-data-is-collected", "ai-polish-and-cloud-data"]
 seeAlso: "on-device-vs-cloud-dictation-privacy"
 updated: 2026-09-28
+deflection: "show_but_always_send"
 ---
 EnviousWispr is a free dictation app for macOS. Your voice becomes text on your own Mac, and the audio never leaves it. There is no account and nothing to sign up for.
 

@@ -6,6 +6,7 @@ section: "Polish"
 order: 3
 keywords: ["smart polish", "context", "context aware", "knows what app", "different apps", "tone", "formal", "casual"]
 updated: 2026-09-05
+deflection: "can_resolve"
 ---
 When EnviousWispr sends your dictation to an AI for polishing, it includes a small set of background facts along with your words. That extra context helps the AI make better corrections than it could by reading the transcript alone.
 

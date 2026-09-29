@@ -7,6 +7,7 @@ order: 1
 keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms", "how do I add a name", "where is your words", "fix a misspelled name", "turn on vocabulary packs", "import my contacts"]
 related: ["self-learning-dictionary", "why-is-my-dictation-inaccurate", "how-custom-word-correction-works", "using-snippets"]
 updated: 2026-09-27
+deflection: "can_resolve"
 ---
 When EnviousWispr repeatedly misspells a name or a specialised word, you can teach it the exact spelling you want to use. You often do not need to add it by hand: fix the word once in text EnviousWispr just pasted, and the [Self-Learning Dictionary](/help/self-learning-dictionary/) adds it for you.
 

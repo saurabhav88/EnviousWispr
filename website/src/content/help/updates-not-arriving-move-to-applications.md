@@ -7,6 +7,7 @@ order: 3
 keywords: ["no updates", "never updates", "stuck on old version", "cannot update", "update does nothing", "running from downloads", "move to applications", "translocated", "check for updates does nothing", "still on old version"]
 related: ["auto-updates"]
 updated: 2026-08-11
+deflection: "show_but_always_send"
 ---
 If EnviousWispr never seems to get a new version, the most likely reason is where it is running from rather than anything wrong with the app.
 
