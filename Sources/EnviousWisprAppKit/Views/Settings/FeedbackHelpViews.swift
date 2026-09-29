@@ -121,11 +121,11 @@ struct FeedbackHelpResultsView: View {
     if isSingleQuestion {
       return String(
         localized: "feedback.help.single.question",
-        defaultValue: "Does this solve everything you wanted to report?")
+        defaultValue: "Did this solve it?")
     }
     return String(
       localized: "feedback.help.several.title",
-      defaultValue: "We found help for parts of your message.")
+      defaultValue: "We found some help")
   }
 
   // Side by side when both labels fit in full; otherwise stacked, so no label is cut short

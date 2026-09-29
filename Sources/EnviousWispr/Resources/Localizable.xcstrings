@@ -19125,13 +19125,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "We found help for parts of your message."
+            "value" : "We found some help"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wir haben Hilfe für Teile deiner Nachricht gefunden."
+            "value" : "Wir haben etwas Hilfe gefunden"
           }
         }
       }
@@ -19142,13 +19142,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Does this solve everything you wanted to report?"
+            "value" : "Did this solve it?"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ist damit alles erledigt, was du melden wolltest?"
+            "value" : "Hat das dein Problem gelöst?"
           }
         }
       }
