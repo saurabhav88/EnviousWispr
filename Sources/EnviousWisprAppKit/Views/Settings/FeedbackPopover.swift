@@ -164,9 +164,14 @@ struct FeedbackForm: View {
       diagnosticsModel.formDidClose()
     }
     // A save another opening started has finished: show the saved draft (cleared when unchanged,
-    // or the words typed meanwhile) and allow Send again.
+    // or the words typed meanwhile) and allow Send again. Also while editing: an opening that
+    // appeared during another opening's help check (#3275, minimize) starts in editing, and
+    // without this it would keep the sent words and could send them twice. The thank-you and
+    // "Glad that helped" screens are left alone.
     .onChange(of: submission.completions) { _, _ in
-      guard status == .sending, let words = submission.reconciledDraft(for: presentation) else {
+      guard status == .sending || status == .editing,
+        let words = submission.reconciledDraft(for: presentation)
+      else {
         return
       }
       message = words.message
