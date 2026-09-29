@@ -91,7 +91,7 @@ final class WordCheckRuntime {
   /// (a Diagnostics onboarding reset takes the check back out, download and memory both).
   private var wanted: Bool {
     isDictionaryEnabled() && isOnboardingComplete()
-      && (someEngineLacksOwnChecker() || inFlightWorkNeedsWordCheck())
+      && (someEngineLacksOwnChecker() || workNeedsCheck)
   }
   /// Read-only, for the idle-memory sample (#3289 §8b): is the model in memory, and would
   /// the current settings or work in flight use it.

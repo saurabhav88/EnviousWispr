@@ -109,6 +109,16 @@ struct WordCheckRuntimeResidencyTests {
     #expect(after.loadAttemptsForTests == 0, "loaded for a recovery that had already ended")
   }
 
+  /// The recording was made with Apple Intelligence and the settings have since moved to EG-1:
+  /// the replay still needs the check its FROZEN engine selects.
+  @Test("a recovery loads for its frozen engine even when the current settings no longer need it")
+  func recoveryUsesFrozenNeed() throws {
+    let (runtime, inputs) = try admittedIdle()
+    inputs.needed = false
+    runtime.recoveryStarted(needsWordCheck: true)
+    #expect(runtime.loadAttemptsForTests == 1)
+  }
+
   @Test("a crash-recovery replay loads for an engine without its own check, never for EG-1")
   func recoveryStart() throws {
     let (withCheck, _) = try admittedIdle()
