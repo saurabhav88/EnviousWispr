@@ -87,9 +87,14 @@ public final class FeedbackSubmission {
   public private(set) var helpMarks: Set<String> = []
 
   /// Marks one concern solved or still happening. Ignored unless the cards on offer are from
-  /// `generation` and that concern may be marked solved.
-  public func setHelpMark(_ issueID: String, solved: Bool, generation: UUID) {
-    guard case .suggestions(let suggestions) = helpPhase, frozen?.generation == generation,
+  /// `generation`, the press comes from the opening showing them, and that concern may be
+  /// marked solved.
+  public func setHelpMark(
+    _ issueID: String, solved: Bool, generation: UUID, from presentation: UUID,
+    current: @MainActor () -> FormState
+  ) {
+    guard case .suggestions(let suggestions) = helpPhase,
+      isCurrent(generation: generation, from: presentation, current: current()),
       suggestions.canMarkSolved(issueID)
     else { return }
     if solved { helpMarks.insert(issueID) } else { helpMarks.remove(issueID) }
@@ -166,13 +171,15 @@ public final class FeedbackSubmission {
   }
 
   /// The user pressed Send on the cards: `solved` holds the concerns they marked solved (the rest
-  /// are still happening), and the report is saved as frozen at Send.
+  /// are still happening), and the report is saved as frozen at Send. Refused unless `solved` is
+  /// exactly the marks now held, so a press built from older marks records nothing wrong.
   public func finishSuggestions(
     solved: Set<String>, generation: UUID, from presentation: UUID,
     current: @MainActor () -> FormState
   ) async -> FeedbackReporter.Outcome? {
     guard case .suggestions(let suggestions) = helpPhase, let held = frozen,
-      isCurrent(generation: generation, from: presentation, current: current())
+      isCurrent(generation: generation, from: presentation, current: current()),
+      solved == helpMarks
     else { return nil }
     helpPhase = .idle
     frozen = nil
@@ -201,7 +208,9 @@ public final class FeedbackSubmission {
 
   /// The user confirmed every concern solved: nothing is sent and the draft is settled as if
   /// saved. Refused (false) unless the check allows it, `confirmed` names every concern, each can
-  /// be marked solved, and `generation` is the current check's.
+  /// be marked solved, and `generation` is the current check's. With several concerns
+  /// `confirmed` must also be exactly the marks now held; one concern has no marks, and its
+  /// button is the confirmation.
   @discardableResult
   public func endWithAllSolved(
     confirmed: Set<String>, generation: UUID, from presentation: UUID,
@@ -210,7 +219,8 @@ public final class FeedbackSubmission {
     let now = current()
     guard case .suggestions(let suggestions) = helpPhase, suggestions.suppressionAllowed,
       let held = frozen, isCurrent(generation: generation, from: presentation, current: now),
-      confirmed == suggestions.issueIDs, confirmed.allSatisfy(suggestions.canMarkSolved)
+      confirmed == suggestions.issueIDs, confirmed.allSatisfy(suggestions.canMarkSolved),
+      confirmed == helpMarks || (suggestions.issueIDs.count == 1 && helpMarks.isEmpty)
     else { return false }
     helpPhase = .idle
     frozen = nil

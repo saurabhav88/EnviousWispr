@@ -578,6 +578,9 @@ struct HelpCheckTests {
         solved: ["i0"], generation: UUID(), from: presentation,
         current: { .init(presentation: presentation, message: "newer words", email: "") }) == nil)
     #expect(recorder.saves.isEmpty)
+    submission.setHelpMark(
+      "i0", solved: true, generation: generation, from: presentation,
+      current: { .init(presentation: presentation, message: "newer words", email: "") })
     let outcome = await submission.finishSuggestions(
       solved: ["i0"], generation: generation, from: presentation,
       current: { .init(presentation: presentation, message: "newer words", email: "") })
@@ -716,7 +719,7 @@ struct HelpCheckTests {
     #expect(store.message == "")
   }
 
-  @Test("Solved marks outlive a closed popover, take only markable concerns, and clear with the cards")
+  @Test("Solved marks outlive a closed popover; only the opening on screen may change or use them")
   @MainActor
   func marksResume() async throws {
     let (store, suite) = Self.makeStore()
@@ -724,19 +727,56 @@ struct HelpCheckTests {
     let recorder = RecordingSave()
     let a = UUID()
     let b = UUID()
-    let message = "Keybind broke."
-    let submission = try await Self.withCards(store, recorder, message: message, presentation: a)
-    let generation = try #require(submission.helpGeneration)
-    #expect(submission.helpMarks.isEmpty)
-    submission.setHelpMark("i0", solved: true, generation: generation)
-    submission.setHelpMark("i9", solved: true, generation: generation)
-    submission.setHelpMark("i0", solved: false, generation: UUID())
-    #expect(submission.helpMarks == ["i0"], "unknown concerns and older checks change nothing")
-    // Opening A closed with the cards up; opening B, reopened from the bug icon, sees the marks
-    // and can end the report with them.
+    let message = "Keybind broke. Paste fails too."
+    let transport = FakeTransport([
+      .reply(
+        200,
+        Self.reply([
+          Self.section("i0"), Self.section("i1", slug: "paste-not-working", anchor: "fix-it"),
+        ]))
+    ])
+    let submission = FeedbackSubmission(
+      store: store, save: recorder.save,
+      helpCheck: Self.check(
+        .concerns(
+          [
+            Concern(summary: "Keybind", evidence: "Keybind broke.", kind: .bug),
+            Concern(summary: "Paste", evidence: "Paste fails too.", kind: .bug),
+          ], hitCap: false), transport))
+    store.save(message: message, email: "")
+    let onScreenA: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
+      .init(presentation: a, message: message, email: "")
+    }
     let onScreenB: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
       .init(presentation: b, message: message, email: "")
     }
+    _ = await submission.send(
+      try #require(FeedbackDraft(message: message, email: "")), diagnostics: nil, from: a,
+      sent: (message, ""), current: onScreenA)
+    let generation = try #require(submission.helpGeneration)
+    #expect(submission.helpMarks.isEmpty)
+    submission.setHelpMark("i0", solved: true, generation: generation, from: a, current: onScreenA)
+    submission.setHelpMark("i1", solved: true, generation: generation, from: a, current: onScreenA)
+    submission.setHelpMark("i9", solved: true, generation: generation, from: a, current: onScreenA)
+    submission.setHelpMark("i0", solved: false, generation: UUID(), from: a, current: onScreenA)
+    #expect(submission.helpMarks == ["i0", "i1"], "unknown concerns and older checks change nothing")
+    // Opening A closed with the cards up (minimized); B reopened from the bug icon. A stale
+    // press from A changes nothing; B sees and changes the same marks.
+    submission.setHelpMark("i1", solved: false, generation: generation, from: a, current: onScreenB)
+    #expect(submission.helpMarks == ["i0", "i1"])
+    submission.setHelpMark("i1", solved: false, generation: generation, from: b, current: onScreenB)
+    #expect(submission.helpMarks == ["i0"])
+    // An all-solved or send built from older marks is refused and records nothing.
+    #expect(
+      !submission.endWithAllSolved(
+        confirmed: ["i0", "i1"], generation: generation, from: b, current: onScreenB))
+    #expect(
+      await submission.finishSuggestions(
+        solved: ["i0", "i1"], generation: generation, from: b, current: onScreenB) == nil)
+    #expect(recorder.saves.isEmpty)
+    #expect(submission.helpPhase != .idle, "the cards stay after a refused press")
+    // Marked again, the current marks end the report without sending, and are cleared.
+    submission.setHelpMark("i1", solved: true, generation: generation, from: b, current: onScreenB)
     #expect(
       submission.endWithAllSolved(
         confirmed: submission.helpMarks, generation: generation, from: b, current: onScreenB))
@@ -758,6 +798,7 @@ struct HelpCheckTests {
     let screen: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
       .init(presentation: a, message: message, email: "")
     }
+    submission.setHelpMark("i0", solved: true, generation: generation, from: a, current: screen)
     #expect(!submission.endWithAllSolved(confirmed: ["i0"], generation: generation, from: a, current: screen))
     _ = await submission.finishSuggestions(solved: ["i0"], generation: generation, from: a, current: screen)
     #expect(recorder.saves.count == 1)

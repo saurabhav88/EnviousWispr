@@ -554,7 +554,9 @@ struct FeedbackForm: View {
   /// A concern marked solved or still happening on the cards; kept by the shared submission.
   private func markHelp(_ issueID: String, solved: Bool) {
     guard let generation = submission.helpGeneration else { return }
-    submission.setHelpMark(issueID, solved: solved, generation: generation)
+    submission.setHelpMark(
+      issueID, solved: solved, generation: generation, from: presentation,
+      current: { .init(presentation: presentation, message: message, email: email) })
   }
 
   /// Shows a save's outcome: the thank-you and auto-close, or the form's problem line.
