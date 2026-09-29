@@ -28,9 +28,11 @@ const VERSION_PATTERN = /^[A-Za-z0-9._+-]{1,64}$/;
 
 export const DECISION_VERSION = "2026-09-28.1";
 // e2e_grade.py gates: page p, page confidence, section p, section confidence,
-// resolves, page-link p.
-export const GATES = { pageP: 0.5, pageConf: 0.5, sectionP: 0.5, sectionConf: 0.7, resolves: 0.7, pageLinkP: 0.8 };
-export const THRESHOLD_VERSION = "g1-0.5-0.5-0.5-0.7-0.7-0.8";
+// resolves, page-link p. `covered` gates suppression only: the whole issue list must
+// cover the message (coverage_run.py: at 0.5 it caught 55 of 57 lists missing a real
+// concern and blocked about 1 in 7 complete lists, which then send).
+export const GATES = { pageP: 0.5, pageConf: 0.5, sectionP: 0.5, sectionConf: 0.7, resolves: 0.7, pageLinkP: 0.8, covered: 0.5 };
+export const THRESHOLD_VERSION = "g2-0.5-0.5-0.5-0.7-0.7-0.8-c0.5";
 
 // Candidates exclude never_intervene pages: they are never offered as cards.
 const CANDIDATES = CATALOG.articles.filter((a) => a.deflection !== "never_intervene");
@@ -38,13 +40,17 @@ const CANDIDATE_BY_SLUG = new Map(CANDIDATES.map((a) => [a.slug, a]));
 const PAGE_STATE = CANDIDATES.map(({ slug, title, description }) => ({ slug, title, description }));
 
 // Kill switch. Missing or unknown means disabled: the app sends the report as usual.
+// This route is public and each check spends TypeSafe credit, so set it to anything
+// but "disabled" only after the path-specific Cloudflare rate-limit rule for
+// /api/app/help-check exists (#3275 release step).
 export function helpCheckMode(env) {
   const mode = env?.HELP_CHECK_MODE;
   return mode === "enabled" || mode === "suggest_only" ? mode : "disabled";
 }
 
-function versions(request) {
+function versions(request, coverage = null) {
   return {
+    coverage,
     kb_version: CATALOG.catalogVersion,
     jev_model_version: JEV_MODEL,
     decomposition_version: request?.decomposition_version ?? null,
@@ -94,7 +100,9 @@ export function validateRequest(body) {
     const { id, summary, kind, evidence, start_utf16: start, end_utf16: end } = issue;
     if (id !== `i${k}` || !KINDS.includes(kind)) return { reason: "invalid_decomposition" };
     if (!isString(summary) || summary.length > MAX_SUMMARY_LENGTH) return { reason: "invalid_decomposition" };
-    if (!isString(evidence) || !evidence.trim() || evidence.length > message.length) return { reason: "invalid_decomposition" };
+    // A model-changed quote can even be longer than the message; it stays as an
+    // unanchored concern (shown, never suppressible) rather than failing the check.
+    if (!isString(evidence) || !evidence.trim() || evidence.length > MAX_MESSAGE_CODE_POINTS * 2) return { reason: "invalid_decomposition" };
     // The app sends a range only when it found the evidence in the message; a quote
     // the model changed (macOS 26 capitalises quotes) arrives without one.
     let anchored = false;
@@ -118,7 +126,17 @@ export function buildPageRequest(message, issues) {
   const criteria = Object.fromEntries(CANDIDATES.map((a) => [a.slug, null]));
   criteria[NO_MATCH] =
     "No listed article would be useful for this issue, including test-only text or issues that merely share a word with an article.";
-  const questions = {};
+  const questions = {
+    covered: {
+      type: "noul",
+      instructions:
+        "Does `issues` include every distinct problem, question or request that the user raises in `feedback.text`? Background detail, things the user already tried, praise, thanks and greetings are not separate problems.",
+      criteria: {
+        true: "Every problem, question or request in the feedback appears in `issues`.",
+        false: "At least one problem, question or request in the feedback is missing from `issues`.",
+      },
+    },
+  };
   issues.forEach((_, k) => {
     questions[`page_${k}`] = {
       type: "choice",
@@ -162,7 +180,9 @@ export function buildSectionRequest(message, issues, picks) {
     };
     questions[`resolves_${k}`] = {
       type: "noul",
-      instructions: `Would the text of the section you would pick from \`sections\` for \`issues[${k}]\` actually resolve that issue? Say no when the sections only describe the same feature without the specific fix, when the user says they already tried what the text suggests, or when the issue is a bug the text does not describe.`,
+      // Scoped to the one page section_k chooses from: `sections` also holds other
+      // concerns' pages, and this score gates a card from THIS page.
+      instructions: `Would the text of the section you would pick for \`issues[${k}]\` from the entries in \`sections\` whose page is ${JSON.stringify(CANDIDATE_BY_SLUG.get(slug).title)} actually resolve that issue? Say no when those sections only describe the same feature without the specific fix, when the user says they already tried what the text suggests, or when the issue is a bug the text does not describe.`,
       criteria: {
         true: "A section's text gives the specific answer, setting or fix this issue needs and the user has not already tried.",
         false: "On topic but no fix, already tried, or an undescribed bug.",
@@ -243,6 +263,8 @@ export async function runHelpCheck(body, env, { fetchImpl = fetch, now = Date.no
     return sendFeedback(error.message, request);
   }
 
+  const coverage = readNoul(pageAnswers.covered);
+  if (coverage === null) return sendFeedback("bad_reply", request);
   const pages = [];
   for (let k = 0; k < issues.length; k++) {
     const page = readChoice(pageAnswers[`page_${k}`], pageOptions);
@@ -309,8 +331,13 @@ export async function runHelpCheck(body, env, { fetchImpl = fetch, now = Date.no
     if (r.url !== null && !r.url.startsWith("https://enviouswispr.com/help/")) return sendFeedback("bad_target", request);
   }
   const suppressionAllowed =
-    mode === "enabled" && request.mode === "decomposed" && !request.overflow && results.length > 0 && results.every((r) => r.resolution_eligible);
-  return { v: 1, status: "ok", reason: "matched", suppression_allowed: suppressionAllowed, issues: results, ...versions(request) };
+    mode === "enabled" &&
+    request.mode === "decomposed" &&
+    !request.overflow &&
+    coverage >= GATES.covered &&
+    results.length > 0 &&
+    results.every((r) => r.resolution_eligible);
+  return { v: 1, status: "ok", reason: "matched", suppression_allowed: suppressionAllowed, issues: results, ...versions(request, coverage) };
 }
 
 // One count line per check, for Workers logs. Never add text, evidence or summaries.

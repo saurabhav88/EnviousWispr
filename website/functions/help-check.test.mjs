@@ -22,7 +22,8 @@ const RESOLVE = byPolicy("can_resolve");
 const ALWAYS_SEND = byPolicy("show_but_always_send");
 const NEVER = byPolicy("never_intervene");
 const ENV = { HELP_CHECK_MODE: "enabled", TYPESAFE_API_KEY: "test-key" };
-const SECRET_TEXT = "My SECRET-PHRASE-42 keybind stopped working. Also paste fails.";
+// One concern, so a complete issue list is the whole message.
+const SECRET_TEXT = "My SECRET-PHRASE-42 keybind stopped working after the update.";
 
 function issue(k, message, evidence, summary = "a concern", kind = "bug") {
   const start = message.indexOf(evidence);
@@ -35,7 +36,7 @@ function body(overrides = {}) {
     v: 1,
     original_message: message,
     mode: "decomposed",
-    issues: [issue(0, message, "My SECRET-PHRASE-42 keybind stopped working.")],
+    issues: [issue(0, message, "My SECRET-PHRASE-42 keybind stopped working after the update.")],
     overflow: false,
     decomposition_version: "afm-26.1",
     app_version: "2.6.0",
@@ -46,6 +47,8 @@ function body(overrides = {}) {
 const choice = (pick, p = 0.9, confidence = 0.9) => ({ type: "choice", choice: pick, confidence, probabilities: { [pick]: p } });
 const noul = (v = 0.9) => ({ type: "noul", noul: v });
 const reply = (answers, model = JEV_MODEL) => ({ status: 200, ok: true, json: async () => ({ model, answers }) });
+// The first request's reply always carries the whole-list coverage answer.
+const firstReply = (answers, covered = 0.9, model = JEV_MODEL) => reply({ covered: noul(covered), ...answers }, model);
 
 // A fake TypeSafe that answers each request in turn and records what it was sent.
 function fakeJev(...replies) {
@@ -59,7 +62,7 @@ function fakeJev(...replies) {
   return { fetchImpl, calls };
 }
 
-const pageAnswer = (slug, extra = {}) => reply({ page_0: choice(slug), useful_0: noul(), ...extra });
+const pageAnswer = (slug, covered = 0.9) => firstReply({ page_0: choice(slug), useful_0: noul() }, covered);
 const sectionAnswer = (sectionId, resolves = 0.9, p = 0.9, confidence = 0.9) =>
   reply({ section_0: choice(sectionId, p, confidence), resolves_0: noul(resolves) });
 
@@ -178,13 +181,29 @@ test("five concerns still make exactly two requests; any unmatched concern block
       section[`resolves_${k}`] = noul();
     }
   }
-  const jev = fakeJev(reply(page), reply(section));
+  const jev = fakeJev(firstReply(page), reply(section));
   const out = await runHelpCheck(body({ original_message: message, issues }), ENV, { fetchImpl: jev.fetchImpl });
   assert.equal(jev.calls.length, 2);
-  assert.equal(Object.keys(jev.calls[0].body.questions).length, 10);
+  assert.equal(Object.keys(jev.calls[0].body.questions).length, 11, "5 page, 5 useful and 1 coverage question");
   assert.equal(Object.keys(jev.calls[1].body.questions).length, 8);
   assert.deepEqual(out.issues.map((r) => r.match_type), ["section", "section", "section", "section", "none"]);
   assert.equal(out.suppression_allowed, false);
+});
+
+test("the whole list must cover the message before anything may be suppressed", async () => {
+  // Two concerns in the message, only one sent: the one card may be right, but the
+  // paste problem would be lost if the report were suppressed.
+  const message = "My keybind stopped working. Also paste fails in Slack.";
+  const partial = body({ original_message: message, issues: [issue(0, message, "My keybind stopped working.")] });
+  for (const [covered, allowed] of [[GATES.covered - 0.01, false], [GATES.covered, true], [0.1, false]]) {
+    const jev = fakeJev(pageAnswer(RESOLVE.slug, covered), sectionAnswer(RESOLVE.sections[0].id));
+    const out = await runHelpCheck(partial, ENV, { fetchImpl: jev.fetchImpl });
+    assert.equal(out.issues[0].resolution_eligible, true, "the card itself is still a verified answer");
+    assert.equal(out.suppression_allowed, allowed, `covered ${covered}`);
+    assert.equal(out.coverage, covered);
+  }
+  const request = buildPageRequest(message, [{ id: "i0", summary: "", evidence: message }]);
+  assert.equal(request.questions.covered.type, "noul");
 });
 
 test("overflow (more concerns than the app sent) blocks suppression", async () => {
@@ -203,7 +222,7 @@ test("section gates at their boundaries, then the page-link fallback", async () 
     [{ resolves: 0.9, p: 0.9, conf: GATES.sectionConf - 0.01, pageP: GATES.pageLinkP - 0.01 }, "none"],
   ];
   for (const [c, expected] of cases) {
-    const jev = fakeJev(reply({ page_0: choice(RESOLVE.slug, c.pageP, 0.9), useful_0: noul() }), sectionAnswer(id, c.resolves, c.p, c.conf));
+    const jev = fakeJev(firstReply({ page_0: choice(RESOLVE.slug, c.pageP, 0.9), useful_0: noul() }), sectionAnswer(id, c.resolves, c.p, c.conf));
     const out = await runHelpCheck(body(), ENV, { fetchImpl: jev.fetchImpl });
     assert.equal(out.issues[0].match_type, expected, JSON.stringify(c));
     if (expected !== "section") assert.equal(out.suppression_allowed, false);
@@ -216,7 +235,7 @@ test("section gates at their boundaries, then the page-link fallback", async () 
 
 test("page gates at their boundaries decide whether the second request happens", async () => {
   for (const [p, conf, expectedCalls] of [[GATES.pageP, GATES.pageConf, 2], [GATES.pageP - 0.01, 0.9, 1], [0.9, GATES.pageConf - 0.01, 1]]) {
-    const jev = fakeJev(reply({ page_0: choice(RESOLVE.slug, p, conf), useful_0: noul(0.1) }), sectionAnswer(RESOLVE.sections[0].id));
+    const jev = fakeJev(firstReply({ page_0: choice(RESOLVE.slug, p, conf), useful_0: noul(0.1) }), sectionAnswer(RESOLVE.sections[0].id));
     await runHelpCheck(body(), ENV, { fetchImpl: jev.fetchImpl });
     assert.equal(jev.calls.length, expectedCalls, `${p} ${conf}`);
   }
@@ -234,11 +253,15 @@ test("a quote that differs only in case can be shown but never marked solved", a
   assert.equal(res.suppression_allowed, false);
   const unanchored = validateRequest(body({ issues: [{ id: "i0", summary: "s", kind: "bug", evidence: "not in the message", start_utf16: null, end_utf16: null }] }));
   assert.equal(unanchored.issues[0].anchored, false);
+  // A model can return a "quote" longer than a one-word message; that is still a concern.
+  const longer = validateRequest(body({ original_message: "banana", issues: [{ id: "i0", summary: "s", kind: "other", evidence: "EnviousWispr is not working at all", start_utf16: null, end_utf16: null }] }));
+  assert.equal(longer.reason, undefined);
+  assert.equal(longer.issues[0].anchored, false);
 });
 
 test("invalid requests fail open without calling TypeSafe", async () => {
   const m = SECRET_TEXT;
-  const good = issue(0, m, "Also paste fails.");
+  const good = issue(0, m, "keybind stopped working");
   const invalid = [
     null,
     [],
@@ -256,6 +279,7 @@ test("invalid requests fail open without calling TypeSafe", async () => {
     body({ issues: [{ ...good, kind: "rant" }] }),
     body({ issues: [{ ...good, summary: "x".repeat(301) }] }),
     body({ issues: [{ ...good, evidence: "" }] }),
+    body({ issues: [{ ...good, evidence: "x".repeat(8193), start_utf16: null, end_utf16: null }] }),
     body({ issues: [{ ...good, start_utf16: 3 }] }),
     body({ issues: [{ ...good, start_utf16: -1 }] }),
     body({ issues: [{ ...good, end_utf16: m.length + 1 }] }),
@@ -295,13 +319,15 @@ test("TypeSafe failures fail open with a closed reason", async () => {
     [{ status: 429, ok: false }, "unavailable"],
     [{ status: 500, ok: false }, "http_500"],
     [() => Promise.reject(new TypeError("fetch failed")), "network"],
-    [reply({ page_0: choice(RESOLVE.slug), useful_0: noul() }, "jev-1.14.0"), "bad_reply"],
+    [firstReply({ page_0: choice(RESOLVE.slug), useful_0: noul() }, 0.9, "jev-1.14.0"), "bad_reply"],
     [{ status: 200, ok: true, json: async () => { throw new SyntaxError("bad json"); } }, "network"],
-    [reply({ page_0: choice(RESOLVE.slug, 1.5), useful_0: noul() }), "bad_reply"],
-    [reply({ page_0: choice(RESOLVE.slug, 0.9, "high"), useful_0: noul() }), "bad_reply"],
-    [reply({ page_0: choice("not-a-page"), useful_0: noul() }), "bad_reply"],
-    [reply({ page_0: choice(RESOLVE.slug) }), "bad_reply"],
-    [reply({ page_0: { type: "noul", noul: 0.9 }, useful_0: noul() }), "bad_reply"],
+    [firstReply({ page_0: choice(RESOLVE.slug, 1.5), useful_0: noul() }), "bad_reply"],
+    [firstReply({ page_0: choice(RESOLVE.slug, 0.9, "high"), useful_0: noul() }), "bad_reply"],
+    [firstReply({ page_0: choice("not-a-page"), useful_0: noul() }), "bad_reply"],
+    [firstReply({ page_0: choice(RESOLVE.slug) }), "bad_reply"],
+    [firstReply({ page_0: { type: "noul", noul: 0.9 }, useful_0: noul() }), "bad_reply"],
+    [reply({ page_0: choice(RESOLVE.slug), useful_0: noul() }), "bad_reply"],
+    [firstReply({ page_0: choice(RESOLVE.slug), useful_0: noul() }, 1.2), "bad_reply"],
   ];
   for (const [first, reason] of failures) {
     const jev = fakeJev(first);
@@ -312,7 +338,7 @@ test("TypeSafe failures fail open with a closed reason", async () => {
   }
   const wrongSection = fakeJev(pageAnswer(RESOLVE.slug), sectionAnswer(ALWAYS_SEND.sections[0].id));
   assert.equal((await runHelpCheck(body(), ENV, { fetchImpl: wrongSection.fetchImpl })).reason, "bad_reply");
-  assert.ok(failures.length >= 13);
+  assert.ok(failures.length >= 15);
 });
 
 test("both requests share one 2.0-second deadline", async () => {
