@@ -87,10 +87,10 @@ struct PasteDeclineReasonTests {
         != PasteService.declineReason(for: .unverifiable))
   }
 
-  @Test("every one of the fifteen raw values is pinned exactly")
+  @Test("every decline-reason raw value is pinned exactly")
   func rawValuesAreStable() {
     // Frozen because they are grouped on in PostHog and Sentry, so a rename is a
-    // silent data break rather than a refactor. All fifteen, not a sample: the
+    // silent data break rather than a refactor. Every value, not a sample: the
     // earlier version pinned five and would have let a rename of the other nine
     // through (chunk whole-diff review).
     //
@@ -114,11 +114,12 @@ struct PasteDeclineReasonTests {
       (.unverifiable, "unverifiable"),
       (.chromiumOmniboxNavigationSeam, "not_attempted_chromium_omnibox_navigation_seam"),
       (.geckoDirectWriteUnconfirmable, "not_attempted_gecko_direct_write_unconfirmable"),
+      (.recordedWindowKeyPasteOnly, "not_attempted_recorded_window_key_paste_only"),
     ]
     for (reason, rawValue) in expected {
       #expect(reason.rawValue == rawValue, "raw value drifted for \(reason)")
     }
-    #expect(expected.count == 16)
+    #expect(expected.count == 17)
   }
 
   @Test("no two reasons share a raw value")
@@ -128,9 +129,9 @@ struct PasteDeclineReasonTests {
       .accessibilityDenied, .focusMissing, .focusNonText, .roleUnreadable, .roleNotText,
       .selectedTextNotSettable, .countUnreadableOrInvalid, .rangeUnreadable, .rangeInvalid,
       .beforeImageUnreadableOrIncomplete, .focusUnconfirmed, .setFailed, .noMutation, .unverifiable,
-      .chromiumOmniboxNavigationSeam, .geckoDirectWriteUnconfirmable,
+      .chromiumOmniboxNavigationSeam, .geckoDirectWriteUnconfirmable, .recordedWindowKeyPasteOnly,
     ]
     #expect(Set(all.map(\.rawValue)).count == all.count)
-    #expect(all.count == 16)
+    #expect(all.count == 17)
   }
 }

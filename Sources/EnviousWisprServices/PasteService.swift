@@ -458,6 +458,11 @@ public enum PasteService {
     /// deliveries in `paste.copies_observed`. With this decline, Tier 2's Cmd+V alone delivered
     /// once in every valid live trial (Firefox 5/5, Zen 5/5, Developer Edition 5/5, Nightly 6/6).
     case geckoDirectWriteUnconfirmable = "not_attempted_gecko_direct_write_unconfirmable"
+    /// A delivery protected by the window recorded at record start (#3304), decided by the CASCADE
+    /// before Tier 1 runs. Such a session is key-paste only: Tier 1's unverifiable write can already
+    /// have inserted and still end in the Copied notice, which that session must never show after a
+    /// paste.
+    case recordedWindowKeyPasteOnly = "not_attempted_recorded_window_key_paste_only"
   }
 
   /// What a Tier 1 attempt produced, including the evidence behind it.
