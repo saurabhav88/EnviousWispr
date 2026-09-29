@@ -1070,6 +1070,9 @@ def phase_sleeping_switch():
         paths[k] = f"/tmp/ew-uat-3286-switch-{k}-{u.RUN_ID}.html"
         with open(paths[k], "w") as fh:
             fh.write(SWITCH_PAGE.format(title=title))
+    import threading
+    stop = threading.Event()  # set before cleanup, so the worker can never open a window after it
+    thread = None
     try:
         chrome.open(f"file://{paths['A']}")
         time.sleep(4)  # settle: page A loads and focuses its box; nothing is read
@@ -1077,12 +1080,14 @@ def phase_sleeping_switch():
         done = {}
 
         def open_b():  # a new window of the SAME Chrome, front, its box focused
-            if u.wait_for("the take to start", lambda: "Recording started" in u.log_since(
-                    PHASE_BASE["offset"]), deadline=20.0):
-                time.sleep(0.6)
-                chrome.open(f"file://{paths['B']}")
-                done["opened"] = True
-        import threading
+            deadline = time.time() + 20.0
+            while "Recording started" not in u.log_since(PHASE_BASE["offset"]):
+                if time.time() > deadline or stop.wait(0.05):
+                    return
+            if stop.wait(0.6):  # settle: switch 0.6 s into the take, unless the phase is ending
+                return
+            chrome.open(f"file://{paths['B']}")
+            done["opened"] = True
         thread = threading.Thread(target=open_b, daemon=True)
         PHASE_BASE["offset"] = u.log_size()
         thread.start()
@@ -1120,6 +1125,8 @@ def phase_sleeping_switch():
             raise u.Aborted(f"sleeping-switch: window A's box is not focused before Paste Last "
                             f"(window {window_title!r}, focus {focused_role_!r})")
         reuse_base = u.log_size()
+        if not chrome.is_front():  # the founder may have switched apps during the checks above
+            raise u.Aborted("sleeping-switch: the isolated Chrome lost the front before Paste Last")
         u.chord("v")
         u.wait_for("the Paste Last outcome", lambda: u.reuse_lines(reuse_base), deadline=5.0)
         pasted = u.wait_for(
@@ -1129,6 +1136,9 @@ def phase_sleeping_switch():
         u.check("sleeping-switch: Paste Last Dictation put the words into window A", pasted,
                 str(u.reuse_lines(reuse_base)))
     finally:
+        stop.set()
+        if thread is not None:
+            thread.join()
         u.check("sleeping-switch: its Chrome closed and its profile removed", chrome.close())
         for path in paths.values():
             if os.path.exists(path):
