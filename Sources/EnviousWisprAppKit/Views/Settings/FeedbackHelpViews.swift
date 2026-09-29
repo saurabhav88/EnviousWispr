@@ -70,27 +70,27 @@ struct FeedbackHelpResultsView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       header
-      ScrollView {
-        VStack(alignment: .leading, spacing: 10) {
-          ForEach(suggestions.cards, id: \.result.id) { card in
-            FeedbackHelpCard(
-              card: card, suggestions: suggestions, solved: $solved,
-              showsChoices: !isSingleQuestion)
-          }
-          ForEach(unanswered, id: \.self) { id in
-            Label {
-              Text(unansweredText(for: id))
-                .font(.stHelper)
-                .foregroundStyle(.stTextSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-              Image(systemName: "paperplane")
-                .foregroundStyle(.stTextTertiary)
-            }
+      // No scroll area: at most three short cards (five lines of text each), so the popover
+      // grows to fit them. A ScrollView here collapsed to a sliver inside the popover (live UAT).
+      VStack(alignment: .leading, spacing: 10) {
+        ForEach(suggestions.cards, id: \.result.id) { card in
+          FeedbackHelpCard(
+            card: card, suggestions: suggestions, solved: $solved,
+            showsChoices: !isSingleQuestion)
+        }
+        ForEach(unanswered, id: \.self) { id in
+          Label {
+            Text(unansweredText(for: id))
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          } icon: {
+            Image(systemName: "paperplane")
+              .foregroundStyle(.stTextTertiary)
           }
         }
       }
-      .frame(maxHeight: 360)
+      .fixedSize(horizontal: false, vertical: true)
       footer
     }
     .padding(18)
@@ -128,20 +128,33 @@ struct FeedbackHelpResultsView: View {
       defaultValue: "We found help for parts of your message.")
   }
 
+  // Side by side when both labels fit in full; otherwise stacked, so no label is cut short
+  // (two full English labels did not fit side by side in the popover, live UAT).
   private var footer: some View {
-    HStack(spacing: 10) {
-      Spacer(minLength: 0)
-      if isSingleQuestion {
-        secondaryButton(Self.stillSendText) { onSend([]) }
-        primaryButton(Self.allSolvedText) { onAllSolved(suggestions.issueIDs) }
-      } else if everythingSolved {
-        secondaryButton(Self.stillSendText) { onSend(solved) }
-        primaryButton(Self.allSolvedText) { onAllSolved(solved) }
-      } else {
-        primaryButton(Self.sendText) { onSend(solved) }
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 10) {
+        Spacer(minLength: 0)
+        footerButtons
       }
+      VStack(alignment: .trailing, spacing: 8) {
+        footerButtons
+      }
+      .frame(maxWidth: .infinity, alignment: .trailing)
     }
     .disabled(isSaving)
+  }
+
+  @ViewBuilder
+  private var footerButtons: some View {
+    if isSingleQuestion {
+      secondaryButton(Self.stillSendText) { onSend([]) }
+      primaryButton(Self.allSolvedText) { onAllSolved(suggestions.issueIDs) }
+    } else if everythingSolved {
+      secondaryButton(Self.stillSendText) { onSend(solved) }
+      primaryButton(Self.allSolvedText) { onAllSolved(solved) }
+    } else {
+      primaryButton(Self.sendText) { onSend(solved) }
+    }
   }
 
   private func unansweredText(for id: String) -> String {
