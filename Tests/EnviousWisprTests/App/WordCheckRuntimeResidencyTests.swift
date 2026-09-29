@@ -129,7 +129,7 @@ struct WordCheckRuntimeResidencyTests {
 
   @Test("the idle timer defers under work in flight and keeps a model a take is waiting on")
   func idleExpiry() {
-    #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workInFlight: false) == .unload)
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workInFlight: false) == .release)
     #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workInFlight: true) == .reschedule)
     #expect(WordCheckRuntime.idleExpiry(activeSelections: 1, workInFlight: false) == .keep)
     #expect(WordCheckRuntime.idleExpiry(activeSelections: 1, workInFlight: true) == .keep)

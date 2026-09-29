@@ -295,19 +295,20 @@ final class WordCheckRuntime {
       switch Self.idleExpiry(activeSelections: self.activeSelections, workInFlight: self.isWorkInFlight()) {
       case .keep: return
       case .reschedule: self.scheduleIdleUnload()
-      case .unload: self.unload(reason: "idle")
+      case .release:
+        self.unload(reason: "idle")
       }
     }
   }
 
-  enum IdleExpiry: Equatable { case keep, reschedule, unload }
+  enum IdleExpiry: Equatable { case keep, reschedule, release }
 
   /// What the idle timer does when it fires. A take waiting on a load keeps the model (its selection
   /// reschedules the timer); work in flight, a dictation or an engine-held import, defers the unload
   /// by another full delay (#3242, #3289).
   static func idleExpiry(activeSelections: Int, workInFlight: Bool) -> IdleExpiry {
     if activeSelections > 0 { return .keep }
-    return workInFlight ? .reschedule : .unload
+    return workInFlight ? .reschedule : .release
   }
 
   /// Whether the work in flight needs this check, by each piece of work's FROZEN polish engine: the
