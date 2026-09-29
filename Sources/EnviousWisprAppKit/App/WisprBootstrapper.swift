@@ -1626,13 +1626,17 @@ package final class WisprBootstrapper {
     // #3289 §8b: is the app working, for the idle-memory sample. A dictation is in flight from
     // arming to its terminal (the drivers' session config, which outlives an `.error` the pipeline
     // may publish early); anything else that works holds the engine lease (a file import until its
-    // work exits, which outlasts Stop; crash recovery; an abandoned decode). The word check's idle
+    // work exits, which outlasts Stop; crash recovery; an abandoned decode), and a running import
+    // counts from Start, before its claim. The word check's idle
     // timer asks a narrower question, work that uses THAT check (`inFlightWorkNeedsWordCheck`).
     let isWorkInFlight: @MainActor () -> Bool = {
       [weak kernelDriver, weak whisperKitKernelDriver, weak engineLease] in
       kernelDriver?.currentSessionConfig != nil
         || whisperKitKernelDriver?.currentSessionConfig != nil
         || engineLease?.isBusy == true
+        // An import is running from Start, including while it readies the engine before it claims
+        // the lease (#3289 final review).
+        || fileImportCoordinatorForGates?.isRunning == true
     }
     // #3289 §8b: one idle-memory sample per launch. Its task keeps it alive until it sends.
     let idleMemoryObserver = IdleMemoryObserver(
