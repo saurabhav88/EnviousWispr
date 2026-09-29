@@ -124,4 +124,39 @@ struct WordCheckRuntimeResidencyTests {
     _ = await take.selection()
     #expect(take.loadAttemptsForTests == 1)
   }
+
+  // MARK: - #3289: work in flight, dictation or an engine-held import
+
+  @Test("the idle timer defers under work in flight and keeps a model a take is waiting on")
+  func idleExpiry() {
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workInFlight: false) == .unload)
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workInFlight: true) == .reschedule)
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 1, workInFlight: false) == .keep)
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 1, workInFlight: true) == .keep)
+  }
+
+  @Test("a held import keeps needing the check its frozen engine selects, whatever the settings say")
+  func importNeedIsFrozen() {
+    let need = WordCheckRuntime.workNeedsWordCheck
+    #expect(need([], true, .appleIntelligence), "a held Apple Intelligence import needs the check")
+    #expect(need([], true, .openAI), "a held cloud import needs the check")
+    #expect(need([], false, .appleIntelligence) == false, "a finished import needs nothing")
+    #expect(need([], true, .egOne) == false, "an EG-1 import uses its own check")
+    #expect(need([], true, nil) == false, "an import never frozen needs nothing")
+    #expect(need([.appleIntelligence], false, nil), "a dictation's own need still counts")
+    #expect(need([.s1Mini, .egOne], false, nil) == false)
+  }
+
+  @Test("a file import start still loads after the settings stop needing the check, while the held run does")
+  func fileImportStartUsesFrozenNeed() throws {
+    let (runtime, inputs) = try admittedIdle()
+    inputs.needed = false
+    runtime.inFlightWorkNeedsWordCheck = { true }
+    runtime.fileImportStarted(needsWordCheck: true)
+    #expect(runtime.loadAttemptsForTests == 1)
+    let (unheld, unheldInputs) = try admittedIdle()
+    unheldInputs.needed = false
+    unheld.fileImportStarted(needsWordCheck: true)
+    #expect(unheld.loadAttemptsForTests == 0, "nothing in flight and nothing chosen needs it")
+  }
 }

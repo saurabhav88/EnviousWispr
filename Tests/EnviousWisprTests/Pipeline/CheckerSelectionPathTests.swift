@@ -152,4 +152,150 @@ struct CheckerSelectionPathTests {
       }
     }
   }
+
+  // MARK: - #3289: an import stops holding the word check when its job ends
+
+  /// Holds a checker's answer until the test opens it.
+  private actor AnswerGate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+    func hold() async {
+      if isOpen { return }
+      await withCheckedContinuation { waiters.append($0) }
+    }
+    func open() {
+      isOpen = true
+      let held = waiters
+      waiters = []
+      for waiter in held { waiter.resume() }
+    }
+  }
+
+  /// A checker whose lifetime the test can watch: `onDeinit` is the subject's own signal that its
+  /// last holder let go.
+  private final class TrackedChecker: LearnedWordChecking {
+    let armName = "test_tracked"
+    let scoresAreComparable = false
+    let gate: AnswerGate?
+    let onDeinit: @Sendable () -> Void
+    init(gate: AnswerGate? = nil, onDeinit: @escaping @Sendable () -> Void = {}) {
+      self.gate = gate
+      self.onDeinit = onDeinit
+    }
+    deinit { onDeinit() }
+    func decide(_ questions: [LearnedWordCheckQuestion]) async throws
+      -> [LearnedWordCheckDecision]
+    {
+      if let gate { await gate.hold() }
+      return questions.map { .init(questionID: $0.id, approved: true) }
+    }
+  }
+
+  /// True when `stream` yields before `seconds` pass. The bound only keeps a broken build from
+  /// hanging; nothing asserts on it.
+  private func arrives(_ stream: AsyncStream<Void>, within seconds: Double) async -> Bool {
+    await withTaskGroup(of: Bool.self) { group in
+      group.addTask {
+        for await _ in stream { return true }
+        return false
+      }
+      group.addTask {
+        try? await Task.sleep(for: .seconds(seconds))
+        return false
+      }
+      let first = await group.next() ?? false
+      group.cancelAll()
+      return first
+    }
+  }
+
+  @Test("the runner reports the engine it was frozen with")
+  func frozenProvider() {
+    let runner = FileImportRunner(keychainManager: KeychainManager())
+    #expect(runner.frozenLLMProvider == nil)
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    #expect(runner.frozenLLMProvider == .egOne)
+  }
+
+  @Test("releasing a finished import drops its cached checker, and the next run asks again")
+  func releaseDropsTheCachedChecker() async throws {
+    weak var held: TrackedChecker?
+    var calls = 0
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(),
+      checkerSelectionProvider: { _, _ in
+        calls += 1
+        let checker = TrackedChecker()
+        held = checker
+        return .init(checker: checker, identity: "test_tracked")
+      })
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    let first = try await runner.process(part: spoken)
+    #expect(first.text.contains("Tuist"))
+    #expect(held != nil, "fixture: between parts the run's cache holds the checker")
+    runner.releaseCheckerSelections()
+    #expect(held == nil, "the released import still holds the checker")
+    _ = try await runner.process(part: spoken)
+    #expect(calls == 2, "after release the next part must ask for a fresh selection")
+  }
+
+  @Test(
+    "a selection that returns after a release or a newer freeze does not refill the cache",
+    arguments: [false, true])
+  func lateSelectionDoesNotRefill(newerFreeze: Bool) async throws {
+    let gate = AnswerGate()
+    let (entered, enteredSignal) = AsyncStream.makeStream(of: Void.self)
+    let (staleGone, staleGoneSignal) = AsyncStream.makeStream(of: Void.self)
+    var calls = 0
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(),
+      checkerSelectionProvider: { _, _ in
+        calls += 1
+        if calls == 1 {
+          enteredSignal.yield()
+          await gate.hold()
+          // The stale selection's checker: if the late write refilled the cache, it stays alive.
+          return .init(
+            checker: TrackedChecker(onDeinit: { staleGoneSignal.yield() }), identity: "test_tracked")
+        }
+        return .init(checker: Approver(), identity: "test_ready")
+      })
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    let part = Task { try await runner.process(part: spoken) }
+    #expect(await arrives(entered, within: 5), "fixture: the first selection never started")
+    if newerFreeze {
+      runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    } else {
+      runner.releaseCheckerSelections()
+    }
+    await gate.open()
+    _ = try await part.value
+    // The part can return at its deadline before the late selection lands, so wait for the stale
+    // checker itself to go: a refilled cache would keep it alive.
+    #expect(
+      await arrives(staleGone, within: 5),
+      "the stale selection was cached for a run that no longer owned it")
+    _ = try await runner.process(part: spoken)
+    #expect(calls == 2, "after the stale selection, the next part must ask again")
+  }
+
+  @Test("a late checker answer lets go of its checker once it returns, after the job released it")
+  func lateAnswerReleasesItsChecker() async throws {
+    let gate = AnswerGate()
+    let (gone, goneSignal) = AsyncStream.makeStream(of: Void.self)
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(),
+      checkerSelectionProvider: { _, _ in
+        .init(
+          checker: TrackedChecker(gate: gate, onDeinit: { goneSignal.yield() }),
+          identity: "test_tracked")
+      })
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    // The answer is held past the step's deadline, so the part finishes unchanged.
+    let result = try await runner.process(part: spoken)
+    #expect(result.text.contains("Tuist") == false, "fixture: the held answer must miss its deadline")
+    runner.releaseCheckerSelections()
+    await gate.open()
+    #expect(await arrives(gone, within: 5), "the checker outlived its late answer")
+  }
 }

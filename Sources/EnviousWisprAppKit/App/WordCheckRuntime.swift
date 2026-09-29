@@ -33,15 +33,18 @@ final class WordCheckRuntime {
   private let isOnboardingComplete: @MainActor () -> Bool
   /// The Dictionary row re-reads its status when this fires.
   var onStatusChange: @MainActor () -> Void = {}
-  /// Whether a dictation is in flight (recording, transcribing or polishing). The idle timer never
-  /// unloads during one: a take that crosses `idleUnloadDelay`, whether while recording or while its
+  /// Whether a dictation is in flight (recording, transcribing or polishing) or a file import holds
+  /// the engine (including after Stop, until its work exits). The idle timer never unloads during
+  /// either: a take that crosses `idleUnloadDelay`, whether while recording or while its
   /// transcription runs, would otherwise lose the model it pre-loaded at record start (cloud review,
-  /// PR #3246).
-  var isDictationInFlight: @MainActor () -> Bool = { false }
-  /// Whether the dictation in flight polishes (by its FROZEN session provider) with an engine that
-  /// has no checker of its own. A provider switch mid-take changes the settings but not the take, so
-  /// the take keeps the check it will select (local review, PR #3246).
-  var inFlightDictationNeedsWordCheck: @MainActor () -> Bool = { false }
+  /// PR #3246); an import would lose it between parts, and a dictation during that import would
+  /// then load a second copy while the import's parts still hold the first (#3289).
+  var isWorkInFlight: @MainActor () -> Bool = { false }
+  /// Whether the work in flight polishes (by its FROZEN provider: the dictation's session provider,
+  /// the import's run provider) with an engine that has no checker of its own. A provider switch
+  /// mid-take changes the settings but not the take, so the take keeps the check it will select
+  /// (local review, PR #3246); the same holds for an import's remaining parts (#3289).
+  var inFlightWorkNeedsWordCheck: @MainActor () -> Bool = { false }
 
   private var deliveryState: DeliveryState = .notReady
   private var launchProbeFinished = false
@@ -85,7 +88,7 @@ final class WordCheckRuntime {
   /// (a Diagnostics onboarding reset takes the check back out, download and memory both).
   private var wanted: Bool {
     isDictionaryEnabled() && isOnboardingComplete()
-      && (someEngineLacksOwnChecker() || inFlightDictationNeedsWordCheck())
+      && (someEngineLacksOwnChecker() || inFlightWorkNeedsWordCheck())
   }
   private var isAdmitted: Bool {
     if case .admitted = deliveryState { return true }
@@ -260,13 +263,35 @@ final class WordCheckRuntime {
     idleUnloadTask?.cancel()
     idleUnloadTask = Task { [weak self] in
       try? await Task.sleep(for: Self.idleUnloadDelay)
-      guard !Task.isCancelled, let self, self.activeSelections == 0 else { return }
-      if self.isDictationInFlight() {
-        self.scheduleIdleUnload()
-        return
+      guard !Task.isCancelled, let self else { return }
+      switch Self.idleExpiry(activeSelections: self.activeSelections, workInFlight: self.isWorkInFlight()) {
+      case .keep: return
+      case .reschedule: self.scheduleIdleUnload()
+      case .unload: self.unload(reason: "idle")
       }
-      self.unload(reason: "idle")
     }
+  }
+
+  enum IdleExpiry: Equatable { case keep, reschedule, unload }
+
+  /// What the idle timer does when it fires. A take waiting on a load keeps the model (its selection
+  /// reschedules the timer); work in flight, a dictation or an engine-held import, defers the unload
+  /// by another full delay (#3242, #3289).
+  static func idleExpiry(activeSelections: Int, workInFlight: Bool) -> IdleExpiry {
+    if activeSelections > 0 { return .keep }
+    return workInFlight ? .reschedule : .unload
+  }
+
+  /// Whether the work in flight needs this check, by each piece of work's FROZEN polish engine: the
+  /// dictations' session providers and, while an import holds the engine, the import's run provider
+  /// (#3289). The composition root feeds `inFlightWorkNeedsWordCheck` through this.
+  static func workNeedsWordCheck(
+    dictationProviders: [LLMProvider], importHoldsEngine: Bool, importProvider: LLMProvider?
+  ) -> Bool {
+    let needs = { (provider: LLMProvider) in LearnedWordCheckerEngine(provider: provider) == nil }
+    if dictationProviders.contains(where: needs) { return true }
+    guard importHoldsEngine, let importProvider else { return false }
+    return needs(importProvider)
   }
 
   /// A recording just started: load the model now, while the user is still speaking, so the take's

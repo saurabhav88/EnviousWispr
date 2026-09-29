@@ -1205,21 +1205,6 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager
     )
-    // #3242: the word check never idle-unloads while a dictation is in flight, and a take keeps the
-    // check its FROZEN provider selects. The drivers' session config is the in-flight authority: it
-    // lives from arming to the terminal, unlike the published pipeline state (an external error can
-    // show `.error` while the kernel is still processing).
-    checkerEligibility.wordCheck?.isDictationInFlight = {
-      [weak kernelDriver, weak whisperKitKernelDriver] in
-      kernelDriver?.currentSessionConfig != nil
-        || whisperKitKernelDriver?.currentSessionConfig != nil
-    }
-    checkerEligibility.wordCheck?.inFlightDictationNeedsWordCheck = {
-      [weak kernelDriver, weak whisperKitKernelDriver] in
-      [kernelDriver?.currentSessionConfig, whisperKitKernelDriver?.currentSessionConfig]
-        .compactMap { $0 }
-        .contains { LearnedWordCheckerEngine(provider: $0.llmProvider) == nil }
-    }
     // #1063 PR2: crash-recovery owner. The per-orphan replayer (decrypt →
     // transcribe → polish → save) is built from existing app deps; the coordinator
     // owns the launch scan, the recording gate, dedup, and cleanup routing. The
@@ -1862,6 +1847,9 @@ package final class WisprBootstrapper {
         // import's hold can never be the one released, and the forced reconcile
         // waits for the release rather than being deferred behind it.
         let releaseHold = localPolishRuntimes.releaseImportHold()
+        // #3289: the job is over, so its cached checker selections go; the word check's model is
+        // then held only by the runtime (idle timer) and by any late answer still returning.
+        fileImportRunner.releaseCheckerSelections()
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         Task { @MainActor in
@@ -1889,6 +1877,12 @@ package final class WisprBootstrapper {
       beginRun: { [settings, customWordsPropagator, localPolishRuntimes] in
         let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
         fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
+        // #3289: Start and Clean it again both come through here, after the claim; preload the word
+        // check now for a run whose FROZEN engine has no checker of its own, so the first part finds
+        // it loading or ready. Opening the page or a refused claim never reaches this line.
+        checkerEligibility.wordCheck?.fileImportStarted(
+          needsWordCheck: LearnedWordCheckerEngine(
+            provider: LLMProvider(rawValue: snapshot.llmProvider) ?? .none) == nil)
         let configuration = FileImportSettingsFreeze.configuration(
           for: snapshot,
           ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
@@ -1977,6 +1971,27 @@ package final class WisprBootstrapper {
     }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
+    // #3242: the word check never idle-unloads while a dictation is in flight, and a take keeps the
+    // check its FROZEN provider selects. The drivers' session config is the in-flight authority: it
+    // lives from arming to the terminal, unlike the published pipeline state (an external error can
+    // show `.error` while the kernel is still processing).
+    // #3289: a file import holding the engine counts too, from its claim until its work exits (which
+    // outlasts Stop), with the need read from the run's FROZEN provider. Wired here, after the
+    // coordinator exists, so the closures can see it.
+    checkerEligibility.wordCheck?.isWorkInFlight = {
+      [weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator] in
+      kernelDriver?.currentSessionConfig != nil
+        || whisperKitKernelDriver?.currentSessionConfig != nil
+        || fileImportCoordinator?.isEngineHeld == true
+    }
+    checkerEligibility.wordCheck?.inFlightWorkNeedsWordCheck = {
+      [weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator, weak fileImportRunner] in
+      WordCheckRuntime.workNeedsWordCheck(
+        dictationProviders: [kernelDriver?.currentSessionConfig, whisperKitKernelDriver?.currentSessionConfig]
+          .compactMap { $0?.llmProvider },
+        importHoldsEngine: fileImportCoordinator?.isEngineHeld == true,
+        importProvider: fileImportRunner?.frozenLLMProvider)
+    }
     #if DEBUG
       self.debugImportDoor = DebugImportDoor(
         coordinator: fileImportCoordinator,
