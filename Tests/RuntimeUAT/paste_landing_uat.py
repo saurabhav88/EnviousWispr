@@ -989,6 +989,10 @@ def same_board(expected):
 def sleeping_take(label, chrome, before_hold=None):
     """One take into the isolated Chrome with the image on the clipboard. Returns (lines,
     cascades, image) or raises Aborted. Nothing here reads that Chrome's accessibility tree."""
+    # With restore OFF the cleanup rewrites the board to the dictation by design (legacy_rewrite),
+    # so the image-comes-back checks only mean something with restore ON.
+    if u.defaults_value("restoreClipboardAfterPaste") not in (None, "1"):
+        raise u.Aborted(f"{label}: needs Restore clipboard after paste ON (it is off)")
     image = set_clipboard_image()
     base = u.log_size()
     PHASE_BASE["offset"] = base
@@ -1107,6 +1111,14 @@ def phase_sleeping_switch():
                 perform_action(window, "AXRaise")
                 set_attr(window, "AXMain", True)
         chrome.front()
+        app_ax = get_ax_app(chrome.pid)
+        focused_window = get_attr(app_ax, "AXFocusedWindow")
+        focused = get_attr(app_ax, "AXFocusedUIElement")
+        window_title = str(get_attr(focused_window, "AXTitle") or "") if focused_window else ""
+        focused_role_ = get_attr(focused, "AXRole") if focused is not None else None
+        if not (window_title.startswith(titles["A"]) and focused_role_ == "AXTextArea"):
+            raise u.Aborted(f"sleeping-switch: window A's box is not focused before Paste Last "
+                            f"(window {window_title!r}, focus {focused_role_!r})")
         reuse_base = u.log_size()
         u.chord("v")
         u.wait_for("the Paste Last outcome", lambda: u.reuse_lines(reuse_base), deadline=5.0)
