@@ -1234,6 +1234,10 @@ package final class WisprBootstrapper {
         checkerEligibility?.wordCheck?.recoveryStarted(
           needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
       },
+      onReplayFinished: { [weak checkerEligibility] provider in
+        checkerEligibility?.wordCheck?.recoveryFinished(
+          needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
+      },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
       // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.

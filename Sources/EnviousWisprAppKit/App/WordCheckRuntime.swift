@@ -43,6 +43,11 @@ final class WordCheckRuntime {
   /// parts (#3289). Work that does NOT use this check (an EG-1 or S1-mini dictation or import)
   /// does not hold it in memory (#3289 final review).
   var inFlightWorkNeedsWordCheck: @MainActor () -> Bool = { false }
+  /// Crash-recovery replays in progress whose recording's frozen engine uses this check, counted
+  /// from `recoveryStarted` to `recoveryFinished` (#3289 final review): work in flight, like a
+  /// dictation, for the idle timer and for admission.
+  private var recoveriesNeedingCheck = 0
+  private var workNeedsCheck: Bool { inFlightWorkNeedsWordCheck() || recoveriesNeedingCheck > 0 }
 
   private var deliveryState: DeliveryState = .notReady
   private var launchProbeFinished = false
@@ -177,7 +182,7 @@ final class WordCheckRuntime {
         failedLoadRevision = nil
         // A dictation or import that started while the model was still downloading could not
         // preload it; load now for that work only (#3289 final review).
-        if wanted { load(for: .deliveryAdmitted, needsWordCheck: inFlightWorkNeedsWordCheck()) }
+        if wanted { load(for: .deliveryAdmitted, needsWordCheck: workNeedsCheck) }
       }
     } else if wasAdmitted {
       // Removed or superseded: the loaded model may point at deleted files.
@@ -296,7 +301,7 @@ final class WordCheckRuntime {
       try? await Task.sleep(for: Self.idleUnloadDelay)
       guard !Task.isCancelled, let self else { return }
       switch Self.idleExpiry(
-        activeSelections: self.activeSelections, workNeedsCheck: self.inFlightWorkNeedsWordCheck())
+        activeSelections: self.activeSelections, workNeedsCheck: self.workNeedsCheck)
       {
       case .keep: return
       case .reschedule: self.scheduleIdleUnload()
@@ -349,7 +354,13 @@ final class WordCheckRuntime {
   /// the recording's FROZEN polish engine, hidden behind that transcription (#3289 final review).
   /// Before #3289 the model was already in memory from launch.
   func recoveryStarted(needsWordCheck: Bool) {
+    if needsWordCheck { recoveriesNeedingCheck += 1 }
     workStarted(.recoveryStarted, needsWordCheck: needsWordCheck)
+  }
+
+  /// The replay that called `recoveryStarted` with the same answer has ended, on any path.
+  func recoveryFinished(needsWordCheck: Bool) {
+    if needsWordCheck { recoveriesNeedingCheck = max(0, recoveriesNeedingCheck - 1) }
   }
 
   private func workStarted(_ trigger: WordCheckResidencyPolicy.Trigger, needsWordCheck: Bool) {

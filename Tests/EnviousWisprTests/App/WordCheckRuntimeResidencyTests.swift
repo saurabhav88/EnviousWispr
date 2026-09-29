@@ -93,6 +93,22 @@ struct WordCheckRuntimeResidencyTests {
     #expect(runtime.loadAttemptsForTests == 1)
   }
 
+  /// A recovery that started while the model was still downloading could not preload it; the
+  /// download finishing before the replay ends loads it, and not after the replay has ended.
+  @Test("the model finishing its download during a recovery that needs it loads it")
+  func admissionDuringRecoveryLoads() throws {
+    let (during, _) = try makeRuntime()
+    during.recoveryStarted(needsWordCheck: true)  // not admitted yet: nothing to load
+    #expect(during.loadAttemptsForTests == 0)
+    during.deliveryStateChangedForTests(.admitted)
+    #expect(during.loadAttemptsForTests == 1)
+    let (after, _) = try makeRuntime()
+    after.recoveryStarted(needsWordCheck: true)
+    after.recoveryFinished(needsWordCheck: true)
+    after.deliveryStateChangedForTests(.admitted)
+    #expect(after.loadAttemptsForTests == 0, "loaded for a recovery that had already ended")
+  }
+
   @Test("a crash-recovery replay loads for an engine without its own check, never for EG-1")
   func recoveryStart() throws {
     let (withCheck, _) = try admittedIdle()

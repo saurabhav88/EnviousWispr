@@ -160,7 +160,8 @@ struct RecoverySpoolReplayerTests {
   private static func makeHarness(
     transcriptDir: URL? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
-    onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil
+    onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
+    onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil
   ) -> Harness {
     let spoolDir = tempDir()
     let keyStore = RecoveryKeyStore(backend: .file, fileDirectory: tempDir())
@@ -182,6 +183,7 @@ struct RecoverySpoolReplayerTests {
       keychainManager: KeychainManager(),
       outputClassifierHolder: OutputClassifierHolder(),
       onReplayWillTranscribe: onReplayWillTranscribe,
+      onReplayFinished: onReplayFinished,
       now: now,
       currentVocabulary: { (.empty, .empty) },
       currentSnippets: { .empty })
@@ -257,6 +259,23 @@ struct RecoverySpoolReplayerTests {
     #expect(reported.first?.0 == LLMProvider(rawValue: Self.snapshot().llmProvider))
     #expect(reported.first?.1 == 0, "the engine was reported after transcription started")
     #expect(h.asr.transcribeCallCount == 1)
+  }
+
+  /// The word check counts a replay as work that needs it from the first hook to the second, so
+  /// the second must follow the first on every path, a failed transcription included.
+  @Test("a replay that reports its engine reports its end too, when transcription succeeds or fails")
+  func replayReportsEndOnEveryPath() async throws {
+    for fails in [false, true] {
+      var events: [String] = []
+      let h = Self.makeHarness(
+        onReplayWillTranscribe: { _ in events.append("start") },
+        onReplayFinished: { _ in events.append("end") })
+      if fails { h.asr.transcribeError = CancellationError() }
+      let id = "end-\(fails)-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+      _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      #expect(events == ["start", "end"], "transcription failed: \(fails)")
+    }
   }
 
   @Test("one-attempt guard: a marker present on entry ABANDONS (no transcribe, no delete)")

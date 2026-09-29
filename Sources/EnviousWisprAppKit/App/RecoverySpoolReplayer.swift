@@ -107,8 +107,10 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private let checkerSelectionProvider:
     (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
   /// #3289: told the recovered recording's frozen polish engine just before it is transcribed, so
-  /// the word check can start loading behind the transcription. Nil in tests that do not care.
+  /// the word check can start loading behind the transcription, and again when this replay ends on
+  /// any path, so the word check stops counting it as work. Nil in tests that do not care.
   private let onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)?
+  private let onReplayFinished: (@MainActor (LLMProvider) -> Void)?
   /// Current custom-words vocabulary, best-effort (the snapshot carries only the
   /// version, not the terms — recovery promises normal-quality, not byte-exact).
   private let currentVocabulary:
@@ -148,6 +150,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
     onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
+    onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
@@ -166,6 +169,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.s1MiniRuntime = s1MiniRuntime
     self.checkerSelectionProvider = checkerSelectionProvider
     self.onReplayWillTranscribe = onReplayWillTranscribe
+    self.onReplayFinished = onReplayFinished
     self.currentVocabulary = currentVocabulary
     self.currentSnippets = currentSnippets
   }
@@ -372,9 +376,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
     if isAborted() { return .aborted }
     let result: ASRResult
-    if let settings = recovered.settings, let provider = LLMProvider(rawValue: settings.llmProvider) {
-      onReplayWillTranscribe?(provider)
-    }
+    let replayProvider = recovered.settings.flatMap { LLMProvider(rawValue: $0.llmProvider) }
+    if let replayProvider { onReplayWillTranscribe?(replayProvider) }
+    defer { if let replayProvider { onReplayFinished?(replayProvider) } }
     do {
       result = try await activeEngine.transcribe(recovered.samples, options)
     } catch {
