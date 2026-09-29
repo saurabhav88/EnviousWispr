@@ -75,7 +75,7 @@ test("a can_resolve section match in decomposed mode allows suppression, in two 
   assert.equal(jev.calls.length, 2);
   assert.deepEqual(
     { ...out.issues[0], scores: undefined },
-    { id: "i0", match_type: "section", page_slug: RESOLVE.slug, section_id: section.id, heading: section.heading, text: section.text, url: section.url, deflection: "can_resolve", scores: undefined, resolution_eligible: true, requires_send: false },
+    { id: "i0", match_type: "section", page_slug: RESOLVE.slug, page_title: RESOLVE.title, section_id: section.id, heading: section.heading, text: section.text, url: section.url, deflection: "can_resolve", scores: undefined, resolution_eligible: true, requires_send: false },
   );
   assert.equal(out.kb_version, CATALOG.catalogVersion);
   assert.equal(out.jev_model_version, JEV_MODEL);
@@ -225,9 +225,11 @@ test("section gates at their boundaries, then the page-link fallback", async () 
     const jev = fakeJev(firstReply({ page_0: choice(RESOLVE.slug, c.pageP, 0.9), useful_0: noul() }), sectionAnswer(id, c.resolves, c.p, c.conf));
     const out = await runHelpCheck(body(), ENV, { fetchImpl: jev.fetchImpl });
     assert.equal(out.issues[0].match_type, expected, JSON.stringify(c));
+    if (expected === "none") assert.equal(out.issues[0].page_title, null);
     if (expected !== "section") assert.equal(out.suppression_allowed, false);
     if (expected === "page") {
       assert.equal(out.issues[0].url, RESOLVE.url);
+      assert.equal(out.issues[0].page_title, RESOLVE.title);
       assert.equal(out.issues[0].requires_send, true);
     }
   }

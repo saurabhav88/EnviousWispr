@@ -308,7 +308,7 @@ export async function runHelpCheck(body, env, { fetchImpl = fetch, now = Date.no
   for (let k = 0; k < issues.length; k++) {
     const page = pages[k];
     const scores = { page_p: page.p, page_confidence: page.confidence, useful: page.useful, section_p: null, section_confidence: null, resolves: null };
-    const none = { id: issues[k].id, match_type: "none", page_slug: null, section_id: null, heading: null, text: null, url: null, deflection: null, scores, resolution_eligible: false, requires_send: true };
+    const none = { id: issues[k].id, match_type: "none", page_slug: null, page_title: null, section_id: null, heading: null, text: null, url: null, deflection: null, scores, resolution_eligible: false, requires_send: true };
     const slug = picks[k];
     if (!slug) {
       results.push(none);
@@ -333,6 +333,7 @@ export async function runHelpCheck(body, env, { fetchImpl = fetch, now = Date.no
         ...none,
         match_type: "section",
         page_slug: slug,
+        page_title: article.title,
         section_id: target.id,
         heading: target.heading,
         text: target.text,
@@ -342,7 +343,7 @@ export async function runHelpCheck(body, env, { fetchImpl = fetch, now = Date.no
         requires_send: !eligible,
       });
     } else if (page.p >= GATES.pageLinkP) {
-      results.push({ ...none, match_type: "page", page_slug: slug, heading: article.title, url: article.url, deflection: article.deflection });
+      results.push({ ...none, match_type: "page", page_slug: slug, page_title: article.title, heading: article.title, url: article.url, deflection: article.deflection });
     } else {
       results.push(none);
     }
