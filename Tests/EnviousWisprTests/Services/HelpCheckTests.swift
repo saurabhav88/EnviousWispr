@@ -553,6 +553,7 @@ struct HelpCheckTests {
     let presentation = UUID()
     store.save(message: message, email: "")
     let draft = try #require(FeedbackDraft(message: message, email: ""))
+    submission.presentationAppeared(presentation)
     let step = await submission.send(
       draft, diagnostics: nil, from: presentation, sent: (message, ""),
       current: { .init(presentation: presentation, message: message, email: "") })
@@ -617,6 +618,7 @@ struct HelpCheckTests {
       let screen: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
         FeedbackSubmission.FormState(presentation: presentation, message: message, email: "")
       }
+      submission.presentationAppeared(presentation)
       _ = await submission.send(
         try #require(FeedbackDraft(message: message, email: "")), diagnostics: nil,
         from: presentation, sent: (message, ""), current: screen)
@@ -658,6 +660,7 @@ struct HelpCheckTests {
         .concerns([Concern(summary: "Keybind", evidence: message, kind: .bug)], hitCap: false),
         transport))
     store.save(message: message, email: "")
+    submission.presentationAppeared(presentation)
     _ = await submission.send(
       try #require(FeedbackDraft(message: message, email: "")), diagnostics: nil,
       from: presentation, sent: (message, ""),
@@ -752,6 +755,7 @@ struct HelpCheckTests {
     let onScreenB: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
       .init(presentation: b, message: message, email: "")
     }
+    submission.presentationAppeared(a)
     _ = await submission.send(
       try #require(FeedbackDraft(message: message, email: "")), diagnostics: nil, from: a,
       sent: (message, ""), current: onScreenA)
@@ -804,6 +808,54 @@ struct HelpCheckTests {
         confirmed: submission.helpMarks, generation: generation, from: b, current: onScreenB))
     #expect(submission.helpMarks.isEmpty)
     #expect(recorder.saves.isEmpty)
+  }
+
+  @Test("A Send that starts after its popover closed never takes over the one on screen")
+  @MainActor
+  func lateSendKeepsOpeningOnScreen() async throws {
+    for cards in [true, false] {
+      let (store, suite) = Self.makeStore()
+      defer { UserDefaults().removePersistentDomain(forName: suite) }
+      let recorder = RecordingSave()
+      let message = "Keybind broke."
+      let transport = FakeTransport([
+        .reply(200, cards ? Self.reply([Self.section("i0")]) : Self.reply([Self.none("i0")]))
+      ])
+      let submission = FeedbackSubmission(
+        store: store, save: recorder.save,
+        helpCheck: Self.check(
+          .concerns([Concern(summary: "Keybind", evidence: message, kind: .bug)], hitCap: false),
+          transport))
+      store.save(message: message, email: "")
+      let a = UUID()
+      let b = UUID()
+      let onScreenB: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
+        .init(presentation: b, message: message, email: "")
+      }
+      // A clicks Send and closes before its scheduled task reaches the owner; B opens.
+      submission.presentationAppeared(a)
+      submission.presentationDisappeared(a)
+      submission.presentationAppeared(b)
+      let step = await submission.send(
+        try #require(FeedbackDraft(message: message, email: "")), diagnostics: nil, from: a,
+        sent: (message, ""), current: onScreenB)
+      #expect(submission.activePresentation == b, "Send never re-arms a closed opening")
+      if cards {
+        guard case .suggestions = step else {
+          Issue.record("expected suggestions")
+          continue
+        }
+        let generation = try #require(submission.helpGeneration)
+        #expect(
+          await submission.finishSuggestions(
+            solved: [], generation: generation, from: b, current: onScreenB)
+            == .saved(offline: false))
+      } else {
+        #expect(step == .sent(nil), "the closed opening gets no outcome")
+        #expect(submission.reconciledDraft(for: b)?.message == "", "B shows the settled draft")
+      }
+      #expect(recorder.saves.count == 1, "exactly one report")
+    }
   }
 
   @Test("Every concern marked solved but the list not confirmed complete: sent, and recorded as solved")
@@ -864,6 +916,7 @@ struct HelpCheckTests {
         })
       submission.onHelpTerminal = { terminals.record($0) }
       store.save(message: message, email: "")
+      submission.presentationAppeared(a)
       _ = await submission.send(
         try #require(FeedbackDraft(message: message, email: "")), diagnostics: nil, from: a,
         sent: (message, ""), current: screen)
@@ -903,6 +956,7 @@ struct HelpCheckTests {
       helpCheck: Self.check(.unavailable(.afmTimeout), FakeTransport([.fail(URLError(.notConnectedToInternet))])))
     submission.onHelpTerminal = { terminals.record($0) }
     let a = UUID()
+    submission.presentationAppeared(a)
     _ = await submission.send(
       try #require(FeedbackDraft(message: "hi there", email: "")), diagnostics: nil, from: a,
       sent: ("hi there", ""), current: { .init(presentation: a, message: "hi there", email: "") })
@@ -924,6 +978,7 @@ struct HelpCheckTests {
       store: store, save: recorder.save,
       helpCheck: Self.check(.unavailable(.afmUnavailable), transport))
     let presentation = UUID()
+    submission.presentationAppeared(presentation)
     let step = await submission.send(
       try #require(FeedbackDraft(message: "hi there", email: "")), diagnostics: nil,
       from: presentation, sent: ("hi there", ""),
@@ -943,6 +998,7 @@ struct HelpCheckTests {
     let recorder = RecordingSave()
     let submission = FeedbackSubmission(store: store, save: recorder.save)
     let presentation = UUID()
+    submission.presentationAppeared(presentation)
     let step = await submission.send(
       try #require(FeedbackDraft(message: "hi there", email: "")), diagnostics: nil,
       from: presentation, sent: ("hi there", ""),

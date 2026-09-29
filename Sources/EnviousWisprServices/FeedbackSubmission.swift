@@ -138,7 +138,6 @@ public final class FeedbackSubmission {
         await submit(draft, diagnostics: diagnostics, from: presentation, sent: sent, current: current))
     }
     let generation = UUID()
-    activePresentation = presentation
     frozen = Frozen(
       draft: draft, diagnostics: diagnostics, sent: sent, generation: generation, startedAt: clock())
     sender = presentation
@@ -174,7 +173,9 @@ public final class FeedbackSubmission {
 
   /// The popover opening on screen now, nil while none is. Only its presses may act on the
   /// cards: a closed opening keeps its closures (and can renew its own id), so the owner, not the
-  /// caller, says which opening is live. The cards themselves outlive a close (minimize).
+  /// caller, says which opening is live. Set only by the opening appearing and going away, never
+  /// by Send: a Send scheduled by an opening that has since closed must not take over the one on
+  /// screen. The cards themselves outlive a close (minimize).
   public private(set) var activePresentation: UUID?
 
   /// An opening appeared on screen.
