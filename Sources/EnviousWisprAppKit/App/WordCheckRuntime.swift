@@ -233,6 +233,18 @@ final class WordCheckRuntime {
           "word check loaded revision=\(contract.revision) ms=\(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)",
           category: "WordCheck")
       } catch {
+        // BEFORE the generation guard (#3289): a failed load never produced a model, so no deinit
+        // clears what its weights left in MLX's cache, and a cancelled or superseded failure leaves
+        // the same buffers as a current one.
+        KevWordCheckModel.releaseCachedBuffers()
+        #if DEBUG
+          let memory = KevWordCheckModel.memorySnapshotForLog()
+          Task {
+            await AppLogger.shared.log(
+              "word check load failure cleanup mlx_active=\(memory.active) mlx_cache=\(memory.cache)",
+              category: "WordCheck")
+          }
+        #endif
         guard let self, self.loadGeneration == generation else { return }
         self.loadTask = nil
         self.failedLoadRevision = revision
@@ -254,9 +266,21 @@ final class WordCheckRuntime {
     loadTask = nil
     guard loaded != nil else { return }
     loaded = nil
-    Task {
-      await AppLogger.shared.log("word check unloaded reason=\(reason)", category: "WordCheck")
-    }
+    // The runtime's reference is gone; the model itself is freed (and MLX's cache cleared, in its
+    // deinit) only when its last holder lets go: a take, an import part or a late answer may still
+    // hold it.
+    #if DEBUG
+      let memory = KevWordCheckModel.memorySnapshotForLog()
+      Task {
+        await AppLogger.shared.log(
+          "word check unloaded reason=\(reason) mlx_active=\(memory.active) mlx_cache=\(memory.cache)",
+          category: "WordCheck")
+      }
+    #else
+      Task {
+        await AppLogger.shared.log("word check unloaded reason=\(reason)", category: "WordCheck")
+      }
+    #endif
   }
 
   private func scheduleIdleUnload() {

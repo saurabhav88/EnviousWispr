@@ -200,6 +200,7 @@ struct CheckerSelectionPathTests {
         return false
       }
       group.addTask {
+        // settle: deadline fallback around the signal wait above; never asserted on
         try? await Task.sleep(for: .seconds(seconds))
         return false
       }
