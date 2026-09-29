@@ -17,21 +17,27 @@ enum WordCheckResidencyPolicy {
     case appCancelFinished = "app_cancel_finished"
     case recordingStarted = "recording_started"
     case fileImportStarted = "file_import_started"
+    case recoveryStarted = "recovery_started"
     case takeSelection = "take"
     case userRetry = "settings_retry"
   }
 
-  /// `needsWordCheck`: for a recording or a file import, whether ITS frozen polish engine has no
-  /// checker of its own. The other triggers ignore it.
+  /// `needsWordCheck`: for a recording, a file import or a crash-recovery replay, whether ITS frozen
+  /// polish engine has no checker of its own; for the model's admission, whether work already in
+  /// flight needs it. The other triggers ignore it.
   static func shouldLoad(_ trigger: Trigger, needsWordCheck: Bool) -> Bool {
     switch trigger {
-    case .launch, .settingsChanged, .onboardingChanged, .parakeetAdmitted, .deliveryAdmitted,
-      .appCancelFinished:
+    case .launch, .settingsChanged, .onboardingChanged, .parakeetAdmitted, .appCancelFinished:
       // Background: nobody is dictating or transcribing yet. The download may still run
       // (`WordCheckFetchPolicy`), because disk is not memory.
       return false
-    case .recordingStarted, .fileImportStarted:
-      // Load while the user speaks, or as the file starts, so the check is ready when the text is.
+    case .recordingStarted, .fileImportStarted, .recoveryStarted:
+      // Load while the user speaks, as the file starts, or before a recovered recording is
+      // transcribed, so the check is ready when the text is.
+      return needsWordCheck
+    case .deliveryAdmitted:
+      // The download finished: load only for a dictation or import already running that needs it,
+      // whose own start could not load a model that was not there yet.
       return needsWordCheck
     case .takeSelection, .userRetry:
       // A take asking for the check now, or the user pressing Try again.

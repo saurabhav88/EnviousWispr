@@ -16,10 +16,11 @@ struct WordCheckResidencyPolicyTests {
     .settingsChanged: false,
     .onboardingChanged: false,
     .parakeetAdmitted: false,
-    .deliveryAdmitted: false,
+    .deliveryAdmitted: nil,
     .appCancelFinished: false,
     .recordingStarted: nil,
     .fileImportStarted: nil,
+    .recoveryStarted: nil,
     .takeSelection: true,
     .userRetry: true,
   ]
@@ -27,7 +28,7 @@ struct WordCheckResidencyPolicyTests {
   @Test("the table names every trigger the policy knows")
   func tableIsComplete() {
     #expect(Set(Self.expected.keys) == Set(WordCheckResidencyPolicy.Trigger.allCases))
-    #expect(WordCheckResidencyPolicy.Trigger.allCases.count == 10)
+    #expect(WordCheckResidencyPolicy.Trigger.allCases.count == 11)
   }
 
   @Test(

@@ -33,17 +33,15 @@ final class WordCheckRuntime {
   private let isOnboardingComplete: @MainActor () -> Bool
   /// The Dictionary row re-reads its status when this fires.
   var onStatusChange: @MainActor () -> Void = {}
-  /// Whether a dictation is in flight (recording, transcribing or polishing) or a file import holds
-  /// the engine (including after Stop, until its work exits). The idle timer never unloads during
-  /// either: a take that crosses `idleUnloadDelay`, whether while recording or while its
-  /// transcription runs, would otherwise lose the model it pre-loaded at record start (cloud review,
-  /// PR #3246); an import would lose it between parts, and a dictation during that import would
-  /// then load a second copy while the import's parts still hold the first (#3289).
-  var isWorkInFlight: @MainActor () -> Bool = { false }
   /// Whether the work in flight polishes (by its FROZEN provider: the dictation's session provider,
   /// the import's run provider) with an engine that has no checker of its own. A provider switch
   /// mid-take changes the settings but not the take, so the take keeps the check it will select
   /// (local review, PR #3246); the same holds for an import's remaining parts (#3289).
+  /// The idle timer never unloads while this is true: a take that crosses `idleUnloadDelay`,
+  /// whether while recording or while its transcription runs, would otherwise lose the model it
+  /// pre-loaded at record start (cloud review, PR #3246), and an import would lose it between
+  /// parts (#3289). Work that does NOT use this check (an EG-1 or S1-mini dictation or import)
+  /// does not hold it in memory (#3289 final review).
   var inFlightWorkNeedsWordCheck: @MainActor () -> Bool = { false }
 
   private var deliveryState: DeliveryState = .notReady
@@ -175,7 +173,12 @@ final class WordCheckRuntime {
     deliveryState = state
     if isAdmitted {
       cancelledBecauseUnwanted = false  // a cancel that lost the race to admission
-      if !wasAdmitted { failedLoadRevision = nil }
+      if !wasAdmitted {
+        failedLoadRevision = nil
+        // A dictation or import that started while the model was still downloading could not
+        // preload it; load now for that work only (#3289 final review).
+        if wanted { load(for: .deliveryAdmitted, needsWordCheck: inFlightWorkNeedsWordCheck()) }
+      }
     } else if wasAdmitted {
       // Removed or superseded: the loaded model may point at deleted files.
       unload(reason: "delivery_\(state)")
@@ -292,7 +295,9 @@ final class WordCheckRuntime {
     idleUnloadTask = Task { [weak self] in
       try? await Task.sleep(for: Self.idleUnloadDelay)
       guard !Task.isCancelled, let self else { return }
-      switch Self.idleExpiry(activeSelections: self.activeSelections, workInFlight: self.isWorkInFlight()) {
+      switch Self.idleExpiry(
+        activeSelections: self.activeSelections, workNeedsCheck: self.inFlightWorkNeedsWordCheck())
+      {
       case .keep: return
       case .reschedule: self.scheduleIdleUnload()
       case .release:
@@ -304,11 +309,11 @@ final class WordCheckRuntime {
   enum IdleExpiry: Equatable { case keep, reschedule, release }
 
   /// What the idle timer does when it fires. A take waiting on a load keeps the model (its selection
-  /// reschedules the timer); work in flight, a dictation or an engine-held import, defers the unload
-  /// by another full delay (#3242, #3289).
-  static func idleExpiry(activeSelections: Int, workInFlight: Bool) -> IdleExpiry {
+  /// reschedules the timer); work in flight that uses this check, a dictation or an engine-held
+  /// import, defers the unload by another full delay (#3242, #3289).
+  static func idleExpiry(activeSelections: Int, workNeedsCheck: Bool) -> IdleExpiry {
     if activeSelections > 0 { return .keep }
-    return workInFlight ? .reschedule : .release
+    return workNeedsCheck ? .reschedule : .release
   }
 
   /// Whether the work in flight needs this check, by each piece of work's FROZEN polish engine: the
@@ -338,6 +343,13 @@ final class WordCheckRuntime {
   /// FROZEN polish engine, so the first part finds the check loading or ready (#3289, #3256).
   func fileImportStarted(needsWordCheck: Bool) {
     workStarted(.fileImportStarted, needsWordCheck: needsWordCheck)
+  }
+
+  /// A crash-recovery replay is about to transcribe a recovered recording: the same preload, for
+  /// the recording's FROZEN polish engine, hidden behind that transcription (#3289 final review).
+  /// Before #3289 the model was already in memory from launch.
+  func recoveryStarted(needsWordCheck: Bool) {
+    workStarted(.recoveryStarted, needsWordCheck: needsWordCheck)
   }
 
   private func workStarted(_ trigger: WordCheckResidencyPolicy.Trigger, needsWordCheck: Bool) {

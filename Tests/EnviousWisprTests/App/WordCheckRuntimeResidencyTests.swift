@@ -76,11 +76,31 @@ struct WordCheckRuntimeResidencyTests {
     #expect(inputs.statusChanges > before, "an admitted refresh still updates the Dictionary row")
   }
 
-  @Test("the model finishing its download while wanted loads nothing")
+  @Test("the model finishing its download while wanted loads nothing when no work needs it")
   func admissionLoadsNothing() throws {
     let (runtime, _) = try makeRuntime()
     runtime.deliveryStateChangedForTests(.admitted)
     #expect(runtime.loadAttemptsForTests == 0)
+  }
+
+  /// A dictation or import that started while the model was still downloading could not preload
+  /// it; the download finishing during that work loads it once.
+  @Test("the model finishing its download during work that needs it loads it")
+  func admissionDuringWorkLoads() throws {
+    let (runtime, _) = try makeRuntime()
+    runtime.inFlightWorkNeedsWordCheck = { true }
+    runtime.deliveryStateChangedForTests(.admitted)
+    #expect(runtime.loadAttemptsForTests == 1)
+  }
+
+  @Test("a crash-recovery replay loads for an engine without its own check, never for EG-1")
+  func recoveryStart() throws {
+    let (withCheck, _) = try admittedIdle()
+    withCheck.recoveryStarted(needsWordCheck: true)
+    #expect(withCheck.loadAttemptsForTests == 1)
+    let (ownCheck, _) = try admittedIdle()
+    ownCheck.recoveryStarted(needsWordCheck: LearnedWordCheckerEngine(provider: .egOne) == nil)
+    #expect(ownCheck.loadAttemptsForTests == 0)
   }
 
   /// The bootstrapper passes `LearnedWordCheckerEngine(provider:) == nil` for the take's frozen
@@ -129,10 +149,10 @@ struct WordCheckRuntimeResidencyTests {
 
   @Test("the idle timer defers under work in flight and keeps a model a take is waiting on")
   func idleExpiry() {
-    #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workInFlight: false) == .release)
-    #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workInFlight: true) == .reschedule)
-    #expect(WordCheckRuntime.idleExpiry(activeSelections: 1, workInFlight: false) == .keep)
-    #expect(WordCheckRuntime.idleExpiry(activeSelections: 1, workInFlight: true) == .keep)
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workNeedsCheck: false) == .release)
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 0, workNeedsCheck: true) == .reschedule)
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 1, workNeedsCheck: false) == .keep)
+    #expect(WordCheckRuntime.idleExpiry(activeSelections: 1, workNeedsCheck: true) == .keep)
   }
 
   @Test("a held import keeps needing the check its frozen engine selects, whatever the settings say")

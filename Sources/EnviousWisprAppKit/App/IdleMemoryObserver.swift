@@ -5,9 +5,10 @@ import Foundation
 /// `idleThreshold` (#3289 §8b). It answers one question for the founder: after a release, does an
 /// idle EnviousWispr give its memory back? Sentry's `app_memory` only rides on errors, so it cannot.
 ///
-/// Idle means no dictation in flight and no file import holding the engine, read through the SAME
-/// predicate the word check's idle timer uses (`WordCheckRuntime.isWorkInFlight`), so the sample and
-/// the unload cannot disagree about what "working" is. Work is seen two ways, and both count as a
+/// Idle means no dictation in flight and nothing holding the engine lease (a file import until its
+/// work exits, crash recovery, an abandoned decode). The word check's idle timer asks a narrower
+/// question (work that uses that check), so any stretch idle here is also idle for it. Work is
+/// seen two ways, and both count as a
 /// busy tick: the predicate true at a tick, or the engine lease's `admissionEpoch` changed since the
 /// last tick. Every workload claims that one lease before it touches the engine (dictation at
 /// arming, Transcribe a File at Start and Clean it again, crash recovery), so the epoch sees work

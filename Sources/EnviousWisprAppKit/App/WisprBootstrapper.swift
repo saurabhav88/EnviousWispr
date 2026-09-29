@@ -1228,6 +1228,12 @@ package final class WisprBootstrapper {
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         await checkerEligibility.selection(provider: provider, language: language)
       },
+      // #3289: start loading the word check behind the recovered recording's transcription when
+      // its frozen polish engine uses it (the model is no longer loaded at launch).
+      onReplayWillTranscribe: { [weak checkerEligibility] provider in
+        checkerEligibility?.wordCheck?.recoveryStarted(
+          needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
+      },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
       // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.
@@ -1613,15 +1619,16 @@ package final class WisprBootstrapper {
     )
     bluetoothAwarenessPresenterHolder.presenter = bluetoothAwarenessPresenter
 
-    // #3289: ONE "work in flight" predicate, read by the word check's idle timer and by the
-    // idle-memory sample, so the two cannot disagree. A dictation is in flight from arming to its
-    // terminal (the drivers' session config, which outlives an `.error` the pipeline may publish
-    // early); a file import from its claim until its work exits, which outlasts Stop.
-    // `fileImportCoordinatorForGates` is assigned once the coordinator exists, further down.
-    let isWorkInFlight: @MainActor () -> Bool = { [weak kernelDriver, weak whisperKitKernelDriver] in
+    // #3289 §8b: is the app working, for the idle-memory sample. A dictation is in flight from
+    // arming to its terminal (the drivers' session config, which outlives an `.error` the pipeline
+    // may publish early); anything else that works holds the engine lease (a file import until its
+    // work exits, which outlasts Stop; crash recovery; an abandoned decode). The word check's idle
+    // timer asks a narrower question, work that uses THAT check (`inFlightWorkNeedsWordCheck`).
+    let isWorkInFlight: @MainActor () -> Bool = {
+      [weak kernelDriver, weak whisperKitKernelDriver, weak engineLease] in
       kernelDriver?.currentSessionConfig != nil
         || whisperKitKernelDriver?.currentSessionConfig != nil
-        || fileImportCoordinatorForGates?.isEngineHeld == true
+        || engineLease?.isBusy == true
     }
     // #3289 §8b: one idle-memory sample per launch. Its task keeps it alive until it sends.
     let idleMemoryObserver = IdleMemoryObserver(
@@ -2004,14 +2011,13 @@ package final class WisprBootstrapper {
     }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
-    // #3242: the word check never idle-unloads while a dictation is in flight, and a take keeps the
-    // check its FROZEN provider selects. The drivers' session config is the in-flight authority: it
-    // lives from arming to the terminal, unlike the published pipeline state (an external error can
-    // show `.error` while the kernel is still processing).
+    // #3242: the word check never idle-unloads while a dictation that uses it is in flight, and a
+    // take keeps the check its FROZEN provider selects. The drivers' session config is the in-flight
+    // authority: it lives from arming to the terminal, unlike the published pipeline state (an
+    // external error can show `.error` while the kernel is still processing).
     // #3289: a file import holding the engine counts too, from its claim until its work exits (which
     // outlasts Stop), with the need read from the run's FROZEN provider. Wired here, after the
-    // coordinator exists, so the closures can see it.
-    checkerEligibility.wordCheck?.isWorkInFlight = isWorkInFlight
+    // coordinator exists, so the closure can see it.
     checkerEligibility.wordCheck?.inFlightWorkNeedsWordCheck = {
       [weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator, weak fileImportRunner] in
       WordCheckRuntime.workNeedsWordCheck(
