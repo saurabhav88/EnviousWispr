@@ -1,71 +1,81 @@
 ---
 title: "Choosing Your Microphone"
-description: "Letting EnviousWispr follow your Mac, or choosing a microphone yourself."
+description: "Letting EnviousWispr follow your Mac's microphone, choosing one yourself, and handling audio that plays while you dictate."
 category: "audio-and-microphone"
 section: "Input Configuration"
 order: 1
-keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube"]
+keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube", "audio interface", "focusrite", "scarlett", "virtual microphone", "wrong input", "records silence"]
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
-updated: 2026-09-27
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-EnviousWispr can follow whichever microphone your Mac is set to, or use a specific device you name yourself. Both choices live under **Settings** \> **Microphone**.
+EnviousWispr follows whichever microphone your Mac is set to, or uses a specific device you choose. Both choices live under **Settings** \> **Microphone**.
 
-### Auto
+### Use whichever microphone my Mac is set to
 
-Auto records from whatever input your Mac is currently set to, and follows that input as devices come and go. This is the default, and it suits most setups.
+**Auto** is the default and suits most setups. It records from the input your Mac is currently set to, and follows that input as devices come and go.
 
 To change what Auto follows, set your input in **System Settings** \> **Sound**.
 
-There is one exception. If the input your Mac is set to turns out not to be a real microphone, such as a virtual device installed by Krisp, Loopback, BlackHole, an aggregate device or a meeting app, EnviousWispr records from an available real microphone instead, because a virtual device delivers nothing but silence. If a virtual device is the only input on your Mac, it is still used. The **Microphone** page shows which device Auto is using.
+The **Microphone** page shows which device Auto is using.
 
-### Choosing a specific microphone
+### Auto picked a virtual device and records silence
 
-Pick a device from the list and EnviousWispr always uses that one, whatever your Mac is set to. This is worth doing if you keep ending up on the wrong microphone. The picker then shows that device's name in place of Auto.
+If your Mac's input is not a real microphone, EnviousWispr records from an available real microphone instead. Virtual devices from Krisp, Loopback, BlackHole, meeting apps and aggregate devices deliver only silence, so Auto skips them. If a virtual device is the only input on your Mac, it is still used.
 
-To select a specific device:
+### Always use one specific microphone
 
-**Open settings.** Click the EnviousWispr icon in the menu bar and select **Settings**, or press Cmd+,.
+Choose a device and EnviousWispr uses it whatever your Mac is set to. This helps if you keep ending up on the wrong microphone. The picker then shows that device's name in place of **Auto**.
 
-**Go to the Microphone tab.** Click **Microphone** in the settings sidebar.
+1. Click the EnviousWispr icon in the menu bar and choose **Settings**, or press Cmd+,.
+2. Click **Microphone** in the sidebar.
+3. Choose your microphone from the list.
 
-**Select your device.** Choose your microphone from the list.
+### My audio interface records from the wrong input
 
-### If your microphone box has more than one input
-
-Audio interfaces such as a Focusrite Scarlett have two or more inputs, and EnviousWispr records from one of them. It uses Input 1 unless you tell it otherwise. When the selected device reports more than one input, a **Mic is on** control appears next to the device picker. Pick the input your microphone is plugged into, and EnviousWispr remembers that choice for that box.
+Audio interfaces such as a Focusrite Scarlett have two or more inputs, and EnviousWispr records from Input 1 unless you say otherwise. When the selected device has more than one input, a **Mic is on** control appears next to the device picker. Pick the input your microphone is plugged into. EnviousWispr remembers that choice for that device.
 
 If your microphone is on the wrong input, a recording ends with a notice that names the device and points you to this setting. If the input numbers do not match the sockets on your device, try the next one.
 
-**Scarlett Solo 4th Gen:** the XLR microphone socket is Input 2, so pick Input 2. If you have enabled "Combine inputs", Input 1 already carries your microphone and no change is needed. On Scarlett Solo 3rd Gen, the XLR microphone socket is Input 1.
+- **Scarlett Solo 4th Gen:** the XLR socket is Input 2, so pick Input 2. If you have turned on "Combine inputs", Input 1 already carries your microphone and you need no change.
+- **Scarlett Solo 3rd Gen:** the XLR socket is Input 1.
 
-**Two microphones at once:** this setting listens to one input. To record two people through one interface, use the mix your interface itself provides. Combining devices with a macOS Aggregate Device is not recommended.
+To record two people at once, use the mix your interface provides. This setting listens to one input. Combining devices with a macOS Aggregate Device is not recommended.
 
-### If your microphone is unplugged mid-recording
+### My microphone was unplugged during a recording
 
 EnviousWispr keeps what it recorded up to that point and transcribes it, rather than losing the entire recording.
 
-### A note on headsets
+### I use AirPods or a Bluetooth headset
 
-If your AirPods are your Mac's input, EnviousWispr records from them, and your headset drops out of music mode while it does. Read [_Bluetooth and AirPods_](/help/bluetooth-and-airpods/) for what that changes.
+If your AirPods are your Mac's input, EnviousWispr records from them, and the headset drops out of music mode while it does. Read [_Bluetooth and AirPods_](/help/bluetooth-and-airpods/) for what that changes.
 
-### Other audio while you dictate
+### Music keeps playing while I dictate
 
-If you dictate with music, a podcast or a video playing, EnviousWispr can get that sound out of the way when you start talking and put it back when you stop. Go to **Settings**, then **Microphone**, and pick one of four choices under **Media during dictation**, just above Microphone readiness. It starts on **Continue**, which leaves your audio playing, so nothing changes until you choose another option.
+EnviousWispr can move music, a podcast or a video out of the way when you start talking and put it back when you stop. Go to **Settings** \> **Microphone** and choose an option under **Media during dictation**, directly above **Microphone readiness**. It starts on **Continue**, which leaves your audio playing.
 
 - **Continue.** Music and other audio keep playing as they are.
-- **Lower.** Lowers what plays through your current speakers or headphones to about half for the whole take, then puts it back to exactly where it was.
+- **Lower.** Lowers what plays through your current speakers or headphones to about half for the whole take, then puts it back exactly where it was.
 - **Mute.** Silences your current speakers or headphones for the whole take, then puts the volume back.
-- **Pause.** Pauses whatever is playing (Spotify, Music, a YouTube tab, a podcast app), then resumes it when you stop. Only what was playing when you started is paused; anything you start during the take keeps going.
+- **Pause.** Pauses whatever is playing (Spotify, Music, a YouTube tab, a podcast app), then resumes it when you stop. Only what was playing when you started is paused. Anything you start during the take keeps going.
 
-A few things worth knowing:
+The start and stop sounds still play. The output is lowered a moment after the start sound so it is not cut off.
 
-- Lower and Mute act on everything your Mac plays through that output, including a call in progress and spoken feedback from a screen reader.
-- Audio that starts mid-take is quiet on the output selected when recording began. If you switch speakers or headphones during the take, the new output is not lowered or muted.
+### Lower or Mute is not available
+
+Some speakers and headphones, such as a display over HDMI, do not let apps change their volume. The **Microphone** page tells you when **Lower** or **Mute** is not available on your current output.
+
+### My volume did not come back after dictating
+
 - If you change the volume yourself during a take, your new level stays. EnviousWispr only puts the volume back when it is still at the level it set.
 - If your Mac was already muted when you started, it stays muted.
-- Pause resumes only what it paused, and only if it is still the paused item. If you switch to another song, tab or app during a take, or press play yourself, EnviousWispr leaves things as you left them rather than starting something you did not have playing.
-- Pause reaches every player through a part of macOS that Apple has not opened up to apps. If a macOS update turns that off, EnviousWispr falls back to pausing Music and Spotify only, and the Microphone page says so. On that fallback, macOS asks the first time whether EnviousWispr may control Music or Spotify; that first take is not paused, and every take after you allow it is.
+- If you switch speakers or headphones during the take, the new output is not lowered or muted. Audio that starts mid-take is quiet only on the output selected when recording began.
 - If EnviousWispr quits or crashes in the middle of a take, the volume comes back the next time the app opens.
-- Some speakers and headphones, such as a display over HDMI, do not let apps change their volume. The Microphone page tells you when Lower or Mute is not available on your current output.
-- The start and stop sounds still play. The output is lowered a moment after the start sound so it is not cut off.
+
+**Lower** and **Mute** act on everything your Mac plays through that output, including a call in progress and spoken feedback from a screen reader.
+
+### Pause did not resume my music
+
+**Pause** resumes only what it paused, and only if that item is still paused. If you switch to another song, tab or app during a take, or press play yourself, EnviousWispr leaves things as you left them.
+
+**Pause** reaches every player through a part of macOS that Apple has not opened up to apps. If a macOS update turns that off, EnviousWispr falls back to pausing Music and Spotify only, and the **Microphone** page says so. On that fallback, macOS asks the first time whether EnviousWispr may control Music or Spotify. That first take is not paused, and every take after you allow it is.

@@ -1,42 +1,42 @@
 ---
 title: "Hands-Free Mode (Long Dictation)"
-description: "For when you do not want to hold the key down: lock recording on and keep talking."
+description: "Lock recording on with a double press so you can keep talking without holding the key."
 category: "recording-and-keybinds"
 section: "Recording"
 order: 2
-keywords: ["hands free", "handsfree", "long dictation", "dont want to hold", "without holding", "let go", "keep recording", "long recording", "stop holding the key"]
+keywords: ["hands free", "handsfree", "long dictation", "dont want to hold", "dont want to hold the key", "hold the key", "without holding", "let go", "keep recording", "long recording", "stop holding the key", "double press", "lock recording", "double tap", "record without holding"]
 related: ["voice-activity-detection-and-auto-stop", "recording-won-t-stop-or-seems-stuck"]
-updated: 2026-09-01
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-Hands-free mode locks recording on, for when you do not want to hold the key down while you talk. This mode suits any text longer than a sentence or two, such as a blog post, a long email, or meeting notes.
+Hands-free mode locks recording on, so you can talk without holding the key. It suits anything longer than a sentence or two, such as a blog post, a long email, or meeting notes. It works when your recording mode is **Push to Talk**.
 
-### Turning on hands-free mode
+### How to record without holding the key
 
-EnviousWispr relies on a double tap of your keybind to lock the recording in place. This works whenever you have push to talk selected as your recording mode.
+1. **Press and release.** Press your recording keybind and let go.
+2. **Press again.** Press it a second time within half a second of the first press.
 
-**Tap, then tap again.** Start your recording with a normal press of your keybind, then press it a second time within half a second, before you let go.
+The recording bar changes to show that recording is locked on. If it does not change, the second press came too late, and the recording ends as usual. Try the second press a little quicker.
 
-The on-screen bar changes to confirm that recording is locked on. If it does not change, the second press came too late, and the recording ends as usual when you release the key. Try the double tap a little quicker.
+In **Toggle** mode you do not need this. One press starts recording and the next press stops it. See [Toggle Mode](/help/toggle-mode/).
 
-### Stopping recording
+### Stop a hands-free recording
 
-You have two choices when you finish speaking, depending on whether you want to keep what you said.
+- **Press your recording keybind once.** Recording stops and your text goes into the app you were working in.
+- **Press Escape.** Recording stops and nothing is pasted. By default EnviousWispr keeps what you said and offers it back, which is [Escape Recovery](/help/escape-recovery/).
+- **Click Cancel** in the main EnviousWispr window, next to **Stop**, to throw the recording away. The floating recording bar has no Cancel button.
 
-**Press your keybind once.** Stop recording and insert your text into the app you were working in.
+A third quick press, within half a second of your first press, cancels the recording instead. Other presses in the half second right after it locks do nothing, so a bounce of your finger does not end the recording.
 
-**Press Escape.** Stop recording without any text landing where you were typing. By default EnviousWispr still keeps what you said and offers it back, which is [Escape Recovery](/help/escape-recovery/). To throw the recording away instead, click **Cancel** in the recording bar.
+### How long can a hands-free recording be?
 
-### Time limits
+A single recording can last up to one hour. EnviousWispr warns you one minute before the limit. Then it stops on its own and writes out everything you said.
 
-A single hands-free session can last up to one hour. EnviousWispr shows a warning one minute before that limit, then stops on its own and writes out everything you said.
+### Stop recording when I stop talking
 
-### Stopping automatically on silence
+You can have EnviousWispr end a recording after a pause in your speech. The [auto-stop guide](/help/voice-activity-detection-and-auto-stop/) covers it in full.
 
-You can have EnviousWispr end a recording by itself after a pause in your speech.
-
-**Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to the **Transcription** tab.
-
-**Switch on silence detection.** Turn on **Stop recording on silence**. This setting is off by default.
-
-**Set the pause length.** Use the slider beneath the switch to choose how long you have to pause before recording stops, anywhere from half a second to three seconds.
+1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
+2. Open **Transcription**.
+3. Under **Auto-Stop**, switch on **Stop recording on silence**. It is off by default.
+4. Use the **Pause duration** slider to choose how long a pause ends the recording, from half a second to three seconds.

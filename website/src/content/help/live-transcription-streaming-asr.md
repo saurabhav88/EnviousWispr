@@ -4,35 +4,39 @@ description: "Whether to have text written while you are still speaking."
 category: "speech-engines"
 section: "Transcription"
 order: 4
-keywords: ["live transcription", "live", "live text", "real time", "realtime", "streaming", "as you talk", "write while i talk", "text appears while speaking", "faster transcription"]
+keywords: ["live transcription", "live", "live text", "real time", "realtime", "streaming", "as you talk", "write while i talk", "text appears while speaking", "faster transcription", "last words missing", "words repeated", "ending cut off"]
 seeAlso: "live-transcription-that-keeps-up-with-you"
-updated: 2026-08-06
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-EnviousWispr normally writes your text once you stop talking. Faster Transcription, which was called Live transcription until recently, writes it while you are still speaking, and it is off unless you turn it on.
+Faster Transcription makes EnviousWispr turn your speech into text while you are still speaking, instead of all at once when you stop. The finished text is still pasted after you stop. It is off unless you turn it on. It was called Live transcription until recently.
 
-**Leave it off on Parakeet. On WhisperKit, turn it on if you have picked a language and you often dictate for more than a minute.**
+**Leave it off on the Fast engine (Parakeet). On the All Languages engine (WhisperKit), turn it on if you have picked a language and you often dictate for more than a minute.**
 
-### Turning it on
+### Turn Faster Transcription on or off
 
-Go to **Settings** \> **Transcription** and switch on **Faster Transcription**. The question mark beside it explains what changes for the engine you are on.
+1. **Open settings.** Click the EnviousWispr menu bar icon and select **Settings**.
+2. **Go to Transcription.** Click **Transcription**.
+3. **Use the switch.** Switch **Faster Transcription** on or off. The question mark beside it explains what changes for the engine you are on.
 
-Looking for words on screen while you speak, rather than text written into your document? That is a different setting: see [Live Preview](/help/live-preview-words-on-screen/).
+Nothing looks different in your document while you record. Only the timing of the work changes. It can pause the Universal Live Preview engine while you speak.
 
-### Why you should leave it off on Parakeet
+### Faster Transcription seems to do nothing
 
-Parakeet writes your speech in overlapping pieces and joins them together. The joins are where mistakes appear, and the longer you talk the more joins there are.
+On the Fast engine, it saves no time you would notice on a dictation under a minute. It only pulls ahead at around five minutes or longer.
 
-Measured on 28 test recordings and a replay of 500 real dictations, against the same audio transcribed the normal way:
+On the All Languages engine, it does nothing while your language is set to **Auto-detect language**. Pick a language under **Settings** > **Transcription** > **Language** first.
 
-- Word errors went from 2.0% to 3.7%.
-- Repeated or invented words went from 17 to 51.
-- About 1 dictation in 24 lost its final words.
+If you want to see words on screen while you speak, that is a different setting: see [Live Preview](/help/live-preview-words-on-screen/).
 
-It also saves no time you would notice under a minute. It only gets ahead at around five minutes, which is exactly where it makes the most mistakes.
+### Why I should leave it off on the Fast engine
 
-### Why WhisperKit is different
+The Fast engine (Parakeet) transcribes overlapping pieces of your speech and joins them together. The joins are where mistakes appear, and the longer you talk, the more joins there are.
 
-WhisperKit keeps one continuous transcript instead of joining pieces together, so accuracy holds up better. It can still drop a final word now and then.
+In our tests, the same audio came out with about twice as many wrong words when Faster Transcription was on: word errors went from 2.0% to 3.7%. Repeated or invented words went from 17 to 51. About 1 dictation in 24 lost its final words. The tests used 28 recordings and a replay of 500 real dictations.
 
-WhisperKit has to know your language before it can start. If your language is set to auto-detect, EnviousWispr ignores this setting and works the normal way, because guessing the language from the first moment of audio gets it wrong too often.
+### Why it works better on the All Languages engine
+
+The All Languages engine (WhisperKit) keeps one continuous transcript instead of joining pieces together, so accuracy holds up better. It can still drop a final word now and then.
+
+It has to know your language before it can start. If your language is set to auto-detect, EnviousWispr ignores Faster Transcription and works the normal way, because guessing the language from the first moment of audio gets it wrong too often.

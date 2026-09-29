@@ -1,40 +1,64 @@
 ---
 title: "Bluetooth and AirPods"
-description: "Using AirPods or a Bluetooth headset, and what to expect from the sound."
+description: "What to expect when you dictate with AirPods or a Bluetooth headset, and how to fix the usual problems."
 category: "audio-and-microphone"
 section: "Input Configuration"
 order: 2
-keywords: ["airpods", "air pods", "bluetooth", "wireless headphones", "headphones", "earbuds", "sounds muffled", "quality drops", "music stops", "beats", "headset"]
+keywords: ["airpods", "air pods", "bluetooth", "wireless headphones", "headphones", "earbuds", "sounds muffled", "quality drops", "music stops", "beats", "headset", "music sounds worse", "first word missing", "bluetooth tips", "built-in microphone instead"]
 related: ["choosing-your-microphone"]
-updated: 2026-09-16
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-AirPods and Bluetooth headsets work with EnviousWispr, and there are two things worth knowing before you rely on them.
+AirPods and Bluetooth headsets work with EnviousWispr. Expect two side effects: your headset's sound quality drops while the microphone is in use, and the microphone needs a moment to wake up after it has been idle.
 
-### Which microphone gets used
+### My music sounds worse when I dictate with AirPods
 
-On **Auto**, EnviousWispr records from whatever input your Mac is set to. If that is your AirPods, it records from your AirPods.
+A Bluetooth headset has a music mode and a microphone mode, and it cannot do both at once. When EnviousWispr uses the microphone, the headset switches to microphone mode and the sound quality drops.
 
-To use your Mac's built-in microphone instead, change the input in **System Settings** \> **Sound**, or name it directly under **Settings** \> **Microphone** in EnviousWispr.
+The quality stays low until EnviousWispr lets go of the microphone. With **Microphone readiness** at its default of 30 sec, that can be up to 30 seconds after you finish dictating.
 
-### Why your music dips when you record
+To get your music back right away:
 
-A Bluetooth headset has a music mode and a microphone mode, and it cannot do both at once. The moment anything uses the microphone, the headset switches over, and audio quality drops for as long as the recording lasts.
+1. Go to **Settings** \> **Microphone**.
+2. Set **Microphone readiness** to **Off**.
 
-That switch also takes a moment, which is why a first word can go missing if you start talking instantly.
+With readiness off, the first word of your next dictation is more likely to go missing. Read [_First Word Gets Cut Off_](/help/first-word-gets-cut-off/) if that happens.
 
-**Wait a beat before speaking.** Hold your keybind for a moment before you start talking on the first recording after connecting.
+You can also record from your Mac's built-in microphone. Your headset then stays in music mode the whole time. Choose the built-in microphone under **Settings** > **Microphone**.
 
-If that drop in audio quality bothers you, record from your Mac's built-in microphone instead. Your headset then stays in music mode the whole time.
+### Use my Mac's microphone instead of my AirPods
 
-### The Bluetooth reminder
+With **Auto** selected, EnviousWispr records from whatever input your Mac is set to. If that is your AirPods, it records from your AirPods.
 
-EnviousWispr can show a short reminder of these tips once per launch. If you know them by now, click **Learn more** under **Using a Bluetooth microphone?** on the **Microphone** page in **Settings** and switch off **Show Bluetooth tips**. The guide itself stays on that page.
+To use the built-in microphone instead, do either of these:
 
-### If it disconnects mid-recording
+- Change the input in **System Settings** \> **Sound**.
+- Choose the built-in microphone in **Settings** \> **Microphone** in EnviousWispr.
 
-EnviousWispr keeps and transcribes whatever it already had, rather than throwing the whole recording away.
+Read [_Choosing Your Microphone_](/help/choosing-your-microphone/) for more on how the choice works.
 
-### If accuracy is poor on the headset
+### The first word is missing with my Bluetooth headset
 
-Bluetooth microphones are lower quality than your Mac's built-in one by design. For long or important dictations, the built-in microphone is usually the better choice.
+After the microphone has been idle, a Bluetooth headset takes a moment to switch into microphone mode. If you speak straight away, the start of your sentence can be lost. This can happen after any idle stretch, not only the first recording after you connect.
+
+Wait 1 to 2 seconds after pressing your keybind before you start talking. In push to talk mode, keep the key held during that pause. In toggle mode, press the key once and wait.
+
+Keeping **Microphone readiness** on its default of 30 sec (or setting it to 60 sec or **Always**) also keeps follow-up dictations ready. A built-in or wired microphone usually avoids the delay completely.
+
+### Turn off the Bluetooth tips
+
+When a Bluetooth microphone is your input, EnviousWispr shows a short reminder of these tips once per launch. To stop it:
+
+1. Go to **Settings** \> **Microphone**.
+2. Under **Using a Bluetooth microphone?**, click **Learn more**.
+3. Switch off **Show Bluetooth tips**.
+
+The guide itself stays on the **Microphone** page.
+
+### My headset disconnected during a recording
+
+EnviousWispr keeps and transcribes whatever it had recorded before the disconnect, rather than throwing the whole recording away.
+
+### Dictation is less accurate on my headset
+
+Bluetooth microphones are lower quality than your Mac's built-in one. For long or important dictations, the built-in microphone is usually the better choice.

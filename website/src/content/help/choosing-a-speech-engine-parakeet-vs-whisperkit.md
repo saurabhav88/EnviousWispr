@@ -4,52 +4,52 @@ description: "Which of the two speech engines to use, and when to switch."
 category: "speech-engines"
 section: "Transcription"
 order: 1
-keywords: ["parakeet", "whisperkit", "whisper", "which engine", "engine", "speech engine", "model", "accuracy vs speed", "switch engine", "transcription engine", "which is better"]
+keywords: ["parakeet", "whisperkit", "whisper", "which engine", "engine", "speech engine", "model", "accuracy vs speed", "switch engine", "transcription engine", "which is better", "fast engine", "all languages", "engine is slow", "wrong language", "download whisperkit model"]
 related: ["multi-language-dictation", "why-is-my-dictation-inaccurate", "using-snippets"]
-updated: 2026-09-05
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-You can choose between two speech engines for transcription, Parakeet or WhisperKit. Both run entirely on your Mac. Neither sends your audio anywhere, and neither needs an internet connection once its model has been downloaded.
+Keep the **Fast** engine, which uses Parakeet. Switch to the **All Languages** engine, which uses WhisperKit, only if you dictate in a language Fast does not cover.
 
-### Comparison of the two engines
+Both engines run entirely on your Mac. Neither sends your audio anywhere, and neither needs an internet connection once its model has been downloaded.
 
-| Feature | Parakeet | WhisperKit |
+### Parakeet or WhisperKit: which should I use?
+
+The **Transcription** page names the engines **Fast** and **All Languages**. This article uses those names with the model in brackets.
+
+| | Fast (Parakeet) | All Languages (WhisperKit) |
 | --- | --- | --- |
 | Languages | 25 European | 99+ |
 | Speed | Faster | Slower |
 | Setup | Downloaded for you during setup | You download it, about 1.5 GB |
-| Best for | Everyday dictation | Languages Parakeet does not cover |
+| Best for | Everyday dictation | Languages Fast does not cover |
 
-### Choosing an engine
+Fast is the default, it is faster, and it covers 25 European languages. If your language is not one of them, use All Languages. See [Multi-Language Dictation](/help/multi-language-dictation/) for the language settings.
 
-Keep Parakeet. It is the default engine, it is faster than WhisperKit, and it covers 25 European languages. Switch to WhisperKit only if you dictate in a language Parakeet does not cover.
+### Switch to another engine
 
-To change your engine, follow these steps.
+1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
+2. **Pick your engine.** Click the **Fast** card for Parakeet or the **All Languages** card for WhisperKit. Each card names the model it runs.
+3. **Download the model.** The first time you choose All Languages, click **Download WhisperKit Model**. The model does not download on its own, and it takes about 1.5 GB of storage.
 
-**Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
+The change applies to your next recording. If a dictation is in progress, the page says the change applies after it finishes.
 
-**Pick your engine.** The **Fast** card is Parakeet, and the **All Languages** card is WhisperKit. Each card names the model it runs.
+### The wrong alphabet shows up in my dictation
 
-**Download the model.** The first time you choose WhisperKit, click **Download WhisperKit Model**. The model does not download on its own, and it takes about 1.5 GB of storage.
+On the Fast engine, you can stop stray letters from another alphabet, such as Greek or Cyrillic turning up in a German dictation. Lock your language under **Settings** > **Transcription** > **Language**. A lock cannot tell apart two languages that share one alphabet, such as German and Dutch. See [Multi-Language Dictation](/help/multi-language-dictation/).
 
-The change applies to your next recording.
+### Dictation is slow or misses my language
 
-Setting your language under **Language** on the same page works on both engines. On Parakeet it stops the engine reaching for a different alphabet, such as Greek or Cyrillic turning up in a German dictation, though it cannot tell apart two languages that share one. Read [_Multi-Language Dictation_](/help/multi-language-dictation/).
+If one engine feels slow or keeps missing your language, try the other. Speed depends on your Mac, the engine you chose, and how long you spoke. If a transcription fails, start another recording. If it keeps failing, see [App crashes or the speech engine stops](/help/app-crashes-or-asr-engine-crashes/).
 
-### What happens when you dictate
+### What happens between speaking and pasting
 
-Knowing the sequence helps you work out where a delay or an unexpected change came from. When you finish a recording, EnviousWispr does five things in order.
+When you finish a recording, EnviousWispr does five things in order. Knowing the order helps you find where a delay or an unexpected change came from.
 
-**Trim the audio.** EnviousWispr finds the parts of the recording where you were talking and keeps those. In a quiet or normal room that is the same as trimming the silence at the start and the end.
+1. **Trim the audio.** EnviousWispr keeps the parts of the recording where you were talking. In a quiet or normal room, that is the same as trimming the silence at the start and the end.
+2. **Transcribe the speech.** Your chosen engine reads the audio and writes out the text.
+3. **Clean up the text.** A snippet you said is expanded first. Then your custom words are applied, filler words are removed, spoken emoji are converted, and numbers, dates and times are written the way you would type them. This step always runs, whatever your AI Polish setting is, and each part has its own setting.
+4. **Polish the text.** If AI Polish is on, it runs on the cleaned-up text. Switch **Enable AI Polish** off under **Settings** > **AI Polish** to skip this step.
+5. **Paste the result.** The finished text goes into the text box you were working in.
 
-**Transcribe the speech.** Your chosen engine reads the audio and writes out the text.
-
-**Clean up the text.** Any snippet you said is expanded first, then your custom words are applied, filler words are removed, spoken emoji are converted, and numbers, dates and times are written the way you would type them. This stage always runs, whatever you have AI Polish set to, and each part of it has its own setting.
-
-**Polish the text.** Any AI polish you have switched on runs against the cleaned-up text. This stage is optional, and setting AI Polish to None skips it entirely.
-
-**Paste the result.** The finished text is pasted into the text box you were working in.
-
-That split matters when you are troubleshooting. If your text came out different from what you said and AI Polish is switched off, the clean-up stage is what changed it.
-
-Transcription speed depends on your Mac, the engine you selected, and how long you spoke. If one engine feels slow or keeps missing your language, try the other. If speech recognition fails for any reason, EnviousWispr stays open. Start another recording and it recovers on its own.
+If your text came out different from what you said and AI Polish is off, the clean-up step changed it.

@@ -1,48 +1,53 @@
 ---
 title: "Using Ollama for Fully Offline AI Polish"
-description: "Running AI Polish through a local model with Ollama."
+description: "Set up Ollama, a free app that runs AI models on your Mac, so AI Polish works without an internet connection."
 category: "ai-polish"
 section: "Polish"
 order: 6
-keywords: ["ollama", "offline ai", "local ai", "local model", "llama", "run ai locally", "no internet ai", "free local"]
+keywords: ["ollama", "offline ai", "local ai", "local model", "llama", "run ai locally", "no internet ai", "free local", "set up ollama", "which ollama model", "ollama hosted models", "polish without internet"]
 related: ["ollama-polish-not-working"]
-updated: 2026-09-04
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-Ollama is a separate free application that runs language models directly on your Mac, and EnviousWispr can hand your dictation to one of those models for tidying up. Once you have completed the setup, you do not need an API key or an account, and your transcribed text stays on your Mac.
+Ollama is a separate free app that runs AI models on your Mac. EnviousWispr can hand your dictation to one of those models to tidy it up. With a model you downloaded, you need no API key and no account after setup, and your text stays on your Mac.
 
-Ollama offers both models that download to run on your machine and models that run on Ollama's own servers. The hosted models send your transcribed text over the internet. EnviousWispr lists them under their own heading in the model list and never selects one automatically, so if you want your text to stay local, choose a model that is not in that group.
+If Ollama is not working for you, see [Ollama Polish Not Working](/help/ollama-polish-not-working/).
 
-### Setting up Ollama
+### Set up Ollama for AI Polish
 
-You need an internet connection to install Ollama and download a model, but polish works offline after that.
+You need an internet connection to install Ollama and download a model. After that, polish works offline.
 
-One thing to know before you download anything: no local model handled languages other than English well in our tests. If you dictate in another language, this is not the polish option to reach for first.
+No local model handled languages other than English well in our tests. If you dictate in another language, this is not the polish option to try first.
 
-Follow these steps to connect EnviousWispr to Ollama.
+1. **Install Ollama.** Download the app from [ollama.com](https://ollama.com) and install it.
+2. **Open Ollama.** Launch the app so it runs in the background.
+3. **Choose Ollama in EnviousWispr.** Open **Settings** > **AI Polish** and choose **Ollama** as your provider.
+4. **Download a model.** In the model list, click **Download** next to a model. If you prefer Terminal, run `ollama pull qwen2.5:3b` instead.
+5. **Select your model.** Pick your downloaded model from the list.
 
-**Install Ollama.** Download and install the application from [ollama.com](https://ollama.com).
+EnviousWispr finds your installed models on its own, so they appear in the list without any configuration. You can download and remove local models from the same settings page.
 
-**Open Ollama.** Launch the application so it runs in the background.
+### Which Ollama model should I pick?
 
-**Download a model.** Open Terminal and run `ollama pull qwen2.5:3b`, or use the model download tools inside the Ollama application.
+Start with `qwen2.5:3b`, the model EnviousWispr suggests. It scored best of the local models we offer when we tested how well each one cleans up dictation.
 
-**Open AI Polish settings.** Open EnviousWispr, go to **Settings**, and select **AI Polish**.
+Two others carry the **Recommended** label:
 
-**Select your model.** Choose **Ollama** as your provider, then pick your downloaded model from the list.
+- `qwen3:0.6b` earned the label from a download about a quarter the size of the suggested model.
+- `qwen2.5:7b` is the most careful of the three, but also the slowest and largest.
 
-EnviousWispr finds your installed models on its own, so they appear in that list without any configuration. You can download and remove local models from the same settings page. Hosted models use Add instead, and there is nothing on your Mac to remove.
+The label beside each model comes from those tests, not from the model's size. Several of the smallest models produced no acceptable result at all in our tests, so download size does not tell you quality. If polish feels slow, pick a **Recommended** model rather than the smallest one you can find.
 
-### Picking a model
+### Do Ollama's hosted models keep my text on my Mac?
 
-Start with `qwen2.5:3b`, the model EnviousWispr suggests. It scored best of the local models we offer when we tested how well each one cleans up dictation. Two others carry the Recommended label: `qwen3:0.6b`, which earned it from a download about a quarter the size, and `qwen2.5:7b`, which is the most careful of the three but also the slowest and largest.
+No. Ollama offers two kinds of models. Models you download run on your Mac. Hosted models run on Ollama's own servers, so they send your transcribed text over the internet.
 
-The label beside each model in Settings comes from those tests, not from the model's size. Size is not a quality rating, in either direction. Several of the smallest models EnviousWispr offers produced no acceptable result at all in our tests, while the smallest one we recommend did well, so you cannot read quality off a download size. If polish feels slow, pick a Recommended model rather than the smallest one you can find.
+EnviousWispr lists hosted models under their own heading, **Runs on Ollama's servers**, and never selects one for you. To keep your text on your Mac, choose a model that is not in that group. A hosted model has an **Add** button instead of **Download**, and there is nothing on your Mac to remove.
 
-### If Ollama is not running
+### What happens if Ollama is not running?
 
-If Ollama is not running when you dictate, the polish step is skipped. You still get your text, without the AI clean-up. Ollama has to be running by the time AI polish starts, which is a moment after your speech finishes transcribing.
+The AI Polish step is skipped and you still get your text, without the AI clean-up. Ollama has to be running by the time polish starts, which is a moment after your speech finishes transcribing.
 
-### An option with nothing to install
+### Use AI Polish without installing another app
 
-If you want AI polish on your Mac without installing a separate application, try EG-1, the model Envious Labs built for this, or S1-mini by Superwhisper, the lightest option. Both download from inside the EnviousWispr settings and need no other software.
+If you want AI Polish on your Mac without a separate app, try EG-1, the model Envious Labs built for this, or S1-mini by Superwhisper, the lightest option. Both download from inside EnviousWispr settings and need no other software. See [S1-mini by Superwhisper and Its Writing Style Settings](/help/s1-mini-by-superwhisper-and-writing-style/).

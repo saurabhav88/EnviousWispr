@@ -4,42 +4,42 @@ description: "The checks worth running when your dictation comes out wrong."
 category: "troubleshooting"
 section: "Transcription Issues"
 order: 2
-keywords: ["inaccurate", "wrong words", "typos", "bad accuracy", "not accurate", "gets my words wrong", "misheard", "poor quality", "garbled", "names spelled wrong", "improve accuracy"]
+keywords: ["inaccurate", "wrong words", "typos", "bad accuracy", "not accurate", "gets my words wrong", "misheard", "poor quality", "garbled", "names spelled wrong", "improve accuracy", "wrong language", "words changed", "rewrote my text"]
 related: ["adding-custom-words", "choosing-your-microphone"]
-updated: 2026-09-01
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-Dictation accuracy drops when the audio is weak, the input microphone is the wrong one, the language setting does not match your speech, or the engine meets an unfamiliar word. Work through these steps in order to improve accuracy.
+Dictation gets less accurate when the audio is weak, the wrong microphone is in use, the language setting does not match your speech, or the speech engine meets an unfamiliar word. Start with the fix that matches what you see.
 
-### 1. Get closer to the microphone
+### The words are wrong, or the phrasing changed
 
-Audio quality directly affects transcription accuracy. Try a headset microphone, or move nearer to your Mac. Dictate the same sentence both ways and compare the results in **History**.
+First find out which half went wrong. Open **History** and read the dictation back.
 
-### 2. Check which microphone is being used
+- **The words themselves are wrong.** That points at the audio, the language setting or the speech engine. Check the microphone, your language setting and your custom words.
+- **The words are right but the phrasing changed.** AI Polish rewrote your text. Go to **Settings** > **AI Polish**, switch **Enable AI Polish** off, and dictate again to confirm.
 
-**Select your input device.** Open EnviousWispr settings and go to **Microphone**. On Auto, EnviousWispr records from whatever input your Mac is set to, which may not be the one you are speaking into. Pick a device from the list to be sure. The picker then shows that device's name in place of Auto.
+### Get closer to the microphone
 
-### 3. Teach it the words it keeps missing
+Weak audio lowers accuracy. Try a headset microphone, or move nearer to your Mac. Dictate the same sentence both ways and compare the results in **History**. Speak at your normal pace: slowing down or over-enunciating makes recognition worse.
 
-Names, companies, and specialised words from your field are not in a general speech model.
+### It is using the wrong microphone
 
-**Add the missing words.** Open **Settings**, go to **Dictionary** \> **Your Words**, and add them. Each word appears in the list once you have added it. Then open **Vocabulary Packs** and switch on the packs that match your work. This is the fix for a colleague's name that comes out spelled wrong every single time.
+1. **Open the microphone settings.** Open EnviousWispr **Settings** and go to **Microphone**.
+2. **Pick your device.** The **Input device** list starts on **Auto**, which records from whatever input your Mac is set to. That may not be the one you are speaking into. Pick your microphone from the list. The picker then shows its name in place of Auto.
 
-### 4. Check your language
+### The same name or word comes out wrong every time
 
-Parakeet, the transcription engine you start with, covers 25 European languages. For anything outside that, switch to WhisperKit under **Transcription** and pick your language. On WhisperKit, naming your language is more accurate than leaving it on auto-detect.
+Names, companies and specialised words from your field are not in a general speech model. Teach them to EnviousWispr.
 
-### 5. Turn Faster Transcription off
+1. **Add the words.** Open **Settings**, go to **Dictionary** > **Your Words**, and add them. Each word appears in the list once you have added it.
+2. **Switch on vocabulary packs.** Open **Vocabulary Packs** and switch on the packs that match your work.
 
-If you switched Faster Transcription on, switch it back off under **Transcription**. On Parakeet, Faster Transcription measurably increases mistakes.
+This is the fix for a colleague's name that is spelled wrong every single time. See [Adding Custom Words](/help/adding-custom-words/).
 
-### 6. Work out which half went wrong
+### My language comes out wrong
 
-**Review your history.** Open **History** and read the dictation back to work out where the error came from.
+The **Fast** engine (Parakeet), which you start with, covers 25 European languages. For any other language, go to **Settings** > **Transcription**, click the **All Languages** card (WhisperKit), and pick your language. On All Languages, naming your language is more accurate than leaving it on auto-detect. See [Multi-Language Dictation](/help/multi-language-dictation/).
 
-- **The words themselves are wrong.** That points at the audio or the speech engine. Go back to steps 1 to 5.
-- **The words are right but the phrasing changed.** That means AI Polish rewrote your text. Set it to None under **AI Polish** and dictate again to confirm.
+### Faster Transcription is making mistakes
 
-### Speak naturally
-
-Speak at your normal pace. Slowing down or over-enunciating makes recognition worse, not better.
+If you switched **Faster Transcription** on, switch it back off under **Settings** > **Transcription**. On the Fast engine, it roughly doubled the number of wrong words in our tests. See [Faster Transcription](/help/live-transcription-streaming-asr/).

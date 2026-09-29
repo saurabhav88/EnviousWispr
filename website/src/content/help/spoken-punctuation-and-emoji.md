@@ -4,31 +4,31 @@ description: "How to dictate slash commands, punctuation marks and emoji, and wh
 category: "features"
 section: "Text Processing"
 order: 3
-keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands"]
+keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence"]
 related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
-updated: 2026-09-18
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-Two transcription settings let you speak a phrase and get a symbol or a line break instead of the words you said. Both live under **Settings** \> **Transcription**.
+You can speak a phrase and get a symbol, an emoji or a line break instead of the words you said. Emoji and slash work by default. Spoken punctuation is off until you turn it on. The settings are under **Settings** > **Transcription**.
 
-### Spoken emoji
+### Dictate an emoji
 
-EnviousWispr converts certain spoken phrases into emoji. This setting is on by default.
+Say the name of the emoji followed directly by the word "emoji". Saying "thumbs up emoji" inserts 👍.
 
-**Speak the trigger phrase.** Say the name of the emoji followed immediately by the word "emoji". Saying "thumbs up emoji" inserts 👍 into your text.
+The setting is **Convert spoken emoji**. It is on by default. If emoji stop appearing, check it is still on.
 
-Ordinary sentences are left alone, because the conversion only fires when you say the word "emoji" directly after the name. You can also talk about emoji without triggering one, so "the heart emoji category" stays as words.
+Ordinary sentences are left alone, because the conversion only fires when you say "emoji" right after the name. You can talk about emoji without triggering one, so "the heart emoji category" stays as words.
 
-The setting is **Convert spoken emoji**.
+### Dictate a slash command
 
-### Spoken slash
+Slash works without any setting. Say "slash clear" and you get `/clear`. Say "command is slash wfp" and you get `command is /wfp`, with the space kept before the command. Say "pros slash cons" and you get `pros/cons`.
 
-Slash works with the Convert spoken punctuation setting off. Say "slash clear" and you get `/clear`. Say "command is slash wfp" and you get `command is /wfp`, with the space kept before the command. Say "pros slash cons" and you get `pros/cons`. Say "slash the budget" and the words stay words. Some verb uses, like "slash prices", can still become a symbol; the app cannot always tell the verb from a command name.
+Say "slash the budget" and the words stay words. Some verb uses, like "slash prices", can still become a symbol, because the app cannot always tell the verb from a command name.
 
-### Spoken punctuation
+### Dictate a comma, full stop or new line
 
-EnviousWispr can convert spoken words like "comma" into punctuation marks, and "backslash" into a backslash. This setting is off by default.
+Turn on **Convert spoken punctuation** in **Settings** > **Transcription**. It is off by default. With it on, spoken words become marks:
 
 | Say this | You get |
 |---|---|
@@ -44,8 +44,14 @@ EnviousWispr can convert spoken words like "comma" into punctuation marks, and "
 | new line | a line break |
 | new paragraph | a blank line |
 
-Backslash joins the words on both sides, so "C colon backslash Users" becomes "C:\Users". The slash does not need this setting; see the section above.
+Backslash joins the words on both sides, so "C colon backslash Users" becomes "C:\Users".
 
-**Understand the trade-off before turning it on.** EnviousWispr already punctuates for you, so spoken punctuation competes with that. It also cannot tell when you meant the word itself: saying "the grace period expires" puts a full stop in the middle of your sentence.
+### A punctuation word appears in the wrong place
 
-Turn this on if you need exact control over your punctuation and do not mind fixing the occasional unintended symbol. The setting is **Convert spoken punctuation**.
+With **Convert spoken punctuation** on, EnviousWispr cannot tell when you meant the word itself. Saying "the grace period expires" puts a full stop in the middle of your sentence.
+
+EnviousWispr already punctuates for you, so spoken punctuation competes with that. Turn it on if you need exact control over your punctuation and do not mind fixing the occasional unintended symbol. If it gets in your way, switch **Convert spoken punctuation** off.
+
+### Type a backslash
+
+Saying "backslash" types `\` only when **Convert spoken punctuation** is on. If you use [Snippets](/help/using-snippets/), a saved snippet wins when its words follow your snippet keyword, which is `backslash` unless you changed it.

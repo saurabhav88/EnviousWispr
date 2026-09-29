@@ -4,33 +4,34 @@ description: "What stays on your Mac, and when the app uses the network."
 category: "privacy-and-security"
 section: "Privacy"
 order: 1
-keywords: ["privacy", "private", "is it private", "does it spy", "does it send my text anywhere", "data", "offline", "internet", "cloud", "tracking", "who can see my dictation"]
+keywords: ["privacy", "private", "is it private", "does it spy", "does it send my text anywhere", "data", "offline", "internet", "cloud", "tracking", "who can see my dictation", "does it need internet", "works offline", "send feedback privacy"]
 related: ["what-data-is-collected", "ai-polish-and-cloud-data"]
 seeAlso: "on-device-vs-cloud-dictation-privacy"
-updated: 2026-09-28
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
 EnviousWispr is a free dictation app for macOS. Your voice becomes text on your own Mac, and the audio never leaves it. There is no account and nothing to sign up for.
 
-### What stays on your Mac
+## Does my dictation stay on my Mac?
 
-You can use the app without an internet connection at all, and your dictation stays on your own hardware.
+Your audio, yes, always. It is turned into text on your Mac and never sent anywhere. Your text stays on your Mac too when you use on-device polish or no polish. If you choose cloud polish, your text goes directly to the provider you picked.
 
-- **Offline operation.** Recording, transcribing, and pasting need no internet connection. Both speech engines run on your Mac.
+- **Offline use.** Recording, transcribing, and pasting need no internet connection once the speech model has downloaded. Both speech engines run on your Mac.
 - **Local History.** Your dictations and transcripts are saved in your user folder. Envious Labs, the company that makes EnviousWispr, never receives a copy.
-- **Open source verification.** You can read the code. EnviousWispr is open source, so every claim on this page can be checked against it.
+- **Open source.** You can read the code. EnviousWispr is open source, so every claim on this page can be checked against it.
 
-### When EnviousWispr uses the network
+## When does EnviousWispr use the internet?
 
-The app connects to the internet only for specific tasks that genuinely need it.
+The app connects to the internet only for specific tasks.
 
-- **Updates and downloads.** The app checks for new versions, and downloads the speech and AI models you choose.
-- **Anonymous usage and crash data.** Both are on by default, and you can turn either one off in **Settings > Permissions**. They report which app and macOS versions were involved in a problem, and never what you said. See [_What Data Is Collected_](/help/what-data-is-collected/).
-- **Cloud AI Polish, only if you choose it.** If you pick OpenAI, Gemini, Claude, or one of Ollama's hosted models, your text goes to that company under your own account with them. Your audio never does. See [_AI Polish and Cloud Data_](/help/ai-polish-and-cloud-data/).
+- **Updates and downloads.** The app checks for new versions and downloads the speech and AI models you choose.
+- **Anonymous usage and crash data.** Both are on by default, and you can turn either one off in **Settings** > **Permissions**. They report which app and macOS versions were involved in a problem, and never what you said. See [What Data Is Collected](/help/what-data-is-collected/).
+- **Cloud AI Polish, only if you choose it.** If you pick OpenAI, Gemini, Claude, or one of Ollama's hosted models, your text goes to that company under your own account with them. Your audio never does. See [AI Polish and Cloud Data](/help/ai-polish-and-cloud-data/).
+- **Send Feedback, only when you press Send.** The message you type goes to Envious Labs. In recent versions, pressing Send also sends the text of your message (never your email address or diagnostics) through enviouswispr.com to an AI service that looks for matching help pages. See [Sending Feedback From the App](/help/sending-feedback/).
 
-### Where your text goes with each polish option
+## Where does my text go with each AI Polish option?
 
-This depends entirely on the option you select in settings.
+It depends on the option you select in settings.
 
 | Polish option | Where your text goes |
 | :--- | :--- |

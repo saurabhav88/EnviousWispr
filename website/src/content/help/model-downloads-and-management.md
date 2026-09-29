@@ -4,45 +4,47 @@ description: "How the speech models are downloaded, and how to free the memory a
 category: "speech-engines"
 section: "Transcription"
 order: 3
-keywords: ["download model", "model download", "stuck downloading", "how big", "disk space", "gb", "storage", "redownload", "model files", "where are the models"]
+keywords: ["download model", "model download", "stuck downloading", "download failed", "try again", "resume download", "how big", "disk space", "gb", "storage", "redownload", "model files", "where are the models", "unload model", "free memory", "remove model"]
 related: ["uninstalling-enviouswispr"]
-updated: 2026-09-27
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-EnviousWispr keeps its speech models on your own Mac rather than on a server, which is what lets your audio stay on the device. The trade for that is a download the first time and some disk space to manage afterwards.
-
-### The two downloads
-
-**Parakeet.** This engine is downloaded for you during setup, and you watch the progress as it goes. It is about 480 MB.
-
-**WhisperKit.** This engine is not downloaded for you. If you switch to it, go to **Settings** \> **Transcription** and click **Download WhisperKit Model**. It is about 1.5 GB.
+EnviousWispr keeps its speech models on your own Mac rather than on a server, which is what lets your audio stay on the device. The trade is a download the first time and some disk space to manage afterwards.
 
 Each download is checked before it is used, so a broken or half-finished file is never loaded.
 
-The [Self-Learning Dictionary](/help/self-learning-dictionary/) has models of its own, downloaded after setup: one that spots your corrections, and a word check that uses the words you taught it. That article lists their sizes, and **Settings** \> **Dictionary** \> **Learn from...** shows whether each is downloading, ready or needs a retry.
+### How big are the speech model downloads?
 
-### If a download fails
+- **Fast engine (Parakeet).** EnviousWispr downloads it for you during setup, and you watch the progress as it goes. It is about 480 MB.
+- **All Languages engine (WhisperKit).** EnviousWispr does not download it for you. If you switch to it, go to **Settings** > **Transcription** and click **Download WhisperKit Model**. It is about 1.5 GB.
 
-EnviousWispr retries some temporary network problems by itself. Anything else stops and gives you a button to try again.
+### A model download is stuck or failed
 
-### Freeing up memory
+EnviousWispr retries some temporary network problems by itself. Anything else stops and gives you a button.
 
-The model stays in your Mac's memory between dictations so there is nothing to load next time. If you would rather have the memory back, go to **Settings** \> **Transcription** and change **Unload model after**.
+1. **Open settings.** Go to **Settings** > **Transcription**.
+2. **Find the download.** For Parakeet, look for the **Speech Model** section. For WhisperKit, click the **All Languages** card and look for **Model Setup**.
+3. **Use the button.** Click **Try Again** after a failure, or **Resume** after a pause. **Cancel** stops a download that is running.
 
-It arrives set to **Never**, so the model stays loaded. The other choices unload it after 2, 5, 10, 15 or 60 minutes of not being used, or straight after every recording. Each one costs you a short wait the next time you dictate.
+### Other downloads
 
-### Freeing up disk space
+The [Self-Learning Dictionary](/help/self-learning-dictionary/) has models of its own, downloaded after setup: one that spots your corrections, and a word check that uses the words you taught it. That article lists their sizes. **Settings** > **Dictionary** > **Learn from...** shows whether each is downloading, ready or needs a retry.
 
-You can remove local models you no longer need to recover storage, and you can download them again later.
+### Free up memory
 
-**Remove a WhisperKit model.** Open **Transcription** and use **Remove Model**.
+The speech model stays in your Mac's memory between dictations, so there is nothing to load next time. To get the memory back, go to **Settings** > **Transcription** and change **Unload model after**.
 
-**Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there. The button appears once EG-1 is installed and ready. If a newer EG-1 is waiting to install, that row offers the upgrade instead, and the remove button comes back once the upgrade finishes.
+It is set to **Never** by default, so the model stays loaded. The other choices unload it after 2, 5, 10 or 15 minutes or 1 hour of not being used, or **Immediately** after every recording. Each one costs a short wait the next time you dictate.
 
-**Remove S1-mini.** S1-mini is the small polish model made by Superwhisper. It has the same card on the **AI Polish** page as EG-1, with the same remove button once it is installed and ready.
+### Free up disk space
 
-**Remove Ollama models.** Local Ollama models are removed from that same **AI Polish** page. Hosted Ollama models cannot be removed because there is nothing on your Mac to remove.
+You can remove local models you no longer need and download them again later.
 
-### The other speed setting
+- **Remove a WhisperKit model.** Open **Transcription** and click **Remove Model**.
+- **Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there. The button appears once EG-1 is installed and ready. If a newer EG-1 is waiting to install, that row offers the upgrade instead, and the remove button comes back once the upgrade finishes.
+- **Remove S1-mini.** S1-mini is the small polish model made by Superwhisper. It has the same card on the **AI Polish** page as EG-1, with the same remove button once it is installed and ready.
+- **Remove Ollama models.** Local Ollama models are removed from the same **AI Polish** page. Hosted Ollama models cannot be removed, because there is nothing on your Mac to remove.
 
-How quickly a dictation starts is a different setting, under **Microphone**. See [_First Word Gets Cut Off_](/help/first-word-gets-cut-off/).
+### Dictation is slow to start
+
+How quickly a dictation starts is a separate setting, under **Microphone**. See [First Word Gets Cut Off](/help/first-word-gets-cut-off/).

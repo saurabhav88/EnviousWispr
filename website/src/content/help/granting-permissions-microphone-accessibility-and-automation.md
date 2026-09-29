@@ -4,39 +4,43 @@ description: "The macOS permissions EnviousWispr asks for, and what each one is 
 category: "getting-started"
 section: "Basics"
 order: 5
-keywords: ["permissions", "permission", "allow", "access", "microphone access", "accessibility", "privacy settings", "system settings", "grant", "it is asking for permission", "blocked", "denied"]
+keywords: ["permissions", "permission", "allow", "access", "microphone access", "accessibility", "privacy settings", "system settings", "grant", "it is asking for permission", "blocked", "denied", "request access"]
 related: ["accessibility-permission-not-working", "paste-not-working"]
-updated: 2026-09-28
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-Because EnviousWispr listens to your microphone and types into other apps, macOS requires you to grant specific permissions first. Two permissions are always needed, and a third is required only in rare cases. Setup asks for the two before the practice dictation at the end, so most people grant both there. The **Permissions** page in EnviousWispr settings always shows the current status of each one. The same page also has the **Privacy** switches for usage data and crash reports; those are EnviousWispr settings, not macOS permissions, and are covered in [_What Data Is Collected_](/help/what-data-is-collected/).
+EnviousWispr listens to your microphone and types into other apps, so macOS asks you to grant it permissions first. Microphone is required. Accessibility is strongly recommended, and Automation is needed only in rare cases. Setup asks for Microphone and Accessibility before the practice dictation at the end, so most people grant both there.
 
-### Microphone
+The **Permissions** page in EnviousWispr settings always shows the current status of each one. The same page also has the **Privacy** switches for usage data and crash reports. Those are EnviousWispr settings, not macOS permissions. See [_What Data Is Collected_](/help/what-data-is-collected/).
 
-This permission allows EnviousWispr to hear your voice while you dictate.
+### EnviousWispr can't hear me: allow the microphone
 
-**Grant permission.** Setup asks for it, and macOS asks again the first time you record if it was skipped. If you missed the prompt, open **System Settings**, select **Privacy & Security**, click **Microphone**, and switch EnviousWispr on.
+This permission lets EnviousWispr hear your voice while you dictate. Setup asks for it. If you skipped the prompt, ask again from EnviousWispr:
 
-You will know it worked when you hold your keybind and the meter on the recording bar moves as you speak.
+1. Open **Settings** > **Permissions**.
+2. Under **Microphone**, click **Request Access**. If you already said no, this button opens System Settings for you.
+3. In **System Settings** > **Privacy & Security** > **Microphone**, switch EnviousWispr on.
 
-### Accessibility
+You will know it worked when you hold your keybind and the meter on the recording bar moves as you speak. If it still stays flat, see [_Empty or Missing Transcription_](/help/empty-or-missing-transcription/).
 
-This permission allows EnviousWispr to place the finished text directly into the app you are working in.
+### Text is not pasting: allow Accessibility
 
-**Grant permission.** Setup offers a **Grant** button for it. Otherwise open **System Settings**, select **Privacy & Security**, click **Accessibility**, click the plus button, and add EnviousWispr from your Applications folder.
+This permission lets EnviousWispr place the finished text directly into the app you are working in. Setup offers a **Grant** button for it. Otherwise:
+
+1. Open **System Settings** > **Privacy & Security** > **Accessibility**.
+2. Click **+** and add EnviousWispr from your Applications folder.
+3. Make sure the switch beside it is on.
 
 You will know it worked when your next dictation lands in the text box on its own.
 
-Without this permission, dictation still works. EnviousWispr copies your text to the clipboard instead and tells you it has done so, and you paste it yourself with Cmd+V.
+Dictation still works without this permission. EnviousWispr copies your text to the clipboard instead and tells you it has done so, and you paste it yourself with Cmd+V. If the switch is on but nothing pastes, see [_Accessibility Permission Not Working_](/help/accessibility-permission-not-working/).
 
-### Automation
+### macOS asks if EnviousWispr can control System Events
 
-This permission is a fallback, requested only when the usual ways of pasting fail inside a particular application.
+This is the Automation permission. It is a backup, requested only when the usual ways of pasting fail inside a particular app. Click **OK** to allow it. To change your answer later, open **System Settings** > **Privacy & Security** > **Automation**.
 
-**Grant permission.** macOS asks whether EnviousWispr can control System Events. Click **OK**. To change your answer later, open **System Settings**, select **Privacy & Security**, and click **Automation**.
+Declining is fine, because most apps never need it.
 
-Declining this permission is fine, because most applications never require it.
+### Does my keybind need a permission?
 
-### Your keybind needs no permission
-
-The key you hold to record works everywhere on its own. These permissions are strictly about hearing your voice and delivering the text.
+No. The key you hold to record works everywhere on its own. Microphone lets EnviousWispr hear you, and Accessibility and Automation let it deliver your text.

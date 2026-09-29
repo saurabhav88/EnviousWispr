@@ -1,24 +1,28 @@
 ---
 title: "Noise Suppression"
-description: "There is no noise suppression setting, and what to do about a noisy room."
+description: "There is no noise suppression setting, and what to do when a noisy room hurts your dictation."
 category: "audio-and-microphone"
 section: "Audio Processing"
 order: 3
-keywords: ["noise", "background noise", "noisy room", "cafe", "fan", "noise cancelling", "suppression", "echo"]
+keywords: ["noise", "background noise", "noisy room", "cafe", "fan", "noise cancelling", "suppression", "echo", "inaccurate in noisy room", "air conditioner", "loud room"]
 related: ["voice-activity-detection-and-auto-stop"]
-updated: 2026-09-05
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-EnviousWispr has no noise suppression setting. It records your microphone as it is and lets the speech model handle the audio directly.
+EnviousWispr has no noise suppression setting. It records your microphone as it is and gives that audio straight to the speech model. If background noise hurts your accuracy, change your physical setup.
 
-### Why noise suppression was removed
+### Dictation is inaccurate in a noisy room
 
-Running the audio through a suppression filter before transcription hurt accuracy more than it helped, and it added a noticeable delay to every recording. The setting was removed in version 2.0.2, and switched off automatically when you updated.
+EnviousWispr has no noise suppression setting, so change what the microphone hears:
 
-### What the app does do about rumble
+1. Move closer to your microphone.
+2. Or switch to a headset microphone, which sits close to your mouth.
+3. Dictate the same sentence both ways and compare the results in **History**.
 
-The step that finds where you were talking, so silence can be trimmed, works from a copy of your audio with the low rumble taken out, which is most of what a fan, an engine or an air conditioner produces. Your recording and the audio the speech engine transcribes are untouched. Read [_Voice Activity Detection and Auto-Stop_](/help/voice-activity-detection-and-auto-stop/).
+### Is there a way to turn on noise suppression?
 
-### How to manage background noise
+No. An older version had a noise suppression setting. It was removed because filtering the audio before transcription hurt accuracy more than it helped, and it added a noticeable delay to every recording. Nothing needs switching off after an update.
 
-If sound around you is hurting your accuracy, change your physical setup rather than looking for a software filter. Move closer to your microphone, or switch to a headset microphone. You can test any change by dictating the same sentence both ways and comparing the results in **History**.
+### Does EnviousWispr filter out fan or air conditioner rumble?
+
+Only for one job. The step that finds where you were talking, so silence can be trimmed, works from a copy of your audio with the low rumble taken out. That is most of what a fan, an engine or an air conditioner produces. Your recording and the audio the speech engine transcribes are untouched. Read [_Stop Recording Automatically When You Stop Talking_](/help/voice-activity-detection-and-auto-stop/).

@@ -47,7 +47,7 @@ const SITES = [
   ['website/src/content/blog/getting-started-enviouswispr-under-2-minutes.md', 'A second engine, All Languages, covers 99+ languages.'],
   ['website/src/content/blog/welcome-to-enviouswispr.md', 'A secondary engine covers 99+ languages.'],
   ['website/src/content/help/choosing-a-speech-engine-parakeet-vs-whisperkit.md', '| Languages | 25 European | 99+ |'],
-  ['website/src/content/help/multi-language-dictation.md', 'switch to the WhisperKit engine, which supports 99+ languages.'],
+  ['website/src/content/help/multi-language-dictation.md', 'switch to the **All Languages** engine (WhisperKit), which supports 99+.'],
   ['website/src/pages/compare/apple-dictation.astro', '25 European (Parakeet), 99+ languages via WhisperKit'],
   ['website/src/pages/compare/best-dictation-apps-for-mac.astro', 'ew: "25 European (Parakeet) + 99+ (WhisperKit)"'],
   ['website/src/pages/compare/best-dictation-apps-for-mac.astro', 'you can switch to WhisperKit for 99+ languages.'],
