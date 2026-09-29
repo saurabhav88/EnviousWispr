@@ -1,60 +1,66 @@
 ---
 title: "Updates Never Arrive: Move EnviousWispr to Applications"
-description: "If EnviousWispr is running from Downloads it cannot update itself. Here is how to fix it in about thirty seconds."
+description: "If EnviousWispr is running from Downloads or the disk image it cannot update itself. Move it to Applications and updates work again."
 category: "updates-and-source"
 section: "Updates"
 order: 3
-keywords: ["no updates", "never updates", "stuck on old version", "cannot update", "update does nothing", "running from downloads", "move to applications", "translocated", "check for updates does nothing", "still on old version"]
+keywords: ["no updates", "never updates", "stuck on old version", "cannot update", "update does nothing", "running from downloads", "move to applications", "translocated", "check for updates does nothing", "still on old version", "can't be updated if it's running from the location it was downloaded to", "opened from a read-only or a temporary location"]
 related: ["auto-updates"]
-updated: 2026-08-11
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-If EnviousWispr never seems to get a new version, the most likely reason is where it is running from rather than anything wrong with the app.
+If EnviousWispr never gets a new version, it is most likely running from Downloads or the disk image instead of your Applications folder. The fix is to quit the app, drag EnviousWispr into Applications, and open it from there.
 
-### Why this happens
+### Why EnviousWispr cannot update
 
-When you download an app and open it straight from your Downloads folder, macOS does something protective: it runs the app from a hidden temporary copy instead of from the file you actually downloaded. Apple designed this so an app cannot quietly load other files that came down alongside it.
+When you open an app straight from your Downloads folder, macOS runs it from a hidden temporary copy instead of the file you downloaded. Apple does this so an app cannot quietly load other files that came down alongside it.
 
-The side effect is that an app running this way cannot replace itself, which is exactly what updating requires. So EnviousWispr keeps working, but it stays on the version you first installed and can never fetch a newer one.
+An app running this way cannot replace itself, and updating means replacing itself. EnviousWispr keeps working, but it stays on the version you first installed.
 
-You will usually see this if you opened the app directly from the disk image, or from Downloads, without dragging it into Applications first.
+This usually happens when you opened the app from the disk image, or from Downloads, without dragging it into Applications first. If you choose **Check for Updates**, Sparkle, the update tool inside the app, shows this message: "EnviousWispr can't be updated if it's running from the location it was downloaded to." Opened from the disk image, you may see "can't be updated because it was opened from a read-only or a temporary location" instead.
 
-### First, check what is already in Applications
+### Check what is already in Applications
 
 Open your Applications folder and look for EnviousWispr.
 
-- **If there is no copy there**, go straight to the steps below.
-- **If there is a copy there**, open it and choose Check for Updates. If it reports a version the same as or newer than the one you have been using, that copy is the healthy one. Use it from now on, and delete the one in Downloads. Nothing else is needed.
+- **No copy there.** Go on to the steps for moving it across.
+- **A copy is there.** Open it and choose **Check for Updates**. If it reports the same version as you have been using, or a newer one, that copy is the healthy one. Use it from now on and delete the one in Downloads. Nothing else is needed.
 
-This check matters because replacing a newer copy with an older one leaves you worse off than you started.
+Do this check first. Replacing a newer copy with an older one leaves you worse off.
 
-### Moving it across
+### Move EnviousWispr to Applications
 
 1. Quit EnviousWispr.
-2. Find the app. If you saved a disk image, the file in Downloads ends in `.dmg` and is not the app itself. Double-click it first, and a window opens showing the EnviousWispr icon next to an Applications folder.
-3. Drag EnviousWispr into your Applications folder. If macOS asks whether to replace an existing copy, only say yes if you confirmed above that the existing copy is older.
+2. Find the app. If you saved a disk image, the file in Downloads ends in `.dmg` and is not the app itself. Double-click it, and a window opens showing the EnviousWispr icon next to an Applications folder.
+3. Drag EnviousWispr into your Applications folder. If macOS asks whether to replace an existing copy, compare the two versions first and replace it only if the copy you are moving is newer.
 4. Open EnviousWispr from Applications.
 
-Dragging the app in Finder is the specific action that clears the restriction, which is why it works when other approaches do not.
+Dragging the app in Finder is the action that clears the restriction, which is why it works when other approaches do not.
 
-### Checking it worked
+### Check that updates work now
 
-Open EnviousWispr and choose Check for Updates. If it now tells you whether you are up to date, rather than doing nothing, you are set. From then on updates arrive on their own.
+Open EnviousWispr and choose **Check for Updates**. If it tells you whether you are up to date, instead of doing nothing, you are set. From then on updates arrive on their own.
 
-### If the app offers to move itself
+### The app offers to move itself, or the move fails
 
-Newer versions notice this situation on launch and offer to move themselves into Applications for you. Accepting that is safe, and it does the same thing as the steps above.
+Newer versions notice this situation when they open and offer to move themselves into Applications. Accepting is safe. It moves EnviousWispr into an Applications folder and reopens it from there. If /Applications does not accept new apps from your account, the offer uses your personal Applications folder instead, and it never asks for a password.
 
-If that offer fails, read what it says before dragging the app across yourself. Some failures are about your Mac rather than the app, and a manual drag will not get past them either:
+If the offer fails, read what it says before you drag the app across yourself. Some failures come from your Mac, and a manual drag will not get past them:
 
-- **Not enough space.** Free some up first, then try again.
+- **Not enough space.** Free some up, then try again.
 - **Another copy is already open.** Quit it first.
 - **A different app is already in that spot.** Sort that out first.
 
-There is one more that the message cannot always name for you. If your Mac is managed by someone else, or your account is not an administrator, the main Applications folder may not accept new apps at all. Finder will refuse the drag, or ask for a password you do not have. In that case, use your own personal Applications folder instead: in Finder choose **Go > Home**, make a folder called `Applications` there if one does not exist, and drag EnviousWispr into that. Updates work from there too.
+### Finder will not let me drag into Applications
 
-Once the reason has been cleared, or you have used your personal Applications folder, the move will go through.
+If your Mac is managed by someone else, or your account is not an administrator, the main Applications folder may refuse new apps. Finder refuses the drag, or asks for a password you do not have. Use your own personal Applications folder instead:
 
-### One thing worth knowing
+1. In Finder, choose **Go** > **Home**.
+2. Make a folder called `Applications` there if one does not exist.
+3. Drag EnviousWispr into it.
 
-Because this problem prevents updates, a version containing a fix for it cannot reach you through the app. If you are reading this on an older version, the manual move above is the way out, and after that updates will flow normally.
+Updates work from there too.
+
+### I am on an old version and the fix never reached me
+
+Because this problem blocks updates, a version containing a fix for it cannot reach you through the app. If you are on an older version, quit EnviousWispr, drag it into Applications in Finder without replacing a newer copy, and open it from there. After that, updates arrive normally.

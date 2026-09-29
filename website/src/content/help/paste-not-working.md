@@ -1,42 +1,57 @@
 ---
 title: "Paste Not Working?"
-description: "What to check when your dictation does not appear in your app."
+description: "What to do when your dictation does not appear in your app."
 category: "pasting-your-text"
 section: "Paste System"
 order: 3
-keywords: ["paste not working", "wont paste", "nothing pastes", "text not appearing", "goes to the wrong app", "vs code", "slack", "discord", "notion", "no text in my app", "paste again", "paste last dictation", "dictation disappeared"]
+keywords: ["paste not working", "wont paste", "nothing pastes", "text not appearing", "goes to the wrong app", "vs code", "slack", "discord", "notion", "no text in my app", "paste again", "paste last dictation", "dictation disappeared", "copied press cmd v", "text went to another window"]
 related: ["accessibility-permission-not-working", "how-text-gets-pasted-into-your-app", "transcript-history"]
-updated: 2026-09-27
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-When your dictation does not appear in the app you were typing in, work through these steps in order.
+Your dictation is safe even when it does not appear. If it does not show up in the app you were typing in, get the words back first with Paste Last Dictation. Then check the Accessibility permission and whether your cursor was in a text box.
 
-### First, get your words back
+### Get my last dictation back
 
-Click into the text box, then press your Paste Last Dictation keys (**Control Command V** unless you changed them), or click the EnviousWispr icon in your menu bar and choose **Paste Last Dictation**. Your last dictation is pasted again, so you do not have to repeat yourself. To paste it somewhere yourself, press your Copy Last Dictation keys (**Control Command C** unless you changed them) and then Cmd+V. Your current keys are in **Keybinds**; see [Customizing Your Keybind](/help/customizing-your-keybind/).
+Click into the text box, then press your Paste Last Dictation keys (**Control Command V** unless you changed them). You can also click the EnviousWispr icon in your menu bar and choose **Paste Last Dictation**. Your last dictation is pasted again, so you do not have to repeat yourself.
 
-If that does not paste either, the checks below find the cause. Pasting needs Accessibility permission: without it the menu item opens the permission settings for you, and the paste keys do nothing. Copying works either way.
+To paste it somewhere yourself, press your Copy Last Dictation keys (**Control Command C** unless you changed them), then press Cmd+V. Your current keys are under **Keybinds**. See [Customizing Your Keybind](/help/customizing-your-keybind/).
 
-### 1. Check Accessibility permission
+Pasting needs Accessibility permission. Without it, the menu item opens the permission settings for you and the paste keys do nothing. Copying works either way.
 
-macOS requires explicit permission before any app can type text into other windows, and this is the cause of missing text most of the time. Open **System Settings**, click **Privacy & Security**, and select **Accessibility**. Find EnviousWispr in the list and make sure its switch is turned on. Without this permission, EnviousWispr cannot deliver your text.
+### Nothing was typed and Accessibility may be off
 
-If the switch already looks on but nothing is typed, remove EnviousWispr from the list using the minus button, then add it back using the plus button.
+macOS requires explicit permission before any app can type text into other windows. This is the most common cause of missing text.
 
-### 2. Check your cursor was in a text box
+1. Open **System Settings** > **Privacy & Security** > **Accessibility**.
+2. Find EnviousWispr in the list and make sure its switch is on.
 
-EnviousWispr delivers text to whichever text field your cursor was in when you started recording. Click directly into your target text box first, then press your keybind and begin speaking.
+If the switch already looks on but nothing is typed, remove EnviousWispr from the list with the minus button, then add it back with the plus button. See [_Accessibility Permission Not Working_](/help/accessibility-permission-not-working/).
 
-### 3. The text went to a different app
+### The cursor was not in a text box
 
-If you switched windows while dictating, the text still goes to the window you were in when you started, even when you have several windows of the same app open, such as two browser windows. That is deliberate. It makes sure a slow AI polish cannot drop your words into an unexpected window if you change tasks mid-sentence. If that window has closed by the time your text is ready, EnviousWispr leaves the words on your clipboard and shows the Copied notice, so you can paste them yourself.
+EnviousWispr delivers text to the text box your cursor was in when you started recording. Click directly into your target text box first, then press your keybind and start speaking.
 
-### 4. VS Code, Slack, Discord and similar apps
+### The text went to a different app or window
 
-Some apps built on web technology accept text input and then quietly drop it. EnviousWispr has fallback delivery methods that handle this for most of them. If your text still fails to appear, bring the target app to the front and make sure your cursor is inside the text field before you record.
+If you switched windows while dictating, the text still goes to the window you were in when you started, even when you have several windows of the same app open, such as two browser windows. This is deliberate. A slow AI polish cannot drop your words into an unexpected window if you change tasks mid-sentence.
 
-### 5. You were told the text is on your clipboard
+If that window has closed by the time your text is ready, EnviousWispr leaves the words on your clipboard and shows the **Copied. Press ⌘V to paste** notice, so you can paste them yourself.
 
-If every delivery method fails, EnviousWispr leaves your words on the clipboard and shows **Copied. Press ⌘V to paste**. In most apps it does the same when it can see that a paste went nowhere (for example, no text box was selected). Your dictation is safe. Click into a text box and press Cmd+V to paste it yourself, then work through the checks above to get normal delivery back. Because your words stay on the clipboard, whatever you had copied before that dictation is replaced. If you are not sure what is on your clipboard, use Paste Last Dictation from [First, get your words back](#first-get-your-words-back); if it does nothing right after a dictation, try again a moment later.
+### Dictation fails in VS Code, Slack, Discord or Notion
 
-EnviousWispr can only tell a paste went nowhere when the app shows enough about where your cursor is, so in some apps a missed paste still shows nothing, and your clipboard is handled as usual (your previous clipboard comes back if you have that setting on). Paste Last Dictation works there too.
+Some apps built on web technology accept text input and then quietly drop it. EnviousWispr has backup delivery methods that handle this for most of them. If your text still does not appear, bring the app to the front and make sure your cursor is inside the text box before you record.
+
+### The notice says the text is on my clipboard
+
+When EnviousWispr cannot deliver your words, it shows **Copied. Press ⌘V to paste** and leaves them on your clipboard. In most apps it does the same when it can see that a paste went nowhere, for example when no text box was selected.
+
+1. Click into a text box.
+2. Press Cmd+V.
+3. Check that EnviousWispr has the Accessibility permission, then click into the text box you want before your next recording.
+
+Because your words stay on the clipboard, whatever you had copied before that dictation is replaced. If you are not sure what is on your clipboard, click into a text box and press **Control Command V** (unless you changed that key), or choose **Paste Last Dictation** in the menu bar menu. If it does nothing right after a dictation, try again a moment later.
+
+### My paste failed but no notice appeared
+
+EnviousWispr can only tell that a paste went nowhere when the app shows enough about where your cursor is. In some apps a missed paste shows nothing, and your clipboard is handled as usual. If you have **Restore clipboard after paste** on, your previous clipboard comes back. Paste Last Dictation works there too.

@@ -1,17 +1,17 @@
 ---
 title: "Is EnviousWispr Free?"
-description: "Yes. What is included, and the one thing that can cost money."
+description: "Yes. EnviousWispr is a free dictation app for macOS. Here is what is included, and the one thing that can cost money."
 category: "pricing"
 section: "Cost"
 order: 1
-keywords: ["free", "is this free", "price", "cost", "pricing", "subscription", "pay", "trial", "how much", "premium", "hidden costs", "catch"]
+keywords: ["free", "is this free", "price", "cost", "pricing", "subscription", "pay", "trial", "how much", "premium", "hidden costs", "catch", "paywall", "api key cost"]
 related: ["source-code-and-contributing", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
-updated: 2026-09-05
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-EnviousWispr is a free dictation app for macOS, and free means all of it. There is no subscription, no trial period, and no account to create.
+Yes. EnviousWispr is a free dictation app for macOS: you hold a key, speak, and your words appear as text in the app you are using. Free means all of it. There is no subscription, no trial period, and no account to create.
 
-### What you get
+### What is included for free
 
 Every installation includes the complete feature set, with no hidden tiers and no paywalls.
 
@@ -21,12 +21,12 @@ Every installation includes the complete feature set, with no hidden tiers and n
 - **Custom vocabulary.** Your own dictionary of custom words, ready-made vocabulary packs, and snippets.
 - **History with no ceiling.** Unlimited dictation, and a History with no limit on how much it keeps.
 
-### The one thing that can cost money
+### Can EnviousWispr cost me money?
 
-If you choose OpenAI, Gemini, or Claude for AI Polish, you bring your own API key and pay that company for what you use. EnviousWispr charges nothing either way.
+Only if you choose OpenAI, Gemini, or Claude for AI Polish, or an Ollama hosted model that needs a paid Ollama plan. OpenAI, Gemini and Claude need your own API key, a private password from that company, and you pay that company for what you use. EnviousWispr charges nothing either way.
 
 You never have to go that route. Apple Intelligence, EG-1, S1-mini, and Ollama models you download to your Mac all polish for free. Ollama also has hosted models that run on its own servers, and some of those need a paid Ollama plan.
 
-### Why it is free
+### Why is it free?
 
 The goal is to put EnviousWispr into as many hands as possible. The app is also open source under the GPLv3 license, so you can read the code, build it yourself, and keep using it whatever Envious Labs does later.

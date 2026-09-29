@@ -4,44 +4,47 @@ description: "Which AI Polish options keep your text on your Mac, and what is se
 category: "privacy-and-security"
 section: "Privacy"
 order: 3
-keywords: ["cloud", "does it send my text anywhere", "sent to openai", "sent to google", "leaves my mac", "third party", "who sees my text", "confidential", "work data", "hipaa"]
+keywords: ["cloud", "does it send my text anywhere", "sent to openai", "sent to google", "leaves my mac", "third party", "who sees my text", "confidential", "work data", "hipaa", "turn off ai polish", "keep my text private"]
 related: ["privacy-overview", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
 seeAlso: "cloud-ai-polish-not-stored"
-updated: 2026-09-04
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-Whether any of your text leaves your Mac depends entirely on which AI Polish option you picked. Go to **Settings** \> **AI Polish** to check your current selection.
+Whether your text leaves your Mac for polishing depends on which AI Polish option you picked. Your audio never leaves your Mac on any option. To check your choice, open **Settings** > **AI Polish**.
 
-### Nothing leaves your Mac
+### Which AI Polish options keep my text on my Mac?
 
-These options keep your transcription and the polish request entirely on your device.
+These options keep your transcription and the polish request on your device.
 
-- **None.** No AI step runs at all.
-- **Apple Intelligence.** Apple's model, running directly on your Mac.
-- **EG-1.** The model built by Envious Labs, running directly on your Mac.
-- **S1-mini.** The small model made by Superwhisper, running directly on your Mac.
-- **Ollama, when you pick a model you downloaded.** Ollama also offers hosted models that run on its own servers, and those do send your transcribed text. EnviousWispr shows the hosted models under a separate heading so you can tell which kind you are choosing.
+- **Apple Intelligence.** Apple's model, running on your Mac.
+- **EG-1.** The model built by Envious Labs, running on your Mac.
+- **S1-mini.** The small model made by Superwhisper, running on your Mac.
+- **Ollama, with a model you downloaded.** Ollama is a free app that runs AI models. Ollama also offers hosted models that run on its own servers, and those do send your text. EnviousWispr lists hosted models under a separate heading so you can tell which kind you are choosing.
 
-### Your text is sent
+### Which AI Polish options send my text, and to whom?
 
-OpenAI, Gemini, Claude, and Ollama's hosted models all run on their own servers. Your account is with that company, on their terms. Envious Labs is not in the middle of it. Everything goes straight from your Mac to the provider, so Envious Labs never sees your text either.
+OpenAI, Gemini, Claude, and Ollama's hosted models run on the provider's servers. Your account is with that company, on its terms. Your text goes straight from your Mac to the provider. Envious Labs is not in the middle, so Envious Labs never sees your text.
 
-#### What is sent
+### What does the provider receive?
 
 - The text that needs polishing.
 - The instructions for cleaning it up, plus your custom words.
 - The name of the app you are dictating into.
-- Your API key, so the provider can confirm the request belongs to you. Ollama's hosted models use your Ollama sign-in instead of an API key.
-
-#### What is never sent
-
-- Your audio. That holds on every single option without exception.
-- Your other dictations and transcripts, or your History.
+- Your API key, a private password from the provider that shows the request is yours. Ollama's hosted models use your Ollama sign-in instead.
 
 EnviousWispr adds nothing to the request that identifies you or your Mac. The provider still sees the ordinary details of any internet connection, such as your IP address.
 
-With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of that request. That is a request to the provider, not something EnviousWispr can enforce, and your text still has to reach their servers to be polished.
+With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of the request. That is a request to the provider, not something EnviousWispr can enforce. Your text still has to reach their servers to be polished.
 
-### If polish fails
+### What is never sent to the provider?
+
+- Your audio. That holds on every option.
+- Your other dictations and transcripts, or your History.
+
+### How do I stop my text from being sent?
+
+Pick an option that stays on your Mac: Apple Intelligence, EG-1, S1-mini, or an Ollama model you downloaded. To run no AI step at all, turn off **Enable AI Polish** at the top of **Settings** > **AI Polish**. Filler-word removal and your custom words still apply.
+
+### What do I get if AI Polish fails?
 
 You still receive the tidied-up version of your dictation from immediately before the AI step. A network problem, a slow provider, or a reply that arrives cut short costs you the polish, never your words.

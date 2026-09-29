@@ -1,48 +1,46 @@
 ---
 title: "Push-to-Talk Mode"
-description: "Hold the key, talk, let go. The default way to dictate."
+description: "Hold your keybind while you talk and let go to finish. This is the default way to dictate."
 category: "recording-and-keybinds"
 section: "Recording"
 order: 1
-keywords: ["push to talk", "hold to talk", "hold the key", "ptt", "press and hold", "default mode", "recording mode"]
+keywords: ["push to talk", "hold to talk", "hold the key", "ptt", "press and hold", "default mode", "recording mode", "release to stop", "hold keybind"]
 related: ["customizing-your-keybind", "first-word-gets-cut-off", "escape-recovery"]
-updated: 2026-09-05
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-Push-to-talk is the default recording mode. You hold your keybind down for as long as you are speaking. Letting go ends the recording, and your transcribed words appear at your cursor once EnviousWispr has worked out what you said.
+**Push to Talk** is the default recording mode. You hold your recording keybind while you speak. When you let go, the recording ends and your words appear at your cursor once EnviousWispr has worked out what you said.
 
-### Using push-to-talk
+### Dictate with Push to Talk
 
-**Use any text box.** Click into any text box on your Mac, then use the keybind you assigned during setup.
+1. **Click into a text box.** Use any text box on your Mac.
+2. **Press and hold your keybind.** Start speaking.
+3. **Let go when you finish.** Your text appears at the cursor a moment later.
 
-**Press and hold.** Keep your designated keybind pressed, and begin speaking into your microphone.
+Recording stops the moment you release the key, so a cough, a deep breath, or a passing conversation after you finish never reaches the transcript.
 
-**Release it.** Let go when you finish your sentence. Your text appears at the cursor a moment later, once the audio has been transcribed.
+A short sound confirms when recording starts and stops. To switch it off, go to **Settings** > **Sounds** and turn off **Play recording sounds**.
 
-Recording stops the exact moment you release the key. Because of that, a cough, a deep breath, or a passing conversation after you finish speaking never reaches the transcript.
+### Switch to Push to Talk
 
-A short sound confirms when recording starts and stops. Switch it off under **Settings** \> **Sounds**.
+1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
+2. Open **Keybinds**.
+3. Under **1. Choose recording mode**, pick **Push to Talk**.
 
-If you press your cancel keybind by mistake, Escape by default, the dictation is kept and offered back to you rather than thrown away. Read [_Escape Recovery_](/help/escape-recovery/).
+The card you pick is highlighted. It worked when holding your keybind starts a recording and releasing it ends the recording.
 
-### Dictating for longer periods
+### Record without holding the key
 
-For a long block of speech there is a way to keep recording with your finger off the keybind. Tap it, then press it again within half a second. Recording stays on after you let go. That is hands-free mode, and [_Hands-Free Mode (Long Dictation)_](/help/hands-free-mode-long-dictation/) covers it in full.
+For a long block of speech, press your keybind, let go, and press it again within half a second. Recording stays on after you let go. This is hands-free mode. [Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) covers it in full.
 
-### Configuring the mode
+If you prefer to tap once to start and once to stop, use [Toggle Mode](/help/toggle-mode/).
 
-You can check or change your recording mode at any time in settings if you want to switch between dictation styles.
+### I pressed cancel by mistake
 
-**Open settings.** Click the EnviousWispr icon in your menu bar and choose **Settings**.
+Pressing your cancel keybind, Escape by default, keeps the dictation and offers it back instead of throwing it away. See [Escape Recovery](/help/escape-recovery/).
 
-**Go to Keybinds.** Open the **Keybinds** tab.
+### The first word gets cut off
 
-**Select push to talk.** Pick **Push to Talk** under **1. Choose recording mode**.
+The moment you press your keybind, EnviousWispr starts waking the microphone, before you have said anything. That head start helps stop a Bluetooth headset from cutting off the start of your sentence.
 
-The card you choose highlights to show it is selected. You know the setting took effect when holding your keybind starts a recording and releasing it ends the recording.
-
-### Why holding the key helps the first word
-
-The moment you press your keybind, EnviousWispr starts waking the microphone, before you have said anything. That head start is what stops a Bluetooth headset cutting off the beginning of your sentence.
-
-It is a head start, not a guarantee. On your first dictation after opening the app there is no earlier audio to draw on, so pause for a beat after pressing the key before you speak. [_First Word Gets Cut Off_](/help/first-word-gets-cut-off/) explains when that happens and how to make it rarer.
+It is a head start, not a guarantee. On your first dictation after opening the app there is no earlier audio to draw on, so pause for a beat after pressing the key before you speak. [First Word Gets Cut Off](/help/first-word-gets-cut-off/) explains when that happens and how to make it rarer.

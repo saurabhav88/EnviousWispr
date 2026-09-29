@@ -1,59 +1,68 @@
 ---
 title: "Adding Custom Words"
-description: "Teaching EnviousWispr names and words it keeps getting wrong."
+description: "Teach EnviousWispr the exact spelling of names and specialised words it keeps getting wrong."
 category: "custom-words"
 section: "Dictionary"
 order: 1
-keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms", "how do I add a name", "where is your words", "fix a misspelled name", "turn on vocabulary packs", "import my contacts"]
+keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms", "how do I add a name", "where is your words", "fix a misspelled name", "turn on vocabulary packs", "import my contacts", "wrong spelling", "word keeps coming out wrong", "custom word not working", "Enable Dictionary"]
 related: ["self-learning-dictionary", "why-is-my-dictation-inaccurate", "how-custom-word-correction-works", "using-snippets"]
-updated: 2026-09-27
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-When EnviousWispr repeatedly misspells a name or a specialised word, you can teach it the exact spelling you want to use. You often do not need to add it by hand: fix the word once in text EnviousWispr just pasted, and the [Self-Learning Dictionary](/help/self-learning-dictionary/) adds it for you.
+When EnviousWispr keeps misspelling a name or a specialised word, add it to your words and it writes your spelling from then on. You often do not need to add it by hand: fix the word once in text EnviousWispr recently pasted, and the [Self-Learning Dictionary](/help/self-learning-dictionary/) adds it for you.
 
-### Adding a custom word
+### Add a word it keeps getting wrong
 
-Open settings to enter your preferred words and override what the speech engine produces.
+1. **Open your words.** Click the EnviousWispr icon in your menu bar, choose **Settings**, then go to **Dictionary** > **Your Words**.
+2. **Add the word.** Click **Add word** and type the exact spelling you want to appear.
 
-1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, then go to **Dictionary** \> **Your Words**.
-2. **Add your word.** Type the exact spelling you want to appear.
+From then on, when you speak that word, EnviousWispr writes your spelling. If it writes "Chat G P T", adding "ChatGPT" fixes that in every dictation.
 
-From then on, when you speak that word, EnviousWispr writes your chosen spelling. If it writes out "Chat G P T", adding "ChatGPT" to your words corrects that for every dictation from then on.
+If a word you added still comes out wrong, see [How Custom Word Correction Works](/help/how-custom-word-correction-works/).
 
-### Words worth adding
+### Which words to add
 
-Building a reliable list saves you time editing afterwards. These are the categories that pay off most:
+A short, well-chosen list saves the most editing. These pay off most:
 
 - Names of people you write to regularly.
 - Your company name and your internal product names.
-- Technical vocabulary, acronyms, and jargon from your field that a general dictionary misses.
+- Technical words, acronyms and jargon from your field that a general dictionary misses.
 
-A custom word is a spelling. If what you want is a whole block of text, such as your email address, a sign-off, or a link you send every week, that is a snippet rather than a custom word. See [_Using Snippets_](/help/using-snippets/).
+### Add a block of text instead of a word
 
-### Using ready-made vocabulary packs
+A custom word is a spelling. If you want a whole block of text, such as your email address, a sign-off, or a link you send every week, use a snippet instead. See [Using Snippets](/help/using-snippets/).
 
-Vocabulary packs group common words by industry, so you do not have to type every word in yourself.
+### Add a ready-made pack of words
 
-**Switch on a pack.** Go to **Settings** \> **Dictionary** \> **Vocabulary Packs**, then turn on any of the packs: Tech, Medical, Legal, and Brands and Names. Turn on the ones that match your daily work to cover those words straight away.
+Vocabulary packs group common words by field, so you do not have to type each one.
 
-### Importing from Contacts
+1. Go to **Settings** > **Dictionary** > **Vocabulary Packs**.
+2. Turn on the packs that match your work: Tech, Medical, Legal, Brands, and Names.
 
-You can pull names directly out of your macOS Contacts app, so the people you write to are spelled correctly from your very first dictation.
+### Add names from your Contacts
 
-**Import your contacts.** Go to **Settings** \> **Dictionary** \> **Learn from...**, then use the Contacts import. macOS asks for your permission the first time you do this.
+You can pull names from the macOS Contacts app, so the people you write to are spelled correctly from your first dictation.
 
-**Keep it up to date.** Switch on **Keep in sync on launch** if you want EnviousWispr to check for new contacts each time it starts. This setting is off unless you turn it on.
+1. Go to **Settings** > **Dictionary** > **Learn from...**.
+2. Use the Contacts import. macOS asks for your permission the first time.
+3. Switch on **Keep in sync on launch** if you want EnviousWispr to check for new contacts each time it starts. This is off until you turn it on.
 
-### Letting your Mac guess the mishearings
+### Let EnviousWispr guess how a word gets misheard
 
-When you add a word, EnviousWispr can work out how the speech engine is likely to mishear it and watch for those versions too. Adding "Kubernetes" prompts it to watch for versions like "Cooper net ease", which saves you thinking up the wrong spellings yourself.
+When you add a word, EnviousWispr can work out how the speech engine is likely to mishear it and watch for those versions too. Adding "Kubernetes" prompts it to watch for versions like "Cooper net ease", so you do not have to think up the wrong spellings yourself.
 
-This needs macOS 26 or later with Apple Intelligence switched on, and it all happens on your Mac. Without Apple Intelligence, your custom words still work exactly as they should.
+This needs macOS 26 or later with Apple Intelligence switched on, and it all happens on your Mac. Without Apple Intelligence, your custom words still work as they should.
 
-### When your words are applied
+### My custom words stopped working
 
-Your custom spellings are applied to your transcribed text before AI Polish runs, on every dictation, whether or not polish is switched on.
+Your custom spellings apply only while **Enable Dictionary** is on. It is the switch at the top of **Settings** > **Dictionary**. Turn it on and your words apply again.
 
-OpenAI, Gemini, Claude, and every Ollama model except EG-1 and S1-mini are also sent your custom word list, so their rewrites keep your spellings. One thing holds it back: if the app cannot tell with confidence which language you spoke, it keeps the list to itself for that dictation, rather than risk pushing English spellings onto text in another language. Apple Intelligence, EG-1, and S1-mini are never sent it, because they do better with shorter instructions. Either way your words have already been applied to the text by that stage, so nothing is lost.
+### Do my words reach AI Polish?
 
-To move your words between Macs, or bring them in from another app, read [_Importing and Exporting Custom Words_](/help/importing-and-exporting-custom-words/).
+While **Enable Dictionary** is on, your spellings are applied to your transcribed text before AI Polish runs, whether or not polish is switched on.
+
+If you use a cloud provider for AI Polish, your word list is also sent to it with your text, so its rewrite keeps your spellings. This covers OpenAI, Gemini, Claude, and every Ollama model except EG-1 and S1-mini. If the app cannot tell with confidence which language you spoke, it keeps the list back for that dictation. Apple Intelligence, EG-1 and S1-mini are never sent it. While **Enable Dictionary** is on, your words have already been applied to the text before AI Polish gets it, so nothing is lost.
+
+### Move your words to another Mac
+
+To back up your words, carry them to another Mac, or bring them in from another app, see [Importing and Exporting Custom Words](/help/importing-and-exporting-custom-words/).

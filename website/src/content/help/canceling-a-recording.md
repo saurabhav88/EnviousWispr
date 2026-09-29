@@ -1,34 +1,50 @@
 ---
 title: "Canceling a Recording"
-description: "Stop a recording, and choose whether to keep what you said."
+description: "Stop a recording without pasting anything, and choose whether to keep what you said."
 category: "recording-and-keybinds"
 section: "Recording"
 order: 5
-keywords: ["cancel", "stop without pasting", "throw away", "discard", "escape", "abort", "undo", "didnt mean to record", "delete recording"]
+keywords: ["cancel", "stop without pasting", "throw away", "discard", "escape", "abort", "undo", "didnt mean to record", "delete recording", "cancel recording", "started recording by accident", "cancel button", "triple press"]
 related: ["recording-won-t-stop-or-seems-stuck", "escape-recovery"]
-updated: 2026-09-01
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-If you misspeak, get interrupted, or start recording by accident, you can stop the recording without any text landing where you were typing. Nothing is pasted and your cursor is left untouched. This works in every recording mode and at any point during a recording.
+To stop a recording without pasting anything, press your cancel keybind, Escape by default. EnviousWispr keeps what you said for 24 hours in case you want it back. To throw it away for good, click **Cancel** in the main EnviousWispr window.
 
-There are two ways to stop, and they do different things on purpose. One keeps what you said in case you want it. The other throws it away for good.
+### Cancel a recording I started by accident
 
-### Press Escape to stop and keep it
+Press **Escape** while the recording is running. The recording bar disappears and nothing is pasted. Your cursor is left untouched.
 
-**Press Escape.** Press the Escape key while the recording is running. In push-to-talk mode, pressing your recording keybind three times does the same thing. In hands-free mode, press Escape rather than your keybind, because your keybind stops the recording and sends it for transcription.
+This works in **Push to Talk**, in **Toggle**, and in a hands-free recording. In each mode you have these options:
 
-The recording bar disappears and nothing is pasted. Behind that, EnviousWispr finishes transcribing what you said and offers it back to you with an **Undo** button. If you miss the notice, it waits in your History for 24 hours. This is a setting called **Escape Recovery**, and it is on from the start. [Escape Recovery](/help/escape-recovery/) explains it in full, including what it costs you.
+- **Push to Talk:** press Escape. Or, when you start a recording, press your recording keybind three times within half a second.
+- **Toggle:** press Escape. Your recording keybind stops the recording and pastes the text.
+- **Hands-free** (the double-press lock in Push to Talk): press Escape. A single press of your recording keybind stops the recording and pastes the text.
 
-Two things follow from the recording being kept rather than dropped. A new recording cannot start until the old one finishes processing, the same as after any dictation. And if you use a cloud provider for AI polish, that polish runs under your own key and counts towards your usage, exactly as a normal dictation would.
+### Get back a recording I cancelled with Escape
 
-### Click Cancel to throw it away
+By default, Escape keeps the recording. EnviousWispr finishes transcribing it and shows a **Dictation cancelled** notice with an **Undo** button. If you miss the notice, the text waits in your History for 24 hours.
 
-**Click Cancel in the recording bar.** The recording is dropped there and then. Nothing is transcribed, nothing is pasted, and no entry is saved to your History. The button always does this, whatever your settings say.
+This is a setting called **Escape Recovery**, and it is on from the start. [Escape Recovery](/help/escape-recovery/) explains it in full.
 
-A button labelled Cancel should mean one thing. Escape is also how people dismiss menus and back out of fields, so Escape is the one that gives you a way back.
+Because the recording is kept, a new recording cannot start until the old one finishes processing, the same as after any dictation. If you use a cloud provider for AI polish, that polish runs under your own key and counts towards your usage, as a normal dictation would.
 
-### If you would rather Escape threw it away too
+### Throw a recording away for good
 
-Switch **Escape Recovery** off, in **Settings**, **Keybinds**, under Cancel Recording. After that, pressing Escape discards the recording immediately, exactly as the Cancel button does.
+Click **Cancel** in the main EnviousWispr window, next to **Stop** under the recording timer. The recording is dropped right away. Nothing is transcribed, nothing is pasted, and nothing is saved to History.
 
-You can also change the cancel key itself. Click the EnviousWispr icon in your menu bar, choose **Settings**, and select **Keybinds**.
+This button always discards, whatever your settings say. The floating recording bar has no Cancel button.
+
+### Make Escape discard the recording too
+
+1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
+2. Open **Keybinds**.
+3. Under **Cancel Recording**, switch **Escape Recovery** off.
+
+After that, pressing Escape discards the recording immediately, the same as the **Cancel** button.
+
+### Change the cancel key
+
+1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
+2. Open **Keybinds**.
+3. Under **Cancel Recording**, use the **Cancel keybind** row to choose a different key.

@@ -1,44 +1,44 @@
 ---
-title: "Voice Activity Detection and Auto-Stop"
-description: "Having a recording end by itself once you stop talking."
+title: "Stop Recording Automatically When You Stop Talking"
+description: "Having a recording end by itself once you stop talking, and how to fix it stopping too early or too late."
 category: "audio-and-microphone"
 section: "Audio Processing"
 order: 4
-keywords: ["auto stop", "stops on silence", "stops too early", "cuts me off", "pause", "silence", "vad", "keeps going after i stop", "waits too long"]
+keywords: ["auto stop", "stops on silence", "stops too early", "cuts me off", "pause", "silence", "vad", "keeps going after i stop", "waits too long", "voice activity detection", "stop recording on silence", "pause duration", "stops mid sentence"]
 related: ["hands-free-mode-long-dictation", "first-word-gets-cut-off"]
-updated: 2026-09-05
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-EnviousWispr can end a recording by itself once you stop talking, so you do not have to reach for your keybind again. This is off by default and has to be switched on before it does anything.
+EnviousWispr can end a recording by itself once you stop talking, so you do not have to press your keybind again. This is off by default. Switch it on first.
 
-### Turning on auto-stop
-
-Switch the feature on in settings to let EnviousWispr work out when you have finished speaking.
+### Turn on auto-stop
 
 1. Go to **Settings** \> **Transcription**.
-2. Switch on **Stop recording on silence**.
-3. Use the slider to set how long a pause has to be, anywhere from half a second to three seconds. It arrives set to one and a half seconds.
+2. Under **Auto-Stop**, switch on **Stop recording on silence**.
+3. Use the **Pause duration** slider to set how long a pause has to be, from half a second to three seconds. The default is one and a half seconds.
 
-A pause shorter than your setting is ignored, while a longer silence ends the recording. At the half-second setting, an ordinary pause for thought is often enough to stop it.
+A pause shorter than your setting is ignored. A longer silence ends the recording.
 
-### Choosing a pause length
-
-Different pause lengths suit different speaking habits.
+### Choose a pause length
 
 | Setting | What it does |
 | :--- | :--- |
-| **Half a second** | Ends recordings quickly, but risks cutting you off mid-thought. |
+| **Half a second** | Ends recordings quickly, but an ordinary pause for thought is often enough to stop it. |
 | **One and a half seconds** | A reliable starting point for normal speech. |
 | **Up to three seconds** | Suits speakers who pause often in the middle of a sentence. |
 
-### Automatic trimming
+### Recording stops while I am still thinking
 
-Before your speech is transcribed, EnviousWispr looks for the parts of the recording where you were talking and sends only those to the engine. In a quiet or normal room that comes to the same thing as removing the silence at the start and the end. It is a stronger claim than that, though: anything the app does not recognise as speech can be left out, wherever it falls in the recording.
+Raise **Pause duration** on the **Transcription** page, up to three seconds. Or switch **Stop recording on silence** off and end every recording yourself with your keybind.
 
-That recognition step now works from a copy of your audio with the low rumble taken out, which is most of what a fan, an engine or an air conditioner produces. Your recording and the audio your engine transcribes are untouched. Trimming happens whether or not you have auto-stop switched on, runs entirely on your Mac, and needs no configuration.
+### Recording does not stop by itself
 
-### If it stops at the wrong time
+Check that **Stop recording on silence** is switched on. It is off by default. If it is on and recordings still run long, lower **Pause duration**, or end the recording with your keybind.
 
-Move the slider. If EnviousWispr keeps ending the recording while you are still thinking, raise the setting to three seconds, or switch the feature off and end every recording yourself.
+### Silence is cut out of my dictation
 
-In a noisy room the timing moves. Since the trimming step stopped eating the start of sentences in noisy rooms, auto-stop usually stops sooner there, and on the half-second setting it sometimes waits longer or does not stop on its own at all. Raise the setting, or end the recording with your keybind.
+Before your speech is transcribed, EnviousWispr finds the parts of the recording where you were talking and sends only those to the speech engine. In a quiet or normal room that comes to the same thing as removing the silence at the start and the end. Anything the app does not recognise as speech can be left out, wherever it falls in the recording.
+
+This trimming happens whether or not auto-stop is switched on. It runs entirely on your Mac and needs no setup. It works from a copy of your audio with low rumble (fans, engines, air conditioners) taken out. Your recording and the audio your engine transcribes are untouched.
+
+If a noisy room is the problem, read [_Noise Suppression_](/help/noise-suppression/).

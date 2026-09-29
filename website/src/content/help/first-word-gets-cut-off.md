@@ -4,20 +4,25 @@ description: "Why the start of a dictation can go missing, and how to stop it."
 category: "troubleshooting"
 section: "Transcription Issues"
 order: 4
-keywords: ["first word", "cut off", "clipped", "missing the beginning", "loses the start", "chops the first word", "beginning missing"]
-updated: 2026-09-16
+keywords: ["first word", "cut off", "clipped", "missing the beginning", "loses the start", "chops the first word", "beginning missing", "first word missing", "start of sentence missing", "microphone readiness", "airpods first word"]
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-When the start of your speech goes missing, it is because the microphone was still waking up as you began to talk.
+When the start of your speech goes missing, the microphone was still waking up as you began to talk. Two fixes work: pause briefly after pressing your keybind, or keep the microphone awake for longer.
 
-While the microphone is still awake from a recent dictation, EnviousWispr keeps the half second of audio from immediately before you pressed the key, so an early start is captured anyway. On a cold start there is no earlier audio to keep, and the first word or two can be lost.
+### The first word is missing from my dictation
 
-### Keep the microphone awake for longer
+1. **Pause briefly.** Wait a beat after pressing your keybind before you begin to speak.
+2. **Keep the microphone awake for longer.** Go to **Settings** \> **Microphone** and set **Microphone readiness** to **60 sec** or **Always**.
 
-You can change how long the microphone stays active between dictations, which is what prevents a cold start. Open EnviousWispr settings, click **Microphone**, and find **Microphone readiness**:
+You will know it worked when your next few dictations open with the exact word you meant to say.
 
-- **Off.** The microphone shuts down straight away. This setting gives the lowest power use, the slowest start, and no earlier audio kept.
-- **10 sec, 30 sec, 60 sec.** The microphone stays ready for that long after each dictation. The app arrives set to 30 seconds.
+### What Microphone readiness does
+
+**Microphone readiness** sets how long the microphone stays active after each dictation. While it is active, EnviousWispr also keeps the half second of audio from right before you pressed the key, so an early start is still captured. Once the microphone has shut down, there is no earlier audio to keep, and the first word or two can be lost.
+
+- **Off.** The microphone shuts down straight away. This gives the lowest power use, the slowest start, and no earlier audio kept.
+- **10 sec, 30 sec, 60 sec.** The microphone stays ready for that long after each dictation. The default is 30 sec.
 - **Always.** The microphone stays ready all the time. The macOS microphone indicator may stay visible in your menu bar, and power use may go up.
 
 ### When a word can still go missing
@@ -25,15 +30,5 @@ You can change how long the microphone stays active between dictations, which is
 Some situations need the microphone to wake from a completely inactive state, and those can still cost you a word:
 
 - Your first dictation after opening the app.
-- The first dictation after your Microphone readiness timer has run out.
-- The first dictation after connecting AirPods or another Bluetooth headset, which takes a moment to switch into microphone mode.
-
-### What to do
-
-If your speech keeps cutting off at the beginning, try these adjustments:
-
-- **Pause briefly.** Pause for a beat after pressing your keybind, before you begin to speak.
-- **Change your readiness time.** Set Microphone readiness to **60 sec** or **Always**.
-- **Use push to talk.** Holding the key down starts waking the microphone while you are still drawing breath.
-
-You will know the problem is fixed when your next few dictations open with the exact word you meant to say.
+- The first dictation after your **Microphone readiness** time has run out.
+- The first dictation after connecting AirPods or another Bluetooth headset, which takes a moment to switch into microphone mode. Read [_Bluetooth and AirPods_](/help/bluetooth-and-airpods/).

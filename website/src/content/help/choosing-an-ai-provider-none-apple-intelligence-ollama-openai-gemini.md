@@ -4,41 +4,43 @@ description: "The AI Polish options, what each one costs, and which ones keep yo
 category: "ai-polish"
 section: "Polish"
 order: 2
-keywords: ["turn off ai", "turn ai off", "disable ai", "no ai", "provider", "openai", "chatgpt", "gemini", "claude", "apple intelligence", "ollama", "s1-mini", "superwhisper", "eg-1", "which ai", "api key", "change provider", "stop rewriting my words"]
+keywords: ["turn off ai", "turn ai off", "disable ai", "no ai", "none", "provider", "openai", "chatgpt", "gemini", "claude", "apple intelligence", "ollama", "s1-mini", "superwhisper", "eg-1", "which ai", "api key", "change provider", "stop rewriting my words"]
 related: ["ai-polish-and-cloud-data", "api-key-security", "s1-mini-by-superwhisper-and-writing-style"]
-updated: 2026-09-05
+updated: 2026-09-29
 deflection: "can_resolve"
 ---
-AI Polish is the step that tidies up your dictation after transcription, and you choose which provider does the work. Your transcription audio stays on your Mac on every one of these options. Open **Settings**, then select **AI Polish** to make your choice.
+AI Polish tidies up your dictation after transcription, and you choose which provider does the work. Your audio stays on your Mac on every option. Open **Settings** > **AI Polish** to choose.
 
-### Stays on your Mac
+### Which AI Polish option should I pick?
 
-These options process your text entirely on your own machine.
+- **macOS 26 or later, on a Mac that supports Apple Intelligence:** leave it on Apple Intelligence. It is the default and it is free. Apple Intelligence must be switched on in System Settings, and its model must have finished downloading.
+- **macOS 14 or 15, or a Mac that does not support Apple Intelligence:** choose EG-1. Apple Intelligence polish needs macOS 26, so on an older macOS the AI step is skipped and you get the cleaned-up text without AI polish.
+- **A Mac with little free space:** choose S1-mini if EG-1 is too big for your Mac.
 
-- **Apple Intelligence.** Free, with nothing to set up. It requires macOS 26 or later on a Mac that supports Apple Intelligence. This is the default when you install the app.
-- **EG-1.** The model Envious Labs built specifically for dictation, and the one marked **Recommended** on the AI Polish page. It is free. Download it from the AI Polish page, and it takes about 2.9 GB of storage once installed.
-- **S1-mini.** A small open model made by Superwhisper, and the lightest on-device option. It is free. Download it from the AI Polish page; it takes about 484 MB once installed and has three writing style settings you can adjust. See [_S1-mini by Superwhisper and Its Writing Style Settings_](/help/s1-mini-by-superwhisper-and-writing-style/).
-- **None.** No AI polish step runs at all. You still get filler-word removal and the benefit of your custom words.
+### How do I turn AI Polish off?
 
-### Your own setup
+Turn off **Enable AI Polish** at the top of **Settings** > **AI Polish**. There is no separate "None" option. With the switch off, no AI step runs. You still get filler-word removal and your custom words.
 
-- **Ollama.** Runs a model you choose, and you install Ollama yourself. Models you download to your Mac are free and keep your text on the machine. Ollama also offers models that run on its own servers, which EnviousWispr lists separately and never picks for you.
+### Which options keep my text on my Mac?
 
-### Uses a company's service
+- **Apple Intelligence.** Free. It must be switched on in System Settings, with its model downloaded. It needs macOS 26 or later on a Mac that supports Apple Intelligence. It is the default when you install the app.
+- **EG-1.** The model Envious Labs built for dictation, marked **Recommended** on the AI Polish page. It is free. Download it from the AI Polish page. It takes about 2.9 GB of storage.
+- **S1-mini.** A small model made by Superwhisper, and the lightest on-device option. It is free. Download it from the AI Polish page. It takes about 484 MB and has three writing style settings. See [_S1-mini by Superwhisper and Its Writing Style Settings_](/help/s1-mini-by-superwhisper-and-writing-style/).
 
-These options require an account and an API key from that company, and you pay them directly for what you use. Your transcribed text goes to them.
+### How do I use Ollama?
 
-- **OpenAI**
-- **Gemini**
-- **Claude**
+Ollama is a free app that runs AI models on your Mac. You install it yourself, then pick a model in EnviousWispr under **Your own setup**. Models you download to your Mac are free and keep your text on the machine. Ollama also offers hosted models that run on its own servers. EnviousWispr lists them separately and never picks one for you. A hosted model needs you signed in to Ollama, and some need a paid Ollama plan.
 
-With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of your request.
+### Which options send my text to a company?
 
-### Side by side
+OpenAI, Gemini, and Claude need an account and an API key from that company. An API key is a private password that lets EnviousWispr use your account. You pay the company directly for what you use. Your transcribed text goes to them, never your audio.
+
+With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of your request. For the full list of what is sent, read [_AI Polish and Cloud Data_](/help/ai-polish-and-cloud-data/).
+
+### How do the AI Polish options compare?
 
 | Option | Where your text goes | Cost | Needs |
 |---|---|---|---|
-| None | Nowhere | Free | Nothing |
 | Apple Intelligence | Stays on your Mac | Free | macOS 26 or later |
 | EG-1 | Stays on your Mac | Free | A 2.9 GB download |
 | S1-mini | Stays on your Mac | Free | A 484 MB download |
@@ -46,5 +48,3 @@ With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of your r
 | OpenAI | To OpenAI | You pay OpenAI | An API key |
 | Gemini | To Google | You pay Google | An API key |
 | Claude | To Anthropic | You pay Anthropic | An API key |
-
-If you are not sure which to pick, leave the setting on Apple Intelligence. If your Mac cannot run Apple Intelligence, try EG-1, or S1-mini if EG-1 is more than your Mac has room for.

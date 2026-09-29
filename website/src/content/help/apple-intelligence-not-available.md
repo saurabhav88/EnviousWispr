@@ -1,27 +1,27 @@
 ---
 title: "Apple Intelligence Not Available"
-description: "Why Apple Intelligence polish may be unavailable on your Mac."
+description: "Why Apple Intelligence polish may be unavailable on your Mac, and what to do instead."
 category: "troubleshooting"
 section: "AI Polish Issues"
 order: 6
-keywords: ["apple intelligence missing", "apple intelligence greyed out", "cant use apple intelligence", "not available", "unavailable", "why cant i pick apple"]
+keywords: ["apple intelligence missing", "apple intelligence greyed out", "cant use apple intelligence", "not available", "unavailable", "why cant i pick apple", "polish does nothing", "macos 15 apple intelligence"]
 related: ["apple-intelligence-setup", "system-requirements"]
-updated: 2026-09-04
+updated: 2026-09-29
 deflection: "show_but_always_send"
 ---
-Apple Intelligence is one of the polish options EnviousWispr can use to tidy up your dictation, but Apple restricts the feature to specific hardware and software versions. Dictation itself keeps working normally even when Apple Intelligence is unavailable on your Mac.
+Apple Intelligence polish needs macOS 26 or later, on a Mac that supports Apple Intelligence. Dictation keeps working normally when it is unavailable. Below macOS 26, the AI step is skipped and you get your cleaned-up text without AI polish. To keep AI polish, choose EG-1 or another option.
 
-To see which requirement is missing, open EnviousWispr settings, go to **AI Polish**, and select Apple Intelligence. EnviousWispr names the exact reason the option is unavailable on your system.
+### How do I find out why Apple Intelligence is unavailable?
 
-### Common reasons it is unavailable
+Open **Settings** > **AI Polish** and select **Apple Intelligence**. EnviousWispr names the exact reason the option is unavailable on your Mac.
 
-Work through this list to identify why Apple Intelligence is not active in EnviousWispr.
+### What are the common reasons?
 
-- **macOS is too old.** This feature requires macOS 26 or later. Check your version under the Apple menu by selecting **About This Mac**. This requirement is separate from the Apple Intelligence features introduced in macOS 15, because other applications could not reach the system model until macOS 26.
-- **Apple Intelligence is switched off.** Open **System Settings**, go to **Apple Intelligence & Siri**, and turn the feature on.
-- **The model is still downloading.** macOS downloads the required model files in the background after you turn the feature on, and that can take a while. Try the option again later.
-- **Your Mac does not support the feature.** Apple decides which Macs qualify, and there is no way around that from inside EnviousWispr.
+- **macOS is too old.** Apple Intelligence polish needs macOS 26 or later. Check your version by choosing the Apple menu, then **About This Mac**. macOS 15 has Apple Intelligence, but apps like EnviousWispr cannot use it until macOS 26.
+- **Apple Intelligence is switched off.** Open **System Settings** > **Apple Intelligence & Siri** and turn it on.
+- **The model is still downloading.** macOS downloads the model files in the background after you turn the feature on. That can take a while. Try again later.
+- **Your Mac does not support the feature.** Apple decides which Macs qualify. There is no way around that from inside EnviousWispr.
 
-### Alternative polish options
+### What can I use instead of Apple Intelligence?
 
-If Apple Intelligence is out of reach on your Mac, you can choose a different way to clean up your dictated text. Pick EG-1, S1-mini, or a downloaded Ollama model to keep everything on your Mac, or enter your own API key for OpenAI, Gemini, or Claude.
+Pick EG-1, S1-mini, or an Ollama model you downloaded to polish your dictation text on your Mac. Or enter your own API key for OpenAI, Gemini, or Claude, which sends your text to that company. Compare them in [_Choosing an AI Provider_](/help/choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini/).
