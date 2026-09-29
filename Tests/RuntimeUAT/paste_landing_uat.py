@@ -874,14 +874,21 @@ class SleepingChrome:
                 raise u.Aborted(f"{self.label}: the isolated Chrome did not start")
             self.pid = self._find_pid()
 
-    def _find_pid(self):
-        r = subprocess.run(["pgrep", "-f", f"--user-data-dir={self.profile}"],
+    def _profile_pids(self):
+        """Every process whose command line names this run's unique profile directory (Chrome and
+        its helpers). `--` ends pgrep's options: the pattern itself starts with dashes."""
+        r = subprocess.run(["pgrep", "-f", "--", f"--user-data-dir={self.profile}"],
                            capture_output=True, text=True)
-        for line in r.stdout.split():
-            cmd = subprocess.run(["ps", "-o", "command=", "-p", line], capture_output=True,
+        if r.returncode not in (0, 1):
+            raise u.Aborted(f"{self.label}: pgrep failed: {r.stderr.strip()}")
+        return [int(x) for x in r.stdout.split()]
+
+    def _find_pid(self):
+        for pid in self._profile_pids():
+            cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True,
                                  text=True).stdout
             if cmd.startswith("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"):
-                return int(line)
+                return pid
         return None
 
     def front(self):
@@ -930,15 +937,17 @@ class SleepingChrome:
         return found
 
     def close(self):
-        """TERM this process only, then delete its profile (never a mount point, and never while
-        the process may still be using it: a Chrome that did not quit keeps its profile)."""
-        if self.pid is not None and self._find_pid() == self.pid:
-            os.kill(self.pid, 15)
-            if not u.wait_for(f"{self.label}: its Chrome quit", lambda: self._find_pid() is None,
-                              deadline=10.0):
-                print(f"    {self.label}: Chrome pid {self.pid} did not quit; profile kept at "
-                      f"{self.profile}")
-                return False
+        """TERM this profile's Chrome only, then delete its profile: never a mount point, and never
+        while ANY process still names the profile (a Chrome found late, or one that did not quit,
+        keeps it). Found by the profile path, so it works even when `self.pid` was never set."""
+        main = self._find_pid()
+        if main is not None:
+            os.kill(main, 15)
+        if not u.wait_for(f"{self.label}: every process of its profile gone",
+                          lambda: not self._profile_pids(), deadline=15.0):
+            print(f"    {self.label}: processes {self._profile_pids()} still use {self.profile}; "
+                  "profile kept")
+            return False
         if os.path.ismount(self.profile):
             return False
         subprocess.run(["find", self.profile, "-xdev", "-delete"], capture_output=True)
