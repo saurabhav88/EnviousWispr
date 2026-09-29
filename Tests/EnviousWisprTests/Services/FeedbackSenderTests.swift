@@ -13,15 +13,36 @@ struct FeedbackSenderTests {
     appVersion: "2.5.2", appBuild: "252", release: "com.enviouswispr.app@2.5.2",
     environment: "development", osVersion: "15.4.0", osBuild: "24E248")
 
-  static func record(message: String = "hi", email: String? = nil, attachment: Data? = nil)
-    -> FeedbackRecord
-  {
+  static func record(
+    message: String = "hi", email: String? = nil, attachment: Data? = nil,
+    helpOutcome: FeedbackHelpOutcome? = nil
+  ) -> FeedbackRecord {
     FeedbackRecord(
       id: UUID(uuidString: "5D1E6A2B-9C3F-4E7A-8B10-2F4C6D8E0A1B")!,
       submittedAt: Date(timeIntervalSince1970: 1_790_000_000), message: message, email: email,
       attachment: attachment, context: context, attempts: 0, nextAttemptAt: nil, state: .pending,
-      rejectedStatus: nil)
+      rejectedStatus: nil, helpOutcome: helpOutcome)
   }
+
+  /// A help-check outcome (#3275) with one of each match kind and resolution.
+  static let helpOutcome = FeedbackHelpOutcome(
+    terminalOutcome: .partialSent, failureReason: nil, mode: .decomposed, overflow: false,
+    coveragePassed: true,
+    versions: FeedbackHelpOutcome.Versions(
+      kb: "72134d105fb3", jevModel: "jev-1.13.0", decomposition: "afm-26.1",
+      decision: "2026-09-28.1", threshold: "g3-0.5-0.5-u0.5-0.5-0.7-0.7-0.8-c0.5", app: "2.6.0"),
+    shownCardCount: 2,
+    issues: [
+      FeedbackHelpOutcome.Issue(
+        index: 0, matchKind: .section, pageSlug: "toggle-mode",
+        sectionID: "toggle-mode#turning-it-on", deflection: .canResolve, resolution: .solved)!,
+      FeedbackHelpOutcome.Issue(
+        index: 1, matchKind: .page, pageSlug: "paste-not-working", sectionID: nil,
+        deflection: .showButAlwaysSend, resolution: .stillHappening)!,
+      FeedbackHelpOutcome.Issue(
+        index: 2, matchKind: .none, pageSlug: nil, sectionID: nil, deflection: nil,
+        resolution: .unmatched)!,
+    ])!
 
   // MARK: - DSN
 
@@ -89,6 +110,175 @@ struct FeedbackSenderTests {
     // Header, item header, payload, then the trailing newline: no attachment item.
     #expect(lines.count == 4)
     #expect(lines[3].isEmpty)
+  }
+
+  // MARK: - Help-check outcome (#3275)
+
+  @Test("A help-check outcome adds only its fixed tags; everything else in the report is unchanged")
+  func helpOutcomeTags() throws {
+    let dsn = try #require(FeedbackDSN(Self.dsnString))
+    let bytes = Data("{\n  \"schema_version\" : 1\n}".utf8)
+    let plain = Self.record(message: "Paste fails 🙂", email: "a@b.de", attachment: bytes)
+    let helped = Self.record(
+      message: "Paste fails 🙂", email: "a@b.de", attachment: bytes, helpOutcome: Self.helpOutcome)
+
+    var payload = FeedbackSender.feedbackPayload(for: helped)
+    let tags = try #require(payload.removeValue(forKey: "tags") as? [String: String])
+    #expect(
+      tags == [
+        "help_v": "1", "help_outcome": "partial_sent", "help_mode": "decomposed",
+        "help_overflow": "false", "help_coverage": "pass", "help_kb": "72134d105fb3",
+        "help_jev": "jev-1.13.0", "help_decomp": "afm-26.1", "help_decision": "2026-09-28.1",
+        "help_threshold": "g3-0.5-0.5-u0.5-0.5-0.7-0.7-0.8-c0.5", "help_app": "2.6.0",
+        "help_issues": "3", "help_cards": "2", "help_sections": "1", "help_pages": "1",
+        "help_solved": "1", "help_unresolved": "1", "help_unmatched": "1",
+        "help_i0_resolution": "solved", "help_i0_match": "section", "help_i0_page": "toggle-mode",
+        "help_i0_section": "toggle-mode#turning-it-on", "help_i0_policy": "can_resolve",
+        "help_i1_resolution": "still_happening", "help_i1_match": "page",
+        "help_i1_page": "paste-not-working", "help_i1_policy": "show_but_always_send",
+        "help_i2_resolution": "unmatched", "help_i2_match": "none",
+      ])
+    #expect(tags.values.allSatisfy { $0.count <= 200 })
+    // Without the tags, the payload is the plain report's payload, key for key.
+    let plainPayload = FeedbackSender.feedbackPayload(for: plain)
+    #expect(
+      NSDictionary(dictionary: payload).isEqual(to: plainPayload),
+      "the tags are the only difference")
+    #expect(payload["level"] as? String == "error")
+    #expect(plainPayload["tags"] == nil)
+
+    // The envelope still carries the message once and the attachment bytes exactly.
+    let envelope = FeedbackSender.envelope(
+      for: helped, dsn: dsn, sentAt: Date(timeIntervalSince1970: 0))
+    let text = String(decoding: envelope, as: UTF8.self)
+    #expect(text.components(separatedBy: "Paste fails").count == 2)
+    var tail = bytes
+    tail.append(0x0A)
+    #expect(Data(envelope.suffix(tail.count)) == tail)
+  }
+
+  @Test("A fallback outcome tags its closed reason and no versions it never received")
+  func fallbackOutcomeTags() throws {
+    let outcome = try #require(
+      FeedbackHelpOutcome(
+        terminalOutcome: .fallbackSent, failureReason: .afmTimeout, mode: .decomposed,
+        overflow: false, coveragePassed: nil, versions: nil, shownCardCount: 0, issues: []))
+    let tags = try #require(
+      FeedbackSender.feedbackPayload(for: Self.record(helpOutcome: outcome))["tags"]
+        as? [String: String])
+    #expect(
+      tags == [
+        "help_v": "1", "help_outcome": "fallback_sent", "help_failure": "afm_timeout",
+        "help_mode": "decomposed", "help_overflow": "false", "help_issues": "0", "help_cards": "0",
+        "help_sections": "0", "help_pages": "0", "help_solved": "0", "help_unresolved": "0",
+        "help_unmatched": "0",
+      ])
+  }
+
+  @Test("A stored outcome claiming solved where the form never offers it does not decode")
+  func solvedOutsideTheFormDoesNotDecode() throws {
+    let good = try JSONEncoder().encode(Self.helpOutcome)
+    #expect(try JSONDecoder().decode(FeedbackHelpOutcome.self, from: good) == Self.helpOutcome)
+    let text = String(decoding: good, as: UTF8.self)
+    // The page-link concern (i1) edited to solved.
+    let pageSolved = text.replacingOccurrences(
+      of: #""resolution":"still_happening""#, with: #""resolution":"solved""#)
+    #expect(pageSolved != text)
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(FeedbackHelpOutcome.self, from: Data(pageSolved.utf8))
+    }
+    // A one-concern outcome with i0 solved, edited to whole-message mode: only the mode differs.
+    let single = try #require(
+      FeedbackHelpOutcome(
+        terminalOutcome: .stillSent, failureReason: nil, mode: .decomposed, overflow: false,
+        coveragePassed: true, versions: nil, shownCardCount: 1, issues: [Self.helpOutcome.issues[0]]))
+    let singleText = String(decoding: try JSONEncoder().encode(single), as: UTF8.self)
+    #expect(try JSONDecoder().decode(FeedbackHelpOutcome.self, from: Data(singleText.utf8)) == single)
+    let wholeSolved = singleText.replacingOccurrences(
+      of: #""mode":"decomposed""#, with: #""mode":"whole_message_always_send""#)
+    #expect(wholeSolved != singleText)
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(FeedbackHelpOutcome.self, from: Data(wholeSolved.utf8))
+    }
+  }
+
+  typealias Help = FeedbackHelpOutcome
+
+  @Test("A help-check outcome out of bounds cannot be frozen")
+  func helpOutcomeBounds() {
+    let section = { (i: Int) in
+      Help.Issue(
+        index: i, matchKind: .section, pageSlug: "toggle-mode", sectionID: "toggle-mode#a",
+        deflection: .canResolve, resolution: .stillHappening)!
+    }
+    let solved = Help.Issue(
+      index: 0, matchKind: .section, pageSlug: "toggle-mode", sectionID: "toggle-mode#a",
+      deflection: .canResolve, resolution: .solved)!
+    let make = {
+      (outcome: Help.TerminalOutcome, reason: Help.FailureReason?, mode: Help.Mode, cards: Int,
+        issues: [Help.Issue]) in
+      Help(
+        terminalOutcome: outcome, failureReason: reason, mode: mode, overflow: false,
+        coveragePassed: true, versions: nil, shownCardCount: cards, issues: issues)
+    }
+    // Each line changes one thing from a valid outcome.
+    #expect(make(.stillSent, nil, .decomposed, 1, [section(0)]) != nil)
+    #expect(make(.stillSent, nil, .decomposed, 3, (0..<5).map(section)) != nil)
+    #expect(make(.stillSent, nil, .decomposed, 3, (0..<6).map { section($0 % 5) }) == nil)
+    #expect(make(.stillSent, nil, .decomposed, 1, [section(1)]) == nil)
+    #expect(make(.stillSent, nil, .decomposed, 4, (0..<5).map(section)) == nil)
+    #expect(make(.stillSent, nil, .decomposed, 2, [section(0)]) == nil)
+    #expect(make(.stillSent, .timeout, .decomposed, 1, [section(0)]) == nil)
+    #expect(make(.fallbackSent, nil, .decomposed, 0, []) == nil)
+    #expect(make(.stillSent, nil, .wholeMessageAlwaysSend, 1, [section(0), section(1)]) == nil)
+    #expect(make(.partialSent, nil, .decomposed, 1, [section(0)]) == nil)
+    // Every concern solved and still sent (the list could not be confirmed complete) is partial.
+    #expect(make(.partialSent, nil, .decomposed, 1, [solved]) != nil)
+    // Solved exists only where the form offers it: a decomposed check that reached its cards.
+    #expect(make(.stillSent, nil, .decomposed, 1, [solved]) != nil)
+    #expect(make(.stillSent, nil, .wholeMessageAlwaysSend, 1, [solved]) == nil)
+    #expect(make(.fallbackSent, .timeout, .decomposed, 0, [solved]) == nil)
+    #expect(make(.fallbackSent, .timeout, .decomposed, 1, [section(0)]) == nil)
+    #expect(make(.fallbackSent, .timeout, .decomposed, 0, [section(0)]) != nil)
+
+    let issue = {
+      (kind: Help.MatchKind, page: String?, sectionID: String?, r: Help.Resolution,
+        policy: Help.Deflection?) in
+      Help.Issue(
+        index: 0, matchKind: kind, pageSlug: page, sectionID: sectionID, deflection: policy,
+        resolution: r)
+    }
+    #expect(issue(.section, "toggle-mode", "toggle-mode#a", .solved, .canResolve) != nil)
+    #expect(issue(.section, "toggle-mode", "toggle-mode#a", .solved, .showButAlwaysSend) == nil)
+    #expect(issue(.section, "toggle-mode", "toggle-mode#a", .stillHappening, .showButAlwaysSend) != nil)
+    #expect(issue(.section, "toggle-mode", "toggle-mode#a", .stillHappening, nil) == nil)
+    #expect(issue(.page, "toggle-mode", nil, .solved, .canResolve) == nil)
+    #expect(issue(.page, "toggle-mode", nil, .stillHappening, nil) == nil)
+    #expect(issue(.none, nil, nil, .unmatched, .canResolve) == nil)
+    #expect(issue(.section, "toggle-mode", "paste-not-working#a", .solved, .canResolve) == nil)
+    #expect(issue(.section, "toggle-mode", nil, .solved, .canResolve) == nil)
+    #expect(issue(.section, "Toggle-Mode", "Toggle-Mode#a", .solved, .canResolve) == nil)
+    #expect(issue(.section, "toggle-mode", "toggle-mode#a b", .solved, .canResolve) == nil)
+    #expect(issue(.page, String(repeating: "a", count: 99), nil, .stillHappening, .canResolve) != nil)
+    #expect(issue(.page, String(repeating: "a", count: 100), nil, .stillHappening, .canResolve) == nil)
+    #expect(issue(.page, "toggle-mode", "toggle-mode#a", .stillHappening, .canResolve) == nil)
+    #expect(issue(.page, "toggle-mode", nil, .unmatched, .canResolve) == nil)
+    #expect(issue(.none, nil, nil, .unmatched, nil) != nil)
+    #expect(issue(.none, "toggle-mode", nil, .unmatched, nil) == nil)
+    #expect(issue(.none, nil, nil, .solved, nil) == nil)
+    #expect(
+      Help.Issue(
+        index: 5, matchKind: .none, pageSlug: nil, sectionID: nil, deflection: nil,
+        resolution: .unmatched) == nil)
+
+    let version = { (v: String) in
+      Help.Versions(kb: v, jevModel: "j", decomposition: "d", decision: "d", threshold: "t", app: "a")
+    }
+    #expect(version("72134d105fb3") != nil)
+    #expect(version("") == nil)
+    #expect(version("has space") == nil)
+    #expect(version(String(repeating: "a", count: 65)) == nil)
+    #expect(version("ünicode") == nil)
   }
 
   @Test("Ticked: the attachment item follows in the same envelope with the exact bytes")
