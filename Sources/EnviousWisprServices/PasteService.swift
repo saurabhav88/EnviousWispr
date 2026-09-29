@@ -262,6 +262,86 @@ public enum PasteService {
     return pasteboard.writeObjects(pbItems) && itemsAccepted
   }
 
+  // MARK: - Recorded window (#3304)
+
+  /// What recording the target app's focused window found, and why.
+  package struct RecordedWindowCapture {
+    /// The app's focused standard window, or nil when none was recorded.
+    package let window: AXUIElement?
+    /// `recorded`, or the refusal: `budget`, `focused_window_unreadable`, `not_standard_window`.
+    package let reason: String
+    package let elapsedMs: Int
+  }
+
+  /// The one cumulative bound for recording the window at record start.
+  /// Healthy-host latency is measured in Live UAT; exhausted capture records nothing.
+  package static let recordedWindowBudgetMs = 250
+
+  /// Records `pid`'s focused window when the record-start field capture found nothing (#3304): a
+  /// Chromium host whose accessibility sleeps hides its focused text box but still reports its
+  /// focused window, so the paste can raise that window and refuse one that went elsewhere.
+  ///
+  /// Only an `AXStandardWindow` is recorded: a sheet or popup recorded now could be gone at paste
+  /// time and read as a different window. Both reads share ONE budget; exhaustion during the last
+  /// read records nothing. The window handle's messaging timeout is put back to 0 (the global
+  /// default) so later reads install their own bounds.
+  @MainActor
+  package static func captureFocusedStandardWindow(
+    pid: pid_t, ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling
+  ) -> RecordedWindowCapture {
+    let budget = PasteLandingPrepareBudget(
+      totalMs: recordedWindowBudgetMs, scheduler: scheduler, ax: ax)
+    func result(_ window: AXUIElement?, _ reason: String) -> RecordedWindowCapture {
+      RecordedWindowCapture(window: window, reason: reason, elapsedMs: budget.elapsedMs)
+    }
+    let application = ax.applicationElement(pid: pid)
+    guard budget.admit(application) else { return result(nil, "budget") }
+    guard case .window(let window) = ax.focusedWindow(of: application) else {
+      return result(nil, "focused_window_unreadable")
+    }
+    defer { _ = ax.setMessagingTimeout(window, seconds: 0) }
+    guard budget.admit(window) else { return result(nil, "budget") }
+    let subrole = ax.subrole(of: window)
+    guard !budget.completedPreparation().exhausted else { return result(nil, "budget") }
+    guard subrole == .subrole(kAXStandardWindowSubrole as String) else {
+      return result(nil, "not_standard_window")
+    }
+    return result(window, "recorded")
+  }
+
+  /// The live record-start capture: `captureFocusedStandardWindow` over the real Accessibility
+  /// API, logged by reason and elapsed time only (never a title or text).
+  @MainActor
+  public static func captureFocusedStandardWindow(pid: pid_t) -> AXUIElement? {
+    let capture = captureFocusedStandardWindow(
+      pid: pid, ax: LivePastedRegionAXOperations(), scheduler: TaskPastedRegionScheduler())
+    let what =
+      capture.window != nil
+      ? "recorded window (no field)" : "no recorded window reason=\(capture.reason)"
+    let elapsed = capture.elapsedMs
+    Task {
+      await AppLogger.shared.log(
+        "AXDiag capture: \(what) elapsed_ms=\(elapsed)", level: .info, category: "AXDiag")
+    }
+    return capture.window
+  }
+
+  /// Whether `element`'s own window is `window` (#3304), read once under the standard preparation
+  /// bound. Any unreadable, absent, non-element or refused answer is false: a delivery-time retry
+  /// may adopt a recovered field only when it is proven to sit in the window recorded at start.
+  @MainActor
+  package static func element(
+    _ element: AXUIElement, isInWindow window: AXUIElement, ax: any PastedRegionAXOperations,
+    scheduler: any PastedRegionScheduling
+  ) -> Bool {
+    let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
+    defer { _ = ax.setMessagingTimeout(element, seconds: 0) }
+    guard budget.admit(element), case .window(let own) = ax.window(of: element) else {
+      return false
+    }
+    return CFEqual(own, window)
+  }
+
   // MARK: - Tier 1: AX Direct Insertion
 
   /// Capture the system-wide focused UI element (the specific text field, not just the app).

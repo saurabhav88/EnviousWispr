@@ -51,8 +51,11 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     return !timeoutFailsFor.contains(pid)
   }
   func frontmostPID() -> pid_t? { frontmost }
+  /// Runs on every subrole read: a test advances the clock here to spend time INSIDE the read.
+  var onSubroleRead: (() -> Void)?
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome {
-    subroles["\(CFHash(element))"] ?? .subrole(nil)
+    onSubroleRead?()
+    return subroles["\(CFHash(element))"] ?? .subrole(nil)
   }
   /// pids whose attribute-name read fails (the answer is unreadable, not "no").
   var manualReadFails: Set<pid_t> = []

@@ -175,6 +175,28 @@ final class KernelSessionContext {
   /// same APP only, never same window/tab — commit-time safety is carried
   /// separately via `PasteDeliveryRequest.targetElementIsRetried`.
   var targetElement: AXUIElement?
+  /// #3304: the target app's focused standard window, recorded at record start ONLY when no field
+  /// was captured (a Chromium host whose accessibility sleeps hides its focused text box). The
+  /// paste raises it and refuses a key paste that would reach another window of the same app, and
+  /// a delivery-time retry may adopt only a field inside it. Nil means today's behaviour.
+  var targetWindow: AXUIElement?
+
+  /// Records the recording's paste target at record start (#3304 wraps the #1980-era capture).
+  ///
+  /// `targetWindow` is reset first, so a previous recording's window can never survive. It is
+  /// recorded only when no field was captured, Accessibility is trusted, and the app is alive;
+  /// liveness is re-checked after the blocking read (a pid can be reclaimed meanwhile).
+  func recordStartTarget(
+    app: NSRunningApplication?, element: AXUIElement?, trusted: Bool,
+    captureWindow: (pid_t) -> AXUIElement?
+  ) {
+    targetApp = app
+    targetElement = element
+    targetWindow = nil
+    guard element == nil, trusted, let app, !app.isTerminated else { return }
+    let window = captureWindow(app.processIdentifier)
+    if !app.isTerminated { targetWindow = window }
+  }
   /// Canonical protected spellings, snapshotted at `processText` entry.
   ///
   /// `WordCorrectionStep.correctorVocabulary` is MUTABLE and
@@ -294,6 +316,15 @@ struct KernelFinalizationWiring {
     // real focused text field in the test process.
     isRetryTargetUsable: @escaping @MainActor (AXUIElement) -> Bool = {
       PasteService.isTextFieldRole($0)
+    },
+    // #3304: whether a retry-recovered field sits in the window recorded at record start. The
+    // retry proves same APP only; with a recorded window, a field in ANOTHER window of that app
+    // (the user switched and the host woke meanwhile) must not become the paste target. Production
+    // reads the field's window under the standard bound; tests inject the answer.
+    recoveredIsInRecordedWindow: @escaping @MainActor (AXUIElement, AXUIElement) -> Bool = {
+      PasteService.element(
+        $0, isInWindow: $1, ax: LivePastedRegionAXOperations(),
+        scheduler: TaskPastedRegionScheduler())
     },
     // Word-oracle seam. Production takes the live runtime snapshot; tests inject
     // a fixed oracle so a case never depends on the machine's dictionaries — and
@@ -719,7 +750,13 @@ struct KernelFinalizationWiring {
             // to the query's own duration; it does not claim to close it
             // completely, matching this plan's disclosed same-app-not-same-
             // window residual-risk posture elsewhere (§2.2, §7).
-            if let recovered, !app.isTerminated, isRetryTargetUsable(recovered) {
+            // #3304: with a recorded window, the recovered field must also be proven to sit in
+            // it (an unreadable answer rejects), and liveness is re-checked after that read too.
+            // A rejection keeps today's missing-target delivery, now protected by that window.
+            if let recovered, !app.isTerminated, isRetryTargetUsable(recovered),
+              context.targetWindow.map({ recoveredIsInRecordedWindow(recovered, $0) }) ?? true,
+              !app.isTerminated
+            {
               context.targetElement = recovered
             }
           }
@@ -1098,7 +1135,8 @@ struct KernelFinalizationWiring {
             targetElementIsRetried: caretCaptureRetried,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
             terminalBudget: terminalBudget,
-            takeID: deliveryTakeID))
+            takeID: deliveryTakeID,
+            recordedWindow: context.targetWindow))
         pasteResult = result
 
         // WHICH payload actually went to the app, which `CURSOR_REPAIR` cannot

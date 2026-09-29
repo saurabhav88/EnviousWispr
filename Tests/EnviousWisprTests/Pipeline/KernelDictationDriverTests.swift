@@ -277,6 +277,7 @@ import Testing
       // would also set them and overwrite). NSRunningApplication.current is
       // a process-stable handle; AXUIElement bridges from any AnyObject.
       h.driver.contextForTesting.targetApp = NSRunningApplication.current
+      h.driver.contextForTesting.targetWindow = AXUIElementCreateApplication(7_106)  // #3304
       h.driver.contextForTesting.config = DictationSessionConfig.testDefault()
       #expect(h.driver.contextForTesting.targetApp != nil)
       #expect(h.driver.contextForTesting.config != nil)
@@ -289,6 +290,7 @@ import Testing
       // observes the terminal.
       await drainUntil { h.driver.contextForTesting.targetApp == nil }
       #expect(h.driver.contextForTesting.targetApp == nil)
+      #expect(h.driver.contextForTesting.targetWindow == nil, "#3304: the recorded window too")
       #expect(h.driver.contextForTesting.config == nil)
     }
 

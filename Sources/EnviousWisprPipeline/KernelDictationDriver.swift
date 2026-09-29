@@ -1258,8 +1258,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.historySaved = true
         outcome.historySaveError = nil
         context.config = config
-        context.targetApp = NSWorkspace.shared.frontmostApplication
-        context.targetElement = PasteService.captureFocusedElement()
+        // #3304: when no field is captured, the app's focused window is recorded instead. Reset
+        // BEFORE the field capture below runs, so the last recording's window never outlives it.
+        context.targetWindow = nil
+        context.recordStartTarget(
+          app: NSWorkspace.shared.frontmostApplication,
+          element: PasteService.captureFocusedElement(), trusted: AXIsProcessTrusted(),
+          captureWindow: { PasteService.captureFocusedStandardWindow(pid: $0) })
         applyLLMConfigToPolishStep(config)
         // GAP 1 of seam audit (TP:708-713): warm the polish provider as
         // the session starts so the polish step's cold-start latency is
@@ -1778,6 +1783,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       context.config = nil
       context.targetApp = nil
       context.targetElement = nil
+      context.targetWindow = nil  // #3304: the recorded window ends with the recording
     case .arming, .live, .stopping, .delivering:
       break
     }
