@@ -438,7 +438,10 @@ struct PasteLandingLifecycleTests {
     }
     let (same, ax) = check(.window(Self.windowA), window: Self.windowA)
     #expect(same)
-    #expect(ax.timeoutsSet.last.map { $0.0 == Self.fieldPid && $0.1 == 0 } == true)
+    #expect(
+      ax.timeoutsSet.last.map {
+        $0.0 == Self.fieldPid && $0.1 == PasteService.axMessagingTimeoutSeconds
+      } == true, "the field keeps the standard bound, never the unbounded default")
     #expect(check(.window(Self.windowB), window: Self.windowA).0 == false)
     for read: PastedRegionWindowRead in [.absent, .notElement, .failed(.cannotComplete)] {
       #expect(check(read, window: Self.windowA).0 == false, "\(read)")

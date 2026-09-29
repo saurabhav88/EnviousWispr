@@ -329,13 +329,15 @@ public enum PasteService {
   /// Whether `element`'s own window is `window` (#3304), read once under the standard preparation
   /// bound. Any unreadable, absent, non-element or refused answer is false: a delivery-time retry
   /// may adopt a recovered field only when it is proven to sit in the window recorded at start.
+  /// The field's timeout is left at the standard 0.5 s bound, never the unbounded system default:
+  /// an adopted field's role and diagnostics are read later without installing another bound.
   @MainActor
   package static func element(
     _ element: AXUIElement, isInWindow window: AXUIElement, ax: any PastedRegionAXOperations,
     scheduler: any PastedRegionScheduling
   ) -> Bool {
     let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
-    defer { _ = ax.setMessagingTimeout(element, seconds: 0) }
+    defer { _ = ax.setMessagingTimeout(element, seconds: axMessagingTimeoutSeconds) }
     guard budget.admit(element), case .window(let own) = ax.window(of: element) else {
       return false
     }
