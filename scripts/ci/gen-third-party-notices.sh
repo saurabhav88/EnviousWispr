@@ -259,7 +259,7 @@ printf 'is provided under CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0
 printf 'Source: https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml\n'
 
 # S1-mini differs from Parakeet above in the one way that changes our
-# obligations: we SERVE its bytes from models.enviouslabs.co rather than
+# obligations: we SERVE its bytes from models.enviouswispr.com rather than
 # pointing the app at the publisher, which makes us a redistributor under
 # Apache-2.0 section 4. That owes recipients a copy of the licence (4a) and the
 # NOTICE attributions (4d). The text is CAT'd from the same bundled resources
@@ -272,7 +272,7 @@ printf '  License: Apache-2.0, plus a naming term\n'
 printf '  Source:  https://huggingface.co/superwhisper/s1-mini-GGUF\n'
 printf -- '--------------------------------------------------------------------------------\n\n'
 printf 'EnviousWispr downloads S1-mini only when a user selects it. The file is\n'
-printf 'served from models.enviouslabs.co and is byte-identical to the publisher\n'
+printf 'served from models.enviouswispr.com and is byte-identical to the publisher\n'
 printf 'build; it is not distributed inside this disk image. Because Envious Labs\n'
 printf 'serves those bytes, the full licence and notice follow.\n\n'
 printf 'EnviousWispr also displays the Superwhisper logo to identify this model in\n'
@@ -297,7 +297,7 @@ printf '\n'
 
 # #996 phase D: the correction judge's weights are ours (trained by Envious
 # Labs), but its base model is mmBERT-small by JHU CLSP under Apache-2.0, and we
-# SERVE the derived weights from models.enviouslabs.co, so the attribution
+# SERVE the derived weights from models.enviouswispr.com, so the attribution
 # travels with the notices exactly as S1-mini's does. The Apache-2.0 text is
 # already reproduced above (S1-MINI-LICENSE.txt is the unmodified licence plus
 # the publisher's naming term); it is not repeated.
@@ -309,7 +309,7 @@ printf '  Source:  https://huggingface.co/jhu-clsp/mmBERT-small\n'
 printf -- '--------------------------------------------------------------------------------\n\n'
 printf 'EnviousWispr downloads its correction judge after the speech model. The\n'
 printf 'judge is a small classifier Envious Labs trained on top of mmBERT-small;\n'
-printf 'the file is served from models.enviouslabs.co and is not distributed\n'
+printf 'the file is served from models.enviouswispr.com and is not distributed\n'
 printf 'inside this disk image. mmBERT-small is Copyright the Johns Hopkins\n'
 printf 'Center for Language and Speech Processing, licensed under the Apache\n'
 printf 'License, Version 2.0, reproduced in full in the S1-mini section above.\n'
