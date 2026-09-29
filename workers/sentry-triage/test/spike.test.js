@@ -8,7 +8,8 @@
 // branch inside that entry point.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
+import { createHmac } from "node:crypto";
+import worker, {
   handleTriage,
   isMetricIssue,
   decideSpike,
@@ -431,6 +432,45 @@ test("an ordinary error issue never takes the spike path", async () => {
       assert.doesNotMatch(embed.title, /Sentry Spike/, "an error must not render as a spike");
     }
     assert.equal(h.kv.store.has("spike:111"), false, "and must not write a spike throttle");
+  } finally {
+    h.restore();
+  }
+});
+
+test("a new feedback report posts its one ordinary alert and never asks TypeSafe", async () => {
+  // #3275 retired the Worker's help-article guess (V1a); the in-app help check
+  // replaced it. Drives the SIGNED entry point so a second waitUntil, a TypeSafe
+  // request or a second Discord card would each show up here. The key is present
+  // in env on purpose: nothing may use it.
+  const h = harness();
+  const scheduled = [];
+  try {
+    const body = JSON.stringify({
+      action: "created",
+      data: {
+        issue: {
+          id: "222", shortId: "EW-2", title: "User Feedback", permalink: "https://s/2",
+          level: "error", issueCategory: "feedback", issueType: "feedback", userCount: 1, count: "1",
+        },
+      },
+    });
+    const secret = "test-secret";
+    const res = await worker.fetch(
+      new Request("https://w/", {
+        method: "POST",
+        body,
+        headers: { "sentry-hook-signature": createHmac("sha256", secret).update(body, "utf8").digest("hex") },
+      }),
+      { ...h.env, SENTRY_WEBHOOK_SECRET: secret, GITHUB_REPO: "o/r", TYPESAFE_API_KEY: "must-not-be-used" },
+      { waitUntil: (p) => scheduled.push(p) }
+    );
+    assert.equal(res.status, 202);
+    assert.equal(scheduled.length, 1, "only the ordinary triage is scheduled");
+    await Promise.all(scheduled);
+    assert.equal(h.requests.filter((u) => u.includes("typesafe")).length, 0, "no TypeSafe request");
+    assert.equal(h.embeds.length, 1, "exactly one Discord card: the ordinary alert");
+    assert.match(h.embeds[0].title, /User Feedback/);
+    assert.doesNotMatch(JSON.stringify(h.embeds[0]), /help article|Help guess/i);
   } finally {
     h.restore();
   }
