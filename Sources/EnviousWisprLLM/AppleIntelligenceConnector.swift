@@ -87,7 +87,7 @@ enum OutputLanguageValidator {
   /// cache, so there is no need for a reset helper.
   @available(macOS 26.0, *)
   enum AppleIntelligenceSupport {
-    fileprivate static let productionBaseCodes: Set<String> = {
+    static let productionBaseCodes: Set<String> = {
       let runtime = LanguageNormalizer.baseCodes(SystemLanguageModel.default.supportedLanguages)
       if runtime.isEmpty {
         Task {

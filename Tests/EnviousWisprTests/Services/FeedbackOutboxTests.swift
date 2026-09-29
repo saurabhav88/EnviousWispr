@@ -160,6 +160,88 @@ struct FeedbackOutboxTests {
     #expect(try Self.records(in: directory).isEmpty)
   }
 
+  // MARK: - Help-check outcome (#3275)
+
+  /// A saved report exactly as #3269 wrote it, before help metadata existed. A literal, not an
+  /// encoding of today's type, so it stays the old format whatever the type becomes.
+  static let preHelpDocument = """
+    {"records":[{"attempts":0,"context":{"appBuild":"252","appVersion":"2.5.2",\
+    "environment":"production","osBuild":"24E248","osVersion":"15.4.0",\
+    "release":"com.enviouswispr.app@2.5.2"},"id":"00000000-0000-4000-8000-000000000001",\
+    "message":"report 1","state":"pending","submittedAt":811692800}],"schema_version":1}
+    """
+
+  @Test("A report saved before help metadata existed still loads, with none, and is delivered")
+  func preHelpRecordDecodes() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try Data(Self.preHelpDocument.utf8).write(to: directory.appendingPathComponent("outbox.json"))
+
+    let loaded = try #require(try Self.records(in: directory).first)
+    #expect(loaded.helpOutcome == nil)
+    #expect(loaded.message == "report 1")
+    #expect(loaded.submittedAt == Self.start)
+    // Its envelope is the one the pre-help build would have sent: no tags.
+    let payload = FeedbackSender.feedbackPayload(for: loaded)
+    #expect(payload["tags"] == nil)
+    #expect(payload["level"] as? String == "error")
+
+    let http = HTTP([])
+    await Self.makeOutbox(directory, http: http).drain()
+    #expect(http.sent == [Self.eventID(1)])
+    #expect(try Self.records(in: directory).isEmpty)
+  }
+
+  @Test("Help metadata that no longer decodes drops only the metadata; the report is kept and sent")
+  func damagedHelpMetadataKeepsTheReport() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    // Six cards is out of bounds (at most three).
+    let damaged = Self.preHelpDocument.replacingOccurrences(
+      of: #""message":"report 1","#,
+      with: #""helpOutcome":{"schemaVersion":1,"terminalOutcome":"still_sent","mode":"decomposed","overflow":false,"shownCardCount":6,"issues":[]},"message":"report 1","#)
+    #expect(damaged != Self.preHelpDocument)
+    try Data(damaged.utf8).write(to: directory.appendingPathComponent("outbox.json"))
+
+    let loaded = try #require(try Self.records(in: directory).first)
+    #expect(loaded.helpOutcome == nil)
+    #expect(loaded.message == "report 1")
+    let http = HTTP([])
+    await Self.makeOutbox(directory, http: http).drain()
+    #expect(http.sent == [Self.eventID(1)])
+  }
+
+  @Test("Help metadata frozen at Send survives a restart, a retry and a rejection unchanged")
+  func helpMetadataSurvivesRetries() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let clock = Clock(Self.start)
+    let http = HTTP([.networkError, .status(413, [:])])
+    let help = FeedbackSenderTests.helpOutcome
+    let record = FeedbackRecord(
+      id: UUID(uuidString: "00000000-0000-4000-8000-000000000001")!, submittedAt: Self.start,
+      message: "report 1", email: nil, attachment: nil, context: FeedbackReporterTests.context,
+      attempts: 0, nextAttemptAt: nil, state: .pending, rejectedStatus: nil, helpOutcome: help)
+    let outbox = Self.makeOutbox(directory, http: http, clock: clock)
+    #expect(await outbox.enqueue(record) == .saved(offline: false))
+    #expect(try Self.records(in: directory).first?.helpOutcome == help)
+
+    await outbox.drain()  // network error: kept with a backoff
+    let retried = try #require(try Self.records(in: directory).first)
+    #expect(retried.attempts == 1)
+    #expect(retried.helpOutcome == help)
+
+    clock.advance(61)
+    let relaunched = Self.makeOutbox(directory, http: http, clock: clock)
+    await relaunched.drain()  // 413: kept as rejected
+    let rejected = try #require(try Self.records(in: directory).first)
+    #expect(rejected.state == .rejected)
+    #expect(rejected.helpOutcome == help)
+    #expect(http.sent == [Self.eventID(1), Self.eventID(1)])
+  }
+
   @Test("The 51st report is refused and nothing is evicted")
   func fullOutbox() async throws {
     let directory = Self.tempDirectory()

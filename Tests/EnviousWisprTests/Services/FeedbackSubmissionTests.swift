@@ -15,10 +15,15 @@ struct FeedbackSubmissionTests {
   final class HeldSave {
     private var continuation: CheckedContinuation<FeedbackReporter.Outcome, Never>?
     private(set) var calls = 0
+    /// The help-check outcome each save was given (#3275).
+    private(set) var helpOutcomes: [FeedbackHelpOutcome?] = []
     var isHeld: Bool { continuation != nil }
 
-    func save(_: FeedbackDraft, _: FeedbackDiagnosticsSnapshot?) async -> FeedbackReporter.Outcome {
+    func save(_: FeedbackDraft, _: FeedbackDiagnosticsSnapshot?, _ help: FeedbackHelpOutcome?)
+      async -> FeedbackReporter.Outcome
+    {
       calls += 1
+      helpOutcomes.append(help)
       return await withCheckedContinuation { continuation = $0 }
     }
 
@@ -88,6 +93,53 @@ struct FeedbackSubmissionTests {
     #expect(words.message == "")
     #expect(store.message == "")
     #expect(held.calls == 1)
+  }
+
+  @Test("A help outcome given at Send is the one saved, even when the draft is edited meanwhile")
+  func helpOutcomeFrozenAtSend() async throws {
+    let (store, suite) = Self.makeStore()
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let held = HeldSave()
+    let submission = FeedbackSubmission(store: store, save: held.save)
+    let screen = Screen()
+    let help = FeedbackSenderTests.helpOutcome
+    let draft = try #require(FeedbackDraft(message: "paste fails", email: ""))
+    let sender = screen.presentation
+    let task = Task { @MainActor in
+      await submission.submit(
+        draft, diagnostics: nil, helpOutcome: help, from: sender, sent: ("paste fails", ""),
+        current: { screen.state })
+    }
+    while !held.isHeld { await Task.yield() }
+    screen.presentation = UUID()  // reopened while saving
+    submission.recordEdit(message: "paste fails, and a second thing", email: "")
+    screen.message = "paste fails, and a second thing"
+
+    held.finish(.saved(offline: false))
+    #expect(await task.value == nil)
+    #expect(held.helpOutcomes == [help])
+    // The newer words stay as the draft; the saved report kept what was sent with its outcome.
+    #expect(store.message == "paste fails, and a second thing")
+    #expect(submission.reconciledDraft(for: screen.presentation)?.message == "paste fails, and a second thing")
+  }
+
+  @Test("A Send without a help check passes no outcome")
+  func noHelpOutcomeByDefault() async throws {
+    let (store, suite) = Self.makeStore()
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    let held = HeldSave()
+    let submission = FeedbackSubmission(store: store, save: held.save)
+    let screen = Screen()
+    let draft = try #require(FeedbackDraft(message: "hi", email: ""))
+    let sender = screen.presentation
+    let task = Task { @MainActor in
+      await submission.submit(
+        draft, diagnostics: nil, from: sender, sent: ("hi", ""), current: { screen.state })
+    }
+    while !held.isHeld { await Task.yield() }
+    held.finish(.saved(offline: false))
+    _ = await task.value
+    #expect(held.helpOutcomes == [nil])
   }
 
   @Test("Words typed in the reopened form while saving are kept")

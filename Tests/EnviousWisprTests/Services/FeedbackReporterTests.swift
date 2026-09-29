@@ -216,6 +216,25 @@ struct FeedbackReporterTests {
     #expect(record.state == .pending)
   }
 
+  @Test("Send freezes the help-check outcome with the report, and none when no check ran")
+  func sendFreezesTheHelpOutcome() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = Self.outbox(directory: directory)
+    let draft = try #require(FeedbackDraft(message: "paste fails", email: ""))
+    let help = FeedbackSenderTests.helpOutcome
+
+    _ = await FeedbackReporter.send(
+      draft, diagnostics: nil, helpOutcome: help, outbox: outbox, now: Date(), id: UUID(),
+      context: Self.context)
+    _ = await FeedbackReporter.send(
+      draft, diagnostics: nil, outbox: outbox, now: Date(), id: UUID(), context: Self.context)
+
+    let saved = try FeedbackOutboxTests.records(in: directory)
+    #expect(saved.map(\.helpOutcome) == [help, nil])
+    #expect(saved.map(\.message) == ["paste fails", "paste fails"])
+  }
+
   @Test("Unticked means no attachment; offline at Send is reported for the confirmation line")
   func uncheckedAndOffline() async throws {
     let directory = Self.tempDirectory()

@@ -22,6 +22,45 @@ struct FeedbackRecord: Codable, Equatable, Sendable {
   var nextAttemptAt: Date?
   var state: State
   var rejectedStatus: Int?
+  /// What the in-app help check did (#3275), frozen at Send; nil when no check ran. Never rebuilt.
+  let helpOutcome: FeedbackHelpOutcome?
+
+  init(
+    id: UUID, submittedAt: Date, message: String, email: String?, attachment: Data?,
+    context: Context, attempts: Int, nextAttemptAt: Date?, state: State, rejectedStatus: Int?,
+    helpOutcome: FeedbackHelpOutcome? = nil
+  ) {
+    self.id = id
+    self.submittedAt = submittedAt
+    self.message = message
+    self.email = email
+    self.attachment = attachment
+    self.context = context
+    self.attempts = attempts
+    self.nextAttemptAt = nextAttemptAt
+    self.state = state
+    self.rejectedStatus = rejectedStatus
+    self.helpOutcome = helpOutcome
+  }
+
+  /// Help metadata is a limb: a record written before it existed decodes with nil, and one whose
+  /// metadata no longer decodes keeps the report and drops only the metadata, because a record
+  /// that fails to decode blocks the whole outbox (FeedbackOutbox.load).
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      id: try c.decode(UUID.self, forKey: .id),
+      submittedAt: try c.decode(Date.self, forKey: .submittedAt),
+      message: try c.decode(String.self, forKey: .message),
+      email: try c.decodeIfPresent(String.self, forKey: .email),
+      attachment: try c.decodeIfPresent(Data.self, forKey: .attachment),
+      context: try c.decode(Context.self, forKey: .context),
+      attempts: try c.decode(Int.self, forKey: .attempts),
+      nextAttemptAt: try c.decodeIfPresent(Date.self, forKey: .nextAttemptAt),
+      state: try c.decode(State.self, forKey: .state),
+      rejectedStatus: try c.decodeIfPresent(Int.self, forKey: .rejectedStatus),
+      helpOutcome: (try? c.decodeIfPresent(FeedbackHelpOutcome.self, forKey: .helpOutcome)) ?? nil)
+  }
 
   /// Basic submission-time versions, the only context a report carries outside the attachment.
   struct Context: Codable, Equatable, Sendable {
@@ -145,11 +184,12 @@ struct FeedbackSender: Sendable {
   /// SDK sets it (sentry-cocoa 9.26.1 `SentryClient.m:613`). `sdk.settings.infer_ip` is "never",
   /// as the SDK sends it with `sendDefaultPii` off (`SentrySDKSettings.swift:27`): without it
   /// Sentry stores the connection's IP address on a cocoa event (measured on the dev project,
-  /// 2026-09-28). No user, tags or breadcrumbs.
+  /// 2026-09-28). No user or breadcrumbs; tags only for a help-check outcome (#3275), whose
+  /// keys and values are fixed or bounded ids, never user-written text.
   static func feedbackPayload(for record: FeedbackRecord) -> [String: Any] {
     var feedback: [String: Any] = ["message": record.message, "source": "custom"]
     if let email = record.email { feedback["contact_email"] = email }
-    return [
+    var payload: [String: Any] = [
       "event_id": record.eventID,
       "type": "feedback",
       "timestamp": record.submittedAt.timeIntervalSince1970,
@@ -169,6 +209,8 @@ struct FeedbackSender: Sendable {
         ],
       ],
     ]
+    if let help = record.helpOutcome { payload["tags"] = help.sentryTags }
+    return payload
   }
 
   private static func json(_ object: [String: Any]) -> Data {
