@@ -61,8 +61,8 @@ public struct HelpCheck: Sendable {
       await self.check(message, stage: stage)
     }
     if let finished { return finished }
-    let (mode, splitFailure) = stage.value
-    return Self.fallback(.timeout, mode: mode, splitFailure: splitFailure)
+    let (mode, splitFailure, overflow) = stage.value
+    return Self.fallback(.timeout, mode: mode, splitFailure: splitFailure, overflow: overflow)
   }
 
   /// Which path the check is on, for the overall deadline's fallback: decomposed until the split
@@ -71,15 +71,17 @@ public struct HelpCheck: Sendable {
     private let lock = NSLock()
     private var mode: FeedbackHelpOutcome.Mode = .decomposed
     private var splitFailure: FeedbackHelpOutcome.FailureReason?
+    private var overflow = false
 
-    var value: (FeedbackHelpOutcome.Mode, FeedbackHelpOutcome.FailureReason?) {
-      lock.withLock { (mode, splitFailure) }
+    var value: (FeedbackHelpOutcome.Mode, FeedbackHelpOutcome.FailureReason?, Bool) {
+      lock.withLock { (mode, splitFailure, overflow) }
     }
 
-    func set(_ mode: FeedbackHelpOutcome.Mode, _ splitFailure: FeedbackHelpOutcome.FailureReason?) {
+    func set(_ request: HelpCheckRequest, _ splitFailure: FeedbackHelpOutcome.FailureReason?) {
       lock.withLock {
-        self.mode = mode
+        self.mode = request.mode
         self.splitFailure = splitFailure
+        self.overflow = request.overflow
       }
     }
   }
@@ -116,18 +118,21 @@ public struct HelpCheck: Sendable {
       anchored = [false]
       splitFailure = reason
     }
-    stage.set(request.mode, splitFailure)
+    stage.set(request, splitFailure)
     guard !Task.isCancelled else {
-      return Self.fallback(.timeout, mode: request.mode, splitFailure: splitFailure)
+      return Self.fallback(
+        .timeout, mode: request.mode, splitFailure: splitFailure, overflow: request.overflow)
     }
 
     switch await client.check(request) {
     case .failure(let failure):
-      return Self.fallback(failure.reason, mode: request.mode, splitFailure: splitFailure)
+      return Self.fallback(
+        failure.reason, mode: request.mode, splitFailure: splitFailure, overflow: request.overflow)
     case .success(let reply):
       guard reply.status == .ok else {
         return Self.fallback(
-          Self.serverReason(reply.reason), mode: request.mode, splitFailure: splitFailure)
+          Self.serverReason(reply.reason), mode: request.mode, splitFailure: splitFailure,
+          overflow: request.overflow, versions: reply.versions)
       }
       let suggestions = HelpCheckSuggestions(
         mode: request.mode, overflow: request.overflow, reply: reply, anchored: anchored,
@@ -148,12 +153,16 @@ public struct HelpCheck: Sendable {
 
   static func fallback(
     _ reason: FeedbackHelpOutcome.FailureReason, mode: FeedbackHelpOutcome.Mode,
-    splitFailure: FeedbackHelpOutcome.FailureReason? = nil
+    splitFailure: FeedbackHelpOutcome.FailureReason? = nil, overflow: Bool = false,
+    versions: FeedbackHelpOutcome.Versions? = nil
   ) -> Conclusion {
+    // Everything known when the check stopped is kept (the path, the split's failure, whether
+    // the split was cut short, the server's version stamps), so failures count against the
+    // versions and paths that produced them.
     .send(
       FeedbackHelpOutcome(
-        terminalOutcome: .fallbackSent, failureReason: reason, mode: mode, overflow: false,
-        coveragePassed: nil, versions: nil, shownCardCount: 0, issues: [])!,
+        terminalOutcome: .fallbackSent, failureReason: reason, mode: mode, overflow: overflow,
+        coveragePassed: nil, versions: versions, shownCardCount: 0, issues: [])!,
       splitFailure: splitFailure)
   }
 
@@ -344,7 +353,7 @@ public struct HelpCheckSuggestions: Equatable, Sendable {
     assertionFailure("help outcome out of bounds from a decoded reply")
     return FeedbackHelpOutcome(
       terminalOutcome: .fallbackSent, failureReason: .badReply, mode: mode, overflow: overflow,
-      coveragePassed: nil, versions: nil, shownCardCount: 0, issues: [])!
+      coveragePassed: nil, versions: reply.versions, shownCardCount: 0, issues: [])!
   }
 }
 

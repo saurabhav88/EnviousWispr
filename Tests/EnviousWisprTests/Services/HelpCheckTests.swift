@@ -506,6 +506,25 @@ struct HelpCheckTests {
     #expect(outcome.terminalOutcome == .fallbackSent)
     #expect(outcome.failureReason == reason)
     #expect(transport.requests.count == 1, "one attempt, no retry")
+    // A server that answered keeps its version stamps on the fallback; a transport failure has none.
+    let serverAnswered = ["disabled", "http_503", "strange"].contains(answer)
+    #expect((outcome.versions?.kb == "72134d105fb3") == serverAnswered, "\(answer)")
+  }
+
+  @Test("A split cut short at the cap is still recorded as overflow when the check then fails")
+  func overflowSurvivesFallback() async {
+    let concerns = (0..<5).map {
+      Concern(summary: "s\($0)", evidence: "Part \($0).", kind: .bug)
+    }
+    let message = (0..<5).map { "Part \($0)." }.joined(separator: " ")
+    let check = Self.check(
+      .concerns(concerns, hitCap: true), FakeTransport([.fail(URLError(.notConnectedToInternet))]))
+    guard case .send(let outcome, _) = await check.run(message) else {
+      Issue.record("expected send")
+      return
+    }
+    #expect(outcome.failureReason == .network)
+    #expect(outcome.overflow == true)
   }
 
   @Test("A skipped split's reason travels with an immediate send, for counting")
