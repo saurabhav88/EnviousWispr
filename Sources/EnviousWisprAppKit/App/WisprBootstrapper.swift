@@ -1061,6 +1061,9 @@ package final class WisprBootstrapper {
     // #1480: late-binding bridge so this early-assigned onChange closure can
     // forward setting-change facts to the (later-constructed) presenter.
     let bluetoothAwarenessPresenterHolder = BluetoothAwarenessPresenterHolder()
+    // #3289 §8b: the same late binding for the idle-memory observer, built further down; a usage
+    // metrics change restarts its idle stretch.
+    weak var idleMemoryObserverForSettings: IdleMemoryObserver?
 
     settings.onChange = {
       [
@@ -1071,6 +1074,7 @@ package final class WisprBootstrapper {
       in
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
+      if key == .shareUsageMetrics { idleMemoryObserverForSettings?.usageMetricsChanged() }
       // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
       // throws/awaits into the setter path).
       settingsChangeTelemetry?.handle(key)
@@ -1609,6 +1613,35 @@ package final class WisprBootstrapper {
     )
     bluetoothAwarenessPresenterHolder.presenter = bluetoothAwarenessPresenter
 
+    // #3289: ONE "work in flight" predicate, read by the word check's idle timer and by the
+    // idle-memory sample, so the two cannot disagree. A dictation is in flight from arming to its
+    // terminal (the drivers' session config, which outlives an `.error` the pipeline may publish
+    // early); a file import from its claim until its work exits, which outlasts Stop.
+    // `fileImportCoordinatorForGates` is assigned once the coordinator exists, further down.
+    let isWorkInFlight: @MainActor () -> Bool = { [weak kernelDriver, weak whisperKitKernelDriver] in
+      kernelDriver?.currentSessionConfig != nil
+        || whisperKitKernelDriver?.currentSessionConfig != nil
+        || fileImportCoordinatorForGates?.isEngineHeld == true
+    }
+    // #3289 §8b: one idle-memory sample per launch. Its task keeps it alive until it sends.
+    let idleMemoryObserver = IdleMemoryObserver(
+      isWorkInFlight: isWorkInFlight,
+      workEpoch: { [weak engineLease] in engineLease?.admissionEpoch ?? 0 },
+      usageMetricsOn: { [settings] in settings.shareUsageMetrics },
+      wordCheckState: { [weak checkerEligibility] in
+        (
+          checkerEligibility?.wordCheck?.isLoadedForTelemetry ?? false,
+          checkerEligibility?.wordCheck?.isWantedForTelemetry ?? false
+        )
+      },
+      emit: { sample in
+        TelemetryService.shared.appIdleMemory(
+          footprintMB: sample.footprintMB, minutesSinceLaunch: sample.minutesSinceLaunch,
+          wordCheckLoaded: sample.wordCheckLoaded, wordCheckWanted: sample.wordCheckWanted)
+      })
+    idleMemoryObserver.start()
+    idleMemoryObserverForSettings = idleMemoryObserver
+
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
@@ -1978,12 +2011,7 @@ package final class WisprBootstrapper {
     // #3289: a file import holding the engine counts too, from its claim until its work exits (which
     // outlasts Stop), with the need read from the run's FROZEN provider. Wired here, after the
     // coordinator exists, so the closures can see it.
-    checkerEligibility.wordCheck?.isWorkInFlight = {
-      [weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator] in
-      kernelDriver?.currentSessionConfig != nil
-        || whisperKitKernelDriver?.currentSessionConfig != nil
-        || fileImportCoordinator?.isEngineHeld == true
-    }
+    checkerEligibility.wordCheck?.isWorkInFlight = isWorkInFlight
     checkerEligibility.wordCheck?.inFlightWorkNeedsWordCheck = {
       [weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator, weak fileImportRunner] in
       WordCheckRuntime.workNeedsWordCheck(

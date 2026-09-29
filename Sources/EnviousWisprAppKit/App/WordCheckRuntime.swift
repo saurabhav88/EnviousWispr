@@ -90,6 +90,10 @@ final class WordCheckRuntime {
     isDictionaryEnabled() && isOnboardingComplete()
       && (someEngineLacksOwnChecker() || inFlightWorkNeedsWordCheck())
   }
+  /// Read-only, for the idle-memory sample (#3289 §8b): is the model in memory, and would
+  /// the current settings or work in flight use it.
+  var isLoadedForTelemetry: Bool { loaded != nil }
+  var isWantedForTelemetry: Bool { wanted }
   private var isAdmitted: Bool {
     if case .admitted = deliveryState { return true }
     return false
