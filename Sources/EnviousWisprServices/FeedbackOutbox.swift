@@ -246,9 +246,13 @@ actor FeedbackOutbox {
         // A failed attempt means the network or Sentry is not taking reports right now.
         scheduleWake(at: deadline)
         return
-      case .rejected(let status):
+      case .rejected(let status, let holdUntil):
+        if let holdUntil {
+          memoryGlobalNotBefore = max(memoryGlobalNotBefore ?? holdUntil, holdUntil)
+        }
         let saved: Bool =
           mutate { doc in
+            if let holdUntil { doc.notBefore = max(doc.notBefore ?? holdUntil, holdUntil) }
             guard let index = doc.records.firstIndex(where: { $0.id == record.id }) else {
               return true
             }
@@ -257,7 +261,13 @@ actor FeedbackOutbox {
             return true
           } ?? false
         if !saved { memoryNotBefore[record.id] = .distantFuture }
-      case .configurationFailure:
+      case .configurationFailure(let holdUntil):
+        if let holdUntil {
+          memoryGlobalNotBefore = max(memoryGlobalNotBefore ?? holdUntil, holdUntil)
+          _ = mutate { doc in
+            doc.notBefore = max(doc.notBefore ?? holdUntil, holdUntil)
+          }
+        }
         isPaused = true
         return
       }

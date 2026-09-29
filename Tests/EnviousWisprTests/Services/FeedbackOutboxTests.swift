@@ -511,6 +511,60 @@ struct FeedbackOutboxTests {
     #expect(bytes <= limit)
   }
 
+  @Test(
+    "A refused report's rate limit holds the next report, even when the limit could not be written",
+    arguments: [false, true])
+  func rejectedLimitHoldsNext(writesFail: Bool) async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let clock = Clock(Self.start)
+    let http = HTTP([.status(413, ["X-Sentry-Rate-Limits": "600:feedback:organization"])])
+    let failWrites = WriteSwitch()
+    let path = FakePath(satisfied: false)
+    let outbox = Self.makeOutbox(
+      directory, http: http, path: path, clock: clock,
+      writeData: { data, url in
+        if failWrites.isOn { throw CocoaError(.fileWriteNoPermission) }
+        try DurableJSONFile.write(data: data, to: url, tempPrefix: ".outbox")
+      })
+    _ = await outbox.enqueue(Self.record(1))
+    _ = await outbox.enqueue(Self.record(2))
+    failWrites.isOn = writesFail
+    path.set(true)
+    await outbox.drain()
+    await outbox.drain()
+    #expect(http.sent == [Self.eventID(1)])
+
+    failWrites.isOn = false
+    clock.advance(601)
+    await outbox.drain()
+    #expect(http.sent == [Self.eventID(1), Self.eventID(2)])
+  }
+
+  @Test("A credentials failure keeps its rate limit across a relaunch")
+  func configurationFailureKeepsLimit() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let clock = Clock(Self.start)
+    let http = HTTP([.status(401, ["X-Sentry-Rate-Limits": "600:feedback:organization"])])
+    let path = FakePath(satisfied: false)
+    let outbox = Self.makeOutbox(directory, http: http, path: path, clock: clock)
+    _ = await outbox.enqueue(Self.record(1))
+    path.set(true)
+    await outbox.drain()
+    #expect(await outbox.isPaused == true)
+
+    // A new launch is no longer paused, but the stored limit still holds the report.
+    clock.advance(300)
+    let relaunched = Self.makeOutbox(directory, http: http, clock: clock)
+    await relaunched.drain()
+    #expect(http.sent == [Self.eventID(1)])
+
+    clock.advance(301)
+    await relaunched.drain()
+    #expect(http.sent == [Self.eventID(1), Self.eventID(1)])
+  }
+
   final class WriteSwitch: @unchecked Sendable {
     private let lock = NSLock()
     private var on = false

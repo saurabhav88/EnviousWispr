@@ -161,14 +161,30 @@ struct FeedbackSenderTests {
       (500, FeedbackSender.Result.retry(notBefore: nil)),
       (503, FeedbackSender.Result.retry(notBefore: nil)),
       (408, FeedbackSender.Result.retry(notBefore: nil)),
-      (400, FeedbackSender.Result.rejected(status: 400)),
-      (413, FeedbackSender.Result.rejected(status: 413)),
-      (401, FeedbackSender.Result.configurationFailure),
-      (403, FeedbackSender.Result.configurationFailure),
-      (404, FeedbackSender.Result.configurationFailure),
+      (400, FeedbackSender.Result.rejected(status: 400, holdUntil: nil)),
+      (413, FeedbackSender.Result.rejected(status: 413, holdUntil: nil)),
+      (401, FeedbackSender.Result.configurationFailure(holdUntil: nil)),
+      (403, FeedbackSender.Result.configurationFailure(holdUntil: nil)),
+      (404, FeedbackSender.Result.configurationFailure(holdUntil: nil)),
     ])
   func statusMapping(status: Int, expected: FeedbackSender.Result) {
     #expect(FeedbackSender.classify(status: status, headers: [:], now: .distantPast) == expected)
+  }
+
+  @Test("A feedback rate limit is kept on every outcome: delivered, refused, bad credentials, retry")
+  func limitKeptOnEveryOutcome() {
+    let now = Date(timeIntervalSince1970: 1000)
+    let headers = ["X-Sentry-Rate-Limits": "300:feedback:organization"]
+    let hold = now.addingTimeInterval(300)
+    #expect(FeedbackSender.classify(status: 200, headers: headers, now: now) == .accepted(holdUntil: hold))
+    #expect(
+      FeedbackSender.classify(status: 413, headers: headers, now: now)
+        == .rejected(status: 413, holdUntil: hold))
+    #expect(
+      FeedbackSender.classify(status: 401, headers: headers, now: now)
+        == .configurationFailure(holdUntil: hold))
+    #expect(FeedbackSender.classify(status: 503, headers: headers, now: now) == .retry(notBefore: hold))
+    #expect(FeedbackSender.classify(status: 429, headers: headers, now: now) == .retry(notBefore: hold))
   }
 
   @Test("A network error is a retry; the request is a POST with envelope type and public-key auth")

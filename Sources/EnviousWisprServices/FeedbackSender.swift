@@ -82,10 +82,11 @@ struct FeedbackSender: Sendable {
     case accepted(holdUntil: Date?)
     /// Keep the report; try again no earlier than `notBefore` (nil = the outbox's own backoff).
     case retry(notBefore: Date?)
-    /// Sentry refused this payload; keep it and stop retrying it.
-    case rejected(status: Int)
-    /// The DSN or credentials are wrong; pause every send until the next launch.
-    case configurationFailure
+    /// Sentry refused this payload; keep it and stop retrying it. `holdUntil` as for `accepted`.
+    case rejected(status: Int, holdUntil: Date?)
+    /// The DSN or credentials are wrong; pause every send until the next launch. `holdUntil` as
+    /// for `accepted`, kept across launches.
+    case configurationFailure(holdUntil: Date?)
   }
 
   typealias HTTP = @Sendable (URLRequest) async throws -> (status: Int, headers: [String: String])
@@ -186,7 +187,8 @@ struct FeedbackSender: Sendable {
   /// and attachments.
   static let limitingCategories: Set<String> = ["", "feedback", "user_report_v2", "attachment"]
 
-  /// Reads the status and rate-limit headers, the way the SDK's transport does: every 2xx
+  /// Reads the status and rate-limit headers, the way the SDK's transport does: the limit is read
+  /// before the status and is kept whatever the outcome (`SentryHttpTransport.m:419`); every 2xx
   /// delivers the report, and a limit that applies to feedback holds only the sends after it.
   static func classify(status: Int, headers: [String: String], now: Date) -> Result {
     let lowered = Dictionary(headers.map { ($0.key.lowercased(), $0.value) }) { a, _ in a }
@@ -200,9 +202,9 @@ struct FeedbackSender: Sendable {
       let wait = max(after, now.addingTimeInterval(1))
       return .retry(notBefore: max(wait, limit ?? wait))
     case 401, 403, 404:
-      return .configurationFailure
+      return .configurationFailure(holdUntil: limit)
     case 400, 413:
-      return .rejected(status: status)
+      return .rejected(status: status, holdUntil: limit)
     default:
       return .retry(notBefore: limit)
     }
