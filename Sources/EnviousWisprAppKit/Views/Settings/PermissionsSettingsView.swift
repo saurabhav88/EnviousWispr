@@ -167,7 +167,7 @@ enum PrivacySettingsCopy {
   static var promise: String {
     String(
       localized:
-        "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or anything on your screen. The only words that reach us are feedback you choose to send.",
+        "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are feedback you choose to send.",
       comment: "Permissions settings, Privacy: the section's privacy promise, above both switches.")
   }
   static var openSource: String {
@@ -186,7 +186,7 @@ enum PrivacySettingsCopy {
   static var metricsHelp: String {
     String(
       localized:
-        "Anonymous performance data and error counts to help us catch broken updates.",
+        "Anonymous usage, settings, performance, and error data to help us catch broken updates.",
       comment: "Permissions settings, Privacy: explains the usage metrics switch.")
   }
   static var crashLabel: String {

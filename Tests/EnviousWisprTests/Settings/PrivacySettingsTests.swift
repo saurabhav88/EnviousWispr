@@ -83,12 +83,12 @@ struct PrivacySettingsTests {
     #expect(PrivacySettingsCopy.metricsLabel == "Share usage metrics")
     #expect(
       PrivacySettingsCopy.metricsHelp
-        == "Anonymous performance data and error counts to help us catch broken updates.")
+        == "Anonymous usage, settings, performance, and error data to help us catch broken updates.")
     #expect(PrivacySettingsCopy.crashLabel == "Send crash reports")
     #expect(PrivacySettingsCopy.crashHelp == "Stack traces and diagnostic details to help us fix crashes.")
     #expect(
       PrivacySettingsCopy.promise
-        == "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or anything on your screen. The only words that reach us are feedback you choose to send."
+        == "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are feedback you choose to send."
     )
     #expect(
       PrivacySettingsCopy.openSource

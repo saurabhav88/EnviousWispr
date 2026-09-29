@@ -31,7 +31,7 @@ None of these is ever attached to feedback. Anything you type into a feedback re
 - Your dictations and transcripts, before or after polish, including files you transcribe
 - Your History
 - Your custom words and snippets
-- The text around your cursor, or anything else on your screen
+- The text around your cursor, or any other text on your screen
 - Your API keys
 - Your name or email address, unless you choose to include either in a feedback report (below)
 
@@ -47,7 +47,7 @@ EnviousWispr is open source, so you do not have to take our word for any of this
 
 - [`ObservabilityBootstrap.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/ObservabilityBootstrap.swift) starts or skips the usage and crash-reporting services, depending on the two switches below.
 - [`TelemetryService.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/TelemetryService.swift) builds the usage events the app sends. The PostHog library adds its standard lifecycle events: app installed or updated, opened, and moved to the background.
-- [`SentryEventSanitizer.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprObservabilityCore/SentryEventSanitizer.swift) removes text, email addresses, API keys, and your Mac user name from crash reports before they are sent.
+- [`SentryEventSanitizer.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprObservabilityCore/SentryEventSanitizer.swift) checks crash reports before they are sent and removes long text, email addresses, key-like values, and your Mac user name in file paths.
 
 You can also watch the traffic with a network monitor. Usage data goes to PostHog (`us.i.posthog.com`) and crash reports go to Sentry (an `ingest.us.sentry.io` address). With a switch off, the app stops sending that kind of data, as the table below describes. Feedback you choose to send still goes to Sentry, whatever the switches say.
 
@@ -57,7 +57,7 @@ Two switches control this, in the **Privacy** section of **Settings > Permission
 
 | Switch | What it covers | When a change applies |
 | :--- | :--- | :--- |
-| **Share usage metrics** | Anonymous counts and timings: that a dictation happened, how long it took, which engine ran. | Right away. Turning it off stops collection at once. If the app starts with it off, the usage service does not start at all. |
+| **Share usage metrics** | Anonymous usage, settings, and timing data: that a dictation happened, how long it took, which engine ran, which app it went into, and which settings are on. | Right away. Turning it off stops collection at once. If the app starts with it off, the usage service does not start at all. |
 | **Send crash reports** | Reports about crashes and errors, and a short note that the app is running, used to count sessions without a crash. | The next time EnviousWispr starts. After you change it, the switch shows **Restart now** so you can apply it straight away. If the app starts with it off, the crash-reporting service does not start at all. |
 
 A few details are worth knowing before you rely on either switch:

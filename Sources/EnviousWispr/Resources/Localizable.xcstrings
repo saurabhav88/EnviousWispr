@@ -2665,13 +2665,13 @@
         }
       }
     },
-    "Anonymous performance data and error counts to help us catch broken updates." : {
+    "Anonymous usage, settings, performance, and error data to help us catch broken updates." : {
       "comment" : "Permissions settings, Privacy: explains the usage metrics switch.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anonyme Leistungsdaten und Fehlerzahlen, die uns helfen, fehlerhafte Updates zu erkennen."
+            "value" : "Anonyme Nutzungs-, Einstellungs-, Leistungs- und Fehlerdaten, die uns helfen, fehlerhafte Updates zu erkennen."
           }
         }
       }
@@ -17367,13 +17367,13 @@
         }
       }
     },
-    "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or anything on your screen. The only words that reach us are feedback you choose to send." : {
+    "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are feedback you choose to send." : {
       "comment" : "Permissions settings, Privacy: the section's privacy promise, above both switches.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine Privatsphäre ist uns wichtig. Wir erfassen niemals deine Audioaufnahmen, diktierten oder transkribierten Text, deinen Verlauf, deine Textbausteine, Wörter aus deinem Wörterbuch, API-Schlüssel oder irgendetwas auf deinem Bildschirm. Die einzigen Wörter, die uns erreichen, stammen aus Feedback, das du selbst sendest."
+            "value" : "Deine Privatsphäre ist uns wichtig. Wir erfassen niemals deine Audiodaten, diktierten oder transkribierten Text, deinen Verlauf, deine Textbausteine, Wörter aus deinem Wörterbuch, API-Schlüssel oder jeglichen Text auf deinem Bildschirm. Die einzigen Wörter, die uns erreichen, stammen aus Feedback, das du selbst sendest."
           }
         }
       }
