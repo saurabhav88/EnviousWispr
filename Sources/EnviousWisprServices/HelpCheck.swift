@@ -175,7 +175,10 @@ public struct HelpCheck: Sendable {
   ) async -> T {
     let once = Once<T>()
     return await withTaskCancellationHandler {
-      await withCheckedContinuation { continuation in
+      // Unsafe, not checked: `Once` already resumes exactly once. Swift 6.3 emits a generic
+      // `withCheckedContinuation` back-deploy thunk here whose frame size differs from the -Onone
+      // test targets' copy; the linker merges the two and the task allocator aborts (#3299).
+      await withUnsafeContinuation { continuation in
         once.set(continuation)
         let worker = Task { once.resume(await work()) }
         let timer = Task {
@@ -195,7 +198,7 @@ public struct HelpCheck: Sendable {
   /// Resumes one continuation exactly once, from whichever side finishes first.
   private final class Once<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<T, Never>?
+    private var continuation: UnsafeContinuation<T, Never>?
     private var pending: T?
     private var finished = false
     var onFinish: (@Sendable () -> Void)? {
@@ -210,7 +213,7 @@ public struct HelpCheck: Sendable {
     }
     private var finishAction: (@Sendable () -> Void)?
 
-    func set(_ continuation: CheckedContinuation<T, Never>) {
+    func set(_ continuation: UnsafeContinuation<T, Never>) {
       let early = lock.withLock { () -> T? in
         self.continuation = continuation
         return pending
@@ -232,7 +235,7 @@ public struct HelpCheck: Sendable {
 
     private func deliver(_ value: T) {
       let (continuation, action) = lock.withLock {
-        () -> (CheckedContinuation<T, Never>?, (@Sendable () -> Void)?) in
+        () -> (UnsafeContinuation<T, Never>?, (@Sendable () -> Void)?) in
         guard !finished else { return (nil, nil) }
         finished = true
         let c = self.continuation
