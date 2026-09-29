@@ -376,7 +376,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
     if isAborted() { return .aborted }
     let result: ASRResult
-    let replayProvider = recovered.settings.flatMap { LLMProvider(rawValue: $0.llmProvider) }
+    // Same fallback as `RecoveryTextProcessor.applySettings`: an unknown saved provider is `.none`.
+    let replayProvider = recovered.settings.map { LLMProvider(rawValue: $0.llmProvider) ?? .none }
     if let replayProvider { onReplayWillTranscribe?(replayProvider) }
     defer { if let replayProvider { onReplayFinished?(replayProvider) } }
     do {
