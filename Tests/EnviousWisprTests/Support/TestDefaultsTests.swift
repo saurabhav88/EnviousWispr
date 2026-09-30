@@ -42,7 +42,7 @@ struct TestDefaultsTests {
     "names that could delete somebody's preferences are refused, ordinary test names are not",
     arguments: [
       ("com.apple.finder", false), ("com.apple.", false), ("NSGlobalDomain", false),
-      ("com.enviouswispr.app", false), ("com.enviouswispr.app.dev", false),
+      ("com.enviouswispr.app", false), ("com.enviouswispr.app.dev", false), (".GlobalPreferences", false),
       ("../victim", false), ("a/b", false), ("a..b", false), ("", false), ("has space", false),
       ("ew-2998-\(UUID().uuidString)", true), ("com.enviouswispr.tests.2123.absent.x", true),
       ("SM-2064-stuck-1", true), ("ew.settingsDefaultsTest.1", true),
@@ -55,12 +55,42 @@ struct TestDefaultsTests {
     }
   }
 
+  @Test("a domain that already has a plist is never registered, so the exit hook cannot delete it")
+  func preexistingPlistIsNeverOurs() throws {
+    let dir = try Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let taken = "ew-2998-taken-\(UUID().uuidString)"
+    let fresh = "ew-2998-fresh-\(UUID().uuidString)"
+    try Data("someone's prefs".utf8).write(to: TestDefaults.plistURL(suite: taken, in: dir))
+
+    #expect(TestDefaults.suite(taken, preferencesDirectory: dir) != nil, "still a working suite")
+    #expect(TestDefaults.suite(fresh, preferencesDirectory: dir) != nil)
+
+    #expect(!TestDefaults.registeredSuiteNames.contains(taken), "a pre-existing file is not ours")
+    #expect(TestDefaults.registeredSuiteNames.contains(fresh), "a brand-new suite is")
+  }
+
+  @Test("cleanup itself refuses a name that escapes the preferences directory")
+  func cleanupRefusesTraversal() throws {
+    let parent = try Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: parent) }
+    let prefs = parent.appendingPathComponent("prefs", isDirectory: true)
+    try FileManager.default.createDirectory(at: prefs, withIntermediateDirectories: true)
+    let victim = parent.appendingPathComponent("victim.plist")
+    try Data("x".utf8).write(to: victim)
+
+    let removed = TestDefaults.removePlists(of: ["../victim"], in: prefs)
+
+    #expect(removed == 0)
+    #expect(FileManager.default.fileExists(atPath: victim.path), "the file outside must survive")
+  }
+
   /// True when `source` calls the raw suite initializer outside a comment line. Built in pieces so
   /// this file does not match its own pattern.
   private static func callsRawSuiteInitializer(_ source: String) -> Bool {
-    let pattern = #"UserDefaults(\.init)?\(\s*"# + "suiteName:"
+    let pattern = #"UserDefaults(\.init)?\s*\(\s*"# + "suiteName\\s*:"
     let code = source.split(separator: "\n", omittingEmptySubsequences: false)
-      .filter { !$0.drop(while: { $0 == " " }).hasPrefix("//") }
+      .filter { !$0.drop(while: { $0 == " " || $0 == "\t" }).hasPrefix("//") }
       .joined(separator: "\n")
     return code.range(of: pattern, options: .regularExpression) != nil
   }
@@ -73,6 +103,8 @@ struct TestDefaultsTests {
       ("let d = UserDefaults(\n      " + "suiteName: \"x\")!", true),
       ("/// uses UserDefaults(" + "suiteName: \"x\") in prose", false),
       ("  // UserDefaults(" + "suiteName: \"x\")", false),
+      ("let d = UserDefaults (" + "suiteName : \"x\")!", true),
+      ("\t// UserDefaults(" + "suiteName: \"x\")", false),
       ("let d = TestDefaults.suite(\"x\")!", false),
     ])
   func detectorControl(source: String, expected: Bool) {
@@ -83,6 +115,10 @@ struct TestDefaultsTests {
   func noRawSuiteInitializers() throws {
     let testsRoot = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    // The only two files allowed to hold the raw call, by path (a same-named file elsewhere is not).
+    let allowed: Set<String> = [
+      "EnviousWisprTests/Support/TestDefaults.swift", "EnviousWisprASRTests/TestDefaults.swift",
+    ]
     var holders: Set<String> = []
     var scanned = 0
     let files = try #require(
@@ -90,13 +126,13 @@ struct TestDefaultsTests {
     for case let url as URL in files where url.pathExtension == "swift" {
       scanned += 1
       if Self.callsRawSuiteInitializer(try String(contentsOf: url, encoding: .utf8)) {
-        holders.insert(url.lastPathComponent)
+        holders.insert(String(url.path.dropFirst(testsRoot.path.count + 1)))
       }
     }
     #expect(scanned > 100, "fixture: the scan must see the test sources (saw \(scanned))")
     // Positive control: the two helper copies DO contain it, so a scan that finds nothing is broken.
-    #expect(holders.contains("TestDefaults.swift"), "the detector must see the helper itself")
-    holders.remove("TestDefaults.swift")
+    #expect(allowed.isSubset(of: holders), "the detector must see both helper copies: \(holders.sorted())")
+    holders.subtract(allowed)
     #expect(
       holders.isEmpty,
       "use TestDefaults.suite(_:) so the suite's plist is removed at exit: \(holders.sorted())")

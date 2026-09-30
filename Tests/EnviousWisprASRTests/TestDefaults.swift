@@ -17,16 +17,24 @@ enum TestDefaults {
   /// Same contract as `UserDefaults(suiteName:)`, but the suite's plist is removed at process exit.
   /// Returns nil for a name that is not safe to delete a file for (see `isSafeSuiteName`), so a bad
   /// name fails the test loudly instead of removing somebody's preferences at exit.
-  static func suite(_ name: String) -> UserDefaults? {
+  static func suite(
+    _ name: String, preferencesDirectory: URL = userPreferencesDirectory
+  ) -> UserDefaults? {
     guard isSafeSuiteName(name) else { return nil }
-    Registry.shared.register(name)
+    // Ownership: only a plist that did not exist before this suite can be ours to delete. A domain
+    // that already has a file (an app's real preferences, anything a past run left) is never
+    // registered, so the exit hook cannot remove what the tests did not create.
+    let plist = plistURL(suite: name, in: preferencesDirectory)
+    if !FileManager.default.fileExists(atPath: plist.path) {
+      Registry.shared.register(name)
+    }
     return UserDefaults(suiteName: name)
   }
 
   /// A name the exit hook may delete `<name>.plist` for: plain characters only (no path separator
   /// or `..`), and never an Apple domain, the global domain or one of the app's own bundle IDs.
   static func isSafeSuiteName(_ name: String) -> Bool {
-    guard !name.isEmpty, name.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) != nil,
+    guard !name.isEmpty, name.range(of: #"^[A-Za-z0-9_-][A-Za-z0-9._-]*$"#, options: .regularExpression) != nil,
       !name.contains("..")
     else { return false }
     let lowered = name.lowercased()
@@ -46,7 +54,7 @@ enum TestDefaults {
     of names: some Sequence<String>, in preferencesDirectory: URL
   ) -> Int {
     var removed = 0
-    for name in names {
+    for name in names where isSafeSuiteName(name) {
       let url = plistURL(suite: name, in: preferencesDirectory)
       if (try? FileManager.default.removeItem(at: url)) != nil { removed += 1 }
     }
