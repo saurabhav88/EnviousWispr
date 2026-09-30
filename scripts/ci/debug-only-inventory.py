@@ -112,7 +112,11 @@ def identifiers(payload: dict) -> set[str]:
                 for a in args:
                     argument = a.get("name")
                     if not isinstance(argument, str) or not argument:
-                        raise SystemExit("ERROR: parameterized case lacks argument identity")
+                        # Name the case: the bare message left a red nightly with nothing to
+                        # act on (#3161). `name` is the field read, so print what the node holds.
+                        raise SystemExit(
+                            f"ERROR: parameterized case lacks argument identity: {base} "
+                            f"(Arguments node name={argument!r}, keys={sorted(a)})")
                     # URL-encoded so an argument containing `|`, a newline or
                     # whitespace round-trips through the line-based inventory.
                     ids.add(f"{base}#{quote(normalise(argument), safe='')}")
@@ -244,6 +248,17 @@ def self_test() -> int:
     expect("a bare UUID argument keeps its identity (two real ids stay two)", 1 if r1 == r2 else 0, 0)
     odd = identifiers(payload("T", {"S/c()": ["a|b", "x\ny", " lead"]}))
     expect("pipe, newline and whitespace inside an argument are encoded", 0 if all("|" not in i and "\n" not in i for i in odd) and len(odd) == 3 else 1, 0)
+    # a parameterized case whose Arguments node has no usable name must fail closed AND say which
+    # case it was (#3161): the message is the only thing a red nightly gives the person reading it
+    nameless = {"testNodes": [{"nodeType": "Unit test bundle", "name": "T", "children": [
+        {"nodeType": "Test Case", "nodeIdentifier": "S/param(_:)", "name": "param(_:)",
+         "children": [{"nodeType": "Arguments", "name": "ok"}, {"nodeType": "Arguments"}]}]}]}
+    try:
+        identifiers(nameless); expect("a nameless Arguments node fails closed", 0, 1)
+    except SystemExit as error:
+        message = str(error)
+        expect("a nameless Arguments node fails closed", 1, 1)
+        expect("the failure names the offending case", 0 if "T/S/param(_:)" in message else 1, 0)
     for bad in ({"testNodes": [{"nodeType": "Test Case"}]},
                 {"testNodes": [{"nodeType": "Unit test bundle", "name": "", "children": [{"nodeType": "Test Case", "nodeIdentifier": "S/a()"}]}]}):
         try:
