@@ -2084,9 +2084,18 @@ package final class PastedRegionObserver: PastedRegionObserving {
       && scheduler.nowMs - w.lastChangeAtMs >= minimumAgeMs
     // #3101: text a WEAK settle already delivered, unchanged since, now ends in
     // a strong way (a send, the next dictation): deliver it again as strong.
+    // Only ends that say "this text is done" upgrade: a rewrite, a removed or
+    // doubled region may be a whole new text, and the cached region is stale.
+    let upgradesHeldText: Bool
+    switch reason {
+    case .textboxEmptied, .elementDestroyed, .appTerminated, .nextDictationStarted: upgradesHeldText = true
+    case .regionRemoved, .anchorAmbiguous, .editDistanceExceeded, .focusChanged, .ceilingElapsed,
+      .settled, .dictatedTextNotFound, .captureUnsupported, .permissionLost:
+      upgradesHeldText = false
+    }
     let upgrade =
       !flush && w.weakSettleAwaitingUpgrade && !w.changedSinceSettled
-      && reason.pendingEvidence == .strong && !w.lastRegion.isEmpty
+      && upgradesHeldText && !w.lastRegion.isEmpty
     stop()
     if lostBoxFlush {
       log?(

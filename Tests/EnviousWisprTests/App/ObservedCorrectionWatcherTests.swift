@@ -625,6 +625,23 @@ struct ObservedCorrectionWatcherTests {
     #expect(presenter.offers.count == 1 && judge.requests.count == 1)
   }
 
+  @Test("#3101: a held-back fix whose capitals change later is saved with the spelling the text holds at release")
+  func weakHeldSavesCurrentSpelling() async throws {
+    let watcher = makeWatcher()
+    judge.probability = 0.80
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask zorab today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+
+    observer.fire(.changed(region: "Ask saurabh today"))
+    observer.fire(.settled(region: "Ask saurabh today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    observer.fire(.changed(region: "Ask Saurabh today"))
+    observer.fire(.settled(region: "Ask Saurabh today", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(presenter.offers.first?.canonical == "Saurabh", "the spelling at release, not the held lowercase one")
+  }
+
   @Test("#3101: a held-back fix survives an edit to another word and is saved on the next strong settle")
   func weakHeldSurvivesAnotherEdit() async throws {
     let watcher = makeWatcher()

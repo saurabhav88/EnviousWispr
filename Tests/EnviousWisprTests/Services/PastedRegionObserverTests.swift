@@ -1571,6 +1571,14 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 1500)
     o2.finish(.focusChanged)
     #expect(e2.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.isEmpty)
+
+    // A rewrite end may be a whole new text: the cached region is not upgraded.
+    let o4 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e4 = Events()
+    startWithFix(o4, e4)
+    scheduler.advance(ms: 1500)
+    o4.finish(.editDistanceExceeded)
+    #expect(e4.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.isEmpty)
   }
 
   @Test("the cap: ten seconds after the first deferral of a revision, the region settles with the caret still inside; a new revision starts a new cap")

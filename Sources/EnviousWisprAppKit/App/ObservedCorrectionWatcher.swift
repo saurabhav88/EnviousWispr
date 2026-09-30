@@ -159,9 +159,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   /// A correction the judge called one, held back only because the evidence
   /// that the edit was finished was weak (#3101).
   private struct HeldCorrection {
+    /// Matched against the text at release time, which supplies the spelling.
     let pairKey: String
-    let original: String
-    let corrected: String
     let expectedTarget: LearnTargetState
   }
 
@@ -572,9 +571,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
         guard decision.verdict.vocabularyCorrection, !Self.accepts(decision, evidence: .weak),
           let f = prepared.byID[decision.id], case .candidate(let target) = f.disposition
         else { return nil }
-        return HeldCorrection(
-          pairKey: f.pairKey, original: f.run.coreOriginal, corrected: f.run.coreReplacement,
-          expectedTarget: target)
+        return HeldCorrection(pairKey: f.pairKey, expectedTarget: target)
       }
       if !held.isEmpty { watch?.weakHeld += held }
     }
@@ -627,21 +624,25 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   private func releaseWeakHeld(presentIn region: String, generation gen: UInt64) {
     guard let w = watch, w.generation == gen, let target = w.target else { return }
     let alignment = EditAlignment.align(pasted: target.pastedText, edited: region)
-    let present = Set(
-      CorrectionCandidateFilter.filter(
-        runs: alignment.runs,
-        inputs: .init(userWords: deps.userWords(), packTerms: deps.packTerms())
-      ).map(\.pairKey))
-    let held = w.weakHeld.filter { present.contains($0.pairKey) }
+    // Save the spelling the text holds NOW (a later case fix wins), matched by pair key.
+    var current: [String: EditAlignment.Run] = [:]
+    for f in CorrectionCandidateFilter.filter(
+      runs: alignment.runs,
+      inputs: .init(userWords: deps.userWords(), packTerms: deps.packTerms()))
+    {
+      current[f.pairKey] = f.run
+    }
+    let held = w.weakHeld.compactMap { h in current[h.pairKey].map { (h, $0) } }
     watch?.weakHeld = []
     #if DEBUG
       LearnedCorrectionCoordinator.debugLog(
         "learn_weak_released pairs=\(held.count) dropped=\(w.weakHeld.count - held.count)")
     #endif
-    for h in held {
+    for (h, run) in held {
       guard stillWanted(generation: gen, revision: w.revision) else { return }
       deps.coordinator.learn(
-        original: h.original, corrected: h.corrected, expectedTarget: h.expectedTarget)
+        original: run.coreOriginal, corrected: run.coreReplacement,
+        expectedTarget: h.expectedTarget)
     }
   }
 
