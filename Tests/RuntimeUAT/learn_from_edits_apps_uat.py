@@ -657,45 +657,48 @@ def run_app(app, args):
         type_text(CORRECT + punct + trail, bundle)
     row["typed_fix"] = True
     row["fix_done_at"] = time.time()
-    time.sleep(0.3)  # settle: the typed keys render before the proof screenshot; no ack
-    row["shot_fixed"] = d.screenshot(f"{tag}-2-fixed.png") and f"{tag}-2-fixed.png"
-    after_fix = focused_value(pid)
-    row["field_after_fix"] = after_fix[-200:] if after_fix is not None else None
     row["then"], row["half"] = args.then, args.half
-    time.sleep(0.8)  # settle: past flushMinQuietMs (500 ms), like a person finishing the word before moving on
-    if args.then == "switch":
-        # #3101: the person moves on to another app with the caret still at the word.
-        osa('tell application "Finder" to activate')
-        row["switched"] = bool(d.wait_for("Finder frontmost", lambda: frontmost_bundle() == "com.apple.finder", deadline=4.0))
-        row["then_at"] = time.time()
-    elif args.then == "axcaret":
-        # #3101: caret moved to the start by accessibility (not a person's click).
-        if not place_caret(pid, 0, bundle):
-            row["outcome"] = "INSTRUMENT: the host refused to move the caret"
-            return row, pid, doc
-        row["then_at"] = time.time()
-    elif args.then == "mouseclick":
-        # #3101: a real click near the field's top-left corner, as a person clicks elsewhere in the text.
-        focused = get_attr(get_ax_app(pid), "AXFocusedUIElement")
-        frame = element_frame(focused) if focused is not None else None
-        if not frame:
-            row["outcome"] = "INSTRUMENT: no frame for the focused field"
-            return row, pid, doc
-        require_frontmost(bundle)
-        si.click(frame["x"] + 6, frame["y"] + 8)
-        row["then_at"] = time.time()
-    elif args.then == "continue":
-        # #3101: the person goes to the end of the text and keeps typing.
-        press("down", bundle, cmd=True)
-        type_text(" Thanks again", bundle)
-        row["then_at"] = time.time()
-    elif args.then == "nextdictation":
-        # #3101: the person dictates again into the same field (a send-shaped end).
-        with contextlib.redirect_stdout(io.StringIO()):
-            w.test_recording(audio=clip, expect=EXPECT, timeout=45.0)
-        row["then_at"] = time.time()
-    time.sleep(0.5)  # settle: the post-fix action renders before its proof screenshot; no ack
-    row["shot_then"] = d.screenshot(f"{tag}-3-then.png") and f"{tag}-3-then.png"
+    # --send-fast keeps its original timing: the send must land inside the 1.5 s
+    # quiet interval, so no proof screenshot or post-fix flow runs before it.
+    if not args.send_fast:
+        time.sleep(0.3)  # settle: the typed keys render before the proof screenshot; no ack
+        row["shot_fixed"] = d.screenshot(f"{tag}-2-fixed.png") and f"{tag}-2-fixed.png"
+        after_fix = focused_value(pid)
+        row["field_after_fix"] = after_fix[-200:] if after_fix is not None else None
+        time.sleep(0.8)  # settle: past flushMinQuietMs (500 ms), like a person finishing the word before moving on
+        if args.then == "switch":
+            # #3101: the person moves on to another app with the caret still at the word.
+            osa('tell application "Finder" to activate')
+            row["switched"] = bool(d.wait_for("Finder frontmost", lambda: frontmost_bundle() == "com.apple.finder", deadline=4.0))
+            row["then_at"] = time.time()
+        elif args.then == "axcaret":
+            # #3101: caret moved to the start by accessibility (not a person's click).
+            if not place_caret(pid, 0, bundle):
+                row["outcome"] = "INSTRUMENT: the host refused to move the caret"
+                return row, pid, doc
+            row["then_at"] = time.time()
+        elif args.then == "mouseclick":
+            # #3101: a real click near the field's top-left corner, as a person clicks elsewhere in the text.
+            focused = get_attr(get_ax_app(pid), "AXFocusedUIElement")
+            frame = element_frame(focused) if focused is not None else None
+            if not frame:
+                row["outcome"] = "INSTRUMENT: no frame for the focused field"
+                return row, pid, doc
+            require_frontmost(bundle)
+            si.click(frame["x"] + 6, frame["y"] + 8)
+            row["then_at"] = time.time()
+        elif args.then == "continue":
+            # #3101: the person goes to the end of the text and keeps typing.
+            press("down", bundle, cmd=True)
+            type_text(" Thanks again", bundle)
+            row["then_at"] = time.time()
+        elif args.then == "nextdictation":
+            # #3101: the person dictates again into the same field (a send-shaped end).
+            with contextlib.redirect_stdout(io.StringIO()):
+                w.test_recording(audio=clip, expect=EXPECT, timeout=45.0)
+            row["then_at"] = time.time()
+        time.sleep(0.5)  # settle: the post-fix action renders before its proof screenshot; no ack
+        row["shot_then"] = d.screenshot(f"{tag}-3-then.png") and f"{tag}-3-then.png"
     if args.paragraph:
         time.sleep(0.5)  # settle: the host applies the keystrokes; no ack
         after = focused_value(pid) or ""
