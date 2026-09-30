@@ -1,6 +1,6 @@
 ---
 // Self-Learning Dictionary (#996): fix a misheard word in pasted text and it joins
-// your dictionary, with a three-second Undo; a word check on the Mac decides where a
+// your dictionary, with a four-second Undo; a word check on the Mac decides where a
 // learned word applies later (#3105, #3242). Every claim traces to
 // help/self-learning-dictionary.md, which owns the detail.
 import FeatureShell from '../../layouts/FeatureShell.astro';
@@ -15,7 +15,7 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
 <FeatureShell
   path="/features/self-learning-dictionary/"
   title="Self-Learning Dictionary: EnviousWispr learns as you edit"
-  description="Fix a misheard word in a dictation EnviousWispr just pasted, and it notices and saves the spelling to your dictionary, with three seconds to undo. Free."
+  description="Fix a misheard word in a dictation EnviousWispr just pasted, and it notices and saves the spelling to your dictionary, with four seconds to undo. Free."
   ogImage="/images/og/self-learning-dictionary.jpg"
   ogImageAlt="EnviousWispr Self-Learning Dictionary: fix it once, it remembers"
 >
@@ -31,13 +31,13 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
     <div class="benefit-copy">
       <span class="eyebrow">Everyday editing</span>
       <h2>Just edit your text<br /><span class="accent-ink">the way you normally would.</span></h2>
-      <p>Dictate something, let EnviousWispr paste it, and edit whatever is wrong. When EnviousWispr spots a correction, a small pill shows what it saved, such as Added “Saoirse” to Dictionary, or “Notion” updated for a word you already had, with an Undo button for three seconds. If you leave it alone, it stays. New words appear in Your Words, while existing words simply log the new mishearing.</p>
+      <p>Dictate something, let EnviousWispr paste it, and edit whatever is wrong. When EnviousWispr spots a correction, a small pill shows what it saved, such as Added “Saoirse” to Dictionary, or “Notion” updated for a word you already had, with an Undo button for four seconds. If you leave it alone, it stays. New words appear in Your Words, while existing words simply log the new mishearing.</p>
     </div>
     <div class="benefit-visual">
       <ImportReassurance
         wrap={false}
         items={[
-          { title: 'Three seconds to undo', copy: 'If it caught something you did not intend, click Undo on the pill. That removes a freshly added word or reverts an updated one back to where it was.' },
+          { title: 'Four seconds to undo', copy: 'If it caught something you did not intend, click Undo on the pill. That removes a freshly added word or reverts an updated one back to where it was.' },
           { title: 'Marked in your dictionary', copy: 'You can see what was picked up automatically at any time. Words added this way have a small sparkle icon in Your Words, and the Auto-learned filter lets you view just those.' },
           { title: 'Supported apps', copy: 'It watches for corrections in Mail, your web browser, terminal windows, and web-based apps like WhatsApp. Password fields are never watched.' },
         ]}
