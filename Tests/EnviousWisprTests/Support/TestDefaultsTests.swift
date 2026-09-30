@@ -47,10 +47,17 @@ struct TestDefaultsTests {
       ("ew-2998-\(UUID().uuidString)", true), ("com.enviouswispr.tests.2123.absent.x", true),
       ("SM-2064-stuck-1", true), ("ew.settingsDefaultsTest.1", true),
     ])
-  func unsafeNamesAreRefused(name: String, safe: Bool) {
+  func unsafeNamesAreRefused(name: String, safe: Bool) throws {
     #expect(TestDefaults.isSafeSuiteName(name) == safe, "\(name)")
     if !safe {
-      #expect(TestDefaults.suite(name) == nil, "an unsafe name must not make a suite")
+      // NEVER the real preferences directory here: if the guard under test were broken, the exit hook
+      // would delete the real com.apple.* or com.enviouswispr.app plist (#3323: a mutant run of this
+      // very test did exactly that). A temp directory makes a broken guard harmless.
+      let dir = try Self.tempDirectory()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      #expect(
+        TestDefaults.suite(name, preferencesDirectory: dir) == nil,
+        "an unsafe name must not make a suite")
       #expect(!TestDefaults.registeredSuiteNames.contains(name))
     }
   }
