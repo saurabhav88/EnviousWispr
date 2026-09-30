@@ -115,6 +115,12 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - 😀 **Speak an emoji**: say the emoji's name followed by "emoji" (like "thumbs up emoji") and the glyph drops right in
 - ✋ **Voice Activity Detection** via Silero VAD that stops recording automatically when you stop talking
 - 📚 **Custom vocabulary and vocabulary packs** for names, brands, and technical terms the ASR might miss, plus one-tap import of names from your Contacts (which never leave your Mac)
+- 🧠 **Self-Learning Dictionary**: correct a dictation and EnviousWispr detects the change and adds the intended term to your dictionary
+- 📋 **Paste Last Dictation**: ⌃⌘V pastes your most recent dictation wherever your cursor is and ⌃⌘C copies it, both changeable in Settings > Keybinds
+- 🔇 **Media while you dictate**: choose whether your music and videos continue, lower, mute or pause while you talk
+- 🇩🇪 **English and German interface**: choose the app's language in Settings > Appearance
+- 💬 **Send Feedback**: tell us what works from inside the app, and it may suggest help articles that answer your question before you send
+- 🛡️ **Privacy controls**: choose whether to share usage metrics and crash reports in Settings > Permissions
 - ➕ **Quick Add**: highlight a misheard word anywhere on macOS and save the right spelling to your dictionary with a keyboard shortcut or from the menu bar, without opening Settings
 - 🎨 **Your choice of recording pill**: pick the recording indicator design you like in Appearance settings, and try a practice dictation before setup ends
 - ⌨️ **Global keybind** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
@@ -127,6 +133,29 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
+- **Privacy controls.** Choose whether to share usage metrics and crash reports in Settings > Permissions. Crash report changes apply after a restart. When sending feedback, choose whether to attach diagnostics and preview the file first. (v2.5.2)
+- **Word check loads on demand.** Envious Word Check now loads when a dictation or file transcription needs it instead of when EnviousWispr starts, and normally leaves memory after about 10 minutes without use. (v2.5.2)
+- **Help before you send feedback.** When you press Send in Send Feedback, EnviousWispr shows up to three help articles that might answer your question. Read one, or send your message as you wrote it. On macOS 26 or later with Apple Intelligence on, you can mark each part of your message solved and choose not to send it. (v2.5.2)
+- **Shortcut warning in Keybinds.** If macOS says a key combination is already taken, Settings > Keybinds shows a warning under that shortcut. (v2.5.2)
+- **Clipboard fix for Chrome and ChatGPT.** Your clipboard comes back after you dictate into Chrome, Brave, Edge, Vivaldi, Arc or the ChatGPT app. (v2.5.2)
+- **Pastes go to the Chrome window you started in.** Start dictating in one Chrome window, switch to another before you stop, and EnviousWispr goes back to the first window and pastes there. If you closed it, your words stay on the clipboard. (v2.5.2)
+- **More time to Undo a learned word.** When Self-Learning saves a word, the Undo button stays for 4 seconds, with a bar showing the time left. (v2.5.2)
+- **Smarter Self-Learning.** The Self-Learning Dictionary no longer learns edits that only add punctuation, such as "e mail" to "e-mail", and needs to be more certain before it learns from an edit you may not have finished. (v2.5.2)
+- **Introducing the Self-Learning Dictionary.** When you correct a dictation, EnviousWispr detects the change and adds the intended term to your dictionary. (v2.5.1)
+- **Now available natively in German.** Choose Deutsch in Settings > Appearance > Language, then relaunch to apply. (v2.5.1)
+- **Paste Last Dictation.** ⌃⌘V drops your most recent transcription wherever your cursor is and ⌃⌘C copies it; Paste Last Dictation is in the menu bar too, and both shortcuts can be changed in Settings > Keybinds. (v2.5.1)
+- **Better at remembering the text box.** EnviousWispr is better at pasting where it is supposed to paste. (v2.5.1)
+- **Introducing Send Feedback.** Click the bug button beside Record to tell us what works and what doesn't, with an optional email if you'd like a reply. Your draft is saved on your Mac as you type. (v2.5.1)
+- **Apple Intelligence polish is faster and cleaner.** On macOS 26 and 27 it finishes sooner, lays out spoken lists as lists and resolves more of your spoken corrections. (v2.5.1)
+- **Lower, mute or pause audio while dictating.** Choose what your music and videos do while you dictate: Continue, Lower, Mute or Pause, on the Microphone page in Settings. (v2.5.1)
+- **Import your snippets.** Bring snippets in from an exported file, a CSV, a pasted list, or straight from Wispr Flow or TypeWhisper, and review the list before anything is saved. (v2.5.1)
+- **Dynamic variables in snippets.** Insert the current date, current time or your last copied text into a snippet. (v2.5.1)
+- **English (UK) spelling.** Choose English (UK) as your dictation language and your text comes out in British spelling, like colour, organisation and centre. (v2.5.1)
+- **A Dock icon, and a window that opens in front.** EnviousWispr appears in your Dock and the ⌘⇥ app switcher; turn off Show app in Dock under Settings > Appearance to keep it in the menu bar only. (v2.5.1)
+- **Addresses, links and codes in eight languages.** With your dictation language set to French, Spanish, Polish, Dutch, German, Russian, Portuguese or Italian, spoken URLs, emails and technical codes come out written. (v2.5.1)
+- **Versions, IP addresses and codes come out whole.** "version two point five point zero" becomes version 2.5.0 and "localhost colon three thousand" becomes localhost:3000. (v2.5.1)
+- **Better support for /commands.** Spoken slash commands such as "slash clear" format as /clear, even with Spoken punctuation turned off. (v2.5.1)
+- **Mouse wheel scrolling glides.** The mouse wheel moves farther per notch with a short smooth glide; trackpad scrolling is unchanged. (v2.5.1)
 - **Introducing Transcribe a File.** Drop in a voice memo, lecture, meeting or video you already have and get back clean text, with speaker turns when the app can tell the voices apart, and, with a polisher selected, spoken lists laid out as real lists and the words the polisher removed, replaced or added marked up so you can see them. It takes one file at a time, transcribes it on your Mac, and the recording never leaves it; polish follows the polisher you pick, on-device by default. (v2.5.0)
 - **Apple Intelligence polish improved on macOS 27.** On macOS 27, Apple Intelligence now removes the opening ums, lays out spoken lists and resolves more of your self-corrections, and long dictations that fit its larger model are no longer skipped. The Apple Intelligence card in Settings shows which model is running and its capacity on both versions. On macOS 26 the polishing itself is unchanged. (v2.5.0)
 - **Improved capitalization when dictating into an existing sentence.** When you dictate after words you already typed, EnviousWispr matches your capitalization. If the app was busy, that matching could switch itself off until you relaunched; it now stays on in far more cases. (v2.5.0)
