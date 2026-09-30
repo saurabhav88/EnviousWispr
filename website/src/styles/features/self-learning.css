@@ -1,5 +1,5 @@
 /* Self-Learning Dictionary film (#996): the pasted sentence, the user's own fix,
-   the app's pill with its three-second Undo, then the next dictation. Phases come
+   the app's pill with its four-second Undo, then the next dictation. Phases come
    from film-director.js: listening (pasted), working (the fix), writing (the pill),
    result (the next dictation). */
 .sl-document{border:1px solid var(--line);background:var(--film-well);border-radius:13px;padding:17px 20px}

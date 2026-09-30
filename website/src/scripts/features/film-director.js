@@ -102,7 +102,7 @@ export function init(node, motion, scope) {
       const edit =
         phase === 0 ? 'pasted' : phase > 1 ? 'done' : progress < 0.3 ? 'selected' : progress < 0.4 ? 'deleted' : 'typing';
       node.dataset.edit = edit;
-      // The pill leaves after its three seconds only while the film plays; a
+      // The pill leaves after its four seconds only while the film plays; a
       // settled or paused frame (reduced motion, Pause, no script) keeps it in view.
       node.toggleAttribute('data-pill-gone', phase === 3 && !forceFinal && !stopped && motion.allowed());
       const fixedChars = Array.from(sample.fixed);

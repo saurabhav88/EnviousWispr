@@ -60,13 +60,13 @@ export const DURATIONS = {
   correction: [1800, 850, 650, 3200],
   formatting: [1800, 850, 700, 3200],
   languages: [1900, 850, 700, 3200],
-  selflearn: [1500, 2800, 3000, 3200],
+  selflearn: [1500, 2800, 4000, 3200],
   preview: [4800, 450, 450, 3000],
 };
 
 export const STATUS_WORDS = {
   quickadd: ['Select the misheard words.', 'Pick the word you meant.', 'Press Return to add the spelling.', ''],
-  selflearn: ['Pasting the dictation', 'Editing the misheard word', 'Saved to dictionary, with three seconds to undo', ''],
+  selflearn: ['Pasting the dictation', 'Editing the misheard word', 'Saved to dictionary, with four seconds to undo', ''],
   snippets: ['A short spoken phrase…', 'Finding your saved text…', 'Your words, ready to use…', ''],
   formatting: ['Listening to the example…', 'Formatting on your Mac…', 'Written the way you would type it…', ''],
   languages: ['Listening to the example…', 'Reading it in your language…', 'Written the way you would type it…', ''],
