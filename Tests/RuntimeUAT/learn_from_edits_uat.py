@@ -126,6 +126,7 @@ PAIRS = {
     "toggle-off": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
     "next-dictation": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
     "deletion-only": Pair("Send the report to Vaish today", "report", "Send", "to", "report"),
+    "punctuated-join": Pair("Send the report to Vaish today", "report", "Send", "to", "report"),
     "learned-check": Pair("The day Tuist regenerated my whole project", "project", "day", "regenerated", "Tuist"),
 }
 
@@ -887,6 +888,22 @@ def case_deletion_only(path):
     return check("deletion-only", ok, f"ended={ended.group(0)} judged={'learn_judged' in lines} added={'learn_added' in lines}")
 
 
+def case_punctuated_join(path):
+    """#3258: a join made with punctuation and unchanged letters ("report to"
+    -> "report-to") settles but never reaches the judge. The settle line is the
+    positive control that the edit was observed; the parent build judges it."""
+    pair = PAIRS["punctuated-join"]
+    mark, _, _ = dictate(path, "punctuated-join", pair, need_heard=False)
+    apply_fix(path, "punctuated-join", "report to", "report-to")
+    if not wait_for("the edit to settle", lambda: has(mark, "learn_settle trigger="), deadline=15.0):
+        raise Aborted("punctuated-join: the edit never settled")
+    clear_field(path)
+    wait_for("observation end", lambda: has(mark, "learn_observation_ended"), deadline=15.0)
+    lines = "\n".join(learn_lines(mark))
+    ok = "learn_judged" not in lines and "judged \"" not in lines and "learn_added" not in lines
+    return check("punctuated-join", ok, f"judged={'learn_judged' in lines} added={'learn_added' in lines}")
+
+
 def park_pointer():
     """Park the pointer top-left, over nothing that reacts to a bare move, so
     no case starts with it over the pill's place (the pill does not pause
@@ -1256,6 +1273,7 @@ def main():
             ("toggle-off", False, None, True, case_toggle_off),
             ("next-dictation", True, None, True, case_next_dictation),
             ("deletion-only", True, None, True, case_deletion_only),
+            ("punctuated-join", True, None, True, case_punctuated_join),
             ("learned-check", True, "learned", True, case_learned_check),
             ("learned-check-door-off", True, "learned", True, case_learned_check_door_off),
         ]
