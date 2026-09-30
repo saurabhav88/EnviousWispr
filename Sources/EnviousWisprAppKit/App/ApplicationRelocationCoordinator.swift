@@ -27,7 +27,7 @@ import Security
 /// would refuse to update. Mirrors pinned Sparkle 2.9.3 `SUHost` logic
 /// (`SUHost.m:174` read-only, `:185` translocated). A Sparkle upgrade requires
 /// re-validating this mapping (plan A7).
-public enum ApplicationLocationState: Equatable, Sendable {
+enum ApplicationLocationState: Equatable, Sendable {
   /// Bundle is on a writable, non-translocated volume. Sparkle can update.
   case healthy
   /// Bundle path is under `/AppTranslocation/` (Sparkle code 1005).
@@ -38,12 +38,12 @@ public enum ApplicationLocationState: Equatable, Sendable {
   case detectionFailed
 
   /// True only for the two conditions that actually block Sparkle updates.
-  public var isUpdateBlocking: Bool {
+  var isUpdateBlocking: Bool {
     self == .translocated || self == .readOnlyVolume
   }
 
   /// Bounded, low-cardinality telemetry reason. `nil` when not update-blocking.
-  public var reasonLabel: String? {
+  var reasonLabel: String? {
     switch self {
     case .translocated: return "translocated"
     case .readOnlyVolume: return "read_only_volume"
@@ -55,7 +55,7 @@ public enum ApplicationLocationState: Equatable, Sendable {
   /// handoff failed. Unlike `reasonLabel` this is non-nil for every state,
   /// including `detectionFailed`, because an unhealthy child must always be
   /// classifiable rather than falling through as "malformed" (#2006 §3.2).
-  public var ackStateLabel: String {
+  var ackStateLabel: String {
     switch self {
     case .healthy: return "healthy"
     case .translocated: return "translocated"
@@ -195,7 +195,7 @@ public enum RelocationAckOutcome: Equatable, Sendable {
 /// cannot carry a destination and `.installedNotConfirmed` structurally cannot
 /// lack one. It does NOT prove the correct family was chosen; that is enforced
 /// by the 18-origin routing test.
-public enum RelocationFailurePresentation: Equatable, Sendable {
+enum RelocationFailurePresentation: Equatable, Sendable {
   /// Message A. Nothing usable was placed, OR a placed copy is known/suspected
   /// unhealthy and must never be offered for opening.
   case nothingMoved(RelocationFailure)
@@ -203,7 +203,7 @@ public enum RelocationFailurePresentation: Equatable, Sendable {
   /// unconfirmed.
   case installedNotConfirmed(RelocationFailure, destination: URL)
 
-  public var failure: RelocationFailure {
+  var failure: RelocationFailure {
     switch self {
     case .nothingMoved(let f), .installedNotConfirmed(let f, _): return f
     }
@@ -211,7 +211,7 @@ public enum RelocationFailurePresentation: Equatable, Sendable {
 }
 
 /// What the mover did with the chosen destination.
-public enum InstallResolution: Equatable, Sendable {
+enum InstallResolution: Equatable, Sendable {
   /// We staged, validated, and placed our own copy at this URL → launch fresh +
   /// handshake.
   case installed(URL, bundleVersion: String)
@@ -224,7 +224,7 @@ public enum InstallResolution: Equatable, Sendable {
   /// review #1490.
   case existingRunning(URL, bundleVersion: String)
 
-  public var url: URL {
+  var url: URL {
     switch self {
     case .installed(let u, _), .existingUsable(let u, _), .existingRunning(let u, _): return u
     }
@@ -234,31 +234,31 @@ public enum InstallResolution: Equatable, Sendable {
   /// only authority for the expected ack version: `.existingUsable`
   /// deliberately accepts a same-or-NEWER destination, so comparing against the
   /// running app's own version would reject a valid newer copy (#2006 §3.2).
-  public var bundleVersion: String {
+  var bundleVersion: String {
     switch self {
     case .installed(_, let v), .existingUsable(_, let v), .existingRunning(_, let v): return v
     }
   }
 
   /// True only for the route that launches no child and needs no handshake.
-  public var isExistingRunning: Bool {
+  var isExistingRunning: Bool {
     if case .existingRunning = self { return true }
     return false
   }
 
   /// One home for the bounded `install_resolution` vocabulary, so the failure
   /// path and the success path cannot drift apart.
-  public enum TelemetryLabel {
-    public static let installed = "installed"
-    public static let existingUsable = "existing_usable"
-    public static let existingRunning = "existing_running"
+  enum TelemetryLabel {
+    static let installed = "installed"
+    static let existingUsable = "existing_usable"
+    static let existingRunning = "existing_running"
     /// The mover failed BEFORE producing any resolution. Asserts nothing about
     /// whether a destination existed.
-    public static let unresolved = "unresolved"
+    static let unresolved = "unresolved"
   }
 
   /// Bounded telemetry label for which route the mover took.
-  public var telemetryLabel: String {
+  var telemetryLabel: String {
     switch self {
     case .installed: return TelemetryLabel.installed
     case .existingUsable: return TelemetryLabel.existingUsable
@@ -277,7 +277,7 @@ public enum ApplicationRelocationOutcome: Equatable, Sendable {
 }
 
 /// User's answer to the one-click prompt.
-public enum RelocationChoice: Equatable, Sendable {
+enum RelocationChoice: Equatable, Sendable {
   case move
   case notNow
 }

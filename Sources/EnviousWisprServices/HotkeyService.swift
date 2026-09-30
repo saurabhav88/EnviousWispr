@@ -698,7 +698,6 @@ public final class HotkeyService {
   /// callback.
   /// #1631 test seam — invoked once per completed `resolveStart`, on every exit
   /// path. Test-only; production never sets it.
-  // periphery:ignore - test seam
   package var onStartResolvedForTesting: (@MainActor () -> Void)?
 
   // periphery:ignore - test seam

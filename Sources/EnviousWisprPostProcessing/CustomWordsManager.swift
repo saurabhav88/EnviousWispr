@@ -399,7 +399,6 @@ public final class CustomWordsManager {
   /// that exact window (#1690 cloud review), which no other seam in this
   /// file can reach since this fast path is deliberately lock-free.
   /// Production never sets this.
-  // periphery:ignore - test seam
   package var afterFileExistsCheckForTesting: (() -> Void)?
 
   /// Classifies the current on-disk state without ever creating/opening the

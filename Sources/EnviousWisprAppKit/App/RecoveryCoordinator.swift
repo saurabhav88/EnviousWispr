@@ -428,23 +428,18 @@ final class RecoveryCoordinator {
     var crashBoundaryController: CrashBoundaryFaultController = .shared
   #endif
 
-  // periphery:ignore - test seam
   var destructionSpoolDeleteForTesting: ((String) throws -> Void)?
-  // periphery:ignore - test seam
   var destructionKeyDeleteForTesting: (@Sendable (String) throws -> Void)?
   /// #1807 §D2 test seam: force the discard-marker write to fail without a
   /// real filesystem fault, so the decision table's "no durable evidence at
   /// all" fallback cell is directly reachable from a test.
-  // periphery:ignore - test seam
   var destructionMarkerWriteForTesting: (@Sendable (String) throws -> Void)?
-  // periphery:ignore - test seam
   var deletionFailureBreadcrumbForTesting:
     (@MainActor @Sendable (_ stage: String, _ message: String, _ data: [String: String]) -> Void)?
   /// #1740 cleanup-telemetry seam. INSTANCE-scoped, never the process-global
   /// `TelemetryService.testEventHook`: this suite runs in parallel, and a
   /// sibling test's `defer` clearing that global raced this one's emits
   /// (whole-diff review P1). `tests-no-process-global-mutable-delegate`.
-  // periphery:ignore - test seam
   var cleanupTelemetryForTesting:
     (@MainActor @Sendable (_ source: String, _ component: String, _ succeeded: Bool) -> Void)?
 

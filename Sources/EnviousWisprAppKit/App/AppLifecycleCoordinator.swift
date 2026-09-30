@@ -32,7 +32,6 @@ final class AppLifecycleCoordinator {
   private var audioEnvironmentSnapshotter: AudioEnvironmentSnapshotter?
   // periphery:ignore - retain anchor: owns audio-system observer lifetime
   private var audioSystemEventReporter: AudioSystemEventReporter?
-  // periphery:ignore - retain anchor: owns app-activation observer lifetime
   private var accessibilityWarmupObserver: AccessibilityWarmupObserver?
   // #3062: one local scroll-wheel monitor for the whole process, built by the
   // bootstrapper with the live desktop seam; started here, stopped in
