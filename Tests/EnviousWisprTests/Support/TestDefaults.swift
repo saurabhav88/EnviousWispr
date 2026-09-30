@@ -10,10 +10,22 @@ import Foundation
 /// their files are unlinked once, when the test process exits. Unlinking at exit was measured to
 /// stick: cfprefsd does not recreate the file afterwards.
 ///
-/// `TestDefaultsDriftGuardTests` fails if a test file calls the raw initializer instead.
+/// `TestDefaultsTests` fails if a test file calls the raw initializer instead.
 /// The ASR test target has its own copy (`Tests/EnviousWisprASRTests/TestDefaults.swift`); keep
 /// the two identical.
+///
+/// Known limit: ownership is proven at registration (no plist existed yet). A test that named its
+/// suite after a real app's bundle id, while that app first wrote its own plist during the test
+/// process, would lose that file at exit. No call site does; names are test-prefixed UUIDs.
 enum TestDefaults {
+  /// The process-wide registry; installing the exit hook is what first touching it does.
+  fileprivate static let shared: SuiteRegistry = {
+    let registry = SuiteRegistry()
+    // No captures: `atexit` takes a C function pointer.
+    atexit { TestDefaults.shared.removeAll() }
+    return registry
+  }()
+
   /// Same contract as `UserDefaults(suiteName:)`, but the suite's plist is removed at process exit.
   /// Returns nil for a name that is not safe to delete a file for (see `isSafeSuiteName`), so a bad
   /// name fails the test loudly instead of removing somebody's preferences at exit.
@@ -26,7 +38,7 @@ enum TestDefaults {
     // registered, so the exit hook cannot remove what the tests did not create.
     let plist = plistURL(suite: name, in: preferencesDirectory)
     if !FileManager.default.fileExists(atPath: plist.path) {
-      Registry.shared.register(name)
+      shared.register(name, in: preferencesDirectory)
     }
     return UserDefaults(suiteName: name)
   }
@@ -62,40 +74,40 @@ enum TestDefaults {
   }
 
   /// The suite names registered so far in this process (what the exit hook will clean up).
-  static var registeredSuiteNames: Set<String> { Registry.shared.snapshot() }
+  static var registeredSuiteNames: Set<String> { Set(shared.snapshot().keys) }
 
   static var userPreferencesDirectory: URL {
     FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
       "Library/Preferences", isDirectory: true)
   }
+}
 
-  fileprivate final class Registry: @unchecked Sendable {
-    static let shared = Registry()
-    private let lock = NSLock()
-    private var names: Set<String> = []
+/// Suite names and the directory each one's plist lives in. The directory is stored with the name
+/// so cleanup always deletes from the directory ownership was proven in, never from another one.
+/// Tests make their own instance; only `TestDefaults.shared` has the exit hook.
+final class SuiteRegistry: @unchecked Sendable {
+  private let lock = NSLock()
+  private var suites: [String: URL] = [:]
 
-    private init() {
-      // No captures: `atexit` takes a C function pointer.
-      atexit { Registry.shared.removeAll() }
+  func register(_ name: String, in preferencesDirectory: URL) {
+    lock.lock()
+    suites[name] = preferencesDirectory
+    lock.unlock()
+  }
+
+  func snapshot() -> [String: URL] {
+    lock.lock()
+    defer { lock.unlock() }
+    return suites
+  }
+
+  /// Removes every registered plist from its own directory. Returns how many files it removed.
+  @discardableResult
+  func removeAll() -> Int {
+    var removed = 0
+    for (name, directory) in snapshot() {
+      removed += TestDefaults.removePlists(of: [name], in: directory)
     }
-
-    func register(_ name: String) {
-      lock.lock()
-      names.insert(name)
-      lock.unlock()
-    }
-
-    func snapshot() -> Set<String> {
-      lock.lock()
-      defer { lock.unlock() }
-      return names
-    }
-
-    func removeAll() {
-      lock.lock()
-      let all = names
-      lock.unlock()
-      TestDefaults.removePlists(of: all, in: TestDefaults.userPreferencesDirectory)
-    }
+    return removed
   }
 }

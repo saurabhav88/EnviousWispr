@@ -70,6 +70,31 @@ struct TestDefaultsTests {
     #expect(TestDefaults.registeredSuiteNames.contains(fresh), "a brand-new suite is")
   }
 
+  @Test("cleanup deletes each registered plist from the directory it was registered in")
+  func cleanupUsesTheRegisteredDirectory() throws {
+    let dirA = try Self.tempDirectory()
+    let dirB = try Self.tempDirectory()
+    defer {
+      try? FileManager.default.removeItem(at: dirA)
+      try? FileManager.default.removeItem(at: dirB)
+    }
+    let registry = SuiteRegistry()
+    registry.register("ew-2998-a", in: dirA)
+    registry.register("ew-2998-b", in: dirB)
+    for (name, dir) in [("ew-2998-a", dirA), ("ew-2998-b", dirB)] {
+      try Data("x".utf8).write(to: TestDefaults.plistURL(suite: name, in: dir))
+    }
+    // A same-named file in the OTHER directory was never registered there: it is not ours.
+    let bystander = TestDefaults.plistURL(suite: "ew-2998-a", in: dirB)
+    try Data("x".utf8).write(to: bystander)
+
+    #expect(registry.removeAll() == 2)
+
+    #expect(!FileManager.default.fileExists(atPath: TestDefaults.plistURL(suite: "ew-2998-a", in: dirA).path))
+    #expect(!FileManager.default.fileExists(atPath: TestDefaults.plistURL(suite: "ew-2998-b", in: dirB).path))
+    #expect(FileManager.default.fileExists(atPath: bystander.path), "not registered in this directory")
+  }
+
   @Test("cleanup itself refuses a name that escapes the preferences directory")
   func cleanupRefusesTraversal() throws {
     let parent = try Self.tempDirectory()
