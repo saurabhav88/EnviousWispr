@@ -160,6 +160,8 @@ final class JudgeFake: CorrectionJudging, @unchecked Sendable {
   var requests: [CorrectionJudgeRequest] { lock.withLock { _requests } }
   /// Verdict for every candidate id: true = correction.
   var answer: (Int) -> Bool = { _ in true }
+  /// The score every decision carries (#3101); nil = a scoreless arm.
+  var probability: Double?
   var bypass: CorrectionJudgeBypass?
   private var gate: CheckedContinuation<Void, Never>?
   var holdAnswers = false
@@ -201,10 +203,12 @@ final class JudgeFake: CorrectionJudging, @unchecked Sendable {
     }
     if let bypass { return .bypass(bypass) }
     let answer = self.answer
+    let probability = self.probability
     return .verdict(
       request.candidates.map {
         CorrectionJudgeDecision(
-          id: $0.id, verdict: answer($0.id) ? .correctionAndSafe : .notCorrection)
+          id: $0.id, verdict: answer($0.id) ? .correctionAndSafe : .notCorrection,
+          probability: probability)
       })
   }
 
@@ -593,6 +597,109 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.ended(.focusChanged))
     #expect(telemetry.events.last == .observationEnded(.focusChanged, 1, .native))
     #expect(watcher.isWatching == false)
+  }
+
+  @Test("#3101: weak evidence holds back a correction below the higher score; strong evidence for the same text saves it with no second judge call")
+  func weakEvidenceHeldThenReleased() async throws {
+    let watcher = makeWatcher()
+    judge.probability = 0.80
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+
+    observer.fire(.changed(region: "Ask Saira today"))
+    observer.fire(.settled(region: "Ask Saira today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(telemetry.events.contains(.judged(.rules, .verdict, 1, 0)), "accepted counts both gates")
+    #expect(telemetry.judgedEvidence == [.weak])
+    #expect(presenter.offers.isEmpty, "held back: nothing saved on weak evidence at p 0.80")
+
+    // The same unchanged text now ends in a strong way (a send): saved, not re-judged.
+    observer.fire(.settled(region: "Ask Saira today", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(judge.requests.count == 1)
+    #expect(presenter.offers.first?.canonical == "Saira")
+    // Released once: another strong settle saves nothing more.
+    observer.fire(.settled(region: "Ask Saira today", evidence: .strong))
+    await Task.yield()
+    #expect(presenter.offers.count == 1 && judge.requests.count == 1)
+  }
+
+  @Test("#3101: a held-back fix whose capitals change later is saved with the spelling the text holds at release")
+  func weakHeldSavesCurrentSpelling() async throws {
+    let watcher = makeWatcher()
+    judge.probability = 0.80
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask zorab today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+
+    observer.fire(.changed(region: "Ask saurabh today"))
+    observer.fire(.settled(region: "Ask saurabh today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    observer.fire(.changed(region: "Ask Saurabh today"))
+    observer.fire(.settled(region: "Ask Saurabh today", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(presenter.offers.first?.canonical == "Saurabh", "the spelling at release, not the held lowercase one")
+  }
+
+  @Test("#3101: a held-back fix survives an edit to the NEIGHBOURING word that merges into one run")
+  func weakHeldSurvivesNeighbourEdit() async throws {
+    let watcher = makeWatcher()
+    judge.probability = 0.80
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+
+    observer.fire(.changed(region: "Ask Saira today"))
+    observer.fire(.settled(region: "Ask Saira today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    judge.answer = { _ in false }  // the merged "sarah today -> Saira tomorrow" run is refused
+    observer.fire(.changed(region: "Ask Saira tomorrow"))
+    observer.fire(.settled(region: "Ask Saira tomorrow", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(presenter.offers.first?.canonical == "Saira")
+  }
+
+  @Test("#3101: a held-back fix survives an edit to another word and is saved on the next strong settle")
+  func weakHeldSurvivesAnotherEdit() async throws {
+    let watcher = makeWatcher()
+    judge.probability = 0.80
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah about today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+
+    observer.fire(.changed(region: "Ask Saira about today"))
+    observer.fire(.settled(region: "Ask Saira about today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(presenter.offers.isEmpty)
+    // Another word changes, then the text is sent: Saira is still there.
+    judge.answer = { _ in false }
+    observer.fire(.changed(region: "Ask Saira about tomorrow"))
+    observer.fire(.settled(region: "Ask Saira about tomorrow", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(presenter.offers.first?.canonical == "Saira")
+  }
+
+  @Test("#3101: a send that arrives while the weak-evidence judge call is still running makes its answer strong")
+  func strongEvidenceBeforeTheAnswer() async throws {
+    let watcher = makeWatcher()
+    judge.probability = 0.80
+    judge.holdAnswers = true
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+
+    observer.fire(.changed(region: "Ask Saira today"))
+    observer.fire(.settled(region: "Ask Saira today", evidence: .weak))
+    #expect(await waitUntil { judge.requests.count == 1 })
+    // Sent before the judge answers, then the watch ends.
+    observer.fire(.settled(region: "Ask Saira today", evidence: .strong))
+    observer.fire(.ended(.textboxEmptied))
+    judge.release()
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(judge.requests.count == 1)
+    #expect(telemetry.events.contains(.judged(.rules, .verdict, 1, 1)))
+    #expect(telemetry.judgedEvidence == [.strong])
   }
 
   @Test("a half-typed fix that only deletes letters never reaches the judge and is counted (#3105)")

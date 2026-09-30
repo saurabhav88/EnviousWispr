@@ -86,6 +86,20 @@ package enum PastedRegionEndReason: String, Sendable, Equatable, CaseIterable {
     self == .focusChanged ? PastedRegionTiming.flushMinQuietMs : 0
   }
 
+  /// The evidence a flushed pending edit carries (#3101); nil for the ends
+  /// that never flush. Exhaustive on purpose: a new end reason must choose.
+  package var pendingEvidence: SettleEvidence? {
+    switch self {
+    case .textboxEmptied, .elementDestroyed, .appTerminated, .regionRemoved, .anchorAmbiguous,
+      .editDistanceExceeded, .nextDictationStarted:
+      return .strong
+    case .focusChanged, .ceilingElapsed:
+      return .weak
+    case .settled, .dictatedTextNotFound, .captureUnsupported, .permissionLost:
+      return nil
+    }
+  }
+
   package var flushesPendingEdit: Bool {
     switch self {
     case .textboxEmptied, .focusChanged, .elementDestroyed, .appTerminated, .regionRemoved,
@@ -209,11 +223,29 @@ package struct PastedRegionAnchors: Sendable, Equatable {
 package enum PastedRegionEvent: Sendable, Equatable {
   /// The anchored region now reads `region` (differs from the last report).
   case changed(region: String)
-  /// `settleMs` passed with no further change since the last `changed`.
-  /// Non-terminal: observation continues until an end reason.
-  case settled(region: String)
+  /// `settleMs` passed with no further change since the last `changed`, or a
+  /// pending edit was flushed by an end. Non-terminal: observation continues
+  /// until an end reason. `evidence` is how strongly the observer knows the
+  /// edit is FINISHED (#3101); it defaults to `.weak`, the safe direction.
+  case settled(region: String, evidence: SettleEvidence = .weak)
   /// Observation is over; no further events are delivered.
   case ended(PastedRegionEndReason)
+}
+
+/// How strongly the observer knows a settled edit is finished (#3101). A
+/// half-finished retype and a finished fix followed by an app switch look the
+/// same to the observer (caret at the word, then focus leaves), so no route is
+/// removed: weak evidence makes the watcher demand a higher judge score
+/// (`ObservedCorrectionWatcher.weakEvidenceThreshold`). The app matrix of
+/// 2026-09-30 found a quick app switch after a finished fix is taught only by
+/// the focus-change flush in TextEdit, Chrome, Discord, Word and Obsidian.
+package enum SettleEvidence: String, Sendable, Equatable {
+  /// The caret left the edit, or a send-shaped end (the box emptied or was
+  /// replaced, the element or app went away, the next dictation started).
+  case strong
+  /// Time or focus only: the caret cap, an unusable caret range, a focus
+  /// change, the ceiling, or a lost box (three failed reads, not a proven send).
+  case weak
 }
 
 /// Why `capture` did not start a watch although nothing was wrong with the
@@ -1244,6 +1276,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
     /// malformed.
     var lastValueUTF16Count = 0
     var changedSinceSettled = false
+    /// #3101: the last settle was WEAK evidence and the text has not changed
+    /// since. A strong end that follows (a send, the next dictation) re-emits
+    /// the same region as strong, so a fix the watcher held back on weak
+    /// evidence is learned without a new judge call.
+    var weakSettleAwaitingUpgrade = false
     /// Absolute deadline of the cursor-aware deferral for the current change
     /// revision (`caretCapMs`); nil until the first deferral, cleared on a
     /// new revision.
@@ -1796,6 +1833,24 @@ package final class PastedRegionObserver: PastedRegionObserving {
           if w.changedSinceSettled, watch?.settle == nil {
             armSettle(generation: gen, revision: w.changeRevision)
           }
+          // #3101: after a WEAK settle, a caret that now leaves the unchanged
+          // edit is strong evidence for that same text. The caret deferral
+          // deadline is not this check's: it is set aside and restored.
+          if w.weakSettleAwaitingUpgrade, !w.changedSinceSettled {
+            let deadline = watch?.caretDeadlineMs
+            watch?.caretDeadlineMs = nil
+            let trigger = settleTrigger(generation: gen)
+            watch?.caretDeadlineMs = deadline
+            // The caret read took time: an expired watch ends, it does not upgrade.
+            if endIfPastDeadline(generation: gen) { return .ended }
+            if trigger == .caretLeft, let fresh = watch, fresh.generation == gen,
+              fresh.weakSettleAwaitingUpgrade, !fresh.changedSinceSettled
+            {
+              watch?.weakSettleAwaitingUpgrade = false
+              log?("learn_settle_upgraded reason=caret_left")
+              fresh.onEvent(.settled(region: fresh.lastRegion, evidence: .strong))
+            }
+          }
           return .unchanged
         }
         switch PastedRegionLocator.editDistance(pasted: target.renderedText, region: region) {
@@ -1819,6 +1874,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
         watch?.lastRegionEnd = located.end
         watch?.lastValueUTF16Count = value.utf16.count
         watch?.changedSinceSettled = true
+        watch?.weakSettleAwaitingUpgrade = false
         watch?.lastChangeAtMs = scheduler.nowMs
         watch?.changeRevision &+= 1
         watch?.caretDeadlineMs = nil
@@ -1911,8 +1967,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
       self.watch?.caretDeadlineMs = nil
       self.watch?.settle?.cancel()
       self.watch?.settle = nil
+      self.watch?.weakSettleAwaitingUpgrade = trigger.evidence == .weak
       self.log?("learn_settle trigger=\(trigger.rawValue)")
-      fresh.onEvent(.settled(region: fresh.lastRegion))
+      fresh.onEvent(.settled(region: fresh.lastRegion, evidence: trigger.evidence))
     }
   }
 
@@ -1927,6 +1984,14 @@ package final class PastedRegionObserver: PastedRegionObserving {
     /// overflowing or past the field's last good length. Today's quiet-only
     /// rule. (Focus elsewhere or a failed focus query WAIT instead.)
     case fallbackQuiet
+
+    /// #3101: only a caret that left the edit says the edit is finished.
+    package var evidence: SettleEvidence {
+      switch self {
+      case .caretLeft: return .strong
+      case .cap, .fallbackQuiet: return .weak
+      }
+    }
   }
 
   /// The decision table (Codex r30 §D), evaluated when the quiet interval has
@@ -2017,13 +2082,29 @@ package final class PastedRegionObserver: PastedRegionObserving {
       (reason.flushesPendingEdit || lostBoxFlush) && w.changedSinceSettled && !w.lastRegion.isEmpty
       && w.lastRegion != w.target.renderedText
       && scheduler.nowMs - w.lastChangeAtMs >= minimumAgeMs
+    // #3101: text a WEAK settle already delivered, unchanged since, now ends in
+    // a strong way (a send, the next dictation): deliver it again as strong.
+    // Every strong end upgrades, including a removed, doubled or rewritten
+    // region: a chat send that leaves the composer's placeholder (Discord)
+    // arrives as regionRemoved or editDistanceExceeded. When it was a rewrite
+    // instead, the upgrade saves only what main already saved at the weak
+    // settle, so it is never worse than main (cloud review of PR #3333).
+    let upgrade =
+      !flush && w.weakSettleAwaitingUpgrade && !w.changedSinceSettled
+      && reason.pendingEvidence == .strong && !w.lastRegion.isEmpty
     stop()
     if lostBoxFlush {
       log?(
         "learn_lost_box reason=\(reason.rawValue) flushed=\(flush) reads=\(w.readFailureKinds.joined(separator: ","))"
       )
     }
-    if flush { w.onEvent(.settled(region: w.lastRegion)) }
+    // A lost box is three failed reads, not a proven send: weak (#3101).
+    let evidence: SettleEvidence? = lostBoxFlush ? .weak : reason.pendingEvidence
+    if flush, let evidence { w.onEvent(.settled(region: w.lastRegion, evidence: evidence)) }
+    if upgrade {
+      log?("learn_settle_upgraded reason=\(reason.rawValue)")
+      w.onEvent(.settled(region: w.lastRegion, evidence: .strong))
+    }
     w.onEvent(.ended(reason))
   }
 }

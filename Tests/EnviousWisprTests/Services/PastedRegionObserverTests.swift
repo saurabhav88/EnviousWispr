@@ -1427,7 +1427,7 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list.count == 1, "stale coordinates would read 18 as outside 12...15 and settle")
     ax.selectedRange = .range(location: 8, length: 0)  // in "PS Note:", outside the moved span 15...18
     scheduler.advance(ms: 1500)
-    #expect(e.list.last == .settled(region: "Ask Saira today"))
+    #expect(e.list.last == .settled(region: "Ask Saira today", evidence: .strong))
   }
 
   @Test("the cap or the ceiling crossed inside the caret read is honoured before any settle or re-arm")
@@ -1493,7 +1493,7 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list.count == 1)
     ax.selectedRange = .range(location: 16, length: 0)  // after the space: moved on
     scheduler.advance(ms: 1500)
-    #expect(e.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    #expect(e.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong)])
     #expect(lines.lines.contains("learn_settle trigger=caretLeft"))
     #expect(ax.selectedRangeReads == 3, "one caret read per quiet check")
   }
@@ -1508,7 +1508,7 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list.count == 1)
     ax.selectedRange = .range(location: 0, length: 4)  // "Note" selected
     scheduler.advance(ms: 1500)
-    #expect(e.list.last == .settled(region: "Ask Saira today"))
+    #expect(e.list.last == .settled(region: "Ask Saira today", evidence: .strong))
   }
 
   @Test("an unavailable, malformed or unreadable caret falls back to today's quiet-only settling")
@@ -1526,6 +1526,60 @@ struct PastedRegionObserverWatchTests {
       #expect(e.list.last == .settled(region: "Ask Saira today"), "\(answer)")
       #expect(lines.lines.contains("learn_settle trigger=fallbackQuiet"), "\(answer)")
     }
+  }
+
+  @Test("#3101: a weak settle followed by a send of the unchanged text is delivered again as strong; a later change cancels that")
+  func weakSettleUpgradedByStrongEnd() {
+    let lines = Events()
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
+    let e = Events()
+    startWithFix(o, e)
+    ax.selectedRange = .unavailable
+    scheduler.advance(ms: 1500)
+    #expect(e.list.last == .settled(region: "Ask Saira today", evidence: .weak))
+    ax.reads = [.text("")]  // sent: the box emptied
+    scheduler.advance(ms: 750)
+    #expect(
+      e.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .weak),
+        .settled(region: "Ask Saira today", evidence: .strong), .ended(.textboxEmptied),
+      ])
+    #expect(lines.lines.contains("learn_settle_upgraded reason=textbox_emptied"))
+
+    // The caret leaving the unchanged edit after a weak settle upgrades it too.
+    let o3 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e3 = Events()
+    startWithFix(o3, e3)
+    ax.selectedRange = .range(location: 15, length: 0)  // still at the word: the cap will settle it
+    scheduler.advance(ms: 12_750)
+    #expect(e3.list.last == .settled(region: "Ask Saira today", evidence: .weak))
+    ax.selectedRange = .range(location: 0, length: 0)  // clicked elsewhere
+    scheduler.advance(ms: 750)
+    #expect(e3.list.last == .settled(region: "Ask Saira today", evidence: .strong))
+    #expect(e3.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1)
+    scheduler.advance(ms: 1500)
+    #expect(
+      e3.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1,
+      "upgraded once")
+    o3.stop()
+
+    // A focus change is weak: no upgrade.
+    ax.selectedRange = .unavailable  // a weak settle again, not the caret left by the case above
+    let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e2 = Events()
+    startWithFix(o2, e2)
+    scheduler.advance(ms: 1500)
+    o2.finish(.focusChanged)
+    #expect(e2.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.isEmpty)
+
+    // A send that leaves the composer's placeholder (Discord) ends as
+    // regionRemoved: it upgrades like an emptied box.
+    let o4 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e4 = Events()
+    startWithFix(o4, e4)
+    scheduler.advance(ms: 1500)
+    o4.finish(.regionRemoved)
+    #expect(e4.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1)
   }
 
   @Test("the cap: ten seconds after the first deferral of a revision, the region settles with the caret still inside; a new revision starts a new cap")
@@ -1576,7 +1630,7 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     #expect(
       e.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.textboxEmptied),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(.textboxEmptied),
       ])
   }
 
@@ -1592,7 +1646,7 @@ struct PastedRegionObserverWatchTests {
     #expect(
       e.list == [
         .changed(region: "Ask Saira today"), .changed(region: "Ask Sairah today"),
-        .settled(region: "Ask Sairah today"), .ended(.nextDictationStarted),
+        .settled(region: "Ask Sairah today", evidence: .strong), .ended(.nextDictationStarted),
       ])
     #expect(o.isObserving == false)
     o.finish(.nextDictationStarted)
@@ -1615,7 +1669,7 @@ struct PastedRegionObserverWatchTests {
     o3.finish(.nextDictationStarted)
     #expect(
       e3.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.textboxEmptied),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(.textboxEmptied),
       ])
     #expect(o3.isObserving == false)
   }
@@ -1776,7 +1830,7 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     #expect(
       events.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
         .ended(.textboxEmptied),
       ])
     #expect(observer.isObserving == false)
@@ -1807,7 +1861,7 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     #expect(
       e2.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
         .ended(.appTerminated),
       ])
   }
@@ -1815,10 +1869,16 @@ struct PastedRegionObserverWatchTests {
   @Test("nothing pending, nothing flushed: an emptied box after an already settled edit ends plainly")
   func noPendingEditNoFlush() {
     start()
+    // A caret outside the edit: the settle is strong, so a later send has nothing
+    // to add (a WEAK settle is re-delivered as strong: weakSettleUpgradedByStrongEnd).
+    ax.selectedRange = .range(location: 0, length: 0)
     ax.reads = [.text("Note: Ask Saira today please")]
     scheduler.advance(ms: 750)
     scheduler.advance(ms: 1500)
-    #expect(events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    #expect(
+      events.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
+      ])
     ax.reads = [.text("")]
     scheduler.advance(ms: 750)
     #expect(events.list.last == .ended(.textboxEmptied))
@@ -1849,7 +1909,7 @@ struct PastedRegionObserverWatchTests {
       scheduler.advance(ms: 750)
       let want: [PastedRegionEvent] =
         flushes
-        ? [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(expected)]
+        ? [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(expected)]
         : [.changed(region: "Ask Saira today"), .ended(expected)]
       #expect(e.list == want, "\(read)")
     }
@@ -1876,7 +1936,7 @@ struct PastedRegionObserverWatchTests {
     registration.fire(.valueChanged)
     #expect(
       events.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
         .ended(.textboxEmptied),
       ], "\(events.list)")
 

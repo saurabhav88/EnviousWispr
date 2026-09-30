@@ -4617,17 +4617,20 @@ public final class TelemetryService {
     emitLearnEvent("custom_words.learn_observation_ended", props)
   }
 
-  /// One judge call. `candidates` were sent, `accepted` answered "correction";
-  /// on a bypass `accepted` is 0 and `outcome` names the bypass. `queueWaitMs`
-  /// is the arm's permit wait when the arm measures it; nil means "not
-  /// measured" and the key is OMITTED, never written as zero.
+  /// One judge call. `candidates` were sent, `accepted` passed both gates (a
+  /// "correction" verdict and, on weak evidence, the higher score, #3101); on a
+  /// bypass `accepted` is 0 and `outcome` names the bypass. `queueWaitMs` is
+  /// the arm's permit wait when the arm measures it; nil means "not measured"
+  /// and the key is OMITTED, never written as zero. `evidence` is `strong` or
+  /// `weak`, how the watch knew the edit was finished; no text, no score.
   package func learnJudged(
     arm: LearnFromEditsTelemetry.Arm, outcome: LearnFromEditsTelemetry.JudgeOutcome,
-    candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?, takeID: String? = nil
+    candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?, takeID: String? = nil,
+    evidence: SettleEvidence
   ) {
     var props: [String: Any] = [
       "arm": arm.rawValue, "outcome": outcome.rawValue, "candidates": candidates,
-      "accepted": accepted, "latency_ms": latencyMs,
+      "accepted": accepted, "latency_ms": latencyMs, "evidence": evidence.rawValue,
     ]
     if let queueWaitMs { props["queue_wait_ms"] = queueWaitMs }
     if let takeID { props["take_id"] = takeID }

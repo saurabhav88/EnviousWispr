@@ -25,6 +25,8 @@ final class LearnTelemetrySpy: LearnFromEditsRuntimeTelemetrySink {
 
   /// The take id of every watcher emission, in order (#3105).
   private(set) var takeIDs: [String?] = []
+  /// #3101: the completion evidence each judge call reported.
+  private(set) var judgedEvidence: [SettleEvidence] = []
   /// The loss detail of every ended observation, in order (#3105).
   private(set) var regionDetails: [PastedRegionEndDetail?] = []
   func learnSkipped(reason: T.SkipReason, takeID: String?) {
@@ -44,9 +46,10 @@ final class LearnTelemetrySpy: LearnFromEditsRuntimeTelemetrySink {
   }
   func learnJudged(
     arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int,
-    queueWaitMs: Int?, takeID: String?
+    queueWaitMs: Int?, takeID: String?, evidence: SettleEvidence
   ) {
     takeIDs.append(takeID)
+    judgedEvidence.append(evidence)
     events.append(.judged(arm, outcome, candidates, accepted))
   }
   func learnSaveFailed(reason: T.SaveFailure) { events.append(.saveFailed(reason)) }
