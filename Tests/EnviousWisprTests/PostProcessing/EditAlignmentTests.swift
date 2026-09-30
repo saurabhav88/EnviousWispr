@@ -11,7 +11,9 @@ import Testing
 
   /// "original→replacement" per run, so lists compare as plain strings.
   private func runs(_ pasted: String, _ edited: String) -> [String] {
-    EditAlignment.align(pasted: pasted, edited: edited).runs.map { "\($0.original)→\($0.replacement)" }
+    EditAlignment.align(pasted: pasted, edited: edited).runs.map {
+      "\($0.original)→\($0.replacement)"
+    }
   }
 
   @Test("a single substituted word is one run with its surface text and positions")
@@ -44,7 +46,8 @@ import Testing
     #expect(casing.steps.map(\.label) == [.match, .match, .casing])
     let punct = EditAlignment.align(pasted: "thanks its done", edited: "thanks it's done")
     #expect(punct.runs.isEmpty && punct.dropped.map(\.reason) == [.casingOrPunctuationOnly])
-    // A join changes the word count and is NOT shape-dropped (the judge decides).
+    // A join made only with spaces is NOT shape-dropped (the judge decides);
+    // one made with punctuation is (#3258, EditRunShapeTests).
     #expect(runs("we use post hog daily", "we use PostHog daily") == ["post hog→PostHog"])
   }
 
@@ -136,30 +139,46 @@ import Testing
     #expect(r.original == "Sarah." && r.replacement == "Saira.")
     #expect(r.coreOriginal == "Sarah" && r.coreReplacement == "Saira")
     let q = try #require(
-      EditAlignment.align(pasted: "she said \"pree anka\" today", edited: "she said \"Priyanka\" today").runs.first)
-    #expect(q.original == "\"pree anka\"" && q.coreOriginal == "pree anka" && q.coreReplacement == "Priyanka")
-    // Internal apostrophes, hyphens and identifier punctuation survive.
-    let h = try #require(EditAlignment.align(pasted: "use co operation now", edited: "use co-operation now").runs.first)
-    #expect(h.coreReplacement == "co-operation" && h.coreOriginal == "co operation")
-// Adding only an apostrophe is punctuation-only under the shared shape rule
+      EditAlignment.align(
+        pasted: "she said \"pree anka\" today", edited: "she said \"Priyanka\" today"
+      ).runs.first)
+    #expect(
+      q.original == "\"pree anka\"" && q.coreOriginal == "pree anka"
+        && q.coreReplacement == "Priyanka")
+    // Internal apostrophes, hyphens and identifier punctuation survive. (A
+    // hyphen join with unchanged letters is shape-dropped, #3258; this one
+    // also fixes a letter.)
+    let h = try #require(
+      EditAlignment.align(pasted: "use co operaton now", edited: "use co-operation now").runs.first
+    )
+    #expect(h.coreReplacement == "co-operation" && h.coreOriginal == "co operaton")
+    // Adding only an apostrophe is punctuation-only under the shared shape rule
     // (its → it's is dropped); a lexical fix keeps its internal apostrophe.
-    #expect(EditAlignment.align(pasted: "call oreilly, please", edited: "call O'Reilly, please").dropped.map(\.reason) == [.casingOrPunctuationOnly])
-    let o = try #require(EditAlignment.align(pasted: "call oreily, please", edited: "call O'Reilly, please").runs.first)
+    #expect(
+      EditAlignment.align(pasted: "call oreilly, please", edited: "call O'Reilly, please").dropped
+        .map(\.reason) == [.casingOrPunctuationOnly])
+    let o = try #require(
+      EditAlignment.align(pasted: "call oreily, please", edited: "call O'Reilly, please").runs.first
+    )
     #expect(o.coreReplacement == "O'Reilly" && o.original == "oreily,")
     // Decoration-only edits are dropped with their own reason.
     let deco = EditAlignment.align(pasted: "see ( it", edited: "see ) it")
     #expect(deco.runs.isEmpty && deco.dropped.map(\.reason) == [.decorationOnly])
   }
 
-  @Test("token counts beyond the cell budget are refused as an explicit limit, never as \"no changes\"")
+  @Test(
+    "token counts beyond the cell budget are refused as an explicit limit, never as \"no changes\"")
   func cellBudget() {
     let many = (0..<600).map { "w\($0)" }.joined(separator: " ")  // 601 × 601 cells > budget
     let result = EditAlignment.align(pasted: many, edited: many + " extra")
-    #expect(result.limitExceeded && result.runs.isEmpty && result.dropped.isEmpty && result.steps.isEmpty)
+    #expect(
+      result.limitExceeded && result.runs.isEmpty && result.dropped.isEmpty && result.steps.isEmpty)
     // Just inside the budget still aligns.
     let some = (0..<400).map { "w\($0)" }.joined(separator: " ")
     let ok = EditAlignment.align(pasted: some + " tail", edited: some + " tale")
-    #expect(ok.limitExceeded == false && ok.runs.map { "\($0.original)→\($0.replacement)" } == ["tail→tale"])
+    #expect(
+      ok.limitExceeded == false
+        && ok.runs.map { "\($0.original)→\($0.replacement)" } == ["tail→tale"])
     // One extremely long token is a single cell, not a budget problem.
     let long = String(repeating: "x", count: 50_000)
     let single = EditAlignment.align(pasted: "a \(long) b", edited: "a \(long)y b")

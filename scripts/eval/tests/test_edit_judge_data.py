@@ -282,8 +282,9 @@ def test_shipped_frozen_manifest_matches_the_shipped_files():
 def test_stage_one_shape_drop_matches_the_swift_fixtures():
     # The same pairs `EditRunShapeTests` pins on the Swift side.
     dropped = [("monday", "Monday"), ("figma", "Figma"), ("json", "JSON"), ("Github", "GitHub"), ("its", "it's"), ("hello", "hello!"),
-               ("however", "however,"), ("the ceo", "the CEO"), ("Hello", "hello"), ("amanhã", "Amanhã"), ("sign up", "Sign Up"), ("e-mail", "E-Mail")]
-    kept = [("post hog", "PostHog"), ("e mail", "e-mail"), ("well-known", "well known"), ("git lab", "GitLab"), ("bird", "birds"),
+               ("however", "however,"), ("the ceo", "the CEO"), ("Hello", "hello"), ("amanhã", "Amanhã"), ("sign up", "Sign Up"), ("e-mail", "E-Mail"),
+               ("e mail", "e-mail"), ("well-known", "well known"), ("Miami Illinois", "Miami-Illinois"), ("node js", "node.js"), ("a b testing", "A/B testing"), ("U S", "U.S."), ("hello !", "hello!")]
+    kept = [("post hog", "PostHog"), ("tail scale", "Tailscale"), ("e mail", "email"), ("git lab", "GitLab"), ("bird", "birds"), ("C plus plus", "C++"), ("A T and T", "AT&T"), ("Satz, Bau", "Satzbau"),
             ("Sarah", "Saira"), ("Mueller", "Müller"), ("pree yanka", "Priyanka"), ("tu", "tú"), ("same", "same"), ("", "x"), ("a b", "a b c")]
     # Combining marks (Devanagari matras) are letters to Swift's Character
     # and must stay in the comparison here too: an added matra is a real edit.

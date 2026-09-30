@@ -909,7 +909,7 @@ def main() -> int:
         "encoding": {"contract": "tokenizer-contract.json", "input": "Edit: {original} → {replacement}" + (" | {original spelled} → {replacement spelled}" if args.pair_input == "spell" else ""), "pair_input": args.pair_input, "output": "Sentence: {pasted}", "max_length": contract["maxLength"], "pooling": "CLS"},
         "optimizer": {"name": "AdamW", "lr": args.lr, "weight_decay": 0.01, "batch_size": args.batch_size, "epochs": args.epochs, "class_weights": class_weights, "loss": "cross-entropy"},
         "stopping_rule": ("keep the epoch with the best dev macro-F1 at threshold 0.50 with the stage-1 shape rule applied (same subject as threshold selection); no early stop below epochs" if objective.name == "detection" else "keep the epoch with the best dev macro-F1 over the three classes; no early stop below epochs"),
-        "shape_rule": "EditRunShape-v1 (edit_judge_data.stage_one_shape_drop mirror; parity pinned against the Swift runner before training)" if objective.name == "detection" else None,
+        "shape_rule": "EditRunShape-v2 (edit_judge_data.stage_one_shape_drop mirror; parity pinned against the Swift runner before training)" if objective.name == "detection" else None,
         "calibration_objective": selection_rule_text(objective, bool(cross_rows)),
         "partitions": {n: {"rows": len(rs), "file_sha256": split_manifest["partitions"][n]["file_sha256"]} for n, rs in (("train", train_rows), ("dev", dev_rows), ("calibration", cal_rows))},
         "split_manifest_sha256": data.sha256_file(dev_dir / "split-manifest.json"),
