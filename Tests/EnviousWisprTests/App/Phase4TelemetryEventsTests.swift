@@ -106,7 +106,7 @@ import Testing
 
     @Test("Comprehensive snapshot includes the projected config block")
     func snapshotConfigBlock() {
-      let suite = UserDefaults(suiteName: "P4Snap-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("P4Snap-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       let permissions = PermissionsService(accessibilityReader: { true })
       let builder = StandingSnapshotBuilder(
@@ -131,7 +131,7 @@ import Testing
 
     @Test("Snapshot never leaks a stale private model name under a cloud provider")
     func snapshotStaleCloudCarryoverIsCustom() {
-      let suite = UserDefaults(suiteName: "P4Stale-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("P4Stale-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       // P1: provider is a cloud one but llmModel still holds a private local id
       // (carried over from a prior Ollama selection, before discovery corrected it).
@@ -149,7 +149,7 @@ import Testing
 
     @Test("flushTelemetry drains a pending settings delta before flushing (onBeforeFlush)")
     func flushDrainsPendingSettingsDelta() {
-      let suite = UserDefaults(suiteName: "P4Flush-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("P4Flush-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       settings.onboardingState = .completed
       let telemetry = SettingsChangeTelemetry(settings: settings, emitBaseline: {})
@@ -184,7 +184,7 @@ import Testing
       let keychain = KeychainManager(
         backend: .legacyFiles, legacyStore: FileLegacyKeyStore(storageDirectory: dir))
       let coordinator = LLMModelDiscoveryCoordinator(keychainManager: keychain)
-      let suite = UserDefaults(suiteName: "P4Guard-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("P4Guard-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       let box = Box()
       TelemetryService.shared.testEventHook = { @Sendable e in box.add(e) }

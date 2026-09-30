@@ -59,7 +59,7 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager(
-      defaults: UserDefaults(suiteName: "SM-1914-evict-\(UUID().uuidString)")!)
+      defaults: TestDefaults.suite("SM-1914-evict-\(UUID().uuidString)")!)
     let recorder = EvictionRecorder()
 
     let sync = PipelineSettingsSync(

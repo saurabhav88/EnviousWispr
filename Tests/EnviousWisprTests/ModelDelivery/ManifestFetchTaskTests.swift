@@ -785,10 +785,10 @@ final class DeliveryStubProtocol: URLProtocol {
       manifest: manifest, installDirectory: install, metadataDirectory: metadata)
     let suite = "test.wedge.\(UUID().uuidString)"
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: suite)!, availableDiskBytes: { _ in .max })
+      defaults: TestDefaults.suite(suite)!, availableDiskBytes: { _ in .max })
     let handle = ParakeetDeliveryHandle(
       controller: controller, registration: registration,
-      defaults: UserDefaults(suiteName: suite)!)
+      defaults: TestDefaults.suite(suite)!)
     let adapter = ParakeetEngineAdapter(asrManager: StubParakeetASRManager(), delivery: handle)
 
     DeliveryStubProtocol.reset()

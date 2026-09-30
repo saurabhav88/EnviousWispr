@@ -576,7 +576,7 @@ struct HelpCheckTests {
 
   static func makeStore() -> (FeedbackDraftStore, String) {
     let suite = "HelpCheckTests.\(UUID().uuidString)"
-    return (FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! }), suite)
+    return (FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! }), suite)
   }
 
   @Test("Cards wait for the user; the report saved is the one frozen at Send, with its outcome")

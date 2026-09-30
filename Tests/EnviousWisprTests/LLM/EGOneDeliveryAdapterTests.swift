@@ -301,13 +301,13 @@ import Testing
     try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
 
     let suite = "eg1-integration-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
 
     let registration = try EGOneDeliveryAdapterMappingTests.shardedFixtureRegistration(
       install: install, metadata: metadata)
     // The actor gets its OWN suite instance (region-moved), never the test
     // body's — the ModelDeliveryControllerTests isolation pattern.
-    let controller = ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!)
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
     let adapter = EGOneDeliveryAdapter(
       controller: controller, registration: registration, version: "v2-sharded",
       defaults: store)

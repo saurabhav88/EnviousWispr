@@ -16,7 +16,7 @@ import Testing
 struct FileImportDiscoveryRepairTests {
   private static func freshSettings() -> SettingsManager {
     let suite = "ew.tests.2772.repair.\(UUID().uuidString)"
-    return SettingsManager(defaults: UserDefaults(suiteName: suite)!)
+    return SettingsManager(defaults: TestDefaults.suite(suite)!)
   }
 
   private static func row(
@@ -222,15 +222,15 @@ struct FileImportDiscoveryRepairTests {
   /// Found by the cloud review of PR #2786.
   @Test("an unrecognised stored import provider reads as follow, and a stored none stays none")
   func anUnknownStoredProviderFollows() {
-    let unknown = UserDefaults(suiteName: "SM-2772-unknown-\(UUID().uuidString)")!
+    let unknown = TestDefaults.suite("SM-2772-unknown-\(UUID().uuidString)")!
     unknown.set("provider-from-the-future", forKey: "fileImportLLMProvider")
     #expect(SettingsManager(defaults: unknown).fileImportLLMProvider == nil)
 
-    let off = UserDefaults(suiteName: "SM-2772-off-\(UUID().uuidString)")!
+    let off = TestDefaults.suite("SM-2772-off-\(UUID().uuidString)")!
     off.set(LLMProvider.none.rawValue, forKey: "fileImportLLMProvider")
     #expect(SettingsManager(defaults: off).fileImportLLMProvider == .some(.none))
 
-    let absent = UserDefaults(suiteName: "SM-2772-absent-\(UUID().uuidString)")!
+    let absent = TestDefaults.suite("SM-2772-absent-\(UUID().uuidString)")!
     #expect(SettingsManager(defaults: absent).fileImportLLMProvider == nil)
   }
 }

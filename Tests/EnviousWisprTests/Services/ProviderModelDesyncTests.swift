@@ -45,7 +45,7 @@ import Testing
 struct ProviderModelDesyncTests {
 
   private func freshSettings() -> SettingsManager {
-    SettingsManager(defaults: UserDefaults(suiteName: "SM-2064-\(UUID().uuidString)")!)
+    SettingsManager(defaults: TestDefaults.suite("SM-2064-\(UUID().uuidString)")!)
   }
 
   /// The exact field-observed sequence, at the seam that produced it.
@@ -113,7 +113,7 @@ struct ProviderModelDesyncTests {
   /// launch on a build that had the guard.
   @Test("a persisted desync is repaired at launch, with no user action")
   func persistedDesyncIsRepairedAtLaunch() {
-    let suite = UserDefaults(suiteName: "SM-2064-stuck-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("SM-2064-stuck-\(UUID().uuidString)")!
     // The on-disk state the stuck user was in on v2.4.0.
     suite.set(LLMProvider.gemini.rawValue, forKey: "llmProvider")
     suite.set("llama3.2", forKey: "llmModel")
@@ -164,7 +164,7 @@ struct ProviderModelDesyncTests {
   /// launch.
   @Test("a legitimate cloud model survives launch canonicalization")
   func legitimateCloudSelectionSurvivesLaunch() {
-    let suite = UserDefaults(suiteName: "SM-2064-valid-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("SM-2064-valid-\(UUID().uuidString)")!
     suite.set(LLMProvider.openAI.rawValue, forKey: "llmProvider")
     suite.set("gpt-5.4-mini", forKey: "llmModel")
 

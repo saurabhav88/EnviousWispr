@@ -15,7 +15,7 @@ import Testing
 struct SettingsManagerOllamaTruthTests {
 
   private func freshSettings(seed: ((UserDefaults) -> Void)? = nil) -> SettingsManager {
-    let suite = UserDefaults(suiteName: "SM-1305-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("SM-1305-\(UUID().uuidString)")!
     seed?(suite)
     return SettingsManager(defaults: suite)
   }
@@ -475,7 +475,7 @@ struct SettingsManagerOllamaTruthTests {
   @Test("the swept value survives a reload")
   func sweptValuePersistsAcrossReload() {
     let suiteName = "ew-tests-\(UUID().uuidString)"
-    let suite = UserDefaults(suiteName: suiteName)!
+    let suite = TestDefaults.suite(suiteName)!
     suite.set("gemini", forKey: "llmProvider")
     suite.set("gemini-2.0-flash", forKey: "llmModel")
 

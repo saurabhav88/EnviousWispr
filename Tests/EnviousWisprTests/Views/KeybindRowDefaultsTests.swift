@@ -87,7 +87,7 @@ struct KeybindRowDefaultsTests {
     // The end-to-end version of the above, through the object the app actually reads. Ephemeral
     // suite so nothing touches the host process.
     let name = "ew.keybindDefaultsTest." + UUID().uuidString
-    let suite = UserDefaults(suiteName: name)!
+    let suite = TestDefaults.suite(name)!
     suite.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: suite)
 

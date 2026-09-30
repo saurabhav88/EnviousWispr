@@ -15,7 +15,7 @@ struct EnglishSpellingSettingTests {
 
   private static func freshSuite() -> UserDefaults {
     let name = "ew.english.spelling.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     return defaults
   }

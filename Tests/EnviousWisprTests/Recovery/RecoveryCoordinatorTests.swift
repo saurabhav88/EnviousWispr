@@ -28,7 +28,7 @@ struct RecoveryCoordinatorTests {
 
   private static func freshSettings(crashRecoveryEnabled: Bool) -> SettingsManager {
     let name = "ew.recovery.coord.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
     settings.crashRecoveryEnabled = crashRecoveryEnabled

@@ -134,7 +134,7 @@ import Testing
   @Test func installPushesTheLastDictationBindings() {
     // An isolated store: these four keys must not leak into the shared defaults other suites read.
     let name = "ew.hotkeyControllerInstall." + UUID().uuidString
-    let suite = UserDefaults(suiteName: name)!
+    let suite = TestDefaults.suite(name)!
     suite.removePersistentDomain(forName: name)
     defer { suite.removePersistentDomain(forName: name) }
     let fx = Self.makeFixture(settings: SettingsManager(defaults: suite))

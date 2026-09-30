@@ -51,7 +51,7 @@ import Testing
 
   private func defaults() throws -> (UserDefaults, String) {
     let suite = "eg1-legacy-test-\(UUID().uuidString)"
-    return (try #require(UserDefaults(suiteName: suite)), suite)
+    return (try #require(TestDefaults.suite(suite)), suite)
   }
 
   @discardableResult

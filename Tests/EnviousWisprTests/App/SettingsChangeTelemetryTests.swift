@@ -39,7 +39,7 @@ import Testing
     private func makeHarness(
       onboarding: OnboardingState = .completed
     ) -> (SettingsManager, SettingsChangeTelemetry, DeltaBox, BaselineSpy) {
-      let suite = UserDefaults(suiteName: "SCT-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("SCT-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       settings.onboardingState = onboarding
       let spy = BaselineSpy()
@@ -257,7 +257,7 @@ import Testing
     @MainActor
     @Test("The real settings.snapshot carries toggle_hotkey_identity and no raw key code")
     func realSnapshotCarriesIdentity() {
-      let suite = UserDefaults(suiteName: "SCT-snap-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("SCT-snap-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       let previousHook = TelemetryService.shared.testEventHook
       defer { TelemetryService.shared.testEventHook = previousHook }
@@ -602,7 +602,7 @@ import Testing
 
     @Test("Ollama projection reads the effective ollamaModel, not a stale llmModel")
     func ollamaReadsEffectiveModel() {
-      let suite = UserDefaults(suiteName: "SCT-eff-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("SCT-eff-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       settings.llmProvider = .ollama
       // Simulate the lag: llmModel still holds a cloud id, ollamaModel is the real one.
@@ -614,7 +614,7 @@ import Testing
     @Test("EG-1 projection: published verbatim, lookalikes get the fixed variant label (#1269)")
     func egOneProjectionTiers() {
       func project(_ model: String) -> String? {
-        let suite = UserDefaults(suiteName: "SCT-eg1-\(UUID().uuidString)")!
+        let suite = TestDefaults.suite("SCT-eg1-\(UUID().uuidString)")!
         let settings = SettingsManager(defaults: suite)
         settings.llmProvider = .ollama
         settings.ollamaModel = model
@@ -642,7 +642,7 @@ import Testing
     @Test("Gemini 3.x ids are recognised, and unknown ids still collapse to custom")
     func geminiThreeIsRecognised() {
       func project(_ model: String) -> String? {
-        let suite = UserDefaults(suiteName: "SCT-g3-\(UUID().uuidString)")!
+        let suite = TestDefaults.suite("SCT-g3-\(UUID().uuidString)")!
         let settings = SettingsManager(defaults: suite)
         settings.llmProvider = .gemini
         settings.llmModel = model
@@ -758,7 +758,7 @@ import Testing
 
     @Test("A `:latest` Ollama tag canonicalizes to its catalog name, not custom")
     func ollamaLatestTagCanonicalizes() {
-      let suite = UserDefaults(suiteName: "SCT-canon-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("SCT-canon-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       settings.llmProvider = .ollama
       settings.ollamaModel = "llama3.2:latest"  // standard install tag
@@ -771,7 +771,7 @@ import Testing
 
     @Test("Cloud projection is deny-by-default: stale/private id → custom, known id passes")
     func cloudDenyByDefault() {
-      let suite = UserDefaults(suiteName: "SCT-cloud-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("SCT-cloud-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       settings.llmProvider = .openAI
       // P1 leak scenario: a private Ollama name carried over before discovery
@@ -790,7 +790,7 @@ import Testing
       "Claude projection: compact-dated snapshot normalizes to base id, non-date suffix does not (#158)"
     )
     func claudeDatedSnapshotProjection() {
-      let suite = UserDefaults(suiteName: "SCT-claude-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("SCT-claude-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       settings.llmProvider = .claude
       // A recognized public cloud id passes through verbatim.
@@ -811,7 +811,7 @@ import Testing
 
     @Test("EG-1's fixed literal never leaks into a cloud provider's model")
     func egOneLiteralSweptOnProviderSwitch() {
-      let suite = UserDefaults(suiteName: "SCT-eg1sweep-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("SCT-eg1sweep-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       // Apple Intelligence → EG-1 pins the fixed literal.
       settings.llmProvider = .appleIntelligence

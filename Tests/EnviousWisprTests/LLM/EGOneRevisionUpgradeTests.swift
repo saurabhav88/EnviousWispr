@@ -57,7 +57,7 @@ import Testing
 
   private func defaults() throws -> (UserDefaults, String) {
     let suite = "eg1-revision-test-\(UUID().uuidString)"
-    return (try #require(UserDefaults(suiteName: suite)), suite)
+    return (try #require(TestDefaults.suite(suite)), suite)
   }
 
   /// Writes a REAL `CacheAdmission.AdmissionMarker` for `revision`, and optionally the files it
@@ -962,7 +962,7 @@ import Testing
     let controllerSuite = "eg1-revision-adapter-\(UUID().uuidString)"
     // The actor gets its OWN suite instance, constructed inline so it is region-moved rather than
     // bound into this test's isolation region first — the ModelDeliveryControllerTests pattern.
-    let controller = ModelDeliveryController(defaults: UserDefaults(suiteName: controllerSuite)!)
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(controllerSuite)!)
     defer { UserDefaults.standard.removePersistentDomain(forName: controllerSuite) }
 
     let adapter = EGOneDeliveryAdapter(

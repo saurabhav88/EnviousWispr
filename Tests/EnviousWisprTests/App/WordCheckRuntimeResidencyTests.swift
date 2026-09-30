@@ -36,7 +36,7 @@ struct WordCheckRuntimeResidencyTests {
     let temp = URL(fileURLWithPath: NSTemporaryDirectory())
       .appendingPathComponent("ew-3289-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
-    let flags = try #require(UserDefaults(suiteName: "ew-3289-\(UUID().uuidString)"))
+    let flags = try #require(TestDefaults.suite("ew-3289-\(UUID().uuidString)"))
     let delivery = ModelDeliveryHome(
       engineMutationScope: .live(tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
       manifestBundle: try #require(Bundle(url: Self.resources)), appSupportOverride: temp,

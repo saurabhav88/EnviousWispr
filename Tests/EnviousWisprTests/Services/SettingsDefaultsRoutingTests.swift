@@ -15,7 +15,7 @@ struct SettingsDefaultsRoutingTests {
 
   private static func freshSuite() -> UserDefaults {
     let name = "ew.settingsDefaultsTest." + UUID().uuidString
-    let d = UserDefaults(suiteName: name)!
+    let d = TestDefaults.suite(name)!
     d.removePersistentDomain(forName: name)
     return d
   }
@@ -708,7 +708,7 @@ struct SettingsDefaultsRoutingTests {
   /// green. A user who binds Globe and sees no explanation is the visible symptom.
   @Test("A second claim on the same store returns false")
   func guidanceClaimIsOncePerInstall() {
-    let suite = UserDefaults(suiteName: "GlobeClaim-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("GlobeClaim-\(UUID().uuidString)")!
     let settings = SettingsManager(defaults: suite)
     #expect(settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
     #expect(!settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
@@ -719,8 +719,8 @@ struct SettingsDefaultsRoutingTests {
   /// would pass every other test in this file.
   @Test("A fresh store gets its own claim")
   func guidanceClaimIsPerStore() {
-    let suiteA = UserDefaults(suiteName: "GlobeClaimA-\(UUID().uuidString)")!
-    let suiteB = UserDefaults(suiteName: "GlobeClaimB-\(UUID().uuidString)")!
+    let suiteA = TestDefaults.suite("GlobeClaimA-\(UUID().uuidString)")!
+    let suiteB = TestDefaults.suite("GlobeClaimB-\(UUID().uuidString)")!
     #expect(
       SettingsManager(defaults: suiteA).claimGlobeKeyGuidancePresentation(
         for: ModifierKeyCodes.globe))
@@ -732,7 +732,7 @@ struct SettingsDefaultsRoutingTests {
   /// The claim must survive a relaunch, or the explanation reappears forever.
   @Test("The claim persists across a new SettingsManager on the same store")
   func guidanceClaimPersists() {
-    let suite = UserDefaults(suiteName: "GlobeClaimPersist-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("GlobeClaimPersist-\(UUID().uuidString)")!
     #expect(
       SettingsManager(defaults: suite).claimGlobeKeyGuidancePresentation(
         for: ModifierKeyCodes.globe))
@@ -746,7 +746,7 @@ struct SettingsDefaultsRoutingTests {
   /// Option first would never see the explanation when they later choose Globe.
   @Test("A non-Globe bind does not consume the claim")
   func nonGlobeBindDoesNotConsumeTheClaim() {
-    let suite = UserDefaults(suiteName: "GlobeClaimOther-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("GlobeClaimOther-\(UUID().uuidString)")!
     let settings = SettingsManager(defaults: suite)
 
     #expect(!settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.rightOption))
@@ -767,7 +767,7 @@ struct SettingsDefaultsRoutingTests {
   func claimKeyIsRegisteredAndIsTheKeyWritten() {
     #expect(SettingsManager.unifiedDefaultsKeys.contains("hasClaimedGlobeKeyGuidance"))
 
-    let suite = UserDefaults(suiteName: "GlobeClaimKeyName-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("GlobeClaimKeyName-\(UUID().uuidString)")!
     #expect(suite.object(forKey: "hasClaimedGlobeKeyGuidance") == nil)
     #expect(
       SettingsManager(defaults: suite).claimGlobeKeyGuidancePresentation(

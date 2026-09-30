@@ -94,11 +94,11 @@ import Testing
     try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
 
     let suite = "eg1-activation-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
 
     let registration = try EGOneDeliveryAdapterMappingTests.shardedFixtureRegistration(
       install: install, metadata: metadata)
-    let controller = ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!)
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
     let adapter = EGOneDeliveryAdapter(
       controller: controller, registration: registration, version: "v2-sharded",
       defaults: store)

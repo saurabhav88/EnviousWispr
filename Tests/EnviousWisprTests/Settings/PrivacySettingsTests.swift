@@ -30,7 +30,7 @@ struct PrivacySettingsTests {
   /// flipping again (or reopening the page) shows it; nothing caches a pending flag.
   @Test("Flip and flip back: the notice follows the stored switch on every read")
   func flipAndRevert() {
-    let suite = UserDefaults(suiteName: "ew-3269-privacy-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("ew-3269-privacy-\(UUID().uuidString)")!
     let settings = SettingsManager(defaults: suite)
     let launched = settings.sendCrashReports
     #expect(launched == true)

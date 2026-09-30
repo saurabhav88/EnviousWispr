@@ -30,7 +30,7 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager(
-      defaults: UserDefaults(suiteName: "SM-2649-switch-\(UUID().uuidString)")!)
+      defaults: TestDefaults.suite("SM-2649-switch-\(UUID().uuidString)")!)
     // One coordinator shared by both runtimes, exactly as the app wires it.
     // No manifest and no binary: `activateAndProbe` returns before claiming a
     // stamp, so every stamp counted below is a STOP.

@@ -10,7 +10,7 @@ struct UpdateAvailabilityServiceTests {
   // doesn't bleed between tests or into the host process.
   private static func freshDefaults() -> UserDefaults {
     let suite = "ew.updateBannerTest." + UUID().uuidString
-    let d = UserDefaults(suiteName: suite)!
+    let d = TestDefaults.suite(suite)!
     d.removePersistentDomain(forName: suite)
     return d
   }

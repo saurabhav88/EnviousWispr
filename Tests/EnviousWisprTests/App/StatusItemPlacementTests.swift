@@ -12,7 +12,7 @@ import Testing
 struct StatusItemPlacementTests {
   private static func freshSuite() -> UserDefaults {
     let name = "ew.statusItemPlacement." + UUID().uuidString
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     return defaults
   }

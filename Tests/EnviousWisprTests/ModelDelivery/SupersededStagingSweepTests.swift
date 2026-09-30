@@ -171,7 +171,7 @@ import Testing
     try #require(exists(superseded) && exists(current), "fixture did not stage both directories")
 
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: "sweep-\(UUID().uuidString)")!,
+      defaults: TestDefaults.suite("sweep-\(UUID().uuidString)")!,
       availableDiskBytes: { _ in .max })
     await controller.sweepSupersededStaging(registration)
 
@@ -196,7 +196,7 @@ import Testing
     let superseded = try seedStaging(dirs.metadata, key: "eg_one-eg-1-v2-sharded-q5km")
 
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: "sweep-\(UUID().uuidString)")!,
+      defaults: TestDefaults.suite("sweep-\(UUID().uuidString)")!,
       availableDiskBytes: { _ in .max })
     await controller.sweepSupersededStaging(registration)
 
@@ -215,7 +215,7 @@ import Testing
     let current = try seedStaging(dirs.metadata, key: registration.manifest.identity.cacheKey)
 
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: "sweep-\(UUID().uuidString)")!,
+      defaults: TestDefaults.suite("sweep-\(UUID().uuidString)")!,
       availableDiskBytes: { _ in .max })
     await controller.sweepSupersededStaging(registration)
 
@@ -247,7 +247,7 @@ import Testing
     let deadStaging = try seedStaging(dirs.metadata, key: "eg_one-eg-1-v1-legacy-q5km")
 
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: "sweep-\(UUID().uuidString)")!,
+      defaults: TestDefaults.suite("sweep-\(UUID().uuidString)")!,
       availableDiskBytes: { _ in .max })
 
     // Park v2's attempt inside the validation window so it holds a live task.
@@ -300,7 +300,7 @@ import Testing
     // real fetch to completion instead cost ~3.8s of retry and failover for no
     // extra coverage — the entry is retained either way.
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: "sweep-\(UUID().uuidString)")!,
+      defaults: TestDefaults.suite("sweep-\(UUID().uuidString)")!,
       availableDiskBytes: { _ in 1 })
 
     _ = await controller.ensureModelAvailable(old)
@@ -411,7 +411,7 @@ import Testing
     let drainingStaging = try seedStaging(dirs.metadata, key: draining.manifest.identity.cacheKey)
 
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: "sweep-\(UUID().uuidString)")!,
+      defaults: TestDefaults.suite("sweep-\(UUID().uuidString)")!,
       availableDiskBytes: { _ in .max })
 
     let entered = AsyncStream<Void>.makeStream()
@@ -523,7 +523,7 @@ import Testing
     let oldStaging = try seedStaging(dirs.metadata, key: old.manifest.identity.cacheKey)
 
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: "sweep-\(UUID().uuidString)")!,
+      defaults: TestDefaults.suite("sweep-\(UUID().uuidString)")!,
       availableDiskBytes: { _ in .max })
     await controller.sweepSupersededStaging(current)
     try #require(
@@ -576,7 +576,7 @@ import Testing
 
     // FROZEN: the superseded partials must survive untouched.
     let suiteOff = "sweep-off-\(UUID().uuidString)"
-    let defaultsOff = try #require(UserDefaults(suiteName: suiteOff))
+    let defaultsOff = try #require(TestDefaults.suite(suiteOff))
     defer { UserDefaults().removePersistentDomain(forName: suiteOff) }
     defaultsOff.set(false, forKey: flagKey)
     try #require(
@@ -594,7 +594,7 @@ import Testing
     // THAWED: the identical fixture must be reclaimed. Without this half a
     // permanently-refusing gate reads green.
     let suiteOn = "sweep-on-\(UUID().uuidString)"
-    let defaultsOn = try #require(UserDefaults(suiteName: suiteOn))
+    let defaultsOn = try #require(TestDefaults.suite(suiteOn))
     defer { UserDefaults().removePersistentDomain(forName: suiteOn) }
 
     await ModelDeliveryController(defaults: defaultsOn, availableDiskBytes: { _ in .max })
@@ -617,7 +617,7 @@ import Testing
       dirs.metadata, install: dirs.install, revision: "v3-eg2")
 
     let suite = "sweep-unset-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suite))
+    let defaults = try #require(TestDefaults.suite(suite))
     defer { UserDefaults().removePersistentDomain(forName: suite) }
     try #require(
       defaults.object(forKey: DeliveryFlags.key("enabled", family: .egOne)) == nil,

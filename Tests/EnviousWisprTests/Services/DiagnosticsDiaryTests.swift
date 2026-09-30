@@ -407,7 +407,7 @@ struct DiagnosticsDiaryTests {
   func switchesDoNotGateTheDiary() async throws {
     let directory = Self.tempDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
-    let suite = UserDefaults(suiteName: "ew-3269-diary-\(UUID().uuidString)")!
+    let suite = TestDefaults.suite("ew-3269-diary-\(UUID().uuidString)")!
     let settings = SettingsManager(defaults: suite)
     settings.shareUsageMetrics = false
     settings.sendCrashReports = false

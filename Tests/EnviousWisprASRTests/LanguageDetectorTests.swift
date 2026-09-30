@@ -17,7 +17,7 @@ final class TestClock: LanguageDetectorClock, @unchecked Sendable {
 // Per-test UserDefaults suite so tests do not cross-contaminate or pollute
 // the real defaults domain.
 func makeEphemeralDefaults(_ suite: String = UUID().uuidString) -> UserDefaults {
-  UserDefaults(suiteName: suite)!
+  TestDefaults.suite(suite)!
 }
 
 @Suite("LanguageDetector boundary logic")

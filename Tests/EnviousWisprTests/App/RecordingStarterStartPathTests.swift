@@ -137,7 +137,7 @@ import Testing
     // cannot pollute `UserDefaults.standard` for sibling tests. A fresh suite has
     // no `modelUnloadPolicy` key, so it defaults to `.never` (SettingsDefaultValues).
     let settings = SettingsManager(
-      defaults: UserDefaults(suiteName: "ew-test-\(UUID().uuidString)")!)
+      defaults: TestDefaults.suite("ew-test-\(UUID().uuidString)")!)
     let (overlay, overlayHost) = OverlayTestDouble.headlessDirectorWithHost()
     let permissions = PermissionsService(microphoneReader: { micStatus })
     let lockBox = TestRecordingLockedBox()
