@@ -33,7 +33,8 @@ sys.path.insert(0, str(HERE / "paste_oracles"))
 
 import ax_oracle  # noqa: E402
 import simulate_input  # noqa: E402
-from last_dictation_uat import pasteboard_restore, pasteboard_snapshot, set_clipboard_text  # noqa: E402
+from last_dictation_uat import (  # noqa: E402
+    clipboard_text, pasteboard_restore, pasteboard_snapshot, set_clipboard_text)
 
 POLL_S = 0.005
 TOUR_REFUSED = {"com.mitchellh.ghostty", "com.apple.Terminal", "com.googlecode.iterm2"}
@@ -169,6 +170,10 @@ def one_trial(bundle: str, pid: int, chosen, limit_s: float, route: str = "key")
     # settle: the app's own cascade leaves the same gap between its board write and the key
     time.sleep(0.15)
     require_target(pid, chosen)
+    if clipboard_text() != phrase:
+        # A copy during the settle gap above would paste someone else's text and score it as a
+        # paste that never arrived (Codex round 4).
+        raise RuntimeError(f"{bundle}: clipboard changed before the paste")
     samples = 0
     t0 = time.monotonic()
     if route == "key":

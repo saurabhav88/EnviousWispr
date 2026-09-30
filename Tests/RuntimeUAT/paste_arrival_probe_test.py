@@ -64,14 +64,14 @@ class Read:
 
 def run_one_trial(focus_after_post, arrive: bool, limit_s: float = 0.02,
                   unreadable_after_post: bool = False, front_lost_after_post: bool = False,
-                  front_lost_before_post: bool = False):
+                  front_lost_before_post: bool = False, clipboard_replaced: bool = False):
     """One trial with stubbed AX. `focus_after_post` is the element reported focused once the
     paste is dispatched; `chosen` is the field the person picked."""
     chosen, phrase = "field-A", {}
     state = {"posted": False}
     saved = (probe.ax_oracle.read_focused, probe.ax_oracle.is_frontmost, probe.focused_element,
              probe.same_element, probe.set_clipboard_text, probe.simulate_input.press_key,
-             probe.time.sleep)
+             probe.time.sleep, probe.clipboard_text)
     probe.ax_oracle.read_focused = lambda bundle, pid=None: Read(
         phrase["text"] if arrive and state["posted"] else "",
         ok=not (unreadable_after_post and state["posted"]))
@@ -80,6 +80,7 @@ def run_one_trial(focus_after_post, arrive: bool, limit_s: float = 0.02,
     probe.focused_element = lambda pid: focus_after_post if state["posted"] else chosen
     probe.same_element = lambda a, b: a == b
     probe.set_clipboard_text = lambda text: phrase.update(text=text)
+    probe.clipboard_text = lambda: "someone else's text" if clipboard_replaced else phrase["text"]
     probe.simulate_input.press_key = lambda *a, **k: state.update(posted=True)
     probe.time.sleep = lambda _seconds: None
     try:
@@ -89,7 +90,7 @@ def run_one_trial(focus_after_post, arrive: bool, limit_s: float = 0.02,
     finally:
         (probe.ax_oracle.read_focused, probe.ax_oracle.is_frontmost, probe.focused_element,
          probe.same_element, probe.set_clipboard_text, probe.simulate_input.press_key,
-         probe.time.sleep) = saved
+         probe.time.sleep, probe.clipboard_text) = saved
 
 
 result, error = run_one_trial("field-A", arrive=True)
@@ -121,5 +122,9 @@ check("the app lost the front even when the phrase is read: the run fails",
 result, error = run_one_trial("field-A", arrive=True, front_lost_before_post=True)
 check("the app lost the front before the paste: no paste, the run fails",
       result is None and error is not None and "lost the front before paste" in error)
+
+result, error = run_one_trial("field-A", arrive=False, clipboard_replaced=True)
+check("the clipboard changed before the paste: the run fails, not not_seen",
+      result is None and error is not None and "clipboard changed before the paste" in error)
 
 sys.exit(1 if failures else 0)
