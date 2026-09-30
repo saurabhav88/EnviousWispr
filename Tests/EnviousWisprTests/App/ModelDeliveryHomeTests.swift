@@ -85,7 +85,7 @@ struct ModelDeliveryHomeTests {
   /// `EGOneDeliveryAdapter.remove` does for the base (cloud review of #3227).
   @Test("a switched-off checker family refuses removal and leaves its bytes", arguments: LearnedWordCheckerEngine.allCases)
   func checkerRemovalHonoursTheDeliverySwitch(engine: LearnedWordCheckerEngine) async throws {
-    let suite = try #require(UserDefaults(suiteName: "ew-3105-checker-switch-\(UUID().uuidString)"))
+    let suite = try #require(TestDefaults.suite("ew-3105-checker-switch-\(UUID().uuidString)"))
     suite.set(false, forKey: "modelDelivery.\(engine.checkerFamily.rawValue).enabled")
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
@@ -190,7 +190,7 @@ struct ModelDeliveryHomeTests {
       var refusedSites: [String] = []
     }
     let box = Box()
-    let suite = try #require(UserDefaults(suiteName: "ew-2139-resume-\(UUID().uuidString)"))
+    let suite = try #require(TestDefaults.suite("ew-2139-resume-\(UUID().uuidString)"))
     suite.set(true, forKey: "modelDelivery.parakeet.enabled")
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
@@ -493,7 +493,7 @@ struct ModelDeliveryHomeTests {
   @Test("the preview Download door honours the whisper_kit kill switch, both ways")
   func previewDownloadHonoursTheKillSwitch() async throws {
     func home(enabled: Bool) throws -> ModelDeliveryHome {
-      let suite = try #require(UserDefaults(suiteName: "ew-2137-killswitch-\(UUID().uuidString)"))
+      let suite = try #require(TestDefaults.suite("ew-2137-killswitch-\(UUID().uuidString)"))
       suite.set(enabled, forKey: "modelDelivery.whisper_kit.enabled")
       return ModelDeliveryHome(
         engineMutationScope: .live(
@@ -600,7 +600,7 @@ struct ModelDeliveryHomeTests {
     }
 
     func makeHome(enabled: Bool, box: Box) throws -> ModelDeliveryHome {
-      let suite = try #require(UserDefaults(suiteName: "ew-2139-killswitch-\(UUID().uuidString)"))
+      let suite = try #require(TestDefaults.suite("ew-2139-killswitch-\(UUID().uuidString)"))
       suite.set(enabled, forKey: "modelDelivery.parakeet.enabled")
       return ModelDeliveryHome(
         engineMutationScope: .live(
@@ -668,7 +668,7 @@ struct ModelDeliveryHomeTests {
     }
 
     let box = Box()
-    let suite = try #require(UserDefaults(suiteName: "ew-2389-reread-\(UUID().uuidString)"))
+    let suite = try #require(TestDefaults.suite("ew-2389-reread-\(UUID().uuidString)"))
     suite.set(true, forKey: "modelDelivery.parakeet.enabled")
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
@@ -738,7 +738,7 @@ struct ModelDeliveryHomeTests {
   @Test("a kill-switch-refused preview removal still finishes, both ways")
   func refusedPreviewRemovalStillFinishes() async throws {
     func home(enabled: Bool) throws -> ModelDeliveryHome {
-      let suite = try #require(UserDefaults(suiteName: "ew-2137-rmswitch-\(UUID().uuidString)"))
+      let suite = try #require(TestDefaults.suite("ew-2137-rmswitch-\(UUID().uuidString)"))
       suite.set(enabled, forKey: "modelDelivery.whisper_kit.enabled")
       return ModelDeliveryHome(
         engineMutationScope: .live(

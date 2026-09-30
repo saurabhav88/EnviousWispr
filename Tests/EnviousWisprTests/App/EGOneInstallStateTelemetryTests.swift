@@ -103,12 +103,12 @@ import Testing
     ]).write(to: metadata.appendingPathComponent("\(older).admission.json"))
 
     let suite = "eg1-tel-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
 
     let recorded = Recorded()
     let adapter = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!),
+      controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1", defaults: store)
     let runtime = EGOneRuntime(
       manifest: EGOneManifest(
@@ -198,7 +198,7 @@ import Testing
   @MainActor
   @Test func aPauseCarriedAcrossLaunchesDoesNotReEmitEntry() async throws {
     let suite = "eg1-tel-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
 
     // First launch: enters the paused state and records one entry.
@@ -233,7 +233,7 @@ import Testing
   @MainActor
   @Test func aPauseResolvedWhileClosedEmitsItsExitOnNextLaunch() async throws {
     let suite = "eg1-tel-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
 
     let first = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
@@ -267,7 +267,7 @@ import Testing
   @MainActor
   @Test func aRetryAfterAFailedUpgradeStillReadsAsAnUpgrade() throws {
     let suite = "eg1-upgrade-retry-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
 
     let runtime = EGOneRuntime(
@@ -318,7 +318,7 @@ import Testing
   @MainActor
   @Test func anUpgradeWithNoDisplayVersionSurvivesTheRuntimeJourney() throws {
     let suite = "eg1-unnamed-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
 
     let runtime = EGOneRuntime(

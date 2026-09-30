@@ -19,7 +19,7 @@ struct LearnFromEditsSettingTests {
 
   private static func freshSuite() -> UserDefaults {
     let name = "ew.learn.settings.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     return defaults
   }
@@ -158,7 +158,7 @@ struct LearnFromEditsRowTests {
       return host
     }
     let name = "ew.learn.row.settings.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
     let dir = FileManager.default.temporaryDirectory

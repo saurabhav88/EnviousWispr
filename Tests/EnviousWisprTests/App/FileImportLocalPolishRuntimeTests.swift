@@ -44,7 +44,7 @@ struct FileImportLocalPolishRuntimeTests {
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager(
-      defaults: UserDefaults(suiteName: "SM-2772-runtime-\(UUID().uuidString)")!)
+      defaults: TestDefaults.suite("SM-2772-runtime-\(UUID().uuidString)")!)
     let coordinator = LocalPolishServerCoordinator()
     let egOne = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,

@@ -31,7 +31,7 @@ struct AppearancePillPickerTests {
     _ capability: PillWordsCapability
   ) -> (SettingsManager, PillAppearanceModel) {
     let name = "ew.pillPickerTest." + UUID().uuidString
-    let suite = UserDefaults(suiteName: name)!
+    let suite = TestDefaults.suite(name)!
     suite.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: suite)
     return (settings, PillAppearanceModel(settings: settings, capability: { capability }))

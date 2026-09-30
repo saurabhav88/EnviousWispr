@@ -210,7 +210,7 @@ struct EGOneAdapterLifecycleTests {
   func adapterFaultSkipsBaseRepair() async throws {
     let fixture = try Fixture()
     let suite = "eg1-adapter-repair-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer {
       store.removePersistentDomain(forName: suite)
       fixture.cleanup()
@@ -225,7 +225,7 @@ struct EGOneAdapterLifecycleTests {
       to: install.appendingPathComponent("eg-1-00001-of-00002.gguf"))
     try Data(count: 2000).write(
       to: install.appendingPathComponent("eg-1-00002-of-00002.gguf"))
-    let controller = ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!)
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
     let delivery = EGOneDeliveryAdapter(
       controller: controller, registration: registration, version: nil, defaults: store)
     #expect(await delivery.adoptIfPresent())

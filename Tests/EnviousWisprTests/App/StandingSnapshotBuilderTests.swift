@@ -26,7 +26,7 @@ import Testing
     @MainActor
     @Test("emit() sends settings.snapshot carrying the current settings values")
     func emitSendsSnapshotWithCurrentValues() {
-      let suite = UserDefaults(suiteName: "StandingSnapshotBuilderTests-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("StandingSnapshotBuilderTests-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       let customWords = CustomWordsCoordinator()
       // Phase 3 (#1172): inject a granted Accessibility reader so the posture
@@ -89,7 +89,7 @@ import Testing
     @MainActor
     @Test("A Claude-only saved key makes has_api_keys true (#158)")
     func claudeOnlyKeyMakesHasApiKeysTrue() {
-      let suite = UserDefaults(suiteName: "StandingSnapshotBuilderTests-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("StandingSnapshotBuilderTests-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       let keychain = KeychainManager(
         backend: .legacyFiles,
@@ -123,7 +123,7 @@ import Testing
     @MainActor
     @Test("The snapshot carries the snippet count and whether the keyword is the default")
     func snapshotCarriesSnippetState() {
-      let suite = UserDefaults(suiteName: "StandingSnapshotBuilderTests-\(UUID().uuidString)")!
+      let suite = TestDefaults.suite("StandingSnapshotBuilderTests-\(UUID().uuidString)")!
       let builder = StandingSnapshotBuilder(
         settings: SettingsManager(defaults: suite),
         keychainManager: KeychainManager(),

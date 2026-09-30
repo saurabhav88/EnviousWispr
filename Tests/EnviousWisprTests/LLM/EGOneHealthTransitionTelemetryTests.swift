@@ -31,7 +31,7 @@ import Testing
 
   private func makeRuntime() throws -> (EGOneRuntime, Recorded, () -> Void) {
     let suite = "eg1-health-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     let runtime = EGOneRuntime(
       manifest: EGOneManifest(
         modelName: LLMProvider.egOneModelName, version: "v2-sharded", contextTokens: 4096,
@@ -134,7 +134,7 @@ import Testing
   @Test("a default-equal install seed still resolves health under a manifest blocker")
   func defaultEqualSeedResolvesHealth() throws {
     let suite = "eg1-health-blocker-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
     // No manifest: `activationBlockers == ["manifest_missing"]` from init.
     let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)

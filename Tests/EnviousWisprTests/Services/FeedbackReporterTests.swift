@@ -70,35 +70,35 @@ struct FeedbackReporterTests {
   func draftSurvivesUntilCleared() throws {
     let suite = "FeedbackDraftStoreTests.\(UUID().uuidString)"
     defer { UserDefaults().removePersistentDomain(forName: suite) }
-    let first = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    let first = FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! })
     #expect(first.message == "")
     #expect(first.email == "")
     first.save(message: "it pasted twice in slack", email: "a@b.co")
 
     // A fresh store over the same defaults is what a reopened popover or relaunched app sees.
-    let reopened = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    let reopened = FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! })
     #expect(reopened.message == "it pasted twice in slack")
     #expect(reopened.email == "a@b.co")
 
     // An emptied field is removed, not stored as "".
     reopened.save(message: "still here", email: "")
-    #expect(UserDefaults(suiteName: suite)!.object(forKey: "feedback.draft.email") == nil)
+    #expect(TestDefaults.suite(suite)!.object(forKey: "feedback.draft.email") == nil)
     #expect(reopened.message == "still here")
 
     reopened.clear()
-    #expect(FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! }).message == "")
-    #expect(UserDefaults(suiteName: suite)!.object(forKey: "feedback.draft.message") == nil)
+    #expect(FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! }).message == "")
+    #expect(TestDefaults.suite(suite)!.object(forKey: "feedback.draft.message") == nil)
   }
 
   @Test("A saved report clears the draft only if it still holds what was sent")
   func clearOnlyIfUnchanged() throws {
     let suite = "FeedbackDraftStoreTests.\(UUID().uuidString)"
     defer { UserDefaults().removePersistentDomain(forName: suite) }
-    let store = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    let store = FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! })
     store.save(message: "first report", email: "a@b.co")
 
     // A form reopened while the report was saving, and edited there.
-    let reopened = FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! })
+    let reopened = FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! })
     reopened.save(message: "a second thought", email: "a@b.co")
     #expect(store.clear(ifStill: "first report", email: "a@b.co") == false)
     #expect(reopened.message == "a second thought")
@@ -112,7 +112,7 @@ struct FeedbackReporterTests {
   func settleAfterSave() throws {
     func store() -> (FeedbackDraftStore, String) {
       let suite = "FeedbackDraftStoreTests.\(UUID().uuidString)"
-      return (FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! }), suite)
+      return (FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! }), suite)
     }
 
     // Same form on screen, newer words typed that the store has not caught up with yet.

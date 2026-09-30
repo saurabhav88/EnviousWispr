@@ -13,7 +13,7 @@ struct InputDevicePreferenceReconcilerTests {
 
   private static func freshSuite() -> UserDefaults {
     let name = "ew.inputDevicePreferenceTest." + UUID().uuidString
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     return defaults
   }

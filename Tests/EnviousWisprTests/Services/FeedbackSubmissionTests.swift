@@ -45,7 +45,7 @@ struct FeedbackSubmissionTests {
 
   static func makeStore() -> (FeedbackDraftStore, String) {
     let suite = "FeedbackSubmissionTests.\(UUID().uuidString)"
-    return (FeedbackDraftStore(defaults: { UserDefaults(suiteName: suite)! }), suite)
+    return (FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! }), suite)
   }
 
   /// Sends from opening A, then closes and reopens (opening B) while the save is held.

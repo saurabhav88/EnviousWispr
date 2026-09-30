@@ -60,7 +60,7 @@ struct UpdateCoordinatorProactiveCheckTests {
 
   private func ephemeralDefaults() -> UserDefaults {
     let suite = "issue1019-tests-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = TestDefaults.suite(suite)!
     defaults.removePersistentDomain(forName: suite)
     return defaults
   }

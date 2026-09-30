@@ -17,7 +17,7 @@ struct FileImportPolisherSplitTests {
   /// suite's leftovers.
   private static func freshSettings() -> SettingsManager {
     let suite = "ew.tests.2772.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = TestDefaults.suite(suite)!
     return SettingsManager(defaults: defaults)
   }
 
@@ -168,7 +168,7 @@ struct FileImportPolisherSplitTests {
   @Test("the import choice survives a reload")
   func theChoiceIsPersisted() {
     let suite = "ew.tests.2772.persist.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = TestDefaults.suite(suite)!
     let first = SettingsManager(defaults: defaults)
     first.llmProvider = .gemini
     first.seedFileImportPolishModelsIfNeeded()

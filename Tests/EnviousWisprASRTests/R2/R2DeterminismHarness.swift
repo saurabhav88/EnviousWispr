@@ -46,7 +46,7 @@ final class R2TestClock: LanguageDetectorClock, @unchecked Sendable {
 /// Per-test UserDefaults suite so tests do not cross-contaminate or pollute
 /// the real defaults domain. Each call returns a fresh suite.
 func r2EphemeralDefaults(_ suite: String = "R2-" + UUID().uuidString) -> UserDefaults {
-  guard let defaults = UserDefaults(suiteName: suite) else {
+  guard let defaults = TestDefaults.suite(suite) else {
     fatalError("Failed to create UserDefaults suite '\(suite)' for R2 characterization test")
   }
   return defaults

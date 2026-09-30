@@ -35,8 +35,8 @@ struct LLMDiscoveryAttributionTests {
   /// requests, so the late-completion half of the class rests on the guarded writers rather
   /// than on this suite.
   private static func coordinator() -> LLMModelDiscoveryCoordinator {
-    let defaults = UserDefaults(
-      suiteName: "ew.tests.discovery-attribution.\(UUID().uuidString)")!
+    let defaults = TestDefaults.suite(
+      "ew.tests.discovery-attribution.\(UUID().uuidString)")!
     return LLMModelDiscoveryCoordinator(
       keychainManager: KeychainManager(), cacheDefaults: defaults)
   }
@@ -45,7 +45,7 @@ struct LLMDiscoveryAttributionTests {
   /// founder's real selection.
   private static func settings() -> SettingsManager {
     SettingsManager(
-      defaults: UserDefaults(suiteName: "ew.tests.discovery-attribution.settings.\(UUID().uuidString)")!)
+      defaults: TestDefaults.suite("ew.tests.discovery-attribution.settings.\(UUID().uuidString)")!)
   }
 
   private static func row(_ id: String, provider: LLMProvider) -> LLMModelInfo {
@@ -127,9 +127,9 @@ struct LLMDiscoveryAttributionTests {
 @Suite("Cached catalog pruning and repair (#2884)", .tags(.productOutcome))
 struct LLMDiscoveryCachePruneTests {
   private static func fixture() -> (LLMModelDiscoveryCoordinator, UserDefaults, SettingsManager) {
-    let cache = UserDefaults(suiteName: "ew.tests.2884.cache.\(UUID().uuidString)")!
+    let cache = TestDefaults.suite("ew.tests.2884.cache.\(UUID().uuidString)")!
     let settings = SettingsManager(
-      defaults: UserDefaults(suiteName: "ew.tests.2884.settings.\(UUID().uuidString)")!)
+      defaults: TestDefaults.suite("ew.tests.2884.settings.\(UUID().uuidString)")!)
     return (
       LLMModelDiscoveryCoordinator(keychainManager: KeychainManager(), cacheDefaults: cache),
       cache, settings
@@ -224,8 +224,8 @@ struct LLMDiscoveryCachePruneTests {
   /// language is stale. Loading the cache recomputes the row from the local availability check.
   @Test("an Apple Intelligence cache load replaces a stale cached row with a fresh one")
   func appleIntelligenceCacheLoadIsFresh() throws {
-    let defaults = UserDefaults(
-      suiteName: "ew.tests.discovery-attribution.ai.\(UUID().uuidString)")!
+    let defaults = TestDefaults.suite(
+      "ew.tests.discovery-attribution.ai.\(UUID().uuidString)")!
     let stale = LLMModelInfo(
       id: "apple-intelligence", displayName: "Stale label from an old cache",
       provider: .appleIntelligence, isAvailable: true, isRemote: false)
@@ -234,7 +234,7 @@ struct LLMDiscoveryCachePruneTests {
       keychainManager: KeychainManager(), cacheDefaults: defaults)
 
     let settings = SettingsManager(
-      defaults: UserDefaults(suiteName: "ew.tests.discovery-attribution.ai.settings.\(UUID().uuidString)")!)
+      defaults: TestDefaults.suite("ew.tests.discovery-attribution.ai.settings.\(UUID().uuidString)")!)
     c.loadCachedModels(for: .appleIntelligence, settings: settings, surface: .dictation)
 
     #expect(c.discoveredModels.count == 1)

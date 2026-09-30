@@ -36,7 +36,7 @@ import Testing
     /// A SettingsManager backed by a fresh ephemeral suite (never touches the real
     /// shared store).
     private func makeSettings() -> SettingsManager {
-      SettingsManager(defaults: UserDefaults(suiteName: "ewtest.\(UUID().uuidString)")!)
+      SettingsManager(defaults: TestDefaults.suite("ewtest.\(UUID().uuidString)")!)
     }
 
     @Test("abandon fires once with screen/step/reason/source payload")
@@ -183,7 +183,7 @@ import Testing
 
     @Test("SettingsManager backfills everCompleted from the legacy key at init")
     func everCompletedBackfillsFromLegacyKey() {
-      let d = UserDefaults(suiteName: "ewtest.\(UUID().uuidString)")!
+      let d = TestDefaults.suite("ewtest.\(UUID().uuidString)")!
       d.set(true, forKey: "hasCompletedOnboarding")  // completed before the new key existed
       let s = SettingsManager(defaults: d)  // init backfills
       #expect(s.onboardingEverCompleted == true)

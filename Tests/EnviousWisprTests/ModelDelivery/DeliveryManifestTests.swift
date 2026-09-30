@@ -639,7 +639,7 @@ enum ManifestFixture {
 @Suite struct DeliveryFlagsTests {
   private func defaults() -> UserDefaults {
     let suite = "test.modelDelivery.\(UUID().uuidString)"
-    let d = UserDefaults(suiteName: suite)!
+    let d = TestDefaults.suite(suite)!
     d.removePersistentDomain(forName: suite)
     return d
   }

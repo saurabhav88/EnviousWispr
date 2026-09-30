@@ -44,7 +44,7 @@ struct LearnFromEditsCompositionTests {
       .appendingPathComponent("ew-learn-composition-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let name = "ew.learn.composition.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
     let customWords = CustomWordsCoordinator(

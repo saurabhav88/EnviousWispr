@@ -40,7 +40,7 @@ struct AppearanceRenderHarness {
 
   private static func model(_ capability: PillWordsCapability) -> (SettingsManager, PillAppearanceModel) {
     let name = "ew.appearanceRender." + UUID().uuidString
-    let suite = UserDefaults(suiteName: name)!
+    let suite = TestDefaults.suite(name)!
     suite.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: suite)
     return (settings, PillAppearanceModel(settings: settings, capability: { capability }))

@@ -28,7 +28,7 @@ struct LearnFromEditsWiringTests {
   /// Composes the real wiring over fakes; `cleanup` is the seam under test.
   private func compose(dir: URL, cleanup: LegacyProposalLedgerCleanup) -> Fixture {
     let name = "ew.learn.wiring.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
     let customWords = CustomWordsCoordinator(

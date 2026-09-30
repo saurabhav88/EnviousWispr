@@ -26,7 +26,7 @@ import Testing
     /// reading the real store would make these assertions depend on whatever
     /// delivery flags a developer happens to have set.
     private func testDefaults() -> UserDefaults {
-      UserDefaults(suiteName: "ew-2135-local-log-\(UUID().uuidString)") ?? .standard
+      TestDefaults.suite("ew-2135-local-log-\(UUID().uuidString)") ?? .standard
     }
 
     /// Pins the EXACT line for every case the enum currently has.

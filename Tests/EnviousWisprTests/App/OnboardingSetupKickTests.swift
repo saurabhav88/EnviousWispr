@@ -28,7 +28,7 @@ import Testing
     /// A SettingsManager backed by a fresh ephemeral suite (never touches the
     /// real shared store).
     private func makeSettings() -> SettingsManager {
-      SettingsManager(defaults: UserDefaults(suiteName: "ewtest.\(UUID().uuidString)")!)
+      SettingsManager(defaults: TestDefaults.suite("ewtest.\(UUID().uuidString)")!)
     }
 
     private func makeReadyViewModel() -> OnboardingV2ViewModel {

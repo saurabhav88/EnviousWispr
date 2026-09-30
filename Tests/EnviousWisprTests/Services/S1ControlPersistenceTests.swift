@@ -12,7 +12,7 @@ import Testing
 struct S1ControlPersistenceTests {
 
   private func freshSuite() -> UserDefaults {
-    UserDefaults(suiteName: "S1Control-\(UUID().uuidString)")!
+    TestDefaults.suite("S1Control-\(UUID().uuidString)")!
   }
 
   @Test("a fresh install runs under the shipped control line")

@@ -68,16 +68,16 @@ import Testing
   }
 
   /// Fresh suite per test. Returns the NAME; each use site constructs its
-  /// own `UserDefaults(suiteName:)` instance so the one sent into the actor
+  /// own `TestDefaults.suite(_:)` instance so the one sent into the actor
   /// is moved (region isolation), never shared with the test body.
   private func testDefaultsSuite() -> String {
     let suite = "test.controller.\(UUID().uuidString)"
-    UserDefaults(suiteName: suite)!.removePersistentDomain(forName: suite)
+    TestDefaults.suite(suite)!.removePersistentDomain(forName: suite)
     return suite
   }
 
   private func testDefaults() -> UserDefaults {
-    UserDefaults(suiteName: testDefaultsSuite())!
+    TestDefaults.suite(testDefaultsSuite())!
   }
 
   private func seedValidCache(_ registration: DeliveryRegistration) throws {
@@ -230,8 +230,8 @@ import Testing
     try seedValidCache(registration)
     let suite = testDefaultsSuite()
     let controller = ModelDeliveryController(
-      defaults: UserDefaults(suiteName: suite)!, availableDiskBytes: { _ in .max })
-    let defaults = UserDefaults(suiteName: suite)!
+      defaults: TestDefaults.suite(suite)!, availableDiskBytes: { _ in .max })
+    let defaults = TestDefaults.suite(suite)!
     #expect(await controller.ensureModelAvailable(registration) == .admitted)
 
     defaults.set(true, forKey: "modelDelivery.parakeet.forceRevalidate")

@@ -16,7 +16,7 @@ struct SettingsManagerLastProviderTests {
 
   private static func freshSuite() -> UserDefaults {
     let name = "ew.lastProviderTest." + UUID().uuidString
-    let d = UserDefaults(suiteName: name)!
+    let d = TestDefaults.suite(name)!
     d.removePersistentDomain(forName: name)
     return d
   }

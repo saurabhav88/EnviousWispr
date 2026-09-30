@@ -18,7 +18,7 @@ import Testing
 
   private func store(_ name: String) throws -> UserDefaults {
     let suite = "com.enviouswispr.tests.2123.\(name).\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suite))
+    let defaults = try #require(TestDefaults.suite(suite))
     return defaults
   }
 

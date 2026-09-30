@@ -174,7 +174,7 @@ private final class HideCountBox {
 /// the real defaults domain. Mirrors the pattern in `LanguageDetectorTests`.
 @MainActor
 private func makeEphemeralDefaults(_ suite: String = UUID().uuidString) -> UserDefaults {
-  UserDefaults(suiteName: suite)!
+  TestDefaults.suite(suite)!
 }
 
 /// Records the languages handed to the accepted-language owner, in order.

@@ -78,9 +78,9 @@ import Testing
 
     let suite = "eg1-seed-\(UUID().uuidString)"
     let adapter = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!),
+      controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1",
-      defaults: UserDefaults(suiteName: suite)!)
+      defaults: TestDefaults.suite(suite)!)
 
     let published = Published()
     adapter.observeInstallState { published.append($0) }
@@ -108,9 +108,9 @@ import Testing
 
     let suite = "eg1-seed-\(UUID().uuidString)"
     let adapter = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!),
+      controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1",
-      defaults: UserDefaults(suiteName: suite)!)
+      defaults: TestDefaults.suite(suite)!)
 
     let published = Published()
     adapter.observeInstallState { published.append($0) }
@@ -150,9 +150,9 @@ import Testing
     try Data([0x01, 0x02, 0x03]).write(to: staging.appendingPathComponent("partial.bin"))
 
     let suite = "eg1-guard-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     let adapter = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!),
+      controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1", defaults: store)
     let runtime = EGOneRuntime(
       manifest: EGOneManifest(
@@ -203,10 +203,10 @@ import Testing
     }
 
     let suite = "eg1-guard-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
     let adapter = EGOneDeliveryAdapter(
-      controller: ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!),
+      controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1", defaults: store)
     let runtime = EGOneRuntime(
       manifest: runtimeManifest(), serverBinaryURL: nil, delivery: adapter, defaults: store)
@@ -249,9 +249,9 @@ import Testing
       try Data(count: Int(file.sizeBytes)).write(to: url)
     }
     let suite = "eg1-seed-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
-    let controller = ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!)
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
     let admitted = await controller.admitIfComplete(registration)
     try #require(admitted == true, "fixture cache was not admitted, so the test proves nothing")
 
@@ -293,9 +293,9 @@ import Testing
       install: dirs.install, metadata: dirs.metadata)
 
     let suite = "eg1-replay-\(UUID().uuidString)"
-    let store = try #require(UserDefaults(suiteName: suite))
+    let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
-    let controller = ModelDeliveryController(defaults: UserDefaults(suiteName: suite)!)
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
 
     let entered = AsyncStream<Void>.makeStream()
     let release = AsyncStream<Void>.makeStream()

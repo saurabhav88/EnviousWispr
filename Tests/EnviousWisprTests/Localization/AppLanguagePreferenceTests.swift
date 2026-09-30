@@ -11,7 +11,7 @@ struct AppLanguagePreferenceTests {
     AppLanguagePreference, UserDefaults, String
   ) {
     let suite = "AppLanguagePreferenceTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = TestDefaults.suite(suite)!
     return (
       AppLanguagePreference(defaults: defaults, domain: suite, shipped: shipped), defaults, suite
     )
