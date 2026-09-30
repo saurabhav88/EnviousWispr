@@ -326,7 +326,7 @@ public final class FileImportRunner {
 
 /// Why a part could not run at all, as distinct from a part that ran and could
 /// not be polished.
-public enum FileImportRunnerError: Error, Equatable, Sendable {
+package enum FileImportRunnerError: Error, Equatable, Sendable {
   /// `process` was called before `freeze`. A programming error, not a user one.
   case notConfigured
 }

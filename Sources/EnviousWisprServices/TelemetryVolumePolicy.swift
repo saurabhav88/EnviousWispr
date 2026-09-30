@@ -26,7 +26,7 @@ import Foundation
 /// ten), exactly as posthog-js stores it, so an estimated total is
 /// `sum(1 / $sample_threshold)` with unsampled rows weighted one. Owner of the reading rules:
 /// `.claude/knowledge/analytics-operations.md` RULE: weight-sampled-rows-by-their-threshold.
-public enum TelemetryVolumePolicy {
+package enum TelemetryVolumePolicy {
 
   /// Bumped whenever a rule below changes what leaves the Mac. Stamped on EVERY kept row so
   /// a query can floor by policy rather than by app version.
@@ -41,14 +41,14 @@ public enum TelemetryVolumePolicy {
   /// 5: #3106 PR A, `paste.landing_observed` re-vocabularied by the shared reader
   ///    (`found`/`absent`/`no_target`/`cannot_read`/`inconclusive`, plus the late check); only an
   ///    early `found` is sampled. Rows below 5 carry the old vocabulary: read the two apart.
-  public static let policyVersion = 5
-  public static let policyVersionKey = "telemetry_policy_version"
+  package static let policyVersion = 5
+  package static let policyVersionKey = "telemetry_policy_version"
 
   /// Percent of matching happy-path rows that are KEPT. One rate on purpose: a table of
   /// rates is a table nobody re-reads.
-  public static let sampleThresholdPercent = 10
+  package static let sampleThresholdPercent = 10
 
-  public enum Decision: Equatable, Sendable {
+  package enum Decision: Equatable, Sendable {
     /// Leaves as-is (plus the policy stamp).
     case keep
     /// Leaves with the sampling stamps; the row won its bucket.
@@ -85,7 +85,7 @@ public enum TelemetryVolumePolicy {
 
   // MARK: - Decision
 
-  public static func decide(event: String, properties: [String: Any], uuid: UUID) -> Decision {
+  package static func decide(event: String, properties: [String: Any], uuid: UUID) -> Decision {
     if let sampled = sampledDecision(event: event, properties: properties) {
       return sampled(uuid)
     }
@@ -105,7 +105,7 @@ public enum TelemetryVolumePolicy {
   }
 
   /// Applies `decide` and returns the properties to send, or nil when the row is dropped.
-  public static func apply(event: String, properties: [String: Any], uuid: UUID) -> [String: Any]? {
+  package static func apply(event: String, properties: [String: Any], uuid: UUID) -> [String: Any]? {
     switch decide(event: event, properties: properties, uuid: uuid) {
     case .drop:
       return nil

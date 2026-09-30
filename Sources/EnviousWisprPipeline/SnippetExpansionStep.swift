@@ -8,7 +8,7 @@ import OSLog
 ///
 /// `@MainActor` because the only real implementation asks `ClipboardCleanup`, which owns clipboard
 /// state on the main actor.
-public typealias ClipboardTextReader = @MainActor () -> String?
+package typealias ClipboardTextReader = @MainActor () -> String?
 
 /// Substitutes each fired snippet for a sentinel, FIRST in the post-ASR chain (#628).
 ///

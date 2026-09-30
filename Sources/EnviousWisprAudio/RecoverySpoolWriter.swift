@@ -23,7 +23,7 @@ public protocol RecoverySpoolFileSink {
   func close()
 }
 
-public enum RecoverySpoolWriterError: Error, Equatable {
+package enum RecoverySpoolWriterError: Error, Equatable {
   case openFailed(Int32)
   case notOpen
   case syncFailed(Int32)
@@ -35,7 +35,7 @@ public enum RecoverySpoolWriterError: Error, Equatable {
 /// `writeQueue`; only the `healthy`/`pendingBytes` backpressure flags are read
 /// off-queue, behind a lock. Hence `@unchecked Sendable` — mutable state is
 /// either serial-queue-confined or lock-protected.
-public final class RecoverySpoolWriter: @unchecked Sendable {
+package final class RecoverySpoolWriter: @unchecked Sendable {
   private struct BackpressureState {
     var healthy = true
     var pendingBytes = 0
@@ -66,7 +66,7 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
   ///   - maxPendingBytes: backpressure cap. When more than this many bytes of
   ///     un-written audio queue up (the disk can't keep pace), spooling stops
   ///     so the audio path is never throttled. Default ~4 MB (~60 s at 64 KB/s).
-  public init(
+  package init(
     recoverySessionID: String,
     cipher: RecoverySpoolCipher,
     settings: RecordingSettingsSnapshot,
@@ -89,7 +89,7 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
   }
 
   /// Convenience initializer writing to a real file at `spoolURL` (0600).
-  public convenience init(
+  package convenience init(
     recoverySessionID: String,
     spoolURL: URL,
     cipher: RecoverySpoolCipher,
@@ -113,10 +113,10 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
   /// True until the first unrecoverable failure (open/write/encrypt error or
   /// backpressure shed). Once false, the spool stops and the prefix on disk is
   /// final.
-  public var isHealthy: Bool { state.withLock { $0.healthy } }
+  package var isHealthy: Bool { state.withLock { $0.healthy } }
 
   /// Open the file and write the header (magic + encrypted settings block).
-  public func start() {
+  package func start() {
     writeQueue.async { [self] in
       do {
         let encryptedSettings = try cipher.sealSettings(settings)
@@ -137,7 +137,7 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
 
   /// Encrypt and append a chunk of captured samples. Fail-open and
   /// load-shedding: returns immediately, never throws, never blocks the caller.
-  public func append(_ samples: [Float]) {
+  package func append(_ samples: [Float]) {
     guard !samples.isEmpty else { return }
     let size = samples.count * MemoryLayout<Float>.size
 
@@ -174,7 +174,7 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
 
   /// Durably flush the bytes written so far (the durable-checkpoint cadence in
   /// PR1 calls this). Best-effort.
-  public func flush() {
+  package func flush() {
     writeQueue.async { [self] in
       guard isHealthy else { return }
       try? sink.sync()
@@ -184,7 +184,7 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
   /// Write the terminal marker frame, fsync, and close. After this the spool is
   /// complete and the host may recover (or, on a clean stop, delete) it.
   /// `completion` runs on the write queue after close.
-  public func finalize(
+  package func finalize(
     reason: RecoverySpoolTerminationReason, completion: (@Sendable () -> Void)? = nil
   ) {
     writeQueue.async { [self] in
@@ -219,7 +219,7 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
   /// "this writer will never touch the file again," never "wrote successfully."
   /// Must not be read as marker-persistence confirmation — that is a separate,
   /// later check (the discard marker's own durability, not this ack).
-  public func finalize(
+  package func finalize(
     reason: RecoverySpoolTerminationReason,
     notifying completion: @escaping @MainActor @Sendable () -> Void
   ) {
@@ -233,35 +233,35 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
 
 /// Production sink: appends to a real file opened at 0600, flushed with
 /// `F_FULLFSYNC` (the only durable flush on macOS).
-public final class FileHandleSpoolSink: RecoverySpoolFileSink {
+package final class FileHandleSpoolSink: RecoverySpoolFileSink {
   private let url: URL
   private var handle: FileHandle?
   private var fileDescriptor: Int32 = -1
 
-  public init(url: URL) {
+  package init(url: URL) {
     self.url = url
   }
 
-  public func open() throws {
+  package func open() throws {
     let descriptor = Foundation.open(url.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
     guard descriptor >= 0 else { throw RecoverySpoolWriterError.openFailed(errno) }
     fileDescriptor = descriptor
     handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
   }
 
-  public func write(_ data: Data) throws {
+  package func write(_ data: Data) throws {
     guard let handle else { throw RecoverySpoolWriterError.notOpen }
     try handle.write(contentsOf: data)
   }
 
-  public func sync() throws {
+  package func sync() throws {
     guard fileDescriptor >= 0 else { throw RecoverySpoolWriterError.notOpen }
     if fcntl(fileDescriptor, F_FULLFSYNC) == -1 {
       throw RecoverySpoolWriterError.syncFailed(errno)
     }
   }
 
-  public func close() {
+  package func close() {
     try? handle?.close()
     handle = nil
     fileDescriptor = -1

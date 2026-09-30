@@ -13,20 +13,20 @@ import Foundation
 /// unreachable as a frontmost application: `com.enviouswispr.asrservice[.dev]` is an XPC service
 /// with no UI, and the test hosts (`com.enviouswispr.tests`, `com.enviouswispr.asrtests`) build
 /// products that carry the PRODUCTION identifier, so they are already covered by `production`.
-public enum AppBundleIdentity {
+package enum AppBundleIdentity {
   /// The shipped app.
-  public static let production = "com.enviouswispr.app"
+  package static let production = "com.enviouswispr.app"
   /// The development build, which runs side by side with the shipped app on this machine.
-  public static let development = "com.enviouswispr.app.dev"
+  package static let development = "com.enviouswispr.app.dev"
 
   /// Both, as one family.
-  public static let all: Set<String> = [production, development]
+  package static let all: Set<String> = [production, development]
 
   /// Whether an identifier belongs to this application, whichever build is asking.
   ///
   /// Takes an optional because every real caller reads it off an `NSRunningApplication`, where it is
   /// optional — and a missing identifier is NOT ours, since we always have one.
-  public static func isOurs(_ bundleIdentifier: String?) -> Bool {
+  package static func isOurs(_ bundleIdentifier: String?) -> Bool {
     guard let bundleIdentifier else { return false }
     return all.contains(bundleIdentifier)
   }
