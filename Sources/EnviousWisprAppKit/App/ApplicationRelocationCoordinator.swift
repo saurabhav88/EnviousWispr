@@ -69,10 +69,10 @@ public enum ApplicationLocationState: Equatable, Sendable {
 /// conditions rather than calling Sparkle's internal `SUHost` or the private
 /// `SecTranslocate*` SPI (no public SDK header, no macOS 14–26 availability
 /// contract).
-public struct ApplicationLocationDetector: Sendable {
-  public init() {}
+struct ApplicationLocationDetector: Sendable {
+  init() {}
 
-  public func state(for bundleURL: URL) -> ApplicationLocationState {
+  func state(for bundleURL: URL) -> ApplicationLocationState {
     let standardizedPath = bundleURL.standardizedFileURL.path
     // Path-segment match, not substring — a user folder literally named
     // "AppTranslocation" elsewhere in the path must not false-positive.
@@ -343,7 +343,7 @@ public struct RelocationEnvironment: Sendable {
 
 /// Persists the "Not Now" decline so healthy users are not nagged. Backed by
 /// `UserDefaults` in production; a fake in tests.
-public protocol RelocationSuppressionStore: Sendable {
+protocol RelocationSuppressionStore: Sendable {
   func lastDecline() -> (at: Date, version: String)?
   func recordDecline(at: Date, version: String)
   func clear()
@@ -351,7 +351,7 @@ public protocol RelocationSuppressionStore: Sendable {
 
 /// Presents the one-click prompt and (later) progress/failure surfaces. Live
 /// impl uses `NSAlert`; tests inject a scripted choice.
-@MainActor public protocol RelocationPresenting {
+@MainActor protocol RelocationPresenting {
   func present() async -> RelocationChoice
   func showProgress()
   func dismissProgress()
@@ -361,7 +361,7 @@ public protocol RelocationSuppressionStore: Sendable {
 /// Copies + installs the bundle into the destination, resolving any existing
 /// copy safely (atomic replace / backup-restore, never Trash-first). Runs its
 /// blocking filesystem work off the main actor.
-public protocol ApplicationMoving: Sendable {
+protocol ApplicationMoving: Sendable {
   func install(
     source: URL, destination: URL,
     expectedBundleIdentifier: String, currentVersion: String
@@ -382,7 +382,7 @@ public protocol RelocationRelaunching: Sendable {
 /// Waits (signal-based, bounded) for the relaunched copy to write its health
 /// ack. Returns true only when the new instance reports healthy at the exact
 /// destination for THIS attempt.
-public protocol RelocationHandshaking: Sendable {
+protocol RelocationHandshaking: Sendable {
   func awaitAck(
     attemptID: String, destination: URL, expectedBundleVersion: String, timeout: TimeInterval
   ) async -> RelocationAckOutcome
@@ -401,7 +401,7 @@ public protocol RelocationHandshaking: Sendable {
 
 /// Bounded `update.relocation_*` telemetry. Live impl forwards to
 /// `TelemetryService` (also `@MainActor`) synchronously; tests record.
-@MainActor public protocol RelocationTelemetrySink {
+@MainActor protocol RelocationTelemetrySink {
   func offered(reason: String, destinationScope: String)
   func accepted(reason: String, destinationScope: String, attemptID: String)
   func declined(reason: String)

@@ -13,12 +13,12 @@ import Foundation
 /// (one state stream, two renderers — D6). A narrow home in the #763
 /// direction; the composition root holds it as one `let`.
 @Observable @MainActor
-public final class ModelDeliveryHome {
-  public let controller = ModelDeliveryController()
+final class ModelDeliveryHome {
+  let controller = ModelDeliveryController()
   /// Nil when the bundled manifest failed to load — a can't-happen-in-release
   /// condition (unit-tested against the bundled resource); the Parakeet path
   /// then runs legacy delivery, never crashes.
-  public private(set) var parakeetHandle: ParakeetDeliveryHandle?
+  private(set) var parakeetHandle: ParakeetDeliveryHandle?
   private var parakeetIdentity: ModelIdentity?
   private var parakeetRegistration: DeliveryRegistration?
 
@@ -27,8 +27,8 @@ public final class ModelDeliveryHome {
   /// `WhisperKit.download()`), so a nil handle means the multilingual engine
   /// honestly reports "not installed" rather than fetching by an unverified
   /// route. Unit-tested against the bundled resource.
-  public private(set) var whisperKitHandle: DeliveredModelHandle?
-  public private(set) var whisperKitRegistration: DeliveryRegistration?
+  private(set) var whisperKitHandle: DeliveredModelHandle?
+  private(set) var whisperKitRegistration: DeliveryRegistration?
 
   /// #2108 (epic #2077 chunk 4). The SECOND artifact in the `whisperKit` family:
   /// the small multilingual model Live Preview offers as the universal
@@ -44,8 +44,8 @@ public final class ModelDeliveryHome {
   /// from a limb. The manifest's token is documentary (`DeliveryManifest`
   /// decodes it as a free `String` and never resolves it to a path); this line
   /// is the authority.
-  public private(set) var whisperPreviewHandle: DeliveredModelHandle?
-  public private(set) var whisperPreviewRegistration: DeliveryRegistration?
+  private(set) var whisperPreviewHandle: DeliveredModelHandle?
+  private(set) var whisperPreviewRegistration: DeliveryRegistration?
 
   /// #996 phase D: the correction judge (`edit_judge` family). Its install
   /// directory is its own sibling under `Models/`, for the same reason the
@@ -53,13 +53,13 @@ public final class ModelDeliveryHome {
   /// bundled manifest failed to load; the learner then reports
   /// `model_unavailable` and the Settings row says the model is unavailable in
   /// this build. No mutation claim, no `ProgressFile` bridge: a limb.
-  public private(set) var editJudgeHandle: DeliveredModelHandle?
-  public private(set) var editJudgeRegistration: DeliveryRegistration?
+  private(set) var editJudgeHandle: DeliveredModelHandle?
+  private(set) var editJudgeRegistration: DeliveryRegistration?
   /// #3242: the learned-word check for polish engines without their own (`word_check` family,
   /// Kev on MLX). Its own sibling under `Models/` for the reason the judge's is. Nil when the
   /// bundled manifest failed to load; `WordCheckRuntime` then reports the check unavailable.
-  public private(set) var wordCheckHandle: DeliveredModelHandle?
-  public private(set) var wordCheckRegistration: DeliveryRegistration?
+  private(set) var wordCheckHandle: DeliveredModelHandle?
+  private(set) var wordCheckRegistration: DeliveryRegistration?
   /// #3105: each local engine's learned-word checker, a sibling of that
   /// engine's shard directory with its own identity and admission marker.
   /// Registration alone starts no fetch; `ensureCheckerAdapter` does.
@@ -97,7 +97,7 @@ public final class ModelDeliveryHome {
       && source.baseURL.path.hasPrefix(engine.hostPathPrefix)
   }
 
-  public enum CheckerEnsureOutcome: Sendable, Equatable {
+  enum CheckerEnsureOutcome: Sendable, Equatable {
     case baseNotAdmitted
     case manifestUnavailable
     case incompatible(LearnedWordCheckerRefusal)
@@ -107,7 +107,7 @@ public final class ModelDeliveryHome {
   }
 
   /// Observable mirror of the Parakeet delivery state for SwiftUI renderers.
-  public private(set) var parakeetState: DeliveryState = .notReady
+  private(set) var parakeetState: DeliveryState = .notReady
 
   /// #996 phase D: fired on every Parakeet `.admitted` (including the launch
   /// replay of an already-admitted copy), so a companion model's fetch policy can
@@ -117,7 +117,7 @@ public final class ModelDeliveryHome {
   /// replace the earlier one.
   private var parakeetAdmittedObservers: [@MainActor () -> Void] = []
 
-  public func addParakeetAdmittedObserver(_ observer: @escaping @MainActor () -> Void) {
+  func addParakeetAdmittedObserver(_ observer: @escaping @MainActor () -> Void) {
     parakeetAdmittedObservers.append(observer)
   }
 
@@ -126,7 +126,7 @@ public final class ModelDeliveryHome {
   /// previous process, and `parakeetState` stays `.notReady` until the first
   /// dictation calls `ensureAvailable()` (cloud review P2); the judge's "after
   /// Parakeet" gate must not wait for that.
-  public func isParakeetAdmitted() async -> Bool {
+  func isParakeetAdmitted() async -> Bool {
     if case .admitted = parakeetState { return true }
     guard let registration = parakeetRegistration else { return false }
     return await controller.isAdmitted(registration)
@@ -137,13 +137,13 @@ public final class ModelDeliveryHome {
   /// first-run baseline (round 16 finding 1). Replays if set after the fact.
   /// No state mirror lives here: `LearnFromEditsWiring` observes the handle
   /// directly and owns the Settings picture.
-  public var onEditJudgeLaunchProbeFinished: (@MainActor () -> Void)? {
+  var onEditJudgeLaunchProbeFinished: (@MainActor () -> Void)? {
     didSet { if editJudgeLaunchProbeDidFinishForTests { onEditJudgeLaunchProbeFinished?() } }
   }
   package private(set) var editJudgeLaunchProbeDidFinishForTests = false
 
   /// #3242: the word check's launch probe finished (same contract as the judge's above).
-  public var onWordCheckLaunchProbeFinished: (@MainActor () -> Void)? {
+  var onWordCheckLaunchProbeFinished: (@MainActor () -> Void)? {
     didSet { if wordCheckLaunchProbeDidFinishForTests { onWordCheckLaunchProbeFinished?() } }
   }
   package private(set) var wordCheckLaunchProbeDidFinishForTests = false
@@ -154,7 +154,7 @@ public final class ModelDeliveryHome {
   /// during navigation — the Apple-pack model is window-owned for exactly that
   /// reason — and a 217 MB download must not lose its progress because someone
   /// looked at another tab.
-  public private(set) var whisperPreviewState: DeliveryState = .notReady
+  private(set) var whisperPreviewState: DeliveryState = .notReady
 
   /// **A SEPARATE apply guard, not a share of the Parakeet one.** Each mirror
   /// has its own sequencer, each starting at zero, so one shared "last applied"
@@ -672,7 +672,7 @@ public final class ModelDeliveryHome {
   /// Start, resume or retry the judge download. Kill-switch guarded like the
   /// preview's door (`ensureAvailable` does not enforce the flag itself).
   /// Callers: `EditJudgeFetchPolicy` (automatic) and the Settings row (manual).
-  public func startEditJudgeDownload() {
+  func startEditJudgeDownload() {
     guard let handle = editJudgeHandle else { return }
     guard handle.isEnabled() else {
       Task {
@@ -687,7 +687,7 @@ public final class ModelDeliveryHome {
   }
 
   /// #3242: start, resume or retry the word check download. Kill-switch guarded like the judge's.
-  public func startWordCheckDownload() {
+  func startWordCheckDownload() {
     guard let handle = wordCheckHandle else { return }
     guard handle.isEnabled() else {
       Task {
@@ -703,12 +703,12 @@ public final class ModelDeliveryHome {
 
   /// #3242: stop an in-flight word check download (the Dictionary went off, or no chosen engine
   /// needs it any more). Resumable partials stay; the next start resumes.
-  public func cancelWordCheckDownload() {
+  func cancelWordCheckDownload() {
     guard let handle = wordCheckHandle else { return }
     Task { await handle.cancelActiveFetch() }
   }
 
-  public func cancelEditJudgeDownload() {
+  func cancelEditJudgeDownload() {
     guard let handle = editJudgeHandle else { return }
     Task { await handle.cancelActiveFetch() }
   }
@@ -720,14 +720,14 @@ public final class ModelDeliveryHome {
   /// Returns whether the runtime side (loaded judge, compiled cache) was fully
   /// released; a false makes the whole removal report failure even when the
   /// delivered bytes went (round 17).
-  public var drainEditJudgeHoldersBeforeRemoval: (() async -> Bool)?
+  var drainEditJudgeHoldersBeforeRemoval: (() async -> Bool)?
   package private(set) var editJudgeRemovalStepsForTests: [String] = []
   private var editJudgeRemovalTask: Task<EditJudgeRemovalOutcome, Never>?
   package var deleteEditJudgeOverrideForTests: (() async -> Bool)?
 
   /// Why a removal did not fully remove (round 18): each outcome renders as
   /// its own truthful row, never as "paused by Envious Labs" for a failed delete.
-  public enum EditJudgeRemovalOutcome: Equatable, Sendable {
+  enum EditJudgeRemovalOutcome: Equatable, Sendable {
     case removed
     case killSwitchOff
     /// The loaded judge or its compiled cache could not be released/deleted.
@@ -741,7 +741,7 @@ public final class ModelDeliveryHome {
   /// family kill switch is off, so a stood-down delivery layer never releases
   /// a loaded judge for nothing (round 16 finding 4). Single-flight: a second
   /// call joins the first.
-  public func removeEditJudge() async -> EditJudgeRemovalOutcome {
+  func removeEditJudge() async -> EditJudgeRemovalOutcome {
     guard let handle = editJudgeHandle else { return .notRegistered }
     guard handle.isEnabled() else {
       editJudgeRemovalStepsForTests.append("refused")
@@ -863,14 +863,14 @@ public final class ModelDeliveryHome {
   /// the shared event observer above then stamps EG-1's `model_delivery.*`
   /// events with EG-1's baseline, never Parakeet's. Idempotent; a later
   /// `.admitted` for the identity flips it false via the state observer.
-  public func recordFirstRunBaseline(for registration: DeliveryRegistration) async {
+  func recordFirstRunBaseline(for registration: DeliveryRegistration) async {
     let admitted = await controller.isAdmitted(registration)
     firstRunByIdentity[registration.manifest.identity] = !admitted
   }
 
   /// Settings-row Cancel (D6 state 11: acknowledgment is instant by design —
   /// the controller's cancel resolves only after the drain).
-  public func cancelParakeetDownload() {
+  func cancelParakeetDownload() {
     guard let identity = parakeetIdentity else { return }
     Task { [weak self] in
       guard let self else { return }
@@ -921,7 +921,7 @@ public final class ModelDeliveryHome {
   /// Do not "fix" that asymmetry from this file. Changing `remove()` would
   /// change a shared primitive the main transcription model also uses, against
   /// its owner's stated intent.
-  public func startPreviewDownload() {
+  func startPreviewDownload() {
     guard let handle = whisperPreviewHandle else { return }
     guard handle.isEnabled() else {
       // Logged rather than silent: a Download button that does nothing is
@@ -951,10 +951,10 @@ public final class ModelDeliveryHome {
   /// nothing still holds the model. Async on purpose: a synchronous hook can only
   /// REQUEST a release, and a live session owns the engine until its own
   /// asynchronous teardown finishes.
-  public var drainPreviewHoldersBeforeRemoval: (() async -> Void)?
+  var drainPreviewHoldersBeforeRemoval: (() async -> Void)?
 
   /// Called once the files are gone, so previews can run again.
-  public var previewRemovalDidFinish: (() -> Void)?
+  var previewRemovalDidFinish: (() -> Void)?
 
   /// Delete the preview model and reclaim its ~217 MB.
   ///
@@ -1007,7 +1007,7 @@ public final class ModelDeliveryHome {
   /// substitute this. Cloud review caught the regression.
   package var deletePreviewModelOverrideForTests: (() async -> Void)?
 
-  public func removePreviewModel() {
+  func removePreviewModel() {
     guard let handle = whisperPreviewHandle else { return }
     // **Single-flight the WHOLE operation, not just the drain.** Guarding only
     // the coordinator's drain let two presses share it and then run two deletes
@@ -1059,7 +1059,7 @@ public final class ModelDeliveryHome {
 
   /// Stop a download in flight. Safe when nothing is running: the controller
   /// reports `nothingToCancel` and no state moves.
-  public func cancelPreviewDownload() {
+  func cancelPreviewDownload() {
     guard let handle = whisperPreviewHandle else { return }
     Task { await handle.cancelActiveFetch() }
   }
@@ -1113,7 +1113,7 @@ public final class ModelDeliveryHome {
   /// stop it, and cancelling starts no network work. Same shape as
   /// `DeliveredModelHandle.cancelActiveFetch()`
   /// (`DeliveredModelHandle.swift (cancelActiveFetch)`), which is ungated for that stated reason.
-  public func resumeParakeetDownload() {
+  func resumeParakeetDownload() {
     guard let handle = parakeetHandle else { return }
     guard handle.isEnabled() else {
       parakeetResumeRefusalsForTests += 1
@@ -1171,8 +1171,8 @@ public final class ModelDeliveryHome {
 /// 7/8/10/11 + the captive-portal sentence) — onboarding's friendly-error
 /// mapping and the settings row both render from here, so the two surfaces
 /// can never drift.
-public enum ModelDeliveryCopy {
-  public static func message(reason: DeliveryFailureClass, detail: String?) -> String {
+enum ModelDeliveryCopy {
+  static func message(reason: DeliveryFailureClass, detail: String?) -> String {
     switch reason {
     case .sourceUnreachable, .sourceTimeout, .source5xx, .source4xx:
       return String(
