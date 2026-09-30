@@ -534,6 +534,40 @@ struct FeedbackOutboxTests {
     #expect(try Self.records(in: directory).map(\.message) == ["report 2"])
   }
 
+  @Test("A too-many-requests answer that could not be written still holds every report")
+  func unwrittenRetryLimitHoldsAll() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let clock = Clock(Self.start)
+    let http = HTTP([.status(429, ["Retry-After": "600"])])
+    let failWrites = WriteSwitch()
+    let path = FakePath(satisfied: false)
+    let outbox = Self.makeOutbox(
+      directory, http: http, path: path, clock: clock,
+      writeData: { data, url in
+        if failWrites.isOn { throw CocoaError(.fileWriteNoPermission) }
+        try DurableJSONFile.write(data: data, to: url, tempPrefix: ".outbox")
+      })
+    _ = await outbox.enqueue(Self.record(1))
+    _ = await outbox.enqueue(Self.record(2))
+    failWrites.isOn = true
+    // Not started, so this changes the path without triggering a pass of its own.
+    path.set(true)
+    await outbox.drain()
+    await outbox.drain()
+    #expect(http.sent == [Self.eventID(1)], "the second report waits behind the limit")
+
+    failWrites.isOn = false
+    clock.advance(599)
+    await outbox.drain()
+    #expect(http.sent == [Self.eventID(1)])
+
+    clock.advance(2)
+    await outbox.drain()
+    #expect(Set(http.sent) == [Self.eventID(1), Self.eventID(2)])
+    #expect(try Self.records(in: directory).isEmpty)
+  }
+
   @Test("A rate limit that could not be written still holds every report until it expires")
   func unwrittenRateLimitHoldsAll() async throws {
     let directory = Self.tempDirectory()
