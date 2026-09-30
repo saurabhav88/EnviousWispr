@@ -143,6 +143,6 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
   }
 }
 
-public enum EGOneManifestError: Error, Sendable, Equatable {
+enum EGOneManifestError: Error, Sendable, Equatable {
   case resourceMissing(String)
 }

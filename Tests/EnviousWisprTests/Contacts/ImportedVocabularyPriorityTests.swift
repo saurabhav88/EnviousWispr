@@ -1,5 +1,5 @@
 import EnviousWisprCore
-import EnviousWisprLLM
+@testable import EnviousWisprLLM
 import Testing
 
 /// #636 §3.5 — imported names carry a priority that sorts AFTER user-typed terms
