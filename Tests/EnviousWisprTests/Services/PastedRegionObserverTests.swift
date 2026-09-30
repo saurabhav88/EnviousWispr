@@ -1564,6 +1564,7 @@ struct PastedRegionObserverWatchTests {
     o3.stop()
 
     // A focus change is weak: no upgrade.
+    ax.selectedRange = .unavailable  // a weak settle again, not the caret left by the case above
     let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
     let e2 = Events()
     startWithFix(o2, e2)

@@ -1841,6 +1841,8 @@ package final class PastedRegionObserver: PastedRegionObserving {
             watch?.caretDeadlineMs = nil
             let trigger = settleTrigger(generation: gen)
             watch?.caretDeadlineMs = deadline
+            // The caret read took time: an expired watch ends, it does not upgrade.
+            if endIfPastDeadline(generation: gen) { return .ended }
             if trigger == .caretLeft, let fresh = watch, fresh.generation == gen,
               fresh.weakSettleAwaitingUpgrade, !fresh.changedSinceSettled
             {
