@@ -84,15 +84,20 @@ struct TestDefaultsTests {
     for (name, dir) in [("ew-2998-a", dirA), ("ew-2998-b", dirB)] {
       try Data("x".utf8).write(to: TestDefaults.plistURL(suite: name, in: dir))
     }
-    // A same-named file in the OTHER directory was never registered there: it is not ours.
     let bystander = TestDefaults.plistURL(suite: "ew-2998-a", in: dirB)
     try Data("x".utf8).write(to: bystander)
+    // Never registered anywhere: not ours, must survive.
+    let stranger = TestDefaults.plistURL(suite: "ew-2998-unregistered", in: dirA)
+    try Data("x".utf8).write(to: stranger)
 
-    #expect(registry.removeAll() == 2)
+    // The same name registered in two directories is two registrations, not one overwritten.
+    registry.register("ew-2998-a", in: dirB)
+    #expect(registry.removeAll() == 3)
 
     #expect(!FileManager.default.fileExists(atPath: TestDefaults.plistURL(suite: "ew-2998-a", in: dirA).path))
     #expect(!FileManager.default.fileExists(atPath: TestDefaults.plistURL(suite: "ew-2998-b", in: dirB).path))
-    #expect(FileManager.default.fileExists(atPath: bystander.path), "not registered in this directory")
+    #expect(!FileManager.default.fileExists(atPath: bystander.path), "registered in both directories")
+    #expect(FileManager.default.fileExists(atPath: stranger.path), "never registered, so not ours")
   }
 
   @Test("cleanup itself refuses a name that escapes the preferences directory")

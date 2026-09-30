@@ -74,7 +74,7 @@ enum TestDefaults {
   }
 
   /// The suite names registered so far in this process (what the exit hook will clean up).
-  static var registeredSuiteNames: Set<String> { Set(shared.snapshot().keys) }
+  static var registeredSuiteNames: Set<String> { Set(shared.snapshot().map(\.name)) }
 
   static var userPreferencesDirectory: URL {
     FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
@@ -86,27 +86,32 @@ enum TestDefaults {
 /// so cleanup always deletes from the directory ownership was proven in, never from another one.
 /// Tests make their own instance; only `TestDefaults.shared` has the exit hook.
 final class SuiteRegistry: @unchecked Sendable {
+  struct Entry: Hashable {
+    let name: String
+    let directory: URL
+  }
+
   private let lock = NSLock()
-  private var suites: [String: URL] = [:]
+  private var entries: Set<Entry> = []
 
   func register(_ name: String, in preferencesDirectory: URL) {
     lock.lock()
-    suites[name] = preferencesDirectory
+    entries.insert(Entry(name: name, directory: preferencesDirectory))
     lock.unlock()
   }
 
-  func snapshot() -> [String: URL] {
+  func snapshot() -> Set<Entry> {
     lock.lock()
     defer { lock.unlock() }
-    return suites
+    return entries
   }
 
   /// Removes every registered plist from its own directory. Returns how many files it removed.
   @discardableResult
   func removeAll() -> Int {
     var removed = 0
-    for (name, directory) in snapshot() {
-      removed += TestDefaults.removePlists(of: [name], in: directory)
+    for entry in snapshot() {
+      removed += TestDefaults.removePlists(of: [entry.name], in: entry.directory)
     }
     return removed
   }
