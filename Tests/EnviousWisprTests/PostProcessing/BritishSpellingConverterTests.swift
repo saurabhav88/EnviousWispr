@@ -24,7 +24,9 @@ struct BritishSpellingConverterTests {
     let expected: String
     /// Tokens that change between input and expected, counted by hand.
     let swaps: Int
-    var testDescription: String { input }
+    // An empty description is an argument with no identity: the nightly debug-only inventory fails
+    // closed on it (#3161), and the `Case(input: "")` row printed as a blank label.
+    var testDescription: String { input.isEmpty ? "(empty input)" : input }
   }
 
   /// Labelled corpus. Persona-style dictation plus the known hazards: sense-dependent words, names
