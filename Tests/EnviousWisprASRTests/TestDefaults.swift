@@ -15,9 +15,24 @@ import Foundation
 /// the two identical.
 enum TestDefaults {
   /// Same contract as `UserDefaults(suiteName:)`, but the suite's plist is removed at process exit.
+  /// Returns nil for a name that is not safe to delete a file for (see `isSafeSuiteName`), so a bad
+  /// name fails the test loudly instead of removing somebody's preferences at exit.
   static func suite(_ name: String) -> UserDefaults? {
+    guard isSafeSuiteName(name) else { return nil }
     Registry.shared.register(name)
     return UserDefaults(suiteName: name)
+  }
+
+  /// A name the exit hook may delete `<name>.plist` for: plain characters only (no path separator
+  /// or `..`), and never an Apple domain, the global domain or one of the app's own bundle IDs.
+  static func isSafeSuiteName(_ name: String) -> Bool {
+    guard !name.isEmpty, name.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) != nil,
+      !name.contains("..")
+    else { return false }
+    let lowered = name.lowercased()
+    let reservedPrefixes = ["com.apple.", "nsglobaldomain"]
+    let reservedNames: Set<String> = ["com.enviouswispr.app", "com.enviouswispr.app.dev"]
+    return !reservedPrefixes.contains { lowered.hasPrefix($0) } && !reservedNames.contains(lowered)
   }
 
   /// The plist a suite persists, inside `preferencesDirectory`.
