@@ -437,6 +437,24 @@ struct TurnAssemblerTests {
     #expect(first.first?.id == "0-11")
   }
 
+  /// A one-shot latch: `wait()` returns once `open()` has been called, in either order, so the test
+  /// never depends on which of the two runs first.
+  private actor Latch {
+    private var isOpen = false
+    private var waiter: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+      if isOpen { return }
+      await withCheckedContinuation { waiter = $0 }
+    }
+
+    func open() {
+      isOpen = true
+      waiter?.resume()
+      waiter = nil
+    }
+  }
+
   @Test(
     "assemble stops at the first entry when its own Task is already cancelled, never fabricating a result for cancelled work"
   )
@@ -445,13 +463,33 @@ struct TurnAssemblerTests {
       entry("hello", 0, 5, 0, 200), entry("there", 6, 11, 200, 500),
     ]
     let segments = [SpeakerSegment(speakerId: "A", startMs: 0, endMs: 500, quality: 1)]
+    let latch = Latch()
     let task = Task {
-      TurnAssembler.assemble(entries: entries, segments: segments)
+      // The body parks here until the test has cancelled it, so the cancel provably lands BEFORE
+      // `assemble` runs. A bare `Task {}` followed by `cancel()` races the body's first
+      // `Task.isCancelled` check under a loaded battery (#3035).
+      await latch.wait()
+      return TurnAssembler.assemble(entries: entries, segments: segments)
     }
-    // Cancelled BEFORE the task's body has a chance to run — cancellation is a monotonic
-    // flag, so this is deterministic, never a race against the task's own scheduling.
     task.cancel()
+    await latch.open()
     let turns = await task.value
     #expect(turns.isEmpty, "a cancelled task must not process any entries")
+  }
+
+  @Test("the same gated task, not cancelled, assembles both entries (control for the cancel test)")
+  func assembleCompletesWhenNotCancelled() async {
+    let entries = [
+      entry("hello", 0, 5, 0, 200), entry("there", 6, 11, 200, 500),
+    ]
+    let segments = [SpeakerSegment(speakerId: "A", startMs: 0, endMs: 500, quality: 1)]
+    let latch = Latch()
+    let task = Task {
+      await latch.wait()
+      return TurnAssembler.assemble(entries: entries, segments: segments)
+    }
+    await latch.open()
+    let turns = await task.value
+    #expect(!turns.isEmpty, "the gate alone must not make the result empty")
   }
 }
