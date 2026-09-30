@@ -125,6 +125,44 @@ if [ "${1:-}" = "--self-test" ]; then
     echo "self-test FAIL: detect_lane_from_diff function missing"
   fi
 
+  # Test: lane detection itself, on the real function (#3189). The function is defined after this
+  # block, so it is lifted out of this file rather than reimplemented.
+  eval "$(sed -n '/^detect_lane_from_diff() {/,/^}/p' "$0")"
+  lane_case() { # name, expected lanes, changed files
+    local got
+    got=$(detect_lane_from_diff "$3")
+    if [ "$got" = "$2" ]; then
+      pass=$((pass + 1)); echo "self-test PASS: lanes for $1 = ${got:-<none>}"
+    else
+      fail=$((fail + 1)); echo "self-test FAIL: lanes for $1: expected '$2', got '$got'"
+    fi
+  }
+  lane_case "scripts/lib" "Docs/dev-tooling" "scripts/lib/l10n-catalog-sync.sh"
+  lane_case "scripts/ci" "Docs/dev-tooling" "scripts/ci/classify-changes.sh"
+  lane_case "root script" "Docs/dev-tooling" "scripts/build-dev-app.sh"
+  lane_case "scripts/eval only" "Eval-harness" "scripts/eval/run_egone_gguf.py"
+  lane_case "scripts/eval plus scripts/lib" "Docs/dev-tooling,Eval-harness" "scripts/eval/a.py
+scripts/lib/b.sh"
+  lane_case "no matching path" "" "README.md"
+  eval "$(sed -n '/^fallback_lane_from_detected() {/,/^}/p' "$0")"
+  fallback_case() { # name, expected, detected lanes
+    local got
+    got=$(fallback_lane_from_detected "$3")
+    if [ "$got" = "$2" ]; then
+      pass=$((pass + 1)); echo "self-test PASS: no-plan lane for $1 = ${got:-<none>}"
+    else
+      fail=$((fail + 1)); echo "self-test FAIL: no-plan lane for $1: expected '$2', got '$got'"
+    fi
+  }
+  fallback_case "docs plus eval" "Eval-harness" "Docs/dev-tooling,Eval-harness"
+  fallback_case "docs plus worker" "Worker" "Docs/dev-tooling,Worker"
+  fallback_case "docs only" "Docs/dev-tooling" "Docs/dev-tooling"
+  fallback_case "code plus docs" "Code" "Code,Docs/dev-tooling"
+  fallback_case "CI plus code" "Code" "CI/workflow,Code"
+  fallback_case "content plus eval" "Eval-harness" "Content,Eval-harness"
+  fallback_case "worker plus eval" "Worker" "Eval-harness,Worker"
+  fallback_case "none" "" ""
+
   # Test: run.json schema produced by the orchestrator validates against
   # check-validation.sh's expected fields.
   fixture_run="$TMPDIR/fixture-run"
@@ -241,12 +279,8 @@ detect_lane_from_diff() {
   # `.github/workflows/ci-drift-check.yml` (drift scan): each looked only at
   # `.github/workflows/`, so moving CI logic one directory sideways escaped it.
   #
-  # Known and deliberately NOT fixed here: `scripts/ci/*.sh` also matches no
-  # lane, because `^scripts/[^e][^v][^a][^l]/` cannot match `scripts/ci/`. That
-  # predates this change and rewriting the scripts/ lane logic has wider blast
-  # radius than this PR should carry. It does not affect this PR's own lane —
-  # the diff also touches `.github/`, so the union already resolves to
-  # CI/workflow. Recorded on #1994.
+  # `scripts/ci/` and `scripts/lib/` were unlaned until #3189: the old scripts/ pattern needed a
+  # four-character directory name. Any scripts/ subdirectory except eval/ is Docs/dev-tooling below.
   if echo "$changed_files" | grep -qE '^\.github/(workflows/|actions/)|dependabot'; then
     lanes="$lanes CI/workflow"
   fi
@@ -256,12 +290,25 @@ detect_lane_from_diff() {
   if echo "$changed_files" | grep -qE '^workers/'; then
     lanes="$lanes Worker"
   fi
-  if echo "$changed_files" | grep -qE '^(docs/|\.claude/|CLAUDE\.md|scripts/[^e][^v][^a][^l]/)' \
+  if echo "$changed_files" | grep -qE '^(docs/|\.claude/|CLAUDE\.md)' \
+     || echo "$changed_files" | grep -E '^scripts/[^/]+/' | grep -qvE '^scripts/eval/' \
      || echo "$changed_files" | grep -qE '^scripts/[^/]+\.sh$'; then
     lanes="$lanes Docs/dev-tooling"
   fi
 
   echo "$lanes" | xargs -n1 | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# The lane used when the plan declares none. The verifier checks only the declared lane's evidence,
+# so the fallback must be the lane with the most to prove, never the first name alphabetically
+# (that let a docs or scripts/lib change hide an eval or worker change, and CI/workflow hide Code;
+# #3189). Order: heaviest obligations first. A mixed PR still gets a warning naming the choice.
+fallback_lane_from_detected() {
+  local detected="$1" lane
+  for lane in Code Worker Eval-harness CI/workflow Content Docs/dev-tooling; do
+    if echo "$detected" | tr ',' '\n' | grep -qx "$lane"; then echo "$lane"; return 0; fi
+  done
+  echo "$detected" | cut -d, -f1
 }
 
 # --- Setup run directory ---
@@ -409,14 +456,19 @@ else
 fi
 if [ -z "$DECLARED" ]; then
   echo "WARN: no plan lane declared for this branch; using detected lane"
-  DECLARED=$(echo "$DETECTED" | cut -d, -f1)
+  DECLARED=$(fallback_lane_from_detected "$DETECTED")
+  LANE_FELL_BACK=true
 fi
 echo "==> Declared lane: $DECLARED"
 
-DETECTED_COUNT=$(echo "$DETECTED" | tr ',' '\n' | grep -c . || echo 0)
+# `grep -c` prints 0 AND exits 1 on no match, so `|| echo 0` printed a second 0; `|| true` keeps one.
+DETECTED_COUNT=$(echo "$DETECTED" | tr ',' '\n' | grep -c . || true)
 IS_MIXED=false
 if [ "$DETECTED_COUNT" -gt 1 ]; then
   IS_MIXED=true
+  if [ "${LANE_FELL_BACK:-false}" = true ]; then
+    echo "WARN: mixed lanes ($DETECTED) and no plan lane: only $DECLARED evidence is checked; declare the lane in the plan"
+  fi
 fi
 
 # --- Phase 3 walk (lane-specific obligations live in workflow-process.md §11) ---

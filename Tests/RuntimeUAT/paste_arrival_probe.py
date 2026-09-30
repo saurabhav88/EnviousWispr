@@ -33,7 +33,8 @@ sys.path.insert(0, str(HERE / "paste_oracles"))
 
 import ax_oracle  # noqa: E402
 import simulate_input  # noqa: E402
-from last_dictation_uat import pasteboard_restore, pasteboard_snapshot, set_clipboard_text  # noqa: E402
+from last_dictation_uat import (  # noqa: E402
+    clipboard_text, pasteboard_restore, pasteboard_snapshot, set_clipboard_text)
 
 POLL_S = 0.005
 TOUR_REFUSED = {"com.mitchellh.ghostty", "com.apple.Terminal", "com.googlecode.iterm2"}
@@ -70,15 +71,31 @@ def focused_element(pid: int):
     return value if err == 0 else None
 
 
-def require_target(pid: int, chosen) -> None:
-    """The chosen app is still in front AND the chosen field still has focus, checked immediately
-    before every paste: a focus move must never paste into a field the person did not choose."""
+def same_element(a, b) -> bool:
     from CoreFoundation import CFEqual
+    return bool(CFEqual(a, b))
+
+
+def require_chosen(pid: int, chosen, when: str) -> None:
+    """The chosen app is still in front AND the chosen field still has focus. ONE check for every
+    point that matters (before the paste, and where a verdict is reached), so the two can never
+    drift apart: a focus move must never paste into a field the person did not choose, and a
+    verdict is only about the chosen field if it is still the chosen field when it is reached.
+    An app's AXFocusedUIElement can stay the same after the person switches away, so focus alone
+    is not enough (#3119, PR #3320 review)."""
     if not ax_oracle.is_frontmost(pid):
-        raise RuntimeError("target app lost the front before paste")
+        raise RuntimeError(f"target app lost the front {when}")
     current = focused_element(pid)
-    if current is None or not CFEqual(current, chosen):
-        raise RuntimeError("chosen field lost focus before paste")
+    if current is None or not same_element(current, chosen):
+        raise RuntimeError(f"chosen field lost focus {when}")
+
+
+def require_target(pid: int, chosen) -> None:
+    require_chosen(pid, chosen, "before paste")
+
+
+def require_still_chosen(pid: int, chosen, when: str) -> None:
+    require_chosen(pid, chosen, f"during the trial ({when})")
 
 
 def enable_manual_ax(pid: int) -> None:
@@ -153,6 +170,10 @@ def one_trial(bundle: str, pid: int, chosen, limit_s: float, route: str = "key")
     # settle: the app's own cascade leaves the same gap between its board write and the key
     time.sleep(0.15)
     require_target(pid, chosen)
+    if clipboard_text() != phrase:
+        # A copy during the settle gap above would paste someone else's text and score it as a
+        # paste that never arrived (Codex round 4).
+        raise RuntimeError(f"{bundle}: clipboard changed before the paste")
     samples = 0
     t0 = time.monotonic()
     if route == "key":
@@ -173,10 +194,15 @@ def one_trial(bundle: str, pid: int, chosen, limit_s: float, route: str = "key")
         if value is not None and phrase.strip() in value:
             # The first AX observation after dispatch: an UPPER bound on arrival. A 5 ms sleep
             # between reads is not a guaranteed 5 ms sample period (each read takes its own time).
+            require_still_chosen(pid, chosen, "at arrival")
             return {"verdict": "arrived", "arrived_ms": round(elapsed * 1000, 1),
                     "first_change_ms": None if first_change_ms is None else round(first_change_ms, 1),
                     "post_ms": round(posted_ms, 1), "samples": samples}
         if elapsed > limit_s:
+            require_still_chosen(pid, chosen, "at time-out")
+            if not scan.ok:
+                # The last read failed, so "not seen" would mean "could not look" (#3118).
+                raise RuntimeError(f"{bundle}: focused field unreadable at time-out: {scan.why}")
             return {"verdict": "not_seen", "limit_ms": limit_s * 1000,
                     "last_read": scan.why if not scan.ok else "readable", "samples": samples}
         time.sleep(POLL_S)  # settle: the probe's sampling interval IS the measurement resolution
@@ -194,6 +220,10 @@ def measure(bundle: str, pid: int, reps: int, limit: float, route: str = "key") 
             # A safety refusal is incomplete evidence: the run fails rather than report a
             # shorter sample as if it were the requested one.
             raise RuntimeError(f"{bundle}: paste {i + 1}/{reps} aborted: {error}") from error
+        if r["verdict"] == "unreadable":
+            # No paste was sent: the focused field could not be read. Counting it would print
+            # "nothing arrived" for a run that measured nothing (#3118).
+            raise RuntimeError(f"{bundle}: paste {i + 1}/{reps} unreadable: {r.get('why')}")
         results.append(r)
         print(f"  paste {i + 1}: {r}", flush=True)
         # settle: spacing between trials so one paste's rendering cannot overlap the next clock

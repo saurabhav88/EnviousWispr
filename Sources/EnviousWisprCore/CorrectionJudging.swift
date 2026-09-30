@@ -27,15 +27,20 @@ package struct CorrectionCandidate: Sendable, Equatable, Hashable {
 /// The three mutually exclusive answers a judge can give for one candidate.
 /// `safeAlias` implies `vocabularyCorrection` by construction: there is no
 /// class for "not a correction, but replace it automatically anyway".
+///
+/// What the shipped product does with them: `ObservedCorrectionWatcher` learns EVERY
+/// decision whose `vocabularyCorrection` is true, `correctionButUnsafe` included, and
+/// the saved word keeps its original as a replacement alias (#996, #3101). `safeAlias`
+/// is advisory: the product never reads it, and only the eval's alias metrics do.
 package enum CorrectionJudgeClass: String, Sendable, CaseIterable, Equatable {
   /// A rewording, grammar, formatting, punctuation or temporary-typo edit.
   case notCorrection
   /// A name, term or spelling fix whose original is itself a real word or
-  /// name someone else could mean (Elena → Alina): learn the canonical, add
-  /// no alias.
+  /// name someone else could mean (Elena → Alina). The judge is saying the
+  /// alias would be risky; the product still learns it (see the enum comment).
   case correctionButUnsafe
-  /// A name, term or spelling fix whose original should always become the
-  /// replacement in future dictations ("cuber netties" → Kubernetes).
+  /// A name, term or spelling fix whose original would almost always be right
+  /// to replace in future dictations ("cuber netties" → Kubernetes).
   case correctionAndSafe
 
   package var vocabularyCorrection: Bool { self != .notCorrection }
