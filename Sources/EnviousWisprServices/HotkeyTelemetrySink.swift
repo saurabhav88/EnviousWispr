@@ -103,18 +103,18 @@ public struct HotkeyTelemetrySink: Sendable {
 
 /// The error captured to Sentry when a hotkey registration fails. Carries only
 /// metadata (mechanism / kind / OSStatus) — never the key codes.
-public struct HotkeyRegistrationError: Error, CustomStringConvertible {
-  public let mechanism: String
-  public let hotkeyKind: String
-  public let osStatus: Int32?
+package struct HotkeyRegistrationError: Error, CustomStringConvertible {
+  package let mechanism: String
+  package let hotkeyKind: String
+  package let osStatus: Int32?
 
-  public init(mechanism: String, hotkeyKind: String, osStatus: Int32?) {
+  package init(mechanism: String, hotkeyKind: String, osStatus: Int32?) {
     self.mechanism = mechanism
     self.hotkeyKind = hotkeyKind
     self.osStatus = osStatus
   }
 
-  public var description: String {
+  package var description: String {
     let status = osStatus.map { String($0) } ?? "nil"
     return
       "hotkey registration failed: mechanism=\(mechanism) kind=\(hotkeyKind) os_status=\(status)"

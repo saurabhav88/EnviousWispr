@@ -12,14 +12,14 @@ import Foundation
 /// regardless of the `fillerRemovalEnabled` setting — the raw floor is a
 /// defensive recovery for erased real content, and pasting a bare filler as a
 /// recovery floor is never desired (founder directive 2026-07-11).
-public enum TextLexicalContent {
+package enum TextLexicalContent {
   /// `true` iff removing fillers from `text` leaves at least one alphanumeric
   /// scalar (a letter or digit). "uh" → false; "OK" / "1988" / "I" → true;
   /// "..." → false; "uh OK" → true.
   /// `englishVetoed` (#2614) forwards the chain's veto so a protected foreign
   /// token is lexical here exactly when the filler step kept it.
   @MainActor
-  public static func hasLexicalContentAfterRemovingFillers(
+  package static func hasLexicalContentAfterRemovingFillers(
     _ text: String, language: String?, englishVetoed: Bool = false
   ) -> Bool {
     let stripped = FillerRemovalStep.removingFillers(

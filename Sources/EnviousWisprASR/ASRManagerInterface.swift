@@ -84,9 +84,9 @@ extension ASREngineNotReadyAfterLoadError: StableSentryErrorIdentity {
 /// relocation gate via `WhisperKitEngineAdapter`; the manager and its XPC helper
 /// are Parakeet-only. This exists so the retired route fails loudly instead of
 /// quietly doing nothing — or mapping a model the gate never saw.
-public struct ASRManagerNotOwnedError: Error, Equatable {
-  public let backend: ASRBackendType
-  public init(backend: ASRBackendType) {
+package struct ASRManagerNotOwnedError: Error, Equatable {
+  package let backend: ASRBackendType
+  package init(backend: ASRBackendType) {
     self.backend = backend
   }
 }
@@ -114,8 +114,8 @@ extension ASRManagerNotOwnedError: StableSentryErrorIdentity {
 /// attempt (see `ASRManager`) closes the per-instance race but not this one,
 /// so a conflicting-mode attempt is refused outright rather than allowed to
 /// race the shared write. A same-mode attempt is never refused.
-public struct ParakeetOfflineModeConflictError: Error, Equatable {
-  public init() {}
+package struct ParakeetOfflineModeConflictError: Error, Equatable {
+  package init() {}
 }
 
 extension ParakeetOfflineModeConflictError: StableSentryErrorIdentity {
@@ -324,6 +324,6 @@ extension ASRManagerInterface {
 /// instead, so a caller that skipped the host's assignment loaded from a location
 /// nobody had verified, and a refusal from the location seam looked exactly like
 /// a working path.
-public struct ParakeetModelDirectoryUnsetError: Error, Equatable {
-  public init() {}
+package struct ParakeetModelDirectoryUnsetError: Error, Equatable {
+  package init() {}
 }

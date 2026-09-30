@@ -22,34 +22,34 @@ import Foundation
 /// One conditioning result — ASR-ready samples plus the metadata-only fields
 /// the kernel's telemetry needs to make a future short-utterance regression
 /// debuggable. No audio content escapes this struct; counts and booleans only.
-public struct ConditionedAudio: Equatable, Sendable {
+package struct ConditionedAudio: Equatable, Sendable {
   /// The samples to pass to ASR for batch rescue. May equal `rawSamples`
   /// (no segments OR too-aggressive-filter raw fallback fired) OR be
   /// VAD-filtered, with or without short-utterance padding appended.
-  public let samples: [Float]
+  package let samples: [Float]
 
   /// Sample count after `SampleFilter.filter` but BEFORE raw fallback and
   /// before silence padding. Equals `rawSamples.count` when no segments were
   /// supplied (the filter is a no-op). Lets telemetry distinguish
   /// "filter ran and trimmed to N" from "filter no-op'd".
-  public let filteredSampleCount: Int
+  package let filteredSampleCount: Int
 
   /// `true` when filtering dropped samples below the ASR minimum AND raw
   /// samples meet the minimum, so the conditioner returned raw instead.
   /// Matches the old Parakeet pipeline's raw-fallback branch.
-  public let usedRawFallbackAfterVAD: Bool
+  package let usedRawFallbackAfterVAD: Bool
 
   /// `true` when #843 soft-onset preservation fired — a short take whose VAD
   /// filter would have dropped a large early-onset prefix, so the conditioner
   /// returned the full raw capture to keep the soft leading word ("Actually",
   /// "Overall"). Distinct from `usedRawFallbackAfterVAD`, which fires only when
   /// the filtered audio itself fell below the ASR minimum.
-  public let usedRawSoftOnsetPreservation: Bool
+  package let usedRawSoftOnsetPreservation: Bool
 
   /// `true` when the final sample count was below the ASR minimum and the
   /// conditioner appended silence to reach it. Matches the old Parakeet
   /// pipeline's short-utterance padding.
-  public let samplesPaddedToMinimum: Bool
+  package let samplesPaddedToMinimum: Bool
 
   /// #950 — count of trailing raw samples the VAD trim discarded after the last
   /// valid voiced segment's padded end. `0` when the filter no-op'd
@@ -57,18 +57,18 @@ public struct ConditionedAudio: Equatable, Sendable {
   /// (`usedRawFallbackAfterVAD` / `usedRawSoftOnsetPreservation`, which feed the
   /// FULL raw buffer to ASR). Metadata only; diagnostic counterpart to
   /// `filteredSampleCount`. Computed by `droppedTrailingSamples`.
-  public let droppedTailSampleCount: Int
+  package let droppedTailSampleCount: Int
 
   /// Final sample count of `samples` — redundant with `samples.count` but
   /// kept explicit so the telemetry surface does not depend on whether the
   /// caller bothered to recompute.
-  public var finalSampleCount: Int { samples.count }
+  package var finalSampleCount: Int { samples.count }
 
   /// Human-readable label of which conditioning path produced `samples`, for
   /// telemetry/triage. Soft-onset preservation and the too-aggressive fallback
   /// both yield raw audio but for different reasons; `filteredSampleCount`
   /// distinguishes a genuine trim from a no-op passthrough.
-  public var conditioningReason: String {
+  package var conditioningReason: String {
     if usedRawSoftOnsetPreservation { return "rawSoftOnset" }
     if usedRawFallbackAfterVAD { return "rawFallbackTooAggressive" }
     if samplesPaddedToMinimum { return "filteredPaddedToMinimum" }

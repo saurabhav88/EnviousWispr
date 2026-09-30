@@ -30,11 +30,11 @@ public enum VADStopKind: Equatable, Sendable {
 /// (VAD config is frozen per session), so it stamps each signal; the kernel
 /// drops a signal whose `sessionID` is not its current session — a late
 /// auto-stop from a finished recording cannot terminate the next one.
-public struct VADStopSignal: Equatable, Sendable {
-  public let kind: VADStopKind
-  public let sessionID: SessionID
+package struct VADStopSignal: Equatable, Sendable {
+  package let kind: VADStopKind
+  package let sessionID: SessionID
 
-  public init(kind: VADStopKind, sessionID: SessionID) {
+  package init(kind: VADStopKind, sessionID: SessionID) {
     self.kind = kind
     self.sessionID = sessionID
   }
@@ -47,11 +47,11 @@ public struct VADStopSignal: Equatable, Sendable {
 /// `remainingSeconds` so the App layer can keep "auto-stop in 1 minute" copy
 /// truthful (suppress/relabel on a late fire). Session-stamped like `VADStopSignal`
 /// so a late warning from a finished session is dropped by the kernel.
-public struct VADWarningSignal: Equatable, Sendable {
-  public let remainingSeconds: TimeInterval
-  public let sessionID: SessionID
+package struct VADWarningSignal: Equatable, Sendable {
+  package let remainingSeconds: TimeInterval
+  package let sessionID: SessionID
 
-  public init(remainingSeconds: TimeInterval, sessionID: SessionID) {
+  package init(remainingSeconds: TimeInterval, sessionID: SessionID) {
     self.remainingSeconds = remainingSeconds
     self.sessionID = sessionID
   }
@@ -60,7 +60,7 @@ public struct VADWarningSignal: Equatable, Sendable {
 /// Tri-state speech evidence read by the kernel at `stopping` (PR-1 §B.6).
 /// The no-speech gate keys on *confirmed* no-speech, not on an empty segment
 /// list per se (Codex r2 correction).
-public enum VADSpeechEvidence: Equatable, Sendable {
+package enum VADSpeechEvidence: Equatable, Sendable {
   /// Voiced segments are present.
   case voiced
   /// VAD ran and confirms no speech — the kernel routes to `noSpeech` and

@@ -36,12 +36,12 @@ public struct SessionID: Hashable, Sendable {
 /// `ASREngineAdapter` conformer declares its identity, and the kernel /
 /// factory read identity from `adapter.engineIdentity` rather than
 /// branching on engine type (epic §3.4).
-public struct ASREngineIdentity: Sendable {
-  public let backendType: ASRBackendType
-  public var rawValue: String { backendType.rawValue }
-  public var displayName: String { backendType.displayName }
+package struct ASREngineIdentity: Sendable {
+  package let backendType: ASRBackendType
+  package var rawValue: String { backendType.rawValue }
+  package var displayName: String { backendType.displayName }
 
-  public init(backendType: ASRBackendType) {
+  package init(backendType: ASRBackendType) {
     self.backendType = backendType
   }
 }
@@ -50,10 +50,10 @@ public struct ASREngineIdentity: Sendable {
 /// branch on `capabilities` rather than on engine identity (PR-1 §B.2.1,
 /// D15). An optional capability the adapter does not support MUST degrade
 /// cleanly.
-public struct ASREngineCapabilities: Sendable {
+package struct ASREngineCapabilities: Sendable {
   /// The engine decodes incrementally and accepts `acceptAudio(_:)` during
   /// recording (Parakeet). `false` for batch-after-stop engines (WhisperKit).
-  public let supportsStreaming: Bool
+  package let supportsStreaming: Bool
 
   /// The engine can detect the spoken language (WhisperKit). `false` for
   /// Parakeet.
@@ -63,7 +63,7 @@ public struct ASREngineCapabilities: Sendable {
   /// `language.lid_abstained`, `language.transcription_latency`,
   /// LID perf signpost logs (`lid_perf_signpost`), and incremental-finalize
   /// AppLogger lines. The lifecycle sink only owns kernel-level events.
-  public let supportsLanguageDetection: Bool
+  package let supportsLanguageDetection: Bool
 
   /// The engine's ASR decodes the kernel-conditioned (VAD-trimmed) batch buffer
   /// passed to `finalize(batchSamples:)` (Parakeet). `false` for engines that
@@ -73,9 +73,9 @@ public struct ASREngineCapabilities: Sendable {
   /// only meaningful when the engine actually consumes the trimmed buffer.
   /// Defaulted `true` so existing constructions stay source-compatible; the only
   /// `false` is WhisperKit.
-  public let decodesConditionedBatchSamples: Bool
+  package let decodesConditionedBatchSamples: Bool
 
-  public init(
+  package init(
     supportsStreaming: Bool,
     supportsLanguageDetection: Bool,
     decodesConditionedBatchSamples: Bool = true
@@ -144,7 +144,7 @@ extension ASREngineError: StableSentryErrorIdentity {
 /// The normalized outcome of one `finalize()` call (PR-1 §B.2.1). The kernel
 /// consumes exactly one of these per session and never sees an engine-specific
 /// result type.
-public enum ASREngineOutcome: Sendable {
+package enum ASREngineOutcome: Sendable {
   /// A non-empty raw transcript.
   case transcript(ASRResult)
   /// The decoder produced nothing. `hadSpeechEvidence` routes the kernel to
@@ -163,7 +163,7 @@ public enum ASREngineOutcome: Sendable {
 /// `Failure` in the `ASREngineOutcome` sense — it precedes any decode
 /// attempt, so there is nothing to retry, only a readiness confirmation to
 /// make before the FIRST (and only) decode attempt over the salvaged audio.
-public enum ASRInterruptionRecoveryOutcome: Equatable, Sendable {
+package enum ASRInterruptionRecoveryOutcome: Equatable, Sendable {
   /// The engine is confirmed ready; the kernel may proceed to `finalize`.
   case readyForBatchDecode
   /// Recovery could not confirm readiness (reconnect/reload failed, or the
@@ -178,20 +178,20 @@ public enum ASRInterruptionRecoveryOutcome: Equatable, Sendable {
 /// A wedge-detection progress tick emitted during model warm-up (PR-1 §B.1.7,
 /// §B.2.1). The kernel watches *cadence* — absence of ticks, not absence of
 /// completion-within-a-deadline — so there is no wall-clock timeout.
-public struct ASRLoadProgressTick: Sendable {
+package struct ASRLoadProgressTick: Sendable {
   /// Monotonic progress marker. The kernel treats a stalled marker as a wedge.
-  public let marker: UInt64
+  package let marker: UInt64
 
-  public init(marker: UInt64) {
+  package init(marker: UInt64) {
     self.marker = marker
   }
 }
 
 /// A wedge-detection progress tick emitted during `finalize()` (PR-1 §B.1.7,
 /// §B.2.1). Same cadence-watching semantics as `ASRLoadProgressTick`.
-public struct ASRFinalizeProgressTick: Sendable {
+package struct ASRFinalizeProgressTick: Sendable {
   /// #2787: what a tick is allowed to DO in the kernel.
-  public enum Kind: Sendable, Equatable {
+  package enum Kind: Sendable, Equatable {
     /// A liveness signal: the first arms `detectFinalizeWedge`, and a long
     /// silence after it is a wedge the kernel tears down (PR-1 §B.1.7).
     case progress
@@ -203,10 +203,10 @@ public struct ASRFinalizeProgressTick: Sendable {
   }
 
   /// Monotonic progress marker.
-  public let marker: UInt64
-  public let kind: Kind
+  package let marker: UInt64
+  package let kind: Kind
 
-  public init(marker: UInt64, kind: Kind = .progress) {
+  package init(marker: UInt64, kind: Kind = .progress) {
     self.marker = marker
     self.kind = kind
   }
@@ -230,20 +230,20 @@ public struct ASRFinalizeProgressTick: Sendable {
 /// `@MainActor` exactly once — never touched from two threads. This is the
 /// shipped `nonisolated(unsafe)` cross-actor-buffer transfer discipline
 /// (`swift-patterns.md`).
-public struct AudioBufferHandoff: @unchecked Sendable {
+package struct AudioBufferHandoff: @unchecked Sendable {
   /// 16 kHz mono Float32 capture buffer.
-  public let buffer: AVAudioPCMBuffer
+  package let buffer: AVAudioPCMBuffer
   /// Frame count in `buffer` (`buffer.frameLength`).
-  public let frameCount: Int
+  package let frameCount: Int
   /// Monotonic sequence number stamped on the audio thread. A streaming
   /// adapter that needs strict order reorders by `sequence`; a batch adapter
   /// ignores it (PR-1 §B.3).
-  public let sequence: UInt64
+  package let sequence: UInt64
   /// The session this buffer belongs to. A buffer whose `sessionID` is not the
   /// kernel's current session is dropped (PR-1 §B.3, FSM invariant 7).
-  public let sessionID: SessionID
+  package let sessionID: SessionID
 
-  public init(
+  package init(
     buffer: AVAudioPCMBuffer, frameCount: Int, sequence: UInt64, sessionID: SessionID
   ) {
     self.buffer = buffer

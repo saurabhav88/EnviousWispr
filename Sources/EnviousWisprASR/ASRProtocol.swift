@@ -11,7 +11,7 @@ public typealias ProgressCallback = @Sendable (Double, String, String) -> Void
 ///
 /// Both WhisperKit and Parakeet/FluidAudio conform to this protocol,
 /// enabling seamless backend switching at runtime.
-public protocol ASRBackend: Actor {
+package protocol ASRBackend: Actor {
   /// Whether the backend is initialized and ready to transcribe.
   var isReady: Bool { get }
 

@@ -41,7 +41,7 @@ import os
 
 /// A normalized, recoverable failure reason for the `failed` terminal state
 /// (PR-1 §B.1.2 transition table).
-public enum RecordingFailureReason: Equatable, Sendable {
+package enum RecordingFailureReason: Equatable, Sendable {
   case prepareFailed
   case permissionDenied
   case modelWedged
@@ -89,7 +89,7 @@ public enum RecordingFailureReason: Equatable, Sendable {
 ///   (#1548 D2). Was `recording`.
 /// - `delivering`: transcribe + finalize, sub-phase carried by
 ///   `deliveringPhase`. Was `transcribing` + `finalizing`.
-public enum RecordingSessionState: CaseIterable, Equatable, Sendable {
+package enum RecordingSessionState: CaseIterable, Equatable, Sendable {
   case idle
   case arming
   case live
@@ -268,7 +268,7 @@ final class RecordingSessionKernel {
   /// mid-transcription. Found by cloud review — the twin of the finding one
   /// round earlier, which is the question I did not ask: which OTHER engine has
   /// one of these.
-  public func cancelPendingEngineUnload() { adapter.cancelPendingUnload() }
+  package func cancelPendingEngineUnload() { adapter.cancelPendingUnload() }
 
   /// Re-arms this engine's unload timer under `policy`, the other half of
   /// `cancelPendingEngineUnload()`.
@@ -280,7 +280,7 @@ final class RecordingSessionKernel {
   /// to unload it, which is the memory cost the user's setting exists to avoid,
   /// inverted. Found by cloud review, one round after the cancel half. The same
   /// asymmetry, one level over.
-  public func applyEngineUnloadPolicy(_ policy: ModelUnloadPolicy) {
+  package func applyEngineUnloadPolicy(_ policy: ModelUnloadPolicy) {
     adapter.applyUnloadPolicy(policy)
   }
   private let audioCapture: any AudioCaptureInterface

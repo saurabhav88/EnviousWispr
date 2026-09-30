@@ -284,8 +284,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
 /// model what production feeds it (`scripts/eval/apple_runner --preclean`, #2844) asks THIS
 /// predicate rather than carrying a copy that drifts. The step above is the only production
 /// caller; the buckets and their order are documented on `skipReason` there.
-public enum InverseTextNormalizationGate {
-  public static func skipReason(language: String?, englishVetoed: Bool, backendSupportsLID: Bool)
+package enum InverseTextNormalizationGate {
+  package static func skipReason(language: String?, englishVetoed: Bool, backendSupportsLID: Bool)
     -> String?
   {
     if englishVetoed { return "language_vetoed" }

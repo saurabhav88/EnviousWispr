@@ -34,7 +34,7 @@ public enum DeviceLiveness: Sendable, Equatable {
 ///   "unverified" would therefore suppress the disconnect notice on exactly the
 ///   case #1408 exists for. Verified empirically: querying a nonexistent
 ///   `AudioDeviceID` returns `'!obj'` and leaves `isAlive` at zero.
-public enum CoreAudioDeviceLiveness {
+package enum CoreAudioDeviceLiveness {
 
   /// The pure decision, split out so it can be tested across the whole status
   /// space without a real device to unplug.
@@ -42,7 +42,7 @@ public enum CoreAudioDeviceLiveness {
   /// - Parameter isAlive: the out-parameter as Core Audio left it. Meaningful
   ///   ONLY when `status == noErr`; on every other status it is still its zero
   ///   initializer and is deliberately not read.
-  public static func interpret(status: OSStatus, isAlive: UInt32) -> DeviceLiveness {
+  package static func interpret(status: OSStatus, isAlive: UInt32) -> DeviceLiveness {
     switch status {
     case noErr:
       return isAlive == 0 ? .removed : .alive
@@ -61,7 +61,7 @@ public enum CoreAudioDeviceLiveness {
   }
 
   /// Performs the read against Core Audio and interprets it.
-  public static func classify(deviceID: AudioDeviceID) -> DeviceLiveness {
+  package static func classify(deviceID: AudioDeviceID) -> DeviceLiveness {
     var isAlive: UInt32 = 0
     var size = UInt32(MemoryLayout<UInt32>.size)
     var addr = AudioObjectPropertyAddress(
@@ -103,7 +103,7 @@ public enum DeviceMuteState: Sendable, Equatable {
 /// `CoreAudioDeviceLiveness`'s split (pure `interpret` + `classify` read) so
 /// the decision unit-tests across the whole status space without a real
 /// device.
-public enum CoreAudioDeviceMute {
+package enum CoreAudioDeviceMute {
 
   /// The pure decision, split out for boundary testing.
   ///
@@ -111,7 +111,7 @@ public enum CoreAudioDeviceMute {
   ///   ONLY when `status == noErr`; on every other status its contents are not
   ///   trustworthy — `AudioObjectGetPropertyData` promises nothing about what it
   ///   leaves there — so it is deliberately not read.
-  public static func interpret(status: OSStatus, isMuted: UInt32) -> DeviceMuteState {
+  package static func interpret(status: OSStatus, isMuted: UInt32) -> DeviceMuteState {
     switch status {
     case noErr:
       return isMuted == 0 ? .unmuted : .muted
@@ -147,7 +147,7 @@ public enum CoreAudioDeviceMute {
   /// Performs the read against Core Audio and interprets it. INPUT scope
   /// (not global) — `kAudioDevicePropertyMute` on the global scope answers a
   /// different (usually unsupported) question for an input-only device.
-  public static func classify(deviceID: AudioDeviceID) -> DeviceMuteState {
+  package static func classify(deviceID: AudioDeviceID) -> DeviceMuteState {
     var isMuted: UInt32 = 0
     var size = UInt32(MemoryLayout<UInt32>.size)
     var addr = AudioObjectPropertyAddress(
