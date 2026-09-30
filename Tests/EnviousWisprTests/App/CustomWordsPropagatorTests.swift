@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprPostProcessing
 
 /// Phase 0 (#640) — pins the `CustomWordsPropagator` contract around the
 /// split-lane registry pattern. Replaces Phase D (#496) tests after the
@@ -87,6 +88,17 @@ struct CustomWordsPropagatorTests {
     #expect(lanes.polish.terms.map(\.canonical) == ["Saoirse"])
     #expect(lanes.polish.terms.first?.aliases == ["sur-sha"])
     #expect(lanes.polish.generation == 7)
+  }
+
+  /// #3339: the shipped Claude stays in the prompt as a spelling, without the
+  /// check-only "clod"/"clawed" (a cloud model would swap them blindly).
+  @Test("the shipped Claude reaches the polish prompt without its check-only aliases")
+  func shippedClaudePromptLine() throws {
+    let shipped = CustomWordsManager.builtinDefaults.map(\.word)
+    let lanes = LanePartitioner.split(shipped, generation: 1)
+    let claude = try #require(lanes.polish.terms.first { $0.canonical == "Claude" })
+    #expect(claude.aliases.isEmpty)
+    #expect(lanes.polish.terms.count == shipped.count)
   }
 
   // MARK: - Unit: weak storage

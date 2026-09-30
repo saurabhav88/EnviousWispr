@@ -65,10 +65,15 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
   /// user typed, imported or restored. Persisted; pre-#996 entries decode as nil.
   public var learnedAt: Date?
 
+  /// The word or one of its sound-alikes is answered by the Learned Word Check
+  /// rather than swapped. True for words learned from the user's edits and for
+  /// the built-in Claude, whose "clod"/"clawed" are everyday words (#3339).
+  public var hasCheckerAliases: Bool { learnedAt != nil || !learnedAliases.isEmpty }
+
   /// The one predicate behind the sparkle on a word row and the
-  /// "Auto-learned" filter (#996): the word itself was learned, or at least
-  /// one of its sound-alikes was.
-  public var isAutoLearned: Bool { learnedAt != nil || !learnedAliases.isEmpty }
+  /// "Auto-learned" filter (#996): the USER's edits taught this word. A built-in
+  /// that ships with checker aliases was not learned from anyone (#3339).
+  public var isAutoLearned: Bool { source != .builtin && hasCheckerAliases }
 
   public init(
     id: UUID = UUID(),
