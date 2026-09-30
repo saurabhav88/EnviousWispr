@@ -19,6 +19,7 @@ on:
       - 'scripts/ci/ensure-metal-toolchain.sh'
       - 'scripts/ci/verify-checked-out-revision.sh'
       - 'scripts/ci/post-merge-should-run.sh'
+      - 'scripts/ci/classify-changes.sh'
       # #2401: both lanes below decide their verdict through this owner, so a
       # change to it alters every job here while leaving the workflow untouched —
       # the same reason the composite action and the revision guard are listed.
