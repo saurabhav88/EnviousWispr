@@ -118,11 +118,13 @@ def stage_one_shape_drop(original: str, replacement: str) -> bool:
     if len(lo.split()) != len(lr.split()):
         def letters(text: str) -> str:
             return "".join(ch for ch in text if ch.isalnum() or unicodedata.category(ch).startswith("M"))
-        def marks(text: str) -> str:
-            return "".join(_strip_edge_punctuation(t) for t in text.split())
+        # The original loses decoration at every token edge (the recogniser's);
+        # the replacement only at its outer edges ("US" -> "U. S." is the edit).
+        original_marks = "".join(_strip_edge_punctuation(t) for t in lo.split())
+        replacement_marks = "".join(ch for ch in _strip_edge_punctuation(" ".join(lr.split())) if not ch.isspace())
         # Only a match returns: otherwise fall through to the word comparison,
         # as Swift does (`hello !` -> `hello!` is dropped there).
-        if letters(lo) and letters(lo) == letters(lr) and marks(lo) != marks(lr):
+        if letters(lo) and letters(lo) == letters(lr) and original_marks != replacement_marks:
             return True
     o, r = words(original), words(replacement)
     if not o or len(o) != len(r):

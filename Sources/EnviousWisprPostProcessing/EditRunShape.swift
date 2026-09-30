@@ -30,21 +30,23 @@ package enum EditRunShape {
   /// not only spaces ("Miami Illinois" → "Miami-Illinois"). Founder
   /// 2026-09-25: hyphen, apostrophe and punctuation-only edits never reach
   /// Judge 1; polish owns them. The shipped judge learned 40 of 367 such
-  /// real-speech edits (night-0930 bench, tune half). Sentence decoration at
-  /// token edges is ignored, so a compound joined across a recognised comma
-  /// ("Satz, Bau" → "Satzbau") is a space-only join and still reaches the judge.
+  /// real-speech edits (night-0930 bench, tune half). Decoration the
+  /// recogniser put at the ORIGINAL's token edges is ignored, so a compound
+  /// joined across a recognised comma ("Satz, Bau" → "Satzbau") is a
+  /// space-only join and still reaches the judge. The replacement loses only
+  /// its outer decoration: punctuation the user typed between the words ("US"
+  /// → "U. S.") is the edit.
   static func isPunctuatedJoinOrSplit(original: String, replacement: String) -> Bool {
     let o = original.precomposedStringWithCanonicalMapping.lowercased()
     let r = replacement.precomposedStringWithCanonicalMapping.lowercased()
-    guard
-      o.split(whereSeparator: \.isWhitespace).count != r.split(whereSeparator: \.isWhitespace).count
-    else { return false }
+    let oTokens = o.split(whereSeparator: \.isWhitespace).map(String.init)
+    let rTokens = r.split(whereSeparator: \.isWhitespace).map(String.init)
+    guard oTokens.count != rTokens.count else { return false }
     let letters = { (s: String) in s.filter { $0.isLetter || $0.isNumber } }
-    let marks = { (s: String) in
-      s.split(whereSeparator: \.isWhitespace)
-        .map { WordCorrector.stripPunctuationStatic(String($0)) }.joined()
-    }
-    return !letters(o).isEmpty && letters(o) == letters(r) && marks(o) != marks(r)
+    let originalMarks = oTokens.map(WordCorrector.stripPunctuationStatic).joined()
+    let replacementMarks = WordCorrector.stripPunctuationStatic(rTokens.joined(separator: " "))
+      .filter { !$0.isWhitespace }
+    return !letters(o).isEmpty && letters(o) == letters(r) && originalMarks != replacementMarks
   }
 
   /// Words as letters-and-digits only, NFC, casefolded: everything the
