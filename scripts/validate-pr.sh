@@ -125,6 +125,26 @@ if [ "${1:-}" = "--self-test" ]; then
     echo "self-test FAIL: detect_lane_from_diff function missing"
   fi
 
+  # Test: lane detection itself, on the real function (#3189). The function is defined after this
+  # block, so it is lifted out of this file rather than reimplemented.
+  eval "$(sed -n '/^detect_lane_from_diff() {/,/^}/p' "$0")"
+  lane_case() { # name, expected lanes, changed files
+    local got
+    got=$(detect_lane_from_diff "$3")
+    if [ "$got" = "$2" ]; then
+      pass=$((pass + 1)); echo "self-test PASS: lanes for $1 = ${got:-<none>}"
+    else
+      fail=$((fail + 1)); echo "self-test FAIL: lanes for $1: expected '$2', got '$got'"
+    fi
+  }
+  lane_case "scripts/lib" "Docs/dev-tooling" "scripts/lib/l10n-catalog-sync.sh"
+  lane_case "scripts/ci" "Docs/dev-tooling" "scripts/ci/classify-changes.sh"
+  lane_case "root script" "Docs/dev-tooling" "scripts/build-dev-app.sh"
+  lane_case "scripts/eval only" "Eval-harness" "scripts/eval/run_egone_gguf.py"
+  lane_case "scripts/eval plus scripts/lib" "Docs/dev-tooling,Eval-harness" "scripts/eval/a.py
+scripts/lib/b.sh"
+  lane_case "no matching path" "" "README.md"
+
   # Test: run.json schema produced by the orchestrator validates against
   # check-validation.sh's expected fields.
   fixture_run="$TMPDIR/fixture-run"
@@ -241,12 +261,8 @@ detect_lane_from_diff() {
   # `.github/workflows/ci-drift-check.yml` (drift scan): each looked only at
   # `.github/workflows/`, so moving CI logic one directory sideways escaped it.
   #
-  # Known and deliberately NOT fixed here: `scripts/ci/*.sh` also matches no
-  # lane, because `^scripts/[^e][^v][^a][^l]/` cannot match `scripts/ci/`. That
-  # predates this change and rewriting the scripts/ lane logic has wider blast
-  # radius than this PR should carry. It does not affect this PR's own lane —
-  # the diff also touches `.github/`, so the union already resolves to
-  # CI/workflow. Recorded on #1994.
+  # `scripts/ci/` and `scripts/lib/` were unlaned until #3189: the old scripts/ pattern needed a
+  # four-character directory name. Any scripts/ subdirectory except eval/ is Docs/dev-tooling below.
   if echo "$changed_files" | grep -qE '^\.github/(workflows/|actions/)|dependabot'; then
     lanes="$lanes CI/workflow"
   fi
@@ -256,7 +272,8 @@ detect_lane_from_diff() {
   if echo "$changed_files" | grep -qE '^workers/'; then
     lanes="$lanes Worker"
   fi
-  if echo "$changed_files" | grep -qE '^(docs/|\.claude/|CLAUDE\.md|scripts/[^e][^v][^a][^l]/)' \
+  if echo "$changed_files" | grep -qE '^(docs/|\.claude/|CLAUDE\.md)' \
+     || echo "$changed_files" | grep -E '^scripts/[^/]+/' | grep -qvE '^scripts/eval/' \
      || echo "$changed_files" | grep -qE '^scripts/[^/]+\.sh$'; then
     lanes="$lanes Docs/dev-tooling"
   fi
@@ -413,7 +430,8 @@ if [ -z "$DECLARED" ]; then
 fi
 echo "==> Declared lane: $DECLARED"
 
-DETECTED_COUNT=$(echo "$DETECTED" | tr ',' '\n' | grep -c . || echo 0)
+# `grep -c` prints 0 AND exits 1 on no match, so `|| echo 0` printed a second 0; `|| true` keeps one.
+DETECTED_COUNT=$(echo "$DETECTED" | tr ',' '\n' | grep -c . || true)
 IS_MIXED=false
 if [ "$DETECTED_COUNT" -gt 1 ]; then
   IS_MIXED=true
