@@ -2,7 +2,7 @@ import Foundation
 
 /// What Kev's encoder needs from a tokenizer. The shipped one is Qwen's, loaded through
 /// ArgmaxCore; tests supply a character-level fake.
-public protocol KevTokenizing: Sendable {
+protocol KevTokenizing: Sendable {
   /// Plain text to ids, never adding BOS/EOS.
   func ids(for text: String) -> [Int]
   /// The id of one special token, or nil when the vocabulary lacks it.
@@ -12,11 +12,11 @@ public protocol KevTokenizing: Sendable {
 /// One Kev question, packed the way `kev.model.encode` packs a one-question record:
 /// `[state] state-text [question] instructions ([option] text [/option])... [decide]`.
 /// The readout is the hidden state at `decide` and at each option's closing token.
-public struct KevEncodedQuestion: Sendable, Equatable {
-  public let ids: [Int]
-  public let decide: Int
+struct KevEncodedQuestion: Sendable, Equatable {
+  let ids: [Int]
+  let decide: Int
   /// Closing-token positions, in option order: `no` first, then `yes`.
-  public let options: [Int]
+  let options: [Int]
 }
 
 /// Port of the request path `kev.serve` runs for a Noul question (kev 5920c5fe):
