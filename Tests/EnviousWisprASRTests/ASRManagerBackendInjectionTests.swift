@@ -289,35 +289,43 @@ struct ASRManagerLoadGenerationTests {
     "unloadModel during an in-flight load retires it so a retry starts FRESH, not joins the doomed task (Codex re-review P2)"
   )
   func unloadDuringInFlightLoadRetiresTaskSoRetryStartsFresh() async throws {
-    let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
+    // One backend PER LOAD, as production's factory builds. A shared instance let the superseded
+    // load's cleanup `unload()` (ready = false) land between the retry's prepare and its readiness
+    // read, so the retry's successful load reported not-loaded (flaky in CI, #3191).
+    let backends = BackendSequence()
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
+      engineMutationScope: .alwaysAllowedForTesting,
+      parakeetBackendFactory: { backends.makeGated() })
+
+    // The manager builds one backend at init; each load then builds its own.
+    let initial = backends.count
 
     // Load A parks in prepare() holding generation G.
     let loadTask = Task { @MainActor in
       await #expect(throws: ASRLoadSupersededError.self) { try await manager.loadModel() }
     }
-    await waitForPrepareEntered(parakeet)
+    while backends.count < initial + 1 { await Task.yield() }
+    await waitForPrepareEntered(backends.all[initial])
 
     // unloadModel bumps the generation (superseding A) AND must retire A's
     // single-flight handle so the next load does not join A's doomed task.
     await manager.unloadModel()
 
-    // Retry B: with the handle retired it starts a FRESH load (a second prepare);
-    // with the bug it would JOIN A via single-flight and never enter a new prepare.
+    // Retry B: with the handle retired it starts a FRESH load (a second backend prepares);
+    // with the bug it would JOIN A via single-flight and never build a second backend.
     let retry = Task { @MainActor in try await manager.loadModel() }
 
     // Bounded poll — never a spin-on-condition that could hang under the bug.
     var enteredFresh = false
     for _ in 0..<10_000 {
-      if await parakeet.prepareCount >= 2 {
+      if backends.count >= initial + 2, await backends.all[initial + 1].prepareCount >= 1 {
         enteredFresh = true
         break
       }
       await Task.yield()
     }
 
-    await parakeet.releaseGate()  // resumes A (cancelled → throws) and B (if it parked fresh)
+    for backend in backends.all { await backend.releaseGate() }  // resumes A (throws) and B
     await loadTask.value
 
     #expect(
@@ -344,6 +352,23 @@ struct ASRManagerLoadGenerationTests {
 /// Minimal `ASRBackend` actor for tests. Reports controllable readiness and
 /// records lifecycle calls. Does NOT implement transcription or streaming —
 /// G5 scope is the manager's reset branches, not real ASR work.
+/// Hands out a new gated backend per `parakeetBackendFactory` call, in order.
+final class BackendSequence: @unchecked Sendable {
+  private let lock = NSLock()
+  private var backends: [FakeASRBackend] = []
+
+  var all: [FakeASRBackend] { lock.withLock { backends } }
+  var count: Int { lock.withLock { backends.count } }
+
+  func makeGated() -> FakeASRBackend {
+    lock.withLock {
+      let backend = FakeASRBackend(initiallyReady: false, gated: true)
+      backends.append(backend)
+      return backend
+    }
+  }
+}
+
 final actor FakeASRBackend: ASRBackend {
   private var ready: Bool
   private(set) var unloadCount: Int = 0
