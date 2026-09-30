@@ -80,10 +80,10 @@ else
     [ -n "$macho" ] || continue
     chmod +x "$macho" 2>/dev/null && restored=$((restored + 1))
   done <<EOF
-  $(find "$APP" -type f 2>/dev/null | while read -r f; do
-    desc=$(file "$f" 2>/dev/null)
-    [ "${desc#*Mach-O}" != "$desc" ] && echo "$f"
-  done)
+$(find "$APP" -type f 2>/dev/null | while read -r f; do
+  desc=$(file "$f" 2>/dev/null)
+  [ "${desc#*Mach-O}" != "$desc" ] && echo "$f"
+done)
 EOF
   echo "==> restored the executable bit on $restored Mach-O files"
   [ "$restored" -gt 0 ] || die "found no Mach-O files to make executable in $APP; the bundle is not what this probe expects" 2
