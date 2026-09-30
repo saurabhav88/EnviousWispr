@@ -15,16 +15,16 @@ import SwiftUI
 /// `UserDefaults`-backed "Not Now" memory. Missing keys mean "never declined"
 /// (safe for every existing user). `@unchecked Sendable`: `UserDefaults` is
 /// documented thread-safe; the struct holds only that reference.
-public struct UserDefaultsRelocationSuppressionStore: RelocationSuppressionStore,
+struct UserDefaultsRelocationSuppressionStore: RelocationSuppressionStore,
   @unchecked Sendable
 {
   private let defaults: UserDefaults
   static let lastDeclinedAtKey = "ew.relocation.lastDeclinedAt"
   static let lastDeclinedVersionKey = "ew.relocation.lastDeclinedBundleVersion"
 
-  public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+  init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
-  public func lastDecline() -> (at: Date, version: String)? {
+  func lastDecline() -> (at: Date, version: String)? {
     guard
       let at = defaults.object(forKey: Self.lastDeclinedAtKey) as? Date,
       let version = defaults.string(forKey: Self.lastDeclinedVersionKey)
@@ -32,12 +32,12 @@ public struct UserDefaultsRelocationSuppressionStore: RelocationSuppressionStore
     return (at, version)
   }
 
-  public func recordDecline(at: Date, version: String) {
+  func recordDecline(at: Date, version: String) {
     defaults.set(at, forKey: Self.lastDeclinedAtKey)
     defaults.set(version, forKey: Self.lastDeclinedVersionKey)
   }
 
-  public func clear() {
+  func clear() {
     defaults.removeObject(forKey: Self.lastDeclinedAtKey)
     defaults.removeObject(forKey: Self.lastDeclinedVersionKey)
   }
@@ -87,7 +87,7 @@ private struct RelocationCard<Actions: View>: View {
 
 /// Centered-card prompt + progress + failure surfaces for the relocation flow.
 @MainActor
-public final class CenteredRelocationPresenter: RelocationPresenting {
+final class CenteredRelocationPresenter: RelocationPresenting {
   private var progressPanel: NSPanel?
 
   /// #2455 C3. An extension cannot store state, so the seams are carried by this
@@ -163,7 +163,7 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
     return panel
   }
 
-  public func present() async -> RelocationChoice {
+  func present() async -> RelocationChoice {
     let card = RelocationCard(
       title: Self.promptTitle,
       message: Self.promptMessage
@@ -202,7 +202,7 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
     return response == Self.moveResponse ? .move : .notNow
   }
 
-  public func showProgress() {
+  func showProgress() {
     let card = RelocationCard(
       title: Self.progressTitle,
       message: Self.progressMessage,
@@ -213,12 +213,12 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
     progressPanel = panel
   }
 
-  public func dismissProgress() {
+  func dismissProgress() {
     progressPanel?.orderOut(nil)
     progressPanel = nil
   }
 
-  public func showFailure(_ presentation: RelocationFailurePresentation) {
+  func showFailure(_ presentation: RelocationFailurePresentation) {
     dismissProgress()
     let (title, message) = Self.failureCopy(presentation)
     // Show in Finder exists ONLY on Message B, and its target comes from the
@@ -364,7 +364,7 @@ public final class CenteredRelocationPresenter: RelocationPresenting {
 // MARK: - Mover
 
 /// The safe verdict for an app already sitting at the destination.
-public enum ExistingDestinationDecision: Equatable, Sendable {
+enum ExistingDestinationDecision: Equatable, Sendable {
   /// Same-or-newer, verified copy, NOT running → open it fresh, never downgrade
   /// or overwrite.
   case openExisting
@@ -385,13 +385,13 @@ public enum ExistingDestinationDecision: Equatable, Sendable {
 /// copy safely: same-or-newer/running → open it (`.existingUsable`); older →
 /// atomic `replaceItemAt` after staging + signature validation on the
 /// destination volume (never Trash-first); absent → move staged into place.
-public struct FileManagerApplicationMover: ApplicationMoving {
+struct FileManagerApplicationMover: ApplicationMoving {
   /// Our Developer ID Team ID (scripts/build-release-dmg.sh TEAM_ID). The staged
   /// copy must satisfy `anchor apple generic` + this signing identity before it
   /// replaces anything.
   static let teamID = "9UT54V24XG"
 
-  public init() {}
+  init() {}
 
   /// Pure conflict-resolution matrix for a bundle already at the destination.
   /// Extracted so the routing that a Codex r2 P1 slipped through (downgrading to
@@ -420,7 +420,7 @@ public struct FileManagerApplicationMover: ApplicationMoving {
     return isRunning ? .refuseRunningOlder : .replace
   }
 
-  public func install(
+  func install(
     source: URL, destination: URL,
     expectedBundleIdentifier: String, currentVersion: String
   ) async -> Result<InstallResolution, RelocationFailure> {
@@ -781,27 +781,27 @@ public struct FileRelocationHandshake: RelocationHandshaking {
 /// properties. Pre-update recovery stage — deliberately NOT `update.install_*`,
 /// preserving #1447's producer-stage separation.
 @MainActor
-public struct TelemetryServiceRelocationSink: RelocationTelemetrySink {
-  public init() {}
-  public func offered(reason: String, destinationScope: String) {
+struct TelemetryServiceRelocationSink: RelocationTelemetrySink {
+  init() {}
+  func offered(reason: String, destinationScope: String) {
     TelemetryService.shared.updateRelocationOffered(
       reason: reason, destinationScope: destinationScope)
   }
-  public func accepted(reason: String, destinationScope: String, attemptID: String) {
+  func accepted(reason: String, destinationScope: String, attemptID: String) {
     TelemetryService.shared.updateRelocationAccepted(
       reason: reason, destinationScope: destinationScope, attemptID: attemptID)
   }
-  public func declined(reason: String) {
+  func declined(reason: String) {
     TelemetryService.shared.updateRelocationDeclined(reason: reason)
   }
-  public func failed(
+  func failed(
     reason: String, failureClass: String, attemptID: String, installResolution: String
   ) {
     TelemetryService.shared.updateRelocationFailed(
       reason: reason, failureClass: failureClass, attemptID: attemptID,
       installResolution: installResolution)
   }
-  public func relaunched(
+  func relaunched(
     reason: String, destinationScope: String, relaunchConfirmed: Bool, attemptID: String,
     installResolution: String
   ) {
@@ -809,7 +809,7 @@ public struct TelemetryServiceRelocationSink: RelocationTelemetrySink {
       reason: reason, destinationScope: destinationScope, relaunchConfirmed: relaunchConfirmed,
       attemptID: attemptID, installResolution: installResolution)
   }
-  public func completed(
+  func completed(
     reason: String, destinationScope: String, attemptID: String, completionSource: String
   ) {
     TelemetryService.shared.updateRelocationCompleted(
