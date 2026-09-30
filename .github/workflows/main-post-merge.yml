@@ -12,8 +12,14 @@ on:
     paths:
       - '.github/workflows/main-post-merge.yml'
       - '.github/actions/xcode-ci-setup/action.yml'
+      # #3344: scripts the composite action RUNS change every job here while leaving action.yml
+      # untouched; list each one (`grep -oE "run: scripts/[^ ]+" .github/actions/xcode-ci-setup/action.yml`).
+      - 'scripts/ci/configure-compilation-cache.sh'
+      - 'scripts/ci/configure-tuist-deriveddata-cache.sh'
+      - 'scripts/ci/ensure-metal-toolchain.sh'
       - 'scripts/ci/verify-checked-out-revision.sh'
       - 'scripts/ci/post-merge-should-run.sh'
+      - 'scripts/ci/classify-changes.sh'
       # #2401: both lanes below decide their verdict through this owner, so a
       # change to it alters every job here while leaving the workflow untouched —
       # the same reason the composite action and the revision guard are listed.

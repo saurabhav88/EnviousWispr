@@ -37,6 +37,11 @@ on:
     paths:
       - '.github/workflows/nightly-battery.yml'
       - '.github/actions/xcode-ci-setup/action.yml'
+      # #3344: scripts the composite action RUNS change every job here while leaving action.yml
+      # untouched; list each one (`grep -oE "run: scripts/[^ ]+" .github/actions/xcode-ci-setup/action.yml`).
+      - 'scripts/ci/configure-compilation-cache.sh'
+      - 'scripts/ci/configure-tuist-deriveddata-cache.sh'
+      - 'scripts/ci/ensure-metal-toolchain.sh'
       - 'scripts/lib/xcode-test-run.sh'
       # #3019: the phase wrapper and the metrics emitter run in every job here.
       - 'scripts/lib/ci-phase.sh'
@@ -46,6 +51,7 @@ on:
       - 'scripts/ci/debug-only-inventory.py'
       - 'scripts/ci/debug-only-tests.txt'
       - 'scripts/ci/notify-nightly.py'
+      - 'scripts/ci/check-alerting-heartbeat.py'  # loaded by notify-nightly.py
 
 concurrency:
   group: nightly-battery-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
