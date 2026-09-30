@@ -57,12 +57,13 @@ check("a run of only unreadable trials fails instead of reporting nothing arrive
 
 
 class Read:
-    def __init__(self, value):
-        self.ok, self.why = True, "readable"
-        self.fields = [type("Field", (), {"value": value})()]
+    def __init__(self, value, ok: bool = True):
+        self.ok, self.why = ok, "readable" if ok else "AX read failed"
+        self.fields = [type("Field", (), {"value": value})()] if ok else []
 
 
-def run_one_trial(focus_after_post, arrive: bool, limit_s: float = 0.02):
+def run_one_trial(focus_after_post, arrive: bool, limit_s: float = 0.02,
+                  unreadable_after_post: bool = False):
     """One trial with stubbed AX. `focus_after_post` is the element reported focused once the
     paste is dispatched; `chosen` is the field the person picked."""
     chosen, phrase = "field-A", {}
@@ -71,7 +72,8 @@ def run_one_trial(focus_after_post, arrive: bool, limit_s: float = 0.02):
              probe.same_element, probe.set_clipboard_text, probe.simulate_input.press_key,
              probe.time.sleep)
     probe.ax_oracle.read_focused = lambda bundle, pid=None: Read(
-        phrase["text"] if arrive and state["posted"] else "")
+        phrase["text"] if arrive and state["posted"] else "",
+        ok=not (unreadable_after_post and state["posted"]))
     probe.ax_oracle.is_frontmost = lambda pid: True
     probe.focused_element = lambda pid: focus_after_post if state["posted"] else chosen
     probe.same_element = lambda a, b: a == b
@@ -101,5 +103,9 @@ check("focus moved and nothing seen in the new field: the run fails, not not_see
 result, error = run_one_trial("field-B", arrive=True)
 check("focus moved even when the phrase is read: the run fails",
       result is None and error is not None and "at arrival" in error)
+
+result, error = run_one_trial("field-A", arrive=False, unreadable_after_post=True)
+check("every read fails after the paste: the run fails, not not_seen",
+      result is None and error is not None and "unreadable at time-out" in error)
 
 sys.exit(1 if failures else 0)

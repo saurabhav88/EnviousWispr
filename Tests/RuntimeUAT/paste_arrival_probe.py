@@ -192,6 +192,9 @@ def one_trial(bundle: str, pid: int, chosen, limit_s: float, route: str = "key")
                     "post_ms": round(posted_ms, 1), "samples": samples}
         if elapsed > limit_s:
             require_still_chosen(pid, chosen, "at time-out")
+            if not scan.ok:
+                # The last read failed, so "not seen" would mean "could not look" (#3118).
+                raise RuntimeError(f"{bundle}: focused field unreadable at time-out: {scan.why}")
             return {"verdict": "not_seen", "limit_ms": limit_s * 1000,
                     "last_read": scan.why if not scan.ok else "readable", "samples": samples}
         time.sleep(POLL_S)  # settle: the probe's sampling interval IS the measurement resolution

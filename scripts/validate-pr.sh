@@ -144,6 +144,21 @@ if [ "${1:-}" = "--self-test" ]; then
   lane_case "scripts/eval plus scripts/lib" "Docs/dev-tooling,Eval-harness" "scripts/eval/a.py
 scripts/lib/b.sh"
   lane_case "no matching path" "" "README.md"
+  eval "$(sed -n '/^fallback_lane_from_detected() {/,/^}/p' "$0")"
+  fallback_case() { # name, expected, detected lanes
+    local got
+    got=$(fallback_lane_from_detected "$3")
+    if [ "$got" = "$2" ]; then
+      pass=$((pass + 1)); echo "self-test PASS: no-plan lane for $1 = ${got:-<none>}"
+    else
+      fail=$((fail + 1)); echo "self-test FAIL: no-plan lane for $1: expected '$2', got '$got'"
+    fi
+  }
+  fallback_case "docs plus eval" "Eval-harness" "Docs/dev-tooling,Eval-harness"
+  fallback_case "docs plus worker" "Worker" "Docs/dev-tooling,Worker"
+  fallback_case "docs only" "Docs/dev-tooling" "Docs/dev-tooling"
+  fallback_case "code plus docs" "Code" "Code,Docs/dev-tooling"
+  fallback_case "none" "" ""
 
   # Test: run.json schema produced by the orchestrator validates against
   # check-validation.sh's expected fields.
@@ -279,6 +294,15 @@ detect_lane_from_diff() {
   fi
 
   echo "$lanes" | xargs -n1 | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# The lane used when the plan declares none. Docs/dev-tooling has the lightest obligations and sorts
+# ahead of Eval-harness and Worker, so taking the first name alphabetically let a docs or scripts/lib
+# change hide an eval or worker change from the verifier, which checks only the declared lane (#3189).
+fallback_lane_from_detected() {
+  local detected="$1" other
+  other=$(echo "$detected" | tr ',' '\n' | grep -vx 'Docs/dev-tooling' | head -1 || true)
+  if [ -n "$other" ]; then echo "$other"; else echo "$detected" | cut -d, -f1; fi
 }
 
 # --- Setup run directory ---
@@ -426,7 +450,7 @@ else
 fi
 if [ -z "$DECLARED" ]; then
   echo "WARN: no plan lane declared for this branch; using detected lane"
-  DECLARED=$(echo "$DETECTED" | cut -d, -f1)
+  DECLARED=$(fallback_lane_from_detected "$DETECTED")
 fi
 echo "==> Declared lane: $DECLARED"
 
