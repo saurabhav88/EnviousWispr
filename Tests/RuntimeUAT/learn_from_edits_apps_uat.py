@@ -735,7 +735,10 @@ def run_app(app, args):
         row["outcome"] = f"judge_bypassed: {verdict['outcome']}"
         return row, pid, doc
     if verdict["accepted"] == 0:
-        row["outcome"] = "judge_refused"
+        # #3101: a correction held on weak evidence can be saved later by a strong
+        # settle with no second judge row; the save line, not the first verdict, decides.
+        later = d.wait_for("a later save", lambda: re.search(r"learn_added state=(\w+)", d.log_since(fix_mark)), deadline=3.0)
+        row["outcome"] = "learned_after_hold" if later else "judge_refused"
         return row, pid, doc
     # The save is immediate: `learn_added` is the proof it landed (emitted only
     # after the app's own post-write reread), `learn_save_failed` a terminal
