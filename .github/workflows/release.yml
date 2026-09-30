@@ -631,14 +631,15 @@ jobs:
           [ -f "$DMG" ] || { echo "::error::$DMG not in the artifact"; exit 1; }
           MOUNT="$(mktemp -d)/dmg"
           mkdir -p "$MOUNT"
+          xcrun stapler validate "$DMG"
           hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG"
-          trap 'hdiutil detach -quiet "$MOUNT" || true' EXIT
+          trap 'hdiutil detach -quiet "$MOUNT" || hdiutil detach -force -quiet "$MOUNT" || true' EXIT
           [ -d "$MOUNT/EnviousWispr.app" ] || { echo "::error::no EnviousWispr.app in $DMG"; exit 1; }
-          # ditto keeps the signature, modes and stapled ticket byte for byte.
-          APP="$RUNNER_TEMP/shipped/EnviousWispr.app"
-          mkdir -p "$(dirname "$APP")"
-          ditto "$MOUNT/EnviousWispr.app" "$APP"
-          ./scripts/ci/assert-app-launches.sh --as-shipped "$APP"
+          # Launched from the mounted DMG, as a user first opens it. The notarization ticket
+          # is stapled to the DMG, not the app: a copy taken out of the volume made Gatekeeper
+          # on macos-14 fall back to an online lookup and report "Unnotarized Developer ID"
+          # (build-only run 36792148282) for an app the build job had just seen as notarized.
+          ./scripts/ci/assert-app-launches.sh --as-shipped "$MOUNT/EnviousWispr.app"
 
   # ==========================================================================
   # HEART Job B — Publish GitHub Release
