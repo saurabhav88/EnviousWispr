@@ -70,15 +70,28 @@ def focused_element(pid: int):
     return value if err == 0 else None
 
 
+def same_element(a, b) -> bool:
+    from CoreFoundation import CFEqual
+    return bool(CFEqual(a, b))
+
+
 def require_target(pid: int, chosen) -> None:
     """The chosen app is still in front AND the chosen field still has focus, checked immediately
     before every paste: a focus move must never paste into a field the person did not choose."""
-    from CoreFoundation import CFEqual
     if not ax_oracle.is_frontmost(pid):
         raise RuntimeError("target app lost the front before paste")
     current = focused_element(pid)
-    if current is None or not CFEqual(current, chosen):
+    if current is None or not same_element(current, chosen):
         raise RuntimeError("chosen field lost focus before paste")
+
+
+def require_still_chosen(pid: int, chosen, when: str) -> None:
+    """The polling loop reads whichever field is focused, not `chosen`. A verdict is only about the
+    chosen field if focus is still on it when the verdict is reached, so a move fails the run
+    instead of reporting `not_seen` for a paste that landed in the original field (#3119)."""
+    current = focused_element(pid)
+    if current is None or not same_element(current, chosen):
+        raise RuntimeError(f"chosen field lost focus during the trial ({when})")
 
 
 def enable_manual_ax(pid: int) -> None:
@@ -173,10 +186,12 @@ def one_trial(bundle: str, pid: int, chosen, limit_s: float, route: str = "key")
         if value is not None and phrase.strip() in value:
             # The first AX observation after dispatch: an UPPER bound on arrival. A 5 ms sleep
             # between reads is not a guaranteed 5 ms sample period (each read takes its own time).
+            require_still_chosen(pid, chosen, "at arrival")
             return {"verdict": "arrived", "arrived_ms": round(elapsed * 1000, 1),
                     "first_change_ms": None if first_change_ms is None else round(first_change_ms, 1),
                     "post_ms": round(posted_ms, 1), "samples": samples}
         if elapsed > limit_s:
+            require_still_chosen(pid, chosen, "at time-out")
             return {"verdict": "not_seen", "limit_ms": limit_s * 1000,
                     "last_read": scan.why if not scan.ok else "readable", "samples": samples}
         time.sleep(POLL_S)  # settle: the probe's sampling interval IS the measurement resolution
