@@ -72,7 +72,9 @@ APPS = {
     "notes": ("com.apple.Notes", "Notes", "native"),
     "mail": ("com.apple.mail", "Mail", "native"),
     "safari": ("com.apple.Safari", "Safari", "browser"),
-    "gmail": ("com.google.Chrome", "Google Chrome", "browser"),  # Gmail compose in Chrome (founder: "for chrome test in gmail")
+    "gmail": ("com.google.Chrome", "Google Chrome", "browser"),
+    # #3101: Chrome on a LOCAL page (never the founder's work Gmail); same textarea as the Safari page.
+    "chrome": ("com.google.Chrome", "Google Chrome", "browser"),  # Gmail compose in Chrome (founder: "for chrome test in gmail")
     "word": ("com.microsoft.Word", "Microsoft Word", "native"),
     "excel": ("com.microsoft.Excel", "Microsoft Excel", "native"),
     "slack": ("com.tinyspeck.slackmacgap", "Slack", "electron"),
@@ -315,6 +317,27 @@ def stage(app):
             raise d.Aborted("safari: focus did not reach the page's text area")
         require_local_page()
         return pid, None
+    if app == "chrome":
+        with open(LOCAL_PAGE, "w") as fh:
+            fh.write('<!doctype html><meta charset="utf-8"><title>ew lfe matrix</title>'
+                     '<body style="font:18px sans-serif;padding:24px">'
+                     '<p>Learn-from-edits browser check (local page, nothing is sent anywhere).</p>'
+                     '<textarea id="t" autofocus rows="6" cols="70"></textarea></body>')
+        subprocess.run(["open", "-a", name, LOCAL_PAGE], check=True)
+        pid = d.wait_for("Chrome running", lambda: pid_for(bundle, name), deadline=10.0)
+        activate_app(pid)
+        if not wait_frontmost(bundle):
+            raise d.Aborted("chrome: never became frontmost")
+        def page_area():
+            window = get_attr(get_ax_app(pid), "AXFocusedWindow")
+            if window is None or "ew lfe matrix" not in str(get_attr(window, "AXTitle") or ""):
+                return None
+            return find_element(window, role="AXTextArea", max_depth=60)
+        area = d.wait_for("the local page's text area", page_area, deadline=12.0)
+        if area is None:
+            raise d.Aborted("chrome: the local staging page is not the front tab, or its text area was not found")
+        click_into(area, "the page's text area", bundle)
+        return pid, None
     if app == "gmail":
         subprocess.run(["open", "-a", name, GMAIL_COMPOSE], check=True)
         pid = d.wait_for(f"{name} running", lambda: pid_for(bundle, name), deadline=10.0)
@@ -420,6 +443,13 @@ def stage(app):
             box = d.wait_for("the chat compose box", lambda: compose_box(get_attr(app_el, "AXFocusedWindow")), deadline=8.0)
             if box is None:
                 raise d.Aborted(f"{app}: no compose box in the front window; open a conversation")
+            if app == "slack":
+                # Founder 2026-09-30: Slack is his WORK account. Type only into his own
+                # self-DM, whose composer Slack labels with "(you)"; any other open
+                # conversation refuses before a single key. Nothing here ever sends.
+                label = (str(get_attr(box, "AXDescription") or "") + " " + str(get_attr(box, "AXPlaceholderValue") or "")).lower()
+                if "(you)" not in label:
+                    raise d.Aborted(f"slack: the open conversation is not the self-DM (composer label {label.strip()!r}); refusing to type in a work conversation")
             click_into(box, f"{app} compose box", bundle)
         return pid, None
     if app == "ghostty":
@@ -465,6 +495,10 @@ def cleanup(app, pid, doc):
             press("d", bundle, cmd=True)  # VS Code: Don't Save (Obsidian has no sheet; Cmd+D is harmless there)
         elif app == "safari":
             press("w", bundle, cmd=True)
+        elif app == "chrome":
+            window = get_attr(get_ax_app(pid), "AXFocusedWindow")
+            if window is not None and "ew lfe matrix" in str(get_attr(window, "AXTitle") or ""):
+                press("w", bundle, cmd=True)  # only the local page's own tab
         elif app == "gmail":
             # Closing a compose tab with a draft fires Chrome's "Leave site?"
             # dialog, which then blocks every later stage (founder, 2026-09-20).
@@ -543,6 +577,9 @@ def run_app(app, args):
         row["outcome"] = "INSTRUMENT: no paste cascade line"
         return row, pid, doc
     row["paste_tier"], row["paste_app"] = cascade.group(1), cascade.group(2)
+    tag = f"{app}-{args.then}{'-half' if args.half else ''}"
+    time.sleep(0.8)  # settle: the pasted text renders before the proof screenshot; no ack
+    row["shot_pasted"] = d.screenshot(f"{tag}-1-pasted.png") and f"{tag}-1-pasted.png"
     if cascade.group(2).lower() != bundle.lower():
         row["outcome"] = f"INSTRUMENT: paste went to {cascade.group(2)}"
         return row, pid, doc
@@ -613,8 +650,52 @@ def run_app(app, args):
         trail = ""
     for _ in range(len(heard) + len(punct) + len(trail)):
         press("backspace", bundle)
-    type_text(CORRECT + punct + trail, bundle)
+    if args.half:
+        # #3101: a retype abandoned part-way (the person stops at "Saur").
+        type_text(CORRECT[:4], bundle)
+    else:
+        type_text(CORRECT + punct + trail, bundle)
     row["typed_fix"] = True
+    row["fix_done_at"] = time.time()
+    time.sleep(0.3)  # settle: the typed keys render before the proof screenshot; no ack
+    row["shot_fixed"] = d.screenshot(f"{tag}-2-fixed.png") and f"{tag}-2-fixed.png"
+    after_fix = focused_value(pid)
+    row["field_after_fix"] = after_fix[-200:] if after_fix is not None else None
+    row["then"], row["half"] = args.then, args.half
+    time.sleep(0.8)  # settle: past flushMinQuietMs (500 ms), like a person finishing the word before moving on
+    if args.then == "switch":
+        # #3101: the person moves on to another app with the caret still at the word.
+        osa('tell application "Finder" to activate')
+        row["switched"] = bool(d.wait_for("Finder frontmost", lambda: frontmost_bundle() == "com.apple.finder", deadline=4.0))
+        row["then_at"] = time.time()
+    elif args.then == "axcaret":
+        # #3101: caret moved to the start by accessibility (not a person's click).
+        if not place_caret(pid, 0, bundle):
+            row["outcome"] = "INSTRUMENT: the host refused to move the caret"
+            return row, pid, doc
+        row["then_at"] = time.time()
+    elif args.then == "mouseclick":
+        # #3101: a real click near the field's top-left corner, as a person clicks elsewhere in the text.
+        focused = get_attr(get_ax_app(pid), "AXFocusedUIElement")
+        frame = element_frame(focused) if focused is not None else None
+        if not frame:
+            row["outcome"] = "INSTRUMENT: no frame for the focused field"
+            return row, pid, doc
+        require_frontmost(bundle)
+        si.click(frame["x"] + 6, frame["y"] + 8)
+        row["then_at"] = time.time()
+    elif args.then == "continue":
+        # #3101: the person goes to the end of the text and keeps typing.
+        press("down", bundle, cmd=True)
+        type_text(" Thanks again", bundle)
+        row["then_at"] = time.time()
+    elif args.then == "nextdictation":
+        # #3101: the person dictates again into the same field (a send-shaped end).
+        with contextlib.redirect_stdout(io.StringIO()):
+            w.test_recording(audio=clip, expect=EXPECT, timeout=45.0)
+        row["then_at"] = time.time()
+    time.sleep(0.5)  # settle: the post-fix action renders before its proof screenshot; no ack
+    row["shot_then"] = d.screenshot(f"{tag}-3-then.png") and f"{tag}-3-then.png"
     if args.paragraph:
         time.sleep(0.5)  # settle: the host applies the keystrokes; no ack
         after = focused_value(pid) or ""
@@ -632,7 +713,8 @@ def run_app(app, args):
         press("a", bundle, cmd=True)
         press("backspace", bundle)
         row["sent_after_ms"] = args.send_fast
-    judged = d.wait_for("learn_judged", lambda: re.search(r"learn_judged arm=\w+ outcome=\w+ candidates=\d+ accepted=\d+", d.log_since(fix_mark)), deadline=12.0)
+    # 16 s: the caret cap (10 s from the first deferral, which follows the 1.5 s quiet interval) must fit.
+    judged = d.wait_for("learn_judged", lambda: re.search(r"learn_judged arm=\w+ outcome=\w+ candidates=\d+ accepted=\d+", d.log_since(fix_mark)), deadline=16.0)
     if not judged:
         # The capture grace can end in a skip AFTER the fix was typed; read it
         # again here rather than report it as "not judged".
@@ -685,6 +767,11 @@ def main():
                         help="dictate a three-sentence paragraph with the mishearing in the middle sentence")
     parser.add_argument("--send-fast", type=int, default=0, metavar="MS",
                         help="empty the field MS milliseconds after the fix (a send inside the settle window); 0 = wait for the settle")
+    parser.add_argument("--then", choices=["stay", "switch", "axcaret", "mouseclick", "continue", "nextdictation"], default="stay",
+                        help="#3101: after the fix: leave the caret (stay); activate Finder (switch); set the caret to 0 by AX (axcaret); "
+                             "a real mouse click at the field's top-left (mouseclick); Cmd+Down then type more words (continue); "
+                             "dictate the carrier again into the same field (nextdictation)")
+    parser.add_argument("--half", action="store_true", help="#3101: type only the first four letters of the fix")
     parser.add_argument("--apps", default="slack,discord,whatsapp,gmail,word,excel,notes,mail,safari,vscode,ghostty,obsidian,textedit")
     args = parser.parse_args()
     d.run_dir = os.path.abspath(args.run_dir)
@@ -721,12 +808,58 @@ def main():
             print(f"\n=== {app} ===", flush=True)
             d.park_pointer()
             pid = doc = None
+            app_mark = d.log_mark()
             try:
                 row, pid, doc = run_app(app, args)
             except d.Aborted as error:
                 row = {"app": app, "outcome": f"INSTRUMENT: {error}"}
+            # #3101: which completion path fired, whatever the outcome.
+            # Up to 20 s for a natural end (switch ends at once; stay stays open until cleanup or the 60 s ceiling).
+            d.wait_for("observation end", lambda: "learn_observation_ended" in d.log_since(app_mark), deadline=20.0)
+            raw = [l for l in w.log_entries_since(app_mark) if "[LearnFromEdits]" in l]
+            lines = [l.split("[LearnFromEdits]")[1].strip() for l in raw]
+            row["learn_lines"] = raw  # with timestamps, whole
+            # Seconds from the last typed key to the settle and to the verdict (log stamps are whole seconds).
+            def stamp(token):
+                for l in raw:
+                    if token in l:
+                        m = re.match(r"\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[-+]\d\d:\d\d)\]", l)
+                        if m:
+                            from datetime import datetime
+                            return datetime.fromisoformat(m.group(1)).timestamp()
+                return None
+            done = row.get("fix_done_at")
+            for key, token in (("secs_to_settle", "learn_settle trigger="), ("secs_to_judged", "learn_judged "), ("secs_to_end", "learn_observation_ended")):
+                t = stamp(token)
+                row[key] = int(round(t - done)) if (t is not None and done) else None  # whole seconds: log stamps are coarse
+            row["read_sources"] = sorted(set(re.findall(r"learn_read_changed source=(\w+)", "\n".join(lines))))
+            row["read_failures"] = len(re.findall(r"learn_read_failed", "\n".join(lines)))
+            cls = re.search(r"app_class=(\w+)", "\n".join(lines))
+            row["app_class"] = cls.group(1) if cls else None
+            unf = re.search(r"unfinished_edits=(\d+)", "\n".join(lines))
+            row["unfinished_edits"] = int(unf.group(1)) if unf else None
+            row["settle_triggers"] = re.findall(r"learn_settle trigger=(\w+)", "\n".join(lines))
+            ended = re.search(r"learn_observation_ended reason=(\w+) settled_bursts=(\d+)", "\n".join(lines))
+            row["ended"] = f"{ended.group(1)} bursts={ended.group(2)}" if ended else None
+            row["judged_pairs"] = re.findall(r'judged "([^"]*)" -> "([^"]*)" verdict=(\w+)', "\n".join(lines))
+            # #3101 builds add the judge score, the completion evidence and the accept result.
+            row["judged_detail"] = re.findall(
+                r'judged "([^"]*)" -> "([^"]*)" verdict=\w+ p=([\d.]+|nil) evidence=(\w+) accepted=(\w+)', "\n".join(lines))
+            row["upgrades"] = re.findall(r"learn_settle_upgraded reason=(\w+)", "\n".join(lines))
+            row["weak_released"] = re.findall(r"learn_weak_released pairs=(\d+)", "\n".join(lines))
+            # The route that delivered the edit to the judge: a settle trigger, or (no settle line) the end that flushed it.
+            if row["settle_triggers"]:
+                row["route"] = "settle:" + row["settle_triggers"][0]
+            elif row["judged_pairs"] and ended:
+                row["route"] = "flush:" + ended.group(1)
+            elif row["judged_pairs"]:
+                row["route"] = "judged:unknown"
+            else:
+                row["route"] = "none"
+            row["read_failure_kinds"] = re.findall(r"learn_read_failed n=\d+/\d+ kind=(\w+)", "\n".join(lines))
+            row["lost_box"] = re.findall(r"learn_lost_box [^\n]*", "\n".join(lines))
             rows.append(row)
-            print(f"  {row.get('outcome')}  heard={row.get('heard')!r} tier={row.get('paste_tier')}", flush=True)
+            print(f"  {row.get('outcome')}  heard={row.get('heard')!r} tier={row.get('paste_tier')} settle={row.get('settle_triggers')} t_settle={row.get('secs_to_settle')} ended={row.get('ended')} judged={row.get('judged_pairs')} detail={row.get('judged_detail')} upgrades={row.get('upgrades')}", flush=True)
             d.save("rows.json", rows)
             time.sleep(3.5)  # settle: the 3 s Undo pill leaves on its own before the cleanup keys; nothing may press it
             if pid is not None:
