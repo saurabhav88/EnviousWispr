@@ -194,6 +194,10 @@ def measure(bundle: str, pid: int, reps: int, limit: float, route: str = "key") 
             # A safety refusal is incomplete evidence: the run fails rather than report a
             # shorter sample as if it were the requested one.
             raise RuntimeError(f"{bundle}: paste {i + 1}/{reps} aborted: {error}") from error
+        if r["verdict"] == "unreadable":
+            # No paste was sent: the focused field could not be read. Counting it would print
+            # "nothing arrived" for a run that measured nothing (#3118).
+            raise RuntimeError(f"{bundle}: paste {i + 1}/{reps} unreadable: {r.get('why')}")
         results.append(r)
         print(f"  paste {i + 1}: {r}", flush=True)
         # settle: spacing between trials so one paste's rendering cannot overlap the next clock
