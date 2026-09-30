@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import Foundation
 
 // MARK: - Which correction-judge arm serves on this Mac (#996, plan §3.1 step 7)

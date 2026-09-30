@@ -1,4 +1,3 @@
-import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprModelDelivery

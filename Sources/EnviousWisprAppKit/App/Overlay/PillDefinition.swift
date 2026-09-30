@@ -1,6 +1,5 @@
 import CoreGraphics
 import EnviousWisprCore
-import EnviousWisprPipeline
 import Foundation
 
 // The overlay's shared vocabulary (#2292, chunk C2). Deliberately free of

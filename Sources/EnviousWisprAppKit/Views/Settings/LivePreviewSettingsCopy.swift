@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import Foundation
 
 /// #1988: canonical copy for the "Live preview" setting.

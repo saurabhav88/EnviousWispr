@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import Foundation
 
 /// Decides what an EMPTY polish result MEANS (#2649, contract delta C1).

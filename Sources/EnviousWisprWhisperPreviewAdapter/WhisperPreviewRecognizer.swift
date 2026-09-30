@@ -1,5 +1,4 @@
 import EnviousWisprASR
-import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprPostProcessing
 import Foundation

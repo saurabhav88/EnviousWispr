@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import EnviousWisprPostProcessing
 import SwiftUI
 

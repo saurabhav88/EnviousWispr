@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import Foundation
 
 #if canImport(Speech)

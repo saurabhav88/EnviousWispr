@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import Foundation
 
 /// Hardware and signal facts for a take that captured nothing usable (#1890).

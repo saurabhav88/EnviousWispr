@@ -1,6 +1,4 @@
 import AppKit
-import EnviousWisprCore
-import EnviousWisprPipeline
 import SwiftUI
 
 // MARK: - RecoveryNoticeView (#1063 PR2)

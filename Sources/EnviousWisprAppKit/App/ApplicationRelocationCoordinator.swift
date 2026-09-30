@@ -1,6 +1,5 @@
 import AppKit
 import Darwin
-import EnviousWisprServices
 import Foundation
 import Security
 
