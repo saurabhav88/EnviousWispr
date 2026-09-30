@@ -128,6 +128,15 @@ struct BuiltinDictionaryCorrectionTests {
     #expect(corrected("I use envious whisperr daily") == "I use EnviousWispr daily")
   }
 
+  /// The excluded word still competes for the margin: a user alias close to the
+  /// inflected phrase must not win it just because EnviousWispr stepped aside.
+  @Test("an excluded word keeps a close call ambiguous")
+  func excludedWordStillCompetes() {
+    let user = CustomWord(canonical: "WhisperDesk", aliases: ["envious whispring"])
+    let sentence = "I was envious whispering"
+    #expect(corrector.correct(sentence, against: shipped + [user]).0 == sentence)
+  }
+
   /// "clod" and "clawed" are everyday words: the corrector never swaps them; the
   /// Learned Word Check decides in context (founder 2026-09-30, #3339).
   @Test(

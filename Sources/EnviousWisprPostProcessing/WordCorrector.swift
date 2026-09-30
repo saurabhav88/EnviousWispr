@@ -1556,14 +1556,20 @@ public struct WordCorrector: Sendable {
     // different phrase, not a mishearing: it scored above the threshold and was
     // swallowed whole (#3339). Excluded per canonical, before ranking, so a
     // sibling alias ("envious wisper") cannot pick it up instead. A typo with no
-    // such ending ("envious whisperr") still matches.
+    // such ending ("envious whisperr") still matches. An excluded canonical still
+    // counts as a competitor for the margin, so a close call stays ambiguous
+    // rather than handing the phrase to another word.
     let inflectedOf = Set(
       candidates.lazy.filter { Self.isInflection(phrase, of: $0.alias) }.map(\.canonical))
+    var excludedBest = 0.0
 
     for entry in candidates {
       if domainShapedOnly, !Self.isDomainShaped(entry.alias) { continue }
-      if inflectedOf.contains(entry.canonical) { continue }
       let candidateScore = score(phrase, against: entry.alias)
+      if inflectedOf.contains(entry.canonical) {
+        excludedBest = max(excludedBest, candidateScore)
+        continue
+      }
       if candidateScore > bestScore {
         if bestCanonical != entry.canonical { secondBest = bestScore }
         bestScore = candidateScore
@@ -1575,6 +1581,7 @@ public struct WordCorrector: Sendable {
     }
 
     guard bestScore > 0 else { return .noCandidate }
+    secondBest = max(secondBest, excludedBest)
 
     let phraseTokens = Set(phrase.components(separatedBy: " "))
     let hasStopword = !phraseTokens.isDisjoint(with: Self.stopwords)

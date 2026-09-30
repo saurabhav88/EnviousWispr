@@ -336,8 +336,9 @@ public final class CustomWordsManager {
         // Both are everyday English words ("the cat clawed the sofa"), so they are
         // check-only: `WordCorrector` never swaps them, and the Learned Word Check
         // asks the model whether this sentence means Claude (founder 2026-09-30,
-        // #3339). Claude is the only built-in routed this way. The step runs for
-        // everyone with the Dictionary on because of this entry.
+        // #3339). Claude is the only built-in routed this way. Because of this entry
+        // the step also runs for a user with no learned words, on a take whose text
+        // holds "clod" or "clawed"; the fix needs an available checker.
         aliases: ["clod", "clawed"],
         category: .brand,
         learnedAliases: ["clod", "clawed"]
