@@ -1,6 +1,4 @@
 import AppKit
-import EnviousWisprCore
-import EnviousWisprPipeline
 import SwiftUI
 
 /// Bulk-import-enrichment start/finish pill (#1701 Chunk 2). Mirrors

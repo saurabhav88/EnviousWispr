@@ -1,6 +1,5 @@
 import CoreGraphics
 import EnviousWisprCore
-import EnviousWisprPipeline
 import Foundation
 
 /// One atomic snapshot containing everything required for one rendered frame

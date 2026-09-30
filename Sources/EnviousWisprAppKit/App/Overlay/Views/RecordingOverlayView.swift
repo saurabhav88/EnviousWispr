@@ -1,6 +1,5 @@
 import AppKit
 import EnviousWisprCore
-import EnviousWisprPipeline
 import SwiftUI
 
 // MARK: - What a design tells the recording leaf to draw

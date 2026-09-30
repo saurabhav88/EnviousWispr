@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import Foundation
 
 /// Live Preview's whole surface, as the overlay sees it (#2292 Phase 1, chunk C2).

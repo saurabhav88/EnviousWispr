@@ -1,7 +1,6 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
-import EnviousWisprServices
 import SwiftUI
 
 // MARK: - Provider status (single at-a-glance authority)

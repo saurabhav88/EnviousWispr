@@ -1,11 +1,9 @@
-import EnviousWisprASR
 import EnviousWisprCore
 // `OllamaConnector.effectiveOllamaModel` is the canonical "which model will this
 // provider actually ask for" resolution, and the eviction rule this pin feeds
 // keys on exactly that value. Resolving it any other way here would compare two
 // spellings of one model.
 import EnviousWisprLLM
-import EnviousWisprPipeline
 import EnviousWisprServices
 
 /// #2648 — the user's current settings, frozen for one import.

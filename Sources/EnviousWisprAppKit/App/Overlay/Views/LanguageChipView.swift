@@ -1,6 +1,5 @@
 import AppKit
 import EnviousWisprCore
-import EnviousWisprPipeline
 import SwiftUI
 
 // MARK: - LanguageChipView

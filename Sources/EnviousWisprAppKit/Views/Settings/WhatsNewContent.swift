@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import Foundation
 
 /// Static "What's New" content, decoupled from the view layer.
