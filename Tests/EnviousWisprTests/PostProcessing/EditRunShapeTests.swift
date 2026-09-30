@@ -18,7 +18,7 @@ struct EditRunShapeTests {
   ]
   nonisolated static let kept: [(String, String)] = [
     ("post hog", "PostHog"), ("tail scale", "Tailscale"), ("e mail", "email"), ("git lab", "GitLab"), ("bird", "birds"),
-    ("C plus plus", "C++"), ("A T and T", "AT&T"), ("Satz, Bau", "Satzbau"), ("tail scale", "Tailscale,"),
+    ("C plus plus", "C++"), ("A T and T", "AT&T"), ("Satz, Bau", "Satzbau"), ("tail scale", "Tailscale,"), ("hi, tail scale", "Hi, Tailscale"),
     ("Sarah", "Saira"), ("Mueller", "Müller"), ("pree yanka", "Priyanka"), ("tu", "tú"),
     ("same", "same"), ("", "x"), ("a b", "a b c"), ("अमित", "अमिता"), ("प्रियांका", "प्रियंका"),
   ]

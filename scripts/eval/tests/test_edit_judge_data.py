@@ -284,7 +284,7 @@ def test_stage_one_shape_drop_matches_the_swift_fixtures():
     dropped = [("monday", "Monday"), ("figma", "Figma"), ("json", "JSON"), ("Github", "GitHub"), ("its", "it's"), ("hello", "hello!"),
                ("however", "however,"), ("the ceo", "the CEO"), ("Hello", "hello"), ("amanhã", "Amanhã"), ("sign up", "Sign Up"), ("e-mail", "E-Mail"),
                ("e mail", "e-mail"), ("well-known", "well known"), ("Miami Illinois", "Miami-Illinois"), ("node js", "node.js"), ("a b testing", "A/B testing"), ("U S", "U.S."), ("hello !", "hello!"), ("US", "U. S.")]
-    kept = [("post hog", "PostHog"), ("tail scale", "Tailscale"), ("e mail", "email"), ("git lab", "GitLab"), ("bird", "birds"), ("C plus plus", "C++"), ("A T and T", "AT&T"), ("Satz, Bau", "Satzbau"), ("tail scale", "Tailscale,"),
+    kept = [("post hog", "PostHog"), ("tail scale", "Tailscale"), ("e mail", "email"), ("git lab", "GitLab"), ("bird", "birds"), ("C plus plus", "C++"), ("A T and T", "AT&T"), ("Satz, Bau", "Satzbau"), ("tail scale", "Tailscale,"), ("hi, tail scale", "Hi, Tailscale"),
             ("Sarah", "Saira"), ("Mueller", "Müller"), ("pree yanka", "Priyanka"), ("tu", "tú"), ("same", "same"), ("", "x"), ("a b", "a b c")]
     # Combining marks (Devanagari matras) are letters to Swift's Character
     # and must stay in the comparison here too: an added matra is a real edit.

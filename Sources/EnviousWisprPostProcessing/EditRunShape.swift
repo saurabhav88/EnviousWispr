@@ -41,7 +41,8 @@ package enum EditRunShape {
     let r = replacement.precomposedStringWithCanonicalMapping.lowercased()
     let oTokens = o.split(whereSeparator: \.isWhitespace).map(String.init)
     let rTokens = r.split(whereSeparator: \.isWhitespace).map(String.init)
-    guard oTokens.count != rTokens.count else { return false }
+    // Spaces and case alone ("hi, tail scale" → "Hi, Tailscale") are the judge's.
+    guard oTokens.count != rTokens.count, oTokens.joined() != rTokens.joined() else { return false }
     let letters = { (s: String) in s.filter { $0.isLetter || $0.isNumber } }
     let originalMarks = oTokens.map(WordCorrector.stripPunctuationStatic).joined()
     let replacementMarks = WordCorrector.stripPunctuationStatic(rTokens.joined(separator: " "))

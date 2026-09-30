@@ -115,7 +115,8 @@ def stage_one_shape_drop(original: str, replacement: str) -> bool:
     # #3258 (EditRunShape-v2): a join or split made with punctuation, not
     # only spaces ("e mail" -> "e-mail"), with the same letters and digits.
     lo, lr = unicodedata.normalize("NFC", original).lower(), unicodedata.normalize("NFC", replacement).lower()
-    if len(lo.split()) != len(lr.split()):
+    # Spaces and case alone ("hi, tail scale" -> "Hi, Tailscale") are the judge's.
+    if len(lo.split()) != len(lr.split()) and "".join(lo.split()) != "".join(lr.split()):
         def letters(text: str) -> str:
             return "".join(ch for ch in text if ch.isalnum() or unicodedata.category(ch).startswith("M"))
         # The original loses decoration at every token edge (the recogniser's);
