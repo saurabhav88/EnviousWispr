@@ -110,20 +110,12 @@ runs:
       with:
         xcode-version: '27.0'
 
-    # #3242: the word check runs on MLX, whose Cmlx target compiles Metal shaders. Xcode 26 ships the
-    # Metal toolchain as a separate component, and hosted macOS 26 images do not always carry it
-    # (actions/runner-images#13014, #14013). Without it the build stops at "missing Metal Toolchain".
-    # Installed only when `xcrun metal` cannot run, so an image that has it pays nothing.
+    # #3242: the word check runs on MLX, whose Cmlx target compiles Metal shaders; hosted images do
+    # not always carry Xcode's separate Metal toolchain. Owner and the #3344 cache fix:
+    # scripts/ci/ensure-metal-toolchain.sh.
     - name: Ensure Metal toolchain
       shell: bash
-      run: |
-        set -euo pipefail
-        if xcrun -sdk macosx metal -v >/dev/null 2>&1; then
-          echo "Metal toolchain present"
-        else
-          xcodebuild -downloadComponent MetalToolchain
-          xcrun -sdk macosx metal -v
-        fi
+      run: scripts/ci/ensure-metal-toolchain.sh
 
     - name: Verify environment
       shell: bash

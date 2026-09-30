@@ -280,17 +280,10 @@ jobs:
             exit 1
           fi
 
-      # #3242: MLX (the word check) compiles Metal shaders; hosted macOS 26 images do not always
-      # carry the Metal toolchain component. Same step as .github/actions/xcode-ci-setup.
+      # #3242: MLX (the word check) compiles Metal shaders; hosted images do not always carry the
+      # Metal toolchain component. Same owner as .github/actions/xcode-ci-setup.
       - name: Ensure Metal toolchain
-        run: |
-          set -euo pipefail
-          if xcrun -sdk macosx metal -v >/dev/null 2>&1; then
-            echo "Metal toolchain present"
-          else
-            xcodebuild -downloadComponent MetalToolchain
-            xcrun -sdk macosx metal -v
-          fi
+        run: scripts/ci/ensure-metal-toolchain.sh
 
       - name: Verify SDK supports FoundationModels
         run: |
