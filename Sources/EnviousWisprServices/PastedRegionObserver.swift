@@ -1276,6 +1276,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
     /// malformed.
     var lastValueUTF16Count = 0
     var changedSinceSettled = false
+    /// #3101: the last settle was WEAK evidence and the text has not changed
+    /// since. A strong end that follows (a send, the next dictation) re-emits
+    /// the same region as strong, so a fix the watcher held back on weak
+    /// evidence is learned without a new judge call.
+    var weakSettleAwaitingUpgrade = false
     /// Absolute deadline of the cursor-aware deferral for the current change
     /// revision (`caretCapMs`); nil until the first deferral, cleared on a
     /// new revision.
@@ -1851,6 +1856,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
         watch?.lastRegionEnd = located.end
         watch?.lastValueUTF16Count = value.utf16.count
         watch?.changedSinceSettled = true
+        watch?.weakSettleAwaitingUpgrade = false
         watch?.lastChangeAtMs = scheduler.nowMs
         watch?.changeRevision &+= 1
         watch?.caretDeadlineMs = nil
@@ -1943,6 +1949,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
       self.watch?.caretDeadlineMs = nil
       self.watch?.settle?.cancel()
       self.watch?.settle = nil
+      self.watch?.weakSettleAwaitingUpgrade = trigger.evidence == .weak
       self.log?("learn_settle trigger=\(trigger.rawValue)")
       fresh.onEvent(.settled(region: fresh.lastRegion, evidence: trigger.evidence))
     }
@@ -2057,6 +2064,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
       (reason.flushesPendingEdit || lostBoxFlush) && w.changedSinceSettled && !w.lastRegion.isEmpty
       && w.lastRegion != w.target.renderedText
       && scheduler.nowMs - w.lastChangeAtMs >= minimumAgeMs
+    // #3101: text a WEAK settle already delivered, unchanged since, now ends in
+    // a strong way (a send, the next dictation): deliver it again as strong.
+    let upgrade =
+      !flush && w.weakSettleAwaitingUpgrade && !w.changedSinceSettled
+      && reason.pendingEvidence == .strong && !w.lastRegion.isEmpty
     stop()
     if lostBoxFlush {
       log?(
@@ -2066,6 +2078,10 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // A lost box is three failed reads, not a proven send: weak (#3101).
     let evidence: SettleEvidence? = lostBoxFlush ? .weak : reason.pendingEvidence
     if flush, let evidence { w.onEvent(.settled(region: w.lastRegion, evidence: evidence)) }
+    if upgrade {
+      log?("learn_settle_upgraded reason=\(reason.rawValue)")
+      w.onEvent(.settled(region: w.lastRegion, evidence: .strong))
+    }
     w.onEvent(.ended(reason))
   }
 }
