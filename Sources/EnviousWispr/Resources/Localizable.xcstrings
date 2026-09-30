@@ -20868,6 +20868,222 @@
         }
       }
     },
+    "whatsNew.help-before-feedback.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry help-before-feedback).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help before you send feedback"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe, bevor du Feedback sendest"
+          }
+        }
+      }
+    },
+    "whatsNew.help-before-feedback.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry help-before-feedback).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you press Send in Send Feedback, EnviousWispr now shows up to three help articles that might answer your question. Read an article, or send your message as you wrote it. On macOS 26 or later with Apple Intelligence on, you can mark each part of your message solved and choose not to send it."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du unter „Feedback senden“ auf „Senden“ klickst, zeigt EnviousWispr jetzt bis zu drei Hilfeartikel, die deine Frage beantworten könnten. Lies einen Artikel oder sende deine Nachricht so, wie du sie geschrieben hast. Ab macOS 26 mit aktivierter Apple Intelligence kannst du jeden Teil deiner Nachricht als gelöst markieren und die Nachricht dann nicht senden."
+          }
+        }
+      }
+    },
+    "whatsNew.keybind-conflict-warning.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry keybind-conflict-warning).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shortcut warning in Keybinds"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warnung unter „Tastenkürzel“"
+          }
+        }
+      }
+    },
+    "whatsNew.keybind-conflict-warning.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry keybind-conflict-warning).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If macOS says a key combination is already taken, Settings > Keybinds now shows a warning under that shortcut. Choose a different key combination to fix it."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn macOS meldet, dass eine Tastenkombination bereits vergeben ist, zeigt Einstellungen > Tastenkürzel jetzt eine Warnung unter diesem Kürzel. Wähle eine andere Tastenkombination, um das zu beheben."
+          }
+        }
+      }
+    },
+    "whatsNew.clipboard-restored-in-chrome.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry clipboard-restored-in-chrome).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed Clipboard regression that was introduced in 2.5.1"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenablage-Fehler aus 2.5.1 behoben"
+          }
+        }
+      }
+    },
+    "whatsNew.clipboard-restored-in-chrome.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry clipboard-restored-in-chrome).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your clipboard now comes back after you dictate into Chrome, Brave, Edge, Vivaldi, Arc or the ChatGPT app."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Zwischenablage wird jetzt wiederhergestellt, nachdem du in Chrome, Brave, Edge, Vivaldi, Arc oder in die ChatGPT-App diktiert hast."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-to-starting-chrome-window.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry paste-to-starting-chrome-window).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pastes go to the Chrome window you started in"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einfügen im ursprünglichen Chrome-Fenster"
+          }
+        }
+      }
+    },
+    "whatsNew.paste-to-starting-chrome-window.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry paste-to-starting-chrome-window).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you start dictating in one Chrome window and switch to another Chrome window before you stop, EnviousWispr now goes back to the first window and pastes there. If you closed the first window, your words stay on the clipboard."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du in einem Chrome-Fenster mit dem Diktieren beginnst und vor dem Beenden zu einem anderen Chrome-Fenster wechselst, kehrt EnviousWispr jetzt zum ersten Fenster zurück und fügt dort ein. Wenn du das erste Fenster geschlossen hast, bleiben deine Wörter in der Zwischenablage."
+          }
+        }
+      }
+    },
+    "whatsNew.longer-undo-for-learned-words.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry longer-undo-for-learned-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More time to Undo a learned word"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr Zeit für „Rückgängig“ bei gelernten Wörtern"
+          }
+        }
+      }
+    },
+    "whatsNew.longer-undo-for-learned-words.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry longer-undo-for-learned-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When Self-Learning saves a word, the Undo button now stays for 4 seconds instead of 3. A bar shows how much time is left."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn das Selbstlernende Wörterbuch ein Wort speichert, bleibt die Schaltfläche „Rückgängig“ jetzt 4 statt 3 Sekunden sichtbar. Ein Balken zeigt, wie viel Zeit noch bleibt."
+          }
+        }
+      }
+    },
+    "whatsNew.self-learning-skips-punctuation.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry self-learning-skips-punctuation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smarter Self-Learning"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intelligenteres Selbstlernen"
+          }
+        }
+      }
+    },
+    "whatsNew.self-learning-skips-punctuation.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry self-learning-skips-punctuation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Self-Learning Dictionary no longer learns edits that only add punctuation, such as \"e mail\" to \"e-mail\" or \"U S\" to \"U.S.\". It also needs to be more certain before it learns from an edit that you may not have finished."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Selbstlernende Wörterbuch lernt keine Änderungen mehr, die nur Satzzeichen hinzufügen, etwa „e mail“ zu „e-mail“ oder „U S“ zu „U.S.“. Außerdem braucht es mehr Sicherheit, bevor es aus einer Änderung lernt, die du vielleicht noch nicht abgeschlossen hast."
+          }
+        }
+      }
+    },
     "whatsNew.self-learning-dictionary.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry self-learning-dictionary).",
       "extractionState" : "manual",
