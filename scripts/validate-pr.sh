@@ -158,6 +158,9 @@ scripts/lib/b.sh"
   fallback_case "docs plus worker" "Worker" "Docs/dev-tooling,Worker"
   fallback_case "docs only" "Docs/dev-tooling" "Docs/dev-tooling"
   fallback_case "code plus docs" "Code" "Code,Docs/dev-tooling"
+  fallback_case "CI plus code" "Code" "CI/workflow,Code"
+  fallback_case "content plus eval" "Eval-harness" "Content,Eval-harness"
+  fallback_case "worker plus eval" "Worker" "Eval-harness,Worker"
   fallback_case "none" "" ""
 
   # Test: run.json schema produced by the orchestrator validates against
@@ -296,13 +299,16 @@ detect_lane_from_diff() {
   echo "$lanes" | xargs -n1 | sort -u | tr '\n' ',' | sed 's/,$//'
 }
 
-# The lane used when the plan declares none. Docs/dev-tooling has the lightest obligations and sorts
-# ahead of Eval-harness and Worker, so taking the first name alphabetically let a docs or scripts/lib
-# change hide an eval or worker change from the verifier, which checks only the declared lane (#3189).
+# The lane used when the plan declares none. The verifier checks only the declared lane's evidence,
+# so the fallback must be the lane with the most to prove, never the first name alphabetically
+# (that let a docs or scripts/lib change hide an eval or worker change, and CI/workflow hide Code;
+# #3189). Order: heaviest obligations first. A mixed PR still gets a warning naming the choice.
 fallback_lane_from_detected() {
-  local detected="$1" other
-  other=$(echo "$detected" | tr ',' '\n' | grep -vx 'Docs/dev-tooling' | head -1 || true)
-  if [ -n "$other" ]; then echo "$other"; else echo "$detected" | cut -d, -f1; fi
+  local detected="$1" lane
+  for lane in Code Worker Eval-harness CI/workflow Content Docs/dev-tooling; do
+    if echo "$detected" | tr ',' '\n' | grep -qx "$lane"; then echo "$lane"; return 0; fi
+  done
+  echo "$detected" | cut -d, -f1
 }
 
 # --- Setup run directory ---
@@ -451,6 +457,7 @@ fi
 if [ -z "$DECLARED" ]; then
   echo "WARN: no plan lane declared for this branch; using detected lane"
   DECLARED=$(fallback_lane_from_detected "$DETECTED")
+  LANE_FELL_BACK=true
 fi
 echo "==> Declared lane: $DECLARED"
 
@@ -459,6 +466,9 @@ DETECTED_COUNT=$(echo "$DETECTED" | tr ',' '\n' | grep -c . || true)
 IS_MIXED=false
 if [ "$DETECTED_COUNT" -gt 1 ]; then
   IS_MIXED=true
+  if [ "${LANE_FELL_BACK:-false}" = true ]; then
+    echo "WARN: mixed lanes ($DETECTED) and no plan lane: only $DECLARED evidence is checked; declare the lane in the plan"
+  fi
 fi
 
 # --- Phase 3 walk (lane-specific obligations live in workflow-process.md §11) ---
