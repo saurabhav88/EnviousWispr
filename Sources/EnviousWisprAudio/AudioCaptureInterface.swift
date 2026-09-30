@@ -246,7 +246,6 @@ public protocol AudioCaptureInterface: AnyObject {
 
   // VAD (Step 5)
   func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool)
-  // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int)
   // periphery:ignore - XPC capture contract (invoked via NSXPC proxy)
   func getVADSegments() async -> [SpeechSegment]

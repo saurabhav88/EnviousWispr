@@ -297,7 +297,6 @@ public final class TranscriptStore {
 
   #if DEBUG
     /// Blocks the detached walk so a test can observe sweep ordering.
-    // periphery:ignore - test seam
     nonisolated(unsafe) static var sweepGateForTesting: (@Sendable () async -> Void)?
   #endif
 

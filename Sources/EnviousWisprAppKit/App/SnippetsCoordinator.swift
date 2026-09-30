@@ -32,7 +32,6 @@ final class SnippetsCoordinator {
   /// Test seam: runs on the main actor after an import's store write has returned and before
   /// its publication. The window it opens is the one an edit sheet's save can land in; a
   /// test stages that save here. Never set in production.
-  // periphery:ignore - test seam
   var importWriteDidReturn: (@MainActor () -> Void)?
 
   init(manager: SnippetsManager = SnippetsManager()) {

@@ -1372,7 +1372,6 @@ final class TranscriptCoordinator {
     /// stale. A seam rather than a raced pair of tasks: the two resume in an
     /// order the runtime picks, so a racing test proves nothing on the run where
     /// it happens to win.
-    // periphery:ignore - test seam
     var onSweepWalkFinishedForTesting: (@MainActor () -> Void)?
 
     /// What a removal does to this coordinator's picture of the directory, with
