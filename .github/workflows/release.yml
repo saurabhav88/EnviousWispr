@@ -583,22 +583,84 @@ jobs:
           SUMMARY
 
   # ==========================================================================
+  # HEART gate — Launch the shipped app on macOS 14 (#3348)
+  # The exact notarized DMG this run publishes (or, in release-only, the
+  # source run's), mounted and launched UNMODIFIED on the support floor. PR CI
+  # launches a testable build; this is the only check of production startup,
+  # so publish-github-release and publish-appcast wait for it.
+  # ==========================================================================
+  launch-on-macos-14:
+    needs: [preflight, build-release-artifacts]
+    if: |
+      !cancelled() &&
+      needs.preflight.result == 'success' &&
+      (
+        (
+          (github.event_name == 'push' || inputs.mode == 'full' || inputs.mode == 'build-only') &&
+          needs.build-release-artifacts.result == 'success'
+        ) ||
+        (
+          inputs.mode == 'release-only' &&
+          needs.build-release-artifacts.result == 'skipped'
+        )
+      )
+    runs-on: macos-14
+    timeout-minutes: 20
+    permissions:
+      contents: read  # checkout of the launch assertion
+      actions: read   # cross-run download-artifact (release-only)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-artifacts-${{ needs.preflight.outputs.version }}
+          path: build/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.preflight.outputs.source-run-id }}
+
+      - name: Launch the shipped app
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          sw_vers
+          DMG="build/EnviousWispr-${VERSION}.dmg"
+          [ -f "$DMG" ] || { echo "::error::$DMG not in the artifact"; exit 1; }
+          MOUNT="$(mktemp -d)/dmg"
+          mkdir -p "$MOUNT"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG"
+          trap 'hdiutil detach -quiet "$MOUNT" || true' EXIT
+          [ -d "$MOUNT/EnviousWispr.app" ] || { echo "::error::no EnviousWispr.app in $DMG"; exit 1; }
+          # ditto keeps the signature, modes and stapled ticket byte for byte.
+          APP="$RUNNER_TEMP/shipped/EnviousWispr.app"
+          mkdir -p "$(dirname "$APP")"
+          ditto "$MOUNT/EnviousWispr.app" "$APP"
+          ./scripts/ci/assert-app-launches.sh --as-shipped "$APP"
+
+  # ==========================================================================
   # HEART Job B — Publish GitHub Release
   # Idempotent: probes first, only clobbers in explicit recovery mode.
   # ==========================================================================
   publish-github-release:
-    needs: [preflight, build-release-artifacts]
+    needs: [preflight, build-release-artifacts, launch-on-macos-14]
+    # #3348: never publish an app that has not launched, as shipped, on macOS 14.
     if: |
-      always() && (
-        github.event_name == 'push' ||
-        inputs.mode == 'full' ||
-        inputs.mode == 'release-only'
-      ) && (
-        needs.preflight.result == 'success'
-      ) && (
-        needs.build-release-artifacts.result == 'success' ||
-        needs.build-release-artifacts.result == 'skipped'
-      )
+      !cancelled() &&
+      needs.preflight.result == 'success' &&
+      (
+        (
+          (github.event_name == 'push' || inputs.mode == 'full') &&
+          needs.build-release-artifacts.result == 'success'
+        ) ||
+        (
+          inputs.mode == 'release-only' &&
+          needs.build-release-artifacts.result == 'skipped'
+        )
+      ) &&
+      needs.launch-on-macos-14.result == 'success'
     runs-on: macos-26   # no Xcode use: download, notes, gh release upload; stays on the GA image (#3344)
     timeout-minutes: 15
     permissions:
@@ -721,7 +783,10 @@ jobs:
   # ==========================================================================
   publish-appcast:
     # #1117: LIMB — checkout + download + python3/xmllint + App token + git push + curl. All Linux-present.
-    needs: [preflight, build-release-artifacts, publish-github-release]
+    needs: [preflight, build-release-artifacts, publish-github-release, launch-on-macos-14]
+    # #3348: the Sparkle feed offers the update to every installed app, so a
+    # push/full run publishes it only after the shipped app launched on macOS 14.
+    # appcast-only recovery republishes an already-released version and skips the gate.
     if: |
       always() && (
         github.event_name == 'push' ||
@@ -732,6 +797,9 @@ jobs:
       ) && (
         needs.build-release-artifacts.result == 'success' ||
         needs.build-release-artifacts.result == 'skipped'
+      ) && (
+        inputs.mode == 'appcast-only' ||
+        needs.launch-on-macos-14.result == 'success'
       )
     runs-on: ubuntu-latest   # #1117: Linux-eligible limb
     # #1217: the exact Pages run may wait behind one serialized 10-minute deploy,
@@ -1282,7 +1350,7 @@ jobs:
   # Always runs. Single truth source for what shipped and what didn't.
   # ==========================================================================
   release-summary:
-    needs: [preflight, build-release-artifacts, publish-github-release, publish-appcast, upload-sentry-dsyms, bump-homebrew-cask]
+    needs: [preflight, build-release-artifacts, launch-on-macos-14, publish-github-release, publish-appcast, upload-sentry-dsyms, bump-homebrew-cask]
     if: always() && needs.preflight.result == 'success'
     runs-on: ubuntu-latest   # #1117: pure-bash summary
     timeout-minutes: 5
@@ -1294,6 +1362,7 @@ jobs:
           SOURCE_RUN: ${{ needs.preflight.outputs.source-run-id }}
           MODE: ${{ inputs.mode || 'full' }}
           BUILD_RESULT: ${{ needs.build-release-artifacts.result }}
+          LAUNCH_RESULT: ${{ needs.launch-on-macos-14.result }}
           RELEASE_RESULT: ${{ needs.publish-github-release.result }}
           APPCAST_JOB_RESULT: ${{ needs.publish-appcast.result }}
           APPCAST_DELIVERY_RESULT: ${{ needs.publish-appcast.outputs.delivery-result }}
@@ -1345,6 +1414,7 @@ jobs:
           fi
 
           BUILD_STATUS=$(status_emoji "$BUILD_RESULT")
+          LAUNCH_STATUS=$(status_emoji "$LAUNCH_RESULT")
           RELEASE_STATUS=$(status_emoji "$RELEASE_RESULT")
           APPCAST_STATUS=$(status_emoji "$APPCAST_STATE")
           SENTRY_STATUS=$(status_emoji "$SENTRY_RESULT")
@@ -1372,6 +1442,7 @@ jobs:
           | Component | Status | Type |
           |---|---|---|
           | Build/Package | ${BUILD_STATUS} \`${BUILD_RESULT}\` | **HEART** |
+          | Launch on macOS 14 (as shipped) | ${LAUNCH_STATUS} \`${LAUNCH_RESULT}\` | **HEART** |
           | GitHub Release | ${RELEASE_STATUS} \`${RELEASE_RESULT}\` | **HEART** |
           | Appcast | ${APPCAST_STATUS} \`${APPCAST_STATE}\` | limb |
           | Sentry dSYMs | ${SENTRY_STATUS} \`${SENTRY_RESULT}\` | limb |
@@ -1391,6 +1462,12 @@ jobs:
           # Fail the summary job only if HEART jobs failed
           if [[ "$BUILD_RESULT" != "success" && "$BUILD_RESULT" != "skipped" ]]; then
             echo "::error::HEART FAILURE: Build failed — release did not ship"
+            exit 1
+          fi
+          # #3348: a failed or cancelled launch gate SKIPS publishing, so RELEASE_RESULT
+          # reads `skipped` and would pass the check below; name the gate itself.
+          if [[ "$LAUNCH_RESULT" != "success" && "$LAUNCH_RESULT" != "skipped" ]]; then
+            echo "::error::HEART FAILURE: the shipped app did not launch on macOS 14 (${LAUNCH_RESULT}) — release not published"
             exit 1
           fi
           if [[ "$RELEASE_RESULT" != "success" && "$RELEASE_RESULT" != "skipped" ]]; then
