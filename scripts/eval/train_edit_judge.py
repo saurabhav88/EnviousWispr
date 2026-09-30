@@ -96,6 +96,9 @@ DETECTION_RECALL_MIN = 0.85
 OBJECTIVES = ("three-class", "detection")
 
 
+# The Swift runner's `StageOneShapeArm.shapePolicy`; a parity receipt must carry it (#3258).
+SHAPE_POLICY = "EditRunShape-v2"
+
 def wilson_upper_bound(successes: int, trials: int, z: float = WILSON_Z_ONE_SIDED_95) -> float | None:
     """One-sided 95% Wilson upper bound of a proportion; None when trials == 0."""
     if trials <= 0:
@@ -851,6 +854,9 @@ def main() -> int:
         if not parity.get("ok") or (objective.name == "detection" and not shape_parity.get("ok")):
             print("INFRA-ERROR: parity receipt records a failed check", file=sys.stderr)
             return 2
+        if objective.name == "detection" and shape_parity.get("policy") != SHAPE_POLICY:
+            print(f"INFRA-ERROR: parity receipt was checked under shape policy {shape_parity.get('policy')!r}, not {SHAPE_POLICY}", file=sys.stderr)
+            return 2
         # byte copy: a text-mode rewrite would land CRLF on Windows and the digest below would no longer name this file
         shutil.copyfile(args.parity_receipt, run_dir / "parity-receipt.json")
         parity_source = {"receipt": str(args.parity_receipt), "receipt_sha256": data.sha256_file(run_dir / "parity-receipt.json"), "runner_machine": receipt.get("machine")}
@@ -909,7 +915,7 @@ def main() -> int:
         "encoding": {"contract": "tokenizer-contract.json", "input": "Edit: {original} → {replacement}" + (" | {original spelled} → {replacement spelled}" if args.pair_input == "spell" else ""), "pair_input": args.pair_input, "output": "Sentence: {pasted}", "max_length": contract["maxLength"], "pooling": "CLS"},
         "optimizer": {"name": "AdamW", "lr": args.lr, "weight_decay": 0.01, "batch_size": args.batch_size, "epochs": args.epochs, "class_weights": class_weights, "loss": "cross-entropy"},
         "stopping_rule": ("keep the epoch with the best dev macro-F1 at threshold 0.50 with the stage-1 shape rule applied (same subject as threshold selection); no early stop below epochs" if objective.name == "detection" else "keep the epoch with the best dev macro-F1 over the three classes; no early stop below epochs"),
-        "shape_rule": "EditRunShape-v2 (edit_judge_data.stage_one_shape_drop mirror; parity pinned against the Swift runner before training)" if objective.name == "detection" else None,
+        "shape_rule": f"{SHAPE_POLICY} (edit_judge_data.stage_one_shape_drop mirror; parity pinned against the Swift runner before training)" if objective.name == "detection" else None,
         "calibration_objective": selection_rule_text(objective, bool(cross_rows)),
         "partitions": {n: {"rows": len(rs), "file_sha256": split_manifest["partitions"][n]["file_sha256"]} for n, rs in (("train", train_rows), ("dev", dev_rows), ("calibration", cal_rows))},
         "split_manifest_sha256": data.sha256_file(dev_dir / "split-manifest.json"),

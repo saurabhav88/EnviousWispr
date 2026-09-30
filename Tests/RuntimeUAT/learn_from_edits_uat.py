@@ -897,8 +897,14 @@ def case_punctuated_join(path):
     apply_fix(path, "punctuated-join", "report to", "report-to")
     if not wait_for("the edit to settle", lambda: has(mark, "learn_settle trigger="), deadline=15.0):
         raise Aborted("punctuated-join: the edit never settled")
+    # The judge answers a settled burst on its own task (about 40 ms live); hold
+    # the field for the same bound `wait_judged` gives a real verdict, so a
+    # verdict that would arrive is seen before the absence is read.
+    if wait_judged(mark) is not None:
+        return check("punctuated-join", False, "the judge was asked about a punctuated join")
     clear_field(path)
-    wait_for("observation end", lambda: has(mark, "learn_observation_ended"), deadline=15.0)
+    if not wait_for("observation end", lambda: has(mark, "learn_observation_ended"), deadline=15.0):
+        raise Aborted("punctuated-join: the observation never ended")
     lines = "\n".join(learn_lines(mark))
     ok = "learn_judged" not in lines and "judged \"" not in lines and "learn_added" not in lines
     return check("punctuated-join", ok, f"judged={'learn_judged' in lines} added={'learn_added' in lines}")
