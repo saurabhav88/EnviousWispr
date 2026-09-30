@@ -467,11 +467,11 @@ if [ -n "$EMBEDDED" ]; then
     # all 9 arm64 embedded Mach-O files in the real bundle report between 1 and 63 load commands,
     # so an empty list means the parse stopped working, not that the binary is self-contained.
     if [ -z "$extra_loads" ]; then
-      echo "    $(basename "$extra"): no dynamic library load commands were parsed, so the framework checks below would inspect nothing" >&2
+      echo "    $(basename "$extra"): no dynamic library load commands were parsed, so the framework checks below would inspect nothing; refusing to certify a binary this script cannot inspect" >&2
       status=1
     fi
     if ! extra_syms=$(nm -arch arm64 -m -u "$extra" 2>&1); then
-      echo "    $(basename "$extra"): nm could not read its undefined symbols ($extra_syms); every symbol verdict below would be vacuously clean" >&2
+      echo "    $(basename "$extra"): nm could not read its undefined symbols ($extra_syms); every symbol verdict below would be vacuously clean; refusing to certify a binary this script cannot inspect" >&2
       status=1
       continue
     fi

@@ -253,24 +253,24 @@ jobs:
       github.event_name == 'push' ||
       inputs.mode == 'full' ||
       inputs.mode == 'build-only'
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 330
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       # #3155: the same Xcode every PR, main and nightly lane tests with (.github/actions/xcode-ci-setup
-      # pins 26.6 and checks build 17F113; scripts/lib/l10n-catalog-sync.sh PINNED_XCODE_BUILD).
+      # pins 27.0 and checks build 27A266a; scripts/lib/l10n-catalog-sync.sh PINNED_XCODE_BUILD).
       # `latest-stable` would let a hosted-image update ship a release built on a toolchain no gate
       # ran. Moving Xcode is one deliberate PR that bumps all three.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
-          xcode-version: '26.6'
+          xcode-version: '27.0'
 
       - name: Verify pinned Xcode build
         env:
-          EXPECTED_XCODE_BUILD: 17F113
+          EXPECTED_XCODE_BUILD: 27A266a
         run: |
           set -euo pipefail
           xcodebuild -version
@@ -606,7 +606,7 @@ jobs:
         needs.build-release-artifacts.result == 'success' ||
         needs.build-release-artifacts.result == 'skipped'
       )
-    runs-on: macos-26
+    runs-on: macos-26   # no Xcode use: download, notes, gh release upload; stays on the GA image (#3344)
     timeout-minutes: 15
     permissions:
       contents: write

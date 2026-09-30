@@ -65,7 +65,7 @@ permissions:
 
 jobs:
   battery:
-    runs-on: macos-26
+    runs-on: xcode-27
     # Two full builds (Debug instrumented, Release testable) plus two full
     # suites on a 3-core runner. Cold on the Release side because this job
     # restores the debug family only. Cap sized for that; to be measured.

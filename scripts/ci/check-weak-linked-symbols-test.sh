@@ -215,6 +215,9 @@ fi
 # A truncated Mach-O: `file` still classifies it, so the enumeration picks it up, while `lipo`
 # and `nm` refuse it. Before the exit statuses were checked this printed "no arm64 slice ()" —
 # the same sentence as a legitimate skip, differing only by an empty parenthesis — and passed.
+# Which tool refuses first depends on the toolchain: Xcode 26.6's `otool -l` exited nonzero on
+# this file, while Xcode 27.0's exits 0 with no load commands and `nm` is the first to refuse
+# (#3344). Every one of those refusals names the file as uncertifiable with the same phrase.
 head -c 512 "$BIN" > "$BUNDLE/Contents/Frameworks/Truncated.dylib"
 if [ "$(file "$BUNDLE/Contents/Frameworks/Truncated.dylib" | grep -c 'Mach-O')" -eq 0 ]; then
   echo "  FAIL [fixture] the truncated file is not classified as Mach-O, so the enumeration would skip it and this case would test nothing" >&2
