@@ -83,6 +83,82 @@ enum WhatsNewContent {
       version: "2.5.2"
     ),
 
+    // Founder-reviewed group, 2026-09-30 (Claude Doc "EnviousWispr 2.5.2 Release Notes"). He
+    // cut the launch-crash card (#3274) and the own-names card (#3343), moved the word-check card
+    // second and wrote the clipboard title himself; the cards below are the approved text.
+
+    // #3275 V1b (PR #3295): on Send, up to three help cards before anything is sent; the whole
+    // message is always sendable. Marking parts solved and "Solved, don't send" need the on-device
+    // split (Apple FoundationModels, macOS 26+); below 26 the check runs in whole-message mode,
+    // which can never skip the send. Fails open to sending on any error or timeout.
+    Entry(
+      id: "help-before-feedback",
+      icon: "lifepreserver",
+      title: "Help before you send feedback",
+      description:
+        "When you press Send in Send Feedback, EnviousWispr now shows up to three help articles that might answer your question. Read an article, or send your message as you wrote it. On macOS 26 or later with Apple Intelligence on, you can mark each part of your message solved and choose not to send it.",
+      version: "2.5.2"
+    ),
+
+    // #3273 (PRs #3277, #3281): a -9878 registration refusal for a chord this app does not hold
+    // shows a row warning for all five shortcut roles. The copy says only what macOS reported;
+    // the holder is unknown (#3281).
+    Entry(
+      id: "keybind-conflict-warning",
+      icon: "keyboard",
+      title: "Shortcut warning in Keybinds",
+      description:
+        "If macOS says a key combination is already taken, Settings > Keybinds now shows a warning under that shortcut. Choose a different key combination to fix it.",
+      version: "2.5.2"
+    ),
+
+    // #3286 (PR #3301): a no_target landing never keeps the dictation on the clipboard, so a
+    // sleeping Chromium host (Chrome, Brave, Edge, Vivaldi, Arc) or the ChatGPT app gets the
+    // user's clipboard back. Title is the founder's.
+    Entry(
+      id: "clipboard-restored-in-chrome",
+      icon: "doc.on.clipboard",
+      title: "Fixed Clipboard regression that was introduced in 2.5.1",
+      description:
+        "Your clipboard now comes back after you dictate into Chrome, Brave, Edge, Vivaldi, Arc or the ChatGPT app.",
+      version: "2.5.2"
+    ),
+
+    // #3304 (PR #3310): when a sleeping Chrome hides the text box, the focused standard window
+    // is recorded at record start, raised at paste; a READ different front window (the first
+    // was closed) keeps the words on the clipboard with the Copied notice. Tested in Chrome only.
+    Entry(
+      id: "paste-to-starting-chrome-window",
+      icon: "macwindow.on.rectangle",
+      title: "Pastes go to the Chrome window you started in",
+      description:
+        "If you start dictating in one Chrome window and switch to another Chrome window before you stop, EnviousWispr now goes back to the first window and pastes there. If you closed the first window, your words stay on the clipboard.",
+      version: "2.5.2"
+    ),
+
+    // #3260 (Sentry ENVIOUSWISPR-5E): CorrectionLearnedPillCopy.learnedDwellSeconds 3.0 -> 4.0
+    // plus a countdown rail during the learned phase.
+    Entry(
+      id: "longer-undo-for-learned-words",
+      icon: "arrow.uturn.backward",
+      title: "More time to Undo a learned word",
+      description:
+        "When Self-Learning saves a word, the Undo button now stays for 4 seconds instead of 3. A bar shows how much time is left.",
+      version: "2.5.2"
+    ),
+
+    // #3258 (PR #3318): EditRunShape drops a join or split whose letters and digits are unchanged
+    // (punctuation only). #3101 (PR #3333): weak completion evidence (caret cap, app switch, lost
+    // box, watch limit) needs judge score 0.95 instead of 0.68 before a word is saved.
+    Entry(
+      id: "self-learning-skips-punctuation",
+      icon: "brain",
+      title: "Smarter Self-Learning",
+      description:
+        "The Self-Learning Dictionary no longer learns edits that only add punctuation, such as \"e mail\" to \"e-mail\" or \"U S\" to \"U.S.\". It also needs to be more certain before it learns from an edit that you may not have finished.",
+      version: "2.5.2"
+    ),
+
     // MARK: - v2.5.1
 
     // Founder-edited group, 2026-09-27 (Claude Doc "EnviousWispr 2.5.1 Release Notes"). Cards
