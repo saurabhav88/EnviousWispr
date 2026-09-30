@@ -314,8 +314,8 @@ def main() -> int:
         # The planned proposal path (stage-1 shape rule, then this judge) is a
         # distinct configuration: same artifact digests, identity extended by
         # the shape policy, `path` declared so the gate passes it to the runner.
-        shaped_identity = dict(bound_identity, shape_policy="EditRunShape-v1", path="shape+judge")
-        shaped = dict(bound, execution_identity=shaped_identity, path="shape+judge", provenance=bound["provenance"] + "; measured behind the stage-1 shape rule EditRunShape-v1")
+        shaped_identity = dict(bound_identity, shape_policy="EditRunShape-v2", path="shape+judge")
+        shaped = dict(bound, execution_identity=shaped_identity, path="shape+judge", provenance=bound["provenance"] + "; measured behind the stage-1 shape rule EditRunShape-v2")
         (out_dir / "training-manifest-shaped.json").write_text(json.dumps(shaped, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         loaded_manifest = data.load_training_manifest(out_dir / "training-manifest.json")
         verification = {

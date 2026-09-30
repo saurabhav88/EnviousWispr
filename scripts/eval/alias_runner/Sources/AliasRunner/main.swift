@@ -934,7 +934,7 @@ struct ClassifierJudgeArm: JudgeArm {
 /// converter; hand-written for the untrained arms). Latency covers the shape
 /// check and, when taken, the judge, on one monotonic clock.
 struct StageOneShapeArm: JudgeArm {
-  static let shapePolicy = "EditRunShape-v1"
+  static let shapePolicy = "EditRunShape-v2"
   let inner: any JudgeArm
   let candidate: JudgeCandidate
 
@@ -983,7 +983,7 @@ struct StageOneShapeArm: JudgeArm {
 /// Python trainer can prove its mirror agrees on the actual dataset before
 /// training (Codex 4a-ii round 2: two copied fixture lists are not a
 /// contract). Request `{"pairs":[{"original":"…","replacement":"…"}]}`;
-/// response `{"policy":"EditRunShape-v1","drops":[true,false,…]}`.
+/// response `{"policy":"EditRunShape-v2","drops":[true,false,…]}`.
 func runShape(_ argv: [String]) -> Never {
   var request: String?
   var out: String?

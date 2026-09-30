@@ -81,6 +81,20 @@ REVIEWED_STATUSES = frozenset({"template-reviewed", "authored-sample-reviewed", 
 TRAIN_ONLY_STATUSES = frozenset({"harvest-jev-labelled", "rule-constructed", "rule-labelled-real"})
 
 
+# Mirror of `WordCorrector.edgePunctuation` (the sentence decoration a token
+# may carry at its edges); pinned by the Swift/Python shape fixtures.
+EDGE_PUNCTUATION = frozenset(".,!?;:…—–-()[]{}\"'“”‘’‚„«»‹›")
+
+
+def _strip_edge_punctuation(token: str) -> str:
+    start, end = 0, len(token)
+    while start < end and token[start] in EDGE_PUNCTUATION:
+        start += 1
+    while end > start and token[end - 1] in EDGE_PUNCTUATION:
+        end -= 1
+    return token[start:end]
+
+
 def stage_one_shape_drop(original: str, replacement: str) -> bool:
     """Python mirror of the shipped `EditRunShape.isCasingOrPunctuationOnly`
     (plan §3.1 step 5): the two runs differ only in letter case, punctuation
@@ -98,6 +112,21 @@ def stage_one_shape_drop(original: str, replacement: str) -> bool:
             if core:
                 out.append(core)
         return out
+    # #3258 (EditRunShape-v2): a join or split made with punctuation, not
+    # only spaces ("e mail" -> "e-mail"), with the same letters and digits.
+    lo, lr = unicodedata.normalize("NFC", original).lower(), unicodedata.normalize("NFC", replacement).lower()
+    # Spaces and case alone ("hi, tail scale" -> "Hi, Tailscale") are the judge's.
+    if len(lo.split()) != len(lr.split()) and "".join(lo.split()) != "".join(lr.split()):
+        def letters(text: str) -> str:
+            return "".join(ch for ch in text if ch.isalnum() or unicodedata.category(ch).startswith("M"))
+        # The original loses decoration at every token edge (the recogniser's);
+        # the replacement only at its outer edges ("US" -> "U. S." is the edit).
+        original_marks = "".join(_strip_edge_punctuation(t) for t in lo.split())
+        replacement_marks = "".join(ch for ch in _strip_edge_punctuation(" ".join(lr.split())) if not ch.isspace())
+        # Only a match returns: otherwise fall through to the word comparison,
+        # as Swift does (`hello !` -> `hello!` is dropped there).
+        if letters(lo) and letters(lo) == letters(lr) and original_marks != replacement_marks:
+            return True
     o, r = words(original), words(replacement)
     if not o or len(o) != len(r):
         return False
