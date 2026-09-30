@@ -1427,7 +1427,7 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list.count == 1, "stale coordinates would read 18 as outside 12...15 and settle")
     ax.selectedRange = .range(location: 8, length: 0)  // in "PS Note:", outside the moved span 15...18
     scheduler.advance(ms: 1500)
-    #expect(e.list.last == .settled(region: "Ask Saira today"))
+    #expect(e.list.last == .settled(region: "Ask Saira today", evidence: .strong))
   }
 
   @Test("the cap or the ceiling crossed inside the caret read is honoured before any settle or re-arm")
@@ -1493,7 +1493,7 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list.count == 1)
     ax.selectedRange = .range(location: 16, length: 0)  // after the space: moved on
     scheduler.advance(ms: 1500)
-    #expect(e.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    #expect(e.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong)])
     #expect(lines.lines.contains("learn_settle trigger=caretLeft"))
     #expect(ax.selectedRangeReads == 3, "one caret read per quiet check")
   }
@@ -1508,7 +1508,7 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list.count == 1)
     ax.selectedRange = .range(location: 0, length: 4)  // "Note" selected
     scheduler.advance(ms: 1500)
-    #expect(e.list.last == .settled(region: "Ask Saira today"))
+    #expect(e.list.last == .settled(region: "Ask Saira today", evidence: .strong))
   }
 
   @Test("an unavailable, malformed or unreadable caret falls back to today's quiet-only settling")
@@ -1576,7 +1576,7 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     #expect(
       e.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.textboxEmptied),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(.textboxEmptied),
       ])
   }
 
@@ -1592,7 +1592,7 @@ struct PastedRegionObserverWatchTests {
     #expect(
       e.list == [
         .changed(region: "Ask Saira today"), .changed(region: "Ask Sairah today"),
-        .settled(region: "Ask Sairah today"), .ended(.nextDictationStarted),
+        .settled(region: "Ask Sairah today", evidence: .strong), .ended(.nextDictationStarted),
       ])
     #expect(o.isObserving == false)
     o.finish(.nextDictationStarted)
@@ -1615,7 +1615,7 @@ struct PastedRegionObserverWatchTests {
     o3.finish(.nextDictationStarted)
     #expect(
       e3.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.textboxEmptied),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(.textboxEmptied),
       ])
     #expect(o3.isObserving == false)
   }
@@ -1776,7 +1776,7 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     #expect(
       events.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
         .ended(.textboxEmptied),
       ])
     #expect(observer.isObserving == false)
@@ -1807,7 +1807,7 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     #expect(
       e2.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
         .ended(.appTerminated),
       ])
   }
@@ -1849,7 +1849,7 @@ struct PastedRegionObserverWatchTests {
       scheduler.advance(ms: 750)
       let want: [PastedRegionEvent] =
         flushes
-        ? [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(expected)]
+        ? [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(expected)]
         : [.changed(region: "Ask Saira today"), .ended(expected)]
       #expect(e.list == want, "\(read)")
     }
@@ -1876,7 +1876,7 @@ struct PastedRegionObserverWatchTests {
     registration.fire(.valueChanged)
     #expect(
       events.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
         .ended(.textboxEmptied),
       ], "\(events.list)")
 

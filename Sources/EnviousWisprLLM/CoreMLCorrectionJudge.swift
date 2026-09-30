@@ -488,7 +488,8 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
       decisions.append(
         CorrectionJudgeDecision(
           id: candidate.id,
-          verdict: Self.decide(probability: probability, threshold: identity.threshold)))
+          verdict: Self.decide(probability: probability, threshold: identity.threshold),
+          probability: probability))
     }
     return .validated(decisions, for: request)
   }

@@ -77,10 +77,10 @@ extension TelemetryService: LearnFromEditsRuntimeTelemetrySink {}
     }
     func learnJudged(
       arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?,
-      takeID: String?
+      takeID: String?, evidence: SettleEvidence
     ) {
-      log("learn_judged arm=\(arm.rawValue) outcome=\(outcome.rawValue) candidates=\(candidates) accepted=\(accepted) latency_ms=\(latencyMs) take=\(takeID ?? "none")")
-      inner.learnJudged(arm: arm, outcome: outcome, candidates: candidates, accepted: accepted, latencyMs: latencyMs, queueWaitMs: queueWaitMs, takeID: takeID)
+      log("learn_judged arm=\(arm.rawValue) outcome=\(outcome.rawValue) candidates=\(candidates) accepted=\(accepted) latency_ms=\(latencyMs) evidence=\(evidence.rawValue) take=\(takeID ?? "none")")
+      inner.learnJudged(arm: arm, outcome: outcome, candidates: candidates, accepted: accepted, latencyMs: latencyMs, queueWaitMs: queueWaitMs, takeID: takeID, evidence: evidence)
     }
     func learnSaveFailed(reason: T.SaveFailure) {
       log("learn_save_failed reason=\(reason.rawValue)")

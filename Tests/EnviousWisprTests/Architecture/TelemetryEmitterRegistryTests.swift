@@ -115,8 +115,11 @@ struct TelemetryEmitterRegistryTests {
   /// year); no existing feedback row to fold into; reader: analytics-operations.md help-check
   /// review; counts, closed outcome/reason enums and version stamps only, no message or card
   /// text; Int/Bool/Double on the wire; launch-scoped (no take_id); registry row added.
+  /// #3101: `learnJudged` gained `evidence`, which changes that site's enclosing-function
+  /// identity. No new site, no new event, same cadence; one closed token (`strong`/`weak`),
+  /// String on the wire, no text or score; registry row updated.
   static let sitesFingerprint =
-    "45cadb7aef0490aa52bc11c62a9efb00644890d69b421211236d6162c4e0df3c"
+    "dbd303aa7f4ff9d1a8f7b36fb3fddd657e01bfd540ba8cab259bad19ba3cc04f"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

@@ -60,6 +60,8 @@ import Testing
       // `queue_wait_ms` rides only when the arm measured it (see the second test).
       "custom_words.learn_judged": [
         "arm", "outcome", "candidates", "accepted", "latency_ms", "queue_wait_ms", "take_id",
+        // #3101: how the watch knew the edit was finished.
+        "evidence",
       ],
       "custom_words.learn_save_failed": ["reason"],
       // Auto-learn (2026-09-21 plan §3.1 step 11).
@@ -84,7 +86,7 @@ import Testing
             editBudgetRatio: 1.4))
         t.learnJudged(
           arm: .rules, outcome: .verdict, candidates: 3, accepted: 1, latencyMs: 812,
-          queueWaitMs: 0, takeID: "TAKE-1")
+          queueWaitMs: 0, takeID: "TAKE-1", evidence: .strong)
         t.learnSaveFailed(reason: .aliasOwnedElsewhere)
         t.learnAdded(state: .packOverride)
         t.learnUndoShown()
@@ -124,10 +126,10 @@ import Testing
           durationMs: 61_000, unfinishedEdits: 1)
         TelemetryService.shared.learnJudged(
           arm: .afm, outcome: .deadline, candidates: 4, accepted: 0, latencyMs: 5001,
-          queueWaitMs: 120)
+          queueWaitMs: 120, evidence: .weak)
         TelemetryService.shared.learnJudged(
           arm: .rules, outcome: .verdict, candidates: 1, accepted: 1, latencyMs: 3,
-          queueWaitMs: nil)
+          queueWaitMs: nil, evidence: .strong)
         TelemetryService.shared.learnUndone(kind: .updated, outcome: .alreadyChanged)
         TelemetryService.shared.learnSaveFailed(reason: .vocabularyWriteFailed)
       }
@@ -142,11 +144,13 @@ import Testing
       #expect(judged.stringProps["arm"] == "afm" && judged.stringProps["outcome"] == "deadline")
       #expect(judged.intProps["candidates"] == 4 && judged.intProps["accepted"] == 0)
       #expect(judged.intProps["latency_ms"] == 5001 && judged.intProps["queue_wait_ms"] == 120)
+      #expect(judged.stringProps["evidence"] == "weak")
       // Unmeasured queue wait: the key is absent, never zero.
       let unmeasured = try #require(
         box.values.last { $0.name == "custom_words.learn_judged" })
       #expect(unmeasured.intProps["queue_wait_ms"] == nil)
       #expect(unmeasured.intProps.keys.contains("queue_wait_ms") == false)
+      #expect(unmeasured.stringProps["evidence"] == "strong")
       let undone = try #require(box.values.first { $0.name == "custom_words.learn_undone" })
       #expect(
         undone.stringProps["kind"] == "updated"

@@ -56,10 +56,15 @@ package enum CorrectionJudgeClass: String, Sendable, CaseIterable, Equatable {
 package struct CorrectionJudgeDecision: Sendable, Equatable {
   package let id: Int
   package let verdict: CorrectionJudgeClass
+  /// The judge's P(correction) when the arm computes one (the Core ML arm);
+  /// nil for arms with no score (rules, Apple). #3101: weak completion
+  /// evidence is accepted only above a higher score.
+  package let probability: Double?
 
-  package init(id: Int, verdict: CorrectionJudgeClass) {
+  package init(id: Int, verdict: CorrectionJudgeClass, probability: Double? = nil) {
     self.id = id
     self.verdict = verdict
+    self.probability = probability
   }
 }
 
