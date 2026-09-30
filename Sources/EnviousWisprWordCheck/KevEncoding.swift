@@ -23,14 +23,14 @@ public struct KevEncodedQuestion: Sendable, Equatable {
 /// `kev.api.to_record` renders the state object and the two options, and `kev.model.encode`
 /// frames them. Parity with the Python path is pinned by the golden records in
 /// `KevEncodingParityTests` (real tokenizer, 40 questions, identical ids).
-public enum KevEncoding {
-  public enum EncodingError: Error, Equatable {
+enum KevEncoding {
+  enum EncodingError: Error, Equatable {
     case missingSpecialToken(String)
   }
 
   /// The state object Kev was trained on, in field order. `kev.api.render` of a flat object of
   /// strings is one `key: value` line per field.
-  public static func stateText(
+  static func stateText(
     listedWord: String, asWritten: String, withListedWord: String, changedFrom: String
   ) -> String {
     [
@@ -42,7 +42,7 @@ public enum KevEncoding {
   }
 
   /// `kev.api.option_text`: the option name, then its criterion after a colon.
-  public static func optionTexts(_ question: KevContract.Question) -> [String] {
+  static func optionTexts(_ question: KevContract.Question) -> [String] {
     ["no: \(question.no)", "yes: \(question.yes)"]
   }
 
@@ -52,7 +52,7 @@ public enum KevEncoding {
     text.replacing(/<\|([A-Za-z0-9_]+)\|>/) { match in "<¦\(match.1)¦>" }
   }
 
-  public static func encode(
+  static func encode(
     state: String, question: KevContract.Question, tokens: KevContract.SpecialTokens,
     tokenizer: some KevTokenizing
   ) throws -> KevEncodedQuestion {

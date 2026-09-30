@@ -33,24 +33,24 @@ import Foundation
 /// the Neural Engine — CPU-only scoring returns NaN and CPU+GPU returns one
 /// constant logit — which silently disabled the classifier on M5 hardware.
 /// FLOAT32 makes it placement-independent. Recipe: `scripts/convert-output-classifier.py`.
-public enum OutputClassifierManifest {
+enum OutputClassifierManifest {
   public static let modelName = "MiniLM-L6"
   public static let modelSeed = 13
 
   /// Resource names in `Bundle.main.resourceURL`. Xcode compiles the committed
   /// source `.mlpackage` into `.mlmodelc` at build time, so the runtime loads
   /// the compiled model (the `.mlpackage` is the defensive fallback only).
-  public static let compiledModelName = "OutputClassifier.mlmodelc"
-  public static let mlpackageName = "OutputClassifier.mlpackage"
-  public static let tokenizerFolderName = "OutputClassifierTokenizer"
-  public static let contractFileName = "tokenizer-contract.json"
+  static let compiledModelName = "OutputClassifier.mlmodelc"
+  static let mlpackageName = "OutputClassifier.mlpackage"
+  static let tokenizerFolderName = "OutputClassifierTokenizer"
+  static let contractFileName = "tokenizer-contract.json"
 
   /// Sigmoid-probability threshold: probability >= this ⇒ DISCARD (fall back to
   /// raw transcript). Sourced from the trained checkpoint's `eval.json` `T_clf`.
   /// #949: re-swept on the reformat-augmented dev (max discard-recall @ KEEP FPR-95
   /// ≤ 3%), down from 0.10498441010713577 — the lower threshold keeps faithful
   /// reformats (the #949 case scores 0.025) while holding hallucination recall.
-  public static let discardThreshold = 0.08155437558889389
+  static let discardThreshold = 0.08155437558889389
 
   /// Fixed Core ML tensor shape locked at Phase 3 (NOT `model_max_length=512`).
   public static let maxLength = 128
@@ -59,7 +59,7 @@ public enum OutputClassifierManifest {
   // `PairEncodingAdapter`). Authoritative copy also lives in the shipped
   // `tokenizer-contract.json`; these constants are the in-code source of truth
   // used when no contract override applies.
-  public static let padTokenID = 0
+  static let padTokenID = 0
   public static let clsTokenID = 101
   public static let sepTokenID = 102
   public static let specialsBudget = 4
@@ -69,10 +69,10 @@ public enum OutputClassifierManifest {
   public static let segmentVocabSize = 2
 
   /// Core ML I/O contract (verified at load; mismatch ⇒ fail open).
-  public static let inputIDsFeature = "input_ids"
-  public static let attentionMaskFeature = "attention_mask"
-  public static let tokenTypeIDsFeature = "token_type_ids"
-  public static let logitsFeature = "logits"
+  static let inputIDsFeature = "input_ids"
+  static let attentionMaskFeature = "attention_mask"
+  static let tokenTypeIDsFeature = "token_type_ids"
+  static let logitsFeature = "logits"
 
   /// Build-time integrity anchors (verified by `OutputClassifierResourceTests`
   /// against the committed sources, NOT at runtime — the runtime artifact is a

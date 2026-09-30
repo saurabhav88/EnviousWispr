@@ -8,7 +8,7 @@ import EnviousWisprCore
 /// The `[CustomWord]` path preserves alias hints for builders that render them
 /// (OpenAI/Gemini). The `PromptVocabulary` path is for new callsites that want
 /// the confidence-tiered, language-aware filter applied before rendering.
-public struct CustomVocabularyFormatter: Sendable {
+struct CustomVocabularyFormatter: Sendable {
   private static let maxWords = 50
   private static let maxChars = 2000
 
@@ -18,7 +18,7 @@ public struct CustomVocabularyFormatter: Sendable {
 
   /// Render custom words in full format (for OpenAI and Gemini builders).
   /// Returns nil if the word list is empty.
-  public static func render(_ words: [CustomWord]) -> String? {
+  static func render(_ words: [CustomWord]) -> String? {
     guard !words.isEmpty else { return nil }
     let sorted = words.sorted { ($0.priority, $0.canonical) < ($1.priority, $1.canonical) }
     let capped = Array(sorted.prefix(maxWords))
