@@ -327,6 +327,129 @@ struct PasteLandingLifecycleTests {
     #expect(registration?.registeredNotifications.isEmpty == true)
     #expect(ax.landingCalls.isEmpty)
   }
+
+  // MARK: Recorded window at record start (#3304)
+
+  private func capture(_ ax: PastedRegionFakeAX, clock: PastedRegionFakeScheduler)
+    -> PasteService.RecordedWindowCapture
+  {
+    PasteService.captureFocusedStandardWindow(pid: Self.pid, ax: ax, scheduler: clock)
+  }
+
+  private func standard(_ ax: PastedRegionFakeAX, _ window: AXUIElement) {
+    ax.subroles["\(CFHash(window))"] = .subrole(kAXStandardWindowSubrole as String)
+  }
+
+  @Test("A focused standard window is recorded, and its timeout is put back to the default")
+  func recordsStandardWindow() {
+    let ax = PastedRegionFakeAX()
+    ax.focusedWindows[Self.pid] = .window(Self.windowA)
+    standard(ax, Self.windowA)
+    let result = capture(ax, clock: PastedRegionFakeScheduler())
+    #expect(result.window.map { CFEqual($0, Self.windowA) } == true)
+    #expect(result.reason == "recorded")
+    #expect(ax.timeoutsSet.first.map { $0.0 == Self.pid } == true, "the app handle is bounded first")
+    #expect(ax.timeoutsSet.last.map { $0.0 == 7_001 && $0.1 == 0 } == true, "window timeout reset")
+    #expect(ax.landingCalls.map(\.call) == ["focusedWindow"])
+  }
+
+  @Test("A dialog, sheet, or window with no subrole is never recorded")
+  func nonStandardWindowIsNotRecorded() {
+    for subrole: SelectionReader.SubroleOutcome in [
+      .subrole("AXDialog"), .subrole("AXSystemDialog"), .subrole(nil), .unreadable,
+    ] {
+      let ax = PastedRegionFakeAX()
+      ax.focusedWindows[Self.pid] = .window(Self.windowA)
+      ax.subroles["\(CFHash(Self.windowA))"] = subrole
+      let result = capture(ax, clock: PastedRegionFakeScheduler())
+      #expect(result.window == nil, "\(subrole)")
+      #expect(result.reason == "not_standard_window")
+      #expect(ax.timeoutsSet.last.map { $0.0 == 7_001 && $0.1 == 0 } == true)
+    }
+  }
+
+  @Test("Every unreadable focused-window answer records nothing")
+  func unreadableFocusedWindowRecordsNothing() {
+    let answers: [PastedRegionWindowRead] = [
+      .absent, .notElement, .failed(.invalidUIElement), .failed(.cannotComplete),
+    ]
+    for answer in answers {
+      let ax = PastedRegionFakeAX()
+      ax.focusedWindows[Self.pid] = answer
+      let result = capture(ax, clock: PastedRegionFakeScheduler())
+      #expect(result.window == nil, "\(answer)")
+      #expect(result.reason == "focused_window_unreadable")
+    }
+  }
+
+  @Test("A bound that cannot be installed on the app records nothing and reads nothing")
+  func uninstallableBoundRecordsNothing() {
+    let ax = PastedRegionFakeAX()
+    ax.focusedWindows[Self.pid] = .window(Self.windowA)
+    standard(ax, Self.windowA)
+    ax.timeoutFailsFor = [Self.pid]
+    let result = capture(ax, clock: PastedRegionFakeScheduler())
+    #expect(result.window == nil)
+    #expect(result.reason == "budget")
+    #expect(ax.landingCalls.isEmpty)
+  }
+
+  @Test("One 250 ms budget covers both reads: spent by the window read, the subrole is skipped")
+  func budgetSpentBeforeSubrole() {
+    let ax = PastedRegionFakeAX()
+    let clock = PastedRegionFakeScheduler()
+    ax.focusedWindows[Self.pid] = .window(Self.windowA)
+    standard(ax, Self.windowA)
+    ax.onLandingCall = { _ in clock.advance(ms: 250) }
+    var subroleReads = 0
+    ax.onSubroleRead = { subroleReads += 1 }
+    let result = capture(ax, clock: clock)
+    #expect(result.window == nil)
+    #expect(result.reason == "budget")
+    #expect(subroleReads == 0)
+    #expect(ax.timeoutsSet.last.map { $0.0 == 7_001 && $0.1 == 0 } == true, "reset on this exit too")
+  }
+
+  @Test("A budget spent INSIDE the last read records nothing")
+  func budgetSpentDuringSubrole() {
+    let ax = PastedRegionFakeAX()
+    let clock = PastedRegionFakeScheduler()
+    ax.focusedWindows[Self.pid] = .window(Self.windowA)
+    standard(ax, Self.windowA)
+    ax.onLandingCall = { _ in clock.advance(ms: 100) }
+    ax.onSubroleRead = { clock.advance(ms: 150) }
+    let result = capture(ax, clock: clock)
+    #expect(result.window == nil)
+    #expect(result.reason == "budget")
+    #expect(result.elapsedMs >= 250)
+  }
+
+  @Test("A recovered field is in the recorded window only when its own window reads as that window")
+  func fieldInRecordedWindow() {
+    func check(_ read: PastedRegionWindowRead?, window: AXUIElement, failTimeout: Bool = false)
+      -> (Bool, PastedRegionFakeAX)
+    {
+      let ax = PastedRegionFakeAX()
+      if let read { ax.windows[Self.fieldPid] = read }
+      if failTimeout { ax.timeoutFailsFor = [Self.fieldPid] }
+      let inside = PasteService.element(
+        Self.field, isInWindow: window, ax: ax, scheduler: PastedRegionFakeScheduler())
+      return (inside, ax)
+    }
+    let (same, ax) = check(.window(Self.windowA), window: Self.windowA)
+    #expect(same)
+    #expect(
+      ax.timeoutsSet.last.map {
+        $0.0 == Self.fieldPid && $0.1 == PasteService.axMessagingTimeoutSeconds
+      } == true, "the field keeps the standard bound, never the unbounded default")
+    #expect(check(.window(Self.windowB), window: Self.windowA).0 == false)
+    for read: PastedRegionWindowRead in [.absent, .notElement, .failed(.cannotComplete)] {
+      #expect(check(read, window: Self.windowA).0 == false, "\(read)")
+    }
+    let (refused, refusedAX) = check(.window(Self.windowA), window: Self.windowA, failTimeout: true)
+    #expect(refused == false)
+    #expect(refusedAX.landingCalls.isEmpty, "no read behind a bound that did not install")
+  }
 }
 
 // MARK: - Lifecycle: the arrival session's preparation and one report (#3106 PR A)

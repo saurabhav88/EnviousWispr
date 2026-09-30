@@ -1622,6 +1622,196 @@ import os
     #expect(outcome.caretCaptureRetried == true)
   }
 
+  // MARK: - Recorded window (#3304)
+  //
+  // A sleeping Chromium host hides its focused text box, so record start keeps the app's focused
+  // window instead. The delivery-time retry may then adopt a recovered field only when it sits in
+  // that window; the window itself always reaches the paste request.
+
+  @Test("record start keeps the window only when no field was captured and the app is trusted")
+  func recordStartTargetRules() {
+    let app = Self.stubTargetApp()
+    let field = Self.stubCaretElement()
+    let window = AXUIElementCreateApplication(7_101)
+    let context = KernelSessionContext()
+    var asked: [pid_t] = []
+
+    context.recordStartTarget(app: app, element: field, trusted: true) { asked.append($0); return window }
+    #expect(context.targetElement == field)
+    #expect(context.targetWindow == nil, "a captured field needs no window")
+    #expect(asked.isEmpty, "and the window is never even read")
+
+    context.recordStartTarget(app: app, element: nil, trusted: true) { asked.append($0); return window }
+    #expect(context.targetApp == app)
+    #expect(context.targetWindow == window)
+    #expect(asked == [app.processIdentifier], "read once, scoped to the recorded app")
+
+    context.recordStartTarget(app: app, element: nil, trusted: false) { asked.append($0); return window }
+    #expect(context.targetWindow == nil, "untrusted: nothing recorded, and the old window is gone")
+
+    context.targetWindow = window
+    context.recordStartTarget(app: nil, element: nil, trusted: true) { asked.append($0); return window }
+    #expect(context.targetWindow == nil, "no app: reset, nothing recorded")
+
+    context.recordStartTarget(app: app, element: nil, trusted: true) { _ in nil }
+    #expect(context.targetWindow == nil, "an unreadable window records nothing")
+    #expect(asked.count == 1)
+  }
+
+  @Test("a recovered field in the recorded window is adopted and repaired as before")
+  func retryInsideRecordedWindowIsAdopted() async throws {
+    let captured = DeliveryRequestBox()
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    let window = AXUIElementCreateApplication(7_102)
+    context.targetWindow = window
+    let recovered = Self.stubCaretElement()
+    let checked = WindowCheckBox()
+    let wiring = makeWiring(
+      outcome: outcome, context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
+      focusedElementInTargetApp: { _ in recovered },
+      recoveredIsInRecordedWindow: { element, recorded in
+        checked.calls.append((element, recorded))
+        return true
+      })
+
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+    #expect(checked.calls.count == 1)
+    #expect(checked.calls.first.map { $0.0 == recovered && $0.1 == window } == true)
+    #expect(context.targetElement == recovered)
+    let request = try #require(captured.requests.first)
+    #expect(request.targetElement == recovered)
+    #expect(request.recordedWindow == window, "the window still protects the paste")
+    #expect(request.caretContext == Self.midSentenceCaret)
+    #expect(request.repairedText != nil, "partial-sentence repair survives an accepted retry")
+    #expect(request.targetElementIsRetried == true)
+    #expect(outcome.caretContextOutcome != "no_target")
+  }
+
+  @Test("a recovered field with a selection keeps its caret evidence inside the recorded window")
+  func retryInsideRecordedWindowKeepsSelection() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    context.targetWindow = AXUIElementCreateApplication(7_103)
+    let selected = PasteService.CaretContext(
+      leftWindow: "I went to the ", rightWindow: " today", selectionLocation: 14,
+      selectionLength: 5, leftReachesDocumentStart: true)
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _, _, _ in selected },
+      focusedElementInTargetApp: { _ in Self.stubCaretElement() },
+      recoveredIsInRecordedWindow: { _, _ in true })
+
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+    let request = try #require(captured.requests.first)
+    #expect(request.caretContext == selected, "the selected replacement's evidence reaches the paste")
+    #expect(request.legacyText == "Review this before the meeting ")
+  }
+
+  @Test("a recovered field in ANOTHER window is rejected, and today's missing-target paste ships")
+  func retryOutsideRecordedWindowIsRejected() async throws {
+    let captured = DeliveryRequestBox()
+    let reads = SaveCountBox()
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    let window = AXUIElementCreateApplication(7_104)
+    context.targetWindow = window
+    let wiring = makeWiring(
+      outcome: outcome, context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _, _, _ in
+        reads.count += 1
+        return Self.midSentenceCaret
+      },
+      focusedElementInTargetApp: { _ in Self.stubCaretElement() },
+      recoveredIsInRecordedWindow: { _, _ in false })
+
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+    #expect(context.targetElement == nil, "a field in another window is never adopted")
+    #expect(reads.count == 0, "no caret read, so no contextual candidate or surrounding text")
+    let request = try #require(captured.requests.first)
+    #expect(request.targetElement == nil)
+    #expect(request.caretContext == nil)
+    #expect(request.repairedText == nil)
+    #expect(request.legacyText == "Review this before the meeting ")
+    #expect(request.targetElementIsRetried == true, "the retry WAS attempted")
+    #expect(request.recordedWindow == window)
+    #expect(outcome.caretContextOutcome == "no_target")
+    #expect(outcome.caretCaptureRetried == true)
+  }
+
+  @Test("the recorded window reaches the paste even with smart insertion off (no retry at all)")
+  func recordedWindowReachesPasteWithoutSmartInsertion() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: false)
+    context.targetApp = Self.stubTargetApp()
+    let window = AXUIElementCreateApplication(7_105)
+    context.targetWindow = window
+    let retrySeam = RetrySeamBox()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      focusedElementInTargetApp: { _ in
+        retrySeam.callCount += 1
+        return nil
+      })
+
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+    #expect(retrySeam.callCount == 0)
+    let request = try #require(captured.requests.first)
+    #expect(request.recordedWindow == window)
+    #expect(request.targetElement == nil)
+  }
+
+  @Test("no recorded window: the request carries none and the window check is never asked")
+  func noRecordedWindowIsTodaysBehaviour() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    let recovered = Self.stubCaretElement()
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      },
+      readCaretContext: { _, _, _ in Self.midSentenceCaret },
+      focusedElementInTargetApp: { _ in recovered })
+
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+    let request = try #require(captured.requests.first)
+    #expect(request.recordedWindow == nil)
+    #expect(request.targetElement == recovered, "the #1980 retry adopts as before")
+  }
+
   @Test("no target app means the retry is not attempted at all — never a failed retry")
   func noTargetAppMeansNoRetryAttempt() async throws {
     let captured = DeliveryRequestBox()
@@ -1931,6 +2121,13 @@ import os
     // stub as adoptable; the dedicated non-text-recovery test opts into
     // `{ _ in false }` to prove the OTHER direction.
     isRetryTargetUsable: @escaping @MainActor (AXUIElement) -> Bool = { _ in true },
+    // #3304 recorded-window check. Fails the test if asked: only a test that records a window
+    // (`context.targetWindow`) may reach it, and that test passes its own answer.
+    recoveredIsInRecordedWindow: @escaping @MainActor (AXUIElement, AXUIElement) -> Bool = {
+      _, _ in
+      Issue.record("unexpected recorded-window check without a recorded window")
+      return false
+    },
     // Delivery only ever runs after a transcription produced the text being
     // delivered, so the adapter it reads has a result by then. The default
     // stands in for exactly that state; language tests vary the code.
@@ -1992,6 +2189,7 @@ import os
       readCaretContext: readCaretContext,
       focusedElementInTargetApp: focusedElementInTargetApp,
       isRetryTargetUsable: isRetryTargetUsable,
+      recoveredIsInRecordedWindow: recoveredIsInRecordedWindow,
       seamCasingOracle: seamCasingOracle,
       releaseOracleLease: releaseOracleLease,
       resolveLanguage: resolveLanguage
@@ -3203,6 +3401,12 @@ private final class RestoreFlagBox {
 @MainActor
 private final class DeliveryRequestBox {
   var requests: [PasteDeliveryRequest] = []
+}
+
+/// #3304: every recorded-window check the retry asked, as (recovered field, recorded window).
+@MainActor
+private final class WindowCheckBox {
+  var calls: [(AXUIElement, AXUIElement)] = []
 }
 
 /// Cancels mid-polish. The runner absorbs this silently rather than surfacing

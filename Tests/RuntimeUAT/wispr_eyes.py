@@ -2860,7 +2860,7 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
 
 
 def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
-               voice="echo", wait=10.0, focus_app=None):
+               voice="echo", wait=10.0, focus_app=None, before_release=None):
     """Generate TTS, hold PTT key, read raw ASR and polished output from app log.
 
     This is the go-to method for testing transcription quality and polish behavior.
@@ -2875,6 +2875,9 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
         voice:    OpenAI TTS voice (echo, alloy, fable, onyx, nova, shimmer).
         wait:     Seconds to wait after key release for pipeline to complete.
         focus_app: App to focus before recording (paste target). None to skip.
+        before_release: Called once while the key is still held, immediately before its
+                  release (#3304). None (default) keeps the plain hold. The key is released
+                  even if it raises.
 
     Returns:
         dict with keys: raw_asr, polished, word_correction, filler_removal,
@@ -2931,8 +2934,10 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     player.start()
     hold_dur = audio_dur + 1.0
     print(f"Holding {key} for {hold_dur:.1f}s (audio {audio_dur:.1f}s)...")
-    _si.hold_key(key, duration=hold_dur)
-    player.join()
+    try:
+        _si.hold_key(key, duration=hold_dur, before_release=before_release)
+    finally:
+        player.join()
 
     # Wait for pipeline (ASR + polish + paste)
     print(f"Waiting {wait:.0f}s for pipeline...")

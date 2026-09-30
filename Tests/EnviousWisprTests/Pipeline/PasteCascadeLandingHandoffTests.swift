@@ -80,6 +80,26 @@ struct PasteCascadeLandingHandoffTests {
   }
 
   @Test(
+    "A recorded-window session never gets a check, so a dispatched paste is never kept (#3304)",
+    arguments: [PasteTier.cgEvent, .appleScript, .menuPaste])
+  func recordedWindowSessionGetsNoCheck(tier: PasteTier) throws {
+    let session = try capture(tier: tier)
+    var recorded = request()
+    recorded.recordedWindow = AXUIElementCreateApplication(5001)
+    #expect(executor(Calls()).landingCheck(for: session, request: recorded) == nil)
+    // An accepted same-window retry (chunk 2): a field present, still no check.
+    var retried = PasteDeliveryRequest(
+      legacyText: "Sarah ", repairedText: nil, caretContext: nil,
+      candidateDeletesDictatedText: false, targetApp: nil,
+      targetElement: PastedRegionFakeAX.field(pid), targetElementIsRetried: true,
+      restoreClipboardAfterPaste: true, terminalBudget: nil, takeID: "take-1")
+    retried.recordedWindow = AXUIElementCreateApplication(5001)
+    #expect(executor(Calls()).landingCheck(for: session, request: retried) == nil)
+    // Control: the same session without a recorded window still gets its check.
+    #expect(executor(Calls()).landingCheck(for: session, request: request()) != nil)
+  }
+
+  @Test(
     "Each key route gets a check carrying the legacy text and this app's permission",
     arguments: [PasteTier.cgEvent, .appleScript, .menuPaste])
   func keyRouteGetsACheck(tier: PasteTier) throws {

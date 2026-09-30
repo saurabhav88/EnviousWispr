@@ -161,6 +161,111 @@ struct PasteTargetWindowGateTests {
         target: .window(windowA), element: field, pid: pid, ax: ax, admit: spent.admit) == .budget)
   }
 
+  // MARK: The recorded window (#3304)
+
+  @Test("A captured field's window wins; else the recorded window; else none")
+  func resolvePrecedence() {
+    ax.windows[10_042] = .window(windowA)
+    guard case .window(let window) = PasteTargetWindowGate.resolve(
+      element: field, recordedWindow: windowB, ax: ax, admit: budget().admit)
+    else {
+      Issue.record("expected the field's own window")
+      return
+    }
+    #expect(CFEqual(window, windowA))
+    ax.landingCalls = []
+    guard case .recordedWindow(let recorded) = PasteTargetWindowGate.resolve(
+      element: nil, recordedWindow: windowB, ax: ax, admit: budget().admit)
+    else {
+      Issue.record("expected .recordedWindow")
+      return
+    }
+    #expect(CFEqual(recorded, windowB))
+    #expect(ax.landingCalls.isEmpty, "the recorded window needs no read to resolve")
+    guard case .none = PasteTargetWindowGate.resolve(
+      element: nil, recordedWindow: nil, ax: ax, admit: budget().admit)
+    else {
+      Issue.record("expected .none")
+      return
+    }
+  }
+
+  @Test("The recorded window being the app's focused window passes, with no focus fallback read")
+  func recordedSameWindowPasses() {
+    ax.focusedWindows[pid] = .window(windowA)
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: .recordedWindow(windowA), element: nil, pid: pid, ax: ax, admit: budget().admit)
+        == .pass(.sameWindow))
+    #expect(ax.landingCalls.map(\.call) == ["focusedWindow"])
+  }
+
+  @Test("Another window READ as focused is refused (the #3304 repro)")
+  func recordedOtherWindowRefused() {
+    ax.focusedWindows[pid] = .window(windowB)
+    #expect(refusal(.recordedWindow(windowA), element: nil) == .windowMismatch)
+    #expect(ax.landingCalls.map(\.call) == ["focusedWindow"], "no field, so no focus fallback")
+  }
+
+  @Test("An unreadable focused window is not evidence of a move and passes")
+  func recordedUnreadablePasses() {
+    let answers: [PastedRegionWindowRead] = [
+      .absent, .notElement, .failed(.invalidUIElement), .failed(.cannotComplete),
+    ]
+    for answer in answers {
+      ax.focusedWindows[pid] = answer
+      #expect(
+        PasteTargetWindowGate.decide(
+          target: .recordedWindow(windowA), element: nil, pid: pid, ax: ax, admit: budget().admit)
+          == .pass(.focusedWindowUnreadable), "\(answer)")
+    }
+  }
+
+  @Test("A refused or spent budget passes a recorded window, and reads nothing")
+  func recordedBudgetPasses() {
+    ax.focusedWindows[pid] = .window(windowB)
+    ax.timeoutFailsFor = [pid]
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: .recordedWindow(windowA), element: nil, pid: pid, ax: ax, admit: budget().admit)
+        == .pass(.budget))
+    #expect(ax.landingCalls.isEmpty)
+    ax.timeoutFailsFor = []
+    let spent = budget(totalMs: 500)
+    scheduler.advance(ms: 500)
+    #expect(
+      PasteTargetWindowGate.refusal(
+        target: .recordedWindow(windowA), element: nil, pid: pid, ax: ax, admit: spent.admit)
+        == nil)
+  }
+
+  @Test("Decisions name why each captured-field case passed")
+  func fieldPassReasons() {
+    ax.focusedWindows[pid] = .window(windowA)
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: .window(windowA), element: field, pid: pid, ax: ax, admit: budget().admit)
+        == .pass(.sameWindow))
+    ax.focusedWindows[pid] = .window(windowB)
+    ax.focusedByApplication[pid] = .element(field)
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: .window(windowA), element: field, pid: pid, ax: ax, admit: budget().admit)
+        == .pass(.fieldFocused))
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: .none, element: nil, pid: pid, ax: ax, admit: budget().admit) == .pass(.noTarget))
+  }
+
+  @Test("Pass reasons are the strings logged by WINDOW_GATE dispatch lines")
+  func passStrings() {
+    #expect(PasteTargetWindowGate.Pass.noTarget.rawValue == "no_target")
+    #expect(PasteTargetWindowGate.Pass.sameWindow.rawValue == "same_window")
+    #expect(PasteTargetWindowGate.Pass.fieldFocused.rawValue == "field_focused")
+    #expect(PasteTargetWindowGate.Pass.focusedWindowUnreadable.rawValue == "focused_window_unreadable")
+    #expect(PasteTargetWindowGate.Pass.budget.rawValue == "budget")
+  }
+
   @Test("Refusal reasons are the strings logged and sent as paste.tier_failures")
   func reasonStrings() {
     #expect(PasteTargetWindowGate.Refusal.windowMismatch.rawValue == "window_mismatch")

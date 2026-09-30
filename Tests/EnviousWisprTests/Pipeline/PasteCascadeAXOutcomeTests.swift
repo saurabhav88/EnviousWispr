@@ -97,6 +97,33 @@ struct PasteCascadeTier1DeclineReasonTests {
     #expect(reason == .accessibilityDenied)
   }
 
+  @Test("A recorded-window session declines Tier 1, even for a field, with its own reason (#3304)")
+  func recordedWindowDeclinesTier1() {
+    #expect(
+      tier1DeclineReason(
+        axTrusted: true, classification: .textField, isChromiumOmnibox: false,
+        isGeckoDestination: false, recordedWindowSession: true) == .recordedWindowKeyPasteOnly)
+    #expect(
+      tier1DeclineReason(
+        axTrusted: true, classification: .textField, isChromiumOmnibox: true,
+        isGeckoDestination: true, recordedWindowSession: true) == .recordedWindowKeyPasteOnly,
+      "the recorded window outranks the omnibox and Gecko declines")
+    // Accessibility denied, missing focus and non-text focus keep their own reasons.
+    #expect(
+      tier1DeclineReason(
+        axTrusted: false, classification: .textField, isChromiumOmnibox: false,
+        isGeckoDestination: false, recordedWindowSession: true) == .accessibilityDenied)
+    #expect(
+      tier1DeclineReason(
+        axTrusted: true, classification: .missing, isChromiumOmnibox: false,
+        isGeckoDestination: false, recordedWindowSession: true) == .focusMissing)
+    // Control: without a recorded window a plain field still runs Tier 1.
+    #expect(
+      tier1DeclineReason(
+        axTrusted: true, classification: .textField, isChromiumOmnibox: false,
+        isGeckoDestination: false) == nil)
+  }
+
   @Test("A Gecko browser's text field declines Tier 1 with its own reason (#2652)")
   func geckoDeclinesTier1() {
     #expect(
