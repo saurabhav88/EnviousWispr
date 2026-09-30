@@ -12,20 +12,31 @@ struct TestDefaultsTests {
     return url
   }
 
+  /// Fixture paths are built here, NOT with `TestDefaults.plistURL`: a mutated helper must not be able
+  /// to send a fixture write or a cleanup to the real preferences directory, and every name carries a
+  /// fresh token so nothing in a real directory could ever already have it (#3323).
+  private static func fixture(_ name: String, in directory: URL) -> URL {
+    directory.appendingPathComponent(name + ".plist")
+  }
+
+  private static func token() -> String { UUID().uuidString }
+
   @Test("removing a suite's plist removes exactly that file and leaves other preferences alone")
   func removesOnlyNamedPlists() throws {
     let dir = try Self.tempDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
-    let files = ["ours-a.plist", "ours-b.plist", "com.apple.someone-elses.plist"]
-    for file in files {
-      try Data("x".utf8).write(to: dir.appendingPathComponent(file))
+    let t = Self.token()
+    let bystander = "com.apple.someone-elses-\(t)"
+    for name in ["ours-a-\(t)", "ours-b-\(t)", bystander] {
+      try Data("x".utf8).write(to: Self.fixture(name, in: dir))
     }
 
-    let removed = TestDefaults.removePlists(of: ["ours-a", "ours-b", "never-written"], in: dir)
+    let removed = TestDefaults.removePlists(
+      of: ["ours-a-\(t)", "ours-b-\(t)", "never-written-\(t)"], in: dir)
 
     #expect(removed == 2, "a suite that never wrote a plist is not an error and not counted")
     let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-    #expect(left == ["com.apple.someone-elses.plist"])
+    #expect(left == [bystander + ".plist"])
   }
 
   @Test("a suite made through the helper is registered for removal at exit")
@@ -68,7 +79,7 @@ struct TestDefaultsTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let taken = "ew-2998-taken-\(UUID().uuidString)"
     let fresh = "ew-2998-fresh-\(UUID().uuidString)"
-    try Data("someone's prefs".utf8).write(to: TestDefaults.plistURL(suite: taken, in: dir))
+    try Data("someone's prefs".utf8).write(to: Self.fixture(taken, in: dir))
 
     #expect(TestDefaults.suite(taken, preferencesDirectory: dir) != nil, "still a working suite")
     #expect(TestDefaults.suite(fresh, preferencesDirectory: dir) != nil)
@@ -85,24 +96,27 @@ struct TestDefaultsTests {
       try? FileManager.default.removeItem(at: dirA)
       try? FileManager.default.removeItem(at: dirB)
     }
+    let t = Self.token()
+    let a = "ew-2998-a-\(t)"
+    let b = "ew-2998-b-\(t)"
     let registry = SuiteRegistry()
-    registry.register("ew-2998-a", in: dirA)
-    registry.register("ew-2998-b", in: dirB)
-    for (name, dir) in [("ew-2998-a", dirA), ("ew-2998-b", dirB)] {
-      try Data("x".utf8).write(to: TestDefaults.plistURL(suite: name, in: dir))
+    registry.register(a, in: dirA)
+    registry.register(b, in: dirB)
+    for (name, dir) in [(a, dirA), (b, dirB)] {
+      try Data("x".utf8).write(to: Self.fixture(name, in: dir))
     }
-    let bystander = TestDefaults.plistURL(suite: "ew-2998-a", in: dirB)
+    let bystander = Self.fixture(a, in: dirB)
     try Data("x".utf8).write(to: bystander)
     // Never registered anywhere: not ours, must survive.
-    let stranger = TestDefaults.plistURL(suite: "ew-2998-unregistered", in: dirA)
+    let stranger = Self.fixture("ew-2998-unregistered-\(t)", in: dirA)
     try Data("x".utf8).write(to: stranger)
 
     // The same name registered in two directories is two registrations, not one overwritten.
-    registry.register("ew-2998-a", in: dirB)
+    registry.register(a, in: dirB)
     #expect(registry.removeAll() == 3)
 
-    #expect(!FileManager.default.fileExists(atPath: TestDefaults.plistURL(suite: "ew-2998-a", in: dirA).path))
-    #expect(!FileManager.default.fileExists(atPath: TestDefaults.plistURL(suite: "ew-2998-b", in: dirB).path))
+    #expect(!FileManager.default.fileExists(atPath: Self.fixture(a, in: dirA).path))
+    #expect(!FileManager.default.fileExists(atPath: Self.fixture(b, in: dirB).path))
     #expect(!FileManager.default.fileExists(atPath: bystander.path), "registered in both directories")
     #expect(FileManager.default.fileExists(atPath: stranger.path), "never registered, so not ours")
   }
@@ -113,10 +127,11 @@ struct TestDefaultsTests {
     defer { try? FileManager.default.removeItem(at: parent) }
     let prefs = parent.appendingPathComponent("prefs", isDirectory: true)
     try FileManager.default.createDirectory(at: prefs, withIntermediateDirectories: true)
-    let victim = parent.appendingPathComponent("victim.plist")
+    let t = Self.token()
+    let victim = Self.fixture("victim-\(t)", in: parent)
     try Data("x".utf8).write(to: victim)
 
-    let removed = TestDefaults.removePlists(of: ["../victim"], in: prefs)
+    let removed = TestDefaults.removePlists(of: ["../victim-\(t)"], in: prefs)
 
     #expect(removed == 0)
     #expect(FileManager.default.fileExists(atPath: victim.path), "the file outside must survive")
