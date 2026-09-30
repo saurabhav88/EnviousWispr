@@ -1833,6 +1833,22 @@ package final class PastedRegionObserver: PastedRegionObserving {
           if w.changedSinceSettled, watch?.settle == nil {
             armSettle(generation: gen, revision: w.changeRevision)
           }
+          // #3101: after a WEAK settle, a caret that now leaves the unchanged
+          // edit is strong evidence for that same text. The caret deferral
+          // deadline is not this check's: it is set aside and restored.
+          if w.weakSettleAwaitingUpgrade, !w.changedSinceSettled {
+            let deadline = watch?.caretDeadlineMs
+            watch?.caretDeadlineMs = nil
+            let trigger = settleTrigger(generation: gen)
+            watch?.caretDeadlineMs = deadline
+            if trigger == .caretLeft, let fresh = watch, fresh.generation == gen,
+              fresh.weakSettleAwaitingUpgrade, !fresh.changedSinceSettled
+            {
+              watch?.weakSettleAwaitingUpgrade = false
+              log?("learn_settle_upgraded reason=caret_left")
+              fresh.onEvent(.settled(region: fresh.lastRegion, evidence: .strong))
+            }
+          }
           return .unchanged
         }
         switch PastedRegionLocator.editDistance(pasted: target.renderedText, region: region) {

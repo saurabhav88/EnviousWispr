@@ -1546,6 +1546,23 @@ struct PastedRegionObserverWatchTests {
       ])
     #expect(lines.lines.contains("learn_settle_upgraded reason=textbox_emptied"))
 
+    // The caret leaving the unchanged edit after a weak settle upgrades it too.
+    let o3 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e3 = Events()
+    startWithFix(o3, e3)
+    ax.selectedRange = .range(location: 15, length: 0)  // still at the word: the cap will settle it
+    scheduler.advance(ms: 12_750)
+    #expect(e3.list.last == .settled(region: "Ask Saira today", evidence: .weak))
+    ax.selectedRange = .range(location: 0, length: 0)  // clicked elsewhere
+    scheduler.advance(ms: 750)
+    #expect(e3.list.last == .settled(region: "Ask Saira today", evidence: .strong))
+    #expect(e3.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1)
+    scheduler.advance(ms: 1500)
+    #expect(
+      e3.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1,
+      "upgraded once")
+    o3.stop()
+
     // A focus change is weak: no upgrade.
     let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
     let e2 = Events()

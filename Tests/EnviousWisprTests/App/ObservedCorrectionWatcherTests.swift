@@ -625,6 +625,26 @@ struct ObservedCorrectionWatcherTests {
     #expect(presenter.offers.count == 1 && judge.requests.count == 1)
   }
 
+  @Test("#3101: a held-back fix survives an edit to another word and is saved on the next strong settle")
+  func weakHeldSurvivesAnotherEdit() async throws {
+    let watcher = makeWatcher()
+    judge.probability = 0.80
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah about today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+
+    observer.fire(.changed(region: "Ask Saira about today"))
+    observer.fire(.settled(region: "Ask Saira about today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(presenter.offers.isEmpty)
+    // Another word changes, then the text is sent: Saira is still there.
+    judge.answer = { _ in false }
+    observer.fire(.changed(region: "Ask Saira about tomorrow"))
+    observer.fire(.settled(region: "Ask Saira about tomorrow", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(presenter.offers.first?.canonical == "Saira")
+  }
+
   @Test("#3101: a send that arrives while the weak-evidence judge call is still running makes its answer strong")
   func strongEvidenceBeforeTheAnswer() async throws {
     let watcher = makeWatcher()

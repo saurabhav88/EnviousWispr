@@ -159,6 +159,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   /// A correction the judge called one, held back only because the evidence
   /// that the edit was finished was weak (#3101).
   private struct HeldCorrection {
+    let pairKey: String
     let original: String
     let corrected: String
     let expectedTarget: LearnTargetState
@@ -182,12 +183,10 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     /// Pairs already reserved for the judge in this paste; burst two never
     /// re-sends them.
     var sentPairKeys: Set<String> = []
-    /// #3101: corrections the judge accepted but weak evidence held back, for
-    /// the settled `weakHeldRegion` at `weakHeldRevision`. A strong settle of
-    /// that same unchanged text saves them without a new judge call.
+    /// #3101: corrections the judge accepted but weak evidence held back. The
+    /// next strong settle saves each one whose pair is still in the text (other
+    /// words may have been edited since), with no new judge call.
     var weakHeld: [HeldCorrection] = []
-    var weakHeldRegion: String?
-    var weakHeldRevision: UInt64 = 0
     /// #3101: strong evidence that arrived for text a weak settle is still
     /// being judged on; a judge answer for that region and revision that
     /// arrives later is treated as strong.
@@ -402,21 +401,20 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     switch event {
     case .changed:
       watch?.revision &+= 1
-      watch?.weakHeld = []
-      watch?.weakHeldRegion = nil
       watch?.strongRegion = nil
     case .settled(let region, let evidence):
       // #3101: strong evidence for text a weak settle already judged saves
       // what the weak evidence held back; no second judge call.
-      // Both orders: the answer already held (release it now), or still
-      // pending (remember the strong evidence for when it arrives).
-      if evidence == .strong, w.settledSnapshots.contains(region) {
-        watch?.strongRegion = region
-        watch?.strongRevision = w.revision
-        if w.weakHeldRegion == region, w.weakHeldRevision == w.revision, !w.weakHeld.isEmpty {
-          releaseWeakHeld(generation: gen)
+      // Strong evidence first saves what weak evidence held back and is still
+      // in this text; for text already judged it is also remembered, so an
+      // answer still on its way counts as strong.
+      if evidence == .strong {
+        if !w.weakHeld.isEmpty { releaseWeakHeld(presentIn: region, generation: gen) }
+        if w.settledSnapshots.contains(region) {
+          watch?.strongRegion = region
+          watch?.strongRevision = w.revision
+          return
         }
-        return
       }
       guard w.settledBursts < Self.maxJudgeCallsPerPaste, !w.settledSnapshots.contains(region)
       else { return }
@@ -575,13 +573,10 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
           let f = prepared.byID[decision.id], case .candidate(let target) = f.disposition
         else { return nil }
         return HeldCorrection(
-          original: f.run.coreOriginal, corrected: f.run.coreReplacement, expectedTarget: target)
+          pairKey: f.pairKey, original: f.run.coreOriginal, corrected: f.run.coreReplacement,
+          expectedTarget: target)
       }
-      if !held.isEmpty {
-        watch?.weakHeld += held
-        watch?.weakHeldRegion = region
-        watch?.weakHeldRevision = revision
-      }
+      if !held.isEmpty { watch?.weakHeld += held }
     }
     for decision in decisions where Self.accepts(decision, evidence: evidence) {
       guard let f = prepared.byID[decision.id], case .candidate(let expectedTarget) = f.disposition
@@ -626,15 +621,22 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     }
   }
 
-  /// #3101: save the corrections weak evidence held back, now that the same
-  /// unchanged text ended in a strong way. Each is saved once.
-  private func releaseWeakHeld(generation gen: UInt64) {
-    guard let w = watch, w.generation == gen else { return }
-    let held = w.weakHeld
+  /// #3101: save the corrections weak evidence held back whose pair is still
+  /// in `region`, now that the text ended in a strong way. Each is saved once;
+  /// a held pair the text no longer contains (the user undid it) is dropped.
+  private func releaseWeakHeld(presentIn region: String, generation gen: UInt64) {
+    guard let w = watch, w.generation == gen, let target = w.target else { return }
+    let alignment = EditAlignment.align(pasted: target.pastedText, edited: region)
+    let present = Set(
+      CorrectionCandidateFilter.filter(
+        runs: alignment.runs,
+        inputs: .init(userWords: deps.userWords(), packTerms: deps.packTerms())
+      ).map(\.pairKey))
+    let held = w.weakHeld.filter { present.contains($0.pairKey) }
     watch?.weakHeld = []
-    watch?.weakHeldRegion = nil
     #if DEBUG
-      LearnedCorrectionCoordinator.debugLog("learn_weak_released pairs=\(held.count)")
+      LearnedCorrectionCoordinator.debugLog(
+        "learn_weak_released pairs=\(held.count) dropped=\(w.weakHeld.count - held.count)")
     #endif
     for h in held {
       guard stillWanted(generation: gen, revision: w.revision) else { return }
