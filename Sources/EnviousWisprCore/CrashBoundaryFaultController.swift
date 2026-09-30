@@ -15,10 +15,10 @@
   /// The exact on-disk record for both the arm and the reached artifacts —
   /// trial identity + boundary only. Never a recovery ID, path, transcript,
   /// or error text.
-  public struct CrashBoundarySignalRecord: Codable, Sendable, Equatable {
-    public let trialID: String
-    public let boundary: String
-    public init(trialID: String, boundary: String) {
+  struct CrashBoundarySignalRecord: Codable, Sendable, Equatable {
+    let trialID: String
+    let boundary: String
+    init(trialID: String, boundary: String) {
       self.trialID = trialID
       self.boundary = boundary
     }

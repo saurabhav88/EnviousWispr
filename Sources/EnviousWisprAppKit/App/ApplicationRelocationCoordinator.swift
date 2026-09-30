@@ -426,7 +426,7 @@ public protocol RelocationHandshaking: Sendable {
 /// detection, decline cadence, destination choice, move state, conflict
 /// handling, the relaunch handshake, and termination ordering.
 @MainActor
-public final class ApplicationRelocationCoordinator {
+final class ApplicationRelocationCoordinator {
   private let env: RelocationEnvironment
   private let detector: ApplicationLocationDetector
   private let suppression: RelocationSuppressionStore
@@ -456,7 +456,7 @@ public final class ApplicationRelocationCoordinator {
   /// the full flow; production never reads it.
   private(set) var pendingWork: Task<Void, Never>?
 
-  public init(
+  init(
     env: RelocationEnvironment,
     detector: ApplicationLocationDetector,
     suppression: RelocationSuppressionStore,
@@ -489,7 +489,7 @@ public final class ApplicationRelocationCoordinator {
   /// Called once from `AppLifecycleCoordinator.runDidFinishLaunching()`. Returns
   /// immediately after scheduling any presentation; never blocks launch, copies,
   /// shells, hits the network, or waits for a relaunch inline.
-  public func evaluateAndOfferIfNeeded() {
+  func evaluateAndOfferIfNeeded() {
     var state = detector.state(for: env.bundleURL)
 
     #if DEBUG

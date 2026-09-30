@@ -1,5 +1,5 @@
 #if DEBUG
-import EnviousWisprCore
+@testable import EnviousWisprCore
 import Foundation
 import Testing
 

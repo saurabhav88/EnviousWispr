@@ -31,7 +31,7 @@ import Foundation
 
 /// Failure modes the writer and store map onto "drop recovery, never audio" /
 /// "discard this frame and end the valid prefix".
-public enum RecoverySpoolCipherError: Error, Equatable {
+enum RecoverySpoolCipherError: Error, Equatable {
   case missingKey
   case invalidKeySize(Int)
   case truncatedFrame

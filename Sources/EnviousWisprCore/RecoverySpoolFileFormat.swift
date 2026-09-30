@@ -17,7 +17,7 @@ import Foundation
 // this framing, which is why it lives in Core.
 
 /// File-level (not frame-level) framing errors.
-public enum RecoverySpoolFileError: Error, Equatable {
+enum RecoverySpoolFileError: Error, Equatable {
   /// The file does not begin with the spool magic — not a spool file.
   case notASpool
   /// The header length prefix is unreadable or claims more bytes than exist.
