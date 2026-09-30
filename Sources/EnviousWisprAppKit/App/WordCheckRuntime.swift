@@ -363,12 +363,22 @@ final class WordCheckRuntime {
     if needsWordCheck { recoveriesNeedingCheck = max(0, recoveriesNeedingCheck - 1) }
   }
 
+  enum WorkStartAction: Equatable { case ignore, extendIdleTimer, load }
+
+  /// What work starting does to the model. Work that does not use the check must not extend the
+  /// idle timer of a model already in memory (an EG-1 recording would keep 480 MB loaded).
+  static func workStartAction(needsWordCheck: Bool, wanted: Bool, isLoaded: Bool) -> WorkStartAction {
+    guard needsWordCheck, wanted else { return .ignore }
+    return isLoaded ? .extendIdleTimer : .load
+  }
+
   private func workStarted(_ trigger: WordCheckResidencyPolicy.Trigger, needsWordCheck: Bool) {
-    guard needsWordCheck, wanted else { return }
-    if loaded != nil {
-      scheduleIdleUnload()
-    } else {
-      load(for: trigger, needsWordCheck: needsWordCheck)
+    switch Self.workStartAction(
+      needsWordCheck: needsWordCheck, wanted: wanted, isLoaded: loaded != nil)
+    {
+    case .ignore: return
+    case .extendIdleTimer: scheduleIdleUnload()
+    case .load: load(for: trigger, needsWordCheck: needsWordCheck)
     }
   }
 

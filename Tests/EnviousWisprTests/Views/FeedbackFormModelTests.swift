@@ -144,13 +144,15 @@ struct FeedbackFormModelTests {
   }
 
   @Test("Send rechecks the live switch: a change the form missed resets it and sends nothing")
-  func sendTimeRecheck() async {
+  func sendTimeRecheck() async throws {
     let (model, loader) = makeModel()
     model.open(usageMetrics: true)
     await loader.answerNext(with: Self.first)
     await model.pendingLoad?.value
 
-    #expect(model.decideSend(currentUsageMetrics: false) == .metricsChanged)
+    // #require, not #expect: without the reset no second load ever starts, and the wait below
+    // would hang the whole suite instead of failing this test.
+    try #require(model.decideSend(currentUsageMetrics: false) == .metricsChanged)
     #expect(model.includeDiagnostics == false)
     #expect(model.diagnostics == .loading)
     await loader.answerNext(with: Self.second)

@@ -143,6 +143,17 @@ struct WordCheckRuntimeResidencyTests {
     #expect(runtime.loadAttemptsForTests == loads, "\(provider)")
   }
 
+  @Test("work starting extends a loaded model's idle timer only when it uses the check")
+  func workStartDecision() {
+    let action = WordCheckRuntime.workStartAction
+    #expect(action(true, true, true) == .extendIdleTimer)
+    #expect(action(true, true, false) == .load)
+    #expect(action(false, true, true) == .ignore, "an EG-1 recording must not keep a loaded model alive")
+    #expect(action(false, true, false) == .ignore)
+    #expect(action(true, false, true) == .ignore, "nothing wants the check")
+    #expect(action(true, false, false) == .ignore)
+  }
+
   @Test("a file import start loads for an engine without its own check, never for EG-1")
   func fileImportStart() throws {
     let (withCheck, _) = try admittedIdle()
