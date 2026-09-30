@@ -188,6 +188,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     var weakHeld: [HeldCorrection] = []
     var weakHeldRegion: String?
     var weakHeldRevision: UInt64 = 0
+    /// #3101: strong evidence that arrived for text a weak settle is still
+    /// being judged on; a judge answer for that region and revision that
+    /// arrives later is treated as strong.
+    var strongRegion: String?
+    var strongRevision: UInt64 = 0
     /// The observer finished (naturally). Judge answers may still arrive.
     var ended = false
     /// Cut short before or during observation by toggle-off, model removal, or
@@ -399,13 +404,18 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       watch?.revision &+= 1
       watch?.weakHeld = []
       watch?.weakHeldRegion = nil
+      watch?.strongRegion = nil
     case .settled(let region, let evidence):
       // #3101: strong evidence for text a weak settle already judged saves
       // what the weak evidence held back; no second judge call.
-      if evidence == .strong, w.weakHeldRegion == region, w.weakHeldRevision == w.revision,
-        !w.weakHeld.isEmpty
-      {
-        releaseWeakHeld(generation: gen)
+      // Both orders: the answer already held (release it now), or still
+      // pending (remember the strong evidence for when it arrives).
+      if evidence == .strong, w.settledSnapshots.contains(region) {
+        watch?.strongRegion = region
+        watch?.strongRevision = w.revision
+        if w.weakHeldRegion == region, w.weakHeldRevision == w.revision, !w.weakHeld.isEmpty {
+          releaseWeakHeld(generation: gen)
+        }
         return
       }
       guard w.settledBursts < Self.maxJudgeCallsPerPaste, !w.settledSnapshots.contains(region)
@@ -527,6 +537,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     // B5: the paste, the watch, the toggle or the text may have moved on while
     // the judge thought; a superseded, cancelled or revised watch drops the answer.
     guard stillWanted(generation: gen, revision: revision) else { return }
+    // #3101: strong evidence for this same text may have arrived while the
+    // judge thought (a send inside the judge's ~40 ms).
+    let evidence: SettleEvidence =
+      (evidence == .weak && watch?.strongRegion == region && watch?.strongRevision == revision)
+      ? .strong : evidence
     let accepted: Int
     switch outcome {
     case .verdict(let decisions):

@@ -625,6 +625,28 @@ struct ObservedCorrectionWatcherTests {
     #expect(presenter.offers.count == 1 && judge.requests.count == 1)
   }
 
+  @Test("#3101: a send that arrives while the weak-evidence judge call is still running makes its answer strong")
+  func strongEvidenceBeforeTheAnswer() async throws {
+    let watcher = makeWatcher()
+    judge.probability = 0.80
+    judge.holdAnswers = true
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+
+    observer.fire(.changed(region: "Ask Saira today"))
+    observer.fire(.settled(region: "Ask Saira today", evidence: .weak))
+    #expect(await waitUntil { judge.requests.count == 1 })
+    // Sent before the judge answers, then the watch ends.
+    observer.fire(.settled(region: "Ask Saira today", evidence: .strong))
+    observer.fire(.ended(.textboxEmptied))
+    judge.release()
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(judge.requests.count == 1)
+    #expect(telemetry.events.contains(.judged(.rules, .verdict, 1, 1)))
+    #expect(telemetry.judgedEvidence == [.strong])
+  }
+
   @Test("a half-typed fix that only deletes letters never reaches the judge and is counted (#3105)")
   func deletionOnlyEditIsWithheldAndCounted() async {
     let watcher = makeWatcher()

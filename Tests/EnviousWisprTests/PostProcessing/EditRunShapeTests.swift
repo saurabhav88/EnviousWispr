@@ -15,10 +15,14 @@ struct EditRunShapeTests {
     // #3258: a join or split made with punctuation.
     ("e mail", "e-mail"), ("well-known", "well known"), ("Miami Illinois", "Miami-Illinois"),
     ("node js", "node.js"), ("a b testing", "A/B testing"), ("U S", "U.S."), ("hello !", "hello!"), ("US", "U. S."),
+    // Every script and language (founder 2026-09-30: multilingual).
+    ("Karl Heinz", "Karl-Heinz"), ("Санкт Петербург", "Санкт-Петербург"), ("aujourd hui", "aujourd'hui"),
+    ("नई दिल्ली", "नई-दिल्ली"), ("« bonjour »", "bonjour"), ("„Hallo“ Welt", "Hallo Welt"),
   ]
   nonisolated static let kept: [(String, String)] = [
     ("post hog", "PostHog"), ("tail scale", "Tailscale"), ("e mail", "email"), ("git lab", "GitLab"), ("bird", "birds"),
     ("C plus plus", "C++"), ("A T and T", "AT&T"), ("Satz, Bau", "Satzbau"), ("tail scale", "Tailscale,"), ("hi, tail scale", "Hi, Tailscale"),
+    ("東京 タワー", "東京タワー"), ("sao paulo", "São Paulo"), ("Hans Peter", "Hanspeter"),
     ("Sarah", "Saira"), ("Mueller", "Müller"), ("pree yanka", "Priyanka"), ("tu", "tú"),
     ("same", "same"), ("", "x"), ("a b", "a b c"), ("अमित", "अमिता"), ("प्रियांका", "प्रियंका"),
   ]
