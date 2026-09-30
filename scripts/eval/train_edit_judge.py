@@ -636,7 +636,8 @@ def verify_shape_parity(rows: list[dict], runner: Path, workdir: Path) -> dict:
         return {"ok": False, "error": "runner returned a different pair count"}
     mine = [data.stage_one_shape_drop(r["original"], r["replacement"]) for r in rows]
     mismatches = [{"id": r["id"], "swift": s_, "python": m} for r, s_, m in zip(rows, swift, mine) if s_ != m]
-    return {"ok": not mismatches, "policy": resp.get("policy"), "compared": len(rows), "dropped": sum(1 for x in swift if x), "mismatches": mismatches[:20], "mismatch_count": len(mismatches)}
+    # An older runner can agree on every row and still apply another policy (#3258).
+    return {"ok": not mismatches and resp.get("policy") == SHAPE_POLICY, "policy": resp.get("policy"), "compared": len(rows), "dropped": sum(1 for x in swift if x), "mismatches": mismatches[:20], "mismatch_count": len(mismatches)}
 
 
 def verify_upstream_parity(tokenizer_dir: Path, texts: list[str], runner: Path, workdir: Path, contract_path: Optional[Path] = None, pairs: Optional[list[tuple[str, str]]] = None) -> dict:
