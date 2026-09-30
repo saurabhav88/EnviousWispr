@@ -63,7 +63,8 @@ class Read:
 
 
 def run_one_trial(focus_after_post, arrive: bool, limit_s: float = 0.02,
-                  unreadable_after_post: bool = False):
+                  unreadable_after_post: bool = False, front_lost_after_post: bool = False,
+                  front_lost_before_post: bool = False):
     """One trial with stubbed AX. `focus_after_post` is the element reported focused once the
     paste is dispatched; `chosen` is the field the person picked."""
     chosen, phrase = "field-A", {}
@@ -74,7 +75,8 @@ def run_one_trial(focus_after_post, arrive: bool, limit_s: float = 0.02,
     probe.ax_oracle.read_focused = lambda bundle, pid=None: Read(
         phrase["text"] if arrive and state["posted"] else "",
         ok=not (unreadable_after_post and state["posted"]))
-    probe.ax_oracle.is_frontmost = lambda pid: True
+    probe.ax_oracle.is_frontmost = lambda pid: not (
+        front_lost_after_post if state["posted"] else front_lost_before_post)
     probe.focused_element = lambda pid: focus_after_post if state["posted"] else chosen
     probe.same_element = lambda a, b: a == b
     probe.set_clipboard_text = lambda text: phrase.update(text=text)
@@ -107,5 +109,17 @@ check("focus moved even when the phrase is read: the run fails",
 result, error = run_one_trial("field-A", arrive=False, unreadable_after_post=True)
 check("every read fails after the paste: the run fails, not not_seen",
       result is None and error is not None and "unreadable at time-out" in error)
+
+result, error = run_one_trial("field-A", arrive=False, front_lost_after_post=True)
+check("the app lost the front, focus unchanged, nothing seen: the run fails, not not_seen",
+      result is None and error is not None and "lost the front during the trial" in error)
+
+result, error = run_one_trial("field-A", arrive=True, front_lost_after_post=True)
+check("the app lost the front even when the phrase is read: the run fails",
+      result is None and error is not None and "at arrival" in error)
+
+result, error = run_one_trial("field-A", arrive=True, front_lost_before_post=True)
+check("the app lost the front before the paste: no paste, the run fails",
+      result is None and error is not None and "lost the front before paste" in error)
 
 sys.exit(1 if failures else 0)

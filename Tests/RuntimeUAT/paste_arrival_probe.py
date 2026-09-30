@@ -75,23 +75,26 @@ def same_element(a, b) -> bool:
     return bool(CFEqual(a, b))
 
 
-def require_target(pid: int, chosen) -> None:
-    """The chosen app is still in front AND the chosen field still has focus, checked immediately
-    before every paste: a focus move must never paste into a field the person did not choose."""
+def require_chosen(pid: int, chosen, when: str) -> None:
+    """The chosen app is still in front AND the chosen field still has focus. ONE check for every
+    point that matters (before the paste, and where a verdict is reached), so the two can never
+    drift apart: a focus move must never paste into a field the person did not choose, and a
+    verdict is only about the chosen field if it is still the chosen field when it is reached.
+    An app's AXFocusedUIElement can stay the same after the person switches away, so focus alone
+    is not enough (#3119, PR #3320 review)."""
     if not ax_oracle.is_frontmost(pid):
-        raise RuntimeError("target app lost the front before paste")
+        raise RuntimeError(f"target app lost the front {when}")
     current = focused_element(pid)
     if current is None or not same_element(current, chosen):
-        raise RuntimeError("chosen field lost focus before paste")
+        raise RuntimeError(f"chosen field lost focus {when}")
+
+
+def require_target(pid: int, chosen) -> None:
+    require_chosen(pid, chosen, "before paste")
 
 
 def require_still_chosen(pid: int, chosen, when: str) -> None:
-    """The polling loop reads whichever field is focused, not `chosen`. A verdict is only about the
-    chosen field if focus is still on it when the verdict is reached, so a move fails the run
-    instead of reporting `not_seen` for a paste that landed in the original field (#3119)."""
-    current = focused_element(pid)
-    if current is None or not same_element(current, chosen):
-        raise RuntimeError(f"chosen field lost focus during the trial ({when})")
+    require_chosen(pid, chosen, f"during the trial ({when})")
 
 
 def enable_manual_ax(pid: int) -> None:
