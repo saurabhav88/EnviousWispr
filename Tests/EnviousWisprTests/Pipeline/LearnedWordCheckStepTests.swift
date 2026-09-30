@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprPostProcessing
 
 /// #3105: the learned-word check changes only what an installed checker
 /// approves, and leaves the text exactly as it arrived on every failure.
@@ -151,6 +152,25 @@ struct LearnedWordCheckStepTests {
   func noLearnedWords() async throws {
     let s = step(.approveWord("toast"), words: [CustomWord(canonical: "Tuist", aliases: ["toast"])])
     #expect(s.isEnabled == false)
+  }
+
+  /// #3339 (founder 2026-09-30): the shipped Claude entry answers "clod"/"clawed"
+  /// through this step for every user from the first dictation, but only on a
+  /// take whose text holds one of them.
+  @Test("the shipped dictionary turns the step on only for a take with clawed or clod")
+  func shippedClaudeIsAsked() async throws {
+    let shipped = CustomWordsManager.builtinDefaults.map(\.word)
+    let yes = step(.approveWord("clawed"), words: shipped)
+    #expect(yes.isEnabled == false)
+    #expect(yes.isEnabled(for: TextProcessingContext(text: "I asked clawed.", language: "en")))
+    #expect(
+      yes.isEnabled(for: TextProcessingContext(text: "I asked Claude.", language: "en")) == false)
+    #expect(try await run(yes, "I asked clawed to write it.") == "I asked Claude to write it.")
+    #expect(yes.lastOutcome?.applied == 1)
+
+    let no = step(.approveNone, words: shipped)
+    #expect(try await run(no, "The cat clawed the sofa.") == "The cat clawed the sofa.")
+    #expect(no.lastOutcome?.flagged == 1)
   }
 
   @Test("the take's frozen vocabulary wins over a later broadcast")

@@ -29,7 +29,7 @@ public enum LearnedWordCandidates: Sendable {
 
   public static func learnedWords(from vocabulary: [CustomWord]) -> [LearnedWord] {
     vocabulary.compactMap { entry in
-      guard entry.source != .pack, entry.isAutoLearned else { return nil }
+      guard entry.source != .pack, entry.hasCheckerAliases else { return nil }
       let observed = entry.learnedAt == nil ? entry.learnedAliases : entry.aliases
       return LearnedWord(canonical: entry.canonical, observedMisspellings: observed)
     }

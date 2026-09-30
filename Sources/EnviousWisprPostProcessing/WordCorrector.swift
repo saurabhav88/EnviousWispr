@@ -514,7 +514,8 @@ public struct WordCorrector: Sendable {
         continue
       }
       index.single[key] = TriggerOwner(
-        wordID: word.id, canonical: word.canonical, isPack: false, checkerOnly: word.learnedAt != nil)
+        wordID: word.id, canonical: word.canonical, isPack: false,
+        checkerOnly: word.learnedAt != nil)
     }
 
     // No-space namespace, non-pack only. Canonical is unconditional and last
@@ -525,7 +526,8 @@ public struct WordCorrector: Sendable {
     for word in nonPackWords {
       let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
       index.nospace[nospace] = TriggerOwner(
-        wordID: word.id, canonical: word.canonical, isPack: false, checkerOnly: word.learnedAt != nil)
+        wordID: word.id, canonical: word.canonical, isPack: false,
+        checkerOnly: word.learnedAt != nil)
       for alias in word.aliases {
         let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
         guard index.nospace[aliasNospace] == nil else { continue }
@@ -617,8 +619,10 @@ public struct WordCorrector: Sendable {
 
     // The NON-PACK exact maps. The fuzzy/compound pools derive from these so
     // pack terms can never become fuzzy candidates.
-    let nonPackSingleAliasMap = triggerIndex.canonicalsByKey(.single, nonPackOnly: true, deterministicOnly: true)
-    let nonPackMultiAliasMap = triggerIndex.canonicalsByKey(.multi, nonPackOnly: true, deterministicOnly: true)
+    let nonPackSingleAliasMap = triggerIndex.canonicalsByKey(
+      .single, nonPackOnly: true, deterministicOnly: true)
+    let nonPackMultiAliasMap = triggerIndex.canonicalsByKey(
+      .multi, nonPackOnly: true, deterministicOnly: true)
 
     // Every non-pack canonical key (INCLUDING multi-word canonicals, which get
     // no exact-map self-entry). A pack term must never claim one of these keys,
@@ -1547,8 +1551,18 @@ public struct WordCorrector: Sendable {
     var bestCanonical = ""
     var bestAlias = ""
 
+    // A phrase that IS one of a word's aliases with an English ending added
+    // ("envious whispering", "envious whispers" vs "envious whisper") is a
+    // different phrase, not a mishearing: it scored above the threshold and was
+    // swallowed whole (#3339). Excluded per canonical, before ranking, so a
+    // sibling alias ("envious wisper") cannot pick it up instead. A typo with no
+    // such ending ("envious whisperr") still matches.
+    let inflectedOf = Set(
+      candidates.lazy.filter { Self.isInflection(phrase, of: $0.alias) }.map(\.canonical))
+
     for entry in candidates {
       if domainShapedOnly, !Self.isDomainShaped(entry.alias) { continue }
+      if inflectedOf.contains(entry.canonical) { continue }
       let candidateScore = score(phrase, against: entry.alias)
       if candidateScore > bestScore {
         if bestCanonical != entry.canonical { secondBest = bestScore }
@@ -1605,6 +1619,24 @@ public struct WordCorrector: Sendable {
       MultiWordFuzzyCandidate(
         canonical: bestCanonical, alias: bestAlias, score: bestScore,
         margin: margin, threshold: threshold, hasStopword: hasStopword))
+  }
+
+  /// English endings that turn an alias word into another real word. A closed
+  /// list on purpose: any other extra letters stay eligible as a typo.
+  private static let inflectionEndings = ["ing", "ers", "er", "ed", "es", "s"]
+
+  /// True when `phrase` equals `alias` token for token, except ONE token that is
+  /// the alias token plus an ending from `inflectionEndings` (#3339).
+  static func isInflection(_ phrase: String, of alias: String) -> Bool {
+    let heard = phrase.lowercased().split(separator: " ")
+    let known = alias.lowercased().split(separator: " ")
+    guard heard.count == known.count, heard != known else { return false }
+    var inflected = 0
+    for (h, k) in zip(heard, known) where h != k {
+      guard inflectionEndings.contains(where: { h == k + $0 }) else { return false }
+      inflected += 1
+    }
+    return inflected == 1
   }
 
   private enum SingleAttemptFuzzyOutcome {
@@ -2094,7 +2126,9 @@ public struct WordCorrector: Sendable {
   /// score and no punctuation to peel; the passes leave it where it is and
   /// `restoreMasked` puts the original token back byte for byte. One mechanism
   /// for every pass, instead of a guard per pass.
-  static func maskCheckerOnlySurfaces(_ tokens: inout [String], keys: Set<String>) -> [String: String] {
+  static func maskCheckerOnlySurfaces(_ tokens: inout [String], keys: Set<String>) -> [String:
+    String]
+  {
     guard !keys.isEmpty, !tokens.isEmpty else { return [:] }
     let cores = tokens.map { stripPunctuationStatic($0).lowercased() }
     let maxSpan = keys.map { $0.split(separator: " ").count }.max() ?? 1

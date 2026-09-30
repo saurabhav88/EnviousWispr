@@ -30,7 +30,8 @@ public struct BuiltinWord: Sendable {
       source: .builtin,
       frequencyUsed: word.frequencyUsed,
       lastUsed: word.lastUsed,
-      minSimilarityOverride: word.minSimilarityOverride
+      minSimilarityOverride: word.minSimilarityOverride,
+      learnedAliases: word.learnedAliases
     )
   }
 }
@@ -243,6 +244,12 @@ public final class CustomWordsManager {
           // emits, not what the phrase looks like written down.
           "envious wispr", "Enviousvisper", "NVSBesper", "NVSBSPur",
           "NVIS VICPRSO", "EnvyS Visper", "senvy wpr", "Dambius Bispe",
+          // Added 2026-09-30 (#3339) from the founder's app logs (`[RAW ASR]`,
+          // 2026-09-14..30): forms the shipped list did not already fix, run
+          // through the real corrector. Verbatim for the same reason as above.
+          "MBS Visper", "MVS Visper", "MBS Vesper", "MBS Whisper", "NVIS VISPR",
+          "NVIS Whisper", "Envy S Whisper", "envy as whisper", "envy as whisker",
+          "Envice whisper", "NvSvisker", "VS Visper",
         ],
         category: .brand
       )),
@@ -278,7 +285,13 @@ public final class CustomWordsManager {
       id: "enviouslabs",
       word: CustomWord(
         canonical: "Envious Labs",
-        aliases: ["envious laps"],
+        // #3339: "MVS Labs" .. "NVS laps" are the founder's logged mishearings; the
+        // NVS/MBS/NBS Labs forms follow the same letter confusions logged for
+        // EnviousWispr.
+        aliases: [
+          "envious laps", "MVS Labs", "NVIS Labs", "NVIS LAPS", "NVS laps", "NVS Labs",
+          "MBS Labs", "NBS Labs",
+        ],
         category: .brand
       )),
     BuiltinWord(
@@ -320,8 +333,14 @@ public final class CustomWordsManager {
       id: "claude",
       word: CustomWord(
         canonical: "Claude",
+        // Both are everyday English words ("the cat clawed the sofa"), so they are
+        // check-only: `WordCorrector` never swaps them, and the Learned Word Check
+        // asks the model whether this sentence means Claude (founder 2026-09-30,
+        // #3339). Claude is the only built-in routed this way. The step runs for
+        // everyone with the Dictionary on because of this entry.
         aliases: ["clod", "clawed"],
-        category: .brand
+        category: .brand,
+        learnedAliases: ["clod", "clawed"]
       )),
     BuiltinWord(
       id: "api",

@@ -332,7 +332,8 @@ struct CustomWordEditSheet: View {
           // a sparkle and a deeper tint, so the person can tell what they
           // typed from what the app added. The mark matches the stored
           // spelling exactly (the manager keeps it that way).
-          let learned = word.learnedAliases.contains(alias)
+          // A built-in's check-only aliases were not learned from anyone (#3339).
+          let learned = word.isAutoLearned && word.learnedAliases.contains(alias)
           HStack(spacing: 4) {
             if learned {
               Image(systemName: "sparkles")
@@ -372,7 +373,7 @@ struct CustomWordEditSheet: View {
   /// would read a second child as a second candidate layout).
   @ViewBuilder
   private var learnedAliasesHelper: some View {
-    if word.aliases.contains(where: { word.learnedAliases.contains($0) }) {
+    if word.isAutoLearned, word.aliases.contains(where: { word.learnedAliases.contains($0) }) {
       Text(CustomTermProvenanceCopy.learnedAliasesHelper)
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)

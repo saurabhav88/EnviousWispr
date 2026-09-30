@@ -4,8 +4,11 @@ import EnviousWisprServices
 import Foundation
 
 public enum LearnedWordCheckerAbsence: Sendable, Equatable {
-  case engineHasNoChecker, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed, deliveryDisabled
-  case baseMismatch(String), serverWithoutAdapter(String), serverUnavailable
+  case engineHasNoChecker, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed,
+    deliveryDisabled
+  case baseMismatch(String)
+  case serverWithoutAdapter(String)
+  case serverUnavailable
   /// Selection itself did not answer inside `LearnedWordCheckStep.selectionDeadline`.
   case selectionTimedOut
 
@@ -75,9 +78,9 @@ public struct LearnedWordCheckerSelection: Sendable {
 /// #3105: the ONLY place an automatically learned word may change dictated text.
 ///
 /// Runs right after `WordCorrectionStep`, which no longer swaps learned claims
-/// (`WordCorrector.TriggerOwner.checkerOnly`). Candidates are the spots that
-/// sound like a learned word plus exact occurrences of its observed
-/// misspellings (`LearnedWordCandidates`); each becomes one A/B question for
+/// (`WordCorrector.TriggerOwner.checkerOnly`). Candidates are exact occurrences
+/// of a checker word's known misspellings (`LearnedWordCandidates`; no
+/// sound-alike search since 2026-09-25); each becomes one A/B question for
 /// the installed checker, and only approved spots change
 /// (`LearnedWordSpanApplier`).
 ///
@@ -99,7 +102,8 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   /// and records no_checker when the vocabulary contains learned words.
   public var checker: (any LearnedWordChecking)?
   /// Called once by the runner after language resolution.
-  public var selectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
+  public var selectionProvider:
+    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
 
   /// The user's "Enable Dictionary" switch, the same value `WordCorrectionStep`
   /// follows on every path (live settings sync, recovery snapshot, file-import
@@ -137,16 +141,26 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
 
   public init() {}
 
+  /// On for a user whose edits taught the Dictionary a word.
   public var isEnabled: Bool {
-    wordCorrectionEnabled
-      && correctorVocabulary.terms.contains { $0.learnedAt != nil || !$0.learnedAliases.isEmpty }
+    wordCorrectionEnabled && correctorVocabulary.terms.contains(where: \.isAutoLearned)
   }
 
+  /// Also on for a take whose text holds a shipped check-only misspelling (the
+  /// built-in Claude's "clod"/"clawed", #3339). Without that spot the step stays
+  /// off, so a user with no learned words pays no checker selection and records
+  /// no check row on an ordinary take. The runner asks before the loop (raw text)
+  /// and again at the step (current text).
   func isEnabled(for context: TextProcessingContext) -> Bool {
-    wordCorrectionEnabled
-      && (context.frozenCorrectorVocabulary ?? correctorVocabulary).terms.contains {
-        $0.learnedAt != nil || !$0.learnedAliases.isEmpty
-      }
+    guard wordCorrectionEnabled else { return false }
+    let terms = (context.frozenCorrectorVocabulary ?? correctorVocabulary).terms
+    if terms.contains(where: \.isAutoLearned) { return true }
+    let shipped = terms.filter { $0.source == .builtin && $0.hasCheckerAliases }
+    guard !shipped.isEmpty else { return false }
+    return !LearnedWordCandidates.questions(
+      for: context.text, learned: LearnedWordCandidates.learnedWords(from: shipped),
+      knownSpellings: terms.filter { $0.source != .pack }.map(\.canonical)
+    ).isEmpty
   }
 
   /// Runner cap. A checker answer that arrives later is discarded by the
