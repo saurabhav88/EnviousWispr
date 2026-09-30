@@ -108,7 +108,7 @@ runs:
     - name: Select Xcode
       uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
       with:
-        xcode-version: '26.6'
+        xcode-version: '27.0'
 
     # #3242: the word check runs on MLX, whose Cmlx target compiles Metal shaders. Xcode 26 ships the
     # Metal toolchain as a separate component, and hosted macOS 26 images do not always carry it
@@ -128,7 +128,7 @@ runs:
     - name: Verify environment
       shell: bash
       env:
-        EXPECTED_XCODE_BUILD: 17F113
+        EXPECTED_XCODE_BUILD: 27A266a
       run: |
         set -euo pipefail
         swift --version

@@ -44,7 +44,7 @@ jobs:
   # per app-code PR on a five-slot account, 8 min of queue in the sample.
   # Step-level needs_build gating. (#913 PR3 → Xcode engine.)
   build-and-test:
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     # Least privilege (carried over from the retired older-macos-launch.yml): this
     # job builds and runs branch-controlled code and needs no write capability.

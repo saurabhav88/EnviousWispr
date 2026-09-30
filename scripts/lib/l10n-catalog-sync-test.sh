@@ -202,7 +202,7 @@ def case(name, want_code, want_text, *, mode="--check", configuration="Release",
             bindir = root / "fakebin"
             bindir.mkdir()
             fake = bindir / "xcodebuild"
-            fake.write_text(f"#!/bin/sh\necho 'Xcode 26.6'\necho 'Build version {fake_xcode_build}'\n")
+            fake.write_text(f"#!/bin/sh\necho 'Xcode 27.0'\necho 'Build version {fake_xcode_build}'\n")
             fake.chmod(0o755)
             env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
         if remove_catalog:

@@ -147,18 +147,22 @@ struct TestDefaultsTests {
     return code.range(of: pattern, options: .regularExpression) != nil
   }
 
+  // Typed and split out of the attribute: Xcode 27's type checker times out on the inline
+  // array of concatenated-string tuples inside `@Test(arguments:)` (#3344).
+  static let detectorCases: [(String, Bool)] = [
+    ("let d = UserDefaults(" + "suiteName: \"x\")!", true),
+    ("let d = UserDefaults.init(" + "suiteName: \"x\")!", true),
+    ("let d = UserDefaults(\n      " + "suiteName: \"x\")!", true),
+    ("/// uses UserDefaults(" + "suiteName: \"x\") in prose", false),
+    ("  // UserDefaults(" + "suiteName: \"x\")", false),
+    ("let d = UserDefaults (" + "suiteName : \"x\")!", true),
+    ("\t// UserDefaults(" + "suiteName: \"x\")", false),
+    ("let d = TestDefaults.suite(\"x\")!", false),
+  ]
+
   @Test(
     "the raw-initializer detector sees every spelling and ignores comments",
-    arguments: [
-      ("let d = UserDefaults(" + "suiteName: \"x\")!", true),
-      ("let d = UserDefaults.init(" + "suiteName: \"x\")!", true),
-      ("let d = UserDefaults(\n      " + "suiteName: \"x\")!", true),
-      ("/// uses UserDefaults(" + "suiteName: \"x\") in prose", false),
-      ("  // UserDefaults(" + "suiteName: \"x\")", false),
-      ("let d = UserDefaults (" + "suiteName : \"x\")!", true),
-      ("\t// UserDefaults(" + "suiteName: \"x\")", false),
-      ("let d = TestDefaults.suite(\"x\")!", false),
-    ])
+    arguments: detectorCases)
   func detectorControl(source: String, expected: Bool) {
     #expect(Self.callsRawSuiteInitializer(source) == expected, "\(source)")
   }
