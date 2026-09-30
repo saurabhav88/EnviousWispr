@@ -624,13 +624,22 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   private func releaseWeakHeld(presentIn region: String, generation gen: UInt64) {
     guard let w = watch, w.generation == gen, let target = w.target else { return }
     let alignment = EditAlignment.align(pasted: target.pastedText, edited: region)
-    // Save the spelling the text holds NOW (a later case fix wins), matched by pair key.
-    var current: [String: EditAlignment.Run] = [:]
+    // Save the spelling the text holds NOW (a later case fix wins), matched by
+    // pair key: whole changed runs first, then single-word steps, so an edit to
+    // a neighbouring word that merges into the same run does not hide the fix.
+    var current: [String: (original: String, corrected: String)] = [:]
+    for step in alignment.steps where step.label == .substitute || step.label == .casing {
+      guard let o = step.original, let e = step.edited else { continue }
+      let original = EditAlignment.lexicalCore(o)
+      let corrected = EditAlignment.lexicalCore(e)
+      guard !original.isEmpty, !corrected.isEmpty else { continue }
+      current[CorrectionPairKey.make(original: original, corrected: corrected)] = (original, corrected)
+    }
     for f in CorrectionCandidateFilter.filter(
       runs: alignment.runs,
       inputs: .init(userWords: deps.userWords(), packTerms: deps.packTerms()))
     {
-      current[f.pairKey] = f.run
+      current[f.pairKey] = (f.run.coreOriginal, f.run.coreReplacement)
     }
     let held = w.weakHeld.compactMap { h in current[h.pairKey].map { (h, $0) } }
     watch?.weakHeld = []
@@ -641,8 +650,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     for (h, run) in held {
       guard stillWanted(generation: gen, revision: w.revision) else { return }
       deps.coordinator.learn(
-        original: run.coreOriginal, corrected: run.coreReplacement,
-        expectedTarget: h.expectedTarget)
+        original: run.original, corrected: run.corrected, expectedTarget: h.expectedTarget)
     }
   }
 
