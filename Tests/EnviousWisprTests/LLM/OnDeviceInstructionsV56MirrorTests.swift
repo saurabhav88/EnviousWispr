@@ -142,6 +142,24 @@ struct OnDeviceCorrectionTrailerGateTests {
         == "<TRANSCRIPT>\n\(text)\n</TRANSCRIPT>")
   }
 
+  @Test(
+    "a marker only counts as a whole word (#3237)",
+    arguments: [
+      ("There is no waiting allowed here", nil),
+      ("He was sorrying about it", nil),
+      ("Actually, that works", "actually"),
+      ("Send it, sorry, tomorrow", "sorry"),
+      ("Send it, no wait, tomorrow", "no wait"),
+      ("Send it on Tuesday. Wait, Wednesday", "wait"),
+      ("I was sorry", "sorry"),
+      ("make that 5", "make that"),
+      ("Send it Tuesday, no,Wednesday", "no"),
+      ("Send it Tuesday. Wait,Wednesday", "wait"),
+    ] as [(String, String?)])
+  func markerIsAWholeWord(text: String, marker: String?) {
+    #expect(AppleIntelligenceConnector.correctionMarker(in: text) == marker)
+  }
+
   @Test("{MARKER} in a trailer is replaced by the marker found")
   func markerPlaceholderSubstituted() {
     let wrapped = AppleIntelligenceConnector.wrapTranscript(

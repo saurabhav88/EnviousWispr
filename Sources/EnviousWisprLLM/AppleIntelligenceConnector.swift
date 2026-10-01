@@ -288,11 +288,29 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
 
   package static func correctionMarker(in text: String) -> String? {
     let low = " " + text.lowercased() + " "
-    for m in onDeviceCorrectionMarkers
-    where low.contains(" " + m) || low.contains("," + m) || low.contains("." + m) {
+    for m in onDeviceCorrectionMarkers where markerOccurs(m, in: low) {
       return m.trimmingCharacters(in: CharacterSet(charactersIn: ", "))
     }
     return nil
+  }
+
+  /// A marker counts only as a whole word: after a space, comma or full stop, and not
+  /// followed by a letter or digit ("no waiting" is not "no wait"; "sorrying" is not
+  /// "sorry"). A marker that ends in a comma already carries its own boundary (#3237).
+  private static func markerOccurs(_ marker: String, in low: String) -> Bool {
+    for lead in [" ", ",", "."] {
+      var searchStart = low.startIndex
+      while let hit = low.range(of: lead + marker, range: searchStart..<low.endIndex) {
+        if !marker.hasSuffix(","), let next = low[hit.upperBound...].first,
+          next.isLetter || next.isNumber
+        {
+          searchStart = low.index(after: hit.lowerBound)
+          continue
+        }
+        return true
+      }
+    }
+    return false
   }
 
   /// The one place a transcript is wrapped for the on-device model, so the
