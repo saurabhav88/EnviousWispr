@@ -273,7 +273,14 @@ public struct InverseTextNormalizer: Sendable {
     var protected: [String] = []
     let protect: (Match) -> String? = { m in
       protected.append(m.whole)
-      return " \u{0}\(protected.count - 1)\u{0} "
+      var sentinel = " \u{0}\(protected.count - 1)\u{0} "
+      // A pad next to a line break would survive restoration as indentation or as a trailing
+      // space (#3240); drop it there, as the street-address pass does for its own spans.
+      let before = m.result.range.location - 1
+      let after = m.result.range.location + m.result.range.length
+      if before >= 0, Self.isLineBreak(m.ns.character(at: before)) { sentinel.removeFirst() }
+      if after < m.ns.length, Self.isLineBreak(m.ns.character(at: after)) { sentinel.removeLast() }
+      return sentinel
     }
     let protectSub: (String) -> String = { val in
       protected.append(val)
@@ -1581,6 +1588,13 @@ public struct InverseTextNormalizer: Sendable {
       else { return nil }
       return protected[index].trimmingCharacters(in: .whitespacesAndNewlines)
     }
+  }
+
+  /// Whether a character is a line break: the Unicode line terminators, the same set
+  /// `lineTerminatorSet` names.
+  static func isLineBreak(_ unit: unichar) -> Bool {
+    guard let scalar = Unicode.Scalar(unit) else { return false }
+    return lineTerminatorSet.contains(scalar)
   }
 
   static let unreadableToken = "\u{0}unreadable"
