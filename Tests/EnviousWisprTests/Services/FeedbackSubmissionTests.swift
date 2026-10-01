@@ -18,12 +18,16 @@ struct FeedbackSubmissionTests {
     /// The help-check outcome each save was given (#3275).
     private(set) var helpOutcomes: [FeedbackHelpOutcome?] = []
     var isHeld: Bool { continuation != nil }
+    /// A save past the first returns at once, so a guard that lets a second send through fails an
+    /// assertion instead of hanging the suite (#3353).
+    var releasesCallsAfterTheFirst = false
 
     func save(_: FeedbackDraft, _: FeedbackDiagnosticsSnapshot?, _ help: FeedbackHelpOutcome?)
       async -> FeedbackReporter.Outcome
     {
       calls += 1
       helpOutcomes.append(help)
+      if releasesCallsAfterTheFirst, calls > 1 { return .saved(offline: false) }
       return await withCheckedContinuation { continuation = $0 }
     }
 
@@ -68,6 +72,7 @@ struct FeedbackSubmissionTests {
     let (store, suite) = Self.makeStore()
     defer { UserDefaults().removePersistentDomain(forName: suite) }
     let held = HeldSave()
+    held.releasesCallsAfterTheFirst = true
     let submission = FeedbackSubmission(store: store, save: held.save)
     let screen = Screen()
     store.save(message: "it pasted twice", email: "")
