@@ -6,7 +6,13 @@
 # code of ours runs, so it cannot be caught by any in-app check, and it only reproduces on an
 # OS older than the SDK the app was built against.
 #
-# Usage: assert-app-launches.sh <path-to-.app> [seconds-to-survive]
+# Usage: assert-app-launches.sh [--as-shipped] <path-to-.app> [seconds-to-survive]
+#
+# --as-shipped (#3348): the bundle is the signed, notarized app from the release DMG. Nothing in
+# it is modified (no chmod, no quarantine strip, no re-sign, which would replace the Developer ID
+# signature under test); instead the signature must verify strictly and Gatekeeper must accept
+# it, then the same launch runs. Without the flag the bundle is a CI build carried as an artifact
+# and is repaired below before launch.
 #
 # Exit: 0 the host survived the wait; 1 the host died (the reason is classified in the output);
 # 2 the check could not be performed.
@@ -20,6 +26,8 @@
 
 set -uo pipefail
 
+AS_SHIPPED=0
+if [ "${1:-}" = "--as-shipped" ]; then AS_SHIPPED=1; shift; fi
 APP="${1:-}"
 SURVIVE_FOR="${2:-15}"
 
@@ -46,36 +54,49 @@ fi
 BIN="$APP/Contents/MacOS/$NAME"
 [ -f "$BIN" ] || die "executable not found inside the bundle: $BIN" 2
 
-# **An artifact round-trip drops the executable bit and invalidates the signature.** Without
-# these two lines the app fails to start for reasons that have nothing to do with the macOS
-# version, which would look exactly like the defect this job exists to catch.
-chmod +x "$BIN" || die "could not restore the executable bit" 2
+if [ "$AS_SHIPPED" -eq 1 ]; then
+  # The shipped bundle must already be launchable exactly as a user receives it.
+  [ -x "$BIN" ] || die "the shipped executable is not executable: $BIN" 1
+  if ! codesign --verify --deep --strict --verbose=2 "$APP" 2>&1; then
+    die "the shipped app's signature does not verify; a user's Mac would refuse it" 1
+  fi
+  if ! spctl --assess --type exec --verbose=2 "$APP" 2>&1; then
+    die "Gatekeeper rejects the shipped app on this runner" 1
+  fi
+  echo "==> as shipped: signature verified and Gatekeeper accepts the app; nothing was modified"
+else
+  # **An artifact round-trip drops the executable bit and invalidates the signature.** Without
+  # these two lines the app fails to start for reasons that have nothing to do with the macOS
+  # version, which would look exactly like the defect this job exists to catch.
+  chmod +x "$BIN" || die "could not restore the executable bit" 2
 
-# **Every Mach-O in the bundle, not just Contents/MacOS.** `upload-artifact` normalises uploads
-# to mode 0644, which strips the bit from every nested executable — Sparkle's bundled helpers
-# included. #1908: this used to also cover `EnviousWisprASRService`, the transcription XPC
-# helper, whose dyld startup a direct probe below used to run — that helper is gone, but a
-# future nested executable is still covered here by CONTENT, without naming its directory.
-restored=0
-while IFS= read -r macho; do
-  [ -n "$macho" ] || continue
-  chmod +x "$macho" 2>/dev/null && restored=$((restored + 1))
-done <<EOF
+  # **Every Mach-O in the bundle, not just Contents/MacOS.** `upload-artifact` normalises uploads
+  # to mode 0644, which strips the bit from every nested executable — Sparkle's bundled helpers
+  # included. #1908: this used to also cover `EnviousWisprASRService`, the transcription XPC
+  # helper, whose dyld startup a direct probe below used to run — that helper is gone, but a
+  # future nested executable is still covered here by CONTENT, without naming its directory.
+  restored=0
+  while IFS= read -r macho; do
+    [ -n "$macho" ] || continue
+    chmod +x "$macho" 2>/dev/null && restored=$((restored + 1))
+  done <<EOF
 $(find "$APP" -type f 2>/dev/null | while read -r f; do
   desc=$(file "$f" 2>/dev/null)
   [ "${desc#*Mach-O}" != "$desc" ] && echo "$f"
 done)
 EOF
-echo "==> restored the executable bit on $restored Mach-O files"
-[ "$restored" -gt 0 ] || die "found no Mach-O files to make executable in $APP; the bundle is not what this probe expects" 2
-xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
-# **Signed RECURSIVELY, and a failure is fatal.** The carried bundle is built with
-# `CODE_SIGNING_ALLOWED=NO`, so its nested XPC services are unsigned; signing only the outer
-# bundle leaves macOS free to reject the helper before its own dyld startup is exercised. The
-# host survives regardless, so ignoring a signing failure bought a PASS that proved less. This
-# artifact is disposable, so `--deep` is the right tool rather than an inside-out walk.
-if ! codesign --force --deep --sign - --timestamp=none "$APP" 2>&1; then
-  die "ad-hoc re-sign failed; the nested services would be rejected by macOS and this probe would pass without exercising them" 2
+  echo "==> restored the executable bit on $restored Mach-O files"
+  [ "$restored" -gt 0 ] || die "found no Mach-O files to make executable in $APP; the bundle is not what this probe expects" 2
+  xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+  # **Signed RECURSIVELY, and a failure is fatal.** The carried bundle is built with
+  # `CODE_SIGNING_ALLOWED=NO`, so its nested XPC services are unsigned; signing only the outer
+  # bundle leaves macOS free to reject the helper before its own dyld startup is exercised. The
+  # host survives regardless, so ignoring a signing failure bought a PASS that proved less. This
+  # artifact is disposable, so `--deep` is the right tool rather than an inside-out walk.
+  if ! codesign --force --deep --sign - --timestamp=none "$APP" 2>&1; then
+    die "ad-hoc re-sign failed; the nested services would be rejected by macOS and this probe would pass without exercising them" 2
+  fi
+
 fi
 
 # **The architecture has to match what we ship, or the launch proves nothing about users.**
