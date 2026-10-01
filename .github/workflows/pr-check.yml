@@ -26,19 +26,21 @@ env:
   TEST_RUNNER_CI: "true"
 
 jobs:
-  # build-and-test: the ONE required macOS lane (#3013). Release build of the
-  # shippable app (non-testable, fully optimised) + older-macOS linkage assert +
-  # snapshot of that app for the advisory macOS 14 launch job + Release
-  # test-target compile with ENABLE_TESTABILITY=YES (issue #1539: a test file
+  # build-and-test: the ONE required macOS lane (#3013). ONE Release compile,
+  # `build-for-testing` with ENABLE_TESTABILITY=YES (#3348; issue #1539: a test file
   # referencing a #if DEBUG-only Sources symbol without gating itself compiles
-  # in Debug and vanishes in Release) + the FULL logic suite executed from those
-  # bundles (`test-without-building`, never a second compile) + the
-  # FoundationModels compile probe + the standalone eval packages.
+  # in Debug and vanishes in Release), whose products feed the String Catalog
+  # check, the older-macOS linkage assert, the snapshot for the advisory macOS 14
+  # launch job, and the FULL logic suite (`test-without-building`, never a second
+  # compile) + the FoundationModels compile probe + the standalone eval packages.
+  # The testable app is a COMPATIBILITY SMOKE CHECK: production stripping and the
+  # exact production startup are not covered here; release.yml launch-on-macos-14
+  # launches the notarized DMG on macOS 14 before anything is published (#3348).
   #
   # The Debug lane that used to run beside this one is gone: the founder's Mac
   # runs the Debug suite before every push, and post-merge still runs the full
-  # Debug suite on main, so PRs are gated on the configuration that SHIPS. What
-  # that moves: Debug-only compilation and Debug-specific behaviour are now
+  # Debug suite on main, so PRs are gated on the Release configuration (built
+  # testable, #3348). What that moves: Debug-only compilation and Debug-specific behaviour are now
   # found after merge instead of before. Measured before the change (2026-09-16,
   # docs/audits/ci-test-burden-2026-09-16): five macOS jobs and ~65 Mac-minutes
   # per app-code PR on a five-slot account, 8 min of queue in the sample.
@@ -96,101 +98,17 @@ jobs:
       # #3019: every build/test phase runs through `ew_phase`
       # (scripts/lib/ci-phase.sh): same command, same exit status, plus a named
       # log and the seconds for the EW-CI-METRICS line at the end of the job.
-      - name: Build (release, Xcode)
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
-          ew_phase build_release xcode-build-release.log -- xcodebuild build \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_RELEASE_SCHEME" \
-            -configuration Release \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'generic/platform=macOS' \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64
-
-      # #3142: the committed String Catalog must equal what the compiler extracts
-      # from the Release build that just ran. Exit 1 prints the added, removed and
-      # changed keys; the fix is `scripts/lib/l10n-catalog-sync.sh --update` on a
-      # local Release build, then commit the catalog. Exit 2 means the check could
-      # not run (toolchain, missing inputs), never "in sync".
-      - name: Check String Catalog is in sync (release)
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          scripts/lib/l10n-catalog-sync.sh --check \
-            --derived-data "$DERIVED_DATA_PATH" \
-            --configuration Release
-
-      # Compiles (never runs) both Release-config test targets so a test file
-      # that references a #if DEBUG-only Sources symbol without gating itself
-      # fails HERE, on the PR, instead of post-merge in main-post-merge.yml
-      # (issue #1539; recurred twice in 3 days: #1358/#1498, #1536/#1538).
-      # ENABLE_TESTABILITY=YES mirrors main-post-merge.yml's release-test
-      # rationale (Release doesn't enable testability by default); it is NOT
-      # set on the plain `build` step above, so the shippable release artifact
-      # stays non-testable and fully optimized.
-      # Older-macOS launch safety, on the REQUIRED gate rather than beside it.
       #
-      # The app is built against the macOS 26 SDK with a macOS 14 deployment target. A framework
-      # or symbol from above the baseline that is bound STRONGLY makes dyld abort at launch on an
-      # older Mac, before any `#available` check of ours runs, so the app never opens and the
-      # in-app "needs a newer macOS" message is never reached.
-      #
-      # It lives here, on the job that already produced a release binary, because `build-check` is
-      # the only check the branch ruleset requires: a standalone workflow can go red without
-      # blocking the merge it exists to block. The empirical macOS 14 LAUNCH stays in
-      # `older-macos-launch.yml` and stays advisory — it depends on a hosted image with a
-      # retirement date and on a headless app start, neither of which belongs on the required path.
-      # Static, deterministic, seconds; the self-test runs first so a guard that has stopped
-      # inspecting anything fails here rather than passing quietly.
-      - name: Assert older-macOS launch safety (linkage)
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          # Named explicitly, never `find | head -1`. This job restores a DerivedData cache, so a
-          # stale Debug product can sit beside the Release one and an unordered match could
-          # inspect it — letting a Release-only linkage problem through the required gate.
-          APP="$DERIVED_DATA_PATH/Build/Products/Release/EnviousWispr.app"
-          # `-d`, not `-n`: the path is a literal now, so a non-empty test would always pass
-          # and the check would run against a bundle that does not exist.
-          [ -d "$APP" ] || { echo "FAIL: release app not at $APP" >&2; exit 1; }
-          # The self-test drives a single binary (its contract); the real check gets the whole
-          # bundle so embedded frameworks are scanned too — dyld loads those at startup, and a
-          # strong post-baseline import inside one aborts the process just as surely.
-          ./scripts/ci/check-weak-linked-symbols-test.sh "$APP/Contents/MacOS/EnviousWispr"
-          ./scripts/ci/check-weak-linked-symbols.sh "$APP"
-
-      # The shippable app is snapshotted HERE, before `build-for-testing` below
-      # rewrites the same products tree with ENABLE_TESTABILITY=YES. The advisory
-      # macOS 14 launch job must certify the bundle users receive, not the
-      # testable one. Tarred, never uploaded as a directory: `upload-artifact`
-      # neither preserves symlinks nor keeps permissions, and a macOS framework
-      # IS a symlink structure (carried over from older-macos-launch.yml).
-      - name: Snapshot non-testable Release app
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          APP="$DERIVED_DATA_PATH/Build/Products/Release/EnviousWispr.app"
-          [ -d "$APP" ] || {
-            echo "::error::Release app missing: $APP"
-            exit 1
-          }
-          tar -czf "$RUNNER_TEMP/enviouswispr-app.tar.gz" \
-            -C "$(dirname "$APP")" "$(basename "$APP")"
-          ls -lh "$RUNNER_TEMP/enviouswispr-app.tar.gz"
-
-      - name: Upload the app for the older-macOS launch
-        if: steps.changes.outputs.needs_build == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: enviouswispr-release-app
-          path: ${{ runner.temp }}/enviouswispr-app.tar.gz
-          retention-days: 1
-          if-no-files-found: error
-
+      # #3348: the only Release compile in this job. It used to follow a plain
+      # non-testable `xcodebuild build` (324-719 s) whose products fed the three
+      # checks below; ENABLE_TESTABILITY changes flags, so nothing was reused.
+      # Measured before removing it (Xcode 27.0, one tree, separate DerivedData):
+      # the testable and non-testable apps had identical bundle inventories (180
+      # files), Mach-O sets (8), load commands, rpaths, minos, Info.plist and
+      # extracted .stringsdata; the testable app imports 146 extra symbols, all
+      # from baseline libraries (libSystem, SwiftUI, libswiftCore...), with zero
+      # weak/strong or library flips on shared symbols, and both pass
+      # check-weak-linked-symbols.sh with identical summaries.
       - name: Build for testing (release, Xcode)
         id: release-test-build
         if: steps.changes.outputs.needs_build == 'true'
@@ -219,6 +137,81 @@ jobs:
             xcode-build-for-testing-release.xcresult
           if-no-files-found: warn
           retention-days: 7
+
+      # #3142: the committed String Catalog must equal what the compiler extracts
+      # from the Release build that just ran. Exit 1 prints the added, removed and
+      # changed keys; the fix is `scripts/lib/l10n-catalog-sync.sh --update` on a
+      # local Release build, then commit the catalog. Exit 2 means the check could
+      # not run (toolchain, missing inputs), never "in sync". The sync reads only
+      # production-target .stringsdata, so the test targets this build adds are
+      # not extracted (and an unknown target folder is refused, not included).
+      - name: Check String Catalog is in sync (release)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          scripts/lib/l10n-catalog-sync.sh --check \
+            --derived-data "$DERIVED_DATA_PATH" \
+            --configuration Release
+
+      # Older-macOS launch safety, on the REQUIRED gate rather than beside it.
+      #
+      # The app is built against the macOS 26 SDK with a macOS 14 deployment target. A framework
+      # or symbol from above the baseline that is bound STRONGLY makes dyld abort at launch on an
+      # older Mac, before any `#available` check of ours runs, so the app never opens and the
+      # in-app "needs a newer macOS" message is never reached.
+      #
+      # It lives here because `build-check` is the only check the branch ruleset requires: a
+      # standalone workflow can go red without blocking the merge it exists to block. Since #3348
+      # it inspects the testable Release app (see the build step for the measured equivalence);
+      # release.yml runs the same gate on the notarized DMG app. The empirical macOS 14 LAUNCH
+      # stays in `older-macos-launch` below and stays advisory — it depends on a hosted image with
+      # a retirement date and on a headless app start, neither of which belongs on the required path.
+      # Static, deterministic, seconds; the self-test runs first so a guard that has stopped
+      # inspecting anything fails here rather than passing quietly.
+      - name: Assert older-macOS launch safety (linkage)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          # Named explicitly, never `find | head -1`. This job restores a DerivedData cache, so a
+          # stale Debug product can sit beside the Release one and an unordered match could
+          # inspect it — letting a Release-only linkage problem through the required gate.
+          APP="$DERIVED_DATA_PATH/Build/Products/Release/EnviousWispr.app"
+          # `-d`, not `-n`: the path is a literal now, so a non-empty test would always pass
+          # and the check would run against a bundle that does not exist.
+          [ -d "$APP" ] || { echo "FAIL: release app not at $APP" >&2; exit 1; }
+          # The self-test drives a single binary (its contract); the real check gets the whole
+          # bundle so embedded frameworks are scanned too — dyld loads those at startup, and a
+          # strong post-baseline import inside one aborts the process just as surely.
+          ./scripts/ci/check-weak-linked-symbols-test.sh "$APP/Contents/MacOS/EnviousWispr"
+          ./scripts/ci/check-weak-linked-symbols.sh "$APP"
+
+      # Snapshot for the advisory macOS 14 launch job: the TESTABLE Release app
+      # (compatibility smoke check, #3348); the exact shipped bundle is launched
+      # on macOS 14 by release.yml launch-on-macos-14. Tarred, never uploaded as a
+      # directory: `upload-artifact` neither preserves symlinks nor keeps
+      # permissions, and a macOS framework IS a symlink structure (carried over
+      # from older-macos-launch.yml).
+      - name: Snapshot testable Release app
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          APP="$DERIVED_DATA_PATH/Build/Products/Release/EnviousWispr.app"
+          [ -d "$APP" ] || {
+            echo "::error::Release app missing: $APP"
+            exit 1
+          }
+          tar -czf "$RUNNER_TEMP/enviouswispr-app.tar.gz" \
+            -C "$(dirname "$APP")" "$(basename "$APP")"
+          ls -lh "$RUNNER_TEMP/enviouswispr-app.tar.gz"
+
+      - name: Upload the app for the older-macOS launch
+        if: steps.changes.outputs.needs_build == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: enviouswispr-release-app
+          path: ${{ runner.temp }}/enviouswispr-app.tar.gz
+          retention-days: 1
+          if-no-files-found: error
 
       # #3013: RUN the suite from the bundles the step above produced. `ew_run_tests`
       # (scripts/lib/xcode-test-run.sh) is the one owner of the run shape for PR,
@@ -344,9 +337,10 @@ jobs:
   # merge. It is deliberately NOT in build-check's `needs:`.
   #
   # The app cannot be built on the older runner (it needs the macOS 26 SDK), so
-  # build-and-test snapshots the shippable app BEFORE its testable rebuild and
-  # this job carries it to macos-14. Trigger is `needs_build`, deliberately
-  # broader than the old workflow's path list.
+  # build-and-test snapshots its testable Release app and this job carries it to
+  # macos-14: a compatibility smoke check (#3348). The notarized app users get is
+  # launched on macOS 14 by release.yml launch-on-macos-14 before publishing.
+  # Trigger is `needs_build`, deliberately broader than the old workflow's path list.
   older-macos-launch:
     name: Launch on macOS 14 (the deployment target)
     needs: build-and-test
