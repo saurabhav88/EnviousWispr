@@ -197,8 +197,10 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: scripts/ci/post-merge-should-run.sh --sha "${{ github.sha }}"
 
-  # The long pole, and the cache WRITER. Builds both configurations (the cache
-  # shape pr-check.yml restores) but runs only the release suite.
+  # The long pole, and the cache WRITER for the `release` family. Builds the
+  # testable Release products exactly as their readers do (pr-check.yml
+  # build-and-test and nightly-battery.yml build only `build-for-testing` with
+  # ENABLE_TESTABILITY=YES since #3348) and runs the release suite.
   release-validation:
     needs: [classify, schedule-guard]
     # #2334: the schedule path additionally requires the guard to answer
@@ -258,28 +260,16 @@ jobs:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
           configuration: release
 
-      - name: Build (release, Xcode)
-        run: |
-          set -euo pipefail
-          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
-          ew_phase build_release xcode-build-release.log -- xcodebuild build \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_RELEASE_SCHEME" \
-            -configuration Release \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'generic/platform=macOS' \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64
-
       # ENABLE_TESTABILITY=YES is required on the release TEST build only:
       # the test targets use `@testable import`, which needs the first-party
       # modules built with `-enable-testing`. Debug enables testability by
       # default; Release does not, so without this the test build fails with
-      # "module built without '-enable-testing'". It is NOT set on the release
-      # `build` step above, so the shippable release artifact stays non-testable
-      # and fully optimized. Same invocation as pr-check.yml's build-and-test,
-      # so the cache this job writes serves that lane.
+      # "module built without '-enable-testing'". #3348: this is the job's only
+      # Release compile. The plain non-testable `xcodebuild build` that ran
+      # first had no reader once pr-check.yml stopped building it (#3351); the
+      # shipped app is built by release.yml and launched on macOS 14 there.
+      # Same invocation as pr-check.yml's build-and-test, so the cache this job
+      # writes serves that lane.
       - name: Build for testing (release, Xcode)
         run: |
           set -euo pipefail
