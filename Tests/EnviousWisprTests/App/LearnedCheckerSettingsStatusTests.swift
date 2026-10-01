@@ -38,6 +38,19 @@ struct LearnedCheckerSettingsStatusTests {
     }
   }
 
+  @Test("with Enable Dictionary off the row shows no word-check status (#3255)")
+  func dictionaryOffShowsNoStatus() {
+    let ready = LearnedCheckerSettingsStatus(selection: .init(
+      checker: ReadyChecker(), identity: "eg1c-v2", judge: egOne))
+    let downloading = LearnedCheckerSettingsStatus(selection: .init(
+      absence: .adapterDownloading, judge: egOne))
+    for status in [ready, downloading] {
+      #expect(LearnedCheckerSettingsStatus.shown(status, dictionaryEnabled: false) == nil)
+      #expect(LearnedCheckerSettingsStatus.shown(status, dictionaryEnabled: true) == status)
+    }
+    #expect(LearnedCheckerSettingsStatus.shown(nil, dictionaryEnabled: true) == nil)
+  }
+
   @Test("a new judge reaches the copy without a copy edit, and the line names no language")
   func judgeNamesItself() {
     let judge = LearnedWordJudge(displayName: "S1-mini")

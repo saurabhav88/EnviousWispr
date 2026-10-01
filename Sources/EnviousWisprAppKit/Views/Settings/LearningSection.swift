@@ -25,6 +25,15 @@ struct LearnedCheckerSettingsStatus: Equatable {
       comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
   }
 
+  /// The status the row may show. With Enable Dictionary off no learned word is checked or
+  /// applied and nothing downloads, so every line here ("Checked by...", "downloading...")
+  /// would be untrue; the row shows none (#3255).
+  static func shown(
+    _ status: LearnedCheckerSettingsStatus?, dictionaryEnabled: Bool
+  ) -> LearnedCheckerSettingsStatus? {
+    dictionaryEnabled ? status : nil
+  }
+
   init(selection: LearnedWordCheckerSelection) {
     // The judge's owner names it; the copy has no engine of its own, so a new
     // judge needs no edit here. Every dictation language is checked (#3105).
@@ -90,9 +99,10 @@ struct LearningSection: View {
   @State private var checkerStatus: LearnedCheckerSettingsStatus?
 
   /// The status line does not vary by dictation language (#3105), so the
-  /// refresh keys only on the engine and the owner's revision.
+  /// refresh keys on the engine, the owner's revision and the Dictionary switch (a
+  /// status read while it was off is stale once it is turned on, #3255).
   private var checkerStatusKey: String {
-    "\(settings.llmProvider.rawValue):\(checkerEligibility.statusRevision)"
+    "\(settings.llmProvider.rawValue):\(checkerEligibility.statusRevision):\(settings.wordCorrectionEnabled)"
   }
 
   var body: some View {
@@ -154,7 +164,9 @@ struct LearningSection: View {
         Text(LearnFromEditsSettingsPresentation.rowCopy)
           .settingsReadingCopy()
           .fixedSize(horizontal: false, vertical: true)
-        if let checkerStatus {
+        if let checkerStatus = LearnedCheckerSettingsStatus.shown(
+          checkerStatus, dictionaryEnabled: settings.wrappedValue.wordCorrectionEnabled)
+        {
           HStack(alignment: .center, spacing: 8) {
             Text(checkerStatus.line)
               .font(.stHelper)

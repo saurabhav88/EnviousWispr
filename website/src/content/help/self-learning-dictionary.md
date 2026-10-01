@@ -67,7 +67,7 @@ A learned word never replaces text on its own. When a later dictation contains a
 
 If learned words are not being applied, check these:
 
-- **Enable Dictionary is off.** Words are still learned then, but never applied. Switch **Enable Dictionary** on in **Settings** > **Dictionary**.
+- **Enable Dictionary is off.** Words are still learned then, but never applied, and the row under the switch in **Learn from...** shows no word check. Switch **Enable Dictionary** on in **Settings** > **Dictionary**.
 - **The row says Learn-only.** Look at the row under the switch in **Settings** > **Dictionary** > **Learn from...**. It shows which check is in use, for example **Checked by: Envious Word Check. Learned words are checked before they're used.** While the check is downloading, or if it could not download or is not ready, the row starts with **Learn-only**. New words are still learned and saved, and they start fixing dictations once the check is ready, as long as **Enable Dictionary** is on. When a download failed, or Envious Word Check could not load, a **Try again** button appears.
 - **The check ran out of time.** If the word check cannot answer in time, your text arrives exactly as it would have without it. That costs at most about two and a half seconds for a dictation. For Transcribe a File, each part of a long file can wait up to about 1.2 seconds more, and a little more when a part is in a different language. A very short dictation after a quiet stretch may reach the check while it is still loading, and is then left as it would be without the check.
 
