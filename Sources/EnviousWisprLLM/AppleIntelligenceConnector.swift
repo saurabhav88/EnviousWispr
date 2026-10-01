@@ -301,7 +301,9 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     for lead in [" ", ",", "."] {
       var searchStart = low.startIndex
       while let hit = low.range(of: lead + marker, range: searchStart..<low.endIndex) {
-        if let next = low[hit.upperBound...].first, next.isLetter || next.isNumber {
+        if !marker.hasSuffix(","), let next = low[hit.upperBound...].first,
+          next.isLetter || next.isNumber
+        {
           searchStart = low.index(after: hit.lowerBound)
           continue
         }

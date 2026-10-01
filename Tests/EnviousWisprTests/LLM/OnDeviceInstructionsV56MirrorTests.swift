@@ -153,6 +153,8 @@ struct OnDeviceCorrectionTrailerGateTests {
       ("Send it on Tuesday. Wait, Wednesday", "wait"),
       ("I was sorry", "sorry"),
       ("make that 5", "make that"),
+      ("Send it Tuesday, no,Wednesday", "no"),
+      ("Send it Tuesday. Wait,Wednesday", "wait"),
     ] as [(String, String?)])
   func markerIsAWholeWord(text: String, marker: String?) {
     #expect(AppleIntelligenceConnector.correctionMarker(in: text) == marker)
