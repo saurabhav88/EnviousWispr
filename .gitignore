@@ -240,6 +240,8 @@ scripts/lib/*
 !scripts/convert-output-classifier.py
 !scripts/gate-output-classifier.py
 !scripts/emit-output-classifier-golden.py
+# #3338: regenerates the Parakeet speller resource and its independent oracle.
+!scripts/parakeet-speller-data.py
 # Cross-vendor telemetry join instrument (#1846).
 !scripts/telemetry-join.py
 # Mutation battery (#2156). TRACKED because a battery is only trustworthy if everyone runs the
