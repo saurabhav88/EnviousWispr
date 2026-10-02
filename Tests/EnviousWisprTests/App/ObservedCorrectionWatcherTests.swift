@@ -457,6 +457,51 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitUntil { !edits.isParked })
   }
 
+  @Test("#3338: a skipped take (destination mismatch) is reported as not observed")
+  func skipReportsTakeID() async {
+    let watcher = makeWatcher()
+    knobs.frontmost = FrontmostApplication(pid: 7, bundleID: "com.apple.Mail")
+    watcher.pasteCompleted(paste(bundle: "com.apple.Notes", takeID: "take-skip"))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(telemetry.events.last == .skipped(.destinationMismatch))
+    #expect(knobs.observationEndedTakeIDs == ["take-skip"])
+  }
+
+  @Test("#3338: a watch cancelled by model removal or toggle off is reported as not observed")
+  func cancelledWatchReportsTakeID() async {
+    for useToggle in [false, true] {
+      knobs.observationEndedTakeIDs = []
+      let watcher = makeWatcher()
+      edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+      await pasteAndPark(watcher, takeID: "take-c")
+      if useToggle {
+        knobs.toggle = false
+        watcher.learnFromEditsChanged(isOn: false)
+      } else {
+        watcher.modelBecameUnavailable()
+      }
+      #expect(knobs.observationEndedTakeIDs.first == "take-c", "toggle \(useToggle)")
+      edits.release()
+      #expect(await waitUntil { !edits.isParked })
+      knobs.toggle = true
+    }
+  }
+
+  @Test("#3338: a paste that is never watched (Self-Learning off, or a watch already active) is reported")
+  func neverWatchedReportsTakeID() async {
+    let watcher = makeWatcher()
+    knobs.toggle = false
+    watcher.pasteCompleted(paste(takeID: "take-off"))
+    #expect(knobs.observationEndedTakeIDs == ["take-off"])
+    knobs.toggle = true
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher, takeID: "take-first")
+    watcher.pasteCompleted(paste(takeID: "take-second"))
+    #expect(knobs.observationEndedTakeIDs == ["take-off", "take-second"])
+    edits.release()
+    #expect(await waitUntil { !edits.isParked })
+  }
+
   @Test("a dictation starting while the session answers: one next_dictation_started row, no start")
   func recordingStartDuringTheAwait() async {
     let watcher = makeWatcher()

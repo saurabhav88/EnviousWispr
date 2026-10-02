@@ -148,8 +148,10 @@ struct ObservedCorrectionWatcherDependencies {
   let telemetry: any LearnFromEditsTelemetrySink
   /// Judge 1 defects reach Sentry once per process per kind (#3105).
   var failureReporter: LearnJudgeFailureReporter = .shared
-  /// #3338 PR-4: the watch for this take stopped observing (every reported end); the
-  /// audio hold stops granting new leases for it. Pending answers are unaffected.
+  /// #3338 PR-4: this take is not (or no longer) observed: every reported end, every
+  /// skip, a cancelled watch (toggle off, model removed) and a paste never watched. The
+  /// audio hold stops granting new leases for it. Pending answers are unaffected. May
+  /// repeat for one take; the hold treats it as idempotent.
   var onObservationEnded: (String?) -> Void = { _ in }
 }
 
@@ -226,10 +228,13 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
 
   func pasteCompleted(_ event: PasteCompletionEvent) {
     guard deps.isLearnFromEditsOn() else {
+      // #3338 PR-4: a take that is never watched is never observed.
+      deps.onObservationEnded(event.takeID)
       Task { @MainActor [deps] in deps.telemetry.learnSkipped(reason: .toggleOff, takeID: event.takeID) }
       return
     }
     guard !isWatching else {
+      deps.onObservationEnded(event.takeID)
       Task { @MainActor [deps] in deps.telemetry.learnSkipped(reason: .watchActive, takeID: event.takeID) }
       return
     }
@@ -285,6 +290,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     watch?.selected = nil
     guard let w = watch, !w.cancelled else { return }
     watch?.cancelled = true
+    deps.onObservationEnded(w.event.takeID)
     guard !w.ended else { return }
     w.event.editCapture?.cancelEditWatchCapture()
     deps.observer.stop()
@@ -299,6 +305,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   private func cancelForToggleOff(generation gen: UInt64) {
     guard let w = watch, w.generation == gen, !w.cancelled else { return }
     watch?.cancelled = true
+    deps.onObservationEnded(w.event.takeID)
     guard !w.ended else { return }
     // A pending capture stops reading for a watch that no longer exists.
     w.event.editCapture?.cancelEditWatchCapture()
@@ -388,6 +395,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   ) {
     guard let w = watch, w.generation == gen else { return }
     watch = nil
+    deps.onObservationEnded(w.event.takeID)
     if report { deps.telemetry.learnSkipped(reason: reason, takeID: w.event.takeID) }
   }
 
