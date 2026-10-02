@@ -1374,4 +1374,7 @@ extension ParakeetEngineAdapter: ASREngineLearnAudioEvidenceProviding {
   func setLearnEvidencePolicy(_ policy: LearnEvidencePolicy?) {
     learnEvidencePolicy = policy
   }
+  func clearLearnEvidence() {
+    lastLearnEvidence = nil
+  }
 }

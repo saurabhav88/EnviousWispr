@@ -209,6 +209,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     if case .transcript(let result) = retryDecodeResult {
       lastResult = result
     }
+    deriveLearnEvidence(retryDecodeResult, samples: inputSamples, attempt: .retry)
     onRetryDecodeReturning?()
     return retryDecodeResult
   }
@@ -232,6 +233,24 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// #3338 PR-4: scripted learn evidence (see the extension at the end of the file).
   var learnEvidenceForTesting: LearnDecodeEvidence?
   private(set) var learnEvidencePolicyForTesting: LearnEvidencePolicy?
+  private(set) var learnEvidenceClearsForTesting = 0
+  /// When `true`, the fake commits evidence like the real adapter: for a transcript
+  /// under a policy, the exact samples that call received; anything else clears it.
+  var derivesLearnEvidenceForTesting = false
+  private var derivedLearnEvidence: LearnDecodeEvidence?
+
+  private func deriveLearnEvidence(
+    _ outcome: ASREngineOutcome, samples: [Float]?, attempt: LearnDecodeEvidence.Attempt
+  ) {
+    guard derivesLearnEvidenceForTesting else { return }
+    derivedLearnEvidence = nil
+    guard case .transcript(let result) = outcome, let policy = learnEvidencePolicyForTesting,
+      let samples, samples.count <= policy.maxSamples
+    else { return }
+    derivedLearnEvidence = LearnDecodeEvidence(
+      samples: samples, attempt: attempt, callerSupplied: true, language: nil, rawText: result.text,
+      wordTimings: nil)
+  }
   private(set) var cancelCallCount = 0
   /// #959: counts `recoverFromWedge()` calls so seam tests can assert ordinary
   /// terminals route through cheap `cancel()` while only the wedge detectors
@@ -548,6 +567,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     if case .transcript(let result) = outcome {
       lastResult = result
     }
+    deriveLearnEvidence(outcome, samples: batchSamples, attempt: .batch)
     return outcome
   }
 
@@ -700,5 +720,9 @@ extension FakeEngine: ASREngineLearnAudioEvidenceProviding {
   func setLearnEvidencePolicy(_ policy: LearnEvidencePolicy?) {
     learnEvidencePolicyForTesting = policy
   }
-  var lastLearnEvidence: LearnDecodeEvidence? { learnEvidenceForTesting }
+  var lastLearnEvidence: LearnDecodeEvidence? { learnEvidenceForTesting ?? derivedLearnEvidence }
+  func clearLearnEvidence() {
+    learnEvidenceClearsForTesting += 1
+    derivedLearnEvidence = nil
+  }
 }

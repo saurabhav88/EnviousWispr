@@ -708,13 +708,25 @@ final class RecordingSessionKernel {
   /// #8).
   private var adapterDidBeginSession = false
 
-  /// #3338 PR-4: supplies this session's learn evidence policy (`nil` = keep
-  /// nothing: Self-Learning off, or no cap). Read once per session, right after the
-  /// adapter's session opens. Wired in by the learn hold (PR-4 chunk 3).
-  var learnEvidencePolicyProvider: (@MainActor () -> LearnEvidencePolicy?)?
+  /// #3338 PR-4: the learn hold's side of a take's audio, installed while idle by
+  /// `KernelDictationDriver.installLearnAudioDelivery`. Without a sink nothing is
+  /// captured or retained. `learnAudioSampleCap` returns the eligible sample cap, or
+  /// `nil` (Self-Learning off, no cap); `learnAudioNowMs` reads the learn watcher's clock.
+  private var learnAudioSink: (any LearnAudioSink)?
+  private var learnAudioSampleCap: (@MainActor () -> Int?)?
+  private var learnAudioNowMs: (@MainActor () -> Int)?
+  /// The sink this session captured at its start (installation never changes it mid-take).
+  private var sessionLearnSink: (any LearnAudioSink)?
+  /// The take whose audio the sink holds and whose paste outcome it still needs.
+  private var retainedLearnTakeID: String?
+  /// Ordered sink calls: each waits for the previous one, so a take's retain always
+  /// reaches the sink before its markPasted or discard. Kernel-lifetime, not
+  /// session-scoped, so a discard queued at a terminal is never dropped.
+  private var learnSinkChain: Task<Void, Never>?
   /// #3338 PR-4: the winning decode's audio for the learn hold, or `nil`. Set only
   /// when the kernel accepts a transcript (primary, retry or salvage); a later
-  /// winning decode replaces it; cleared at session start and cancel.
+  /// winning decode replaces it; handed to the sink at finalizing; cleared at session
+  /// start, an accepted cancel and every terminal.
   private(set) var winningLearnAudio: LearnTakeAudio?
 
   /// #3338 PR-4: which kernel decode produced the accepted transcript.
@@ -1808,9 +1820,16 @@ final class RecordingSessionKernel {
     // The adapter ran a session this run — the terminal applies the
     // model-unload policy exactly once (PR-4 plan §3.2).
     adapterDidBeginSession = true
-    // #3338 PR-4: learn evidence only from adapters that can name the exact input.
+    // #3338 PR-4: learn evidence only from adapters that can name the exact input,
+    // only with an installed sink and an eligible cap, snapshotted for this session.
+    sessionLearnSink = nil
     if let provider = adapter as? ASREngineLearnAudioEvidenceProviding {
-      provider.setLearnEvidencePolicy(learnEvidencePolicyProvider?())
+      var policy: LearnEvidencePolicy?
+      if let sink = learnAudioSink, let cap = learnAudioSampleCap?(), cap > 0 {
+        policy = LearnEvidencePolicy(maxSamples: cap)
+        sessionLearnSink = sink
+      }
+      provider.setLearnEvidencePolicy(policy)
     }
 
     // Install the buffer callback BEFORE `beginCapturePhase()` — a direct
@@ -3325,6 +3344,9 @@ final class RecordingSessionKernel {
     guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
     deliveringPhase = .finalizing(.transcribing)
     bump()
+    // #3338 PR-4: the accepted transcript's audio goes to the learn hold now, before
+    // processing and paste. Queued, never awaited here: the heart path does not wait.
+    transferWinningLearnAudio()
 
     let processed: String
     do {
@@ -3391,6 +3413,8 @@ final class RecordingSessionKernel {
     deliveredTranscript = processed
     deliveryOutcome = result
     pasteCount = (result == .pasted) ? 1 : 0
+    // #3338 PR-4: only a real paste starts the hold's watch; anything else discards.
+    settleRetainedLearnAudio(pasted: result == .pasted)
     finishTerminal(.completed, sid: sid)
   }
 
@@ -4384,6 +4408,12 @@ final class RecordingSessionKernel {
     }
     let terminal = outcome  // local alias for the existing telemetry logs below
     recordingOutcome = outcome
+    // #3338 PR-4: an accepted terminal ends this take's learn audio: a take the
+    // delivery above did not settle (empty output, cancel, failure) is discarded,
+    // and no sample-owning copy survives in the kernel or the adapter.
+    settleRetainedLearnAudio(pasted: false)
+    winningLearnAudio = nil
+    (adapter as? ASREngineLearnAudioEvidenceProviding)?.clearLearnEvidence()
     lastTerminalStoppedWaitingForDecode =
       outcome == .cancelled
       && state == .delivering
@@ -4601,6 +4631,59 @@ final class RecordingSessionKernel {
     }
   }
 
+  /// #3338 PR-4: installs the learn hold's sink, its eligible sample cap and the
+  /// learn watcher's clock. Idle only: returns `false` (and installs nothing) while a
+  /// session is active, so a take never changes sinks mid-flight. `nil` sink removes it.
+  func installLearnAudioDelivery(
+    sink: (any LearnAudioSink)?, sampleCap: (@MainActor () -> Int?)?, nowMs: (@MainActor () -> Int)?
+  ) -> Bool {
+    guard state == .idle else { return false }
+    learnAudioSink = sink
+    learnAudioSampleCap = sink == nil ? nil : sampleCap
+    learnAudioNowMs = sink == nil ? nil : nowMs
+    return true
+  }
+
+  /// #3338 PR-4: hand the winning record to this session's sink (ordered), and drop
+  /// every other copy of it.
+  private func transferWinningLearnAudio() {
+    guard let record = winningLearnAudio else { return }
+    winningLearnAudio = nil
+    (adapter as? ASREngineLearnAudioEvidenceProviding)?.clearLearnEvidence()
+    guard let sink = sessionLearnSink, retainedLearnTakeID == nil else { return }
+    retainedLearnTakeID = record.takeID
+    enqueueLearnSink { await sink.retain(takeID: record.takeID, record: record) }
+  }
+
+  /// #3338 PR-4: mark the retained take pasted (watcher clock, read now) or discard it.
+  /// A paste with no clock installed discards: the hold must never start a watch
+  /// it cannot time.
+  private func settleRetainedLearnAudio(pasted: Bool) {
+    guard let takeID = retainedLearnTakeID, let sink = sessionLearnSink else { return }
+    retainedLearnTakeID = nil
+    if pasted, let now = learnAudioNowMs?() {
+      enqueueLearnSink { await sink.markPasted(takeID: takeID, atMs: now) }
+    } else {
+      enqueueLearnSink { await sink.discard(takeID: takeID) }
+    }
+  }
+
+  private func enqueueLearnSink(_ operation: @escaping @MainActor () async -> Void) {
+    let previous = learnSinkChain
+    learnSinkChain = Task { @MainActor in
+      await previous?.value
+      await operation()
+    }
+  }
+
+  /// Test seam: waits until every queued sink call has run.
+  func learnSinkCallsSettledForTesting() async {
+    while let tail = learnSinkChain {
+      await tail.value
+      if learnSinkChain == tail { return }
+    }
+  }
+
   /// #3338 PR-4: the Core record for a winning decode. Salvage decodes a lead-trimmed
   /// slice of the kernel's ASR input; a retry decodes the kernel's own retry input.
   nonisolated static func learnTakeAudio(
@@ -4630,6 +4713,9 @@ final class RecordingSessionKernel {
 
   private func resetSessionState() {
     stopLatched = false
+    // #3338 PR-4: a previous take still awaiting its paste outcome is discarded
+    // (defensive: every accepted terminal already settles it).
+    settleRetainedLearnAudio(pasted: false)
     winningLearnAudio = nil
     cancelRequested = false
     // #2087: a stale origin must not leak into the next take, and the latch

@@ -553,6 +553,16 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// `RecordingSessionKernel.cancelPendingEngineUnload()`.
   public func cancelPendingEngineUnload() { kernel.cancelPendingEngineUnload() }
 
+  /// #3338 PR-4: installs the learn hold for take audio. `sampleCap` returns the
+  /// eligible sample cap or `nil` (Self-Learning off, no cap); `nowMs` reads the learn
+  /// watcher's clock. Idle only: returns `false` and installs nothing during a session.
+  @discardableResult
+  package func installLearnAudioDelivery(
+    sink: (any LearnAudioSink)?, sampleCap: (@MainActor () -> Int?)?, nowMs: (@MainActor () -> Int)?
+  ) -> Bool {
+    kernel.installLearnAudioDelivery(sink: sink, sampleCap: sampleCap, nowMs: nowMs)
+  }
+
   /// Re-arms it. The other half; call both or neither.
   public func applyEngineUnloadPolicy(_ policy: ModelUnloadPolicy) {
     kernel.applyEngineUnloadPolicy(policy)

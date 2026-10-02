@@ -75,4 +75,6 @@ protocol ASREngineLearnAudioEvidenceProviding: AnyObject {
   /// Evidence of the decode the adapter last COMMITTED for the current session, or
   /// `nil` (no policy, over the cap, streaming success, failure, empty, cancelled or stale).
   var lastLearnEvidence: LearnDecodeEvidence? { get }
+  /// Drops the evidence once the kernel has handed it on or the take ended.
+  func clearLearnEvidence()
 }
