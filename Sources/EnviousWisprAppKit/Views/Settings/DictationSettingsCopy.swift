@@ -37,6 +37,21 @@ enum DictationSettingsCopy {
     static let readinessShort = LocalizedStringResource(
       "How long the mic stays ready after recording.",
       comment: "Microphone settings: short line under the Microphone readiness row title.")
+    static let socketShort = LocalizedStringResource(
+      "Choose the socket your microphone is plugged into.",
+      comment: "Microphone settings: short line under the input socket row.")
+    static let socketHelp = LocalizedStringResource(
+      "Pick the input your microphone uses. The choice is remembered for this device.",
+      comment: "Microphone settings: explains the input socket choice.")
+    static let bluetoothShort = LocalizedStringResource(
+      "Keeping your mic ready reduces Bluetooth startup delay.",
+      comment: "Microphone settings: short line under the Bluetooth guide row.")
+    static let bluetoothTipsShort = LocalizedStringResource(
+      "Show the Bluetooth reminder once per launch.",
+      comment: "Microphone settings, Bluetooth guide: short line under Show Bluetooth tips.")
+    static let bluetoothTipsHelp = LocalizedStringResource(
+      "Shows the reminder popover once per launch. This guide always stays.")
+
     static let readinessHelp = LocalizedStringResource(
       "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words.",
       comment: "Microphone settings: explains microphone readiness.")

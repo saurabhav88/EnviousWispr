@@ -15,6 +15,12 @@ import SwiftUI
 /// (founder, 2026-09-16) gave the Auto picker, the "Using X" pill, the two
 /// segmented controls, and "Learn more" roomier padding, and matched the two
 /// segmented controls' widths so they read as the same length.
+///
+/// #3385 (Microphone & Media tab): each row now shows a short line under its
+/// title; the Auto picker and the "Using X" pill became one dropdown card that
+/// names the device Auto would open; the Bluetooth guide is a row of the same
+/// card; the frozen-per-recording rule is the heading's note instead of the
+/// bottom tip line. The matched segmented widths are unchanged.
 struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
@@ -40,6 +46,8 @@ struct AudioSettingsView: View {
     // from the built-in microphone is the one thing the pill must not do. The
     // "Using X" pill and the socket row both read this local, and the advisory
     // hint uses the same rule, so the three can never disagree about one state.
+    // (#3385: the "Using X" pill became the dropdown card's own name line; it
+    // still reads this one local.)
     let socketDevice = InputSocket.socketDevice(
       preferredInputDeviceIDOverride: settingsManager.preferredInputDeviceIDOverride,
       devices: audioDeviceList.availableInputDevices,
@@ -62,9 +70,29 @@ struct AudioSettingsView: View {
     let multiInputDevice = socketDevice.flatMap { device in
       device.inputChannelCount > 1 && !device.uid.isEmpty ? device : nil
     }
+    // #3385: each device's transport, read once per body through the one
+    // vocabulary (`AudioDeviceEnumerator.transportLabel`) and reused by the
+    // menu rows and the card, so the two can never disagree.
+    let transportTokens = Dictionary(
+      audioDeviceList.availableInputDevices.compactMap { device in
+        AudioDeviceEnumerator.transportLabel(for: device.id).map { (device.id, $0) }
+      },
+      uniquingKeysWith: { first, _ in first })
+    let devicePresentation = MicrophoneDevicePresentation.make(
+      preferredUID: settingsManager.preferredInputDeviceIDOverride,
+      resolvedDevice: socketDevice,
+      transportToken: socketDevice.flatMap { transportTokens[$0.id] })
 
     SettingsContentView {
-      SettingsSectionHeading(title: DictationSettingsCopy.Microphone.sectionHeading)
+      // The frozen-per-recording rule covers every control on this page, so it
+      // lives once here rather than inside each card. #3385: it is the
+      // heading's note now, as on the Engine tab, instead of a tip line at the
+      // bottom (which replaced a boxed banner at the top, mockup 2026-09-16).
+      SettingsSectionHeading(title: DictationSettingsCopy.Microphone.sectionHeading) {
+        Text(DictationSettingsCopy.Engine.nextRecordingNote)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
 
       BrandedSection {
         BrandedRow {
@@ -75,32 +103,18 @@ struct AudioSettingsView: View {
             // it and binds the physical device instead. The status pill beside this copy
             // already names the device actually opened, so leaving the promise unqualified
             // made the card contradict itself on exactly the machines the divert exists for.
+            // (#3385: the dropdown card now carries that name, with "Auto" beside it.)
             SettingsRow(
               icon: "waveform",
               title: DictationSettingsCopy.Microphone.inputDeviceTitle,
               short: DictationSettingsCopy.Microphone.inputDeviceShort,
               help: DictationSettingsCopy.Microphone.inputDeviceHelp
             ) {
-              HStack(spacing: 10) {
-                Picker("", selection: inputDeviceSelection) {
-                  Text("Auto").tag("")
-                  ForEach(audioDeviceList.availableInputDevices) { device in
-                    Text(device.name).tag(device.uid)
-                  }
-                }
-                .labelsHidden()
-                .tint(.stAccent)
-                .controlSize(.large)
-                .frame(maxWidth: 220, alignment: .leading)
-
-                if settingsManager.preferredInputDeviceIDOverride.isEmpty, let socketDevice {
-                  StatusPill(
-                    text: String(
-                      localized: "Using \(socketDevice.name)",
-                      comment:
-                        "Microphone settings: the microphone in use with Auto. %@ is its name."))
-                }
-              }
+              MicrophoneDevicePicker(
+                selection: inputDeviceSelection,
+                devices: audioDeviceList.availableInputDevices,
+                presentation: devicePresentation,
+                transportTokens: transportTokens)
             }
 
             if let device = multiInputDevice {
@@ -115,8 +129,12 @@ struct AudioSettingsView: View {
                   settingsManager.inputChannelByDeviceUID[device.uid] = newValue
                 }
               )
-              HStack(spacing: 8) {
-                Text(InputSocketCopy.label).settingsHelperCopy()
+              SettingsRow(
+                icon: "cable.connector",
+                resolvedTitle: InputSocketCopy.label,
+                resolvedShort: String(localized: DictationSettingsCopy.Microphone.socketShort),
+                resolvedHelp: String(localized: DictationSettingsCopy.Microphone.socketHelp)
+              ) {
                 if device.inputChannelCount <= 6 {
                   BrandedSegmentedPicker(
                     options: (0..<device.inputChannelCount).map { index in
@@ -140,7 +158,6 @@ struct AudioSettingsView: View {
                   .fixedSize()
                 }
               }
-              .padding(.leading, Self.rowIndent)
 
               Text(InputSocketCopy.helper(deviceName: device.name))
                 .settingsHelperCopy()
@@ -155,7 +172,7 @@ struct AudioSettingsView: View {
           OtherAudioSettingsPanel(rowIndent: Self.rowIndent, matchedWidth: matchedSegmentedWidth)
         }
 
-        BrandedRow(showDivider: false) {
+        BrandedRow {
           VStack(alignment: .leading, spacing: 8) {
             SettingsRow(
               icon: "timer",
@@ -213,119 +230,49 @@ struct AudioSettingsView: View {
             }
           }
         }
-      }
-      .onPreferenceChange(SegmentedControlWidthKey.self) { width in
-        matchedSegmentedWidth = width > 0 ? width : nil
-      }
 
-      // #1480: compact Bluetooth guide row, matching the founder's mockup
-      // (2026-09-16) — the full guide (tips, preferred mic order, the toggle
-      // for the once-per-launch popover) now lives behind "Learn more"
-      // instead of always occupying page space.
-      BrandedSection {
+        // #1480: compact Bluetooth guide row, matching the founder's mockup
+        // (2026-09-16) — the full guide (tips, preferred mic order, the toggle
+        // for the once-per-launch popover) now lives behind "Learn more"
+        // instead of always occupying page space. #3385: it is a row of the
+        // same card, in the shared row style.
         BrandedRow(showDivider: false) {
           BluetoothGuideRow(showBluetoothTips: $settings.showBluetoothTips)
         }
       }
-
-      // The frozen-per-recording rule covers every control on this page, so it
-      // lives once here rather than inside each card (moved from a boxed banner
-      // at the top to a plain tip line at the bottom, mockup 2026-09-16).
-      MicrophonePageFooterTip()
+      .onPreferenceChange(SegmentedControlWidthKey.self) { width in
+        matchedSegmentedWidth = width > 0 ? width : nil
+      }
     }
-  }
-}
-
-/// Small status chip: a coloured dot plus a short label, used to annotate a
-/// control's live state (e.g. the current system-default microphone).
-private struct StatusPill: View {
-  let text: String
-  var tint: Color = .stSuccess
-
-  var body: some View {
-    HStack(spacing: 6) {
-      Circle().fill(tint).frame(width: 7, height: 7).accessibilityHidden(true)
-      Text(text).font(.stHelper).foregroundStyle(tint).lineLimit(1).truncationMode(.tail)
-    }
-    .frame(maxWidth: 220)
-    .padding(.horizontal, 14)
-    .padding(.vertical, 9)
-    .background(tint.opacity(0.12), in: Capsule())
-  }
-}
-
-/// The frozen-per-recording rule, as a quiet single line under every card on
-/// this page: a lightbulb glyph plus the canonical copy, no box. Local to this
-/// page (`SpeechEngineSettingsView` keeps the boxed `FrozenPerRecordingBanner`
-/// at its own top, unchanged).
-private struct MicrophonePageFooterTip: View {
-  var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: "lightbulb")
-        .font(.system(size: 13, weight: .medium))
-        .foregroundStyle(.stTextTertiary)
-        .accessibilityHidden(true)
-      Text("Tip: \(SettingsCopy.frozenPerRecording)")
-        .font(.stHelper)
-        .foregroundStyle(.stTextTertiary)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, 4)
   }
 }
 
 /// The compact Bluetooth entry point (founder mockup, 2026-09-16): icon,
-/// title, one intro sentence, and a "Learn more" button that opens the full
-/// guide as a popover. Same responsive shape as `SettingsRow` (icon +
-/// label horizontally, control dropping below the label at the app's 750pt
-/// minimum), kept as a sibling rather than folded into that type because this
-/// row's sentence stays VISIBLE — `SettingsRow` hides its full explanation
-/// behind the title's own "?" and shows only a short line (#3385) — and the
-/// trailing slot is a fixed "Learn more" action rather than an arbitrary
-/// control. (#3385's later Microphone chunk revisits this row.)
+/// title, and a "Learn more" button that opens the full guide as a popover.
+/// #3385: a shared `SettingsRow` now, so it has the page's short line and
+/// "?" like every other row; it used to be a sibling with its own layout
+/// because its sentence stayed visible. That sentence (`settingsIntro`) now
+/// opens the guide itself, which both "?" and "Learn more" show in full.
 private struct BluetoothGuideRow: View {
   @Binding var showBluetoothTips: Bool
   @State private var showGuide = false
 
   var body: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(alignment: .top, spacing: 11) {
-        SettingsRowIcon(systemName: "dot.radiowaves.left.and.right")
-        label
-        Spacer(minLength: 12)
-        learnMoreButton
-      }
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(alignment: .top, spacing: 11) {
-          SettingsRowIcon(systemName: "dot.radiowaves.left.and.right")
-          label
-        }
-        // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
-        // spacing (11); see `SettingsRow`.
-        learnMoreButton
-          .padding(.leading, 37)
-      }
-    }
-    .popover(isPresented: $showGuide, arrowEdge: .bottom) {
-      BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)
-    }
-  }
-
-  private var label: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(BluetoothTipsCopy.settingsHeader)
-        .font(.stRowTitle)
-        .foregroundStyle(.stTextPrimary)
-      Text(BluetoothTipsCopy.settingsIntro).settingsReadingCopy()
-    }
-  }
-
-  private var learnMoreButton: some View {
-    SettingsActionButton(
-      title: "Learn more", isEnabled: true, size: .large, trailingSystemImage: "chevron.right"
+    SettingsRow(
+      icon: "dot.radiowaves.left.and.right",
+      resolvedTitle: BluetoothTipsCopy.settingsHeader,
+      resolvedShort: String(localized: DictationSettingsCopy.Microphone.bluetoothShort)
     ) {
-      showGuide = true
+      BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)
+    } control: {
+      SettingsActionButton(
+        title: "Learn more", isEnabled: true, size: .large, trailingSystemImage: "chevron.right"
+      ) {
+        showGuide = true
+      }
+      .popover(isPresented: $showGuide, arrowEdge: .bottom) {
+        BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)
+      }
     }
   }
 }
@@ -343,6 +290,10 @@ private struct BluetoothGuidePopoverContent: View {
       Text(BluetoothTipsCopy.settingsHeader)
         .font(.stSectionHeader)
         .foregroundStyle(.stTextPrimary)
+
+      // #3385: the row's sentence moved here, unchanged, when the row took the
+      // shared short line.
+      Text(BluetoothTipsCopy.settingsIntro).settingsReadingCopy()
 
       VStack(alignment: .leading, spacing: 12) {
         tipRow(icon: BluetoothTipsCopy.iconTiming, text: BluetoothTipsCopy.tipTiming)
@@ -363,18 +314,21 @@ private struct BluetoothGuidePopoverContent: View {
 
       Divider().overlay(Color.stDivider)
 
-      Toggle(isOn: $showBluetoothTips) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text(BluetoothTipsCopy.showTipsToggle).settingsRowLabel()
-          Text("Shows the reminder popover once per launch. This guide always stays.")
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .fixedSize(horizontal: false, vertical: true)
+      SettingsRow(
+        icon: "bell.badge",
+        resolvedTitle: BluetoothTipsCopy.showTipsToggle,
+        resolvedShort: String(localized: DictationSettingsCopy.Microphone.bluetoothTipsShort),
+        resolvedHelp: String(localized: DictationSettingsCopy.Microphone.bluetoothTipsHelp)
+      ) {
+        Toggle(isOn: $showBluetoothTips) {
+          Text(BluetoothTipsCopy.showTipsToggle)
         }
+        .labelsHidden()
+        .toggleStyle(BrandedToggleStyle())
+        .fixedSize()
       }
-      .toggleStyle(BrandedToggleStyle())
     }
-    .frame(maxWidth: 340, alignment: .leading)
+    .frame(width: 340, alignment: .leading)
     .padding(16)
   }
 

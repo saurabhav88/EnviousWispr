@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprAudio
 import SwiftUI
 import Testing
 
@@ -137,6 +138,45 @@ struct SettingsRowLayoutTests {
   func fontRoles() {
     #expect(Font.stRowLabel == Font.system(size: 14, weight: .semibold))
     #expect(Font.stRowHelper == Font.system(size: 14))
+  }
+
+  /// #3385 chunk 5: the real microphone dropdown in the real row, at the minimum and an ordinary
+  /// width, with a long device name and with Auto plus a transport. The card is a fixed 260
+  /// points; a long name truncates inside it rather than widening the row.
+  @Test("the microphone dropdown stays a fixed card inside the row at both widths")
+  func microphonePickerLayout() throws {
+    let longName = AudioInputDevice(
+      id: 9, name: "Elgato Wave:3 Studio Condenser Microphone with a Very Long Name",
+      uid: "ElgatoWave3", inputChannelCount: 2)
+    let cases: [(CGFloat, MicrophoneDevicePresentation)] = [
+      (Self.minimumWindowRowWidth, .make(preferredUID: "", resolvedDevice: longName, transportToken: "usb")),
+      (Self.ordinaryWindowRowWidth, .make(preferredUID: "", resolvedDevice: longName, transportToken: "usb")),
+      (Self.minimumWindowRowWidth, .make(preferredUID: longName.uid, resolvedDevice: longName, transportToken: nil)),
+    ]
+    for (width, presentation) in cases {
+      let frames = try Self.measure(width: width) { _ in
+        SettingsRow(
+          icon: "waveform",
+          title: DictationSettingsCopy.Microphone.inputDeviceTitle,
+          short: DictationSettingsCopy.Microphone.inputDeviceShort,
+          help: DictationSettingsCopy.Microphone.inputDeviceHelp
+        ) {
+          MicrophoneDevicePicker(
+            selection: .constant(presentation.isAutomatic ? "" : longName.uid),
+            devices: [longName], presentation: presentation, transportTokens: [9: "usb"]
+          )
+          .background(
+            GeometryReader { proxy in
+              Color.clear.preference(
+                key: ControlFrameKey.self, value: proxy.frame(in: .named(Self.rowSpace)))
+            })
+        }
+      }
+      let picker = try #require(frames.control, "the picker never reported a frame")
+      print("MicrophonePicker width=\(width) auto=\(presentation.isAutomatic) frame=\(picker)")
+      #expect(abs(picker.width - 260) < 1, "picker is \(picker.width) wide")
+      #expect(picker.maxX <= width + 0.5, "picker ends at \(picker.maxX), past \(width)")
+    }
   }
 
   // MARK: - Harness

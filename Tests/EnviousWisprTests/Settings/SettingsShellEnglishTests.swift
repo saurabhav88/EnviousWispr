@@ -124,7 +124,25 @@ struct SettingsShellEnglishTests {
       String(localized: Copy.readinessHelp)
         == "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
     )
-    for short in [Copy.inputDeviceShort, Copy.mediaShort, Copy.readinessShort] {
+    // #3385 chunk 5: the socket and Bluetooth rows.
+    #expect(
+      String(localized: Copy.socketShort) == "Choose the socket your microphone is plugged into.")
+    #expect(
+      String(localized: Copy.socketHelp)
+        == "Pick the input your microphone uses. The choice is remembered for this device.")
+    #expect(
+      String(localized: Copy.bluetoothShort)
+        == "Keeping your mic ready reduces Bluetooth startup delay.")
+    #expect(
+      String(localized: Copy.bluetoothTipsShort) == "Show the Bluetooth reminder once per launch.")
+    #expect(
+      String(localized: Copy.bluetoothTipsHelp)
+        == "Shows the reminder popover once per launch. This guide always stays.")
+    #expect(InputSocketCopy.label == "Mic is on")
+    for short in [
+      Copy.inputDeviceShort, Copy.mediaShort, Copy.readinessShort, Copy.socketShort,
+      Copy.bluetoothShort, Copy.bluetoothTipsShort,
+    ] {
       #expect(String(localized: short).count <= 60)
     }
   }
