@@ -119,10 +119,11 @@ struct EGOneLearnedWordCheckerTests {
   func adapterFlagsAreOnlyOnConfiguredLaunch() {
     let path = URL(fileURLWithPath: "/tmp/check.gguf")
     let baseline = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
-    #expect(EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: nil) == baseline)
+    let egOneBaseline = baseline + ["--spec-type", "ngram-simple"]
+    #expect(EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: nil) == egOneBaseline)
     #expect(
       EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: path)
-        == baseline + [
+        == egOneBaseline + [
           "--lora-scaled", "\(path.path):0",
           "-np", "9", "--kv-unified", "--no-cache-idle-slots",
         ])
@@ -140,7 +141,7 @@ struct EGOneLearnedWordCheckerTests {
     for odd in ["/tmp/a,b/check.gguf", "/tmp/a:b/check.gguf"] {
       #expect(
         EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: URL(fileURLWithPath: odd))
-          == baseline)
+          == egOneBaseline)
     }
   }
 

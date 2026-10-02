@@ -167,7 +167,8 @@ struct EGOneAdapterLifecycleTests {
     await coordinator.transition(to: .run(bare), intent: coordinator.claimIntent())
     #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
     #expect(
-      Array(try fixture.launches()[0].suffix(6)) == EGOneRuntime.engineArguments(for: .egOne))
+      Array(try fixture.launches()[0].suffix(EGOneRuntime.engineArguments(for: .egOne).count))
+        == EGOneRuntime.engineArguments(for: .egOne))
     let admission = await coordinator.acquireLease(for: .egOne)
     let lease: LocalPolishServerLease
     switch admission {
