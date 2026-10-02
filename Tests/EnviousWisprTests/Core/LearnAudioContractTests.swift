@@ -11,14 +11,15 @@ struct LearnAudioContractTests {
 
   private final class Window: LearnPreparedWindowHandle {}
 
-  @Test("a streaming take keeps absent timings and an automatic language as nil")
+  @Test("a streaming take keeps absent timings and an absent language option as nil")
   func streamingKeepsAbsences() throws {
     let record = try #require(
       LearnTakeAudio(
-        takeID: "take-1", samples: [Float](repeating: 0.1, count: 32_000), decodePath: .streaming,
+        takeID: "take-1", samples: [Float](repeating: 0.1, count: 32_000), decodePath: .streaming, sampleOrigin: .streamedBuffers,
         decodeLanguage: nil, rawText: "send it to Elena", wordTimings: nil))
     #expect(record.wordTimings == nil)
     #expect(record.decodeLanguage == nil)
+    #expect(record.sampleOrigin == .streamedBuffers)
     #expect(record.preparedWindows.isEmpty)
     #expect(record.durationMs == 2_000)
   }
@@ -32,12 +33,13 @@ struct LearnAudioContractTests {
     ]
     let record = try #require(
       LearnTakeAudio(
-        takeID: "take-2", samples: samples, decodePath: .conditionedBatch, decodeLanguage: "de",
+        takeID: "take-2", samples: samples, decodePath: .conditionedBatch, sampleOrigin: .kernelASRInput, decodeLanguage: "de",
         rawText: "Kubernetes now", wordTimings: timings))
     #expect(record.samples.map(\.bitPattern) == samples.map(\.bitPattern))
     #expect(record.rawText == "Kubernetes now")
     #expect(record.wordTimings == timings)
     #expect(record.decodePath == .conditionedBatch)
+    #expect(record.sampleOrigin == .kernelASRInput)
     #expect(record.decodeLanguage == "de")
     #expect(LearnTakeAudio.sampleRate == 16_000)
   }
@@ -46,12 +48,12 @@ struct LearnAudioContractTests {
   func emptyMakesNoRecord() {
     #expect(
       LearnTakeAudio(
-        takeID: "t", samples: [], decodePath: .batch, decodeLanguage: nil, rawText: "",
+        takeID: "t", samples: [], decodePath: .batch, sampleOrigin: .kernelASRInput, decodeLanguage: nil, rawText: "",
         wordTimings: nil)
         == nil)
     #expect(
       LearnTakeAudio(
-        takeID: "", samples: [0.1], decodePath: .batch, decodeLanguage: nil, rawText: "a",
+        takeID: "", samples: [0.1], decodePath: .batch, sampleOrigin: .kernelASRInput, decodeLanguage: nil, rawText: "a",
         wordTimings: nil)
         == nil)
   }
@@ -64,7 +66,7 @@ struct LearnAudioContractTests {
       weakWindow = window
       let record = try #require(
         LearnTakeAudio(
-          takeID: "take-3", samples: [0.1, 0.2], decodePath: .batch, decodeLanguage: "en",
+          takeID: "take-3", samples: [0.1, 0.2], decodePath: .batch, sampleOrigin: .kernelASRInput, decodeLanguage: "en",
           rawText: "hi",
           wordTimings: nil, preparedWindows: [window]))
       #expect(record.preparedWindows.count == 1)

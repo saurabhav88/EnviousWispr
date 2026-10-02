@@ -25,6 +25,19 @@ package enum LearnTakeDecodePath: String, Sendable, Equatable, CaseIterable {
   case leadSalvage
 }
 
+/// Which buffer the samples in a `LearnTakeAudio` were copied from, so a reader can tell
+/// the kernel's ASR input from an adapter fallback or a streaming capture.
+package enum LearnTakeSampleOrigin: String, Sendable, Equatable, CaseIterable {
+  /// The kernel's ASR input handed to the adapter's finalize (`batchSamples`).
+  case kernelASRInput
+  /// The adapter's own retained PCM, used when no `batchSamples` was handed over.
+  case adapterRetainedPCM
+  /// The exact buffers the streaming decode accepted, in order.
+  case streamedBuffers
+  /// The lead-trimmed slice of the kernel's ASR input that the salvage decode received.
+  case leadTrimmedASRInput
+}
+
 /// An encoder window the winning batch decode already computed, handed over so a
 /// nudge can decode it again without a second encoder pass (plan C.2b).
 ///
@@ -46,8 +59,10 @@ package struct LearnTakeAudio: Sendable {
   /// The exact 16 kHz mono samples the winning decode received.
   package let samples: [Float]
   package let decodePath: LearnTakeDecodePath
+  /// The buffer `samples` came from.
+  package let sampleOrigin: LearnTakeSampleOrigin
   /// The language option exactly as passed to the decode (`TranscriptionOptions.language`).
-  /// `nil` means the engine chose automatically; it is never filled in afterwards.
+  /// `nil` means no language option was supplied; it is never inferred or filled in afterwards.
   package let decodeLanguage: String?
   /// The decode's raw text, before polish or formatting.
   package let rawText: String
@@ -59,7 +74,8 @@ package struct LearnTakeAudio: Sendable {
 
   /// `nil` for an empty take: there is nothing to listen to again.
   package init?(
-    takeID: String, samples: [Float], decodePath: LearnTakeDecodePath, decodeLanguage: String?,
+    takeID: String, samples: [Float], decodePath: LearnTakeDecodePath, sampleOrigin: LearnTakeSampleOrigin,
+    decodeLanguage: String?,
     rawText: String, wordTimings: [ASRWordTiming]?,
     preparedWindows: [any LearnPreparedWindowHandle] = []
   ) {
@@ -67,6 +83,7 @@ package struct LearnTakeAudio: Sendable {
     self.takeID = takeID
     self.samples = samples
     self.decodePath = decodePath
+    self.sampleOrigin = sampleOrigin
     self.decodeLanguage = decodeLanguage
     self.rawText = rawText
     self.wordTimings = wordTimings
