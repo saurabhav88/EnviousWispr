@@ -24,12 +24,12 @@ struct LearnAudioDeliveryTests {
       case discard(String)
     }
     private(set) var calls: [Call] = []
-    func retain(takeID: String, record: LearnTakeAudio) async {
+    func retain(takeID: String, record: LearnTakeAudio) {
       calls.append(
         .retain(takeID, record.samples.map(\.bitPattern), record.decodePath, record.sampleOrigin))
     }
-    func markPasted(takeID: String, atMs: Int) async { calls.append(.markPasted(takeID, atMs)) }
-    func discard(takeID: String) async { calls.append(.discard(takeID)) }
+    func markPasted(takeID: String, atMs: Int) { calls.append(.markPasted(takeID, atMs)) }
+    func discard(takeID: String) { calls.append(.discard(takeID)) }
   }
 
   private struct Context {
@@ -89,7 +89,6 @@ struct LearnAudioDeliveryTests {
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainUntilConcluded()
-    await ctx.kernel.learnSinkCallsSettledForTesting()
   }
 
   private func takeID(_ ctx: Context) throws -> String { try #require(ctx.kernel.lastTakeID) }
@@ -112,6 +111,22 @@ struct LearnAudioDeliveryTests {
       ctx.engine.learnEvidencePolicyForTesting == LearnEvidencePolicy(maxSamples: 16_000 * 120))
     #expect(ctx.kernel.winningLearnAudio == nil, "the kernel keeps no copy after the transfer")
     #expect(ctx.engine.learnEvidenceClearsForTesting > 0, "the adapter's copy was dropped")
+  }
+
+  @Test("the hold already holds the take when processing (and so paste) begins")
+  func retainedBeforeProcessing() async throws {
+    let ctx = context(.batchSuccess(text: "Kubernetes now"))
+    let sink = ctx.sink
+    var callsAtProcessing: [SinkSpy.Call]?
+    ctx.wrapper.setProcessTextGateForTesting { callsAtProcessing = sink.calls }
+    await run(ctx, capture: voiced)
+    let id = try takeID(ctx)
+    let seen = try #require(callsAtProcessing, "processText ran")
+    #expect(seen.count == 1)
+    if case .retain(let t, _, _, _) = seen.first { #expect(t == id) } else {
+      Issue.record("expected retain before processing, got \(seen)")
+    }
+    #expect(ctx.paste.pasteAttempts.count == 1)
   }
 
   @Test("retry: the winning retry's own input is retained and marked pasted")
@@ -206,7 +221,6 @@ struct LearnAudioDeliveryTests {
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
     await ctx.wrapper.drainUntilConcluded()
-    await ctx.kernel.learnSinkCallsSettledForTesting()
     #expect(ctx.sink.calls.count == 2, "the original sink stayed installed for the take")
   }
 
@@ -225,7 +239,6 @@ struct LearnAudioDeliveryTests {
     await ctx.wrapper.apply(.cancel)
     gate.open()
     await ctx.wrapper.drainUntilConcluded()
-    await ctx.kernel.learnSinkCallsSettledForTesting()
     let id = try takeID(ctx)
     #expect(ctx.kernel.recordingOutcome == .completed)
     #expect(ctx.sink.calls.count == 2)
@@ -245,7 +258,6 @@ struct LearnAudioDeliveryTests {
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.cancel)
     await ctx.wrapper.drainUntilConcluded()
-    await ctx.kernel.learnSinkCallsSettledForTesting()
     #expect(ctx.sink.calls.isEmpty)
   }
 

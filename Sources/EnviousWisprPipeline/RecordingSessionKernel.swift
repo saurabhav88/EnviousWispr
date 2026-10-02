@@ -719,10 +719,6 @@ final class RecordingSessionKernel {
   private var sessionLearnSink: (any LearnAudioSink)?
   /// The take whose audio the sink holds and whose paste outcome it still needs.
   private var retainedLearnTakeID: String?
-  /// Ordered sink calls: each waits for the previous one, so a take's retain always
-  /// reaches the sink before its markPasted or discard. Kernel-lifetime, not
-  /// session-scoped, so a discard queued at a terminal is never dropped.
-  private var learnSinkChain: Task<Void, Never>?
   /// #3338 PR-4: the winning decode's audio for the learn hold, or `nil`. Set only
   /// when the kernel accepts a transcript (primary, retry or salvage); a later
   /// winning decode replaces it; handed to the sink at finalizing; cleared at session
@@ -3345,7 +3341,7 @@ final class RecordingSessionKernel {
     deliveringPhase = .finalizing(.transcribing)
     bump()
     // #3338 PR-4: the accepted transcript's audio goes to the learn hold now, before
-    // processing and paste. Queued, never awaited here: the heart path does not wait.
+    // processing and paste (synchronous bookkeeping on the hold; nothing awaited).
     transferWinningLearnAudio()
 
     let processed: String
@@ -4644,15 +4640,15 @@ final class RecordingSessionKernel {
     return true
   }
 
-  /// #3338 PR-4: hand the winning record to this session's sink (ordered), and drop
-  /// every other copy of it.
+  /// #3338 PR-4: hand the winning record to this session's sink, and drop every other
+  /// copy of it.
   private func transferWinningLearnAudio() {
     guard let record = winningLearnAudio else { return }
     winningLearnAudio = nil
     (adapter as? ASREngineLearnAudioEvidenceProviding)?.clearLearnEvidence()
     guard let sink = sessionLearnSink, retainedLearnTakeID == nil else { return }
     retainedLearnTakeID = record.takeID
-    enqueueLearnSink { await sink.retain(takeID: record.takeID, record: record) }
+    sink.retain(takeID: record.takeID, record: record)
   }
 
   /// #3338 PR-4: mark the retained take pasted (watcher clock, read now) or discard it.
@@ -4662,25 +4658,9 @@ final class RecordingSessionKernel {
     guard let takeID = retainedLearnTakeID, let sink = sessionLearnSink else { return }
     retainedLearnTakeID = nil
     if pasted, let now = learnAudioNowMs?() {
-      enqueueLearnSink { await sink.markPasted(takeID: takeID, atMs: now) }
+      sink.markPasted(takeID: takeID, atMs: now)
     } else {
-      enqueueLearnSink { await sink.discard(takeID: takeID) }
-    }
-  }
-
-  private func enqueueLearnSink(_ operation: @escaping @MainActor () async -> Void) {
-    let previous = learnSinkChain
-    learnSinkChain = Task { @MainActor in
-      await previous?.value
-      await operation()
-    }
-  }
-
-  /// Test seam: waits until every queued sink call has run.
-  func learnSinkCallsSettledForTesting() async {
-    while let tail = learnSinkChain {
-      await tail.value
-      if learnSinkChain == tail { return }
+      sink.discard(takeID: takeID)
     }
   }
 

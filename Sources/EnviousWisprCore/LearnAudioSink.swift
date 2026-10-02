@@ -98,10 +98,16 @@ package struct LearnTakeAudio: Sendable {
 ///
 /// `atMs` is the learn watcher's clock (the clock its 60 s watch ceiling uses), so the
 /// hold's expiry and the watch window are measured on one clock.
+///
+/// Synchronous main-actor bookkeeping: the session calls these on its own path, so a
+/// take is retained before processing and paste begin. A conformer only records or
+/// drops entries here; it must not suspend, decode or block. Expiry and cancellation
+/// work runs separately.
+@MainActor
 package protocol LearnAudioSink: Sendable {
-  func retain(takeID: String, record: LearnTakeAudio) async
-  func markPasted(takeID: String, atMs: Int) async
-  func discard(takeID: String) async
+  func retain(takeID: String, record: LearnTakeAudio)
+  func markPasted(takeID: String, atMs: Int)
+  func discard(takeID: String)
 }
 
 /// The nudge's side of the hold. A lease is a read-only view of one take's record.
