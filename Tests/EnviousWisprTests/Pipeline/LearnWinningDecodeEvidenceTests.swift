@@ -344,14 +344,21 @@ struct LearnWinningDecodeEvidenceTests {
     let ctx = kernelContext(scripted)
     let gate = AsyncGate()
     ctx.wrapper.setProcessTextGateForTesting { await gate.wait() }
+    defer { gate.open() }
     await startVoicedAndStop(ctx)
-    await gate.waitUntilEntered()
+    try #require(await gate.waitUntilEntered(), "processText gate never entered")
     #expect(ctx.wrapper.testKernel.winningLearnAudio != nil, "captured before finalizing")
     await ctx.wrapper.apply(.cancel)
     #expect(ctx.wrapper.testKernel.winningLearnAudio != nil, "the ignored cancel must not drop it")
     gate.open()
     await ctx.wrapper.drainUntilConcluded()
     #expect(ctx.wrapper.testKernel.winningLearnAudio != nil)
+  }
+
+  @Test("the gate's entry wait reports false when nothing enters before its timeout")
+  func gateTimeoutControl() async {
+    let gate = AsyncGate()
+    #expect(await gate.waitUntilEntered(timeout: .milliseconds(50)) == false)
   }
 
   @Test("the next session starts with no record")
@@ -373,21 +380,32 @@ struct LearnWinningDecodeEvidenceTests {
 @MainActor
 private final class AsyncGate {
   private var waiter: CheckedContinuation<Void, Never>?
-  private var entered: CheckedContinuation<Void, Never>?
+  private var entered: CheckedContinuation<Bool, Never>?
   private var isOpen = false
   private var hasEntered = false
 
   func wait() async {
     hasEntered = true
-    entered?.resume()
+    entered?.resume(returning: true)
     entered = nil
     if isOpen { return }
     await withCheckedContinuation { waiter = $0 }
   }
 
-  func waitUntilEntered() async {
-    if hasEntered { return }
-    await withCheckedContinuation { entered = $0 }
+  /// `true` once `wait()` was entered; `false` if the timeout passes first.
+  func waitUntilEntered(timeout: Duration = .seconds(10)) async -> Bool {
+    if hasEntered { return true }
+    let deadline = Task { @MainActor [weak self] in
+      do {
+        // deadline-fallback: report a missing gate-entry signal.
+        try await Task.sleep(for: timeout)
+      } catch { return }
+      guard let self, let continuation = self.entered else { return }
+      self.entered = nil
+      continuation.resume(returning: false)
+    }
+    defer { deadline.cancel() }
+    return await withCheckedContinuation { entered = $0 }
   }
 
   func open() {
