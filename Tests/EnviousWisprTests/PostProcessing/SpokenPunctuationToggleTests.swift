@@ -344,6 +344,19 @@ struct SpokenPunctuationToggleTests {
     #expect(
       Self.itn.normalize("Hello there. New line, World is big.", spokenPunctuation: true)
         == expected)
+    // A sentence end followed by a closing quote or bracket is still a sentence end (cloud review).
+    for closer in ["\u{201D}", "\"", "\u{2019}", ")", "]", "}", "\u{00BB}"] {
+      let oneBreath = Self.itn.normalize(
+        "He said Hello.\(closer) New line World is big.", spokenPunctuation: true)
+      #expect(oneBreath.contains("\n"), "closer \(closer): \(oneBreath.debugDescription)")
+      #expect(
+        Self.itn.normalize("He said Hello.\(closer) New line. World is big.", spokenPunctuation: true)
+          == oneBreath, "closer \(closer)")
+    }
+    // An ellipsis ends a sentence too.
+    #expect(
+      Self.itn.normalize("Wait\u{2026} New line. World is big.", spokenPunctuation: true)
+        == Self.itn.normalize("Wait\u{2026} New line World is big.", spokenPunctuation: true))
     // Idempotent: the output of the fixed case normalizes to itself.
     #expect(Self.itn.normalize(expected, spokenPunctuation: true) == expected)
     // Mid-sentence "new line" is not its own phrase: the sentence's period stays
