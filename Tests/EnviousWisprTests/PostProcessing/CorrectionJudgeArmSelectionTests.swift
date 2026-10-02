@@ -23,6 +23,10 @@ struct CorrectionJudgeArmSelectionTests {
   }
 
   private let classifierDigest = "classifier-identity-digest"
+  /// The delivered classifier's identity, an independent literal (`DeliveryManifestTests` pins the
+  /// manifest side), so rows against the SHIPPED table exercise real rows.
+  private static let shippedClassifierDigest =
+    "73d1c5147945dff0b7aa8ba0bd5de8669750955eaf4f51895c1741b4575adb2a"
 
   private func classifier(_ majors: Set<Int>, digest: String? = nil) -> CorrectionJudgeQualification {
     CorrectionJudgeQualification(
@@ -64,7 +68,12 @@ struct CorrectionJudgeArmSelectionTests {
     #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 14, qualified: [classifier([27])]) == false)
     #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 26, qualified: [classifier([27]), classifier([26])]) == true)
     // A future major without its own receipt downloads nothing (the quiet case this fix is for).
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 28) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: Self.shippedClassifierDigest, osMajor: 28) == false)
+    // Control: the same shipped digest on each covered major is qualified, so the 28 row above fails
+    // for the major alone, not for the digest.
+    for major in [14, 15, 26, 27] {
+      #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: Self.shippedClassifierDigest, osMajor: major) == true, "major \(major)")
+    }
   }
 
   @Test("below the AFM floor, qualified rules serve")
