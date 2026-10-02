@@ -63,6 +63,13 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
   static let rowTitle = String(
     localized: "Self-Learning Dictionary",
     comment: "Your Words, Learn from: the self-learning dictionary row: the feature's name.")
+  /// #3338 (founder 2026-10-01): a badge after the name so people know the
+  /// feature is still improving.
+  static let betaBadge = String(
+    localized: "Beta",
+    comment:
+      "Your Words, Learn from: the self-learning dictionary row: a small badge after the feature's name saying the feature is still improving."
+  )
   static let rowCopy =
     String(
       localized:
