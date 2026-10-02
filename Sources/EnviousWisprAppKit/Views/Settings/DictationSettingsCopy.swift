@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Copy home for the Dictation Settings rows (#3385): each row's short grey
@@ -216,5 +217,54 @@ enum DictationSettingsCopy {
     static let keepCurrent = LocalizedStringResource(
       "Keep current preview engine",
       comment: "Live Preview settings: closes the preview engine choices without changing them.")
+  }
+
+  /// The Recording Pill tab (#3385). The design names, the refusal sentences,
+  /// Configure Live Preview and the Top / Bottom labels already exist and are
+  /// reused; these are the two rows' lines and each design's short visible line.
+  /// `RecordingPillDesign.summary` stays the longer sentence a screen reader hears.
+  enum Pill {
+    static let positionTitle = LocalizedStringResource(
+      "Position on screen",
+      comment: "Recording Pill settings: row title for where the recording pill appears.")
+    static let positionShort = LocalizedStringResource(
+      "Where the pill floats while you dictate.",
+      comment: "Recording Pill settings: short line under Position on screen.")
+    static let positionHelp = LocalizedStringResource(
+      "Choose Top or Bottom for the recording pill.",
+      comment:
+        "Recording Pill settings: explains Position on screen. Top and Bottom are the two choices.")
+
+    static let styleTitle = LocalizedStringResource(
+      "Style", comment: "Recording Pill settings: row title above the recording pill designs.")
+    static let styleShort = LocalizedStringResource(
+      "What the floating pill shows while you record.",
+      comment: "Recording Pill settings: short line under Style.")
+    static let styleHelp = LocalizedStringResource(
+      "Capsule and Level Rail show volume. Reading Well shows words and turns Live Preview on.",
+      comment:
+        "Recording Pill settings: explains Style. Capsule, Level Rail and Reading Well are the design names; Live Preview is a setting."
+    )
+
+    static let capsuleShort = LocalizedStringResource(
+      "A compact pill with a dot and level meter.",
+      comment: "Recording Pill settings: short line under the Capsule design's name.")
+    static let levelRailShort = LocalizedStringResource(
+      "A slim rail that follows your volume.",
+      comment: "Recording Pill settings: short line under the Level Rail design's name.")
+    static let readingWellShort = LocalizedStringResource(
+      "Shows words as you speak. Turns Live Preview on.",
+      comment:
+        "Recording Pill settings: short line under the Reading Well design's name. Live Preview is a setting."
+    )
+
+    /// One short line per design, exhaustive so a new design cannot ship without one.
+    static func shortDescription(for design: RecordingPillDesign) -> LocalizedStringResource {
+      switch design {
+      case .classic: return capsuleShort
+      case .levelRail: return levelRailShort
+      case .readingWell: return readingWellShort
+      }
+    }
   }
 }

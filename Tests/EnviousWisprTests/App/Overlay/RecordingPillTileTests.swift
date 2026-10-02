@@ -989,4 +989,240 @@ struct RecordingPillPreviewWiringTests {
       event, so a picker drawing one is showing a state the design does not have.
       """)
   }
+
+  // MARK: - #3385 Recording Pill tab
+
+  static let pillHost = "Sources/EnviousWisprAppKit/Views/Settings/PillSettingsView.swift"
+
+  private static func parse(_ path: String) throws -> SourceFileSyntax {
+    Parser.parse(source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
+  }
+
+  private static func constructions(_ name: String, in tree: some SyntaxProtocol) -> [FunctionCallExprSyntax] {
+    let finder = DirectConstructionFinder(name)
+    finder.walk(tree)
+    return finder.calls
+  }
+
+  struct PositionPicker: Equatable {
+    let rowTitle: String?
+    let selection: String?
+    let values: [String]
+  }
+
+  /// Each `BrandedSegmentedPicker` with the `title:` of the `SettingsRow` holding it, its
+  /// `selection:` and the `OverlayPillPosition` members its options carry.
+  static func positionPickers(in tree: some SyntaxProtocol) -> [PositionPicker] {
+    constructions("BrandedSegmentedPicker", in: tree).map { picker in
+      var row: String?
+      var current = picker.parent
+      while let node = current {
+        if let call = node.as(FunctionCallExprSyntax.self),
+          call.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text == "SettingsRow"
+        {
+          row = argument("title", of: call)?.trimmedDescription
+          break
+        }
+        current = node.parent
+      }
+      // Each option's own tag, in order, so swapped Top / Bottom tags are seen.
+      let values =
+        argument("options", of: picker)?
+        .as(ArrayExprSyntax.self)?.elements.map { element -> String in
+          guard let tuple = element.expression.as(TupleExprSyntax.self),
+            tuple.elements.count == 3,
+            let value = tuple.elements.last?.expression.as(MemberAccessExprSyntax.self),
+            value.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "OverlayPillPosition"
+          else { return "<unrecognized>" }
+          return "OverlayPillPosition.\(value.declName.baseName.text)"
+        } ?? []
+      return PositionPicker(
+        rowTitle: row, selection: argument("selection", of: picker)?.trimmedDescription,
+        values: values)
+    }
+  }
+
+  @Test("Position on screen writes the one pill-position setting, Top and Bottom")
+  func positionRowKeepsItsBinding() throws {
+    let pickers = Self.positionPickers(in: try Self.parse(Self.pillHost))
+    #expect(
+      pickers == [
+        PositionPicker(
+          rowTitle: "DictationSettingsCopy.Pill.positionTitle",
+          selection: "$settings.overlayPillPosition",
+          values: ["OverlayPillPosition.top", "OverlayPillPosition.bottom"])
+      ], "\(pickers)")
+  }
+
+  @Test("a picker bound to another setting, or outside the row, is seen")
+  func positionControl() {
+    let fixture = Parser.parse(
+      source: """
+        SettingsRow(title: Other.title) {
+          BrandedSegmentedPicker(options: [("Top", nil, OverlayPillPosition.top)], selection: $settings.other)
+        }
+        BrandedSegmentedPicker(options: [], selection: $settings.overlayPillPosition)
+        BrandedSegmentedPicker(
+          options: [("Top", nil, OverlayPillPosition.bottom), ("Bottom", nil, OverlayPillPosition.top)],
+          selection: $x)
+        BrandedSegmentedPicker(
+          options: [("OverlayPillPosition.top", nil, Other.top), ("Bottom", nil, OverlayPillPosition.bottom)],
+          selection: $y)
+        """)
+    #expect(
+      Self.positionPickers(in: fixture) == [
+        PositionPicker(
+          rowTitle: "Other.title", selection: "$settings.other", values: ["OverlayPillPosition.top"]),
+        PositionPicker(rowTitle: nil, selection: "$settings.overlayPillPosition", values: []),
+        // Swapped tags read in their swapped order.
+        PositionPicker(
+          rowTitle: nil, selection: "$x",
+          values: ["OverlayPillPosition.bottom", "OverlayPillPosition.top"]),
+        // A quoted enum name is a label, not a tag.
+        PositionPicker(
+          rowTitle: nil, selection: "$y", values: ["<unrecognized>", "OverlayPillPosition.bottom"]),
+      ])
+  }
+
+  /// The `Text(...)` arguments inside `func captionText`, in order.
+  static func captionTexts(in tree: SourceFileSyntax) -> [String] {
+    final class Finder: SyntaxVisitor {
+      var texts: [String] = []
+      init() { super.init(viewMode: .sourceAccurate) }
+      override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard node.name.text == "captionText" else { return .visitChildren }
+        texts += RecordingPillPreviewWiringTests.constructions("Text", in: node).map {
+          $0.arguments.first?.expression.trimmedDescription ?? ""
+        }
+        return .skipChildren
+      }
+    }
+    let finder = Finder()
+    finder.walk(tree)
+    return finder.texts
+  }
+
+  struct CaptionUse: Equatable {
+    /// Every `Self.captionText(...)` call inside the tile's `caption`, with whether it is hidden.
+    let calls: [String]
+    /// Whether the tile's `body` names `caption` as a view expression.
+    let bodyDrawsCaption: Bool
+  }
+
+  /// Reads `RecordingPillPreviewTile`: the captionText calls in its `caption` property
+  /// (each marked `hidden` when a `.hidden()` follows it) and the `caption` reference in `body`.
+  static func captionUse(in tree: SourceFileSyntax) -> CaptionUse? {
+    guard let tile = structDecl(named: "RecordingPillPreviewTile", in: tree) else { return nil }
+    func property(_ name: String) -> VariableDeclSyntax? {
+      tile.memberBlock.members.compactMap { $0.decl.as(VariableDeclSyntax.self) }
+        .first { $0.bindings.first?.pattern.trimmedDescription == name }
+    }
+    guard let caption = property("caption"), let body = property("body") else { return nil }
+    let finder = MemberCallFinder("captionText")
+    finder.walk(caption)
+    let calls = finder.calls.map { call -> String in
+      var hidden = false
+      var current = Syntax(call)
+      while let member = current.parent?.as(MemberAccessExprSyntax.self),
+        let outer = member.parent?.as(FunctionCallExprSyntax.self)
+      {
+        if member.declName.baseName.text == "hidden" { hidden = true }
+        current = Syntax(outer)
+      }
+      let args = call.arguments.map { ($0.label.map { "\($0.text): " } ?? "") + $0.expression.trimmedDescription }
+      return (hidden ? "hidden " : "") + args.joined(separator: ", ")
+    }
+    final class ReferenceFinder: SyntaxVisitor {
+      var found = false
+      override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
+        if node.baseName.text == "caption" { found = true }
+        return .visitChildren
+      }
+    }
+    let references = ReferenceFinder(viewMode: .sourceAccurate)
+    references.walk(body)
+    return CaptionUse(calls: calls, bodyDrawsCaption: references.found)
+  }
+
+  @Test("each card shows its design's name and its own short line, and draws the caption")
+  func cardsShowNameAndShortLine() throws {
+    let tree = try Self.parse(Self.panel)
+    #expect(
+      Self.captionTexts(in: tree)
+        == ["design.displayName", "DictationSettingsCopy.Pill.shortDescription(for: design)"],
+      "\(Self.captionTexts(in: tree))")
+    let use = try #require(Self.captionUse(in: tree), "RecordingPillPreviewTile.caption not found")
+    #expect(
+      use.calls.filter { !$0.hasPrefix("hidden ") }
+        == ["for: design, highlighted: isSelected && isEnabled"],
+      "the caption draws \(use.calls): exactly one visible caption, for this card")
+    #expect(use.calls.contains { $0.hasPrefix("hidden ") }, "the sizing captions are gone")
+    #expect(use.bodyDrawsCaption, "the tile's body no longer draws its caption")
+  }
+
+  @Test("a caption that is only hidden copies, or is not drawn, is seen")
+  func captionUseControl() throws {
+    let hiddenOnly = Parser.parse(
+      source: """
+        struct RecordingPillPreviewTile: View {
+          private var caption: some View {
+            ZStack { ForEach(all) { o in Self.captionText(for: o, highlighted: false).hidden() } }
+          }
+          var body: some View { VStack { Text("x") } }
+        }
+        """)
+    let use = try #require(Self.captionUse(in: hiddenOnly))
+    #expect(use == CaptionUse(calls: ["hidden for: o, highlighted: false"], bodyDrawsCaption: false))
+  }
+
+  @Test("a caption showing the summary instead of the short line is seen")
+  func captionControl() {
+    let fixture = Parser.parse(
+      source: """
+        static func captionText(for design: D, highlighted: Bool) -> some View {
+          VStack { Text(design.displayName); Text(design.summary) }
+        }
+        """)
+    #expect(Self.captionTexts(in: fixture) == ["design.displayName", "design.summary"])
+  }
+
+  struct TileWiring: Equatable {
+    let isSelected: String?
+    let isEnabled: String?
+    let onSelect: [String]
+  }
+
+  static func tileWirings(in tree: some SyntaxProtocol) -> [TileWiring] {
+    constructions("RecordingPillPreviewTile", in: tree).map { call in
+      TileWiring(
+        isSelected: argument("isSelected", of: call)?.trimmedDescription,
+        isEnabled: argument("isEnabled", of: call)?.trimmedDescription,
+        onSelect: argument("onSelect", of: call)?.as(ClosureExprSyntax.self)?.statements.map {
+          $0.item.trimmedDescription
+        } ?? [])
+    }
+  }
+
+  @Test("picking a card still goes through the coupled choice, ticked by the resolved design")
+  func selectionStaysCoupled() throws {
+    let wirings = Self.tileWirings(in: try Self.parse(Self.panel))
+    #expect(
+      wirings == [
+        TileWiring(
+          isSelected: "Self.selected(in: model) == design",
+          isEnabled: "model.offersCoupled(design, capability: model.wordsCapability)",
+          onSelect: ["model.chooseCoupled(design)"])
+      ], "\(wirings)")
+  }
+
+  @Test("a card that writes the slot directly is seen")
+  func selectionControl() {
+    let fixture = Parser.parse(
+      source: """
+        RecordingPillPreviewTile(design: d, isSelected: s, isEnabled: true, onSelect: { settings.pillDesign = design })
+        """)
+    #expect(
+      Self.tileWirings(in: fixture)
+        == [TileWiring(isSelected: "s", isEnabled: "true", onSelect: ["settings.pillDesign = design"])])
+  }
 }
