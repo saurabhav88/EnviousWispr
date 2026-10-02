@@ -77,13 +77,20 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
     }
 
     package func read() async -> LearnTakeAudio? {
+      hold?.refreshDeadline(takeID: takeID)
       guard !cancelled, !isEnded, let hold, hold.isReadable(takeID: takeID) else { return nil }
       return storage?.record
     }
 
-    package var isCancelled: Bool { get async { cancelled } }
+    package var isCancelled: Bool {
+      get async {
+        hold?.refreshDeadline(takeID: takeID)
+        return cancelled
+      }
+    }
 
     package func onCancel(_ handler: @escaping @Sendable () -> Void) async {
+      hold?.refreshDeadline(takeID: takeID)
       guard !isEnded else { return }
       if cancelled {
         handler()
@@ -173,6 +180,7 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
   // MARK: LearnAudioLeasing
 
   package func lease(takeID: String) async -> (any LearnAudioLease)? {
+    refreshDeadline(takeID: takeID)
     guard drainMarginMs != nil, let entry = entries[takeID], entry.pastedAtMs != nil,
       !entry.observationEnded, let storage = entry.storage, scheduler.nowMs < cutoffMs(entry)
     else { return nil }
@@ -189,7 +197,14 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
   }
 
   fileprivate func leaseEnded(_ lease: Lease) {
-    draining.removeAll { $0.outstandingLeases == 0 }
+    pruneDraining()
+  }
+
+  /// Applies a passed cutoff or expiry now, on access, instead of waiting for a delayed
+  /// callback (a late main actor or a clock jump), so cancellation is signalled at once.
+  fileprivate func refreshDeadline(takeID: String) {
+    guard let entry = entries[takeID], scheduler.nowMs >= cutoffMs(entry) else { return }
+    timerFired(takeID: takeID, generation: entry.generation)
   }
 
   private func cutoffMs(_ entry: Entry) -> Int {
@@ -198,7 +213,7 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
 
   /// Ownership slots in use: live takes plus removed takes with leases still out.
   private var slotsInUse: Int {
-    draining.removeAll { $0.outstandingLeases == 0 }
+    pruneDraining()
     return entries.count + draining.count
   }
 
@@ -224,7 +239,28 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
     if entry.outstandingLeases > 0 {
       if atExpiry { undrainedAtExpiry += 1 }
       draining.append(entry)
+      if !atExpiry {
+        // Removed early with a lease still out: the absolute expiry still checks it drained.
+        let generation = entry.generation
+        entry.timer = scheduler.schedule(afterMs: max(0, entry.expiryMs - scheduler.nowMs)) { [weak self] in
+          guard let self, let pending = self.draining.first(where: { $0.generation == generation })
+          else { return }
+          pending.timer = nil
+          if pending.outstandingLeases > 0 {
+            self.undrainedAtExpiry += 1
+          }
+        }
+      }
     }
+  }
+
+  /// Drained removed takes leave `draining`, with their pending expiry checks.
+  private func pruneDraining() {
+    for entry in draining where entry.outstandingLeases == 0 {
+      entry.timer?.cancel()
+      entry.timer = nil
+    }
+    draining.removeAll { $0.outstandingLeases == 0 }
   }
 
   /// One timer per take, aimed at its next event (the lease cutoff, then expiry),

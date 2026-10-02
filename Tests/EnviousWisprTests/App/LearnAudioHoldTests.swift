@@ -313,6 +313,56 @@ struct LearnAudioHoldTests {
     await lease.end()
   }
 
+  @Test("discard or cancelAll with a lease still out at absolute expiry is detected too")
+  func undrainedAfterEarlyRemoval() async throws {
+    for useCancelAll in [false, true] {
+      let (h, s) = hold()
+      h.retain(takeID: "a", record: record("a"))
+      h.markPasted(takeID: "a", atMs: 0)
+      let lease = try #require(await h.lease(takeID: "a"))
+      if useCancelAll { h.cancelAll() } else { h.discard(takeID: "a") }
+      #expect(h.undrainedAtExpiry == 0)
+      s.advance(ms: 59_999)
+      #expect(h.undrainedAtExpiry == 0)
+      s.advance(ms: 1)
+      #expect(h.undrainedAtExpiry == 1, "cancelAll \(useCancelAll)")
+      await lease.end()
+      #expect(h.slotsInUseForTesting == 0)
+    }
+  }
+
+  @Test("an early-removed take that drains in time is never counted")
+  func drainedAfterEarlyRemoval() async throws {
+    let (h, s) = hold()
+    h.retain(takeID: "a", record: record("a"))
+    h.markPasted(takeID: "a", atMs: 0)
+    let lease = try #require(await h.lease(takeID: "a"))
+    h.discard(takeID: "a")
+    await lease.end()
+    s.advance(ms: 60_000)
+    #expect(h.undrainedAtExpiry == 0)
+  }
+
+  @Test("after a clock jump past the cutoff, access signals cancellation without any callback")
+  func jumpSignalsOnAccess() async throws {
+    let (h, s) = hold()
+    h.retain(takeID: "a", record: record("a"))
+    h.markPasted(takeID: "a", atMs: 0)
+    let lease = try #require(await h.lease(takeID: "a"))
+    let signals = SignalCounter()
+    await lease.onCancel { signals.bump() }
+    s.jump(ms: 56_000)  // past the cutoff (55_000), no callback has run
+    #expect(await lease.isCancelled)
+    #expect(signals.count == 1)
+    let late = SignalCounter()
+    await lease.onCancel { late.bump() }
+    #expect(late.count == 1, "registration after the cutoff signals at once")
+    s.jump(ms: 5_000)  // past absolute expiry, still no callback
+    #expect(await lease.read() == nil)
+    #expect(h.heldTakeIDsForTesting.isEmpty, "access after expiry removed hold ownership")
+    await lease.end()
+  }
+
   @Test("a lease still out at absolute expiry is detected, not hidden")
   func undrainedDetected() async throws {
     let (h, s) = hold()
