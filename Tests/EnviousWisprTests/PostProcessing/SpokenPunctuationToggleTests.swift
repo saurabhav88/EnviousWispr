@@ -327,4 +327,38 @@ struct SpokenPunctuationToggleTests {
         == Self.itn.normalize("alpha comma beta", spokenPunctuation: false))
     #expect(Self.itn.normalize("alpha comma beta").contains("comma"))
   }
+
+  /// #3041: Parakeet writes a period after "New line" when it is its own phrase. That mark must not
+  /// survive as a second period on the previous sentence, and the line break must survive. The
+  /// expected strings are the one-breath outputs ("Hello there new line world is big").
+  @Test("A recogniser mark after a spoken line break is absorbed")
+  func markAfterLineBreakIsAbsorbed() {
+    let expected = Self.itn.normalize("Hello there. New line World is big.", spokenPunctuation: true)
+    #expect(expected == "Hello there. \n World is big.")
+    #expect(
+      Self.itn.normalize("Hello there. New line. World is big.", spokenPunctuation: true)
+        == expected)
+    #expect(
+      Self.itn.normalize("Hello there. New paragraph. World is big.", spokenPunctuation: true)
+        == "Hello there. \n\n World is big.")
+    #expect(
+      Self.itn.normalize("Hello there. New line, World is big.", spokenPunctuation: true)
+        == expected)
+    // Setting OFF: the phrase is plain words, untouched.
+    #expect(
+      Self.itn.normalize("Hello there. New line. World is big.", spokenPunctuation: false)
+        == "Hello there. New line. World is big.")
+  }
+
+  /// #3041 controls: spoken punctuation that already came out right, and must keep doing so.
+  @Test("Marks and line breaks that already worked still work")
+  func punctuationControlsUnchanged() {
+    func on(_ s: String) -> String { Self.itn.normalize(s, spokenPunctuation: true) }
+    #expect(on("Hello there period World is big") == "Hello there. World is big")
+    #expect(on("alpha comma beta") == "alpha, beta")
+    #expect(on("Is it big question mark") == "Is it big?")
+    #expect(on("Hello there. new line World is big.") == "Hello there. \n World is big.")
+    #expect(on("Hello there. new paragraph World is big.") == "Hello there. \n\n World is big.")
+    #expect(on("I like apples. They are good.") == "I like apples. They are good.")
+  }
 }
