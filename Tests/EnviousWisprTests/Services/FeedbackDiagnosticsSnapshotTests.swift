@@ -65,4 +65,34 @@ struct FeedbackDiagnosticsSnapshotTests {
   func noDiaryNoFile(diary: Data?) {
     #expect(FeedbackDiagnosticsSnapshot.make(diarySnapshot: diary, joinKey: Self.joinKey) == nil)
   }
+
+  // MARK: - Reading the id back (#3382)
+
+  @Test("The id read back from a built file is the id written, through the same key")
+  func joinKeyRoundTrip() throws {
+    let snapshot = try #require(
+      FeedbackDiagnosticsSnapshot.make(diarySnapshot: Self.diary, joinKey: Self.joinKey))
+    #expect(FeedbackDiagnosticsSnapshot.joinKey(in: snapshot.data) == Self.joinKey)
+    let noID = try #require(FeedbackDiagnosticsSnapshot.make(diarySnapshot: Self.diary, joinKey: nil))
+    #expect(FeedbackDiagnosticsSnapshot.joinKey(in: noID.data) == nil)
+  }
+
+  @Test(
+    "Only a canonical id is read back; anything else reads as no id",
+    arguments: [
+      (#"{"analytics_distinct_id":"0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"}"#,
+       "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"),
+      (#"{"analytics_distinct_id":"0198A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B"}"#,
+       "0198A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B"),
+      (#"{"analytics_distinct_id":"0198a1b2-C3D4-7e5f-8a9b-0c1d2e3f4a5b"}"#, nil),
+      (#"{"analytics_distinct_id":"0198a1b2c3d47e5f8a9b0c1d2e3f4a5b"}"#, nil),
+      (#"{"analytics_distinct_id":"not-a-uuid"}"#, nil),
+      (#"{"analytics_distinct_id":42}"#, nil),
+      (#"{"schema_version":1}"#, nil),
+      ("not json", nil),
+      ("", nil),
+    ] as [(String, String?)])
+  func joinKeyOnlyCanonical(bytes: String, expected: String?) {
+    #expect(FeedbackDiagnosticsSnapshot.joinKey(in: Data(bytes.utf8)) == expected)
+  }
 }

@@ -22,9 +22,9 @@ struct FeedbackSubmissionTests {
     /// assertion instead of hanging the suite (#3353).
     var releasesCallsAfterTheFirst = false
 
-    func save(_: FeedbackDraft, _: FeedbackDiagnosticsSnapshot?, _ help: FeedbackHelpOutcome?)
-      async -> FeedbackReporter.Outcome
-    {
+    func save(
+      _: FeedbackDraft, _: FeedbackDiagnosticsSnapshot?, _ help: FeedbackHelpOutcome?, _: Bool
+    ) async -> FeedbackReporter.Outcome {
       calls += 1
       helpOutcomes.append(help)
       if releasesCallsAfterTheFirst, calls > 1 { return .saved(offline: false) }

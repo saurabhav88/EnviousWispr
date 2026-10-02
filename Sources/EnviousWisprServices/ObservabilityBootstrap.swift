@@ -357,14 +357,18 @@ public enum ObservabilityBootstrap {
     if let joinKey { writeJoinKey(joinKey, to: scope) }
   }
 
+  /// The Sentry tag that joins an event to the install's PostHog rows. Written on the global
+  /// scope for automatic events and on feedback events by `FeedbackSender` (#3382).
+  static let joinTagKey = "analytics.distinct_id"
+
   /// Sets the `analytics.distinct_id` join tag, or removes it for `nil` (#3269: metrics OFF).
   /// Filtered at write time like every global-scope write (the reason is on `SentryBreadcrumb`'s
   /// global-scope section).
   static func writeJoinKey(_ joinKey: String?, to scope: Scope) {
     if let joinKey {
-      scope.setTag(value: SentryEventSanitizer.redactString(joinKey), key: "analytics.distinct_id")
+      scope.setTag(value: SentryEventSanitizer.redactString(joinKey), key: joinTagKey)
     } else {
-      scope.removeTag(key: "analytics.distinct_id")
+      scope.removeTag(key: joinTagKey)
     }
   }
 

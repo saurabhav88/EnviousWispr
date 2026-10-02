@@ -267,4 +267,85 @@ struct FeedbackReporterTests {
     #expect(outcome == .unavailable)
     #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent("outbox.json").path) == false)
   }
+
+  // MARK: - Usage-link id (#3382)
+
+  /// Two different ids, so every expectation names which source won.
+  static let fileID = FeedbackDiagnosticsSnapshotTests.joinKey
+  static let savedID = "11111111-2222-4333-8444-aabbccddeeff"
+
+  static func file(id: String?) throws -> FeedbackDiagnosticsSnapshot {
+    try #require(
+      FeedbackDiagnosticsSnapshot.make(diarySnapshot: FeedbackDiagnosticsSnapshotTests.diary, joinKey: id))
+  }
+
+  @Test("The four rows the founder set (2026-10-02): box and switch at Send decide the id")
+  func usageLinkMatrix() throws {
+    let ticked = try Self.file(id: Self.fileID)
+    // Ticked, metrics on: the file's id.
+    #expect(
+      FeedbackReporter.usageLinkID(diagnostics: ticked, usageMetrics: true, savedID: Self.savedID)
+        == Self.fileID)
+    // Ticked, metrics off: still the file's id; the user chose to share the file.
+    #expect(
+      FeedbackReporter.usageLinkID(diagnostics: ticked, usageMetrics: false, savedID: Self.savedID)
+        == Self.fileID)
+    // Unticked, metrics on: the saved id.
+    #expect(
+      FeedbackReporter.usageLinkID(diagnostics: nil, usageMetrics: true, savedID: Self.savedID)
+        == Self.savedID)
+    // Unticked, metrics off: none.
+    #expect(
+      FeedbackReporter.usageLinkID(diagnostics: nil, usageMetrics: false, savedID: Self.savedID)
+        == nil)
+  }
+
+  @Test("Each source stands alone: a file id needs no saved id; the saved id needs metrics on")
+  func usageLinkSourcesIndependent() throws {
+    let ticked = try Self.file(id: Self.fileID)
+    let tickedNoID = try Self.file(id: nil)
+    let unreadable = FeedbackDiagnosticsSnapshot(data: Data("not json".utf8))
+    // A valid file id survives an absent saved id, in either switch state.
+    for metrics in [true, false] {
+      #expect(
+        FeedbackReporter.usageLinkID(diagnostics: ticked, usageMetrics: metrics, savedID: nil)
+          == Self.fileID)
+    }
+    // A file without a valid id falls back to the saved id only with metrics on.
+    for file in [tickedNoID, unreadable] {
+      #expect(
+        FeedbackReporter.usageLinkID(diagnostics: file, usageMetrics: true, savedID: Self.savedID)
+          == Self.savedID)
+      #expect(
+        FeedbackReporter.usageLinkID(diagnostics: file, usageMetrics: false, savedID: Self.savedID)
+          == nil)
+    }
+    // Neither source has a valid id: none.
+    #expect(
+      FeedbackReporter.usageLinkID(diagnostics: tickedNoID, usageMetrics: true, savedID: nil) == nil)
+    #expect(
+      FeedbackReporter.usageLinkID(diagnostics: nil, usageMetrics: true, savedID: "not-a-uuid")
+        == nil)
+  }
+
+  @Test("Send freezes the decided id into the saved report; an omitted switch is off")
+  func sendFreezesTheUsageLinkID() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = Self.outbox(directory: directory)
+    let draft = try #require(FeedbackDraft(message: "paste fails", email: ""))
+
+    _ = await FeedbackReporter.send(
+      draft, diagnostics: nil, outbox: outbox, now: Date(), id: UUID(), context: Self.context,
+      usageMetrics: true, savedID: Self.savedID)
+    _ = await FeedbackReporter.send(
+      draft, diagnostics: nil, outbox: outbox, now: Date(), id: UUID(), context: Self.context,
+      savedID: Self.savedID)
+    _ = await FeedbackReporter.send(
+      draft, diagnostics: try Self.file(id: Self.fileID), outbox: outbox, now: Date(), id: UUID(),
+      context: Self.context, usageMetrics: false, savedID: Self.savedID)
+
+    let saved = try FeedbackOutboxTests.records(in: directory)
+    #expect(saved.map(\.usageLinkID) == [Self.savedID, nil, Self.fileID])
+  }
 }
