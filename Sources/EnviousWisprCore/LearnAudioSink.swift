@@ -132,5 +132,9 @@ package protocol LearnAudioLease: Sendable {
   /// True once the hold cancelled this lease (expiry, recording start, toggle off,
   /// sleep, memory pressure, termination). Borrowers check it between steps.
   var isCancelled: Bool { get async }
+  /// Registers the borrower's cancellation signal. Called at most once, when the hold
+  /// cancels this lease; called at once if it is already cancelled. Never called after
+  /// `end()`. The handler only signals (for example, cancels a task); it must not decode or wait.
+  func onCancel(_ handler: @escaping @Sendable () -> Void) async
   func end() async
 }
