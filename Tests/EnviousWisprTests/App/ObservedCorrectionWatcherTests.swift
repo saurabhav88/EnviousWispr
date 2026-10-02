@@ -274,6 +274,8 @@ struct ObservedCorrectionWatcherTests {
       pid: 42, bundleID: "com.apple.Notes")
     /// #3338 PR-4: every take id the watcher reported as no longer observed.
     var observationEndedTakeIDs: [String?] = []
+    /// #3338 PR-4: every take id the watcher reported as observed.
+    var observationStartedTakeIDs: [String?] = []
   }
   let knobs = Knobs()
 
@@ -306,6 +308,7 @@ struct ObservedCorrectionWatcherTests {
         telemetry: telemetry)
     deps.judgeDeadlineSeconds = knobs.judgeDeadlineSeconds
     deps.onObservationEnded = { knobs.observationEndedTakeIDs.append($0) }
+    deps.onObservationStarted = { knobs.observationStartedTakeIDs.append($0) }
     return ObservedCorrectionWatcher(dependencies: deps)
   }
 
@@ -457,6 +460,17 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitUntil { !edits.isParked })
   }
 
+  @Test("#3338: observation start is reported only once observation really starts")
+  func observationStartReported() async {
+    let watcher = makeWatcher()
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher, takeID: "take-s")
+    #expect(knobs.observationStartedTakeIDs.isEmpty, "pending capture is not observation")
+    edits.release()
+    #expect(await waitUntil { observer.starts == 1 })
+    #expect(knobs.observationStartedTakeIDs == ["take-s"])
+  }
+
   @Test("#3338: a skipped take (destination mismatch) is reported as not observed")
   func skipReportsTakeID() async {
     let watcher = makeWatcher()
@@ -465,6 +479,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events.last == .skipped(.destinationMismatch))
     #expect(knobs.observationEndedTakeIDs == ["take-skip"])
+    #expect(knobs.observationStartedTakeIDs.isEmpty)
   }
 
   @Test("#3338: a watch cancelled by model removal or toggle off is reported as not observed")

@@ -128,6 +128,7 @@ struct LearnAudioLifecycleTests {
   private func hold(_ f: Fixture, _ id: String = "a") {
     f.wiring.learnAudioHold.retain(takeID: id, record: record(id))
     f.wiring.learnAudioHold.markPasted(takeID: id, atMs: f.clock.nowMs)
+    f.wiring.learnAudioHold.observationStarted(takeID: id)
   }
 
   @Test(

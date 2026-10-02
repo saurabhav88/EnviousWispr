@@ -74,6 +74,7 @@ struct LearnAudioHoldTests {
     let (h, s) = hold()
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     s.advance(ms: 30_000)
     h.markPasted(takeID: "a", atMs: s.nowMs)
     h.retain(takeID: "a", record: record("a"))
@@ -96,6 +97,7 @@ struct LearnAudioHoldTests {
     let (h, s) = hold()
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     s.jump(ms: 80_000)  // nothing fired yet
     #expect(
       await h.lease(takeID: "a") == nil, "past expiry: no lease even before the callback runs")
@@ -123,7 +125,8 @@ struct LearnAudioHoldTests {
     let (h, s) = hold()
     h.retain(takeID: "a", record: record("a"))
     #expect(await h.lease(takeID: "a") == nil, "not pasted yet")
-    h.markPasted(takeID: "a", atMs: 0)  // expiry 60_000, cutoff 55_000
+    h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")  // expiry 60_000, cutoff 55_000
     s.advance(ms: 54_999)
     let lease = try #require(await h.lease(takeID: "a"))
     #expect(await lease.read() != nil)
@@ -133,11 +136,28 @@ struct LearnAudioHoldTests {
     #expect(await lease.read() == nil)
   }
 
+  @Test("no lease before the watcher reports the observation started, none after it ended")
+  func positiveAdmission() async throws {
+    let (h, _) = hold()
+    h.retain(takeID: "a", record: record("a"))
+    h.markPasted(takeID: "a", atMs: 0)
+    #expect(await h.lease(takeID: "a") == nil, "pasted but never observed")
+    h.observationEnded(takeID: "a")
+    h.observationStarted(takeID: "a")
+    #expect(await h.lease(takeID: "a") == nil, "an ended observation is never reopened")
+    h.retain(takeID: "b", record: record("b"))
+    h.markPasted(takeID: "b", atMs: 0)
+    h.observationStarted(takeID: "b")
+    let lease = try #require(await h.lease(takeID: "b"))
+    await lease.end()
+  }
+
   @Test("no qualified drain margin: no lease is ever granted, expiry still runs")
   func unqualified() async {
     let (h, s) = hold(margin: nil)
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     #expect(await h.lease(takeID: "a") == nil)
     s.advance(ms: 60_000)
     #expect(h.heldTakeIDsForTesting.isEmpty)
@@ -148,6 +168,7 @@ struct LearnAudioHoldTests {
     let (h, s) = hold()
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     let lease = try #require(await h.lease(takeID: "a"))
     h.observationEnded(takeID: "a")
     #expect(await h.lease(takeID: "a") == nil)
@@ -162,6 +183,7 @@ struct LearnAudioHoldTests {
     let (h, _) = hold()
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     let lease = try #require(await h.lease(takeID: "a"))
     let signals = SignalCounter()
     await lease.onCancel { signals.bump() }
@@ -181,6 +203,7 @@ struct LearnAudioHoldTests {
     for id in ["a", "b"] {
       h.retain(takeID: id, record: record(id))
       h.markPasted(takeID: id, atMs: 0)
+      h.observationStarted(takeID: id)
     }
     let la = try #require(await h.lease(takeID: "a"))
     let lb = try #require(await h.lease(takeID: "b"))
@@ -213,6 +236,7 @@ struct LearnAudioHoldTests {
     for id in ["a", "b"] {
       h.retain(takeID: id, record: record(id))
       h.markPasted(takeID: id, atMs: 0)
+      h.observationStarted(takeID: id)
     }
     let la = try #require(await h.lease(takeID: "a"))
     let lb = try #require(await h.lease(takeID: "b"))
@@ -241,6 +265,7 @@ struct LearnAudioHoldTests {
     }
     storage = h.storageForTesting(takeID: "a")
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     var lease = try #require(await h.lease(takeID: "a"))
     s.advance(ms: 30_000)
     #expect(storage != nil)
@@ -265,6 +290,7 @@ struct LearnAudioHoldTests {
       h.retain(takeID: "a", record: record("a", window: w))
     }
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     let lease = try #require(await h.lease(takeID: "a"))
     let consumer = Consumer()
     await consumer.start(lease)
@@ -287,6 +313,7 @@ struct LearnAudioHoldTests {
     }
     storage = h.storageForTesting(takeID: "a")
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     let lease = try #require(await h.lease(takeID: "a"))
     let consumer = Consumer()
     await consumer.start(lease)
@@ -306,6 +333,7 @@ struct LearnAudioHoldTests {
     let (h, _) = hold()
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     let lease = try #require(await h.lease(takeID: "a"))
     let consumer = Consumer()
     await consumer.start(lease)
@@ -319,6 +347,7 @@ struct LearnAudioHoldTests {
       let (h, s) = hold()
       h.retain(takeID: "a", record: record("a"))
       h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
       let lease = try #require(await h.lease(takeID: "a"))
       if useCancelAll { h.cancelAll() } else { h.discard(takeID: "a") }
       #expect(h.undrainedAtExpiry == 0)
@@ -336,6 +365,7 @@ struct LearnAudioHoldTests {
     let (h, s) = hold()
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     let lease = try #require(await h.lease(takeID: "a"))
     h.discard(takeID: "a")
     await lease.end()
@@ -348,6 +378,7 @@ struct LearnAudioHoldTests {
     let (h, s) = hold()
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     let lease = try #require(await h.lease(takeID: "a"))
     let signals = SignalCounter()
     await lease.onCancel { signals.bump() }
@@ -368,6 +399,7 @@ struct LearnAudioHoldTests {
     let (h, s) = hold()
     h.retain(takeID: "a", record: record("a"))
     h.markPasted(takeID: "a", atMs: 0)
+    h.observationStarted(takeID: "a")
     let lease = try #require(await h.lease(takeID: "a"))
     s.advance(ms: 60_000)
     #expect(h.undrainedAtExpiry == 1)

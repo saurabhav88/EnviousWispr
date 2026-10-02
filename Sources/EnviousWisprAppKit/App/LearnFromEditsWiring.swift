@@ -325,6 +325,10 @@ final class LearnFromEditsWiring {
       guard let takeID else { return }
       learnAudioHold?.observationEnded(takeID: takeID)
     }
+    watcherDependencies.onObservationStarted = { [weak learnAudioHold] takeID in
+      guard let takeID else { return }
+      learnAudioHold?.observationStarted(takeID: takeID)
+    }
     let watcher = ObservedCorrectionWatcher(dependencies: watcherDependencies)
     pasteCompletionRegistry.subscribe(watcher)
 

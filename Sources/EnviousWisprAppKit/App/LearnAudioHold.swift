@@ -13,8 +13,9 @@ import Foundation
 /// - From `expiry − drainMargin` no lease is granted and every lease is cancelled; the
 ///   margin is the measured worst-case cancellation-to-release drain plus 20%. Without
 ///   a qualified margin no lease is ever granted (retention and expiry still run).
-/// - Leases are only for pasted, live takes whose observation has not ended.
-///   `observationEnded` stops new leases; existing ones may finish until the cutoff.
+/// - Leases are only for pasted takes the learn watcher reported as observed
+///   (`observationStarted`) and not yet ended. `observationEnded` stops new leases;
+///   existing ones may finish until the cutoff.
 /// - At most two takes own audio, counting removed takes whose leases are still out.
 ///   A third take evicts the oldest take with no outstanding lease, or is refused.
 /// - `discard`, `cancelAll` and expiry remove the take and cancel its leases. The hold
@@ -42,6 +43,7 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
     let retainedAtMs: Int
     var pastedAtMs: Int?
     var storage: Storage?
+    var observationStarted = false
     var observationEnded = false
     var timer: (any PastedRegionScheduledWork)?
     var leases: [Lease] = []
@@ -167,6 +169,12 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
 
   // MARK: Lifecycle (wired by the next chunk)
 
+  /// The learn watcher started observing this take: leases may be granted from now.
+  package func observationStarted(takeID: String) {
+    guard let entry = entries[takeID], !entry.observationEnded else { return }
+    entry.observationStarted = true
+  }
+
   /// The learn watcher stopped observing this take: no new leases; existing ones may
   /// finish until the cutoff.
   package func observationEnded(takeID: String) {
@@ -183,7 +191,7 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
   package func lease(takeID: String) async -> (any LearnAudioLease)? {
     refreshDeadline(takeID: takeID)
     guard drainMarginMs != nil, let entry = entries[takeID], entry.pastedAtMs != nil,
-      !entry.observationEnded, let storage = entry.storage, scheduler.nowMs < cutoffMs(entry)
+      entry.observationStarted, !entry.observationEnded, let storage = entry.storage, scheduler.nowMs < cutoffMs(entry)
     else { return nil }
     let lease = Lease(hold: self, storage: storage, takeID: takeID)
     entry.leases.append(lease)

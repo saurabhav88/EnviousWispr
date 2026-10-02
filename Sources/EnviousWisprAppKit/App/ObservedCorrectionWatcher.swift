@@ -153,6 +153,9 @@ struct ObservedCorrectionWatcherDependencies {
   /// audio hold stops granting new leases for it. Pending answers are unaffected. May
   /// repeat for one take; the hold treats it as idempotent.
   var onObservationEnded: (String?) -> Void = { _ in }
+  /// #3338 PR-4: this take's observation started; the hold admits leases for it
+  /// from now until it is reported not observed.
+  var onObservationStarted: (String?) -> Void = { _ in }
 }
 
 @MainActor
@@ -385,6 +388,10 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       watch = w
       deps.observer.start(target) { [weak self] event in
         self?.handle(event, generation: gen)
+      }
+      // #3338 PR-4: only a take whose observation really started may be leased.
+      if let live = watch, live.generation == gen, live.isLive, deps.observer.isObserving {
+        deps.onObservationStarted(live.event.takeID)
       }
     }
   }
