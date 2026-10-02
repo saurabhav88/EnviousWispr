@@ -478,6 +478,7 @@ struct HelpCheckTests {
     "Network and server failures send the report as written with a closed reason",
     arguments: [
       ("500", FeedbackHelpOutcome.FailureReason.httpError),
+      ("413", .tooLarge),  // #3311: the server's oversized-request answer, not a generic HTTP error
       ("offline", .network),
       ("timed out", .timeout),
       ("garbage", .badReply),
@@ -489,6 +490,7 @@ struct HelpCheckTests {
     let script: FakeTransport.Answer
     switch answer {
     case "500": script = .reply(500, Data())
+    case "413": script = .reply(413, Self.reply([], suppression: false, status: "send_feedback", reason: "too_large"))
     case "offline": script = .fail(URLError(.notConnectedToInternet))
     case "timed out": script = .fail(URLError(.timedOut))
     case "garbage": script = .reply(200, Data("{".utf8))

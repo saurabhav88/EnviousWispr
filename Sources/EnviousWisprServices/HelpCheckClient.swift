@@ -17,6 +17,9 @@ struct HelpCheckClient: Sendable {
       case .network: .network
       case .timeout: .timeout
       case .badReply: .badReply
+      // The server answers an oversized request with 413 and a `too_large` body; the status alone
+      // carries that reason, so the body is not decoded (#3311).
+      case .http(413): .tooLarge
       case .http: .httpError
       }
     }
