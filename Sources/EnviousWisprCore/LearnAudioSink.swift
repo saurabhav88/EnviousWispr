@@ -9,14 +9,14 @@ import Foundation
 // them through `LearnAudioLeasing`. Nothing here retains, schedules or decodes.
 
 /// Which decode produced the text that was pasted, so the samples and word timings
-/// in a `LearnTakeAudio` are known to belong to the same pass.
+/// in a `LearnTakeAudio` are known to belong to the same pass. A successful streaming
+/// finalization has no case: its exact consumed samples cannot be named, so such a
+/// take keeps no learn audio (plan §16, 2026-10-02).
 package enum LearnTakeDecodePath: String, Sendable, Equatable, CaseIterable {
   /// Batch decode of the recorded samples.
   case batch
   /// Batch decode of conditioned samples (the kernel's conditioned ASR input).
   case conditionedBatch
-  /// A successful streaming finalization. Streaming gives no word timings.
-  case streaming
   /// The batch decode that rescued a failed streaming take.
   case streamingRescueBatch
   /// A retry decode that replaced the first result.
@@ -32,8 +32,6 @@ package enum LearnTakeSampleOrigin: String, Sendable, Equatable, CaseIterable {
   case kernelASRInput
   /// The adapter's own retained PCM, used when no `batchSamples` was handed over.
   case adapterRetainedPCM
-  /// The exact buffers the streaming decode accepted, in order.
-  case streamedBuffers
   /// The lead-trimmed slice of the kernel's ASR input that the salvage decode received.
   case leadTrimmedASRInput
 }
@@ -66,8 +64,8 @@ package struct LearnTakeAudio: Sendable {
   package let decodeLanguage: String?
   /// The decode's raw text, before polish or formatting.
   package let rawText: String
-  /// The decode's raw word timings over `rawText`. `nil` when the decode gave none
-  /// (streaming); never synthesized.
+  /// The decode's raw word timings over `rawText`. `nil` when the decode gave none;
+  /// never synthesized.
   package let wordTimings: [ASRWordTiming]?
   /// Encoder windows from the same decode, when handed over (plan C.2b); empty otherwise.
   package let preparedWindows: [any LearnPreparedWindowHandle]

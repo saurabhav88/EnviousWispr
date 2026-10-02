@@ -84,6 +84,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// Cleared on `beginSession()` and `cancel()`.
   private(set) var lastResult: ASRResult?
   private(set) var lastASRDiagnostics: KernelASRAdapterDiagnostics?
+  /// #3338 PR-4: this session's learn evidence policy (`nil` = keep nothing) and the
+  /// evidence of the last committed decode. Written only by `beginSession`,
+  /// `setLearnEvidencePolicy`, `commitAttempt`, `cancel` and `discardSession`.
+  private var learnEvidencePolicy: LearnEvidencePolicy?
+  private(set) var lastLearnEvidence: LearnDecodeEvidence?
   private(set) var lastFailureError: (any Error)?
 
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
@@ -539,6 +544,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     lastResult = nil
     lastASRDiagnostics = nil
     lastFailureError = nil
+    learnEvidencePolicy = nil
+    lastLearnEvidence = nil
     streamingBuffersDispatched = 0
     streamingBuffersFed = 0
     feedTasks.removeAll()
@@ -866,6 +873,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     isCancelled = true
     isTerminal = true
     lastResult = nil
+    lastLearnEvidence = nil
+    learnEvidencePolicy = nil
     retainedPCM.removeAll()
     // Drop feed-task handles — the tasks see `isTerminal` and skip; `finalize()`
     // after `cancel()` short-circuits to `.cancelled` and never drains.
@@ -987,7 +996,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
     // Retry is always batch-only — never re-attempt streaming-then-rescue.
     streamingActive = false
-    let attempt = await attemptBatchDecode(samples: inputSamples)
+    let attempt = await attemptBatchDecode(
+      samples: inputSamples, learnAttempt: .retry, callerSupplied: true)
     return commitAttempt(attempt, session: session, generation: generation)
   }
 
@@ -1146,6 +1156,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     var diagnostics = diagnostics
     diagnostics.batchRescueAttempted = true
     let samples = batchSamples ?? retainedPCM
+    // #3338 PR-4: snapshot before the decode suspends.
+    let learnPolicy = learnEvidencePolicy
+    let learnLanguage = decodeOptions.language
     await AppLogger.shared.log(
       "Streaming rescue triggered -> batch fallback (\(samples.count) samples)",
       level: .info, category: "Pipeline"
@@ -1181,7 +1194,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       let outcome: ASREngineOutcome =
         trimmed.isEmpty ? .empty(hadSpeechEvidence: true) : .transcript(result)
       let attempt = DecodeAttemptResult(
-        outcome: outcome, diagnostics: diagnostics, failureError: nil)
+        outcome: outcome, diagnostics: diagnostics, failureError: nil,
+        learnEvidence: trimmed.isEmpty
+          ? nil
+          : learnEvidence(
+            for: result, samples: samples, attempt: .streamingRescue,
+            callerSupplied: batchSamples != nil, language: learnLanguage, policy: learnPolicy))
       return commitAttempt(attempt, session: session, generation: generation)
     } catch is CancellationError {
       return .cancelled
@@ -1203,7 +1221,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     batchSamples: [Float]?, session: SessionID?, generation: Int
   ) async -> ASREngineOutcome {
     let samples = batchSamples ?? retainedPCM
-    let attempt = await attemptBatchDecode(samples: samples)
+    let attempt = await attemptBatchDecode(
+      samples: samples, learnAttempt: .batch, callerSupplied: batchSamples != nil)
     return commitAttempt(attempt, session: session, generation: generation)
   }
 
@@ -1220,6 +1239,21 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     let outcome: ASREngineOutcome
     let diagnostics: KernelASRAdapterDiagnostics
     let failureError: (any Error)?
+    /// #3338 PR-4: set only for a transcript from a batch-shaped decode under a
+    /// learn evidence policy; committed (or dropped) with the rest of the attempt.
+    var learnEvidence: LearnDecodeEvidence? = nil
+  }
+
+  /// #3338 PR-4: evidence for a transcript decoded from exactly `samples`, or `nil`
+  /// without a policy or over its cap (absent, never truncated).
+  private func learnEvidence(
+    for result: ASRResult, samples: [Float], attempt: LearnDecodeEvidence.Attempt,
+    callerSupplied: Bool, language: String?, policy: LearnEvidencePolicy?
+  ) -> LearnDecodeEvidence? {
+    guard let policy, samples.count <= policy.maxSamples else { return nil }
+    return LearnDecodeEvidence(
+      samples: samples, attempt: attempt, callerSupplied: callerSupplied, language: language,
+      rawText: result.text, wordTimings: result.wordTimings)
   }
 
   /// Pure batch-decode attempt over already-resolved `samples` — reused by
@@ -1227,8 +1261,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `retryDecode` (always the retry's own `inputSamples`, no fallback: the
   /// first attempt's `retainedPCM` is already cleared by the time a retry
   /// runs). No shared-state writes; the caller commits via `commitAttempt`.
-  private func attemptBatchDecode(samples: [Float]) async -> DecodeAttemptResult {
+  private func attemptBatchDecode(
+    samples: [Float], learnAttempt: LearnDecodeEvidence.Attempt, callerSupplied: Bool
+  ) async -> DecodeAttemptResult {
     var diagnostics = KernelASRAdapterDiagnostics(batchRescueAttempted: false)
+    // #3338 PR-4: snapshot before the decode suspends.
+    let learnPolicy = learnEvidencePolicy
+    let learnLanguage = decodeOptions.language
     guard !samples.isEmpty else {
       return DecodeAttemptResult(
         outcome: .empty(hadSpeechEvidence: true), diagnostics: diagnostics, failureError: nil)
@@ -1262,7 +1301,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           outcome: .empty(hadSpeechEvidence: true), diagnostics: diagnostics, failureError: nil)
       }
       return DecodeAttemptResult(
-        outcome: .transcript(result), diagnostics: diagnostics, failureError: nil)
+        outcome: .transcript(result), diagnostics: diagnostics, failureError: nil,
+        learnEvidence: learnEvidence(
+          for: result, samples: samples, attempt: learnAttempt, callerSupplied: callerSupplied,
+          language: learnLanguage, policy: learnPolicy))
     } catch is CancellationError {
       return DecodeAttemptResult(outcome: .cancelled, diagnostics: diagnostics, failureError: nil)
     } catch {
@@ -1285,6 +1327,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   ) -> ASREngineOutcome {
     guard sessionID == session, retryGeneration == generation else { return .cancelled }
     lastASRDiagnostics = attempt.diagnostics
+    // #3338 PR-4: every committed attempt replaces the evidence, so a streaming
+    // success, failure or empty result can never leave an earlier decode's samples.
+    lastLearnEvidence = attempt.learnEvidence
     if let failureError = attempt.failureError {
       lastFailureError = failureError
     }
@@ -1323,3 +1368,10 @@ extension ParakeetEngineAdapter: ASREngineTelemetryProviding {}
 // #1388 step 3: opt in to the warm-up cancel capability (the method itself
 // lives with the other lifecycle methods above).
 extension ParakeetEngineAdapter: ASREngineWarmupCancelling {}
+
+// #3338 PR-4: the winning batch decode's exact input for the learn hold.
+extension ParakeetEngineAdapter: ASREngineLearnAudioEvidenceProviding {
+  func setLearnEvidencePolicy(_ policy: LearnEvidencePolicy?) {
+    learnEvidencePolicy = policy
+  }
+}

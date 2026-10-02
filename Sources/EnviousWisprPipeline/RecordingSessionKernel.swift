@@ -708,6 +708,22 @@ final class RecordingSessionKernel {
   /// #8).
   private var adapterDidBeginSession = false
 
+  /// #3338 PR-4: supplies this session's learn evidence policy (`nil` = keep
+  /// nothing: Self-Learning off, or no cap). Read once per session, right after the
+  /// adapter's session opens. Wired in by the learn hold (PR-4 chunk 3).
+  var learnEvidencePolicyProvider: (@MainActor () -> LearnEvidencePolicy?)?
+  /// #3338 PR-4: the winning decode's audio for the learn hold, or `nil`. Set only
+  /// when the kernel accepts a transcript (primary, retry or salvage); a later
+  /// winning decode replaces it; cleared at session start and cancel.
+  private(set) var winningLearnAudio: LearnTakeAudio?
+
+  /// #3338 PR-4: which kernel decode produced the accepted transcript.
+  enum LearnWinningDecode: Sendable, Equatable {
+    case primary
+    case retry
+    case salvage
+  }
+
   /// Running total of stale-VAD-signal drops (PR-4.5 §8 telemetry surface
   /// for #2). A regression that stops stamping the seam shows up here as a
   /// sudden 100% drop rate. Never cleared.
@@ -1320,6 +1336,7 @@ final class RecordingSessionKernel {
   /// `delivering(.finalizing(_))` it is ignored — the safe point is inviolable
   /// (PR-1 §B.1.4 invariant 5); elsewhere ignored (#1548 D1).
   func cancel(origin: RecordingCancelOrigin = .systemOrFault) {
+    winningLearnAudio = nil
     // #2087: provenance is latched inside each accepting arm rather than at the
     // top, so acceptance is decided in one place. The recording-exit branch
     // later requires BOTH the frozen setting and `.user(.shortcut)`; latching
@@ -1789,6 +1806,10 @@ final class RecordingSessionKernel {
     // The adapter ran a session this run — the terminal applies the
     // model-unload policy exactly once (PR-4 plan §3.2).
     adapterDidBeginSession = true
+    // #3338 PR-4: learn evidence only from adapters that can name the exact input.
+    if let provider = adapter as? ASREngineLearnAudioEvidenceProviding {
+      provider.setLearnEvidencePolicy(learnEvidencePolicyProvider?())
+    }
 
     // Install the buffer callback BEFORE `beginCapturePhase()` — a direct
     // (non-XPC) capture source snapshots `onBufferCaptured` into the active
@@ -2689,6 +2710,7 @@ final class RecordingSessionKernel {
 
     switch outcome {
     case .transcript(let result):
+      captureWinningLearnAudio(.primary)
       // PR-5 Rung 5 Pass 2 #8 — `result.processingTime` is the adapter's
       // pure decode duration (started AFTER LID at
       // `WhisperKitEngineAdapter.swift:630`); `asrEnd - asrStart` would
@@ -3088,6 +3110,7 @@ final class RecordingSessionKernel {
       }
       switch retryOutcome {
       case .transcript(let retryResult):
+        captureWinningLearnAudio(.retry)
         telemetryState.asrRetryOutcome = .retrySucceeded
         // Every Phase-2 retry is batch-only by construction (§3.1's
         // `retryDecode` doc comment) — using `isStreamingSession` here would
@@ -4566,8 +4589,46 @@ final class RecordingSessionKernel {
     lastInputResolutionSource = audioCapture.currentInputResolutionSource
   }
 
+  /// #3338 PR-4: record the adapter's committed evidence as this take's learn audio.
+  /// Called the moment the kernel accepts a transcript, so the evidence is the
+  /// decode that produced it; anything else (no evidence, empty) leaves no record.
+  private func captureWinningLearnAudio(_ decode: LearnWinningDecode) {
+    let evidence = (adapter as? ASREngineLearnAudioEvidenceProviding)?.lastLearnEvidence
+    winningLearnAudio = evidence.flatMap {
+      Self.learnTakeAudio(from: $0, decode: decode, takeID: telemetryState.takeID)
+    }
+  }
+
+  /// #3338 PR-4: the Core record for a winning decode. Salvage decodes a lead-trimmed
+  /// slice of the kernel's ASR input; a retry decodes the kernel's own retry input.
+  nonisolated static func learnTakeAudio(
+    from evidence: LearnDecodeEvidence, decode: LearnWinningDecode, takeID: String?
+  ) -> LearnTakeAudio? {
+    guard let takeID else { return nil }
+    let path: LearnTakeDecodePath
+    let origin: LearnTakeSampleOrigin
+    switch (decode, evidence.attempt) {
+    case (.salvage, _):
+      path = .leadSalvage
+      origin = .leadTrimmedASRInput
+    case (.retry, _), (_, .retry):
+      path = .retry
+      origin = .kernelASRInput
+    case (.primary, .streamingRescue):
+      path = .streamingRescueBatch
+      origin = evidence.callerSupplied ? .kernelASRInput : .adapterRetainedPCM
+    case (.primary, .batch):
+      path = evidence.callerSupplied ? .conditionedBatch : .batch
+      origin = evidence.callerSupplied ? .kernelASRInput : .adapterRetainedPCM
+    }
+    return LearnTakeAudio(
+      takeID: takeID, samples: evidence.samples, decodePath: path, sampleOrigin: origin,
+      decodeLanguage: evidence.language, rawText: evidence.rawText, wordTimings: evidence.wordTimings)
+  }
+
   private func resetSessionState() {
     stopLatched = false
+    winningLearnAudio = nil
     cancelRequested = false
     // #2087: a stale origin must not leak into the next take, and the latch
     // must clear with it — otherwise the first session's provenance would win
@@ -4801,6 +4862,7 @@ final class RecordingSessionKernel {
       }
       switch retry {
       case .transcript(let result):
+        captureWinningLearnAudio(.salvage)
         log(
           "ASR empty salvage succeeded: trimMs=\(trim * 1000 / Int(AudioConstants.sampleRate)) "
             + "candidate=\(index + 1)/\(candidates.count) chars=\(result.text.count)")

@@ -11,15 +11,15 @@ struct LearnAudioContractTests {
 
   private final class Window: LearnPreparedWindowHandle {}
 
-  @Test("a streaming take keeps absent timings and an absent language option as nil")
-  func streamingKeepsAbsences() throws {
+  @Test("a take without timings or a language option keeps both as nil")
+  func absentTimingsAndLanguageStayNil() throws {
     let record = try #require(
       LearnTakeAudio(
-        takeID: "take-1", samples: [Float](repeating: 0.1, count: 32_000), decodePath: .streaming, sampleOrigin: .streamedBuffers,
+        takeID: "take-1", samples: [Float](repeating: 0.1, count: 32_000), decodePath: .streamingRescueBatch, sampleOrigin: .adapterRetainedPCM,
         decodeLanguage: nil, rawText: "send it to Elena", wordTimings: nil))
     #expect(record.wordTimings == nil)
     #expect(record.decodeLanguage == nil)
-    #expect(record.sampleOrigin == .streamedBuffers)
+    #expect(record.sampleOrigin == .adapterRetainedPCM)
     #expect(record.preparedWindows.isEmpty)
     #expect(record.durationMs == 2_000)
   }
