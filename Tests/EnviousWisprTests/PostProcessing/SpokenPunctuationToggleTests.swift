@@ -327,4 +327,58 @@ struct SpokenPunctuationToggleTests {
         == Self.itn.normalize("alpha comma beta", spokenPunctuation: false))
     #expect(Self.itn.normalize("alpha comma beta").contains("comma"))
   }
+
+  /// #3041: Parakeet writes a period after "New line" when it is its own phrase. That mark must not
+  /// survive as a second period on the previous sentence, and the line break must survive. The
+  /// expected strings are the one-breath outputs ("Hello there new line world is big").
+  @Test("A recogniser mark after a spoken line break is absorbed")
+  func markAfterLineBreakIsAbsorbed() {
+    let expected = Self.itn.normalize("Hello there. New line World is big.", spokenPunctuation: true)
+    #expect(expected == "Hello there. \n World is big.")
+    #expect(
+      Self.itn.normalize("Hello there. New line. World is big.", spokenPunctuation: true)
+        == expected)
+    #expect(
+      Self.itn.normalize("Hello there. New paragraph. World is big.", spokenPunctuation: true)
+        == "Hello there. \n\n World is big.")
+    #expect(
+      Self.itn.normalize("Hello there. New line, World is big.", spokenPunctuation: true)
+        == expected)
+    // A sentence end followed by a closing quote or bracket is still a sentence end (cloud review).
+    for closer in ["\u{201D}", "\"", "\u{2019}", ")", "]", "}", "\u{00BB}"] {
+      let oneBreath = Self.itn.normalize(
+        "He said Hello.\(closer) New line World is big.", spokenPunctuation: true)
+      #expect(oneBreath.contains("\n"), "closer \(closer): \(oneBreath.debugDescription)")
+      #expect(
+        Self.itn.normalize("He said Hello.\(closer) New line. World is big.", spokenPunctuation: true)
+          == oneBreath, "closer \(closer)")
+    }
+    // An ellipsis ends a sentence too.
+    #expect(
+      Self.itn.normalize("Wait\u{2026} New line. World is big.", spokenPunctuation: true)
+        == Self.itn.normalize("Wait\u{2026} New line World is big.", spokenPunctuation: true))
+    // Idempotent: the output of the fixed case normalizes to itself.
+    #expect(Self.itn.normalize(expected, spokenPunctuation: true) == expected)
+    // Mid-sentence "new line" is not its own phrase: the sentence's period stays
+    // (Codex review: "Add a new line." must not lose its period).
+    #expect(
+      Self.itn.normalize("Add a new line.", spokenPunctuation: true)
+        == Self.itn.normalize("Add a new line", spokenPunctuation: true) + ".")
+    // Setting OFF: the phrase is plain words, untouched.
+    #expect(
+      Self.itn.normalize("Hello there. New line. World is big.", spokenPunctuation: false)
+        == "Hello there. New line. World is big.")
+  }
+
+  /// #3041 controls: spoken punctuation that already came out right, and must keep doing so.
+  @Test("Marks and line breaks that already worked still work")
+  func punctuationControlsUnchanged() {
+    func on(_ s: String) -> String { Self.itn.normalize(s, spokenPunctuation: true) }
+    #expect(on("Hello there period World is big") == "Hello there. World is big")
+    #expect(on("alpha comma beta") == "alpha, beta")
+    #expect(on("Is it big question mark") == "Is it big?")
+    #expect(on("Hello there. new line World is big.") == "Hello there. \n World is big.")
+    #expect(on("Hello there. new paragraph World is big.") == "Hello there. \n\n World is big.")
+    #expect(on("I like apples. They are good.") == "I like apples. They are good.")
+  }
 }
