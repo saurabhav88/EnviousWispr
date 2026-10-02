@@ -579,7 +579,12 @@ enum ManifestFixture {
   // chunk-text assembly half of the fresh-state carry retired). Identical model bytes
   // (`identity.revision` unchanged) — the same re-admission-without-re-download case.
   // Regenerated with `scripts/regen-delivery-manifest-digest.py --write`, control OK.
-  static let goldenDigest = "2564836e6f6e1eaffda0485d2bef49cc9bbcfb654a49737ae820320a9d3bdcc6"
+  // Updated 2026-10-02 (#3338 PR-2): `runtimeABI` advanced to fork pin 38e8994b (phrase
+  // boost, prepared windows, window capture, exact BPE encoding; nil-boost decoding is
+  // identical to b29591ad on 47 real clips). Identical model bytes, the same
+  // re-admission-without-re-download case. Regenerated with
+  // `scripts/regen-delivery-manifest-digest.py --write`, control OK.
+  static let goldenDigest = "0d06d8a3ba7aa521863f241c9d88d978e07ae1773bc6692e1bccbb7c126c5f05"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)

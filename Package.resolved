@@ -1,5 +1,5 @@
 {
-  "originHash" : "5f9f57adfbd11d253dcb1ce85ccf7b4c2a7be7dac53a1f4a6ad7af7dfdd63f74",
+  "originHash" : "e06dc12de34c65dca9731bdd08c6a36407ae6d5e41c057687b7672c11e618983",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -15,7 +15,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/saurabhav88/FluidAudio.git",
       "state" : {
-        "revision" : "b29591ada1f70510c12c13b50ffae02052ff75c3"
+        "revision" : "38e8994b38af1a16786b9cdc4bc3476a81449c19"
       }
     },
     {

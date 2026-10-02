@@ -39,7 +39,7 @@ let package = Package(
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
     .package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
-      revision: "b29591ada1f70510c12c13b50ffae02052ff75c3"),
+      revision: "38e8994b38af1a16786b9cdc4bc3476a81449c19"),
     // #3242: the learned-word check for engines without their own (Kev, a Qwen3.5 decision model) runs on
     // MLX, through two forks each carrying the smallest change on top of upstream:
     // - mlx-swift-lm (upstream ee673d6): two access changes in Qwen35.swift so the final-norm hidden
