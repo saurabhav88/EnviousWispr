@@ -1,0 +1,292 @@
+{
+ "label": "supplement inputs, frozen before any expected ids were generated (2026-10-02, #3338)",
+ "cases": [
+  {
+   "text": "Müller",
+   "class": "accent-nfc",
+   "codepoints": [
+    "U+004D",
+    "U+00FC",
+    "U+006C",
+    "U+006C",
+    "U+0065",
+    "U+0072"
+   ]
+  },
+  {
+   "text": "Zoë",
+   "class": "accent-nfc",
+   "codepoints": [
+    "U+005A",
+    "U+006F",
+    "U+00EB"
+   ]
+  },
+  {
+   "text": "François",
+   "class": "accent-nfc",
+   "codepoints": [
+    "U+0046",
+    "U+0072",
+    "U+0061",
+    "U+006E",
+    "U+00E7",
+    "U+006F",
+    "U+0069",
+    "U+0073"
+   ]
+  },
+  {
+   "text": "Ángel",
+   "class": "accent-nfc",
+   "codepoints": [
+    "U+00C1",
+    "U+006E",
+    "U+0067",
+    "U+0065",
+    "U+006C"
+   ]
+  },
+  {
+   "text": "Łukasz",
+   "class": "accent-nfc",
+   "codepoints": [
+    "U+0141",
+    "U+0075",
+    "U+006B",
+    "U+0061",
+    "U+0073",
+    "U+007A"
+   ]
+  },
+  {
+   "text": "Øster",
+   "class": "accent-nfc",
+   "codepoints": [
+    "U+00D8",
+    "U+0073",
+    "U+0074",
+    "U+0065",
+    "U+0072"
+   ]
+  },
+  {
+   "text": "Dvořák",
+   "class": "accent-nfc",
+   "codepoints": [
+    "U+0044",
+    "U+0076",
+    "U+006F",
+    "U+0159",
+    "U+00E1",
+    "U+006B"
+   ]
+  },
+  {
+   "text": "Müller",
+   "class": "accent-nfd",
+   "codepoints": [
+    "U+004D",
+    "U+0075",
+    "U+0308",
+    "U+006C",
+    "U+006C",
+    "U+0065",
+    "U+0072"
+   ]
+  },
+  {
+   "text": "Dvořák",
+   "class": "accent-nfd",
+   "codepoints": [
+    "U+0044",
+    "U+0076",
+    "U+006F",
+    "U+0072",
+    "U+030C",
+    "U+0061",
+    "U+0301",
+    "U+006B"
+   ]
+  },
+  {
+   "text": "Москва",
+   "class": "cyrillic",
+   "codepoints": [
+    "U+041C",
+    "U+043E",
+    "U+0441",
+    "U+043A",
+    "U+0432",
+    "U+0430"
+   ]
+  },
+  {
+   "text": "Владимир",
+   "class": "cyrillic",
+   "codepoints": [
+    "U+0412",
+    "U+043B",
+    "U+0430",
+    "U+0434",
+    "U+0438",
+    "U+043C",
+    "U+0438",
+    "U+0440"
+   ]
+  },
+  {
+   "text": "Αθήνα",
+   "class": "greek",
+   "codepoints": [
+    "U+0391",
+    "U+03B8",
+    "U+03AE",
+    "U+03BD",
+    "U+03B1"
+   ]
+  },
+  {
+   "text": "Σωκράτης",
+   "class": "greek-final-sigma",
+   "codepoints": [
+    "U+03A3",
+    "U+03C9",
+    "U+03BA",
+    "U+03C1",
+    "U+03AC",
+    "U+03C4",
+    "U+03B7",
+    "U+03C2"
+   ]
+  },
+  {
+   "text": "O'Brien",
+   "class": "punctuation",
+   "codepoints": [
+    "U+004F",
+    "U+0027",
+    "U+0042",
+    "U+0072",
+    "U+0069",
+    "U+0065",
+    "U+006E"
+   ]
+  },
+  {
+   "text": "Jean-Luc",
+   "class": "punctuation",
+   "codepoints": [
+    "U+004A",
+    "U+0065",
+    "U+0061",
+    "U+006E",
+    "U+002D",
+    "U+004C",
+    "U+0075",
+    "U+0063"
+   ]
+  },
+  {
+   "text": "AT&T",
+   "class": "punctuation",
+   "codepoints": [
+    "U+0041",
+    "U+0054",
+    "U+0026",
+    "U+0054"
+   ]
+  },
+  {
+   "text": "co-op",
+   "class": "punctuation",
+   "codepoints": [
+    "U+0063",
+    "U+006F",
+    "U+002D",
+    "U+006F",
+    "U+0070"
+   ]
+  },
+  {
+   "text": "New York",
+   "class": "phrase",
+   "codepoints": [
+    "U+004E",
+    "U+0065",
+    "U+0077",
+    "U+0020",
+    "U+0059",
+    "U+006F",
+    "U+0072",
+    "U+006B"
+   ]
+  },
+  {
+   "text": "Envious Labs",
+   "class": "phrase",
+   "codepoints": [
+    "U+0045",
+    "U+006E",
+    "U+0076",
+    "U+0069",
+    "U+006F",
+    "U+0075",
+    "U+0073",
+    "U+0020",
+    "U+004C",
+    "U+0061",
+    "U+0062",
+    "U+0073"
+   ]
+  },
+  {
+   "text": "Ursula von der Leyen",
+   "class": "phrase",
+   "codepoints": [
+    "U+0055",
+    "U+0072",
+    "U+0073",
+    "U+0075",
+    "U+006C",
+    "U+0061",
+    "U+0020",
+    "U+0076",
+    "U+006F",
+    "U+006E",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0072",
+    "U+0020",
+    "U+004C",
+    "U+0065",
+    "U+0079",
+    "U+0065",
+    "U+006E"
+   ]
+  },
+  {
+   "text": "iPhone",
+   "class": "case",
+   "codepoints": [
+    "U+0069",
+    "U+0050",
+    "U+0068",
+    "U+006F",
+    "U+006E",
+    "U+0065"
+   ]
+  },
+  {
+   "text": "NASA",
+   "class": "case",
+   "codepoints": [
+    "U+004E",
+    "U+0041",
+    "U+0053",
+    "U+0041"
+   ]
+  }
+ ]
+}
