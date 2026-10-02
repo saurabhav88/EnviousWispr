@@ -54,10 +54,17 @@ struct CorrectionJudgeArmSelectionTests {
     #expect(select(26, loadedClassifier: classifierDigest, [classifier([27])]) == .unavailable(.noQualifiedArm))
     // Falls through to the older rungs when those are qualified.
     #expect(select(27, loadedClassifier: nil, [classifier([27]), afm([27])]) == .arm(.afm))
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, qualified: [afm([27])]) == false)
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: "other", qualified: [classifier([27])]) == false)
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: nil, qualified: [classifier([27])]) == false)
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, qualified: [classifier([27])]) == true)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 27, qualified: [afm([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: "other", osMajor: 27, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: nil, osMajor: 27, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 27, qualified: [classifier([27])]) == true)
+    // #3092: the download gate follows the Mac's own major, as `select` does. A receipt for 27 alone
+    // must not start the download on 26 or 14, and a major with its own receipt still downloads.
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 26, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 14, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 26, qualified: [classifier([27]), classifier([26])]) == true)
+    // A future major without its own receipt downloads nothing (the quiet case this fix is for).
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 28) == false)
   }
 
   @Test("below the AFM floor, qualified rules serve")
