@@ -119,7 +119,7 @@ struct SettingsRowIcon: View {
 /// title (`SettingsInfoButton`) rather than always rendering underneath it —
 /// freeing the row down to one line so the control reads as the main event
 /// (founder, 2026-09-16: "so much more space, make everything look nicer").
-struct SettingsControlRow<Control: View>: View {
+struct SettingsRow<Control: View>: View {
   let icon: String
   let title: String
   let description: String

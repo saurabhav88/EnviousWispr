@@ -73,7 +73,7 @@ struct AudioSettingsView: View {
             // it and binds the physical device instead. The status pill beside this copy
             // already names the device actually opened, so leaving the promise unqualified
             // made the card contradict itself on exactly the machines the divert exists for.
-            SettingsControlRow(
+            SettingsRow(
               icon: "waveform",
               title: String(localized: "Input device", comment: "Microphone settings: row title."),
               description: String(
@@ -159,7 +159,7 @@ struct AudioSettingsView: View {
 
         BrandedRow(showDivider: false) {
           VStack(alignment: .leading, spacing: 8) {
-            SettingsControlRow(
+            SettingsRow(
               icon: "timer",
               title: String(
                 localized: "Microphone readiness", comment: "Microphone settings: row title."),

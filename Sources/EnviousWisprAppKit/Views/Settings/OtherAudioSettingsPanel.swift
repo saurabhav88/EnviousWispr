@@ -32,7 +32,7 @@ struct OtherAudioSettingsPanel: View {
   var body: some View {
     @Bindable var settings = settings
     VStack(alignment: .leading, spacing: 8) {
-      SettingsControlRow(
+      SettingsRow(
         icon: "speaker.wave.2.fill",
         title: String(
           localized: "Media during dictation",
