@@ -229,6 +229,9 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// (PR-4.5 #5) — lets seam tests assert the kernel passes conditioned
   /// audio through instead of `nil`.
   private(set) var lastFinalizeBatchSamples: [Float]? = nil
+  /// #3338 PR-4: scripted learn evidence (see the extension at the end of the file).
+  var learnEvidenceForTesting: LearnDecodeEvidence?
+  private(set) var learnEvidencePolicyForTesting: LearnEvidencePolicy?
   private(set) var cancelCallCount = 0
   /// #959: counts `recoverFromWedge()` calls so seam tests can assert ordinary
   /// terminals route through cheap `cancel()` while only the wedge detectors
@@ -688,4 +691,14 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     ASRResult(
       text: text, language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
   }
+}
+
+// #3338 PR-4: lets kernel scenarios script the evidence the adapter would have
+// committed, so they can observe when the kernel captures and drops it. Unset
+// (the default for every other scenario) means no evidence, as for WhisperKit.
+extension FakeEngine: ASREngineLearnAudioEvidenceProviding {
+  func setLearnEvidencePolicy(_ policy: LearnEvidencePolicy?) {
+    learnEvidencePolicyForTesting = policy
+  }
+  var lastLearnEvidence: LearnDecodeEvidence? { learnEvidenceForTesting }
 }

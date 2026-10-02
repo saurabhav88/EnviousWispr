@@ -1318,6 +1318,9 @@ final class RecordingSessionKernel {
   /// arm of `cancel(origin:)` rather than at its top, so acceptance is decided
   /// in exactly one place and cannot drift from a second copy of the rules.
   private func latchCancelOrigin(_ origin: RecordingCancelOrigin, at now: Date = Date()) {
+    // #3338 PR-4: only an ACCEPTED cancel drops the take's learn audio; a cancel the
+    // finalizing safe point ignores leaves the accepted transcript's evidence intact.
+    winningLearnAudio = nil
     guard !cancelOriginLatched else { return }
     cancelOriginLatched = true
     lastCancelOrigin = origin
@@ -1336,7 +1339,6 @@ final class RecordingSessionKernel {
   /// `delivering(.finalizing(_))` it is ignored — the safe point is inviolable
   /// (PR-1 §B.1.4 invariant 5); elsewhere ignored (#1548 D1).
   func cancel(origin: RecordingCancelOrigin = .systemOrFault) {
-    winningLearnAudio = nil
     // #2087: provenance is latched inside each accepting arm rather than at the
     // top, so acceptance is decided in one place. The recording-exit branch
     // later requires BOTH the frozen setting and `.user(.shortcut)`; latching

@@ -281,4 +281,118 @@ struct LearnWinningDecodeEvidenceTests {
       wordTimings: nil)
     #expect(RecordingSessionKernel.learnTakeAudio(from: e, decode: .primary, takeID: nil) == nil)
   }
+
+  // MARK: Kernel: capture at the accepted transcript, drop only on an accepted cancel
+
+  private struct KernelContext {
+    let wrapper: KernelRecordingSession
+    let engine: FakeEngine
+    let capture: FakeAudioCapture
+    let vad: FakeVADSignalSource
+  }
+
+  private func kernelContext(_ evidence: LearnDecodeEvidence?) -> KernelContext {
+    let clock = FakeClock()
+    let engine = FakeEngine(behavior: .batchSuccess(text: "Kubernetes now"), clock: clock)
+    engine.learnEvidenceForTesting = evidence
+    let capture = FakeAudioCapture()
+    let vad = FakeVADSignalSource()
+    let wrapper = KernelRecordingSession(
+      engine: engine, capture: capture, vad: vad, clock: clock, paste: FakePasteTarget())
+    return KernelContext(wrapper: wrapper, engine: engine, capture: capture, vad: vad)
+  }
+
+  private func startVoicedAndStop(_ ctx: KernelContext) async {
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    ctx.capture.deliverBuffer(frameCount: 48000, amplitude: 0.25)
+    ctx.vad.evidence = .voiced
+    ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 48000)]
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.stop)
+  }
+
+  private var scripted: LearnDecodeEvidence {
+    LearnDecodeEvidence(
+      samples: [0.25, -0.5], attempt: .batch, callerSupplied: true, language: "de",
+      rawText: "Kubernetes now", wordTimings: nil)
+  }
+
+  @Test("the kernel records the accepted primary transcript's evidence under the take id")
+  func kernelCapturesPrimary() async throws {
+    let ctx = kernelContext(scripted)
+    await startVoicedAndStop(ctx)
+    await ctx.wrapper.drainUntilConcluded()
+    let record = try #require(ctx.wrapper.testKernel.winningLearnAudio)
+    #expect(record.decodePath == .conditionedBatch)
+    #expect(record.sampleOrigin == .kernelASRInput)
+    #expect(record.samples.map(\.bitPattern) == scripted.samples.map(\.bitPattern))
+    #expect(!record.takeID.isEmpty)
+    #expect(ctx.engine.learnEvidencePolicyForTesting == nil, "no provider wired: the session's policy is nil")
+  }
+
+  @Test("an adapter with no evidence leaves the kernel with no record")
+  func kernelNoEvidence() async {
+    let ctx = kernelContext(nil)
+    await startVoicedAndStop(ctx)
+    await ctx.wrapper.drainUntilConcluded()
+    #expect(ctx.wrapper.testKernel.winningLearnAudio == nil)
+  }
+
+  @Test("a cancel the finalizing safe point ignores keeps the accepted transcript's evidence")
+  func ignoredCancelKeepsEvidence() async throws {
+    let ctx = kernelContext(scripted)
+    let gate = AsyncGate()
+    ctx.wrapper.setProcessTextGateForTesting { await gate.wait() }
+    await startVoicedAndStop(ctx)
+    await gate.waitUntilEntered()
+    #expect(ctx.wrapper.testKernel.winningLearnAudio != nil, "captured before finalizing")
+    await ctx.wrapper.apply(.cancel)
+    #expect(ctx.wrapper.testKernel.winningLearnAudio != nil, "the ignored cancel must not drop it")
+    gate.open()
+    await ctx.wrapper.drainUntilConcluded()
+    #expect(ctx.wrapper.testKernel.winningLearnAudio != nil)
+  }
+
+  @Test("the next session starts with no record")
+  func nextSessionClears() async {
+    let ctx = kernelContext(scripted)
+    await startVoicedAndStop(ctx)
+    await ctx.wrapper.drainUntilConcluded()
+    #expect(ctx.wrapper.testKernel.winningLearnAudio != nil)
+    ctx.engine.learnEvidenceForTesting = nil
+    await ctx.wrapper.apply(.reset)
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    #expect(ctx.wrapper.testKernel.winningLearnAudio == nil)
+  }
+}
+
+/// One-shot gate for holding the kernel inside `processText`.
+@MainActor
+private final class AsyncGate {
+  private var waiter: CheckedContinuation<Void, Never>?
+  private var entered: CheckedContinuation<Void, Never>?
+  private var isOpen = false
+  private var hasEntered = false
+
+  func wait() async {
+    hasEntered = true
+    entered?.resume()
+    entered = nil
+    if isOpen { return }
+    await withCheckedContinuation { waiter = $0 }
+  }
+
+  func waitUntilEntered() async {
+    if hasEntered { return }
+    await withCheckedContinuation { entered = $0 }
+  }
+
+  func open() {
+    isOpen = true
+    waiter?.resume()
+    waiter = nil
+  }
 }

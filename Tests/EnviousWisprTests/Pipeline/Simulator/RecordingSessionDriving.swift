@@ -152,6 +152,9 @@ final class LimbInjectionBox {
   /// for a text-processing step failing outright while valid raw ASR exists,
   /// driving `runFinalizing`'s catch.
   var processTextThrows = false
+  /// #3338 PR-4: when set, the harness `processText` awaits it first, so a test can
+  /// hold the kernel inside `.delivering(.finalizing)` and act there.
+  var processTextGate: (@MainActor () async -> Void)?
 }
 
 /// #1755 chunk 2: records every text the kernel's `store` seam receives, in
@@ -199,6 +202,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// The wrapped kernel — exposed only so the direct FSM-invariant tests can
   /// inspect kernel internals (`RecordingSessionKernelTests`).
   var testKernel: RecordingSessionKernel { kernel }
+  /// #3338 PR-4: hold the harness `processText` (see `LimbInjectionBox.processTextGate`).
+  func setProcessTextGateForTesting(_ gate: (@MainActor () async -> Void)?) {
+    limb.processTextGate = gate
+  }
 
   /// #2087: the config `.start` freezes, and the cancel origin `.cancel` sends.
   ///
@@ -324,6 +331,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         // path's guaranteed floor (PR-1 §B.5). The seam is exercised either
         // way so the kernel's polish-signal observation point is covered.
         onPolishStarted()
+        if let gate = limb.processTextGate { await gate() }
         _ = limb.degradeToRaw
         if limb.processTextThrows { throw KernelLimbError.emptyAfterProcessing }
         if limb.forceEmptyAfterProcessing { return "" }
