@@ -397,12 +397,16 @@ struct FeedbackSenderTests {
   @Test("Every attempt from the stored record carries the same tags")
   func usageLinkStableAcrossAttempts() throws {
     let original = Self.record(helpOutcome: Self.helpOutcome, usageLinkID: Self.savedID)
-    let stored = try JSONDecoder().decode(
-      FeedbackRecord.self, from: try JSONEncoder().encode(original))
-    let first = try #require(Self.tags(stored))
-    #expect(Self.tags(stored) == first)
-    #expect(first == Self.tags(original))
-    #expect(first["analytics.distinct_id"] == Self.savedID)
+    let expected = try #require(Self.tags(original))
+    #expect(expected["analytics.distinct_id"] == Self.savedID)
+
+    for attempts in [0, 1, 2] {
+      var record = original
+      record.attempts = attempts
+      let stored = try JSONDecoder().decode(
+        FeedbackRecord.self, from: JSONEncoder().encode(record))
+      #expect(Self.tags(stored) == expected, "attempt \(attempts)")
+    }
   }
 
   // MARK: - Answers
