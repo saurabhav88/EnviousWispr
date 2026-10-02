@@ -93,12 +93,12 @@ struct RecordingPillAppearancePanel: View {
         // because it is answering a question nobody else has asked.
         if Self.selected(in: model).canHoldWords {
           Button {
-            navigate(.livePreview)
+            navigate(.dictation(.livePreview))
           } label: {
             Text("Configure Live Preview")
           }
           .buttonStyle(.link)
-          .accessibilityHint("Opens the Live Preview settings page")
+          .accessibilityHint("Opens Dictation Settings, Live Preview.")
         }
       }
     }

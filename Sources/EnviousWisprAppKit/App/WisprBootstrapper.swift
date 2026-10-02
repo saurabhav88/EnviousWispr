@@ -1588,7 +1588,7 @@ package final class WisprBootstrapper {
         addSelectedWord: { quickAdd.beginFromMenuBar(selection: $0, context: $1) },
         continueOnboarding: { appWindowCoordinator.openOnboardingWindow() },
         openSettings: {
-          navigationCoordinator.request(.speechEngine)
+          navigationCoordinator.request(.dictation(.engine))
           appWindowCoordinator.showWindow()
         },
         openTranscribeFile: {

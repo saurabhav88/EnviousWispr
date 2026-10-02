@@ -12,7 +12,9 @@ struct UnifiedWindowView: View {
   /// including preparation. Stop clears the dot immediately; the physical engine release may
   /// finish later, and `isEngineHeld` is what protects the resource until it does.
   @Environment(FileImportCoordinator.self) private var fileImportCoordinator
-  @State private var selectedSection: SettingsSection = .history
+  /// The page and the Dictation tab on screen (#3385). One value, for the
+  /// window's life only; see `SettingsNavigationState`.
+  @State private var navigationState = SettingsNavigationState()
 
   /// Owned HERE so a language download survives the user navigating to another section: this view
   /// is retained, the pages inside `detailContent` are not. See
@@ -94,9 +96,11 @@ struct UnifiedWindowView: View {
       }
     }
     .tint(.stAccentSolid)
-    .onChange(of: navigationCoordinator.pendingSection) { _, newSection in
-      if let section = newSection {
-        selectedSection = section
+    // `initial: true`: a request made before this window existed (the menu's
+    // Settings item opens the window and asks in the same breath) still lands.
+    .onChange(of: navigationCoordinator.pendingDestination, initial: true) { _, destination in
+      if let destination {
+        navigationState.apply(destination)
         navigationCoordinator.consume()
       }
     }
@@ -202,7 +206,7 @@ struct UnifiedWindowView: View {
 
   @ViewBuilder
   private var detailContent: some View {
-    switch selectedSection {
+    switch navigationState.selectedPage {
     case .history:
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
@@ -210,16 +214,12 @@ struct UnifiedWindowView: View {
       page(.whatsNew) { WhatsNewSettingsView() }
     case .appearance:
       page(.appearance) { AppearanceSettingsView() }
-    case .speechEngine:
-      page(.speechEngine) { SpeechEngineSettingsView() }
+    case .dictation:
+      page(.dictation) {
+        DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
+      }
     case .transcribeFile:
       page(.transcribeFile) { TranscribeFileView() }
-    case .livePreview:
-      page(.livePreview) { LivePreviewSettingsView(packs: livePreviewPacks) }
-    case .audio:
-      page(.audio) { AudioSettingsView() }
-    case .recordingSounds:
-      page(.recordingSounds) { RecordingSoundsSettingsView() }
     case .keybinds:
       page(.keybinds) { KeybindsSettingsView() }
     case .aiPolish:
@@ -228,8 +228,6 @@ struct UnifiedWindowView: View {
       page(.wordCorrection) { YourWordsView() }
     case .snippets:
       page(.snippets) { SnippetsView() }
-    case .clipboard:
-      page(.clipboard) { ClipboardSettingsView() }
     case .permissions:
       page(.permissions) { PermissionsSettingsView() }
     case .checkForUpdates:
@@ -247,7 +245,7 @@ struct UnifiedWindowView: View {
 
   /// One sidebar row. `checkForUpdates` fires its action and never selects
   /// (#958); `whatsNew` carries the animated unread glyph; everything else is a
-  /// standard nav row that sets `selectedSection`.
+  /// standard nav row that selects its page through `navigationState`.
   @ViewBuilder
   private func sidebarRow(_ section: SettingsSection) -> some View {
     if section == .checkForUpdates {
@@ -259,16 +257,16 @@ struct UnifiedWindowView: View {
         updateCoordinatorHolder.coordinator?.checkForUpdatesFromSettings()
       }
     } else if section == .whatsNew {
-      let selected = selectedSection == section
+      let selected = navigationState.selectedPage == section
       SidebarNavRow(label: section.label, isSelected: selected) {
         WhatsNewSidebarGlyph(
           isUnread: settings.hasUnreadWhatsNew,
           restColor: selected ? .white : .stAccent)
       } action: {
-        selectedSection = section
+        navigationState.selectSidebar(section)
       }
     } else {
-      let selected = selectedSection == section
+      let selected = navigationState.selectedPage == section
       SidebarNavRow(
         label: section.label, isSelected: selected,
         showsBadge: sectionShowsActivityBadge(section)
@@ -277,7 +275,7 @@ struct UnifiedWindowView: View {
           .font(.system(size: 15, weight: .medium))
           .foregroundStyle(selected ? .white : .stAccent)
       } action: {
-        selectedSection = section
+        navigationState.selectSidebar(section)
       }
     }
   }
@@ -329,9 +327,9 @@ struct UnifiedWindowView: View {
   ) -> some View {
     content()
       .environment(\.settingsPageSection, section)
-      // The only place `selectedSection` is in scope, so the only place this can
+      // The only place `navigationState` is in scope, so the only place this can
       // be supplied without threading a binding through every page.
-      .environment(\.settingsNavigate) { selectedSection = $0 }
+      .environment(\.settingsNavigate) { navigationState.apply($0) }
   }
 }
 

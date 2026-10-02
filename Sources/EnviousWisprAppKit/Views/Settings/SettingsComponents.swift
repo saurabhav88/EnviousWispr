@@ -379,6 +379,111 @@ extension SettingsSectionHeading where Trailing == EmptyView {
   }
 }
 
+// MARK: - Tab strip
+
+/// One tab in a `SettingsTabStrip`: a stable identity, a decorative glyph and
+/// a translated name.
+struct SettingsTabItem<Tab: Hashable>: Identifiable {
+  let id: Tab
+  let icon: String
+  let label: LocalizedStringResource
+}
+
+/// The row of tabs across the top of a tabbed Settings page (#3385): icon and
+/// name per tab, an accent underline under the chosen one. Names never shrink
+/// or truncate; when they do not all fit (German at the 750pt minimum window)
+/// the row scrolls sideways, and the chosen tab, or the tab keyboard focus
+/// lands on, is scrolled into view.
+struct SettingsTabStrip<Tab: Hashable>: View {
+  let items: [SettingsTabItem<Tab>]
+  @Binding var selection: Tab
+  @FocusState private var focusedTab: Tab?
+
+  var body: some View {
+    ScrollViewReader { proxy in
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 2) {
+          ForEach(items) { item in
+            SettingsTabButton(item: item, isSelected: item.id == selection) {
+              selection = item.id
+            }
+            .focused($focusedTab, equals: item.id)
+            .id(item.id)
+          }
+        }
+        .padding(.horizontal, 4)
+      }
+      // One row tall whatever the page below offers: a horizontal ScrollView
+      // is flexible on both axes and would otherwise share the page's height.
+      .fixedSize(horizontal: false, vertical: true)
+      // Scrolling happens only in lifecycle and change handlers, never while
+      // the view is being built.
+      .task { proxy.scrollTo(selection) }
+      .onChange(of: selection) { _, tab in
+        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(tab) }
+      }
+      .onChange(of: focusedTab) { _, tab in
+        guard let tab else { return }
+        proxy.scrollTo(tab)
+      }
+      // A narrower window can hide the chosen tab; bring it back.
+      .background(
+        GeometryReader { geometry in
+          Color.clear.onChange(of: geometry.size.width) { _, _ in
+            proxy.scrollTo(selection)
+          }
+        }
+      )
+    }
+    .overlay(alignment: .bottom) {
+      Rectangle()
+        .fill(Color.stDivider)
+        .frame(height: 1)
+        .allowsHitTesting(false)
+    }
+  }
+}
+
+/// One tab: a real button, so keyboard and VoiceOver users reach it, whose
+/// spoken value says whether it is the chosen tab.
+private struct SettingsTabButton<Tab: Hashable>: View {
+  let item: SettingsTabItem<Tab>
+  let isSelected: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 7) {
+        Image(systemName: item.icon)
+          .font(.system(size: 14, weight: .medium))
+          .accessibilityHidden(true)
+        Text(item.label)
+          .font(.stRowLabel)
+          .fixedSize()
+      }
+      .foregroundStyle(isSelected ? Color.stAccent : Color.stTextBody)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 10)
+      .settingsHoverRow(cornerRadius: 8)
+      .contentShape(Rectangle())
+      .overlay(alignment: .bottom) {
+        if isSelected {
+          Capsule()
+            .fill(Color.stAccent)
+            .frame(height: 2.5)
+            .padding(.horizontal, 6)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(String(localized: item.label))
+    .accessibilityValue(isSelected ? SettingsCopy.selectedValue : SettingsCopy.notSelectedValue)
+    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+  }
+}
+
 // MARK: - Settings Content Container
 
 /// Replaces `Form { }.formStyle(.grouped)` with a branded ScrollView layout.
@@ -623,6 +728,10 @@ enum SettingsCopy {
   /// shipped language, reading the translation from the app's own bundle (#3142 5D).
   static let selectedValue = String(
     localized: "Selected", comment: "VoiceOver: the value spoken for the chosen card or option.")
+  /// The value of an option that is not chosen. Same key and comment as the Dictionary tabs'
+  /// existing use, so both read one catalog entry.
+  static let notSelectedValue = String(
+    localized: "Not selected", comment: "VoiceOver: the value of an option that is not chosen.")
   static let frozenPerRecording = String(
     localized: "Changes made during a recording apply to the next recording.",
     comment: "Settings: notice that a change made while recording takes effect next time.")

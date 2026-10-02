@@ -16,16 +16,12 @@ struct SettingsShellEnglishTests {
     #expect(SettingsSection.history.label == "History")
     #expect(SettingsSection.whatsNew.label == "What's New")
     #expect(SettingsSection.appearance.label == "Appearance")
-    #expect(SettingsSection.speechEngine.label == "Transcription")
+    #expect(SettingsSection.dictation.label == "Dictation Settings")
     #expect(SettingsSection.transcribeFile.label == "Transcribe a File")
-    #expect(SettingsSection.livePreview.label == "Live Preview")
-    #expect(SettingsSection.audio.label == "Microphone")
-    #expect(SettingsSection.recordingSounds.label == "Sounds")
     #expect(SettingsSection.keybinds.label == "Keybinds")
     #expect(SettingsSection.aiPolish.label == "AI Polish")
     #expect(SettingsSection.wordCorrection.label == "Dictionary")
     #expect(SettingsSection.snippets.label == "Snippets")
-    #expect(SettingsSection.clipboard.label == "Clipboard")
     #expect(SettingsSection.permissions.label == "Permissions")
     #expect(SettingsSection.checkForUpdates.label == "Check for Updates")
     #expect(SettingsSection.openSourceLicenses.label == "Open Source Licenses")
@@ -36,18 +32,11 @@ struct SettingsShellEnglishTests {
     #expect(
       SettingsSection.appearance.subtitle
         == "How the app looks, and the pill you see while dictating.")
-    #expect(
-      SettingsSection.speechEngine.subtitle == "The speech engine that turns your voice into text.")
+    // #3385: the tabs introduce the page; no header paragraph.
+    #expect(SettingsSection.dictation.subtitle == "")
     #expect(
       SettingsSection.transcribeFile.subtitle
         == "Turn a recording you already have into clean text.")
-    #expect(
-      SettingsSection.livePreview.subtitle
-        == "See your words on screen while you are still speaking.")
-    #expect(SettingsSection.audio.subtitle == "Choose your input source and readiness behavior.")
-    #expect(
-      SettingsSection.recordingSounds.subtitle
-        == "Play a short sound when recording starts and stops.")
     #expect(
       SettingsSection.keybinds.subtitle
         == "Set the keybinds that start, stop, and cancel dictation.")
@@ -59,17 +48,25 @@ struct SettingsShellEnglishTests {
       SettingsSection.snippets.subtitle
         == "Say your keyword, then a snippet. The saved text lands for you.")
     #expect(
-      SettingsSection.clipboard.subtitle
-        == "How your dictation reaches the clipboard and the app you're in.")
-    #expect(
       SettingsSection.permissions.subtitle
         == "Manage app permissions and privacy settings.")
     #expect(SettingsSection.checkForUpdates.subtitle == "")
     #expect(
       SettingsSection.openSourceLicenses.subtitle
         == "EnviousWispr is GPLv3 open source. The license and third-party notices.")
-    #expect(SettingsSection.checkForUpdates.subtitle == "")
+    #expect(SettingsGroup.allCases.map(\.rawValue) == ["APP", "RECORD", "PROCESS", "SYSTEM"])
     #expect(SettingsGroup.allCases.map(\.heading) == SettingsGroup.allCases.map(\.rawValue))
+    #expect(SettingsGroup.record.sections == [.dictation, .keybinds, .transcribeFile])
+  }
+
+  /// #3385: the six Dictation Settings tabs, in order, with the founder's 2026-10-02 names.
+  @Test("the Dictation Settings tabs keep their names and order")
+  func dictationTabs() {
+    #expect(
+      DictationTab.allCases.map { String(localized: $0.label) } == [
+        "Engine", "Microphone & Media", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
+      ])
+    #expect(SettingsCopy.notSelectedValue == "Not selected")
   }
 
   @Test("the shared notices and the spoken selected value keep their English")

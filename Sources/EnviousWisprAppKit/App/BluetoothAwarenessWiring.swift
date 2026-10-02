@@ -54,7 +54,7 @@ extension BluetoothAwarenessPresenter {
       onboardingCompleted: { [weak settings] in settings?.onboardingState == .completed },
       tipsEnabled: { [weak settings] in settings?.showBluetoothTips ?? false },
       openMicrophoneSettings: { [weak navigationCoordinator, weak appWindowCoordinator] in
-        navigationCoordinator?.request(.audio)
+        navigationCoordinator?.request(.dictation(.microphone))
         appWindowCoordinator?.showWindow()
       },
       emit: { action, reason in
