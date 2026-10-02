@@ -58,8 +58,9 @@ public struct FeedbackDraft: Equatable, Sendable {
 /// on its own, independent of both privacy switches (founder, 2026-09-28: bug reports are their
 /// own lane). The report is frozen here: the message, the optional email, basic app and macOS
 /// versions, and the diagnostics file only when the user ticked "Include diagnostics", exactly as
-/// previewed. It carries no Sentry scope: no user id, tags, breadcrumbs or install join outside
-/// that file.
+/// previewed. It carries no Sentry scope: no user id, breadcrumbs or scope tags. Its one
+/// identity is the usage-link id decided at Send (`usageLinkID`, #3382), carried as the
+/// `analytics.distinct_id` tag.
 public enum FeedbackReporter {
   public enum Outcome: Equatable, Sendable {
     /// Saved on this Mac for delivery. `offline` is true when there was no network at Send.
@@ -71,32 +72,51 @@ public enum FeedbackReporter {
     case unavailable
   }
 
-  /// Saves the report. `diagnostics` is the file the user previewed and chose to include; nil
-  /// saves the message alone. `helpOutcome` is what the in-app help check did (#3275), frozen with
-  /// the report; nil when no check ran.
+  /// Saves the report. `diagnostics` is the file the user previewed and chose to include;
+  /// nil means no attachment. A report without diagnostics may still carry a usage-link id.
+  /// `helpOutcome` is what the in-app help check did (#3275), frozen with the report;
+  /// nil when no check ran. `usageMetrics` is the "Share usage metrics" switch as read
+  /// with the diagnostics decision at Send (#3382).
   public static func send(
     _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot? = nil,
-    helpOutcome: FeedbackHelpOutcome? = nil
+    helpOutcome: FeedbackHelpOutcome? = nil, usageMetrics: Bool
   ) async -> Outcome {
     await send(
       draft, diagnostics: diagnostics, helpOutcome: helpOutcome, outbox: .shared, now: Date(),
-      id: UUID())
+      id: UUID(), usageMetrics: usageMetrics, savedID: ObservabilityBootstrap.savedPostHogID())
   }
 
   static func send(
     _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
     helpOutcome: FeedbackHelpOutcome? = nil, outbox: FeedbackOutbox, now: Date, id: UUID,
-    context: FeedbackRecord.Context = .current
+    context: FeedbackRecord.Context = .current, usageMetrics: Bool = false, savedID: String? = nil
   ) async -> Outcome {
     let record = FeedbackRecord(
       id: id, submittedAt: now, message: draft.message, email: draft.email,
       attachment: diagnostics?.data, context: context, attempts: 0, nextAttemptAt: nil,
-      state: .pending, rejectedStatus: nil, helpOutcome: helpOutcome)
+      state: .pending, rejectedStatus: nil, helpOutcome: helpOutcome,
+      usageLinkID: usageLinkID(
+        diagnostics: diagnostics, usageMetrics: usageMetrics, savedID: savedID))
     switch await outbox.enqueue(record) {
     case .saved(let offline): return .saved(offline: offline)
     case .full: return .full
     case .unavailable: return .unavailable
     }
+  }
+
+  /// The id a report carries as its `analytics.distinct_id` tag, decided once at Send (founder,
+  /// 2026-10-02, #3382). A valid id inside the attached diagnostics file comes first, in either
+  /// switch state: the user chose to share that file. Otherwise the saved PostHog id, only when
+  /// usage metrics were on at Send, because that user already shares it with every usage event.
+  /// Otherwise none: metrics off and no file with an id means no id.
+  static func usageLinkID(
+    diagnostics: FeedbackDiagnosticsSnapshot?, usageMetrics: Bool, savedID: String?
+  ) -> String? {
+    if let fileID = diagnostics.flatMap({ FeedbackDiagnosticsSnapshot.joinKey(in: $0.data) }) {
+      return fileID
+    }
+    guard usageMetrics else { return nil }
+    return savedID.flatMap(ObservabilityBootstrap.canonicalAnonymousPostHogID)
   }
 
   /// Launch: start delivering saved reports and watching the network. Whatever the privacy

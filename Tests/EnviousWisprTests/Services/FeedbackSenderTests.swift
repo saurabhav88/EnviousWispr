@@ -15,13 +15,13 @@ struct FeedbackSenderTests {
 
   static func record(
     message: String = "hi", email: String? = nil, attachment: Data? = nil,
-    helpOutcome: FeedbackHelpOutcome? = nil
+    helpOutcome: FeedbackHelpOutcome? = nil, usageLinkID: String? = nil
   ) -> FeedbackRecord {
     FeedbackRecord(
       id: UUID(uuidString: "5D1E6A2B-9C3F-4E7A-8B10-2F4C6D8E0A1B")!,
       submittedAt: Date(timeIntervalSince1970: 1_790_000_000), message: message, email: email,
       attachment: attachment, context: context, attempts: 0, nextAttemptAt: nil, state: .pending,
-      rejectedStatus: nil, helpOutcome: helpOutcome)
+      rejectedStatus: nil, helpOutcome: helpOutcome, usageLinkID: usageLinkID)
   }
 
   /// A help-check outcome (#3275) with one of each match kind and resolution.
@@ -71,7 +71,7 @@ struct FeedbackSenderTests {
 
   // MARK: - Envelope
 
-  @Test("Unticked: one feedback item with level error, the words, email and versions only")
+  @Test("Without diagnostics, help metadata or a usage-link id: words, email and versions only")
   func envelopeWithoutAttachment() throws {
     let dsn = try #require(FeedbackDSN(Self.dsnString))
     let data = FeedbackSender.envelope(
@@ -101,7 +101,7 @@ struct FeedbackSenderTests {
     #expect(feedback["message"] as? String == "Zeile 1\nÜmlaut 🙂")
     #expect(feedback["contact_email"] as? String == "a@b.de")
     #expect(Set(contexts.keys) == ["feedback", "app", "os"])
-    // Nothing from the telemetry lane rides along.
+    // This record has no help metadata or usage-link id, so it carries no tags.
     #expect(
       Set(payload.keys) == [
         "event_id", "type", "timestamp", "platform", "level", "release", "environment", "sdk",
@@ -299,6 +299,114 @@ struct FeedbackSenderTests {
     #expect(attachmentHeader?["filename"] as? String == "enviouswispr-diagnostics.json")
     #expect(attachmentHeader?["content_type"] as? String == "application/json")
     #expect(attachmentHeader?["length"] as? Int == bytes.count)
+  }
+
+  // MARK: - Usage-link tag (#3382)
+
+  static let fileID = FeedbackDiagnosticsSnapshotTests.joinKey
+  static let savedID = "11111111-2222-4333-8444-aabbccddeeff"
+
+  /// The id inside a diagnostics file, read with `JSONSerialization` rather than the reader under
+  /// test, so the expectation does not share its decoder.
+  static func idInFile(_ data: Data) throws -> String? {
+    let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    return object["analytics_distinct_id"] as? String
+  }
+
+  static func tags(_ record: FeedbackRecord) -> [String: String]? {
+    FeedbackSender.feedbackPayload(for: record)["tags"] as? [String: String]
+  }
+
+  @Test("The frozen id becomes the analytics.distinct_id tag, alone when there is no help outcome")
+  func usageLinkTag() {
+    #expect(Self.tags(Self.record(usageLinkID: Self.savedID)) == ["analytics.distinct_id": Self.savedID])
+    #expect(FeedbackSender.feedbackPayload(for: Self.record())["tags"] == nil)
+  }
+
+  @Test("A record queued before the field existed takes the id inside its attachment")
+  func legacyAttachmentFallback() throws {
+    let file = try #require(
+      FeedbackDiagnosticsSnapshot.make(
+        diarySnapshot: FeedbackDiagnosticsSnapshotTests.diary, joinKey: Self.fileID))
+    let expected = try #require(try Self.idInFile(file.data))
+    #expect(Self.tags(Self.record(attachment: file.data)) == ["analytics.distinct_id": expected])
+    // The frozen field wins when both exist.
+    #expect(
+      Self.tags(Self.record(attachment: file.data, usageLinkID: Self.savedID))
+        == ["analytics.distinct_id": Self.savedID])
+    // A file without an id, or bytes that are not a file, give no tag; the envelope still builds.
+    let noID = try #require(
+      FeedbackDiagnosticsSnapshot.make(diarySnapshot: FeedbackDiagnosticsSnapshotTests.diary, joinKey: nil))
+    for bytes in [noID.data, Data("not json".utf8)] {
+      let record = Self.record(attachment: bytes)
+      #expect(Self.tags(record) == nil)
+      let dsn = try #require(FeedbackDSN(Self.dsnString))
+      #expect(!FeedbackSender.envelope(for: record, dsn: dsn, sentAt: Date()).isEmpty)
+    }
+  }
+
+  @Test("A canonical id keeps its exact casing; anything else is dropped at the record")
+  func usageLinkCasing() {
+    let upper = Self.savedID.uppercased()
+    #expect(Self.tags(Self.record(usageLinkID: Self.savedID))?["analytics.distinct_id"] == Self.savedID)
+    #expect(Self.tags(Self.record(usageLinkID: upper))?["analytics.distinct_id"] == upper)
+    // Mixed case, the compact 32-hex form the sanitizer would destroy, junk, empty.
+    for bad in [
+      "0198a1b2-C3D4-7e5f-8a9b-0c1d2e3f4a5b", "0198a1b2c3d47e5f8a9b0c1d2e3f4a5b", "not-a-uuid", "",
+    ] {
+      #expect(Self.record(usageLinkID: bad).usageLinkID == nil, "\(bad)")
+      #expect(Self.tags(Self.record(usageLinkID: bad)) == nil, "\(bad)")
+    }
+  }
+
+  @Test("Help tags stay exactly as they were, plus the one id tag")
+  func helpPlusUsageLink() throws {
+    let help = try #require(Self.tags(Self.record(helpOutcome: Self.helpOutcome)))
+    var expected = help
+    expected["analytics.distinct_id"] = Self.savedID
+    #expect(
+      Self.tags(Self.record(helpOutcome: Self.helpOutcome, usageLinkID: Self.savedID)) == expected)
+  }
+
+  @Test("The stored record round-trips the id; an old record without it and a corrupt value decode")
+  func usageLinkCodec() throws {
+    let tagged = Self.record(usageLinkID: Self.savedID)
+    let decoded = try JSONDecoder().decode(
+      FeedbackRecord.self, from: try JSONEncoder().encode(tagged))
+    #expect(decoded == tagged)
+
+    // A 2.5.2 record has no such key at all.
+    let plainJSON = try JSONEncoder().encode(Self.record())
+    let plainObject = try #require(try JSONSerialization.jsonObject(with: plainJSON) as? [String: Any])
+    #expect(plainObject["usageLinkID"] == nil)
+    #expect(try JSONDecoder().decode(FeedbackRecord.self, from: plainJSON).usageLinkID == nil)
+
+    // A corrupt stored value drops only the id; the report survives.
+    for corrupt in ["not-a-uuid", 42] as [Any] {
+      var object = try #require(
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(tagged)) as? [String: Any])
+      object["usageLinkID"] = corrupt
+      let record = try JSONDecoder().decode(
+        FeedbackRecord.self, from: try JSONSerialization.data(withJSONObject: object))
+      #expect(record.usageLinkID == nil)
+      #expect(record.message == tagged.message)
+      #expect(record.id == tagged.id)
+    }
+  }
+
+  @Test("Every attempt from the stored record carries the same tags")
+  func usageLinkStableAcrossAttempts() throws {
+    let original = Self.record(helpOutcome: Self.helpOutcome, usageLinkID: Self.savedID)
+    let expected = try #require(Self.tags(original))
+    #expect(expected["analytics.distinct_id"] == Self.savedID)
+
+    for attempts in [0, 1, 2] {
+      var record = original
+      record.attempts = attempts
+      let stored = try JSONDecoder().decode(
+        FeedbackRecord.self, from: JSONEncoder().encode(record))
+      #expect(Self.tags(stored) == expected, "attempt \(attempts)")
+    }
   }
 
   // MARK: - Answers

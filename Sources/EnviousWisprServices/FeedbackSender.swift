@@ -2,7 +2,8 @@ import Foundation
 
 /// One bug report as the user submitted it (#3269), frozen at Send. Nothing here is rebuilt at
 /// retry time: not the settings, not the SDK scope, not the diary. A report carries only what
-/// the Send Feedback form chose (founder, 2026-09-28: bug reports are their own lane).
+/// the Send Feedback form chose (founder, 2026-09-28: bug reports are their own lane), plus the
+/// usage-link id decided at Send (#3382).
 struct FeedbackRecord: Codable, Equatable, Sendable {
   enum State: String, Codable, Sendable {
     case pending
@@ -24,11 +25,15 @@ struct FeedbackRecord: Codable, Equatable, Sendable {
   var rejectedStatus: Int?
   /// What the in-app help check did (#3275), frozen at Send; nil when no check ran. Never rebuilt.
   let helpOutcome: FeedbackHelpOutcome?
+  /// The usage-link id this report carries as its `analytics.distinct_id` tag, decided once at
+  /// Send by `FeedbackReporter.usageLinkID` (#3382); nil for no tag from this field. Always
+  /// canonical: the initializer drops anything else, so a hand-edited outbox cannot inject one.
+  let usageLinkID: String?
 
   init(
     id: UUID, submittedAt: Date, message: String, email: String?, attachment: Data?,
     context: Context, attempts: Int, nextAttemptAt: Date?, state: State, rejectedStatus: Int?,
-    helpOutcome: FeedbackHelpOutcome? = nil
+    helpOutcome: FeedbackHelpOutcome? = nil, usageLinkID: String? = nil
   ) {
     self.id = id
     self.submittedAt = submittedAt
@@ -41,11 +46,12 @@ struct FeedbackRecord: Codable, Equatable, Sendable {
     self.state = state
     self.rejectedStatus = rejectedStatus
     self.helpOutcome = helpOutcome
+    self.usageLinkID = usageLinkID.flatMap(ObservabilityBootstrap.canonicalAnonymousPostHogID)
   }
 
-  /// Help metadata is a limb: a record written before it existed decodes with nil, and one whose
-  /// metadata no longer decodes keeps the report and drops only the metadata, because a record
-  /// that fails to decode blocks the whole outbox (FeedbackOutbox.load).
+  /// Help metadata and the usage-link id are limbs: a record written before they existed decodes
+  /// with nil, and one whose value no longer decodes keeps the report and drops only that value,
+  /// because a record that fails to decode blocks the whole outbox (FeedbackOutbox.load).
   init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
@@ -59,7 +65,8 @@ struct FeedbackRecord: Codable, Equatable, Sendable {
       nextAttemptAt: try c.decodeIfPresent(Date.self, forKey: .nextAttemptAt),
       state: try c.decode(State.self, forKey: .state),
       rejectedStatus: try c.decodeIfPresent(Int.self, forKey: .rejectedStatus),
-      helpOutcome: (try? c.decodeIfPresent(FeedbackHelpOutcome.self, forKey: .helpOutcome)) ?? nil)
+      helpOutcome: (try? c.decodeIfPresent(FeedbackHelpOutcome.self, forKey: .helpOutcome)) ?? nil,
+      usageLinkID: (try? c.decodeIfPresent(String.self, forKey: .usageLinkID)) ?? nil)
   }
 
   /// Basic submission-time versions, the only context a report carries outside the attachment.
@@ -184,8 +191,11 @@ struct FeedbackSender: Sendable {
   /// SDK sets it (sentry-cocoa 9.26.1 `SentryClient.m:613`). `sdk.settings.infer_ip` is "never",
   /// as the SDK sends it with `sendDefaultPii` off (`SentrySDKSettings.swift:27`): without it
   /// Sentry stores the connection's IP address on a cocoa event (measured on the dev project,
-  /// 2026-09-28). No user or breadcrumbs; tags only for a help-check outcome (#3275), whose
-  /// keys and values are fixed or bounded ids, never user-written text.
+  /// 2026-09-28). No user or breadcrumbs. Tags: a help-check outcome's (#3275), whose keys and
+  /// values are fixed or bounded ids, never user-written text; and the usage-link id (#3382): the
+  /// frozen `usageLinkID`, else, for a record queued before that field existed, the id inside its
+  /// attachment. Either is a canonical hyphenated UUID, which `SentryEventSanitizer.redactString`
+  /// leaves unchanged, so it is not filtered again here. No `tags` key when there are none.
   static func feedbackPayload(for record: FeedbackRecord) -> [String: Any] {
     var feedback: [String: Any] = ["message": record.message, "source": "custom"]
     if let email = record.email { feedback["contact_email"] = email }
@@ -209,7 +219,13 @@ struct FeedbackSender: Sendable {
         ],
       ],
     ]
-    if let help = record.helpOutcome { payload["tags"] = help.sentryTags }
+    var tags = record.helpOutcome?.sentryTags ?? [:]
+    if let id = record.usageLinkID
+      ?? record.attachment.flatMap(FeedbackDiagnosticsSnapshot.joinKey(in:))
+    {
+      tags[ObservabilityBootstrap.joinTagKey] = id
+    }
+    if !tags.isEmpty { payload["tags"] = tags }
     return payload
   }
 

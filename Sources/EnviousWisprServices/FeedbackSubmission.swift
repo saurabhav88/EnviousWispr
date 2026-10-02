@@ -16,8 +16,9 @@ public final class FeedbackSubmission {
   private static func makeShared() -> FeedbackSubmission {
     FeedbackSubmission(
       store: FeedbackDraftStore(),
-      save: { draft, diagnostics, helpOutcome in
-        await FeedbackReporter.send(draft, diagnostics: diagnostics, helpOutcome: helpOutcome)
+      save: { draft, diagnostics, helpOutcome, usageMetrics in
+        await FeedbackReporter.send(
+          draft, diagnostics: diagnostics, helpOutcome: helpOutcome, usageMetrics: usageMetrics)
       })
   }
 
@@ -33,8 +34,10 @@ public final class FeedbackSubmission {
     }
   }
 
+  /// Saves one report: the draft, the diagnostics the user chose, the help outcome, and the
+  /// "Share usage metrics" switch as read at Send (#3382).
   public typealias Save =
-    @MainActor (FeedbackDraft, FeedbackDiagnosticsSnapshot?, FeedbackHelpOutcome?) async ->
+    @MainActor (FeedbackDraft, FeedbackDiagnosticsSnapshot?, FeedbackHelpOutcome?, Bool) async ->
       FeedbackReporter.Outcome
 
   /// True from Send until the save has an outcome and the draft is settled.
@@ -134,7 +137,8 @@ public final class FeedbackSubmission {
   private var frozen: Frozen?
 
   /// Send with the help check when one is set, else save directly. A check that fails, times out
-  /// or has nothing to show saves the report as written.
+  /// or has nothing to show saves the report as written. `usageMetrics` is the switch read with
+  /// the diagnostics decision; nil is treated as off (#3382), never guessed on.
   public func send(
     _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
     from presentation: UUID, sent: (message: String, email: String), usageMetrics: Bool? = nil,
@@ -143,7 +147,9 @@ public final class FeedbackSubmission {
     guard !isSaving, helpPhase == .idle else { return .busy }
     guard let helpCheck else {
       return .sent(
-        await submit(draft, diagnostics: diagnostics, from: presentation, sent: sent, current: current))
+        await submit(
+          draft, diagnostics: diagnostics, from: presentation, sent: sent,
+          usageMetrics: usageMetrics ?? false, current: current))
     }
     let generation = UUID()
     frozen = Frozen(
@@ -271,7 +277,8 @@ public final class FeedbackSubmission {
     var result: FeedbackReporter.Outcome?
     let shown = await submit(
       held.draft, diagnostics: held.diagnostics, helpOutcome: outcome, from: presentation,
-      sent: held.sent, current: current, result: { result = $0 })
+      sent: held.sent, usageMetrics: held.usageMetrics ?? false, current: current,
+      result: { result = $0 })
     let terminal: HelpCheckTerminal.Outcome =
       if case .saved = result { .stillSent } else { .notSaved }
     onHelpTerminal?(
@@ -285,28 +292,29 @@ public final class FeedbackSubmission {
   /// its words. Returns the outcome for the sending opening, or nil when that opening has closed
   /// (another opening reconciles through `completions`). Nil also when a save is already running.
   /// `helpOutcome` is frozen into the report as passed; nil when no help check ran (#3275).
+  /// `usageMetrics` is the switch at Send (#3382); omitted means off.
   public func submit(
     _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
     helpOutcome: FeedbackHelpOutcome? = nil,
-    from presentation: UUID, sent: (message: String, email: String),
+    from presentation: UUID, sent: (message: String, email: String), usageMetrics: Bool = false,
     current: @MainActor () -> FormState
   ) async -> FeedbackReporter.Outcome? {
     await submit(
       draft, diagnostics: diagnostics, helpOutcome: helpOutcome, from: presentation, sent: sent,
-      current: current, result: { _ in })
+      usageMetrics: usageMetrics, current: current, result: { _ in })
   }
 
   /// `result` receives the save's outcome even when the sending opening has closed.
   private func submit(
     _ draft: FeedbackDraft, diagnostics: FeedbackDiagnosticsSnapshot?,
     helpOutcome: FeedbackHelpOutcome?,
-    from presentation: UUID, sent: (message: String, email: String),
+    from presentation: UUID, sent: (message: String, email: String), usageMetrics: Bool,
     current: @MainActor () -> FormState, result: (FeedbackReporter.Outcome) -> Void
   ) async -> FeedbackReporter.Outcome? {
     guard !isSaving, helpPhase == .idle else { return nil }
     isSaving = true
     sender = presentation
-    let outcome = await save(draft, diagnostics, helpOutcome)
+    let outcome = await save(draft, diagnostics, helpOutcome, usageMetrics)
     result(outcome)
     let now = current()
     let saved: Bool

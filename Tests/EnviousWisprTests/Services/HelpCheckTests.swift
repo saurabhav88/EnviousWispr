@@ -565,11 +565,13 @@ struct HelpCheckTests {
 
   @MainActor
   final class RecordingSave {
-    private(set) var saves: [(draft: FeedbackDraft, help: FeedbackHelpOutcome?)] = []
-    func save(_ draft: FeedbackDraft, _: FeedbackDiagnosticsSnapshot?, _ help: FeedbackHelpOutcome?)
-      async -> FeedbackReporter.Outcome
-    {
-      saves.append((draft, help))
+    private(set) var saves:
+      [(draft: FeedbackDraft, help: FeedbackHelpOutcome?, usageMetrics: Bool)] = []
+    func save(
+      _ draft: FeedbackDraft, _: FeedbackDiagnosticsSnapshot?, _ help: FeedbackHelpOutcome?,
+      _ usageMetrics: Bool
+    ) async -> FeedbackReporter.Outcome {
+      saves.append((draft, help, usageMetrics))
       return .saved(offline: false)
     }
   }
@@ -986,7 +988,7 @@ struct HelpCheckTests {
       var clockValue = Date(timeIntervalSince1970: 1_000)
       let submission = FeedbackSubmission(
         store: store,
-        save: { _, _, _ in refuse ? .full : .saved(offline: false) },
+        save: { _, _, _, _ in refuse ? .full : .saved(offline: false) },
         helpCheck: Self.check(
           .concerns([Concern(summary: "Keybind", evidence: message, kind: .bug)], hitCap: false),
           transport),
@@ -1086,5 +1088,79 @@ struct HelpCheckTests {
     #expect(step == .sent(.saved(offline: false)))
     #expect(recorder.saves.count == 1)
     #expect(recorder.saves[0].help == nil)
+    #expect(recorder.saves[0].usageMetrics == false, "an omitted switch is saved as off")
+  }
+
+  /// #3382: the switch read at Send decides whether the report may carry the saved usage-link id,
+  /// so every save path must hand the save exactly that value, and an omitted one must be off.
+  @Test(
+    "The usage-metrics switch at Send reaches the save on every path; omitted means off",
+    arguments: [true, false, nil] as [Bool?])
+  @MainActor
+  func usageMetricsReachesSave(atSend: Bool?) async throws {
+    let expected = atSend ?? false
+    let message = "Keybind broke."
+    let draft = try #require(FeedbackDraft(message: message, email: ""))
+
+    // Direct save: no help check.
+    do {
+      let (store, suite) = Self.makeStore()
+      defer { UserDefaults().removePersistentDomain(forName: suite) }
+      let recorder = RecordingSave()
+      let submission = FeedbackSubmission(store: store, save: recorder.save)
+      let a = UUID()
+      submission.presentationAppeared(a)
+      _ = await submission.send(
+        draft, diagnostics: nil, from: a, sent: (message, ""), usageMetrics: atSend,
+        current: { .init(presentation: a, message: message, email: "") })
+      #expect(recorder.saves.map(\.usageMetrics) == [expected], "direct")
+    }
+
+    // A failed check saves at once from the frozen report.
+    do {
+      let (store, suite) = Self.makeStore()
+      defer { UserDefaults().removePersistentDomain(forName: suite) }
+      let recorder = RecordingSave()
+      let submission = FeedbackSubmission(
+        store: store, save: recorder.save,
+        helpCheck: Self.check(
+          .unavailable(.afmUnavailable), FakeTransport([.fail(URLError(.notConnectedToInternet))])))
+      let a = UUID()
+      submission.presentationAppeared(a)
+      _ = await submission.send(
+        draft, diagnostics: nil, from: a, sent: (message, ""), usageMetrics: atSend,
+        current: { .init(presentation: a, message: message, email: "") })
+      #expect(recorder.saves.map(\.usageMetrics) == [expected], "fallback")
+    }
+
+    // Cards shown, then the cards' Send saves the frozen report.
+    do {
+      let (store, suite) = Self.makeStore()
+      defer { UserDefaults().removePersistentDomain(forName: suite) }
+      let recorder = RecordingSave()
+      let submission = FeedbackSubmission(
+        store: store, save: recorder.save,
+        helpCheck: Self.check(
+          .concerns([Concern(summary: "Keybind", evidence: message, kind: .bug)], hitCap: false),
+          FakeTransport([.reply(200, Self.reply([Self.section("i0")]))])))
+      let a = UUID()
+      store.save(message: message, email: "")
+      submission.presentationAppeared(a)
+      let screen: @MainActor @Sendable () -> FeedbackSubmission.FormState = {
+        .init(presentation: a, message: message, email: "")
+      }
+      let step = await submission.send(
+        draft, diagnostics: nil, from: a, sent: (message, ""), usageMetrics: atSend,
+        current: screen)
+      guard case .suggestions = step else {
+        Issue.record("expected suggestions")
+        return
+      }
+      #expect(recorder.saves.isEmpty)
+      let generation = try #require(submission.helpGeneration)
+      _ = await submission.finishSuggestions(
+        solved: [], generation: generation, from: a, current: screen)
+      #expect(recorder.saves.map(\.usageMetrics) == [expected], "cards")
+    }
   }
 }

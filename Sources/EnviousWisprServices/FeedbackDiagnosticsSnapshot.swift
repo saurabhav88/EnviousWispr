@@ -44,6 +44,23 @@ public struct FeedbackDiagnosticsSnapshot: Equatable, Sendable {
     return FeedbackDiagnosticsSnapshot(data: data)
   }
 
+  /// Reads only the id back out of a file's bytes, through the same key as the writer.
+  private struct JoinKeyReader: Decodable {
+    let analyticsDistinctID: String?
+
+    init(from decoder: Decoder) throws {
+      let c = try decoder.container(keyedBy: File.CodingKeys.self)
+      analyticsDistinctID = try c.decodeIfPresent(String.self, forKey: .analyticsDistinctID)
+    }
+  }
+
+  /// The canonical id inside a diagnostics file's bytes (#3382), or nil when the bytes do not
+  /// decode, hold no id, or hold one that is not canonical.
+  static func joinKey(in data: Data) -> String? {
+    guard let reader = try? JSONDecoder().decode(JoinKeyReader.self, from: data) else { return nil }
+    return reader.analyticsDistinctID.flatMap(ObservabilityBootstrap.canonicalAnonymousPostHogID)
+  }
+
   /// A fresh snapshot for the feedback form: this launch's diary plus the saved join key. Never
   /// starts PostHog and reads no SDK files.
   @MainActor
