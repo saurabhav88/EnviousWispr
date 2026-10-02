@@ -261,6 +261,49 @@ struct LearnAudioDeliveryTests {
     #expect(ctx.sink.calls.isEmpty)
   }
 
+  @Test("invalidated while recording: the take's later decode never reaches the hold; the next take does")
+  func invalidatedBeforeDecode() async throws {
+    let ctx = context(.batchSuccess(text: "hello"))
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    voiced(ctx)
+    await ctx.wrapper.drainReadyWork()
+    ctx.kernel.invalidateCurrentTakeLearnAudio()
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainUntilConcluded()
+    #expect(ctx.kernel.recordingOutcome == .completed, "dictation is unaffected")
+    #expect(ctx.sink.calls.isEmpty)
+    await ctx.wrapper.apply(.reset)
+    await ctx.wrapper.drainReadyWork()
+    await run(ctx, capture: voiced)
+    let id = try takeID(ctx)
+    #expect(ctx.sink.calls.first.map { if case .retain(let t, _, _, _) = $0 { t == id } else { false } } == true)
+  }
+
+  @Test("invalidated after the hand-off but before paste: discarded at once, never marked pasted")
+  func invalidatedAfterRetain() async throws {
+    let ctx = context(.batchSuccess(text: "hello"))
+    let gate = DeliveryGate()
+    ctx.wrapper.setProcessTextGateForTesting { await gate.wait() }
+    defer { gate.open() }
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    voiced(ctx)
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.stop)
+    try #require(await gate.waitUntilEntered(), "processText gate never entered")
+    let id = try #require({ () -> String? in
+      if case .retain(let t, _, _, _) = ctx.sink.calls.first { return t }
+      return nil
+    }())
+    ctx.kernel.invalidateCurrentTakeLearnAudio()
+    #expect(ctx.sink.calls.last == .discard(id))
+    gate.open()
+    await ctx.wrapper.drainUntilConcluded()
+    #expect(ctx.kernel.pasteCount == 1)
+    #expect(ctx.sink.calls.count == 2, "no markPasted after the discard")
+  }
+
   @Test("two takes: each take's calls name only that take, in order")
   func twoTakes() async throws {
     let ctx = context(.batchSuccess(text: "first"))

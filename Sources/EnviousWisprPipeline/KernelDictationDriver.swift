@@ -563,6 +563,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     kernel.installLearnAudioDelivery(sink: sink, sampleCap: sampleCap, nowMs: nowMs)
   }
 
+  /// #3338 PR-4: the current take keeps no learn audio (see the kernel method).
+  package func invalidateCurrentTakeLearnAudio() {
+    kernel.invalidateCurrentTakeLearnAudio()
+  }
+
   /// Re-arms it. The other half; call both or neither.
   public func applyEngineUnloadPolicy(_ policy: ModelUnloadPolicy) {
     kernel.applyEngineUnloadPolicy(policy)

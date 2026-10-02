@@ -909,6 +909,12 @@ package final class WisprBootstrapper {
       deliveryHome: modelDelivery,
       isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
     self.learnFromEdits = learnFromEdits
+    // #3338 PR-4: the take audio hold rides the Parakeet driver only (WhisperKit's
+    // decode does not consume the kernel's batch buffer, so it keeps nothing). The
+    // driver is idle at launch; a refusal would leave learn audio off, never break dictation.
+    if !learnFromEdits.installLearnAudio(on: kernelDriver) {
+      Task { await AppLogger.shared.log("learn_audio_install_refused", level: .info, category: "LearnFromEdits") }
+    }
 
     // #2376 C7: the Appearance page's window onto the pill. Built HERE because
     // this is where the live-preview bridge already is, so the picker reads the
@@ -2320,6 +2326,8 @@ package final class WisprBootstrapper {
     // a Cocoa quit concludes no take, so this is the only path that restores
     // the volume for a quit mid-dictation.
     dictationRuntime.otherAudioHold.finishForTermination()
+    // #3338 PR-4: drop every held take and stop the sleep / memory observers.
+    learnFromEdits.shutdownLearnAudio()
     // #3269: best effort; the process may exit first, and every outbox write is atomic anyway.
     Task { await FeedbackReporter.stopDelivery() }
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive

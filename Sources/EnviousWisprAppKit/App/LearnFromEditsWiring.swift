@@ -2,6 +2,7 @@ import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprModelDelivery
+import EnviousWisprPipeline
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
@@ -140,6 +141,17 @@ final class LearnFromEditsWiring {
   let presenter: LearnedCorrectionOverlayPresenter
   let observer: any PastedRegionObserving
   let watcher: ObservedCorrectionWatcher
+  /// #3338 PR-4: the take audio hold, on the watcher's own scheduler. Leases stay
+  /// unavailable until a qualified drain margin exists (PR-5); retention stays off
+  /// until a qualified sample cap exists (E.2: Phase A `recording_seconds` + M5).
+  let learnAudioHold: LearnAudioHold
+  private let learnScheduler: any PastedRegionScheduling
+  /// nil until qualified; the installed cap provider then captures nothing.
+  private let learnAudioSampleCap: Int?
+  private let learnAudioLifecycleEvents: any LearnAudioLifecycleEvents
+  private weak var learnAudioDriver: KernelDictationDriver?
+  private weak var learnSettings: SettingsManager?
+  private var learnAudioShutDown = false
   /// The step 7 selection: the rules/AFM rungs read ONCE at composition, then
   /// re-selected with the classifier's identity each time the delivered judge
   /// loads or is released. The watcher and the Settings row share it through
@@ -200,6 +212,10 @@ final class LearnFromEditsWiring {
     frontmost: (@MainActor () -> FrontmostApplication?)? = nil,
     selectJudgeForTests: (@MainActor () -> SelectedCorrectionJudge?)? = nil,
     debugExportPath: String? = LearnFromEditsWiring.debugExportPathFromEnvironment(),
+    // #3338 PR-4: both nil in production until qualified (see `learnAudioHold`).
+    learnAudioSampleCap: Int? = nil,
+    learnAudioDrainMarginMs: Int? = nil,
+    learnAudioLifecycleEvents: (any LearnAudioLifecycleEvents)? = nil,
     deliveryHome: ModelDeliveryHome? = nil,
     isOnboardingComplete: @escaping @MainActor () -> Bool = { true },
     compiledCacheDirectory: URL = CoreMLCorrectionJudge.defaultCompiledCacheDirectory()
@@ -291,8 +307,8 @@ final class LearnFromEditsWiring {
     // `self` is not available to the closures yet; a box hands the watcher a
     // stable reference the moment `self` exists.
     let box = SelectionBox()
-    let watcher = ObservedCorrectionWatcher(
-      dependencies: ObservedCorrectionWatcherDependencies(
+    let learnAudioHold = LearnAudioHold(scheduler: scheduler, qualifiedDrainMarginMs: learnAudioDrainMarginMs)
+    var watcherDependencies = ObservedCorrectionWatcherDependencies(
         isLearnFromEditsOn: { [weak settings] in settings?.learnFromEdits ?? false },
         selectJudge: { selectJudgeForTests?() ?? box.wiring?.selectJudge() },
         frontmost: frontmost ?? {
@@ -304,7 +320,12 @@ final class LearnFromEditsWiring {
         userWords: { [weak customWords] in customWords?.customWords ?? [] },
         packTerms: { [weak packs] in packs?.enabledPackTerms() ?? [] },
         coordinator: coordinator,
-        telemetry: telemetry))
+        telemetry: telemetry)
+    watcherDependencies.onObservationEnded = { [weak learnAudioHold] takeID in
+      guard let takeID else { return }
+      learnAudioHold?.observationEnded(takeID: takeID)
+    }
+    let watcher = ObservedCorrectionWatcher(dependencies: watcherDependencies)
     pasteCompletionRegistry.subscribe(watcher)
 
     // Plan §3.1 step 12: the words coordinator has done its launch load by
@@ -321,7 +342,13 @@ final class LearnFromEditsWiring {
     self.presenter = presenter
     self.observer = observer
     self.watcher = watcher
+    self.learnAudioHold = learnAudioHold
+    self.learnScheduler = scheduler
+    self.learnAudioSampleCap = learnAudioSampleCap
+    self.learnAudioLifecycleEvents = learnAudioLifecycleEvents ?? SystemLearnAudioLifecycleEvents()
+    self.learnSettings = settings
     box.wiring = self
+    self.learnAudioLifecycleEvents.start { [weak self] _ in self?.cancelLearnAudio() }
 
     // Set BEFORE the door loads: its synchronous rejection (a relative path)
     // clears the flag through `onFailure`, and wiring below must see that
@@ -645,12 +672,50 @@ final class LearnFromEditsWiring {
   /// `SettingsManager.onChange` fan-out for the one key this feature owns.
   func settingChanged(_ key: SettingsManager.SettingKey, settings: SettingsManager) {
     guard key == .learnFromEdits else { return }
+    if !settings.learnFromEdits { cancelLearnAudio() }
     watcher.learnFromEditsChanged(isOn: settings.learnFromEdits)
   }
 
   /// Each real transition into `.recording` (the pipeline-state owner calls it).
+  /// Earlier takes' audio goes first, so a flushed answer cannot lease it (G.6: the
+  /// text-only answer stays valid).
   func recordingStarted() {
+    learnAudioHold.cancelAll()
     watcher.recordingStarted()
+  }
+
+  // MARK: #3338 PR-4 take audio
+
+  /// Installs the hold on the Parakeet driver (idle only; `false` if a session was
+  /// active). The cap provider returns nil with Self-Learning off, before a cap is
+  /// qualified, or once this wiring is gone.
+  @discardableResult
+  func installLearnAudio(on driver: KernelDictationDriver) -> Bool {
+    let scheduler = learnScheduler
+    let installed = driver.installLearnAudioDelivery(
+      sink: learnAudioHold,
+      sampleCap: { [weak self] in
+        guard let self, self.learnSettings?.learnFromEdits == true else { return nil }
+        return self.learnAudioSampleCap
+      },
+      nowMs: { scheduler.nowMs })
+    if installed { learnAudioDriver = driver }
+    return installed
+  }
+
+  /// Toggle off, sleep, wake, memory pressure, termination: the current take keeps no
+  /// audio and every held take goes.
+  private func cancelLearnAudio() {
+    learnAudioDriver?.invalidateCurrentTakeLearnAudio()
+    learnAudioHold.cancelAll()
+  }
+
+  /// App termination: stop the system observers and drop every held take. Idempotent.
+  func shutdownLearnAudio() {
+    guard !learnAudioShutDown else { return }
+    learnAudioShutDown = true
+    learnAudioLifecycleEvents.stop()
+    cancelLearnAudio()
   }
 
   private final class SelectionBox {

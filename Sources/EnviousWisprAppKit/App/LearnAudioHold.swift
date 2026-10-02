@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
@@ -297,4 +298,55 @@ package final class LearnAudioHold: LearnAudioSink, LearnAudioLeasing {
   package func storageForTesting(takeID: String) -> Storage? { entries[takeID]?.storage }
   package var heldTakeIDsForTesting: Set<String> { Set(entries.keys) }
   package var slotsInUseForTesting: Int { slotsInUse }
+}
+
+/// #3338 PR-4 (plan E.3): system events that end every held take.
+package enum LearnAudioLifecycleEvent: Sendable, Equatable {
+  case willSleep
+  case didWake
+  case memoryPressure
+}
+
+/// The source of `LearnAudioLifecycleEvent`s; injectable so tests never sleep the Mac
+/// or raise real memory pressure.
+@MainActor
+package protocol LearnAudioLifecycleEvents: AnyObject {
+  func start(_ handler: @escaping @MainActor (LearnAudioLifecycleEvent) -> Void)
+  /// Unregisters every observer and source. Idempotent.
+  func stop()
+}
+
+/// Production: `NSWorkspace` sleep/wake notifications and a warning/critical memory
+/// pressure source, delivered on the main actor.
+@MainActor
+package final class SystemLearnAudioLifecycleEvents: LearnAudioLifecycleEvents {
+  private var tokens: [any NSObjectProtocol] = []
+  private var pressure: (any DispatchSourceMemoryPressure)?
+
+  package init() {}
+
+  package func start(_ handler: @escaping @MainActor (LearnAudioLifecycleEvent) -> Void) {
+    guard tokens.isEmpty, pressure == nil else { return }
+    let center = NSWorkspace.shared.notificationCenter
+    tokens.append(
+      center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
+        MainActor.assumeIsolated { handler(.willSleep) }
+      })
+    tokens.append(
+      center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+        MainActor.assumeIsolated { handler(.didWake) }
+      })
+    let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+    source.setEventHandler { MainActor.assumeIsolated { handler(.memoryPressure) } }
+    source.resume()
+    pressure = source
+  }
+
+  package func stop() {
+    let center = NSWorkspace.shared.notificationCenter
+    for token in tokens { center.removeObserver(token) }
+    tokens.removeAll()
+    pressure?.cancel()
+    pressure = nil
+  }
 }

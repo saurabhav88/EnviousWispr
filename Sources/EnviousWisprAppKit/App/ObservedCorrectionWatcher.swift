@@ -148,6 +148,9 @@ struct ObservedCorrectionWatcherDependencies {
   let telemetry: any LearnFromEditsTelemetrySink
   /// Judge 1 defects reach Sentry once per process per kind (#3105).
   var failureReporter: LearnJudgeFailureReporter = .shared
+  /// #3338 PR-4: the watch for this take stopped observing (every reported end); the
+  /// audio hold stops granting new leases for it. Pending answers are unaffected.
+  var onObservationEnded: (String?) -> Void = { _ in }
 }
 
 @MainActor
@@ -432,6 +435,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     reason: PastedRegionEndReason, generation gen: UInt64, detail: PastedRegionEndDetail? = nil
   ) {
     guard let w = watch, w.generation == gen else { return }
+    deps.onObservationEnded(w.event.takeID)
     deps.telemetry.learnObservationEnded(
       reason: reason, settledBursts: w.settledBursts, appClass: w.appClass,
       durationMs: max(0, deps.nowMs() - w.pastedAtMs), unfinishedEdits: w.unfinishedPairKeys.count,

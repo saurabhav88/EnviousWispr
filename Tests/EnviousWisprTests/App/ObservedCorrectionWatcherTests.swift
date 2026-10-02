@@ -272,6 +272,8 @@ struct ObservedCorrectionWatcherTests {
     var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
     var frontmost: FrontmostApplication? = FrontmostApplication(
       pid: 42, bundleID: "com.apple.Notes")
+    /// #3338 PR-4: every take id the watcher reported as no longer observed.
+    var observationEndedTakeIDs: [String?] = []
   }
   let knobs = Knobs()
 
@@ -303,6 +305,7 @@ struct ObservedCorrectionWatcherTests {
         coordinator: coordinator,
         telemetry: telemetry)
     deps.judgeDeadlineSeconds = knobs.judgeDeadlineSeconds
+    deps.onObservationEnded = { knobs.observationEndedTakeIDs.append($0) }
     return ObservedCorrectionWatcher(dependencies: deps)
   }
 
@@ -440,6 +443,18 @@ struct ObservedCorrectionWatcherTests {
     // The watcher's own toggle re-read after the await finds the watch already cancelled.
     #expect(await waitUntil { !edits.isParked })
     #expect(telemetry.events.count == 1)
+  }
+
+  @Test("#3338: an observation end reports its take id to the audio hold, once, with the end row")
+  func observationEndReportsTakeID() async {
+    let watcher = makeWatcher()
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher, takeID: "take-77")
+    watcher.recordingStarted()
+    edits.release()
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(knobs.observationEndedTakeIDs == ["take-77"])
+    #expect(await waitUntil { !edits.isParked })
   }
 
   @Test("a dictation starting while the session answers: one next_dictation_started row, no start")
