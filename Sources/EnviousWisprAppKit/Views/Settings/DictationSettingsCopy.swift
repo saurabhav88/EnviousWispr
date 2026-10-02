@@ -177,4 +177,44 @@ enum DictationSettingsCopy {
       "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)."
     )
   }
+
+  /// The Live Preview tab (#3385). Short lines from the approved copy table; the
+  /// full explanations are the sentences the page already carried.
+  enum Preview {
+    static let privacyNote = LocalizedStringResource(
+      "Runs on this Mac. Nothing you say is sent anywhere.",
+      comment:
+        "Live Preview settings: note beside the Live Preview heading. Describes the on-screen preview only, not dictation or AI Polish."
+    )
+    static let toggleShort = LocalizedStringResource(
+      "See words before you finish your dictation.",
+      comment: "Live Preview settings: short line under Show words while you speak.")
+    static let toggleHelp = LocalizedStringResource(
+      "The preview stays on your Mac, disappears when recording ends, and does not change pasted text.",
+      comment: "Live Preview settings: explains Show words while you speak.")
+    static let languageShort = LocalizedStringResource(
+      "This changes dictation too, not just the preview.",
+      comment: "Live Preview settings: hover text on the language button.")
+    static let appleSummary = LocalizedStringResource(
+      "Uses language packs supplied by macOS.",
+      comment: "Live Preview settings: short line under the Apple preview engine's name.")
+    static let universalSummary = LocalizedStringResource(
+      "Uses one downloaded model for supported languages.",
+      comment: "Live Preview settings: short line under the Universal preview engine's name.")
+    static let engineShort = LocalizedStringResource(
+      "Choose which engine shows words while you speak.",
+      comment: "Live Preview settings: short line under the Preview engine heading.")
+    static let engineHelp = LocalizedStringResource(
+      "Choosing an engine does not start a download.",
+      comment: "Live Preview settings: explains the preview engine choice.")
+    static let installShort = LocalizedStringResource(
+      "Download a language from macOS to preview it.",
+      comment: "Live Preview settings: short line under Install new languages.")
+    static let changeEngine = LocalizedStringResource(
+      "Change preview engine",
+      comment: "Live Preview settings: VoiceOver name of the Change button for the preview engine.")
+    static let keepCurrent = LocalizedStringResource(
+      "Keep current preview engine",
+      comment: "Live Preview settings: closes the preview engine choices without changing them.")
+  }
 }

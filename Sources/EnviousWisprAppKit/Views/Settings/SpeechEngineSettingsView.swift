@@ -225,8 +225,7 @@ struct SpeechEngineSettingsView: View {
                   ? Copy.autoDetectFastShort : Copy.autoDetectMultilingualShort),
               resolvedHelp: languageSectionCopy
             ) {
-              Toggle(
-                isOn: Binding(
+              Toggle("", isOn: Binding(
                   get: { isAutoLanguage(settings.languageMode) },
                   set: { newValue in
                     settings.languageMode =
@@ -234,13 +233,11 @@ struct SpeechEngineSettingsView: View {
                       ? .auto
                       : .locked(currentOrDefaultLockCode())
                   }
-                )
-              ) {
-                Text(Copy.autoDetectTitle)
-              }
+                ))
               .labelsHidden()
               .toggleStyle(BrandedToggleStyle())
               .fixedSize()
+              .accessibilityLabel(Text(Copy.autoDetectTitle))
             }
           }
 
@@ -329,12 +326,11 @@ struct SpeechEngineSettingsView: View {
                 // The panel's own 340 plus its 16pt padding each side.
                 .frame(width: 372, alignment: .leading)
               } control: {
-                Toggle(isOn: $settings.useStreamingASR) {
-                  Text(LiveTranscriptionCopy.toggleLabel)
-                }
+                Toggle("", isOn: $settings.useStreamingASR)
                 .labelsHidden()
                 .toggleStyle(BrandedToggleStyle())
                 .fixedSize()
+                .accessibilityLabel(Text(LiveTranscriptionCopy.toggleLabel))
               }
               if settings.selectedBackend == .whisperKit,
                 isAutoLanguage(settings.languageMode)
@@ -362,12 +358,11 @@ struct SpeechEngineSettingsView: View {
             short: Copy.stopOnSilenceShort,
             help: Copy.stopOnSilenceHelp
           ) {
-            Toggle(isOn: $settings.vadAutoStop) {
-              Text(Copy.stopOnSilenceTitle)
-            }
+            Toggle("", isOn: $settings.vadAutoStop)
             .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
             .fixedSize()
+            .accessibilityLabel(Text(Copy.stopOnSilenceTitle))
           }
         }
         if settings.vadAutoStop {
@@ -407,12 +402,11 @@ struct SpeechEngineSettingsView: View {
             short: Copy.fillerShort,
             help: Copy.fillerShort
           ) {
-            Toggle(isOn: $settings.fillerRemovalEnabled) {
-              Text(Copy.fillerTitle)
-            }
+            Toggle("", isOn: $settings.fillerRemovalEnabled)
             .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
             .fixedSize()
+            .accessibilityLabel(Text(Copy.fillerTitle))
           }
         }
         BrandedRow {
@@ -422,12 +416,11 @@ struct SpeechEngineSettingsView: View {
             short: Copy.emojiShort,
             help: Copy.emojiHelp
           ) {
-            Toggle(isOn: $settings.emojiFormatterEnabled) {
-              Text(Copy.emojiTitle)
-            }
+            Toggle("", isOn: $settings.emojiFormatterEnabled)
             .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
             .fixedSize()
+            .accessibilityLabel(Text(Copy.emojiTitle))
           }
         }
         BrandedRow {
@@ -444,12 +437,11 @@ struct SpeechEngineSettingsView: View {
             // The panel's 280pt footnote plus its 16pt padding each side.
             .frame(width: 312, alignment: .leading)
           } control: {
-            Toggle(isOn: $settings.spokenPunctuationEnabled) {
-              Text(SpokenPunctuationCopy.toggleLabel)
-            }
+            Toggle("", isOn: $settings.spokenPunctuationEnabled)
             .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
             .fixedSize()
+            .accessibilityLabel(Text(SpokenPunctuationCopy.toggleLabel))
           }
         }
         BrandedRow(showDivider: false) {

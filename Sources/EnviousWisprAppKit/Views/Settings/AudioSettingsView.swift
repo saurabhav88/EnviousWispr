@@ -320,12 +320,11 @@ private struct BluetoothGuidePopoverContent: View {
         resolvedShort: String(localized: DictationSettingsCopy.Microphone.bluetoothTipsShort),
         resolvedHelp: String(localized: DictationSettingsCopy.Microphone.bluetoothTipsHelp)
       ) {
-        Toggle(isOn: $showBluetoothTips) {
-          Text(BluetoothTipsCopy.showTipsToggle)
-        }
+        Toggle("", isOn: $showBluetoothTips)
         .labelsHidden()
         .toggleStyle(BrandedToggleStyle())
         .fixedSize()
+        .accessibilityLabel(Text(BluetoothTipsCopy.showTipsToggle))
       }
     }
     .frame(width: 340, alignment: .leading)

@@ -131,8 +131,50 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   let tooltip: String?
   let helpContent: HelpContent
   let control: Control
+  /// An action row (#3385, Live Preview's "Install new languages"): the whole
+  /// row except its "?" is one button, so the target is the row rather than a
+  /// small chevron, and the help stays a separate sibling control.
+  var primaryAction: (() -> Void)? = nil
 
   var body: some View {
+    if let primaryAction {
+      actionRow(primaryAction)
+    } else {
+      standardRow
+    }
+  }
+
+  private func actionRow(_ action: @escaping () -> Void) -> some View {
+    HStack(alignment: .center, spacing: 8) {
+      Button(action: action) {
+        HStack(alignment: .center, spacing: 11) {
+          SettingsRowIcon(systemName: icon)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+              .font(.stRowLabel)
+              .foregroundStyle(.stTextPrimary)
+            Text(short)
+              .font(.stRowHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          Spacer(minLength: 8)
+          control
+        }
+        .padding(.vertical, 4)
+        // The whole row, so the gaps between icon, text and control are part of
+        // the target (`swift-patterns.md` RULE: plain-button-content-shape).
+        .contentShape(Rectangle())
+        .settingsHoverRow(cornerRadius: 8)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(title)
+      .accessibilityHint(short)
+      SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
+    }
+  }
+
+  private var standardRow: some View {
     ViewThatFits(in: .horizontal) {
       HStack(alignment: .center, spacing: 11) {
         SettingsRowIcon(systemName: icon)
@@ -215,6 +257,23 @@ extension SettingsRow where HelpContent == SettingsHelpText {
     self.tooltip = resolvedHelp
     self.helpContent = SettingsHelpText(text: resolvedHelp)
     self.control = control()
+  }
+
+  /// An action row: pressing anywhere but the "?" runs `primaryAction`;
+  /// `control` is its trailing decoration (a disclosure chevron), not a second
+  /// control.
+  init(
+    icon: String,
+    resolvedTitle: String,
+    resolvedShort: String,
+    resolvedHelp: String,
+    primaryAction: @escaping () -> Void,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      icon: icon, resolvedTitle: resolvedTitle, resolvedShort: resolvedShort,
+      resolvedHelp: resolvedHelp, control: control)
+    self.primaryAction = primaryAction
   }
 }
 
