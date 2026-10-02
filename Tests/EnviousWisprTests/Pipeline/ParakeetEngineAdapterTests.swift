@@ -998,9 +998,14 @@ final class StubParakeetASRManager: ASRManagerInterface {
 
   var activeBackendSupportsStreaming: Bool { get async { supportsStreaming } }
 
+  /// #3338 PR-4: runs inside the transcribe await (the adapter is suspended on it), so a
+  /// test can act while a decode is in flight.
+  var onTranscribe: (@MainActor () -> Void)?
+
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
     transcribeCount += 1
     lastTranscribeSamples = audioSamples
+    onTranscribe?()
     if let transcribeError { throw transcribeError }
     if transcribeThrows { throw FakeASRError.decode }
     return transcribeResult

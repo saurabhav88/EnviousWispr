@@ -261,6 +261,25 @@ struct LearnWinningDecodeEvidenceTests {
       evidence(a2) == nil, "a stale session's decode never becomes the new session's evidence")
   }
 
+  @Test("a policy cleared while the decode is in flight keeps that decode's evidence out")
+  func policyClearedMidDecode() async throws {
+    let manager = StubParakeetASRManager()
+    manager.transcribeResult = result("text")
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    adapter.setLearnEvidencePolicy(policy)
+    manager.onTranscribe = { [weak adapter] in
+      // What the kernel's invalidation does while the decode is suspended.
+      adapter?.setLearnEvidencePolicy(nil)
+      adapter?.clearLearnEvidence()
+    }
+    guard case .transcript = await adapter.finalize(batchSamples: [0.1, 0.2]) else {
+      Issue.record("expected a transcript"); return
+    }
+    #expect(manager.transcribeCount == 1)
+    #expect(evidence(adapter) == nil)
+  }
+
   @Test("cancel clears the evidence")
   func cancelClears() async throws {
     let manager = StubParakeetASRManager()

@@ -1329,7 +1329,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     lastASRDiagnostics = attempt.diagnostics
     // #3338 PR-4: every committed attempt replaces the evidence, so a streaming
     // success, failure or empty result can never leave an earlier decode's samples.
-    lastLearnEvidence = attempt.learnEvidence
+    // A policy cleared while this decode was in flight (toggle off, sleep, pressure,
+    // quit) wins over the snapshot the decode took when it started.
+    lastLearnEvidence = learnEvidencePolicy == nil ? nil : attempt.learnEvidence
     if let failureError = attempt.failureError {
       lastFailureError = failureError
     }
