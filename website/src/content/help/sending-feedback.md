@@ -6,7 +6,7 @@ section: "Getting Help"
 order: 9
 keywords: ["send feedback", "feedback", "report a bug", "bug report", "bug button", "ladybug", "feature request", "contact", "support", "reply", "suggestion", "include diagnostics", "diagnostics", "help check", "send greyed out", "send button disabled", "couldn't send", "solved don't send"]
 related: ["what-data-is-collected", "source-code-and-contributing", "app-crashes-or-asr-engine-crashes", "privacy-overview"]
-updated: 2026-09-29
+updated: 2026-10-02
 deflection: "never_intervene"
 ---
 Found a bug or have an idea? You can tell us from inside EnviousWispr. Every message you send reaches the team directly, and we read every one.
@@ -44,7 +44,7 @@ Solved marks, **Solved, don't send** and **All solved, don't send** need Apple I
 
 ## What does Include diagnostics send?
 
-The **Include diagnostics** box attaches one file to your report. It holds a record of up to 20 of your most recent dictations kept on your Mac, such as which engine ran, how long each step took and whether the paste worked. When the app has it, the file also holds a random ID that links the report to your earlier usage data. It never contains your audio or the words you dictated.
+The **Include diagnostics** box attaches one file to your report. It holds a record of up to 20 of your most recent dictations kept on your Mac, such as which engine ran, how long each step took and whether the paste worked. When the app has it, the file also holds a random ID that links the report to your earlier usage data. When the file holds that ID, the report also carries it as a label, so we can find that data. It never contains your audio or the words you dictated.
 
 - **It follows your usage setting.** The box starts ticked when **Share usage metrics** is on and unticked when it is off. It never remembers your last choice, so each report is your decision.
 - **You can read it first.** With the box ticked, click **Preview diagnostics** to see the whole file exactly as it will be sent.
@@ -84,7 +84,7 @@ If the form says **Some saved feedback could not be sent. It remains on this Mac
 
 If you choose to send your report, we receive the message you write, your email address only if you add it, and your app and macOS versions. If you ticked **Include diagnostics**, we also receive the diagnostics file. Your report never includes your recordings or your History.
 
-The report also carries the result of the help check as labels: which help pages and sections matched, which parts you marked solved, how the check ended, and the versions of the app, the help content and the help check. These labels never contain your own words. Your usage and crash-report switches never change what a report contains.
+The report also carries the result of the help check as labels: which help pages and sections matched, which parts you marked solved, how the check ended, and the versions of the app, the help content and the help check. These labels never contain your own words. With usage metrics on when you send, and when the app has the random ID that links the report to your usage data, the report carries that ID as a label, even if you do not include diagnostics. Whenever an included diagnostics file contains that ID, the report also carries it as a label, even with usage metrics off. With usage metrics off and no diagnostics included, no such ID is sent. The crash-report switch never changes what a report contains.
 
 To look for help before you send, recent versions send the text of your message (never your email address or diagnostics) through our website to TypeSafe, an AI service that works on our behalf. This happens when you click **Send**, before you decide whether to send the report. It applies even if the help solves everything and no report is sent. We do not store that text in this step, and TypeSafe does not use your message to train its models.
 

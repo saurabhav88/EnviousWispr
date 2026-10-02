@@ -6,7 +6,7 @@ section: "Privacy"
 order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "turn off", "tracking", "crash reports", "usage metrics", "diagnostics", "send feedback privacy", "help check", "TypeSafe", "share usage metrics"]
 related: ["privacy-overview"]
-updated: 2026-09-29
+updated: 2026-10-02
 deflection: "show_but_always_send"
 ---
 EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Your audio never reaches Envious Labs, the company that makes the app. The app never sends us your dictations or transcripts, unless you type them into a feedback message yourself.
@@ -87,7 +87,7 @@ The diary is kept whatever your two switches say, because it never leaves your M
 
 If you use Send Feedback (the bug button next to Record in the app window) and choose to send your report, we receive the message you write. We receive your email address only if you add it, so we can reply. The report also carries your app and macOS versions. No recordings or History are attached.
 
-Feedback is separate from your two switches. They never change what a report contains or whether it is sent. The privacy policy covers how long your feedback is kept and how to have it deleted.
+Your two switches never decide whether a report is sent. With usage metrics on when you send, and when the app has the random ID that links the report to your usage data, the report carries that ID as a label, even without diagnostics. Whenever an included diagnostics file contains that ID, the report also carries it as a label, even with usage metrics off. With usage metrics off and no diagnostics included, no such ID is sent. The crash-report switch never changes what a report contains. The privacy policy covers how long your feedback is kept and how to have it deleted.
 
 In recent versions, a sent report also carries the result of the help check as labels: which help pages matched, which parts you marked solved, the outcome, and the app version. It never carries your own words in those labels.
 
@@ -106,7 +106,7 @@ See [Sending Feedback From the App](/help/sending-feedback/) for what you see an
 
 The feedback form has an **Include diagnostics** box. It starts ticked when usage metrics are on and unticked when they are off, and it never remembers your last choice.
 
-If you tick it, the report also carries one file, `enviouswispr-diagnostics.json`. The file holds the diagnostics diary and, when the app has it, the random ID that links the report to your earlier usage data. **Preview diagnostics** shows you the whole file before you send. If the diary is empty, nothing is attached. With the box unticked, no file is attached.
+If you tick it, the report also carries one file, `enviouswispr-diagnostics.json`. The file holds the diagnostics diary and, when the app has it, the random ID that links the report to your earlier usage data. When the attached file contains that ID, the report also carries it as a label. **Preview diagnostics** shows you the whole file before you send. If the diary is empty, nothing is attached. With the box unticked, no file is attached.
 
 ## What if I send feedback while offline?
 
