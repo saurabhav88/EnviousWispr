@@ -66,6 +66,16 @@ struct EngineLaunchArgumentTests {
       "both engines are being launched identically, so the derivation does nothing")
   }
 
+  /// Word-copying was measured on EG-1 only (#3370: graded outputs byte-identical on
+  /// 1,459/1,462 sealed and 480/480 multilingual), and it is not byte-identical by
+  /// design, so S1-mini must not inherit it until it is measured the same way.
+  @Test("EG-1 gets word-copying and S1-mini does not")
+  func wordCopyingIsEGOneOnly() {
+    let egOne = EGOneRuntime.engineArguments(for: .egOne)
+    #expect(egOne.suffix(2) == ["--spec-type", "ngram-simple"])
+    #expect(!EGOneRuntime.engineArguments(for: .s1Mini).contains("--spec-type"))
+  }
+
   /// The footprint pair is EG-1's measured memory choice and both engines want
   /// it, so it must survive on both. Losing it on S1-mini would be invisible:
   /// the model would still answer, just with a larger cache.
