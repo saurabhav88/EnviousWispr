@@ -465,7 +465,7 @@ enum ManifestFixture {
     // Qualified (2026-09-26): the shipped table names exactly this digest, so
     // the fetch policy may start the download; the bundled manifest and the
     // qualification row cannot drift apart without this line going red.
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: manifest.runtimeIdentityDigest) == true)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: manifest.runtimeIdentityDigest, osMajor: 27) == true)
     // One row per supported major, every row naming the delivered bytes and
     // its own receipt (27: the conversion receipt on the founder's Mac; 26, 15
     // and 14: the founder's 2026-09-26 decision not to run older macOS).

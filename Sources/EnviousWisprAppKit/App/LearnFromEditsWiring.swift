@@ -422,7 +422,7 @@ final class LearnFromEditsWiring {
     guard let home = deliveryHome, let handle = home.editJudgeHandle else { return }
     let inputs = EditJudgeFetchPolicy.Inputs(
       classifierQualifiedSomewhere: CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(
-        digest: home.editJudgeRegistration?.manifest.runtimeIdentityDigest),
+        digest: home.editJudgeRegistration?.manifest.runtimeIdentityDigest, osMajor: osMajor),
       onboardingComplete: isOnboardingComplete(),
       parakeetAdmitted: parakeetAdmitted,
       debugDoorPresent: debugDoorPresent,

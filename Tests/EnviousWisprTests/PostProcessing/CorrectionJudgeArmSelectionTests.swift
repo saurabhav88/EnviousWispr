@@ -23,6 +23,10 @@ struct CorrectionJudgeArmSelectionTests {
   }
 
   private let classifierDigest = "classifier-identity-digest"
+  /// The delivered classifier's identity, an independent literal (`DeliveryManifestTests` pins the
+  /// manifest side), so rows against the SHIPPED table exercise real rows.
+  private static let shippedClassifierDigest =
+    "73d1c5147945dff0b7aa8ba0bd5de8669750955eaf4f51895c1741b4575adb2a"
 
   private func classifier(_ majors: Set<Int>, digest: String? = nil) -> CorrectionJudgeQualification {
     CorrectionJudgeQualification(
@@ -54,10 +58,22 @@ struct CorrectionJudgeArmSelectionTests {
     #expect(select(26, loadedClassifier: classifierDigest, [classifier([27])]) == .unavailable(.noQualifiedArm))
     // Falls through to the older rungs when those are qualified.
     #expect(select(27, loadedClassifier: nil, [classifier([27]), afm([27])]) == .arm(.afm))
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, qualified: [afm([27])]) == false)
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: "other", qualified: [classifier([27])]) == false)
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: nil, qualified: [classifier([27])]) == false)
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, qualified: [classifier([27])]) == true)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 27, qualified: [afm([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: "other", osMajor: 27, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: nil, osMajor: 27, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 27, qualified: [classifier([27])]) == true)
+    // #3092: the download gate follows the Mac's own major, as `select` does. A receipt for 27 alone
+    // must not start the download on 26 or 14, and a major with its own receipt still downloads.
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 26, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 14, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, osMajor: 26, qualified: [classifier([27]), classifier([26])]) == true)
+    // A future major without its own receipt downloads nothing (the quiet case this fix is for).
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: Self.shippedClassifierDigest, osMajor: 28) == false)
+    // Control: the same shipped digest on each covered major is qualified, so the 28 row above fails
+    // for the major alone, not for the digest.
+    for major in [14, 15, 26, 27] {
+      #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: Self.shippedClassifierDigest, osMajor: major) == true, "major \(major)")
+    }
   }
 
   @Test("below the AFM floor, qualified rules serve")

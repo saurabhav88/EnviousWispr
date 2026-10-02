@@ -111,15 +111,22 @@ package enum CorrectionJudgeArmSelection: Sendable, Equatable {
   ]
 
   /// Whether this build qualifies THE classifier the bundled manifest names
-  /// (its `runtimeIdentityDigest`) for ANY macOS: the fetch policy's first
-  /// gate. A manifest can ship ahead of its receipt, and a receipt for an
-  /// older package never licenses a newer one's download; bytes move only for
-  /// a package some receipt names (round 16 finding 9).
+  /// (its `runtimeIdentityDigest`) for the macOS this Mac runs (`osMajor`, the
+  /// same major `select` gates on): the fetch policy's first gate. A manifest
+  /// can ship ahead of its receipt, and a receipt for an older package never
+  /// licenses a newer one's download; bytes move only for a package some
+  /// receipt names for this major (round 16 finding 9; #3092: a receipt for
+  /// another major must not start a download `select` would never serve).
+  /// The name keeps "Somewhere" because it is still the fetch policy's
+  /// "qualified at all" input, not the per-take arm choice. `osMajor` has no
+  /// default so every caller must pass the Mac's own major.
   package static func classifierIsQualifiedSomewhere(
-    digest: String?, qualified: [CorrectionJudgeQualification] = qualified
+    digest: String?, osMajor: Int, qualified: [CorrectionJudgeQualification] = qualified
   ) -> Bool {
     guard let digest else { return false }
-    return qualified.contains { $0.arm == .classifier && $0.configDigest == digest }
+    return qualified.contains {
+      $0.arm == .classifier && $0.osMajors.contains(osMajor) && $0.configDigest == digest
+    }
   }
 
   /// Step 7 with phase D's first rung: a LOADED classifier whose composite

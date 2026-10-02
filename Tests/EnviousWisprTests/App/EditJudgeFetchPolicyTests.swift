@@ -79,7 +79,7 @@ struct EditJudgeFetchPolicyTests {
         contentsOf: RepoRoot.url.appending(
           path: "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json")))
     let digest = try #require(manifest.runtimeIdentityDigest)
-    let qualified = CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: digest)
+    let qualified = CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: digest, osMajor: 27)
     #expect(qualified == true)
     #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified)) == .start)
     // The other gates still hold a qualified package.
