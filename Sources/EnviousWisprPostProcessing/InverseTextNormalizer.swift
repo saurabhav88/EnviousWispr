@@ -2357,10 +2357,12 @@ public struct InverseTextNormalizer: Sendable {
   /// Spoken symbol words in CONTEXTUAL conversions (email at/dot, URL dot/slash,
   /// numeric slash, percent, decimal dot) are NOT here and are never gated.
   private static let punct: [(String, String)] = [
-    // The optional `[.,]?` eats the mark the recogniser wrote after the phrase ("Hello there. New
-    // line. World" -> "Hello there. \n World"): left in, the tighten pass would pull it back over
-    // the line break and double the previous period (#3041).
-    (#"\bnew paragraph\b[.,]?"#, "\n\n"), (#"\bnew line\b[.,]?"#, "\n"),
+    // The optional `[.,]?` eats the mark the recogniser wrote after a phrase that stands on its own
+    // ("Hello there. New line. World" -> "Hello there. \n World"): left in, the tighten pass would
+    // pull it back over the line break and double the previous period (#3041). "On its own" means
+    // it follows a sentence end; "Add a new line." keeps its period.
+    (#"(?<=[.!?]\s)new paragraph\b[.,]?"#, "\n\n"), (#"(?<=[.!?]\s)new line\b[.,]?"#, "\n"),
+    (#"\bnew paragraph\b"#, "\n\n"), (#"\bnew line\b"#, "\n"),
     (#"\s+comma\b"#, ","), (#"\s+period\b"#, "."), (#"\s+full stop\b"#, "."),
     (#"\s+question mark\b"#, "?"), (#"\s+exclamation (mark|point)\b"#, "!"),
     (#"\s+colon\b"#, ":"), (#"\s+semicolon\b"#, ";"),

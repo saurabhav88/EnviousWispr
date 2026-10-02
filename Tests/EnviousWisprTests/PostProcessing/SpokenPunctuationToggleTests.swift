@@ -344,6 +344,13 @@ struct SpokenPunctuationToggleTests {
     #expect(
       Self.itn.normalize("Hello there. New line, World is big.", spokenPunctuation: true)
         == expected)
+    // Idempotent: the output of the fixed case normalizes to itself.
+    #expect(Self.itn.normalize(expected, spokenPunctuation: true) == expected)
+    // Mid-sentence "new line" is not its own phrase: the sentence's period stays
+    // (Codex review: "Add a new line." must not lose its period).
+    #expect(
+      Self.itn.normalize("Add a new line.", spokenPunctuation: true)
+        == Self.itn.normalize("Add a new line", spokenPunctuation: true) + ".")
     // Setting OFF: the phrase is plain words, untouched.
     #expect(
       Self.itn.normalize("Hello there. New line. World is big.", spokenPunctuation: false)
