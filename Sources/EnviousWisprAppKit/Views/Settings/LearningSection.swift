@@ -149,6 +149,11 @@ struct LearningSection: View {
         HStack(alignment: .center, spacing: 8) {
           Text(LearnFromEditsSettingsPresentation.rowTitle)
             .settingsRowLabel()
+          Text(LearnFromEditsSettingsPresentation.betaBadge)
+            .font(.stHelper)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.secondary.opacity(0.15)))
           Spacer(minLength: 8)
           Toggle("", isOn: settings.learnFromEdits)
             .toggleStyle(BrandedToggleStyle())

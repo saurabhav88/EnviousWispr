@@ -3415,6 +3415,17 @@
         }
       }
     },
+    "Beta" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: a small badge after the feature's name saying the feature is still improving.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta"
+          }
+        }
+      }
+    },
     "Bluetooth mic detected" : {
       "comment" : "Title of the tip card shown when a Bluetooth microphone is the input.",
       "localizations" : {
