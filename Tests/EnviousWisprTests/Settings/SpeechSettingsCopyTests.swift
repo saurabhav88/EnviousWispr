@@ -90,7 +90,8 @@ struct SpeechSettingsCopyTests {
 
   @Test("the spoken-punctuation setting keeps its English, and spoken phrases stay as spoken")
   func spokenPunctuation() {
-    #expect(SpokenPunctuationCopy.toggleLabel == "Convert spoken punctuation")
+    // #3385: the row name is "Spoken punctuation"; the short line under it says what it does.
+    #expect(SpokenPunctuationCopy.toggleLabel == "Spoken punctuation")
     #expect(
       SpokenPunctuationCopy.toggleDescription
         == "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it."

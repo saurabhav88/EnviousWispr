@@ -177,7 +177,9 @@ struct SettingsHelpText: View {
   let text: String
 
   var body: some View {
-    Text(text).settingsReadingCopy()
+    Text(text)
+      .settingsReadingCopy()
+      .frame(maxWidth: 280, alignment: .leading)
   }
 }
 
@@ -225,9 +227,23 @@ extension SettingsRow {
     @ViewBuilder helpContent: () -> HelpContent,
     @ViewBuilder control: () -> Control
   ) {
+    self.init(
+      icon: icon, resolvedTitle: String(localized: title), resolvedShort: String(localized: short),
+      helpContent: helpContent, control: control)
+  }
+
+  /// Structured help under a name that is already translated (a copy owner that
+  /// resolves its own string). Never pass an untranslated literal here.
+  init(
+    icon: String,
+    resolvedTitle: String,
+    resolvedShort: String,
+    @ViewBuilder helpContent: () -> HelpContent,
+    @ViewBuilder control: () -> Control
+  ) {
     self.icon = icon
-    self.title = String(localized: title)
-    self.short = String(localized: short)
+    self.title = resolvedTitle
+    self.short = resolvedShort
     self.tooltip = nil
     self.helpContent = helpContent()
     self.control = control()
@@ -240,8 +256,8 @@ extension SettingsRow {
 ///
 /// A real `Button`, never a hover-only reveal — hover is unreachable by
 /// keyboard and VoiceOver, and those are exactly the readers who most need
-/// the sentence spelled out (same reasoning as
-/// `SpeechEngineSettingsView.spokenPunctuationHelpButton`). `.help()` answers
+/// the sentence spelled out (the reasoning #1794 gave for the spoken
+/// punctuation help, which is now this button too). `.help()` answers
 /// a mouse hover for free on top of the click-to-open popover.
 ///
 /// #3385: closing the popover returns focus to this button, whichever way it
@@ -290,8 +306,9 @@ struct SettingsInfoButton<Content: View>: View {
       )
     )
     .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+      // Width belongs to the content: plain sentences cap themselves at 280
+      // (`SettingsHelpText`); a structured panel sets its own.
       content()
-        .frame(maxWidth: 280, alignment: .leading)
         .padding(14)
         .onExitCommand { showPopover = false }
     }
@@ -481,6 +498,133 @@ private struct SettingsTabButton<Tab: Hashable>: View {
     .accessibilityLabel(String(localized: item.label))
     .accessibilityValue(isSelected ? SettingsCopy.selectedValue : SettingsCopy.notSelectedValue)
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+  }
+}
+
+// MARK: - Summary card
+
+/// A choice shown as a summary with a "Change" button (#3385): the current
+/// option and why to pick it, with the alternatives opening in place only when
+/// asked for. Used where a page used to show every option all the time.
+///
+/// It owns presentation and focus only. The caller owns the expansion flag and
+/// every write: picking an option, or "Keep current", collapses through the
+/// caller's binding. `status` sits OUTSIDE the expansion, so progress, a
+/// download's Cancel, a warning or a remedy stays on screen whether the
+/// choices are open or not.
+///
+/// Focus follows the help button's rule: when the choices close, focus goes
+/// back to "Change" only for a reader who opened them with the keyboard or
+/// VoiceOver, and never to a button that is no longer there.
+struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
+  @Binding var isExpanded: Bool
+  let changeAccessibilityLabel: LocalizedStringResource
+  let keepCurrentTitle: LocalizedStringResource
+  let summary: Summary
+  let status: Status
+  let choices: Choices
+
+  @State private var openedFromKeyboard = false
+  @State private var openedFromAccessibility = false
+  @State private var isMounted = false
+  @FocusState private var changeFocused: Bool
+  @AccessibilityFocusState private var changeAccessibilityFocused: Bool
+
+  init(
+    isExpanded: Binding<Bool>,
+    changeAccessibilityLabel: LocalizedStringResource,
+    keepCurrentTitle: LocalizedStringResource,
+    @ViewBuilder summary: () -> Summary,
+    @ViewBuilder status: () -> Status,
+    @ViewBuilder choices: () -> Choices
+  ) {
+    self._isExpanded = isExpanded
+    self.changeAccessibilityLabel = changeAccessibilityLabel
+    self.keepCurrentTitle = keepCurrentTitle
+    self.summary = summary()
+    self.status = status()
+    self.choices = choices()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if isExpanded {
+        choices
+        Button {
+          isExpanded = false
+        } label: {
+          Text(keepCurrentTitle)
+            .font(.stBody)
+            .foregroundStyle(Color.stAccent)
+            .settingsHoverQuiet()
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 4)
+      } else {
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .center, spacing: 12) {
+            summary
+            Spacer(minLength: 12)
+            changeButton
+          }
+          VStack(alignment: .leading, spacing: 10) {
+            summary
+            changeButton
+          }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.stSectionBg)
+        .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+        .overlay(
+          RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+            .strokeBorder(Color.stDivider, lineWidth: 1)
+            .allowsHitTesting(false)
+        )
+      }
+      status
+    }
+    // Leading and full width in both states, so the status region does not
+    // drift to the middle when the choices are narrower than the page.
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .onAppear { isMounted = true }
+    .onDisappear {
+      isMounted = false
+      openedFromKeyboard = false
+      openedFromAccessibility = false
+    }
+    .onChange(of: isExpanded) { _, expanded in
+      guard expanded == false else { return }
+      defer {
+        openedFromKeyboard = false
+        openedFromAccessibility = false
+      }
+      guard isMounted else { return }
+      if openedFromKeyboard { changeFocused = true }
+      if openedFromAccessibility && NSWorkspace.shared.isVoiceOverEnabled {
+        changeAccessibilityFocused = true
+      }
+    }
+  }
+
+  /// The real control is this `Button`; `SettingsActionButton` without an action only draws
+  /// the page's button treatment, so focus modifiers land on an actual control.
+  private var changeButton: some View {
+    Button {
+      openedFromKeyboard = changeFocused
+      openedFromAccessibility = changeAccessibilityFocused
+      isExpanded = true
+    } label: {
+      SettingsActionButton(
+        title: LocalizedStringResource(
+          "Change", comment: "Settings: button that opens the other choices for a setting."),
+        isEnabled: true)
+    }
+    .buttonStyle(.plain)
+    .fixedSize()
+    .focused($changeFocused)
+    .accessibilityFocused($changeAccessibilityFocused)
+    .accessibilityLabel(String(localized: changeAccessibilityLabel))
   }
 }
 
@@ -742,34 +886,6 @@ enum SettingsCopy {
     comment:
       "Transcribe a File: notice that a change made during a cleanup takes effect on the next file."
   )
-}
-
-/// Page-level banner stating that this page's settings freeze at recording start.
-/// The rule is page-wide, so it appears ONCE at the top of a page rather than
-/// repeated in every card (founder, 2026-07-03). Accent-tinted so it reads as a
-/// standing notice above the cards, not part of any one of them.
-struct FrozenPerRecordingBanner: View {
-  var body: some View {
-    HStack(spacing: 9) {
-      Image(systemName: "info.circle")
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(.stAccent)
-        .accessibilityHidden(true)
-      Text(SettingsCopy.frozenPerRecording)
-        .font(.stHelper)
-        .foregroundStyle(.stTextBody)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 11)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .strokeBorder(Color.stAccent.opacity(0.25), lineWidth: 1)
-    )
-  }
 }
 
 // MARK: - Branded Row

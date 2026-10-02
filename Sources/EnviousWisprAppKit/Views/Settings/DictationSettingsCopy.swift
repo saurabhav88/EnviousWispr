@@ -41,4 +41,125 @@ enum DictationSettingsCopy {
       "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words.",
       comment: "Microphone settings: explains microphone readiness.")
   }
+
+  /// The Engine tab (#3385). Short lines from the approved copy table; every
+  /// full explanation behind "?" is the sentence the page showed before.
+  enum Engine {
+    static let sectionHeading = LocalizedStringResource(
+      "TRANSCRIPTION ENGINE",
+      comment: "Speech engine settings: section heading above the engine summary, in capitals.")
+    static let nextRecordingNote = LocalizedStringResource(
+      "Changes apply to the next recording",
+      comment:
+        "Speech engine settings: note beside the heading; a change made while recording applies next time."
+    )
+    static let sharedHeading = LocalizedStringResource(
+      "APPLIES TO BOTH ENGINES",
+      comment:
+        "Speech engine settings: heading over settings that work the same on both engines, in capitals."
+    )
+    static let currentEngineNote = LocalizedStringResource(
+      "How these work on this engine",
+      comment:
+        "Speech engine settings: note beside the current engine's heading. The settings below are shared by both engines; their explanations describe the current one."
+    )
+    static let keepCurrent = LocalizedStringResource(
+      "Keep current engine",
+      comment: "Speech engine settings: closes the engine choices without changing the engine.")
+    static let changeEngine = LocalizedStringResource(
+      "Change speech engine",
+      comment: "Speech engine settings: VoiceOver name of the Change button for the engine.")
+    static let changeLanguage = LocalizedStringResource(
+      "Change dictation language",
+      comment: "Speech engine settings: VoiceOver name of the Change button for the locked language.")
+
+    static let fastSummary = LocalizedStringResource(
+      "For everyday English and European dictation",
+      comment: "Speech engine settings: short line under the fast engine's name.")
+    static let allLanguagesSummary = LocalizedStringResource(
+      "For other languages or the toughest audio",
+      comment: "Speech engine settings: short line under the multilingual engine's name.")
+
+    static let modelNotSetUp = LocalizedStringResource(
+      "Model not set up",
+      comment: "Speech engine settings: row title when the multilingual engine's model is not downloaded.")
+    static let setUpModel = LocalizedStringResource(
+      "Set up model",
+      comment: "Speech engine settings: button that downloads the multilingual engine's model.")
+    static let modelSetupShort = LocalizedStringResource(
+      "Runs on your Mac after the model is set up.",
+      comment: "Speech engine settings: short line under the model setup row.")
+    static let modelSetupHelp = LocalizedStringResource(
+      "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup."
+    )
+
+    static let autoDetectTitle = LocalizedStringResource("Auto-detect language")
+    static let autoDetectFastShort = LocalizedStringResource(
+      "Detects the language you speak. 25 European languages.",
+      comment: "Speech engine settings: short line under Auto-detect language on the fast engine.")
+    static let autoDetectMultilingualShort = LocalizedStringResource(
+      "Detects the language you speak. 99+ languages.",
+      comment:
+        "Speech engine settings: short line under Auto-detect language on the multilingual engine.")
+
+    static let lockedLanguageShort = LocalizedStringResource(
+      "Choose the language for dictation and preview.",
+      comment: "Speech engine settings: short line under the locked language row.")
+    static let lockedLanguageHelp = LocalizedStringResource(
+      "Choose a language, or choose Automatic to clear the lock.",
+      comment: "Speech engine settings: explains the locked language row's Change button.")
+
+    static let suggestionsTitle = LocalizedStringResource("Language suggestions")
+    static let suggestionsShort = LocalizedStringResource(
+      "Allow language suggestions to appear again.",
+      comment: "Speech engine settings: short line under the Language suggestions row.")
+    static let suggestionsHelp = LocalizedStringResource(
+      "Reset to allow the app to suggest locking a detected language again.")
+
+    static let fasterFastShort = LocalizedStringResource(
+      "Works during recording; may miss the last words.",
+      comment: "Speech engine settings: short line under Faster Transcription on the fast engine.")
+    static let fasterMultilingualShort = LocalizedStringResource(
+      "Works during recording with a selected language.",
+      comment:
+        "Speech engine settings: short line under Faster Transcription on the multilingual engine.")
+
+    static let stopOnSilenceTitle = LocalizedStringResource("Stop recording on silence")
+    static let stopOnSilenceShort = LocalizedStringResource(
+      "Ends recording after you stop speaking.",
+      comment: "Speech engine settings: short line under Stop recording on silence.")
+    static let stopOnSilenceHelp = LocalizedStringResource(
+      "Stops recording when the silence reaches your chosen pause duration.",
+      comment: "Speech engine settings: explains Stop recording on silence.")
+
+    static let pauseShort = LocalizedStringResource(
+      "How long a pause ends the recording.",
+      comment: "Speech engine settings: short line under Pause duration.")
+    static let pauseHelp = LocalizedStringResource(
+      "How long to wait after you stop speaking before ending the recording.")
+
+    static let fillerTitle = LocalizedStringResource("Remove filler words (um, uh, hmm...)")
+    static let fillerShort = LocalizedStringResource(
+      "Strips common filler words from transcriptions.")
+
+    static let emojiTitle = LocalizedStringResource(
+      "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)")
+    static let emojiShort = LocalizedStringResource(
+      "Say a phrase followed by emoji to get its symbol.",
+      comment: "Speech engine settings: short line under the spoken emoji row.")
+    static let emojiHelp = LocalizedStringResource(
+      "Say \"<phrase> emoji\" to get the glyph. Bare words never convert.")
+
+    static let punctuationShort = LocalizedStringResource(
+      "Say comma or new paragraph to insert it.",
+      comment: "Speech engine settings: short line under the spoken punctuation row.")
+
+    static let unloadTitle = LocalizedStringResource("Unload model after")
+    static let unloadShort = LocalizedStringResource(
+      "Frees memory when you are not dictating.",
+      comment: "Speech engine settings: short line under the unload model row.")
+    static let unloadHelp = LocalizedStringResource(
+      "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)."
+    )
+  }
 }

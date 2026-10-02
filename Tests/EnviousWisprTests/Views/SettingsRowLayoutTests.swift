@@ -101,6 +101,38 @@ struct SettingsRowLayoutTests {
     #expect(control.maxY <= wrapped.rowHeight + 0.5, "control overflows the row")
   }
 
+  /// The plain "?" sentence keeps the 280-point reading width it had before #3385 moved the
+  /// cap from the popover onto the text, so a structured panel can be wider.
+  @Test("a plain help sentence wraps at 280 points")
+  func plainHelpWidth() {
+    let long = String(repeating: "A full explanation that is long enough to wrap. ", count: 6)
+    // Offered 600 points, as a popover offers its content room; the text takes 280 and wraps.
+    let box = FrameBox()
+    let root = VStack {
+      SettingsHelpText(text: long)
+        .background(
+          GeometryReader { proxy in
+            Color.clear.preference(key: ControlFrameKey.self, value: proxy.frame(in: .global))
+          })
+      Spacer(minLength: 0)
+    }
+    .frame(width: 600, height: 600, alignment: .topLeading)
+    .onPreferenceChange(ControlFrameKey.self) { frame in
+      MainActor.assumeIsolated { box.control = frame }
+    }
+    let host = NSHostingView(rootView: root)
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 600, height: 600),
+      styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.layoutSubtreeIfNeeded()
+    window.contentView = nil
+    let size = box.control?.size ?? .zero
+    print("SettingsHelpText size=\(size)")
+    #expect(size.width > 200 && size.width <= 280, "plain help is \(size.width) wide")
+    #expect(size.height > 40, "plain help did not wrap: \(size.height)")
+  }
+
   @Test("the row name and its short line both use the 14-point roles")
   func fontRoles() {
     #expect(Font.stRowLabel == Font.system(size: 14, weight: .semibold))
