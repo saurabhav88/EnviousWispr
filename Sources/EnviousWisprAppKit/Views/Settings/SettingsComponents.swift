@@ -119,11 +119,18 @@ struct SettingsRowIcon: View {
 /// title (`SettingsInfoButton`) rather than always rendering underneath it —
 /// freeing the row down to one line so the control reads as the main event
 /// (founder, 2026-09-16: "so much more space, make everything look nicer").
-struct SettingsRow<Control: View>: View {
+/// #3385 refines that: one short grey line now sits under the title, in the
+/// founder's words "one short grey line + ? on every row" (2026-10-02), so the
+/// row says what the control is for at a glance while the full explanation
+/// stays behind the "?". Every row has help; there is no help-less variant.
+struct SettingsRow<Control: View, HelpContent: View>: View {
   let icon: String
   let title: String
-  let description: String
-  @ViewBuilder let control: () -> Control
+  let short: String
+  /// The sentence a mouse hover shows (`.help`). Structured help has none.
+  let tooltip: String?
+  let helpContent: HelpContent
+  let control: Control
 
   var body: some View {
     ViewThatFits(in: .horizontal) {
@@ -131,7 +138,7 @@ struct SettingsRow<Control: View>: View {
         SettingsRowIcon(systemName: icon)
         label
         Spacer(minLength: 12)
-        control()
+        control
       }
       VStack(alignment: .leading, spacing: 10) {
         HStack(alignment: .center, spacing: 11) {
@@ -141,24 +148,94 @@ struct SettingsRow<Control: View>: View {
         // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
         // spacing (11), so the control aligns under the LABEL rather than
         // the icon.
-        control()
+        control
           .padding(.leading, 37)
       }
     }
   }
 
   private var label: some View {
-    HStack(spacing: 6) {
-      Text(title)
-        .font(.stRowTitle)
-        .foregroundStyle(.stTextPrimary)
-      SettingsInfoButton(text: description)
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 6) {
+        Text(title)
+          .font(.stRowLabel)
+          .foregroundStyle(.stTextPrimary)
+        SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
+      }
+      // Secondary, not the tertiary helper colour: tertiary measures 3.7:1
+      // on the dark card, under the 4.5:1 a 14pt regular line needs (#3385).
+      Text(short)
+        .font(.stRowHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 }
 
+/// A row's full explanation as plain reading copy inside the "?" popover.
+struct SettingsHelpText: View {
+  let text: String
+
+  var body: some View {
+    Text(text).settingsReadingCopy()
+  }
+}
+
+extension SettingsRow where HelpContent == SettingsHelpText {
+  /// Literal copy: the catalog extracts all three strings by their type.
+  init(
+    icon: String,
+    title: LocalizedStringResource,
+    short: LocalizedStringResource,
+    help: LocalizedStringResource,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      icon: icon,
+      resolvedTitle: String(localized: title),
+      resolvedShort: String(localized: short),
+      resolvedHelp: String(localized: help),
+      control: control)
+  }
+
+  /// Already-translated runtime strings (for example a help sentence chosen by
+  /// the current setting). Never pass an untranslated literal here.
+  init(
+    icon: String,
+    resolvedTitle: String,
+    resolvedShort: String,
+    resolvedHelp: String,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.icon = icon
+    self.title = resolvedTitle
+    self.short = resolvedShort
+    self.tooltip = resolvedHelp
+    self.helpContent = SettingsHelpText(text: resolvedHelp)
+    self.control = control()
+  }
+}
+
+extension SettingsRow {
+  /// Help that needs more than one paragraph (a table, a list, a link).
+  init(
+    icon: String,
+    title: LocalizedStringResource,
+    short: LocalizedStringResource,
+    @ViewBuilder helpContent: () -> HelpContent,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.icon = icon
+    self.title = String(localized: title)
+    self.short = String(localized: short)
+    self.tooltip = nil
+    self.helpContent = helpContent()
+    self.control = control()
+  }
+}
+
 /// A small "?" affordance that reveals a row's explanatory sentence on
-/// demand, used by `SettingsControlRow` so a row's title line stays short
+/// demand, used by `SettingsRow` so a row's title line stays short
 /// while the full explanation stays one click away.
 ///
 /// A real `Button`, never a hover-only reveal — hover is unreachable by
@@ -166,12 +243,34 @@ struct SettingsRow<Control: View>: View {
 /// the sentence spelled out (same reasoning as
 /// `SpeechEngineSettingsView.spokenPunctuationHelpButton`). `.help()` answers
 /// a mouse hover for free on top of the click-to-open popover.
-struct SettingsInfoButton: View {
-  let text: String
+///
+/// #3385: closing the popover returns focus to this button, whichever way it
+/// was closed (Escape, a click outside, or reopening), through ONE path, the
+/// same pattern as the Keybinds Globe guidance (#1987). Focus is returned only
+/// to a reader who was using it: keyboard focus when the button held keyboard
+/// focus as it opened, VoiceOver focus when the button held VoiceOver focus as
+/// it opened. A pointer click leaves focus alone, so the window does not grow
+/// a focus ring the mouse user never asked for, and VoiceOver is not pulled
+/// away from wherever its user had moved it.
+struct SettingsInfoButton<Content: View>: View {
+  let rowTitle: String
+  let tooltip: String?
+  @ViewBuilder let content: () -> Content
+
   @State private var showPopover = false
+  /// Captured as the popover opens; decides where focus goes when it closes.
+  @State private var openedFromKeyboard = false
+  @State private var openedFromAccessibility = false
+  /// A row can leave the screen while its popover is open; never send focus to
+  /// a button that is no longer there.
+  @State private var isMounted = false
+  @FocusState private var buttonFocused: Bool
+  @AccessibilityFocusState private var accessibilityFocused: Bool
 
   var body: some View {
     Button {
+      openedFromKeyboard = buttonFocused
+      openedFromAccessibility = accessibilityFocused
       showPopover = true
     } label: {
       Image(systemName: "questionmark.circle")
@@ -180,14 +279,103 @@ struct SettingsInfoButton: View {
         .settingsHoverQuiet()
     }
     .buttonStyle(.borderless)
-    .help(text)
-    .accessibilityLabel(text)
+    .focused($buttonFocused)
+    .accessibilityFocused($accessibilityFocused)
+    .help(tooltip ?? "")
+    .accessibilityLabel(
+      String(
+        localized: "About \(rowTitle)",
+        comment:
+          "Settings: accessibility name of the ? button beside a setting. %@ is the setting's name."
+      )
+    )
     .popover(isPresented: $showPopover, arrowEdge: .bottom) {
-      Text(text)
-        .settingsReadingCopy()
+      content()
         .frame(maxWidth: 280, alignment: .leading)
         .padding(14)
+        .onExitCommand { showPopover = false }
     }
+    // The single restoration path: every dismissal (Escape above, a click
+    // outside, AppKit closing it) arrives here as the binding turning false.
+    .onAppear { isMounted = true }
+    .onDisappear {
+      isMounted = false
+      openedFromKeyboard = false
+      openedFromAccessibility = false
+    }
+    .onChange(of: showPopover) { _, isShowing in
+      guard isShowing == false else { return }
+      defer {
+        openedFromKeyboard = false
+        openedFromAccessibility = false
+      }
+      guard isMounted else { return }
+      if openedFromKeyboard { buttonFocused = true }
+      if openedFromAccessibility && NSWorkspace.shared.isVoiceOverEnabled {
+        accessibilityFocused = true
+      }
+    }
+  }
+}
+
+// MARK: - Section heading
+
+/// The accent capitals heading above a group of rows ("INPUT & BEHAVIOR"),
+/// with an optional decorative icon and an optional trailing note or link.
+/// A heading for assistive technology too: it carries the header trait.
+struct SettingsSectionHeading<Trailing: View>: View {
+  let title: String
+  let icon: String?
+  let trailing: Trailing
+
+  init(
+    title: LocalizedStringResource,
+    icon: String? = nil,
+    @ViewBuilder trailing: () -> Trailing
+  ) {
+    self.init(resolvedTitle: String(localized: title), icon: icon, trailing: trailing)
+  }
+
+  /// An already-translated heading. Never pass an untranslated literal here.
+  init(
+    resolvedTitle: String,
+    icon: String? = nil,
+    @ViewBuilder trailing: () -> Trailing
+  ) {
+    self.title = resolvedTitle
+    self.icon = icon
+    self.trailing = trailing()
+  }
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      HStack(spacing: 6) {
+        if let icon {
+          Image(systemName: icon)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.stAccent)
+            .accessibilityHidden(true)
+        }
+        Text(title)
+          .font(.stSectionHeader)
+          .tracking(0.6)
+          .foregroundStyle(.stAccent)
+          .accessibilityAddTraits(.isHeader)
+      }
+      Spacer(minLength: 8)
+      trailing
+    }
+    .padding(.leading, 4)
+  }
+}
+
+extension SettingsSectionHeading where Trailing == EmptyView {
+  init(title: LocalizedStringResource, icon: String? = nil) {
+    self.init(title: title, icon: icon) { EmptyView() }
+  }
+
+  init(resolvedTitle: String, icon: String? = nil) {
+    self.init(resolvedTitle: resolvedTitle, icon: icon) { EmptyView() }
   }
 }
 

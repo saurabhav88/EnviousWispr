@@ -149,6 +149,10 @@ extension Font {
   /// Caption / hint / status microcopy: footnotes, link hints, status lines.
   /// Same 14pt floor as body; it reads quieter through colour, not size.
   static let stHelper = Font.system(size: 14)
+  /// A settings row's short grey line under its name (#3385). Held at the
+  /// 14pt floor by founder decision (2026-10-02) rather than the mockup's
+  /// 13px; kept as its own token so the row line has one owner.
+  static let stRowHelper = Font.system(size: 14)
 }
 
 // MARK: - Settings Layout Constants

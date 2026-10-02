@@ -34,12 +34,9 @@ struct OtherAudioSettingsPanel: View {
     VStack(alignment: .leading, spacing: 8) {
       SettingsRow(
         icon: "speaker.wave.2.fill",
-        title: String(
-          localized: "Media during dictation",
-          comment:
-            "Microphone settings, media during dictation: row title for what happens to music and other audio."
-        ),
-        description: Self.footnote(for: settings.otherAudioWhileDictating)
+        resolvedTitle: String(localized: DictationSettingsCopy.Microphone.mediaTitle),
+        resolvedShort: String(localized: DictationSettingsCopy.Microphone.mediaShort),
+        resolvedHelp: Self.footnote(for: settings.otherAudioWhileDictating)
       ) {
         BrandedSegmentedPicker(
           options: [

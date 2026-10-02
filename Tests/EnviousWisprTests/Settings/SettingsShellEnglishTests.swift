@@ -104,6 +104,34 @@ struct SettingsShellEnglishTests {
     )
   }
 
+  /// #3385: each Microphone row gains one short line; its full explanation moves behind "?"
+  /// with the English it had before. Expected strings typed from the pre-#3385 source.
+  @Test("Microphone rows keep their explanations and gain a short line")
+  func microphoneRowCopy() {
+    typealias Copy = DictationSettingsCopy.Microphone
+    #expect(String(localized: Copy.sectionHeading) == "INPUT & BEHAVIOR")
+    #expect(String(localized: Copy.inputDeviceTitle) == "Input device")
+    #expect(
+      String(localized: Copy.inputDeviceShort) == "Choose the microphone used for recording.")
+    #expect(
+      String(localized: Copy.inputDeviceHelp)
+        == "Select which microphone to use for recording. \"Auto\" follows the input device selected in macOS. If that device turns out not to be a real microphone, recording uses an available microphone instead."
+    )
+    #expect(String(localized: Copy.mediaTitle) == "Media during dictation")
+    #expect(
+      String(localized: Copy.mediaShort) == "What music and video do while you dictate.")
+    #expect(String(localized: Copy.readinessTitle) == "Microphone readiness")
+    #expect(
+      String(localized: Copy.readinessShort) == "How long the mic stays ready after recording.")
+    #expect(
+      String(localized: Copy.readinessHelp)
+        == "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
+    )
+    for short in [Copy.inputDeviceShort, Copy.mediaShort, Copy.readinessShort] {
+      #expect(String(localized: short).count <= 60)
+    }
+  }
+
   @Test("the Globe key tip keeps its English")
   func globeKeyTip() {
     #expect(GlobeKeyCopy.title == "Free up the Globe key")

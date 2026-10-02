@@ -64,6 +64,8 @@ struct AudioSettingsView: View {
     }
 
     SettingsContentView {
+      SettingsSectionHeading(title: DictationSettingsCopy.Microphone.sectionHeading)
+
       BrandedSection {
         BrandedRow {
           VStack(alignment: .leading, spacing: 8) {
@@ -75,13 +77,9 @@ struct AudioSettingsView: View {
             // made the card contradict itself on exactly the machines the divert exists for.
             SettingsRow(
               icon: "waveform",
-              title: String(localized: "Input device", comment: "Microphone settings: row title."),
-              description: String(
-                localized:
-                  "Select which microphone to use for recording. \"Auto\" follows the input device selected in macOS. If that device turns out not to be a real microphone, recording uses an available microphone instead.",
-                comment:
-                  "Microphone settings: explains the input device choice. Auto is the name of the first option."
-              )
+              title: DictationSettingsCopy.Microphone.inputDeviceTitle,
+              short: DictationSettingsCopy.Microphone.inputDeviceShort,
+              help: DictationSettingsCopy.Microphone.inputDeviceHelp
             ) {
               HStack(spacing: 10) {
                 Picker("", selection: inputDeviceSelection) {
@@ -161,12 +159,9 @@ struct AudioSettingsView: View {
           VStack(alignment: .leading, spacing: 8) {
             SettingsRow(
               icon: "timer",
-              title: String(
-                localized: "Microphone readiness", comment: "Microphone settings: row title."),
-              description: String(
-                localized:
-                  "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words.",
-                comment: "Microphone settings: explains microphone readiness.")
+              title: DictationSettingsCopy.Microphone.readinessTitle,
+              short: DictationSettingsCopy.Microphone.readinessShort,
+              help: DictationSettingsCopy.Microphone.readinessHelp
             ) {
               BrandedSegmentedPicker(
                 options: [
@@ -282,12 +277,13 @@ private struct MicrophonePageFooterTip: View {
 
 /// The compact Bluetooth entry point (founder mockup, 2026-09-16): icon,
 /// title, one intro sentence, and a "Learn more" button that opens the full
-/// guide as a popover. Same responsive shape as `SettingsControlRow` (icon +
+/// guide as a popover. Same responsive shape as `SettingsRow` (icon +
 /// label horizontally, control dropping below the label at the app's 750pt
 /// minimum), kept as a sibling rather than folded into that type because this
-/// row's sentence stays VISIBLE — `SettingsControlRow`'s hides its
-/// description behind the title's own "?" — and the trailing slot is a fixed
-/// "Learn more" action rather than an arbitrary control.
+/// row's sentence stays VISIBLE — `SettingsRow` hides its full explanation
+/// behind the title's own "?" and shows only a short line (#3385) — and the
+/// trailing slot is a fixed "Learn more" action rather than an arbitrary
+/// control. (#3385's later Microphone chunk revisits this row.)
 private struct BluetoothGuideRow: View {
   @Binding var showBluetoothTips: Bool
   @State private var showGuide = false
@@ -306,7 +302,7 @@ private struct BluetoothGuideRow: View {
           label
         }
         // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
-        // spacing (11); see `SettingsControlRow`.
+        // spacing (11); see `SettingsRow`.
         learnMoreButton
           .padding(.leading, 37)
       }
