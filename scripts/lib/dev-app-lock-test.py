@@ -401,9 +401,11 @@ def main():
         for label, comm, want in [
             ("interactive", "claude", "claude"),
             ("daemon-hosted session", "claude bg-spare", "claude"),
-            ("daemon pty host", "claude bg-pty-host", "claude"),
+            ("daemon pty host is not a session", "claude bg-pty-host", "undecided"),
             ("native installer path",
-             "/Users/x/.local/share/claude/versions/2.1.288", "claude"),
+             os.path.expanduser("~/.local/share/claude/versions/2.1.288"), "claude"),
+            ("versions path outside the install folder",
+             "/tmp/claude/versions/2.1.288", None),
             ("codex CLI binary",
              "/usr/local/lib/node_modules/@openai/codex/vendor/codex/codex", "codex"),
             ("desktop app is not a CLI session",
@@ -420,11 +422,30 @@ def main():
                  f"LOCK_DIR = {n_lock!r}"),
                 ('PS = "/bin/ps"', f"PS = {name_ps!r}")])
             rc, out = run_tool(n_tool, "claim", "--label", "n")
-            if want:
+            if want == "undecided":
+                ok = rc == 2 and "without a session process" in out
+            elif want:
                 ok = rc == 0 and f"claimed by {want} session" in out
             else:
                 ok = rc == 0 and "founder run" in out
             check(f"{label} ({comm!r}) -> {want or 'founder run'}", ok, out)
+
+        # Two candidates in one chain: the nearest (the session) must win, not
+        # the shared host further up.
+        chain_ps = os.path.join(tmp, "chain-ps")
+        with open(chain_ps, "w") as f:
+            f.write('#!/bin/sh\nfor a; do p=$a; done\n'
+                    'if [ "$p" = 777 ]; then echo "1 Thu Jan  1 00:00:00 1970 S claude bg-pty-host"\n'
+                    'else echo "777 Thu Jan  1 00:00:00 1970 S claude bg-spare"; fi\n')
+        os.chmod(chain_ps, 0o755)
+        c_lock = os.path.join(tmp, "lock-chain")
+        c_tool = make_copy(tmp, "chain.py", [
+            ('LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")',
+             f"LOCK_DIR = {c_lock!r}"),
+            ('PS = "/bin/ps"', f"PS = {chain_ps!r}")])
+        rc, out = run_tool(c_tool, "claim", "--label", "chain")
+        check("the nearest session wins over the host above it",
+              rc == 0 and card(c_lock)["pid"] == os.getpid(), out)
 
         print("live tool targets the real lock")
         live_src = open(TOOL).read()

@@ -135,7 +135,9 @@ def find_session():
 # The native installer runs Claude Code from a version-named file, e.g.
 # ~/.local/share/claude/versions/2.1.288. Launched through the `claude`
 # symlink, ps shows `claude`; launched by full path it can show this path.
-CLAUDE_VERSION_PATH = re.compile(r"/claude/versions/[^/\s]+$")
+CLAUDE_VERSION_PATH = re.compile(
+    re.escape(os.path.expanduser("~/.local/share/claude/versions/"))
+    + r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?")
 
 
 def agent_kind(comm):
@@ -144,16 +146,25 @@ def agent_kind(comm):
     Measured on this Mac 2026-10-03: interactive sessions show `claude`;
     daemon-hosted sessions rewrite their title to `claude bg-spare` (the
     session itself; its tool shells are its children) and their host to
-    `claude bg-pty-host`. Matching only the exact name `claude` missed the
+    `claude bg-pty-host` (a host, never a session: refused). Matching only
+    the exact name `claude` missed the
     daemon form, which turned an agent run into a founder run that skips the
     lock. So the FIRST WORD's basename is what counts. A path with spaces
     (`/Applications/Claude.app/...`) fails closed toward "not a session".
+
+    Stated limit: a command detached from its session (a new Terminal window,
+    launchctl, a pre-existing tmux server, a background job that outlives its
+    shell) has no agent ancestor and runs as a founder run.
     """
-    first = comm.split()[0] if comm.split() else ""
-    name = os.path.basename(first)
+    words = comm.split()
+    name = os.path.basename(words[0]) if words else ""
     if name in AGENT_NAMES:
+        if name == "claude" and words[1:] == ["bg-pty-host"]:
+            # The daemon's host serves many sessions; reaching it means the
+            # session process was not in the chain, so nobody can be named.
+            raise Undecided("Claude host process found without a session process")
         return name
-    if "claude" in AGENT_NAMES and CLAUDE_VERSION_PATH.search(comm):
+    if "claude" in AGENT_NAMES and CLAUDE_VERSION_PATH.fullmatch(comm):
         return "claude"
     return None
 
