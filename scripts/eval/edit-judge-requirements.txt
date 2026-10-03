@@ -4,7 +4,7 @@
 # The probe and converter refuse any other transformers/coremltools version
 # (probe_edit_judge_compatibility.EXPECTED_TOOLCHAIN).
 torch==2.12.1
-transformers==4.50.0
+transformers==5.10.1
 coremltools==9.0
 # NumPy is pinned BELOW 2.4: coremltools 9.0's torch frontend casts a
 # 1-element array with dtype(x.val) in `_int`/`_cast` (ops.py:3048), which
