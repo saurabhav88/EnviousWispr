@@ -786,9 +786,13 @@ final class HALDeviceInputSource: AudioInputSource {
     // consumer thread (cloud review P2 on PR #1418 — the prior version
     // assumed a silent resample that only worked by coincidence on the
     // Bose, whose Bluetooth profile happens to already be 16kHz).
-    guard let nativeASBD = Self.queryNativeStreamFormat(deviceID: deviceID) else {
+    let nativeRead = Self.readNativeStreamFormat(deviceID: deviceID)
+    guard let nativeASBD = nativeRead.format else {
       AudioComponentInstanceDispose(unit)
-      throw setupFailure("HALDeviceInputSource.prepare.query_native_format")
+      // #1851: the HAL read's own status, not an earlier success.
+      throw setupFailure(
+        "HALDeviceInputSource.prepare.query_native_format",
+        AudioStatusFormatting.failingStatus(nativeRead.status))
     }
     guard
       let nativeFormat = AVAudioFormat(
@@ -1367,6 +1371,14 @@ final class HALDeviceInputSource: AudioInputSource {
   private static func queryNativeStreamFormat(deviceID: AudioDeviceID)
     -> AudioStreamBasicDescription?
   {
+    readNativeStreamFormat(deviceID: deviceID).format
+  }
+
+  /// The same read, keeping the `OSStatus` the HAL returned (#1851), so a failed
+  /// read can say why. `format` is nil exactly when `status` is not `noErr`.
+  private static func readNativeStreamFormat(deviceID: AudioDeviceID)
+    -> (format: AudioStreamBasicDescription?, status: OSStatus)
+  {
     var format = AudioStreamBasicDescription()
     var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
     var addr = AudioObjectPropertyAddress(
@@ -1375,7 +1387,7 @@ final class HALDeviceInputSource: AudioInputSource {
       mElement: kAudioObjectPropertyElementMain
     )
     let status = AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &format)
-    return status == noErr ? format : nil
+    return (status == noErr ? format : nil, status)
   }
 
   // MARK: - Private: disconnect handling
