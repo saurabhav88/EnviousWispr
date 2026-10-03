@@ -2556,6 +2556,17 @@
         }
       }
     },
+    "Allowed" : {
+      "comment" : "Permissions settings: the pill shown when a permission is granted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt"
+          }
+        }
+      }
+    },
     "Almost there. Just two permissions." : {
       "localizations" : {
         "de" : {
@@ -2693,16 +2704,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hält die Mikrofon-Engine dauerhaft aktiv. Die Mikrofonanzeige von macOS kann sichtbar bleiben und der Stromverbrauch steigen."
-          }
-        }
-      }
-    },
-    "Always replace, even when the original might be right" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Immer ersetzen, auch wenn das Original richtig sein könnte"
           }
         }
       }
@@ -3175,13 +3176,13 @@
         }
       }
     },
-    "Audio isn't capturing from %@. Try a different input under Settings > Dictation Settings > Microphone & Media." : {
-      "comment" : "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Dictation Settings > Microphone & Media is a place in this app.",
+    "Audio isn't capturing from %@. Try a different input under Settings > Dictation Settings > Microphone." : {
+      "comment" : "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Dictation Settings > Microphone is a place in this app.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Über %@ wird kein Ton aufgenommen. Wähle unter Einstellungen > Diktateinstellungen > Mikrofon & Medien einen anderen Eingang."
+            "value" : "Über %@ wird kein Ton aufgenommen. Wähle unter Einstellungen > Diktateinstellungen > Mikrofon einen anderen Eingang."
           }
         }
       }
@@ -3947,42 +3948,12 @@
       }
     },
     "Change" : {
-      "comment" : "Settings: button that opens the other choices for a setting.",
+      "comment" : "Keybind field: the chip inside the field; clicking the field changes the keys.\nSettings: button that opens the other choices for a setting.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ändern"
-          }
-        }
-      }
-    },
-    "Change add-a-word keybind" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel zum Hinzufügen eines Worts ändern"
-          }
-        }
-      }
-    },
-    "Change cancel keybind" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel zum Abbrechen der Aufnahme ändern"
-          }
-        }
-      }
-    },
-    "Change copy last dictation keybind" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel zum Kopieren des letzten Diktats ändern"
           }
         }
       }
@@ -4014,16 +3985,6 @@
         }
       }
     },
-    "Change paste last dictation keybind" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel zum Einfügen des letzten Diktats ändern"
-          }
-        }
-      }
-    },
     "Change preview engine" : {
       "comment" : "Live Preview settings: VoiceOver name of the Change button for the preview engine.",
       "localizations" : {
@@ -4031,16 +3992,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorschau-Engine ändern"
-          }
-        }
-      }
-    },
-    "Change recording keybind" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel für die Aufnahme ändern"
           }
         }
       }
@@ -4147,16 +4098,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bei jedem Start von EnviousWispr nach neuen Kontakten suchen. Standardmäßig deaktiviert."
-          }
-        }
-      }
-    },
-    "Check for updates" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nach Updates suchen"
           }
         }
       }
@@ -7313,6 +7254,17 @@
         }
       }
     },
+    "Follows macOS" : {
+      "comment" : "Microphone menu: the line under Auto. Auto uses the Mac's input microphone.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folgt macOS"
+          }
+        }
+      }
+    },
     "For everyday English and European dictation" : {
       "comment" : "Speech engine settings: short line under the fast engine's name.",
       "localizations" : {
@@ -8020,27 +7972,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartezeit nach dem Sprechen, bevor die Aufnahme endet."
-          }
-        }
-      }
-    },
-    "How snippets work" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "So funktionieren Textbausteine"
-          }
-        }
-      }
-    },
-    "How these work on this engine" : {
-      "comment" : "Speech engine settings: note beside the current engine's heading. The settings below are shared by both engines; their explanations describe the current one.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "So funktionieren diese Einstellungen mit dieser Engine"
           }
         }
       }
@@ -9780,23 +9711,12 @@
       }
     },
     "Microphone" : {
-      "comment" : "Setup permissions: title of the microphone permission row.",
+      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nSetup permissions: title of the microphone permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon"
-          }
-        }
-      }
-    },
-    "Microphone & Media" : {
-      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofon & Medien"
           }
         }
       }
@@ -10300,6 +10220,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird nie überschrieben."
+          }
+        }
+      }
+    },
+    "Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form." : {
+      "comment" : "Permissions settings, Privacy: short line under What we collect.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niemals deine Audiodaten, Texte, deinen Verlauf, deine Textbausteine, dein Wörterbuch oder API-Schlüssel. Nur was du in das Feedback-Formular eingibst."
           }
         }
       }
@@ -14176,6 +14107,17 @@
         }
       }
     },
+    "See details" : {
+      "comment" : "Permissions settings, Privacy: button that opens the What Data Is Collected help article.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details ansehen"
+          }
+        }
+      }
+    },
     "See what we collect" : {
       "comment" : "Permissions settings, Privacy: link to the What Data Is Collected help article.",
       "localizations" : {
@@ -17800,16 +17742,6 @@
         }
       }
     },
-    "Update status unavailable" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Update-Status nicht verfügbar"
-          }
-        }
-      }
-    },
     "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it." : {
       "comment" : "Setup notice on Macs older than macOS 26.",
       "localizations" : {
@@ -18503,6 +18435,7 @@
       }
     },
     "What we collect" : {
+      "comment" : "Permissions settings, Privacy: row title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21937,13 +21870,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Microphone -> Dictation Settings > Microphone & Media"
+            "value" : "Microphone -> Dictation Settings > Microphone"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mikrofon -> Diktateinstellungen > Mikrofon & Medien"
+            "value" : "Mikrofon -> Diktateinstellungen > Mikrofon"
           }
         }
       }
