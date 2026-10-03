@@ -15,7 +15,7 @@ import Testing
 /// `UpdateCoordinator` is built with `updaterController: nil`; the probe
 /// override supplies the updater for the proactive path.
 @MainActor
-@Suite("UpdateCoordinator proactive checks", .serialized)
+@Suite("UpdateCoordinator proactive checks", .serialized, .tags(.productOutcome))
 struct UpdateCoordinatorProactiveCheckTests {
 
   /// Fake satisfying the narrow `ProactiveUpdaterProbe` seam.
@@ -210,14 +210,14 @@ struct UpdateCoordinatorProactiveCheckTests {
     #expect(fired == false)
   }
 
-  // MARK: - Settings attended check source tag
+  // MARK: - Gift attended check source tag
 
-  @Test("checkForUpdatesFromSettings tags the install source 'settings'")
-  func settingsCheckTagsSource() {
+  @Test("checkForUpdatesFromWhatsNew tags the install source 'whats_new_menu'")
+  func whatsNewCheckTagsSource() {
     let coordinator = makeCoordinator()
     #expect(coordinator.lastInstallSource == nil, "Precondition: no source yet.")
-    coordinator.checkForUpdatesFromSettings()
-    #expect(coordinator.lastInstallSource == "settings")
+    coordinator.checkForUpdatesFromWhatsNew()
+    #expect(coordinator.lastInstallSource == "whats_new_menu")
   }
 
   // MARK: - Telemetry (DEBUG-only testEventHook seam)
