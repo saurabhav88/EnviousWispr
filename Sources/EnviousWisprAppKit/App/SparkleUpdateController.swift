@@ -196,7 +196,7 @@ extension SparkleUpdateController: @preconcurrency SPUStandardUserDriverDelegate
         if update.isCriticalUpdate { return "critical" }
         return "immediate_focus"
       }()
-      updateCoordinator?.lastInstallSource = "sparkle_default"
+      updateCoordinator?.noteSparkleShowingUpdate(userInitiated: state.userInitiated)
       TelemetryService.shared.updateSparkleDefaultShown(
         version: update.versionString,
         isCritical: update.isCriticalUpdate,

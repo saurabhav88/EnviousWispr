@@ -50,6 +50,7 @@ final class UpdateCoordinator {
 
   private weak var updaterController: SPUStandardUpdaterController?
   private let defaults: UserDefaults
+  private let attendedCheck: @MainActor () -> Void
   private let notifier: any UpdateNotifying
 
   /// #1019: refresh hook for the menu-bar surface. The menu-bar home sets this
@@ -87,10 +88,14 @@ final class UpdateCoordinator {
   init(
     updaterController: SPUStandardUpdaterController?,
     defaults: UserDefaults = .standard,
-    notifier: (any UpdateNotifying)? = nil
+    notifier: (any UpdateNotifying)? = nil,
+    attendedCheck: (@MainActor () -> Void)? = nil
   ) {
     self.updaterController = updaterController
     self.defaults = defaults
+    self.attendedCheck = attendedCheck ?? { [weak updaterController] in
+      updaterController?.checkForUpdates(nil)
+    }
     self.notifier = notifier ?? UpdateNotificationPresenter()
     self.service = UpdateAvailabilityService(
       installAction: { [weak updaterController] in
@@ -233,6 +238,28 @@ final class UpdateCoordinator {
   func checkForUpdatesFromSettings() {
     lastInstallSource = "settings"
     updaterController?.checkForUpdates(nil)
+  }
+
+  /// #3385: assign attribution only when this click can begin a new session.
+  /// Still forward an active-session click so Sparkle can bring its UI forward.
+  func checkForUpdatesFromWhatsNew(
+    probe: (any ProactiveUpdaterProbe)? = nil
+  ) {
+    let updater: (any ProactiveUpdaterProbe)? =
+      probe ?? updaterController?.updater
+    if updater?.sessionInProgress != true {
+      lastInstallSource = "whats_new_menu"
+    }
+    attendedCheck()
+  }
+
+  /// Sparkle also reports user-initiated checks through its default-UI callback.
+  /// Keep that entry point's source; a scheduled presentation owns its own source.
+  /// With no explicit source, the default UI is the only attribution we know.
+  func noteSparkleShowingUpdate(userInitiated: Bool) {
+    if userInitiated == false || lastInstallSource == nil {
+      lastInstallSource = "sparkle_default"
+    }
   }
 
   // MARK: - Availability surfaces (#1019)
