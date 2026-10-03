@@ -10,7 +10,6 @@ import UniformTypeIdentifiers
 struct TranscriptDetailView: View {
   let transcript: Transcript
   @Environment(PermissionsService.self) private var permissions
-  @Environment(SettingsManager.self) private var settings
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   @Environment(LiveRecordingState.self) private var liveRecordingState

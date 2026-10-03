@@ -13,7 +13,7 @@ import Foundation
 /// changing the real split could not fail them. A mutation to this type does fail its tests.
 ///
 /// The boundary that buys, stated exactly: these tests protect the GROUPING POLICY and the
-/// headings. They do NOT protect the SwiftUI wiring — if the view stopped calling this, or
+/// partition. They do NOT protect the SwiftUI wiring — if the view stopped calling this, or
 /// rendered the groups in the wrong order, the tests would still pass. That half is a Live UAT
 /// item.
 enum LivePreviewPackPresentation {
@@ -24,22 +24,7 @@ enum LivePreviewPackPresentation {
     let installed: [LivePreviewPack]
     /// Everything else Apple supports on this Mac.
     let available: [LivePreviewPack]
-
-    var isEmpty: Bool { installed.isEmpty && available.isEmpty }
   }
-
-  /// Headings. Statements of where the language IS, not instructions — the row's own button
-  /// already says what pressing it does, and repeating that in a heading reads as nagging.
-  ///
-  /// Rendered as SECTION headers rather than rows: styled as a row label they carried the same
-  /// visual weight as a language name and disappeared into the list, so the boundary between
-  /// "installed" and "downloadable" was invisible after ten rows (founder, 2026-08-16).
-  static let installedGroupTitle = String(
-    localized: "On this Mac",
-    comment: "Live Preview language list: heading for languages already installed.")
-  static let availableGroupTitle = String(
-    localized: "Available to download",
-    comment: "Live Preview language list: heading for languages that can be downloaded.")
 
   /// Rows matching `query`, or all of them when it is empty.
   ///

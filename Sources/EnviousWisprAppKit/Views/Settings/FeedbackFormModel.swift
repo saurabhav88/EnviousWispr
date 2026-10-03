@@ -34,10 +34,7 @@ final class FeedbackFormModel {
   /// Bumped on every open, metrics change and form close; a load that finishes under an older value
   /// is dropped, so a slow load can never bring back old bytes or an old choice.
   private var generation = 0
-  private var loadTask: Task<Void, Never>?
-
-  /// Test seam: the load started by the latest open or change, to await its landing.
-  var pendingLoad: Task<Void, Never>? { loadTask }
+  private(set) var loadTask: Task<Void, Never>?
 
   init(loadSnapshot: @escaping @MainActor () async -> FeedbackDiagnosticsSnapshot?) {
     self.loadSnapshot = loadSnapshot

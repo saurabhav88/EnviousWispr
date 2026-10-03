@@ -681,28 +681,6 @@ private struct ImportSmartAppPickerScreen: View {
   }
 }
 
-// MARK: - DEBUG fixture preview
-
-/// Test-only fixture launcher retained for focused DEBUG walkthroughs. The
-/// production Paste, Open a file, and From another app sources are wired above;
-/// the fixture button inside this screen is DEBUG-only and unreachable in a
-/// release build.
-private struct ImportPlaceholderScreen: View {
-  let notice: String
-  let model: CustomWordsImportFlowModel
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      InsetNotice(verbatim: notice)
-      #if DEBUG
-        Button("Preview with sample words") {
-          model.begin(with: CustomWordsImportFixtureSource())
-        }
-      #endif
-    }
-  }
-}
-
 private struct ImportWorkingScreen: View {
   let work: CustomWordsImportFlowModel.Work
 
@@ -770,31 +748,6 @@ private struct ImportResultScreen: View {
     CustomWordsImportResultCopy.droppedCollisionMessage(count: droppedAliasCollisionCount)
   }
 }
-
-// MARK: - DEBUG fixture source
-
-#if DEBUG
-  /// Sample words for the DEBUG preview walk, so the real load → compare →
-  /// review → commit path is exercisable before any production source ships.
-  ///
-  /// Carries main words only, matching the v1 import contract: every authority
-  /// field stays `.unspecified`, so this fixture cannot smuggle in behavior a
-  /// real v1 source would not have.
-  struct CustomWordsImportFixtureSource: CustomWordsImportSource {
-    func loadRawCandidates() async throws -> CustomWordsImportBatch {
-      CustomWordsImportBatch(
-        sourceID: "debug-fixture",
-        sourceDisplayName: "Sample words",
-        candidates: [
-          CustomWordsImportCandidate(canonical: "Kubernetes"),
-          CustomWordsImportCandidate(canonical: "Anthropic"),
-          CustomWordsImportCandidate(canonical: "EnviousWispr"),
-          CustomWordsImportCandidate(canonical: "Saurabh"),
-        ]
-      )
-    }
-  }
-#endif
 
 /// The Review & Merge summary line (#3142), outside the private screen so tests can pin it.
 enum CustomWordsImportReviewCopy {

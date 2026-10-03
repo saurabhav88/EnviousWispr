@@ -35,7 +35,6 @@ struct TranscribeFileView: View {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
-  @Environment(EGOneRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
 
   /// The shared setup editor's own state (key drafts, saved-key reads, a pending download).

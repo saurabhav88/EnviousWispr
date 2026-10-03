@@ -25,9 +25,6 @@ enum SpokenPunctuationCopy {
         "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it.",
       comment: "Speech engine settings, spoken punctuation: description under the toggle.")
 
-  static let helpButtonAccessibilityLabel = String(
-    localized: "What can I say?",
-    comment: "Speech engine settings, spoken punctuation: VoiceOver name of the help button.")
   static let helpTitle = String(
     localized: "Words you can say",
     comment: "Speech engine settings, spoken punctuation: help panel title.")

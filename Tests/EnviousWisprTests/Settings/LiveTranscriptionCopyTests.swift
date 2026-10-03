@@ -154,7 +154,6 @@ struct LiveTranscriptionCopyTests {
   private var allUserFacingStrings: [String] {
     var out = [
       LiveTranscriptionCopy.toggleLabel,
-      LiveTranscriptionCopy.helpButtonAccessibilityLabel,
       LiveTranscriptionCopy.autoLanguageFootnote,
       LiveTranscriptionCopy.parakeetToggleDescription,
       LiveTranscriptionCopy.whisperKitToggleDescription,

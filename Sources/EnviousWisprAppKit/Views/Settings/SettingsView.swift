@@ -4,7 +4,6 @@ import SwiftUI
 
 /// Unified single-window view: History + all settings tabs in one sidebar.
 struct UnifiedWindowView: View {
-  @Environment(SettingsManager.self) private var settings
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(UpdateCoordinatorHolder.self) private var updateCoordinatorHolder
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator

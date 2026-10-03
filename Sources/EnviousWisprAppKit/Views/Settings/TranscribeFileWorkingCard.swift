@@ -39,17 +39,12 @@ struct WorkingStepModel: Equatable {
   let rows: [Row]
   /// The current step, or nil when the run has no active row (never, while running).
   var active: Row? { rows.first { $0.state == .active } }
-  /// The old one-line title, kept for the accessibility sentence and the tests: the active
-  /// row's title.
-  var title: String { active?.title ?? "" }
-
   /// The coordinator names these phases while `state` is `.transcribing`; each is set-up
   /// work, not transcription. The first precedes transcribing, the other two precede cleaning.
   /// These are the producer's English tokens and decide which row is active; the card shows
   /// `displayPhase(_:)` of them, never the token, so translation cannot move a branch (#3142).
   static let enginePhase = "Getting the engine ready"
   static let cleanupPreparingPhases: Set<String> = ["Preparing cleanup", "Dividing it up to clean"]
-  static let preparingPhases: Set<String> = cleanupPreparingPhases.union([enginePhase])
 
   /// The phase the coordinator names while the speaker step is awaited before cleanup
   /// (#2817 pipeline half). Read alongside `speakerStepState` so the card reads the same on

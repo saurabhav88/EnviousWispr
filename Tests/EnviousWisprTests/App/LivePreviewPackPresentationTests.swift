@@ -60,12 +60,6 @@ struct LivePreviewPackPresentationTests {
 
     #expect(groups.installed.isEmpty)
     #expect(groups.available.count == 5)
-    #expect(!groups.isEmpty, "the page has rows to show, so this is not the empty state")
-  }
-
-  @Test("An empty catalogue reports empty, so the page shows its message rather than headings")
-  func emptyCatalogue() {
-    #expect(LivePreviewPackPresentation.groups(from: []).isEmpty)
   }
 
   // MARK: - Search
@@ -120,19 +114,6 @@ struct LivePreviewPackPresentationTests {
     // card is `packSections`' decision and is verified on the running app, not here.
     #expect(groups.installed.isEmpty, "no installed language matches this query")
     #expect(groups.available.map(\.tag) == ["it-IT"])
-    #expect(!groups.isEmpty)
-  }
-
-  @Test("Both group headings are non-empty and distinct")
-  func headingsAreUsable() {
-    let installed = LivePreviewPackPresentation.installedGroupTitle
-    let available = LivePreviewPackPresentation.availableGroupTitle
-    #expect(!installed.isEmpty && !available.isEmpty)
-    #expect(installed != available)
-    for heading in [installed, available] {
-      #expect(!heading.contains("—"), "em-dash in user-facing copy: \(heading)")
-      #expect(!heading.contains("–"), "en-dash in user-facing copy: \(heading)")
-    }
   }
 
   // **The two `availability(for:)` cases are DELETED by #2436 with the Source column

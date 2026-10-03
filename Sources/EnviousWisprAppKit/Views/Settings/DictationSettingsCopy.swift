@@ -125,10 +125,6 @@ enum DictationSettingsCopy {
       "Choose a language, or choose Automatic to clear the lock.",
       comment: "Speech engine settings: explains the locked language row's Change button.")
 
-    static let suggestionsTitle = LocalizedStringResource("Language suggestions")
-    static let suggestionsShort = LocalizedStringResource(
-      "Allow language suggestions to appear again.",
-      comment: "Speech engine settings: short line under the Language suggestions row.")
     static let suggestionsHelp = LocalizedStringResource(
       "Reset to allow the app to suggest locking a detected language again.")
 

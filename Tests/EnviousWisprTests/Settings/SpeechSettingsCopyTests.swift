@@ -15,9 +15,6 @@ struct SpeechSettingsCopyTests {
   func fasterTranscription() {
     #expect(LiveTranscriptionCopy.toggleLabel == "Faster Transcription")
     #expect(
-      LiveTranscriptionCopy.helpButtonAccessibilityLabel == "What does Faster Transcription change?"
-    )
-    #expect(
       LiveTranscriptionCopy.autoLanguageFootnote
         == "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy."
     )
@@ -96,7 +93,6 @@ struct SpeechSettingsCopyTests {
       SpokenPunctuationCopy.toggleDescription
         == "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it."
     )
-    #expect(SpokenPunctuationCopy.helpButtonAccessibilityLabel == "What can I say?")
     #expect(SpokenPunctuationCopy.helpTitle == "Words you can say")
     #expect(SpokenPunctuationCopy.helpSayColumn == "Say this")
     #expect(SpokenPunctuationCopy.helpGetColumn == "You get")
@@ -158,7 +154,9 @@ struct SpeechSettingsCopyTests {
     }
     #expect(
       LanguageCatalog.sortedForDisplay.map(\.code)
-        == LanguageCatalog.sortedByEnglishName.map(\.code))
+        == LanguageCatalog.all.sorted {
+          $0.englishName.localizedCaseInsensitiveCompare($1.englishName) == .orderedAscending
+        }.map(\.code))
     let codes = LanguageCatalog.pickerEntries.map(\.code)
     let english = try #require(codes.firstIndex(of: "en"))
     #expect(codes[english + 1] == "en-gb")

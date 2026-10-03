@@ -113,7 +113,6 @@ extension ShapeStyle where Self == Color {
   static var stTextTertiary: Color { Color.stTextTertiary }
   static var stTextBody: Color { Color.stTextBody }
   static var stAccent: Color { Color.stAccent }
-  static var stAccentSolid: Color { Color.stAccentSolid }
   static var stSuccess: Color { Color.stSuccess }
   static var stWarning: Color { Color.stWarning }
   static var stError: Color { Color.stError }

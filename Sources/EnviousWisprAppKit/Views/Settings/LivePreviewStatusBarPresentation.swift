@@ -57,7 +57,6 @@ enum LivePreviewStatusBarPresentation {
   /// configured preview still shows nothing when the user speaks a language it is
   /// not set to. "Activated" alone is a stronger promise than this page can keep.
   struct Bar: Equatable {
-    let label: String
     let detail: String
     let language: Language?
     let action: Action?
@@ -78,7 +77,6 @@ enum LivePreviewStatusBarPresentation {
     languageMode: LanguageMode
   ) -> Bar {
     Bar(
-      label: summary.chip.label,
       detail: summary.detail,
       language: language(
         kind: summary.kind, engine: engine, appleActive: appleActive,

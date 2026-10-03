@@ -36,10 +36,6 @@ struct LivePreviewSettingsView: View {
   /// page with no delivery home in the environment.
   @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
 
-  /// View-local: a search box is about what this page is SHOWING, not about the
-  /// catalogue, so the model has no reason to know it exists.
-  @State private var searchText: String = ""
-
   /// #2154: the dictation-language picker, opened by the Change button.
   @State private var showLanguageSheet: Bool = false
 
