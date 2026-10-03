@@ -70,9 +70,11 @@ struct MicrophoneSettingsRenderHarness {
               resolvedHelp: String(localized: DictationSettingsCopy.Microphone.inputDeviceHelp)) {
               MicrophoneDevicePicker(selection: .constant(scenario.preferred),
                 devices: [builtIn, usb, bluetooth, unknown], presentation: presentation,
-                transportTokens: [41: "built_in", 77: "usb", 91: "bluetooth"],
-                capturePresentation: scenario.capture)
+                transportTokens: [41: "built_in", 77: "usb", 91: "bluetooth"])
                 .background(ClipboardSettingsLayoutTests.probe("picker"))
+            }.rowStatus {
+              MicrophoneInUseStatus(displayedUID: presentation.deviceUID, snapshot: scenario.capture)
+                .background(ClipboardSettingsLayoutTests.probe("status"))
             }.background(ClipboardSettingsLayoutTests.probe("input-row"))
             if let device = scenario.device, device.inputChannelCount > 1 {
               SettingsRow(icon: "cable.connector", resolvedTitle: german ? "Eingang" : InputSocketCopy.label,

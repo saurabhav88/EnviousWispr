@@ -29,3 +29,27 @@ extension EnvironmentValues {
     set { self[MicrophoneCapturePresentationKey.self] = newValue }
   }
 }
+
+/// The Input device row's status slot, separate from its menu. Only this small
+/// view invokes the deferred reader, so capture changes do not observe the page.
+struct MicrophoneInUseStatus: View {
+  let displayedUID: String?
+  @Environment(\.microphoneCapturePresentation)
+  private var readCapturePresentation
+
+  /// Explicit snapshots keep render fixtures independent of live capture observation.
+  var snapshot: MicrophoneCapturePresentation? = nil
+
+  var body: some View {
+    let capturePresentation = snapshot ?? readCapturePresentation()
+    if capturePresentation.isInUse(displayedUID: displayedUID) {
+      HStack(spacing: 5) {
+        Circle().fill(Color.stSuccess).frame(width: 6, height: 6)
+          .accessibilityHidden(true)
+        // The semantic green marks the dot; the standard text token stays readable
+        // on the light card too, without changing the shared status palette.
+        Text(MicrophoneChoiceCopy.inUse).font(.stHelper).foregroundStyle(Color.stTextSecondary)
+      }
+    }
+  }
+}

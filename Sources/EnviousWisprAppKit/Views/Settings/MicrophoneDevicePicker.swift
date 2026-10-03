@@ -13,27 +13,8 @@ struct MicrophoneDevicePicker: View {
   let devices: [AudioInputDevice]
   let presentation: MicrophoneDevicePresentation
   let transportTokens: [UInt32: String]
-  @Environment(\.microphoneCapturePresentation)
-  private var readCapturePresentation
-
-  /// Explicit snapshots keep render fixtures independent of live capture observation.
-  var capturePresentation: MicrophoneCapturePresentation? = nil
-
   var body: some View {
-    let capturePresentation =
-      capturePresentation ?? readCapturePresentation()
-    VStack(alignment: .leading, spacing: 5) {
-      microphoneMenu
-      if capturePresentation.isInUse(displayedUID: presentation.deviceUID) {
-        HStack(spacing: 5) {
-          Circle().fill(Color.stSuccess).frame(width: 6, height: 6)
-            .accessibilityHidden(true)
-          // The semantic green marks the dot; the standard text token stays readable
-          // on the light card too, without changing the shared status palette.
-          Text(MicrophoneChoiceCopy.inUse).font(.stHelper).foregroundStyle(Color.stTextSecondary)
-        }
-      }
-    }
+    microphoneMenu
   }
 
   private var microphoneMenu: some View {

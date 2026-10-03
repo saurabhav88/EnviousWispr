@@ -2405,7 +2405,7 @@ private struct MainWindowRoot: View {
       // set names them instead.
       .environment(b.localPolishRuntimes)
       .environment(b.audioDeviceList)
-      // Only the microphone picker invokes this reader and observes capture changes.
+      // Only the microphone status view invokes this reader and observes capture changes.
       // No second state owner or capture command; the diagnostic UID survives stop.
       .environment(\.microphoneCapturePresentation, {
         MicrophoneCapturePresentation(

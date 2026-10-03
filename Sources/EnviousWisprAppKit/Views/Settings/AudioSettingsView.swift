@@ -116,6 +116,9 @@ struct AudioSettingsView: View {
                 presentation: devicePresentation,
                 transportTokens: transportTokens)
             }
+            .rowStatus {
+              MicrophoneInUseStatus(displayedUID: devicePresentation.deviceUID)
+            }
 
             if let device = multiInputDevice {
               let socketSelection = Binding<Int>(

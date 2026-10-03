@@ -22,8 +22,12 @@ struct MicrophoneSettingsLayoutTests {
       help: DictationSettingsCopy.Microphone.inputDeviceHelp) {
       MicrophoneDevicePicker(selection: .constant(""), devices: [device],
         presentation: .make(preferredUID: "", resolvedDevice: device, transportToken: "usb"),
-        transportTokens: [77: "usb"],
-        capturePresentation: .init(isCapturing: capturing, boundDeviceUID: "usb"))
+        transportTokens: [77: "usb"])
+        .background(ClipboardSettingsLayoutTests.probe("picker"))
+    }.rowStatus {
+      MicrophoneInUseStatus(displayedUID: "usb",
+        snapshot: .init(isCapturing: capturing, boundDeviceUID: "usb"))
+        .background(ClipboardSettingsLayoutTests.probe("status"))
     }
   }
 
@@ -47,27 +51,35 @@ struct MicrophoneSettingsLayoutTests {
         window.contentView = host
         host.layoutSubtreeIfNeeded()
         let frame = try #require(box.frames["row"])
-        print("MicrophoneRow page=\(width) capturing=\(capturing) frame=\(frame) fit=\(host.fittingSize)")
+        print("MicrophoneRow page=\(width) capturing=\(capturing) frame=\(frame) fit=\(host.fittingSize) slots=\(box.frames)")
+        if capturing {
+          let status = try #require(box.frames["status"])
+          let picker = try #require(box.frames["picker"])
+          #expect(abs(status.minX - (frame.minX + 37)) < 1, "status aligns with the row description")
+          #expect(status.height > 14 && status.height < 30, "14pt helper line: \(status)")
+          if width < 1058 {
+            #expect(status.maxY <= picker.minY, "status is above the stacked menu")
+          } else {
+            #expect(status.maxX < picker.minX, "status is on the text side of the wide row")
+          }
+        }
         #expect(frame.width <= rowWidth + 0.5)
         #expect(frame.height > 30)
         measured.append(frame.height)
         window.contentView = nil
       }
-      #expect(measured[1] > measured[0], "the cue needs room below the picker")
+      #expect(measured[1] > measured[0], "the cue needs room below the description")
     }
   }
 
-  @Test("the native menu label remains 260 points wide in every capture state")
+  @Test("the native menu stays 260 points wide without a capture cue")
   func menuLabelKeepsWidth() {
-    for capturing in [false, true] {
-      let host = NSHostingView(rootView: MicrophoneDevicePicker(
+    let host = NSHostingView(rootView: MicrophoneDevicePicker(
         selection: .constant("usb"), devices: [Self.device],
         presentation: .make(preferredUID: "usb", resolvedDevice: Self.device, transportToken: "usb"),
-        transportTokens: [77: "usb"],
-        capturePresentation: .init(isCapturing: capturing, boundDeviceUID: "usb")))
-      print("MicrophonePicker capturing=\(capturing) fit=\(host.fittingSize)")
-      #expect(abs(host.fittingSize.width - 260) < 1)
-      #expect(host.fittingSize.height > 30)
-    }
+        transportTokens: [77: "usb"]))
+    print("MicrophonePicker fit=\(host.fittingSize)")
+    #expect(abs(host.fittingSize.width - 260) < 1)
+    #expect(host.fittingSize.height > 30)
   }
 }

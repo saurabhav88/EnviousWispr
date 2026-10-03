@@ -3,7 +3,7 @@ import SwiftParser
 import SwiftSyntax
 import Testing
 
-/// A drift guard: only the microphone picker may observe capture changes, and the cue
+/// A drift guard: only the microphone status view may observe capture changes, and the cue
 /// reads actual capture evidence, never the selected preference. These syntax checks
 /// establish where reads execute, not a measured recording-latency improvement.
 @Suite("Microphone capture wiring (#3385)", .tags(.driftGuard))
@@ -27,23 +27,36 @@ struct MicrophoneCaptureWiringTests {
     ])
   }
 
-  @Test("only the picker invokes the reader in its body, with a snapshot override")
+  @Test("only the row status invokes the reader in its body, with a snapshot override")
   func viewUsesDisplayedIdentity() throws {
     let page = MicrophoneSettingsWiringTests.codeOnly(try MicrophoneSettingsWiringTests.source(
       MicrophoneSettingsWiringTests.audioPath))
     #expect(page.contains("microphoneCapturePresentation") == false)
     #expect(page.contains("capturePresentation:") == false)
     #expect(page.contains("AudioCaptureManager") == false)
+    let pageTree = try MicrophoneSettingsWiringTests.source(MicrophoneSettingsWiringTests.audioPath)
+    #expect(Self.inputStatusSlots(in: pageTree) == ["MicrophoneInUseStatus(displayedUID: devicePresentation.deviceUID)"])
     let tree = try MicrophoneSettingsWiringTests.source(
-      "Sources/EnviousWisprAppKit/Views/Settings/MicrophoneDevicePicker.swift")
+      "Sources/EnviousWisprAppKit/Views/Settings/MicrophoneCapturePresentation.swift")
+    let status = try #require(Self.structure(named: "MicrophoneInUseStatus", in: tree))
     let calls = MicrophoneSettingsWiringTests.calls(named: "readCapturePresentation", in: tree)
     #expect(calls.count == 1)
     #expect(calls.first?.bindings == ["capturePresentation", "body"])
-    let picker = MicrophoneSettingsWiringTests.codeOnly(tree)
-    #expect(picker.contains("@Environment(\\.microphoneCapturePresentation)privatevarreadCapturePresentation"))
-    #expect(picker.contains("varcapturePresentation:MicrophoneCapturePresentation?=nil"))
-    #expect(picker.contains("letcapturePresentation=capturePresentation??readCapturePresentation()"))
-    #expect(picker.contains("capturePresentation.isInUse(displayedUID:presentation.deviceUID)"))
+    let statusCalls = MicrophoneSettingsWiringTests.calls(named: "readCapturePresentation",
+      in: Parser.parse(source: status.trimmedDescription))
+    #expect(statusCalls.count == 1, "the sole invocation belongs to MicrophoneInUseStatus")
+    let statusCode = MicrophoneSettingsWiringTests.codeOnly(Parser.parse(source: status.trimmedDescription))
+    #expect(statusCode.contains("@Environment(\\.microphoneCapturePresentation)privatevarreadCapturePresentation"))
+    #expect(statusCode.contains("varsnapshot:MicrophoneCapturePresentation?=nil"))
+    #expect(statusCode.contains("letcapturePresentation=snapshot??readCapturePresentation()"))
+    #expect(statusCode.contains("capturePresentation.isInUse(displayedUID:displayedUID)"))
+    #expect(statusCode.contains(".font(.stHelper)"))
+    #expect(statusCode.contains("Circle().fill(Color.stSuccess).frame(width:6,height:6).accessibilityHidden(true)"))
+    let picker = MicrophoneSettingsWiringTests.codeOnly(try MicrophoneSettingsWiringTests.source(
+      "Sources/EnviousWisprAppKit/Views/Settings/MicrophoneDevicePicker.swift"))
+    #expect(picker.contains("microphoneCapturePresentation") == false)
+    #expect(picker.contains("readCapturePresentation") == false)
+    #expect(picker.contains("MicrophoneChoiceCopy.inUse") == false)
     #expect(picker.contains(".accessibilityLabel(String(localized:DictationSettingsCopy.Microphone.inputDeviceTitle))"))
     #expect(picker.contains(".accessibilityValue([presentation.deviceName??placeholder,detail].compactMap{$0}.joined(separator:\", \"))"))
     #expect(picker.contains(".pickerStyle(.inline)"))
@@ -54,6 +67,12 @@ struct MicrophoneCaptureWiringTests {
 
   @Test("the structural scan distinguishes deferred, eager and precomputed reads")
   func observationPlacementExtractorControls() {
+    let validSlot = Parser.parse(source:
+      "SettingsRow(title: DictationSettingsCopy.Microphone.inputDeviceTitle) { PickerView() }.rowStatus { Status() }")
+    #expect(Self.inputStatusSlots(in: validSlot) == ["Status()"])
+    let wrongRow = Parser.parse(source:
+      "SettingsRow(title: Other.title) { PickerView() }.rowStatus { Status() }")
+    #expect(Self.inputStatusSlots(in: wrongRow) == [])
     let read = "b.liveRecordingState.audioCapture.isCapturing"
     let deferred = Self.captureReadFacts(in: Syntax(Parser.parse(source:
       "var body: some View { view.environment(\\.microphoneCapturePresentation, { Snapshot(active: \(read)) }) }")))
@@ -75,6 +94,28 @@ struct MicrophoneCaptureWiringTests {
     #expect(captured.readers == 1)
     #expect(captured.deferred == [])
     #expect(captured.immediate == ["isCapturing"])
+  }
+
+  static func inputStatusSlots(in tree: SourceFileSyntax) -> [String] {
+    final class Finder: SyntaxVisitor {
+      var slots: [String] = []
+      init() { super.init(viewMode: .sourceAccurate) }
+      override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+        if let member = node.calledExpression.as(MemberAccessExprSyntax.self),
+          member.declName.baseName.text == "rowStatus",
+          let row = member.base?.as(FunctionCallExprSyntax.self),
+          row.calledExpression.trimmedDescription == "SettingsRow",
+          row.arguments.first(where: { $0.label?.text == "title" })?.expression.trimmedDescription
+            == "DictationSettingsCopy.Microphone.inputDeviceTitle",
+          let closure = node.trailingClosure {
+          slots.append(contentsOf: closure.statements.map { $0.item.trimmedDescription })
+        }
+        return .visitChildren
+      }
+    }
+    let finder = Finder()
+    finder.walk(tree)
+    return finder.slots
   }
 
   private static func structure(named name: String, in tree: SourceFileSyntax) -> StructDeclSyntax? {
