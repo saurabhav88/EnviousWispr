@@ -200,8 +200,9 @@ struct RecordingChimeCard: View {
       selectButton
       previewButton
     }
-    // The decorative row spans beneath BOTH controls, and belongs to neither
-    // label. It does not read sound data or take hits; Select owns this lower row.
+    // The decorative row spans beneath BOTH controls and belongs to neither
+    // label. Its bars come from cached bundled WAV data; it takes no hits.
+    // Select owns this lower row.
     .overlay(alignment: .bottom) {
       footer
         .allowsHitTesting(false)

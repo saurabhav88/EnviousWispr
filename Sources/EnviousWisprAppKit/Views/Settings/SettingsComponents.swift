@@ -1043,7 +1043,7 @@ extension BrandedPanel where Footnote == EmptyView {
 }
 
 /// A quiet inset "note" box for use inside a `BrandedPanel`: a purple info glyph
-/// plus microcopy, on a recessed rounded surface. Used for the frozen-per-
+/// plus microcopy, on the shared control fill (`stInputBg`). Used for the frozen-per-
 /// recording notice so it reads as owned by its card, not floating beneath it.
 struct InsetNotice: View {
   /// Resolved text. A literal goes to `text:`, which the catalog extracts by its type; text

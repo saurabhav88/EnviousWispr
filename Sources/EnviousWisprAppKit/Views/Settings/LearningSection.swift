@@ -82,7 +82,7 @@ struct LearnedCheckerSettingsStatus: Equatable {
 /// title, a paragraph, a status line, a button, a second toggle and a second
 /// paragraph ran together as one column of text with nothing saying where one
 /// feature ended (founder, 2026-08-29: "just blends together with no clear UX
-/// design"). The approved mockup draws each as its own recessed card
+/// design"). The approved mockup draws each as its own card
 /// (`.learn-row`). "Keep in sync on launch" is not
 /// a peer of those two features — it is a setting BELONGING to Contacts, so it
 /// sits inside that card under a divider, which is what the mockup's

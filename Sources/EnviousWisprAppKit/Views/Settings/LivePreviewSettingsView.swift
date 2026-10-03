@@ -498,10 +498,10 @@ struct LivePreviewSettingsView: View {
   /// — and the card is where the reason lives.
   ///
   /// #3385: the two cards now open under a summary with Change, as on the
-  /// Engine tab. Every action and reason the cards' footers carried lives in the
-  /// summary's status region instead, so Download, Cancel, Resume, Try Again and
-  /// Remove stay reachable while the cards are closed, including when Apple is
-  /// the engine in use.
+  /// Engine tab. Download, Cancel, Resume, Try Again, reasons and progress remain
+  /// in `engineStatus`, reachable while the cards are closed. When Remove is
+  /// Universal's only action, it appears in Universal's card footer after opening
+  /// Change (founder, 2026-10-03: the engine stays one line).
   private var engineSection: some View {
     let apple = LivePreviewEnginePresentation.appleCard(
       isSelected: settings.livePreviewEngine == .apple,
@@ -664,9 +664,11 @@ struct LivePreviewSettingsView: View {
   /// that button combines its accessibility children and anything actionable
   /// inside it would be merged into the same element.
   ///
-  /// #3385: the footer moved to the summary's status region (`engineStatus`), so
-  /// the actions are reachable with the cards closed and are drawn once; the
-  /// separation above still holds there, a sibling of the selection, never a child.
+  /// #3385: the actions moved to the summary's status region (`engineStatus`), so
+  /// they are reachable with the cards closed and are drawn once. The one exception
+  /// is Universal's lone Remove, which this card's footer carries (see
+  /// `removeLivesOnCard`); the separation above holds in both places, a sibling of
+  /// the selection, never a child.
   private func engineCard(
     _ card: LivePreviewEnginePresentation.Card,
     icon: String,
