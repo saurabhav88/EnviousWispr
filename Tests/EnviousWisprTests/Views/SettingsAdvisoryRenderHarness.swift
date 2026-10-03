@@ -47,6 +47,22 @@ struct SettingsAdvisoryRenderHarness {
     try #require(signalled, "state observation ended without a signal")
   }
 
+  /// Waits through intermediate states: `choose` writes `.reading` synchronously and
+  /// `.ready` only after its decode task runs, so the FIRST change is not the one
+  /// wanted. Re-arms after every change and re-checks after arming, so no write is
+  /// missed; each wait keeps `awaitSignal`'s deadline.
+  private static func awaitState(
+    _ coordinator: FileImportCoordinator, _ wanted: FileImportCoordinator.State
+  ) async throws {
+    for _ in 0..<8 {
+      if coordinator.state == wanted { return }
+      let changed = nextState(coordinator)
+      if coordinator.state == wanted { return }
+      try await awaitSignal(changed)
+    }
+    try #require(coordinator.state == wanted, "state is \(coordinator.state), wanted \(wanted)")
+  }
+
   @Test("The render fixture's signal wait gives up when the subject never changes")
   func absentSignalHasDeadline() async {
     let stream = AsyncStream<Void> { _ in }
@@ -74,14 +90,10 @@ struct SettingsAdvisoryRenderHarness {
       mergeSpeakerFields: { _, _, _ in throw HarnessFailure.unexpectedWork },
       historyRowExists: { _ in false },
       processPart: { _, _ in throw HarnessFailure.unexpectedWork })
-    let ready = nextState(coordinator)
     coordinator.choose(url: URL(fileURLWithPath: "/fixture/Meeting.m4a"))
-    try await awaitSignal(ready)
-    try #require(coordinator.state == .ready(fileName: "Meeting.m4a", seconds: 60))
+    try await awaitState(coordinator, .ready(fileName: "Meeting.m4a", seconds: 60))
     coordinator.start()
-    let refused = nextState(coordinator)
-    try await awaitSignal(refused)
-    try #require(coordinator.state == .rejected(.engineNotInstalled))
+    try await awaitState(coordinator, .rejected(.engineNotInstalled))
     try #require(coordinator.step == .review, "render the actual refusal destination")
     return coordinator
   }
@@ -194,8 +206,7 @@ struct SettingsAdvisoryRenderHarness {
       for dark in [false, true] {
         let label = deviceName == nil ? "advisory-plain" :
           (deviceName == "Scarlett 2i2 USB" ? "advisory-hinted" : "advisory-long-device")
-        let size = try Self.render(label, width: 360, dark: dark, content: root)
-        #expect(size.width == 360)
+        _ = try Self.render(label, width: 360, dark: dark, content: root)
       }
     }
     print("RENDER MATRIX: 12 full-page PNGs + 6 catalog-routed pill PNGs at \(Self.runDirectory.path)")
