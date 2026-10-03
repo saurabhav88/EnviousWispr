@@ -2242,7 +2242,7 @@ struct TranscribeFileView: View {
     case .engineNotInstalled:
       return String(
         localized:
-          "That transcription engine isn't downloaded yet. Get it in Transcription settings.",
+          "That transcription engine isn't downloaded yet. Get it under Settings > Dictation Settings > Engine.",
         comment: "Transcribe a File: why the file was refused.")
     case .engineNotReady:
       return String(

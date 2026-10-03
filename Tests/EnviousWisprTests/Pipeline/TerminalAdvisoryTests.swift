@@ -11,7 +11,7 @@ import Testing
 /// for everything, or a projection that fired on every no-speech source, would
 /// pass the positive assertions alone while silencing correct behaviour
 /// elsewhere — the exact shape `verify-the-feature-not-the-crash` warns about.
-@Suite struct TerminalAdvisoryTests {
+@Suite(.tags(.productOutcome)) struct TerminalAdvisoryTests {
 
   // MARK: - The classifier: one authority, both projections
 
@@ -71,7 +71,7 @@ import Testing
   func hintedSentenceIsFrozen() {
     let hint = MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")
     let expected =
-      "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Microphone."
+      "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Dictation Settings > Microphone & Media."
     for reason in TerminalAdvisoryReason.allCases {
       #expect(DictationNarrator.copy(for: reason, hint: hint) == expected)
       #expect(DictationNarrator.copy(for: reason, hint: nil) == DictationNarrator.copy(for: reason))

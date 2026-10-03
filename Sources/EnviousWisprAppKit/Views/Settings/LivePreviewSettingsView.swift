@@ -298,6 +298,7 @@ struct LivePreviewSettingsView: View {
 
   /// What is happening, which language, and the switch — on one line (#2436).
   ///
+  /// Historical #2436 reason, carried verbatim (current placement below):
   /// Replaces the hero card, its status column and the toggle row. Those three said
   /// the same sentence three times before the page said anything: the page header
   /// already carries "See your words on screen while you are still speaking"
@@ -314,6 +315,10 @@ struct LivePreviewSettingsView: View {
   /// That reasoning is why the left half is gone rather than shrunk: what it said
   /// once now lives one line above in the page header, and what the right half said
   /// is the only thing left here.
+  ///
+  /// #3385: the page-header references above describe #2436's original layout.
+  /// The header is now removed; the shared row's title, short line and help carry
+  /// the explanation. The reason for removing duplicate prose still applies.
   ///
   /// Composition is `LivePreviewStatusBarPresentation`, not this body, so the rules
   /// about what may be named in which state are testable without rendering.
@@ -386,6 +391,7 @@ struct LivePreviewSettingsView: View {
               // on an ORDINARY settings row the whole row is the hit target and the switch
               // sits at its right edge. That is correct where a visible label owns the row.
               //
+              // Historical #2436 measurement and reason, carried verbatim:
               // This row has no label — #2436 deleted it, because the page header above
               // already says what the switch does. The style's `Spacer` then claimed every
               // remaining point: Live UAT measured the checkbox at 738pt wide starting
