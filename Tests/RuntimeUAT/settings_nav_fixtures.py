@@ -797,6 +797,7 @@ def valued_cases():
                          "no exception"))
     rows += scan_cases()
     rows += coverage_cases()
+    rows += pr3_cases()
     return rows
 
 
@@ -1237,7 +1238,7 @@ def coverage_cases():
             1 for _, s, _ in INVENTORY if s == ("Diagnostics", None)), 12),
         ("the conditions the manifest names", sorted(conditions), sorted([
             "apple_packs_shown", "debug_mode_on", "language_locked", "language_section_visible",
-            "model_picker_shown", "multi_input_device", "parakeet_delivery_actions_shown",
+            "model_picker_shown", "polish_enabled", "multi_input_device", "parakeet_delivery_actions_shown",
             "pill_holds_words", "preview_language_shown", "preview_needs_language",
             "universal_engine_built", "vad_auto_stop", "whisperkit_actions_shown",
             "whisperkit_recheck_shown", "parakeet_selected"])),
@@ -1275,6 +1276,97 @@ def _capture_before_routing():
         if "'-s'" not in apply_:
             problems.append(f"{os.path.basename(path)}: apply does not do the switching")
     return problems
+
+
+def pr3_cases():
+    """PR3 harness contracts on literal trees, independent of SCAN's manifest."""
+    rows = []
+    for german in (False, True):
+        translations = {
+            "Change paste last dictation keybind": "Tastenkürzel zum Einfügen ändern",
+            "Paste last dictation": "Letztes Diktat einfügen",
+            "Reset keybind to default": "Tastenkürzel zurücksetzen",
+            "About %@": "Über %@", "Apple Intelligence": "Apple Intelligence",
+            "Selected": "Ausgewählt", "Not selected": "Nicht ausgewählt",
+            "Trigger": "Auslöser", "Text to paste": "Einzufügender Text",
+        } if german else {}
+        ax = _ax_plain()
+        ax.terms = lambda text: [text] + ([translations[text]] if text in translations else [])
+        tr = lambda text: translations.get(text, text)
+        label = "Change paste last dictation keybind"
+        title = "Paste last dictation"
+        field = el("AXButton", desc=tr(label), value="⌃⌘ V", frame=_f(30))
+        action = el("AXButton", desc=tr(label), frame=_f(30, x=500))
+        reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(65))
+        other_reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(66))
+        info = el("AXButton", desc=tr("About %@").replace("%@", tr(title)), frame=_f(20))
+        group = el("AXGroup", children=[info, field, action, reset])
+        root = _window([group, el("AXGroup", children=[other_reset])])
+        rows.append((f"PR3 {german}: readable field wins over same-label Change",
+                     sn.keybind_control(ax, root, label) is field, True))
+        rows.append((f"PR3 {german}: Reset stays inside the recorder row",
+                     sn.keybind_control(ax, root, label, reset=True) is reset, True))
+        rows.append((f"PR3 {german}: scan finds field and separate Change",
+                     sn.scan_control(ax, root, "keybind", label, {})[0], "OK"))
+        group["AXChildren"].remove(reset)
+        rows.append((f"PR3 {german}: absent own Reset never borrows another row's",
+                     sn.keybind_control(ax, root, label, reset=True), None))
+        group["AXChildren"].remove(action)
+        rows.append((f"PR3 {german}: missing Change fails even with a field",
+                     sn.scan_control(ax, root, "keybind", label, {})[0], "FAIL"))
+        chosen = {"name": "Ollama"}
+        def tile(name):
+            return el("AXButton", desc=tr(name) + ", on this Mac",
+                      value=tr("Selected" if chosen["name"] == name else "Not selected")
+                      + ", Ready", press=lambda: chosen.update(name=name))
+        root_of = lambda: _window([tile("Apple Intelligence"), tile("Ollama")])
+        sn.select_provider(ax, root_of, "Apple Intelligence")
+        rows.append((f"PR3 {german}: Apple selection is observed before diagnostics",
+                     chosen["name"], "Apple Intelligence"))
+        sn.select_provider(ax, root_of, "Ollama")
+        rows.append((f"PR3 {german}: original provider is restored", chosen["name"], "Ollama"))
+        stale = _window([el("AXButton", desc=tr("Apple Intelligence") + ", on this Mac",
+                            value=tr("Not selected") + ", Ready")])
+        try:
+            sn.select_provider(ax, lambda: stale, "Apple Intelligence")
+            got = "returned"
+        except sn.NavigationError:
+            got = "refused"
+        rows.append((f"PR3 {german}: a press that does not select Apple refuses", got, "refused"))
+        trigger = el("AXTextField", desc=tr("Trigger"))
+        text = el("AXTextArea", desc=tr("Text to paste"))
+        sheet = el("AXSheet", children=[trigger, text])
+        controls = sn.snippet_edit_controls(ax, sheet)
+        rows.append((f"PR3 {german}: snippet reads Trigger and Text to paste inside its sheet",
+                     (controls["Trigger"] is trigger, controls["Text to paste"] is text),
+                     (True, True)))
+        try:
+            sn.snippet_edit_controls(ax, el("AXSheet", children=[el("AXTextField", desc="Snippet")]))
+            got = "returned"
+        except sn.ControlError:
+            got = "refused"
+        rows.append((f"PR3 {german}: old snippet editor labels are refused", got, "refused"))
+    state = {"open": False}
+    def opener(): state["open"] = True
+    def cancel(): state["open"] = False
+    def root_of():
+        return _window([el("AXButton", desc="Add snippet", press=opener)] + ([
+            el("AXSheet", children=[el("AXTextField", desc="Trigger"),
+                el("AXTextArea", desc="Text to paste"), el("AXButton", desc="Cancel", press=cancel),
+                el("AXButton", desc="Save")])] if state["open"] else []))
+    ax = _ax_plain()
+    result = sn.scan_control(ax, root_of(), "snippet_sheet", "Add snippet", {"root_of": root_of})
+    rows.append(("PR3: snippet scan reads the new draft then cancels", result[0], "OK"))
+    rows.append(("PR3: snippet scan observes the sheet closed", state["open"], False))
+    state["open"] = True
+    try:
+        sn.scan_control(ax, root_of(), "snippet_sheet", "Add snippet", {"root_of": root_of})
+        got = "returned"
+    except sn.ScanStop:
+        got = "refused"
+    rows.append(("PR3: an existing draft is neither edited nor dismissed", (got, state["open"]),
+                 ("refused", True)))
+    return rows
 
 
 if __name__ == "__main__":

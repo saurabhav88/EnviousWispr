@@ -131,6 +131,12 @@ struct WhatsNewMenuView: View {
                 Text(entry.description)
                   .font(.stRowHelper)
                   .foregroundStyle(.stTextSecondary)
+                if let destination = entry.readMoreURL {
+                  Link("Read more", destination: destination)
+                    .font(.stRowLabel)
+                    .foregroundStyle(.stAccent)
+                    .padding(.vertical, 5)
+                }
               }
               .fixedSize(horizontal: false, vertical: true)
             }

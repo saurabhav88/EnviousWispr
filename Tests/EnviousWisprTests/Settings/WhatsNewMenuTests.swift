@@ -11,7 +11,7 @@ import Testing
 struct WhatsNewMenuTests {
   @Test("Current release retains every entry in source order, with its original full descriptions")
   func currentRelease() {
-    let entries = WhatsNewMenuPresentation.entries()
+    let entries = WhatsNewMenuPresentation.entries(version: "2.5.2")
     #expect(
       entries.map(\.id) == [
         "privacy-controls", "word-check-memory", "help-before-feedback",
@@ -22,6 +22,22 @@ struct WhatsNewMenuTests {
     let original = WhatsNewContent.entries.filter { $0.version == "2.5.2" }
     #expect(entries.map(\.description) == original.map(\.description))
     #expect(WhatsNewMenuPresentation.entries(version: "no-such-release").isEmpty)
+  }
+
+  @Test("The settings announcement links to its own release, without adding links to history")
+  func moveAnnouncementLink() throws {
+    let entry = try #require(WhatsNewMenuPresentation.entries().first)
+    #expect(entry.id == "settings-easier-to-find")
+    #expect(entry.version == "2.5.3")
+    #expect(entry.readMoreURL?.absoluteString
+      == "https://github.com/saurabhav88/EnviousWispr/releases/tag/v2.5.3")
+    let older = WhatsNewMenuPresentation.ReleaseEntry(
+      id: entry.id, icon: entry.icon, title: entry.title, description: entry.description,
+      version: "2.4.8")
+    #expect(older.readMoreURL?.absoluteString
+      == "https://github.com/saurabhav88/EnviousWispr/releases/tag/v2.4.8")
+    #expect(WhatsNewMenuPresentation.entries(version: "2.5.2")
+      .allSatisfy { $0.readMoreURL == nil })
   }
 
   @Test("Existing full descriptions use their localized entry keys and English fallback")
@@ -43,12 +59,12 @@ struct WhatsNewMenuTests {
     let future = WhatsNewContent.Entry(
       id: "future-entry", icon: "gift", title: "Future", description: "Full English description",
       version: "2.5.2")
-    let rows = WhatsNewMenuPresentation.entries(from: [known, future], bundle: bundle)
+    let rows = WhatsNewMenuPresentation.entries(from: [known, future], version: "2.5.2", bundle: bundle)
     #expect(rows.map(\.title) == ["Translated title", "Future"])
     #expect(
       rows.map(\.description) == ["Translated existing description", "Translated full description"])
     #expect(
-      WhatsNewMenuPresentation.entries(from: [future]).first?.description
+      WhatsNewMenuPresentation.entries(from: [future], version: "2.5.2").first?.description
         == "Full English description")
   }
 
@@ -78,12 +94,12 @@ struct WhatsNewMenuTests {
     presentation.requestOpen()
     presentation.didOpen(settings: settings)
     #expect(settings.hasUnreadWhatsNew == false)
-    #expect(defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey) == "2.5.2")
+    #expect(defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey) == "2.5.3")
     presentation.dismiss()
     #expect(presentation.isPresented == false)
     presentation.requestOpen()
     presentation.didOpen(settings: settings)
-    #expect(settings.lastSeenWhatsNewVersion == "2.5.2")
+    #expect(settings.lastSeenWhatsNewVersion == "2.5.3")
   }
 
   @Test("Update copy states only what the availability service knows")

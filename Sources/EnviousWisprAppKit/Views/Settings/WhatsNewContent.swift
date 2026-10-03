@@ -54,6 +54,32 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.5.3 (unpublished)
+
+    // #3385: one release after PR1, PR2 and PR3. Historical notes stay unchanged.
+    Entry(
+      id: "settings-easier-to-find",
+      icon: "slider.horizontal.3",
+      title: "Settings are easier to find",
+      description:
+        "Settings now puts related controls together, with shorter explanations and help beside each row. Keybinds, AI Polish and Snippets have a clearer layout too. Read more for the old and new paths.",
+      bullets: [
+        "Transcription -> Dictation Settings > Engine",
+        "Microphone -> Dictation Settings > Microphone & Media",
+        "Live Preview -> Dictation Settings > Live Preview",
+        "Sounds -> Dictation Settings > Chimes",
+        "Clipboard -> Dictation Settings > Clipboard",
+        "Appearance recording pill controls -> Dictation Settings > Recording Pill",
+        "Appearance -> App Settings > Appearance",
+        "Permissions -> App Settings > Permissions",
+        "Permissions privacy controls -> App Settings > Privacy",
+        "Open Source Licenses -> App Settings > Licenses",
+        "What's New and Check for Updates -> the gift button, What's New & Updates",
+        "Word Correction -> Dictionary",
+      ],
+      version: "2.5.3"
+    ),
+
     // MARK: - v2.5.2
 
     // #3269: the two privacy switches (Settings > Permissions > Privacy, both ON by default;

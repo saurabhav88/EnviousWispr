@@ -810,6 +810,15 @@ WHISPERKIT_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove Model", "Try A
 INSTALL_ROW_TITLES = ("Install new languages", "Checking which languages are on this Mac",
                       "Could not read the language list from macOS. Reopen this page to try again.")
 DICTIONARY_SECTIONS = ("Your Words", "Vocabulary Packs", "Learn from...", "Quick Add")
+KEYBINDS = {
+    "Change recording keybind": "Start / stop recording",
+    "Change cancel keybind": "Cancel recording",
+    "Change add-a-word keybind": "Add selected word to Dictionary",
+    "Change paste last dictation keybind": "Paste last dictation",
+    "Change copy last dictation keybind": "Copy last dictation",
+}
+POLISH_PROVIDERS = ("EG-1", "S1-mini", "Apple Intelligence", "Ollama", "OpenAI",
+                    "Google Gemini", "Claude")
 
 SCAN = [
     ("History", None, [("named", "Search history", None)]),
@@ -869,12 +878,15 @@ SCAN = [
         ("toggle", "Smart insertion", None),
         ("toggle", "Read selections through the clipboard", None),
     ]),
-    ("Keybinds", None, [("toggle", "Escape Recovery", None)]),
+    ("Keybinds", None, [
+        ("segments", ("Recording mode", ("Push to Talk", "Toggle")), None),
+        ("toggle", "Escape Recovery", None),
+    ] + [("keybind", label, None) for label in KEYBINDS]),
     ("Transcribe a File", None, [("button", "Upload", None)]),
     ("AI Polish", None, [
         ("toggle^", "Enable AI Polish", None),
-        ("popup", "Model", "model_picker_shown"),
-    ]),
+        ("picker", "Model", "model_picker_shown"),
+    ] + [("provider", name, "polish_enabled") for name in POLISH_PROVIDERS]),
     ("Dictionary", None, [
         ("toggle", "Enable Dictionary", None),
         ("section", ("Your Words", "button", "Add word"), None),
@@ -882,7 +894,9 @@ SCAN = [
         ("section", ("Learn from...", "toggle", "Self-Learning Dictionary"), None),
         ("section", ("Quick Add", "named", "Highlight a word"), None),
     ]),
-    ("Snippets", None, [("button", "Add snippet", None), ("button", "Import", None)]),
+    ("Snippets", None, [("button", "Add snippet", None), ("button", "Import", None),
+                        ("field", "Keyword", None), ("named", "How snippets work", None),
+                        ("snippet_sheet", "Add snippet", None)]),
     ("App Settings", "Privacy", [
         ("toggle", "Share usage metrics", None), ("toggle", "Send crash reports", None),
     ]),
@@ -1111,6 +1125,67 @@ def read_row_single(ax, root, title, role, label=None):
     return hits[0]
 
 
+def keybind_control(ax, root, label, reset=False):
+    """Read ONLY this recorder row. Field and Change share a label; only the field has a
+    readable AXValue. Reset is optional and belongs to this same row, never nearest by y."""
+    if label not in KEYBINDS:
+        raise ControlError(f"unknown keybind {label!r}")
+    if reset:
+        field = keybind_control(ax, root, label)
+        info = info_button(ax, root, KEYBINDS[label])
+        if field is None or info is None:
+            return None
+        # Stop at the first subtree holding this row's info and field, even when Reset
+        # is absent. Climbing until ANY Reset appears would borrow another recorder's.
+        for ancestor in reversed(_path_to(ax, root, info)[:-1]):
+            inside = list(ax.walk(ancestor))
+            if any(ax.same(e, field) for e in inside):
+                return _one([e for e in inside if ax.role(e) == "AXButton"
+                             and _names_match(ax, e, "Reset keybind to default")],
+                            f"Reset for {label!r}")
+        return None
+    info, buttons = row_controls(ax, root, KEYBINDS[label],
+                                 lambda e: ax.role(e) == "AXButton"
+                                 and _names_match(ax, e, label))
+    if info is None:
+        return None
+    fields = [b for b in buttons if ax.text(b, "AXValue")]
+    return _one(fields, f"keybind field {label!r}")
+
+
+def provider_button(ax, root, name):
+    """Provider rail tile: its name precedes the spoken group, and its value precedes status."""
+    return _one([e for e in _content(ax, root) if ax.role(e) == "AXButton"
+                 and _names_match(ax, e, name, prefix=True)], f"provider {name!r}")
+
+
+def provider_selected(ax, button):
+    value = ax.text(button, "AXValue") if button is not None else ""
+    return selection_state(ax, value.split(",", 1)[0])
+
+
+def select_provider(ax, root_of, name):
+    button = provider_button(ax, root_of(), name)
+    if button is None:
+        raise ControlError(f"provider {name!r} absent (AI Polish may be off)")
+    if provider_selected(ax, button) is not True:
+        ax.press(button)
+        wait_until(ax, lambda: provider_selected(ax, provider_button(ax, root_of(), name)) is True,
+                   3.0, f"provider {name!r} selected")
+    return provider_button(ax, root_of(), name)
+
+
+def snippet_edit_controls(ax, sheet):
+    """Scope the editor to an already-open sheet. No draft is saved or deleted."""
+    result = {}
+    for label, role in (("Trigger", "AXTextField"), ("Text to paste", "AXTextArea")):
+        result[label] = _one([e for e in ax.walk(sheet) if ax.role(e) == role
+                              and _names_match(ax, e, label)], f"snippet {label!r}")
+        if result[label] is None:
+            raise ControlError(f"snippet sheet has no {label!r} {role}")
+    return result
+
+
 def read_named(ax, root, text):
     """An element shown with `text` that is not a button: a heading, a field, a popup. Buttons
     are left out so a Dictionary section's own rail button never stands in for its content."""
@@ -1137,6 +1212,34 @@ def scan_control(ax, root, kind, spec, hooks):
 
 
 def _scan_control(ax, root, kind, spec, hooks):
+    if kind == "snippet_sheet":
+        return _scan_snippet_sheet(ax, spec, hooks)
+    if kind == "keybind":
+        field = keybind_control(ax, root, spec)
+        if field is None:
+            return None, f"keybind:{spec}=absent"
+        _, buttons = row_controls(ax, root, KEYBINDS[spec],
+                                  lambda e: ax.role(e) == "AXButton"
+                                  and _names_match(ax, e, spec))
+        actions = [b for b in buttons if not ax.text(b, "AXValue")]
+        if len(actions) != 1:
+            raise ControlError(f"keybind {spec!r}: {len(actions)} Change actions")
+        return "OK", f"keybind:{spec}={ax.text(field, 'AXValue')} (Change found)"
+    if kind == "provider":
+        button = provider_button(ax, root, spec)
+        if button is None:
+            return None, f"provider:{spec}=absent"
+        chosen = provider_selected(ax, button)
+        if chosen is None:
+            raise ControlError(f"provider {spec!r}: selection unreadable")
+        return "OK", f"provider:{spec}={ax.text(button, 'AXValue')}"
+    if kind == "field":
+        field = read_row_single(ax, root, spec, "AXTextField")
+        if field is None:
+            return None, f"field:{spec}=absent"
+        if not ax.text(field, "AXValue"):
+            raise ControlError(f"field {spec!r}: value unreadable")
+        return "OK", f"field:{spec}={ax.text(field, 'AXValue')}"
     if kind in ("toggle", "toggle^"):
         el = find_switch(ax, root, spec, prefix=(kind == "toggle^"))
         if el is None:
@@ -1223,6 +1326,46 @@ def _scan_control(ax, root, kind, spec, hooks):
     if kind == "section":
         return _scan_section(ax, spec, hooks)
     raise ValueError(f"unknown manifest kind {kind!r}")
+
+
+def _scan_snippet_sheet(ax, label, hooks):
+    root_of = hooks["root_of"]
+    sheets = lambda: [e for e in ax.walk(root_of()) if ax.role(e) == "AXSheet"]
+    if sheets():
+        raise ScanStop("a sheet was already open; refusing to edit or dismiss it")
+    opener = find_button(ax, root_of(), label)
+    if opener is None:
+        return None, f"snippet_sheet:{label}=absent"
+    ax.press(opener)
+    try:
+        wait_until(ax, lambda: len(sheets()) == 1, 3.0, "new snippet sheet opened")
+    except NavigationError as exc:
+        raise ScanStop(f"snippet sheet opening could not be observed ({exc})") from None
+    try:
+        sheet = sheets()[0]
+        snippet_edit_controls(ax, sheet)
+        for name in ("Cancel", "Save"):
+            if _one([e for e in ax.walk(sheet) if ax.role(e) == "AXButton"
+                     and _names_match(ax, e, name)], f"snippet {name}") is None:
+                raise ControlError(f"snippet sheet has no {name}")
+        return "OK", "snippet_sheet:Trigger, Text to paste, Cancel, Save (nothing saved)"
+    finally:
+        try:
+            open_sheets = sheets()
+            if len(open_sheets) > 1:
+                raise ControlError("more than one sheet is open")
+            cancel = _one([e for e in ax.walk(open_sheets[0]) if ax.role(e) == "AXButton"
+                           and _names_match(ax, e, "Cancel")], "snippet Cancel") if open_sheets else None
+            if open_sheets and cancel is None:
+                raise ControlError("snippet Cancel is absent")
+        except ControlError as exc:
+            raise ScanStop(f"cannot safely close the snippet sheet ({exc})") from None
+        if cancel is not None:
+            ax.press(cancel)
+        try:
+            wait_until(ax, lambda: not sheets(), 3.0, "new snippet sheet closed")
+        except NavigationError:
+            raise ScanStop("new snippet sheet did not close; scan stopped") from None
 
 
 class ScanStop(RuntimeError):

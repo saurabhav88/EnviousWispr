@@ -23,6 +23,15 @@ struct WhatsNewMenuPresentation {
     let title: String
     let description: String
     let version: String
+
+    /// The move announcement's durable destination exists when its release ships.
+    /// Use this entry's version, even when a caller displays an older group.
+    var readMoreURL: URL? {
+      guard id == "settings-easier-to-find" else { return nil }
+      return WhatsNewMenuPresentation.releasesURL
+        .appendingPathComponent("tag")
+        .appendingPathComponent("v\(version)")
+    }
   }
 
   static func entries(

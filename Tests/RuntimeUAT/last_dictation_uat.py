@@ -539,31 +539,36 @@ def bring_settings_forward(page, tab=None):
                     deadline=5.0)
 
 
+def _self_test():
+    """No app attachment, key event, device or clipboard access."""
+    from settings_nav_fixtures import _window, _ax_plain, _info, _f, el
+    field = el("AXButton", desc=PASTE_BOX, value="⌃⌘ V", frame=_f(30))
+    reset = el("AXButton", desc="Reset keybind to default", frame=_f(60))
+    root = _window([el("AXGroup", children=[_info("Paste last dictation", 20), field,
+                     el("AXButton", desc=PASTE_BOX, frame=_f(30, x=500)), reset])])
+    keep_ax, keep_app = w._ax, w._app
+    try:
+        w._ax, w._app = _ax_plain, root
+        assert keybind_box(PASTE_BOX) is field
+        assert box_value(PASTE_BOX) == "⌃⌘ V"
+        assert reset_button_for(PASTE_BOX) is reset
+        print("last_dictation_uat self-test: 3/3 helper checks passed")
+    finally:
+        w._ax, w._app = keep_ax, keep_app
+    return w._sn._self_test()
+
+
 def keybind_box(label):
-    from ui_helpers import find_all_elements, get_attr
-    for el in find_all_elements(w._app, role="AXButton"):
-        if get_attr(el, "AXDescription") == label:
-            return el
-    return None
+    return w._sn.keybind_control(w._ax(), w._app, label)
 
 
 def box_value(label):
-    from ui_helpers import get_attr
     box = keybind_box(label)
-    return str(get_attr(box, "AXValue") or "") if box is not None else None
+    return w._ax().text(box, "AXValue") if box is not None else None
 
 
 def reset_button_for(label):
-    """The 'Reset keybind to default' button on the same row as `label`'s box (nearest by y)."""
-    from ui_helpers import element_center, find_all_elements, get_attr
-    box = keybind_box(label)
-    if box is None:
-        return None
-    by = element_center(box)[1]
-    resets = [el for el in find_all_elements(w._app, role="AXButton")
-              if get_attr(el, "AXDescription") == "Reset keybind to default"
-              and element_center(el) is not None]
-    return min(resets, key=lambda el: abs(element_center(el)[1] - by)) if resets else None
+    return w._sn.keybind_control(w._ax(), w._app, label, reset=True)
 
 
 def visible_text(fragment):
@@ -606,11 +611,11 @@ def capture_into(label, key, **mods):
     return True
 
 
-PASTE_BOX = "Paste last dictation keybind"
+PASTE_BOX = "Change paste last dictation keybind"
 # The four keys' state before the keybinds phase touched them; `main` restores it EXACTLY (an
 # absent key is deleted again, with the app down, since a running app writes its values back).
 KEYBIND_STATE_BEFORE = {}
-COPY_BOX = "Copy last dictation keybind"
+COPY_BOX = "Change copy last dictation keybind"
 DEFAULT_KEYS = ("pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw")
 
 
@@ -1333,4 +1338,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_self_test() if "--self-test" in sys.argv else main())
