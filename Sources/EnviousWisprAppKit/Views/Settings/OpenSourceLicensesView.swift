@@ -10,6 +10,10 @@ struct OpenSourceLicensesView: View {
   @State private var selected: LicenseDocument?
   @State private var opener: LicenseDocument?
   @FocusState private var focusedDocument: LicenseDocument?
+  @State private var isMounted = false
+  @State private var restoreKeyboard = false
+  @State private var restoreAccessibility = false
+  @AccessibilityFocusState private var accessibilityDocument: LicenseDocument?
 
   var body: some View {
     SettingsContentView {
@@ -26,6 +30,7 @@ struct OpenSourceLicensesView: View {
                 open(.license)
               }
               .focused($focusedDocument, equals: .license)
+              .accessibilityFocused($accessibilityDocument, equals: .license)
             }
           }
           BrandedRow(showDivider: false) {
@@ -38,18 +43,37 @@ struct OpenSourceLicensesView: View {
                 open(.notices)
               }
               .focused($focusedDocument, equals: .notices)
+              .accessibilityFocused($accessibilityDocument, equals: .notices)
             }
           }
         }
       }
     }
-    .sheet(item: $selected, onDismiss: { focusedDocument = opener }) { document in
+    .sheet(item: $selected, onDismiss: restoreFocus) { document in
       LicenseDocumentReader(document: document)
+    }
+    .onAppear { isMounted = true }
+    .onDisappear {
+      isMounted = false
+      restoreKeyboard = false
+      restoreAccessibility = false
     }
   }
 
   private func open(_ document: LicenseDocument) {
+    restoreKeyboard = focusedDocument == document
+    restoreAccessibility = accessibilityDocument == document
     opener = document
     selected = document
+  }
+
+  private func restoreFocus() {
+    defer {
+      restoreKeyboard = false
+      restoreAccessibility = false
+    }
+    guard isMounted else { return }
+    if restoreKeyboard { focusedDocument = opener }
+    if restoreAccessibility { accessibilityDocument = opener }
   }
 }

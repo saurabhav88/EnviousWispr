@@ -121,7 +121,7 @@ enum PrivacySettingsCopy {
   static var promise: String {
     String(
       localized:
-        "We receive metadata only, never your audio, transcripts, polished text, prompts or surrounding document text. We never collect your history, snippets, dictionary words, API keys or screen text. Feedback text reaches us only when you press Send. Pressing Send also sends your message text through enviouswispr.com to TypeSafe to suggest a help section, even if you choose “Yes, that helped” and nothing reaches Sentry. Your optional reply email reaches us via Sentry only when you choose to send feedback. We do not store the TypeSafe help-suggestion message.",
+        "Usage metrics and crash reports describe the app, never your audio, transcripts or the text you dictate. Pressing Send in Feedback may send your message through our website to find help. If you choose to send a report, it includes your message, app and macOS versions, and any email or diagnostics you add.",
       comment: "Permissions settings, Privacy: the section's privacy promise, above both switches.")
   }
   static var openSource: String {
