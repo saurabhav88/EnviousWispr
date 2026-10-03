@@ -221,55 +221,67 @@ struct TranscribeFileView: View {
   private func stepBarRow(compact: Bool) -> some View {
     HStack(spacing: 2) {
       ForEach(FileImportCoordinator.Step.allCases, id: \.self) { step in
-        let done = step.rawValue < coordinator.step.rawValue
-        let current = step == coordinator.step
-        Button {
-          coordinator.jump(to: step)
-        } label: {
-          // The design's tab: a numbered ring that FILLS once the step is
-          // behind you, and a 2pt underline on the one you are standing in.
-          let tint: Color = current ? .stAccent : (done ? .stTextSecondary : .stTextTertiary)
-          HStack(spacing: 8) {
-            Group {
-              if done {
-                Image(systemName: "checkmark")
-                  .font(.system(size: 10, weight: .bold))
-                  .foregroundStyle(.white)
-                  .frame(width: 19, height: 19)
-                  .background(Circle().fill(Color.stAccentSolid))
-              } else {
-                Text("\(step.rawValue)")
-                  .font(.system(size: 11, weight: .bold))
-                  .foregroundStyle(tint)
-                  .frame(width: 19, height: 19)
-                  .overlay(Circle().strokeBorder(tint, lineWidth: 1.5))
-              }
-            }
-            if !compact || current {
-              Text(step.title)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .fixedSize()
-            }
+        // Working is never reached by navigation (`canGo(to: .working)` is always false),
+        // so it is drawn as a label: a button that can never be pressed is a dead control.
+        if step == .working {
+          stepChip(step, compact: compact)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(step.title)
+        } else {
+          Button {
+            coordinator.jump(to: step)
+          } label: {
+            stepChip(step, compact: compact)
           }
-          .padding(.top, 10)
-          .padding(.bottom, 9)
-          .padding(.horizontal, 4)
-          .frame(maxWidth: .infinity)
-          .overlay(alignment: .bottom) {
-            Rectangle().fill(current ? Color.stAccent : Color.clear).frame(height: 2)
-          }
-          .contentShape(Rectangle())
+          .buttonStyle(.plain)
+          .accessibilityLabel(step.title)
+          .disabled(!coordinator.canGo(to: step))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(step.title)
-        .disabled(!coordinator.canGo(to: step))
       }
     }
     .padding(.horizontal, 8)
     .background(Color.stPageBg)
     .overlay(alignment: .bottom) { Divider() }
+  }
+
+  private func stepChip(_ step: FileImportCoordinator.Step, compact: Bool) -> some View {
+    let done = step.rawValue < coordinator.step.rawValue
+    let current = step == coordinator.step
+    // The design's tab: a numbered ring that FILLS once the step is
+    // behind you, and a 2pt underline on the one you are standing in.
+    let tint: Color = current ? .stAccent : (done ? .stTextSecondary : .stTextTertiary)
+    return HStack(spacing: 8) {
+      Group {
+        if done {
+          Image(systemName: "checkmark")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 19, height: 19)
+            .background(Circle().fill(Color.stAccentSolid))
+        } else {
+          Text("\(step.rawValue)")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(tint)
+            .frame(width: 19, height: 19)
+            .overlay(Circle().strokeBorder(tint, lineWidth: 1.5))
+        }
+      }
+      if !compact || current {
+        Text(step.title)
+          .font(.system(size: 14, weight: .semibold))
+          .foregroundStyle(tint)
+          .lineLimit(1)
+          .fixedSize()
+      }
+    }
+    .padding(.top, 10)
+    .padding(.bottom, 9)
+    .padding(.horizontal, 4)
+    .frame(maxWidth: .infinity)
+    .overlay(alignment: .bottom) {
+      Rectangle().fill(current ? Color.stAccent : Color.clear).frame(height: 2)
+    }
+    .contentShape(Rectangle())
   }
 
   /// The prototype's `.tile`: a 36pt rounded square in accent-light with an
