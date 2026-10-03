@@ -134,10 +134,10 @@ enum KeybindsSettingsCopy {
     "Select a misheard word anywhere, then press this to add it to Your Words. Terminal windows do not share their selection, so it will not work there."
   static let pasteTitle: LocalizedStringResource = "Paste last dictation"
   static let pasteShort: LocalizedStringResource = "Pastes your last dictation."
-  static let pasteHelp: LocalizedStringResource = "Paste the last thing you dictated."
+  static let pasteHelp: LocalizedStringResource = "Paste the last thing you dictated"
   static let copyTitle: LocalizedStringResource = "Copy last dictation"
   static let copyShort: LocalizedStringResource = "Copies your last dictation."
-  static let copyHelp: LocalizedStringResource = "Copy the last thing you dictated."
+  static let copyHelp: LocalizedStringResource = "Copy the last thing you dictated"
 }
 
 /// Role owns Reset defaults; warnings remain visible below the short line.
