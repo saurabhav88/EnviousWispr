@@ -27,6 +27,9 @@ struct SpeechEngineSettingsView: View {
   /// A fresh read-only admission result, invalidated while re-checking.
   @State private var fastAdmission: Bool? = nil
   @State private var fastAdmissionRequest: UInt64 = 0
+  #if DEBUG
+  @Environment(\.fastAdmissionTestHooks) private var fastAdmissionTestHooks
+  #endif
 
   /// #1171 — shown ONLY when the user's selected engine differs from the active
   /// one because a switch is deferred while a dictation/recovery is in flight.
@@ -196,6 +199,8 @@ struct SpeechEngineSettingsView: View {
       } choices: {
         engineCards
       }
+      .statusAlongsideChange(isParakeet && engineSwitchDeferredNotice == nil
+        && modelDelivery.map { parakeetDeliveryRow($0.parakeetState) == nil } == true)
       // An engine change made elsewhere (onboarding, a fallback) leaves the
       // summary describing the new engine; close choices it made obsolete.
       .onChange(of: settings.selectedBackend) { _, _ in
@@ -234,24 +239,20 @@ struct SpeechEngineSettingsView: View {
               resolvedShort: String(
                 localized: settings.selectedBackend == .parakeet
                   ? Copy.autoDetectFastShort : Copy.autoDetectMultilingualShort),
-              resolvedHelp: languageSectionCopy
+              resolvedHelp: languageSectionCopy + "\n\n" + String(localized: Copy.suggestionsHelp)
             ) {
               HStack(spacing: 10) {
                 // PR4 of #763 (#252): Reset language suggestions. Clears the
                 // three-strike state machine (dismissal counts, suppression set,
                 // last-shown lang) so the chip can surface fresh for previously
                 // dismissed/suppressed languages.
-                VStack(spacing: 2) {
-                  Button("Reset") { languageSuggestionPresenter.resetAllChipState() }
-                    .controlSize(.small)
-                    .font(.stHelper)
-                    .help(String(localized: Copy.suggestionsHelp))
-                    .accessibilityLabel("Reset")
-                  SettingsInfoButton(rowTitle: String(localized: Copy.suggestionsTitle),
-                    tooltip: String(localized: Copy.suggestionsHelp)) {
-                    SettingsHelpText(text: String(localized: Copy.suggestionsHelp))
-                  }
-                }
+                Button("Reset suggestions") { languageSuggestionPresenter.resetAllChipState() }
+                  .buttonStyle(.plain)
+                  .font(.stHelper)
+                  .foregroundStyle(Color.stAccent)
+                  .settingsHoverQuiet()
+                  .help(String(localized: Copy.suggestionsHelp))
+                  .accessibilityLabel("Reset")
                 Toggle("", isOn: Binding(
                   get: { isAutoLanguage(settings.languageMode) },
                   set: { newValue in
@@ -549,7 +550,16 @@ struct SpeechEngineSettingsView: View {
       short: String(localized: isParakeet ? Copy.fastSummary : Copy.allLanguagesSummary))
   }
 
+  private func requestFastRecheck() {
+    Task { await recheckFastAdmission() }
+  }
+
   private func recheckFastAdmission() async {
+    #if DEBUG
+    // Completion belongs to the SUBJECT, including every dropped reply. The
+    // debug hook replaces only the disk read, never eligibility or request guards.
+    defer { fastAdmissionTestHooks?.onFinished(fastAdmission) }
+    #endif
     // Like the pack reload owner: an older answer must not replace a later
     // re-check, even if the delivery mirror went through the same state again.
     fastAdmissionRequest &+= 1
@@ -557,8 +567,17 @@ struct SpeechEngineSettingsView: View {
     fastAdmission = nil
     guard let modelDelivery else { return }
     let state = modelDelivery.parakeetState
-    let admitted = await modelDelivery.currentParakeetAdmission()
-    guard Task.isCancelled == false, request == fastAdmissionRequest,
+    let admitted: Bool
+    #if DEBUG
+    if let hooks = fastAdmissionTestHooks {
+      admitted = await hooks.read()
+    } else {
+      admitted = await modelDelivery.currentParakeetAdmission()
+    }
+    #else
+    admitted = await modelDelivery.currentParakeetAdmission()
+    #endif
+    guard isParakeet, Task.isCancelled == false, request == fastAdmissionRequest,
       state == modelDelivery.parakeetState else { return }
     fastAdmission = admitted
   }
@@ -598,10 +617,7 @@ struct SpeechEngineSettingsView: View {
     if isParakeet, let modelDelivery {
       HStack(spacing: 8) {
         ProviderStatusChip(status: EngineSummaryPresentation.fastModelStatus(admitted: fastAdmission), isHeadline: true)
-        Spacer(minLength: 8)
-        Button {
-          Task { await recheckFastAdmission() }
-        } label: {
+        Button(action: requestFastRecheck) {
           Image(systemName: "arrow.clockwise").settingsHoverQuiet()
         }
         .buttonStyle(.borderless)
@@ -609,7 +625,17 @@ struct SpeechEngineSettingsView: View {
         .help(String(localized: EngineSummaryCopy.recheckFast))
         .accessibilityLabel(Text(EngineSummaryCopy.recheckFast))
       }
+      .fixedSize(horizontal: true, vertical: false)
       .task(id: modelDelivery.parakeetState) { await recheckFastAdmission() }
+      .onAppear {
+        #if DEBUG
+        fastAdmissionTestHooks?.captureRecheck(requestFastRecheck)
+        #endif
+      }
+      .onDisappear {
+        fastAdmissionRequest &+= 1
+        fastAdmission = nil
+      }
     }
 
     // ── Delivery row (#1348 Phase 2, D6 states 2/3/4/5/7/8/10/11): shows

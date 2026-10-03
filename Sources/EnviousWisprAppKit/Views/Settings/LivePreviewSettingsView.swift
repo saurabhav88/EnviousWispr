@@ -364,35 +364,6 @@ struct LivePreviewSettingsView: View {
               SettingsHelpText(text: bar.detail)
             }
           } control: {
-            HStack(spacing: 12) {
-              if let language = bar.language {
-                // **It has to LOOK like a control, and two stacked Texts did not.**
-                // `.buttonStyle(.plain)` over a bare VStack renders as ordinary
-                // right-aligned copy — the founder read the most important control on
-                // the page as a status readout and did not know it could be pressed
-                // (2026-08-26). A bordered container plus a disclosure chevron is the
-                // platform's own vocabulary for "this opens a list", which is exactly
-                // what it does.
-                //
-                // The provenance moves INSIDE the container rather than under it: it
-                // describes the value, so leaving it outside made the control look
-                // like it ended at the name.
-                LivePreviewLanguageMenuButton(
-                  name: language.name, provenance: language.provenance
-                ) {
-                  showLanguageSheet = true
-                }
-                // **The provenance is IN the label, not just on screen.** An explicit
-                // `accessibilityLabel` REPLACES the child text announcement, so naming
-                // only `language.name` dropped the second line entirely for VoiceOver —
-                // and that line is the one carrying the Auto asymmetry, the distinction
-                // between a language the Mac chose and one the user picked. A sighted
-                // user reads both; a VoiceOver user heard one. Cloud review on PR #2440.
-                .accessibilityLabel(
-                  "Change dictation language: \(language.name), \(language.provenance)")
-                .help(String(localized: PreviewCopy.languageShort))
-              }
-
               // **The reason lives in the hero card now, and only there.**
               // This row used to repeat `needsNewerMacOS` whenever neither engine
               // could run — but that condition is an OR of two independent causes,
@@ -435,11 +406,40 @@ struct LivePreviewSettingsView: View {
               // (#3385: the name is visible again as the row's title, but the
               // switch itself still has none, so this still names it.)
               .accessibilityLabel(LivePreviewSettingsCopy.toggleLabel)
-            }
           }
 
-          .rowTitleStatus {
+          .rowStatus {
             ProviderStatusChip(status: EngineSummaryPresentation.previewStatus(status), isHeadline: true)
+          }
+          .rowSupplementaryControl(belowWidth: 502) {
+              if let language = bar.language {
+                // **It has to LOOK like a control, and two stacked Texts did not.**
+                // `.buttonStyle(.plain)` over a bare VStack renders as ordinary
+                // right-aligned copy — the founder read the most important control on
+                // the page as a status readout and did not know it could be pressed
+                // (2026-08-26). A bordered container plus a disclosure chevron is the
+                // platform's own vocabulary for "this opens a list", which is exactly
+                // what it does.
+                //
+                // The provenance moves INSIDE the container rather than under it: it
+                // describes the value, so leaving it outside made the control look
+                // like it ended at the name.
+                LivePreviewLanguageMenuButton(
+                  name: language.name, provenance: language.provenance
+                ) {
+                  showLanguageSheet = true
+                }
+                // **The provenance is IN the label, not just on screen.** An explicit
+                // `accessibilityLabel` REPLACES the child text announcement, so naming
+                // only `language.name` dropped the second line entirely for VoiceOver —
+                // and that line is the one carrying the Auto asymmetry, the distinction
+                // between a language the Mac chose and one the user picked. A sighted
+                // user reads both; a VoiceOver user heard one. Cloud review on PR #2440.
+                .accessibilityLabel(
+                  "Change dictation language: \(language.name), \(language.provenance)")
+                .help(String(localized: PreviewCopy.languageShort))
+              }
+
           }
 
           // #3385 founder supersedes the always-visible detail hierarchy: Ready/Off

@@ -90,5 +90,10 @@ struct SharedEnginePresentationWiringTests {
     #expect(ClipboardSettingsWiringTests.argument("resolvedTitle", of: row) == "String(localized: Copy.autoDetectTitle)")
     #expect(row.tokens(viewMode: .sourceAccurate).contains { $0.text == "suggestionsHelp" })
     #expect(row.tokens(viewMode: .sourceAccurate).contains { $0.text == "accessibilityLabel" })
+    let buttons = ClipboardSettingsWiringTests.calls(named: "Button", in: row)
+    #expect(buttons.count == 1)
+    #expect(buttons.first?.arguments.first?.expression.trimmedDescription == "\"Reset suggestions\"")
+    #expect(ClipboardSettingsWiringTests.calls(named: "SettingsInfoButton", in: row).isEmpty)
+    #expect(ClipboardSettingsWiringTests.argument("resolvedHelp", of: row)?.contains("Copy.suggestionsHelp") == true)
   }
 }

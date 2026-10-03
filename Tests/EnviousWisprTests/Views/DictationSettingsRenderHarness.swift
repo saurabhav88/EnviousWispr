@@ -18,11 +18,11 @@ import Testing
 /// TEST_RUNNER_EW_RENDER_DICTATION=1 <worktree>/scripts/xcode-test.sh
 ///   --filter EnviousWisprTests/DictationSettingsRenderHarness
 @MainActor
-@Suite("Dictation Settings render harness", .tags(.harnessContract))
+@Suite("Dictation Settings render harness", .serialized, .tags(.harnessContract))
 struct DictationSettingsRenderHarness {
   init() { _ = NSApplication.shared }
   static let runDirectory = RepoRoot.sourceURL(
-    "build/pr1-lane-e/renders/accepted/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
+    "build/pr1-lane-e/review-r1/renders/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
 
   final class NoOverlay: OverlayPresenting {
     var featureSlotIsAvailable: Bool { false }
@@ -127,7 +127,8 @@ struct DictationSettingsRenderHarness {
     var staleLanguage = false
   }
 
-  static func page(tab: DictationTab, german: Bool, scenario: Scenario = Scenario()) async throws -> AnyView {
+  static func page(tab: DictationTab, german: Bool, scenario: Scenario = Scenario(),
+    onFastReadFinished: @escaping @MainActor @Sendable (Bool?) -> Void = { _ in }) async throws -> AnyView {
     let defaults = try #require(TestDefaults.suite("ew.dictationRender.\(UUID().uuidString)"))
     let settings = SettingsManager(defaults: defaults)
     settings.selectedBackend = scenario.backend
@@ -223,6 +224,17 @@ struct DictationSettingsRenderHarness {
       try #require(arrived, "the fake coordinator never reached its preparing state")
       hostedRoot = AnyView(hostedRoot.environment(coordinator))
     }
+    if tab == .engine && scenario.backend == .parakeet {
+      // The normal page now renders real async controller admission, rather
+      // than omitting its home. Only sparse, isolated files are provided.
+      let fixture = try ModelDeliveryHomeTests.fastRenderFixture()
+      hostedRoot = AnyView(hostedRoot.environment(fixture.home))
+      #if DEBUG
+      hostedRoot = AnyView(hostedRoot.environment(\.fastAdmissionTestHooks,
+        FastAdmissionTestHooks(read: { await fixture.home.currentParakeetAdmission() },
+          onFinished: onFastReadFinished)))
+      #endif
+    }
     return AnyView(hostedRoot.environment(settings).environment(setup).environment(presenter)
       .environment(devices).environment(recording).environment(runtime).environment(pill)
       .environment(\.settingsNavigate, { _ in }))
@@ -243,7 +255,8 @@ struct DictationSettingsRenderHarness {
 
   enum HarnessFailure: Error { case unexpectedWork }
 
-  static func render(_ page: AnyView, label: String, windowWidth: CGFloat, dark: Bool) throws -> URL {
+  static func render(_ page: AnyView, label: String, windowWidth: CGFloat, dark: Bool,
+    waitForFastRead: FastAdmissionReadSignals? = nil) async throws -> URL {
     let width = AppearanceRenderHarness.pageWidth(window: windowWidth)
     let host = NSHostingView(rootView: page.frame(width: width, height: 1250)
       .environment(\.colorScheme, dark ? .dark : .light))
@@ -251,6 +264,11 @@ struct DictationSettingsRenderHarness {
     host.frame = CGRect(x: 0, y: 0, width: width, height: 1250)
     let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
     window.appearance = host.appearance; window.contentView = host
+    let baseline = waitForFastRead?.count ?? 0
+    host.layoutSubtreeIfNeeded()
+    if let signal = waitForFastRead {
+      try #require(await signal.wait(after: baseline), "render never received Fast admission reconciliation")
+    }
     host.layoutSubtreeIfNeeded(); window.displayIfNeeded()
     let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
     host.cacheDisplay(in: host.bounds, to: rep)
@@ -306,13 +324,13 @@ struct DictationSettingsRenderHarness {
               } status: {
                 HStack {
                   ProviderStatusChip(status: EngineSummaryPresentation.fastModelStatus(admitted: actual), isHeadline: true)
-                  Spacer()
                   Button {} label: { Image(systemName: "arrow.clockwise") }
                     .accessibilityLabel(Text(EngineSummaryCopy.recheckFast))
                 }
               } choices: { EmptyView() }
+              .statusAlongsideChange()
             }
-            _ = try Self.render(AnyView(summary), label: "\(german ? "German-DRAFT-English-body" : "English")-fast-admission-\(admitted ? "ready" : "missing")-snapshot", windowWidth: width, dark: dark)
+            _ = try await Self.render(AnyView(summary), label: "\(german ? "German-DRAFT-English-body" : "English")-fast-admission-\(admitted ? "ready" : "missing")-snapshot", windowWidth: width, dark: dark)
           }
         }
       }
@@ -322,10 +340,12 @@ struct DictationSettingsRenderHarness {
     // Staged-install LAST, so the one fake operation is held only for its own renders.
     for (tab, scenario) in scenarios {
       for german in [false, true] {
-        let page = try await Self.page(tab: tab, german: german, scenario: scenario)
+        let signal = FastAdmissionReadSignals()
+        let page = try await Self.page(tab: tab, german: german, scenario: scenario,
+          onFastReadFinished: { signal.record($0) })
         for width: CGFloat in [750, 820, 1300] {
           for dark in [false, true] {
-            _ = try Self.render(page, label: "\(german ? "German-DRAFT-tabs-English-body" : "English")-\(scenario.label)", windowWidth: width, dark: dark)
+            _ = try await Self.render(page, label: "\(german ? "German-DRAFT-tabs-English-body" : "English")-\(scenario.label)", windowWidth: width, dark: dark, waitForFastRead: tab == .engine && scenario.backend == .parakeet ? signal : nil)
             made += 1
           }
         }
@@ -361,35 +381,22 @@ struct DictationSettingsRenderHarness {
     var made: [URL] = []
     for german in [false, true] {
       for tab in DictationTab.allCases {
-        let page = try await Self.page(tab: tab, german: german)
+        let signal = FastAdmissionReadSignals()
+        let page = try await Self.page(tab: tab, german: german,
+          onFastReadFinished: { signal.record($0) })
         for windowWidth: CGFloat in [750, 820, 1300] {
           let width = AppearanceRenderHarness.pageWidth(window: windowWidth)
           for dark in [false, true] {
-            let content = page.frame(width: width, height: 1250)
-              .environment(\.colorScheme, dark ? .dark : .light)
-            let host = NSHostingView(rootView: content)
-            host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            host.frame = CGRect(x: 0, y: 0, width: width, height: 1250)
-            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-            window.appearance = host.appearance
-            window.contentView = host
-            host.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
-            let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-            host.cacheDisplay(in: host.bounds, to: rep)
-            let png = try #require(rep.representation(using: .png, properties: [:]))
-            let label = "\(german ? "German-DRAFT-tabs-English-body" : "English")-\(tab)-window-\(Int(windowWidth))-\(dark ? "dark" : "light")"
-            let url = Self.runDirectory.appending(path: "\(label).png")
-            try #require(FileManager.default.fileExists(atPath: url.path) == false)
-            try png.write(to: url)
+            let label = "\(german ? "German-DRAFT-tabs-English-body" : "English")-\(tab)"
+            let url = try await Self.render(page, label: label, windowWidth: windowWidth, dark: dark,
+              waitForFastRead: tab == .engine ? signal : nil)
             let decoded = try #require(NSBitmapImageRep(data: try Data(contentsOf: url)))
             #expect(decoded.pixelsWide > 0 && decoded.pixelsHigh > 0)
             let strip = try SettingsTabStripLayoutTests.measure(width: width - 2 * (SettingsLayout.contentH - 4), german: german)
-            print("RENDERED \(label) host=\(host.bounds) measuredStripHeight=\(strip.height) -> \(url.path)")
+            print("RENDERED \(label) pageWidth=\(width) measuredStripHeight=\(strip.height) -> \(url.path)")
             for tab in DictationTab.allCases {
               print("RENDER-TAB \(label) \(tab) measured=\(try #require(strip.frames[tab]))")
             }
-            window.contentView = nil
             made.append(url)
           }
         }

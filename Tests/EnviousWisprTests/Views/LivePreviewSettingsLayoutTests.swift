@@ -81,6 +81,41 @@ struct LivePreviewSettingsLayoutTests {
     }
   }
 
+  @Test("Ready is below the short line; language moves below at 502pt and the switch alone stays trailing")
+  func previewSecondaryControlPlacement() throws {
+    for width: CGFloat in [432, 502, 503, 982] {
+      let language = try Self.frame(width: width) { probe in
+        SettingsRow(icon: "text.viewfinder", resolvedTitle: "Show words while you speak",
+          resolvedShort: "See words before you finish your dictation.", resolvedHelp: "Help.") {
+          Toggle("", isOn: .constant(true)).labelsHidden().toggleStyle(BrandedToggleStyle()).fixedSize()
+        }
+        .rowStatus { ProviderStatusChip(status: .init(label: "Ready", tone: .ready), isHeadline: true) }
+        .rowSupplementaryControl(belowWidth: 502) {
+          LivePreviewLanguageMenuButton(name: "English (United States)", provenance: "Auto · from your Mac", action: {})
+            .background(probe)
+        }
+      }
+      let toggle = try Self.frame(width: width) { probe in
+        SettingsRow(icon: "text.viewfinder", resolvedTitle: "Show words while you speak",
+          resolvedShort: "See words before you finish your dictation.", resolvedHelp: "Help.") {
+          Toggle("", isOn: .constant(true)).labelsHidden().toggleStyle(BrandedToggleStyle()).fixedSize().background(probe)
+        }
+        .rowStatus { ProviderStatusChip(status: .init(label: "Ready", tone: .ready), isHeadline: true) }
+        .rowSupplementaryControl(belowWidth: 502) {
+          LivePreviewLanguageMenuButton(name: "English (United States)", provenance: "Auto · from your Mac", action: {})
+        }
+      }
+      print("PREVIEW-R1 row=\(width) language=\(language) switch=\(toggle) below=\(width <= 502)")
+      #expect(abs(toggle.maxX - width) < 1)
+      if width <= 502 {
+        #expect(language.minX == 37)
+        #expect(language.minY >= toggle.maxY + 10)
+      } else {
+        #expect(language.maxX <= toggle.minX - 11)
+      }
+    }
+  }
+
   // MARK: - Harness
 
   static let space = "live-preview-layout"

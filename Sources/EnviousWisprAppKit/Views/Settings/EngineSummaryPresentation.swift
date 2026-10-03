@@ -67,3 +67,21 @@ struct EngineSummaryContent: View {
     .accessibilityElement(children: .combine)
   }
 }
+
+#if DEBUG
+/// Boundary/completion hooks for hosted-page tests. No guard or setting is overridden.
+struct FastAdmissionTestHooks: Sendable {
+  let read: @MainActor @Sendable () async -> Bool
+  let onFinished: @MainActor @Sendable (Bool?) -> Void
+  var captureRecheck: @MainActor @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void = { _ in }
+}
+private struct FastAdmissionTestHooksKey: EnvironmentKey {
+  static let defaultValue: FastAdmissionTestHooks? = nil
+}
+extension EnvironmentValues {
+  var fastAdmissionTestHooks: FastAdmissionTestHooks? {
+    get { self[FastAdmissionTestHooksKey.self] }
+    set { self[FastAdmissionTestHooksKey.self] = newValue }
+  }
+}
+#endif

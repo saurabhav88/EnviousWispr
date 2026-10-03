@@ -59,9 +59,27 @@ struct SettingsSummaryCardTests {
   // UI harness's backend switch opens "Change speech engine" and reads the cards, and PR1's
   // Live UAT presses "Keep current engine" and checks the cards close.
 
+  @Test("a compact status group sits beside Change when it fits and wraps under the description otherwise")
+  func compactStatusPlacement() throws {
+    for width: CGFloat in [460, 530, 1010] {
+      let before = try Self.measure(width: width, expanded: false)
+      let after = try Self.measure(width: width, expanded: false, compactStatus: true)
+      let summary = try #require(after["summary"])
+      let status = try #require(after["status"])
+      print("SUMMARY-R1 width=\(width) before=\(before) after=\(after)")
+      if width == 1010 {
+        #expect(status.minX > summary.maxX)
+        #expect(status.minY < summary.maxY)
+      } else {
+        #expect(status.minY >= summary.maxY + 9)
+        #expect(abs(status.minX - summary.minX - 48) < 1)
+      }
+    }
+  }
+
   // MARK: - Harness
 
-  static func measure(width: CGFloat, expanded: Bool) throws -> [String: CGRect] {
+  static func measure(width: CGFloat, expanded: Bool, compactStatus: Bool = false) throws -> [String: CGRect] {
     @MainActor final class Box { var frames: [String: CGRect] = [:] }
     let box = Box()
     let root = SettingsSummaryCard(
@@ -75,6 +93,7 @@ struct SettingsSummaryCardTests {
     } choices: {
       Self.probe("choices", width: 400, height: 120)
     }
+    .statusAlongsideChange(compactStatus)
     .frame(width: width)
     .fixedSize(horizontal: false, vertical: true)
     .coordinateSpace(name: space)

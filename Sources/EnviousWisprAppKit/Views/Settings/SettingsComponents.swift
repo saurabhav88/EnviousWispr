@@ -88,11 +88,16 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   /// #3385 lane F places the microphone's honest "In use" cue here, immediately
   /// after the short line. The slot is outside the control and its help button.
   private var statusContent: AnyView? = nil
-  private var titleStatusContent: AnyView? = nil
+  private var supplementaryControl: AnyView? = nil
+  private var supplementaryControlBelowWidth: CGFloat = 0
 
-  func rowTitleStatus<Status: View>(@ViewBuilder _ status: () -> Status) -> Self {
+  /// A secondary control shares the trailing group when there is room, and
+  /// sits under text/status at the named row width. The primary switch stays trailing.
+  func rowSupplementaryControl<Secondary: View>(belowWidth: CGFloat,
+    @ViewBuilder _ secondary: () -> Secondary) -> Self {
     var row = self
-    row.titleStatusContent = AnyView(status())
+    row.supplementaryControl = AnyView(secondary())
+    row.supplementaryControlBelowWidth = belowWidth
     return row
   }
 
@@ -146,12 +151,13 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   }
 
   private var standardRow: some View {
-    SettingsRowControlLayout {
+    SettingsRowControlLayout(supplementaryBelowWidth: supplementaryControlBelowWidth) {
       SettingsRowIcon(systemName: icon)
       label
       // A builder may supply zero or several roots. One container keeps the
       // Layout's three slots stable instead of indexing SwiftUI's flattened roots.
       VStack(alignment: .leading, spacing: 0) { control }
+      VStack(alignment: .leading, spacing: 0) { supplementaryControl }
     }
   }
 
@@ -162,7 +168,6 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
           .font(.stRowLabel)
           .foregroundStyle(.stTextPrimary)
         SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
-        titleStatusContent
       }
       // Secondary, not the tertiary helper colour: tertiary measures 3.7:1
       // on the dark card, under the 4.5:1 a 14pt regular line needs (#3385).
@@ -179,6 +184,7 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
 /// A picker taking over half the remaining row still moves under the label: the
 /// #3007 narrow-window reason applies to those larger controls, not a switch.
 struct SettingsRowControlLayout: Layout {
+  var supplementaryBelowWidth: CGFloat = 0
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
     dimensions(width: proposal.width, subviews: subviews).size
   }
@@ -194,21 +200,34 @@ struct SettingsRowControlLayout: Layout {
   private func dimensions(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
     let icon = subviews[0].sizeThatFits(.unspecified)
     let control = subviews[2].sizeThatFits(.unspecified)
+    let secondary = subviews[3].sizeThatFits(.unspecified)
     let idealLabel = subviews[1].sizeThatFits(.unspecified)
-    let width = width ?? icon.width + 11 + idealLabel.width + 12 + control.width
+    let width = width ?? icon.width + 11 + idealLabel.width + 12 + control.width + secondary.width
+    // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
+    // spacing (11), so the control aligns under the LABEL rather than
+    // the icon.
     let labelStart = icon.width + 11
     let available = max(0, width - labelStart)
-    let inline = control.width <= available / 2 || idealLabel.width + 12 + control.width <= available
-    let labelWidth = max(0, available - (inline ? control.width + 12 : 0))
+    let hasSecondary = secondary.height > 0
+    let secondaryBelow = hasSecondary && width <= supplementaryBelowWidth
+    let trailingWidth = control.width + (hasSecondary && !secondaryBelow ? secondary.width + 12 : 0)
+    let inline = hasSecondary || trailingWidth <= available / 2 || idealLabel.width + 12 + trailingWidth <= available
+    let labelWidth = max(0, available - (inline ? trailingWidth + 12 : 0))
     let label = subviews[1].sizeThatFits(ProposedViewSize(width: labelWidth, height: nil))
-    let height = inline ? max(icon.height, label.height, control.height) : max(icon.height, label.height) + 10 + control.height
-    let frames = [
-      CGRect(x: 0, y: inline ? (height - icon.height) / 2 : 0, width: icon.width, height: icon.height),
-      CGRect(x: labelStart, y: inline ? (height - label.height) / 2 : 0, width: labelWidth, height: label.height),
-      CGRect(x: inline ? width - control.width : labelStart,
-        y: inline ? (height - control.height) / 2 : height - control.height, width: control.width, height: control.height),
-    ]
-    return (CGSize(width: width, height: height), frames)
+    let trailingHeight = max(control.height, secondaryBelow ? 0 : secondary.height)
+    let headerHeight = inline ? max(icon.height, label.height, trailingHeight) : max(icon.height, label.height)
+    let controlY = inline ? (headerHeight - control.height) / 2 : headerHeight + 10
+    let contentHeight = inline ? headerHeight : controlY + trailingHeight
+    let secondaryY = secondaryBelow ? contentHeight + 10 : (inline ? (headerHeight - secondary.height) / 2 : controlY)
+    let secondaryX = secondaryBelow ? labelStart : (inline ? width - trailingWidth : labelStart)
+    let primaryX = inline ? width - control.width : labelStart + (hasSecondary && !secondaryBelow ? secondary.width + 12 : 0)
+    let height = secondaryBelow ? secondaryY + secondary.height : contentHeight
+    return (CGSize(width: width, height: height), [
+      CGRect(x: 0, y: inline ? (headerHeight - icon.height) / 2 : 0, width: icon.width, height: icon.height),
+      CGRect(x: labelStart, y: inline ? (headerHeight - label.height) / 2 : 0, width: labelWidth, height: label.height),
+      CGRect(x: primaryX, y: controlY, width: control.width, height: control.height),
+      CGRect(x: secondaryX, y: secondaryY, width: secondary.width, height: secondary.height),
+    ])
   }
 }
 
@@ -693,6 +712,13 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
   let summary: Summary
   let status: Status
   let choices: Choices
+  private var statusIsCompact = false
+
+  func statusAlongsideChange(_ enabled: Bool = true) -> Self {
+    var card = self
+    card.statusIsCompact = enabled
+    return card
+  }
 
   @State private var openedFromKeyboard = false
   @State private var openedFromAccessibility = false
@@ -717,26 +743,29 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      if isExpanded {
-        choices
-        Button {
-          isExpanded = false
-        } label: {
-          Text(keepCurrentTitle)
-            .font(.stBody)
-            .foregroundStyle(Color.stAccent)
-            .settingsHoverQuiet()
-        }
-        .buttonStyle(.plain)
-        .padding(.leading, 4)
-      } else {
-        HStack(alignment: .center, spacing: 12) {
-          summary.frame(maxWidth: .infinity, alignment: .leading)
-          changeButton.layoutPriority(1)
+    SettingsSummaryContentLayout(compactStatus: statusIsCompact, isExpanded: isExpanded) {
+      VStack(alignment: .leading, spacing: 10) {
+        if isExpanded {
+          choices
+          Button {
+            isExpanded = false
+          } label: {
+            Text(keepCurrentTitle)
+              .font(.stBody)
+              .foregroundStyle(Color.stAccent)
+              .settingsHoverQuiet()
+          }
+          .buttonStyle(.plain)
+          .padding(.leading, 4)
+        } else {
+          summary
         }
       }
-      status
+      .frame(maxWidth: .infinity, alignment: .leading)
+      VStack(alignment: .leading, spacing: 0) { status }
+      VStack(spacing: 0) {
+        if isExpanded == false { changeButton }
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(14)
@@ -781,13 +810,51 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
       SettingsActionButton(
         title: LocalizedStringResource(
           "Change", comment: "Settings: button that opens the other choices for a setting."),
-        isEnabled: true, emphasis: .quiet, shape: .roundedRect, size: .medium)
+        isEnabled: true, emphasis: .outlined, shape: .roundedRect, size: .medium)
     }
     .buttonStyle(.plain)
     .fixedSize()
     .focused($changeFocused)
     .accessibilityFocused($changeAccessibilityFocused)
     .accessibilityLabel(String(localized: changeAccessibilityLabel))
+  }
+}
+
+/// Summary, status and Change are one stable set of slots. Moving status is
+/// placement only: no second view, hidden copy or disclosure-bound status mount.
+struct SettingsSummaryContentLayout: Layout {
+  var compactStatus: Bool
+  var isExpanded: Bool
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    dimensions(width: proposal.width, subviews: subviews).size
+  }
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let result = dimensions(width: bounds.width, subviews: subviews)
+    for (index, frame) in result.frames.enumerated() {
+      subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        proposal: ProposedViewSize(frame.size))
+    }
+  }
+  private func dimensions(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+    let ideal = subviews[0].sizeThatFits(.unspecified)
+    let status = subviews[1].sizeThatFits(.unspecified)
+    let change = subviews[2].sizeThatFits(.unspecified)
+    let width = width ?? ideal.width + status.width + change.width + 24
+    let inline = compactStatus && !isExpanded && ideal.width + status.width + change.width + 24 <= width
+    let primaryWidth = max(0, width - (isExpanded ? 0 : change.width + 12) - (inline ? status.width + 12 : 0))
+    let primary = subviews[0].sizeThatFits(ProposedViewSize(width: primaryWidth, height: nil))
+    let headerHeight = max(primary.height, change.height, inline ? status.height : 0)
+    let statusX: CGFloat = inline ? primaryWidth + 12 : (compactStatus && !isExpanded ? 48 : 0)
+    let statusWidth = inline || compactStatus ? min(status.width, max(0, width - statusX)) : width
+    let resolvedStatus = subviews[1].sizeThatFits(ProposedViewSize(width: statusWidth, height: nil))
+    let statusY = inline ? (headerHeight - resolvedStatus.height) / 2 : headerHeight + (resolvedStatus.height > 0 ? 10 : 0)
+    let height = inline ? headerHeight : statusY + resolvedStatus.height
+    return (CGSize(width: width, height: height), [
+      CGRect(x: 0, y: (headerHeight - primary.height) / 2, width: primaryWidth, height: primary.height),
+      CGRect(x: statusX, y: statusY, width: statusWidth, height: resolvedStatus.height),
+      CGRect(x: width - change.width, y: (headerHeight - change.height) / 2, width: change.width, height: change.height),
+    ])
   }
 }
 
