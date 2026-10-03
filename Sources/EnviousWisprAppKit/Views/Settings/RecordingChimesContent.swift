@@ -190,9 +190,7 @@ struct RecordingChimeCard: View {
     // The decorative row spans beneath BOTH controls, and belongs to neither
     // label. It does not read sound data or take hits; Select owns this lower row.
     .overlay(alignment: .bottom) {
-      RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
-        .padding(.horizontal, 8)
-        .padding(.bottom, 8)
+      footer
         .allowsHitTesting(false)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -248,34 +246,21 @@ struct RecordingChimeCard: View {
 
   private var selectButton: some View {
     Button(action: onSelect) {
-      VStack(alignment: .leading, spacing: 8) {
-        Color.clear.frame(height: Self.previewRegionSide - 4)
-          .allowsHitTesting(false)
-          .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 2) {
-          Text(RecordingChimeCatalog.name(for: pairing))
-            .font(.stRowLabel)
-            .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
-          Text(RecordingChimeCatalog.description(for: pairing))
-            .font(.stRowHelper)
-            .foregroundStyle(Color.stTextSecondary)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        Spacer(minLength: 0)
+      VStack(alignment: .leading, spacing: 4) {
+        header
+        // The visible footer is painted across the entire card, outside BOTH
+        // Buttons; this hidden copy reserves exactly its naturally fitted size.
+        footer.hidden()
+      }
         // Always laid out, shown only when selected, so picking a chime
         // never resizes its card or moves either button.
-        inUseBadge
-          .opacity(isSelected ? 1 : 0)
-          .accessibilityHidden(true)
         // Reserve the shared decorative row without putting it in a Button.
-        Color.clear.frame(height: 18)
-          .allowsHitTesting(false)
-          .accessibilityHidden(true)
-      }
       // Four-point text insets preserve more room for long German names at
       // the 106pt column; the play corner stays 44pt and the waveform inset 8pt.
-      .padding(4)
+      // #3385 lane D review r1 supersedes the three separate rows and 4pt outer
+      // padding above. The header and shared footer have no expanding Spacer;
+      // equal grid-row heights add only the space a longer sibling's text needs.
+
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .contentShape(RecordingChimeSelectRegion())
     }
@@ -283,6 +268,62 @@ struct RecordingChimeCard: View {
     .accessibilityLabel(RecordingChimeCatalog.name(for: pairing))
     .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+  }
+
+  /// Natural header/footer measurements are exposed internally for the layout
+  /// tests; the page and tests measure the exact same wrapping views.
+  var header: some View {
+      // A complete name and description beside Play only when the text
+      // can keep at least the narrow card's 98pt readable text width.
+      // At 106pt, a name sits beside Play and the description takes the
+      // full lower row. It is not squeezed into the Play-side text column.
+    // Review r1 measured a fitting wrapped header rejected by ViewThatFits's
+    // unconstrained ideal width. Measure at the actual text-column proposal.
+    RecordingChimeHeaderLayout {
+      cardName
+      cardDescription
+    }
+    .padding(.top, 4)
+  }
+
+  private var cardName: some View {
+    Text(RecordingChimeCatalog.name(for: pairing))
+      .font(.stRowLabel)
+      .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private var cardDescription: some View {
+    Text(RecordingChimeCatalog.description(for: pairing))
+      .font(.stRowHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  var footer: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 4) {
+        RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
+          // 22 bars retain at least 2pt each; narrower than this crowds them.
+          .frame(minWidth: 44)
+        reservedBadge.fixedSize()
+      }
+      VStack(alignment: .leading, spacing: 2) {
+        reservedBadge
+        RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
+      }
+    }
+    .padding(.horizontal, 4)
+    .padding(.bottom, 4)
+    .accessibilityHidden(true)
+    .allowsHitTesting(false)
+  }
+
+  private var reservedBadge: some View {
+    // Always laid out, shown only when selected, so picking a chime
+    // never resizes its card or moves either button.
+    inUseBadge
+      .opacity(isSelected ? 1 : 0)
   }
 
   private var inUseBadge: some View {
@@ -298,6 +339,49 @@ struct RecordingChimeCard: View {
     .padding(.vertical, 2)
     .background(Capsule().fill(Color.stAccentSolid))
     .allowsHitTesting(false)
+  }
+}
+
+/// Use the full name/description beside Play when both get at least 98pt;
+/// otherwise keep the name beside Play and the description across the lower row.
+struct RecordingChimeHeaderLayout: Layout {
+  private struct Plan {
+    let sideBySide: Bool
+    let nameSize: CGSize
+    let descriptionSize: CGSize
+    let topHeight: CGFloat
+    let height: CGFloat
+  }
+
+  private func plan(width: CGFloat, subviews: Subviews) -> Plan {
+    let play = RecordingChimeCard.previewRegionSide
+    let minimumText = RecordingChimeGrid.minimumCardWidth - 8
+    let side = width >= play + 4 + minimumText + 4
+    let nameWidth = max(0, width - (side ? play + 8 : play + 4))
+    let descriptionWidth = max(0, width - (side ? play + 8 : 8))
+    let name = subviews[0].sizeThatFits(ProposedViewSize(width: nameWidth, height: nil))
+    let description = subviews[1].sizeThatFits(ProposedViewSize(width: descriptionWidth, height: nil))
+    let top = max(play, name.height)
+    let height = side ? max(play, name.height + 2 + description.height) : top + 4 + description.height
+    return Plan(sideBySide: side, nameSize: name, descriptionSize: description, topHeight: top, height: height)
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let width = proposal.width ?? 150
+    return CGSize(width: width, height: plan(width: width, subviews: subviews).height)
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let plan = plan(width: bounds.width, subviews: subviews)
+    let play = RecordingChimeCard.previewRegionSide
+    let nameX = bounds.minX + play + (plan.sideBySide ? 4 : 0)
+    let nameY = bounds.minY + (plan.sideBySide ? 0 : (plan.topHeight - plan.nameSize.height) / 2)
+    subviews[0].place(at: CGPoint(x: nameX, y: nameY), anchor: .topLeading,
+      proposal: ProposedViewSize(width: plan.nameSize.width, height: plan.nameSize.height))
+    let descriptionX = plan.sideBySide ? nameX : bounds.minX + 4
+    let descriptionY = bounds.minY + (plan.sideBySide ? plan.nameSize.height + 2 : plan.topHeight + 4)
+    subviews[1].place(at: CGPoint(x: descriptionX, y: descriptionY), anchor: .topLeading,
+      proposal: ProposedViewSize(width: plan.descriptionSize.width, height: plan.descriptionSize.height))
   }
 }
 

@@ -63,8 +63,10 @@ struct RecordingChimeWiringTests {
       shape.selectReferencesPreview = references("onPreview", in: select)
       shape.selectHitShape = memberCallNodes(in: select, named: "contentShape").first?
         .arguments.first?.expression.trimmedDescription ?? ""
+      // The shared footer owns badge paint; the fixture can still put it inline.
+      let badgeOwner = property("reservedBadge", of: card) ?? select
       shape.badgeOpacity =
-        memberCallNodes(in: select, named: "opacity").first {
+        memberCallNodes(in: badgeOwner, named: "opacity").first {
           $0.calledExpression.as(MemberAccessExprSyntax.self)?.base?.trimmedDescription == "inUseBadge"
         }.flatMap { $0.arguments.first?.expression.trimmedDescription } ?? ""
     }

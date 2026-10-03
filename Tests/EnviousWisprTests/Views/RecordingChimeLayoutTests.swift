@@ -114,18 +114,42 @@ struct RecordingChimeLayoutTests {
     }
   }
 
-  @Test("full-width 14pt names and captions fit; Play and Select have disjoint effective regions")
+  @Test("natural text and footer fit without extra rows; Play and Select have disjoint effective regions")
   func textAndHitRegionsFit() throws {
     for width in Self.gridWidths.dropFirst() {
       let frames = Self.cardFrames(width: width, selected: .whisperTick)
       for pairing in RecordingSoundPairing.allCases {
         let card = try #require(frames[pairing.rawValue])
-        let text = VStack(alignment: .leading, spacing: 2) {
+        let content = RecordingChimeCard(pairing: pairing, isSelected: true,
+          isPreviewEnabled: true, onSelect: {}, onPreview: {})
+        let headerHeight = PillSettingsLayoutTests.fitting(content.header, width: card.width).height
+        let footerHeight = PillSettingsLayoutTests.fitting(content.footer, width: card.width).height
+        // Independent native Text measurements at the required readable columns,
+        // rather than accepting a taller branch merely because it measures itself.
+        let side = card.width >= 150
+        let nameWidth = card.width - (side ? 52 : 48)
+        let descriptionWidth = card.width - (side ? 52 : 8)
+        let nameHeight = PillSettingsLayoutTests.fitting(
           Text(RecordingChimeCatalog.name(for: pairing)).font(.stRowLabel)
+            .fixedSize(horizontal: false, vertical: true), width: nameWidth).height
+        let descriptionHeight = PillSettingsLayoutTests.fitting(
           Text(RecordingChimeCatalog.description(for: pairing)).font(.stRowHelper)
-        }.fixedSize(horizontal: false, vertical: true)
-        let textHeight = PillSettingsLayoutTests.fitting(text, width: card.width - 8).height
-        #expect(card.height >= 44 + textHeight + 18 + 16)
+            .fixedSize(horizontal: false, vertical: true), width: descriptionWidth).height
+        let expectedHeader = side ? max(44, nameHeight + 2 + descriptionHeight) + 4
+          : max(44, nameHeight) + 4 + descriptionHeight + 4
+        #expect(abs(headerHeight - expectedHeader) < 1, "header stacked when text could fit beside Play")
+        let needed = headerHeight + 4 + footerHeight
+        #expect(card.height + 0.5 >= needed)
+        // The row's longest sibling sets its height, not an extra reserved row.
+        let row = frames.values.filter { abs($0.minY - card.minY) < 0.5 }
+        let natural = RecordingSoundPairing.allCases.compactMap { other -> CGFloat? in
+          guard let frame = frames[other.rawValue], abs(frame.minY - card.minY) < 0.5 else { return nil }
+          let view = RecordingChimeCard(pairing: other, isSelected: false,
+            isPreviewEnabled: true, onSelect: {}, onPreview: {})
+          return PillSettingsLayoutTests.fitting(view.header, width: frame.width).height + 4
+            + PillSettingsLayoutTests.fitting(view.footer, width: frame.width).height
+        }.max() ?? 0
+        #expect(row.allSatisfy { abs($0.height - natural) < 1 }, "row has an unexplained vertical gap")
         let rect = CGRect(origin: .zero, size: card.size)
         let select = RecordingChimeSelectRegion().path(in: rect)
         // Independent rectangle oracle, sampling interiors, edges left to native Live UAT.
@@ -139,7 +163,7 @@ struct RecordingChimeLayoutTests {
             if !play && !chooses { missing += 1 }
           }
         }
-        print("ChimeFit \(pairing.rawValue) card=\(card) textWidth=\(card.width - 8) fullTextHeight=\(textHeight) play=44x44 select=L-shaped overlap=\(overlap) uncovered=\(missing) contained=\(card.maxX <= width + 0.5)")
+        print("ChimeFit \(pairing.rawValue) card=\(card) naturalHeaderHeight=\(headerHeight) naturalFooterHeight=\(footerHeight) needed=\(needed) rowNaturalHeight=\(natural) play=44x44 select=L-shaped overlap=\(overlap) uncovered=\(missing) contained=\(card.maxX <= width + 0.5)")
         #expect(overlap == 0 && missing == 0)
       }
     }

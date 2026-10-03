@@ -117,8 +117,10 @@ struct RecordingPillAppearancePanel: View {
             navigate(.dictation(.livePreview))
           } label: {
             Text("Configure Live Preview")
+              .foregroundStyle(Color.stAccent)
           }
-          .buttonStyle(.link)
+          .buttonStyle(.plain)
+          .settingsHoverQuiet()
           .accessibilityHint("Opens Dictation Settings, Live Preview.")
         }
       }
@@ -457,6 +459,8 @@ struct RecordingPillPreviewTile: View {
       Text(design.displayName)
         .font(.stRowLabel)
         .foregroundStyle(highlighted ? Color.stAccent : Color.stTextPrimary)
+        // The tick's name-only slot is reserved even when it is not drawn.
+        .padding(.trailing, 26)
       Text(DictationSettingsCopy.Pill.shortDescription(for: design))
         .font(.stRowHelper)
         .foregroundStyle(Color.stTextSecondary)
@@ -528,35 +532,35 @@ struct RecordingPillPreviewTile: View {
         // #3385 lane D supersedes the caption-line slot below: the tick gets
         // its own reserved row, so names and captions use the full card width.
         // Its row exists selected or not, and never changes the picture's box.
-        VStack(alignment: .leading, spacing: 8) {
-          // **The tick's slot is reserved whether or not it is shown, and that is a
-          // correctness requirement rather than tidiness.** The preview's scale is
-          // computed from the width its `GeometryReader` is handed, so a tick that
-          // appears only when selected TAKES that width from the card it is on:
-          // selecting a design visibly shrank its own pill while the previous
-          // selection grew. Found by Codex review — invisible in a static render,
-          // because every render captures one selection and the effect is only
-          // legible as a change.
-          //
-          // An empty frame rather than an overlay, so the picture is never drawn
-          // underneath the tick.
-          //
-          // #3385: the tick now sits on the caption line, not beside the picture,
-          // so the picture's width cannot move on selection at all; the reserved
-          // slot keeps the CAPTION's width, and so its wrapping and the card's
-          // height, the same selected or not.
-          ZStack {
+        // **The tick's slot is reserved whether or not it is shown, and that is a
+        // correctness requirement rather than tidiness.** The preview's scale is
+        // computed from the width its `GeometryReader` is handed, so a tick that
+        // appears only when selected TAKES that width from the card it is on:
+        // selecting a design visibly shrank its own pill while the previous
+        // selection grew. Found by Codex review — invisible in a static render,
+        // because every render captures one selection and the effect is only
+        // legible as a change.
+        //
+        // An empty frame rather than an overlay, so the picture is never drawn
+        // underneath the tick.
+        //
+        // #3385: the tick now sits on the caption line, not beside the picture,
+        // so the picture's width cannot move on selection at all; the reserved
+        // slot keeps the CAPTION's width, and so its wrapping and the card's
+        // height, the same selected or not.
+        // #3385 lane D review r1 supersedes the separate 18+8pt tick row and
+        // the empty-frame choice above: only the NAME reserves 26pt at its end.
+        // The overlay never takes hits or changes the caption/picture geometry.
+        caption
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .overlay(alignment: .topTrailing) {
             if isSelected {
               Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Color.white, isEnabled ? Color.stAccent : Color.stTextSecondary)
+                .allowsHitTesting(false)
             }
           }
-          .frame(width: 18, height: 18)
-          .frame(maxWidth: .infinity, alignment: .trailing)
-          caption
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
       }
       .padding(12)
       // Before `.buttonStyle(.plain)`: the reserved tick slot is otherwise dead

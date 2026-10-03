@@ -24,7 +24,7 @@ struct PillSettingsLayoutTests {
   /// Three equal card widths inside the real page and row margins at 750/820/1300pt.
   static let cardWidths: [CGFloat] = [750, 820, 1300].map { (AppearanceRenderHarness.pageWidth(window: $0) - 2 * SettingsLayout.contentH - 2 * SettingsLayout.rowPaddingH - 24) / 3 }
 
-  /// The caption takes the full inner width; the tick has a separate reserved row.
+  /// The caption takes the full inner width; its name alone reserves the 26pt tick slot.
   static let captionInset: CGFloat = 12 * 2
 
   static func fitting(_ view: some View, width: CGFloat) -> CGSize {
@@ -75,7 +75,7 @@ struct PillSettingsLayoutTests {
         ).height
       }
       let tallest = try #require(captions.max())
-      let needed = 12 + RecordingPillPreviewTile.thumbnailSize.height + 10 + 18 + 8 + tallest + 12
+      let needed = 12 + RecordingPillPreviewTile.thumbnailSize.height + 10 + tallest + 12
       print("PillCaption card=\(width) caption=\(captionWidth) heights=\(captions) card=\(card)")
       #expect(captions.allSatisfy { $0 > 0 }, "a caption measured nothing")
       #expect(

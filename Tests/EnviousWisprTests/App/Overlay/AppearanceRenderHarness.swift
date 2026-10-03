@@ -157,7 +157,7 @@ struct AppearanceRenderHarness {
       let name = try german(design.displayName)
       let caption = try german(String(localized: DictationSettingsCopy.Pill.shortDescription(for: design)))
       let text = VStack(alignment: .leading, spacing: 2) {
-        Text(verbatim: name).font(.stRowLabel)
+        Text(verbatim: name).font(.stRowLabel).padding(.trailing, 26)
         Text(verbatim: caption).font(.stRowHelper)
       }.fixedSize(horizontal: false, vertical: true)
       let size = PillSettingsLayoutTests.fitting(text, width: pillWidth - PillSettingsLayoutTests.captionInset)
@@ -167,12 +167,16 @@ struct AppearanceRenderHarness {
     for pairing in RecordingSoundPairing.allCases {
       let name = try german(RecordingChimeCatalog.name(for: pairing))
       let caption = try german(RecordingChimeCatalog.description(for: pairing))
+      // Match the new header's minimum-width geometry. These are source text
+      // fit checks, still NOT a localized production card or Bundle.main proof.
+      let nameWidth = chimeWidth >= 150 ? chimeWidth - 52 : chimeWidth - 48
+      let descriptionWidth = chimeWidth >= 150 ? chimeWidth - 52 : chimeWidth - 8
       let text = VStack(alignment: .leading, spacing: 2) {
-        Text(verbatim: name).font(.stRowLabel)
-        Text(verbatim: caption).font(.stRowHelper)
+        Text(verbatim: name).font(.stRowLabel).frame(width: nameWidth, alignment: .leading)
+        Text(verbatim: caption).font(.stRowHelper).frame(width: descriptionWidth, alignment: .leading)
       }.fixedSize(horizontal: false, vertical: true)
-      let size = PillSettingsLayoutTests.fitting(text, width: chimeWidth - 8)
-      print("GERMAN Chime fit \(pairing.rawValue) card=\(chimeWidth) textWidth=\(chimeWidth - 8) fullTextHeight=\(size.height) containsFullText=\(size.width <= chimeWidth - 8 + 0.5)")
+      let size = PillSettingsLayoutTests.fitting(text, width: descriptionWidth)
+      print("GERMAN Chime fit \(pairing.rawValue) card=\(chimeWidth) nameWidth=\(nameWidth) descriptionWidth=\(descriptionWidth) fullTextHeight=\(size.height) containsFullText=\(size.width <= descriptionWidth + 0.5)")
       rows.append(AnyView(text.frame(width: chimeWidth - 8)))
     }
     // This sheet is deliberately labelled fit evidence, not a German page render.
