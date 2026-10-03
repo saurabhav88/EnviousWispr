@@ -452,10 +452,10 @@ enum PolishRailCatalog {
 /// Fixed rail and gap for the two-column layout. Detail controls stack at narrow
 /// widths; the shell minimum is 750pt. Rendering is checked separately from policy.
 enum PolishRailMetrics {
-  /// Fixed rail column width. Sized to fit the longest engine name
-  /// ("Apple Intelligence") beside a 32pt logo tile. Titles wrap at whole words;
-  /// the status chip sits below the tagline rather than taking more width.
-  static let railWidth: CGFloat = 216
+  /// Fixed rail column width: the mockup's column, wide enough that "Apple
+  /// Intelligence" and Ollama's tagline stay on one line beside the logo tile
+  /// (216 wrapped both, #3385 audit 2026-10-03).
+  static let railWidth: CGFloat = 264
   /// Gap between the rail and the detail column.
   static let columnGap: CGFloat = 16
 }

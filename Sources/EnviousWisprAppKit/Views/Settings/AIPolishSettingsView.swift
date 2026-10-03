@@ -376,12 +376,15 @@ struct AIPolishSettingsView: View {
               }
             )
             ) {
-              Text(LocalizedStringResource(
-                "settings.aiPolish.enable.title", defaultValue: "Enable AI Polish"))
+              // BrandedToggleStyle draws its label even under `.labelsHidden()`, which
+              // printed "Enable AI Polish" a second time beside the switch. The row
+              // title shows it; VoiceOver gets it below.
+              EmptyView()
             }
-            .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
             .fixedSize()
+            .accessibilityLabel(Text(LocalizedStringResource(
+              "settings.aiPolish.enable.title", defaultValue: "Enable AI Polish")))
           }
         }
       }
