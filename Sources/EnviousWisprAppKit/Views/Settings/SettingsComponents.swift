@@ -199,15 +199,21 @@ struct SettingsRowControlLayout: Layout {
 
   private func dimensions(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
     let icon = subviews[0].sizeThatFits(.unspecified)
-    let control = subviews[2].sizeThatFits(.unspecified)
+    let idealControl = subviews[2].sizeThatFits(.unspecified)
     let secondary = subviews[3].sizeThatFits(.unspecified)
     let idealLabel = subviews[1].sizeThatFits(.unspecified)
-    let width = width ?? icon.width + 11 + idealLabel.width + 12 + control.width + secondary.width
+    let width = width ?? icon.width + 11 + idealLabel.width + 12 + idealControl.width + secondary.width
     // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
     // spacing (11), so the control aligns under the LABEL rather than
     // the icon.
     let labelStart = icon.width + 11
     let available = max(0, width - labelStart)
+    // A content-sized control can exceed the entire stacked row in a longer
+    // localization. Pass the available width back down so adaptive controls
+    // can reflow, including their new height, instead of placing an ideal-size bar.
+    let control = idealControl.width > available
+      ? subviews[2].sizeThatFits(ProposedViewSize(width: available, height: nil))
+      : idealControl
     let hasSecondary = secondary.height > 0
     let secondaryBelow = hasSecondary && width <= supplementaryBelowWidth
     let trailingWidth = control.width + (hasSecondary && !secondaryBelow ? secondary.width + 12 : 0)
@@ -1286,57 +1292,26 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
   private var horizontalPadding: CGFloat { comfortable ? 18 : 12 }
 
   var body: some View {
-    HStack(spacing: 4) {
-      ForEach(options.indices, id: \.self) { index in
-        let option = options[index]
-        let isSelected = selection == option.value
+    content { segment(at: $0) }
+  }
 
-        Button {
-          selection = option.value
-        } label: {
-          HStack(spacing: 6) {
-            if let symbol = option.systemImage {
-              Image(systemName: symbol)
-                .font(.system(size: 12.5, weight: .semibold))
-            }
-            Text(option.label)
-              .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+  // Tests attach frame probes to the real buttons in this same production container.
+  func content<Segment: View>(@ViewBuilder segment: @escaping (Int) -> Segment) -> some View {
+    Group {
+      if comfortable {
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 4) {
+            ForEach(options.indices, id: \.self) { segment($0) }
           }
-          .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
-          .padding(.vertical, verticalPadding)
-          .padding(.horizontal, horizontalPadding)
-          // Only the two width-MATCHED `comfortable` pickers (Microphone page)
-          // get a no-shrink floor: without it, imposing a wider total on the
-          // HStack from outside (`.matchingSegmentedWidth`) divides the space
-          // EQUALLY among segments rather than by each one's own need, and the
-          // longest label in the bar ("Continue", "Always") wraps even though
-          // the bar as a whole has room to spare (founder, 2026-09-16, live
-          // app). Codex correctly rejected making this unconditional (PR
-          // #3022 r1): a non-`comfortable` call site (ProviderSetup's AI
-          // Polish tone picker) relies on being able to COMPRESS below its
-          // segments' ideal width in a narrow detail column at the app's
-          // 750pt minimum, and a floor there would push its right-hand
-          // choices out of reach instead.
-          .conditionalFixedWidth(comfortable)
-          .frame(maxWidth: .infinity)
-          .contentShape(Rectangle())
-          .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-              .fill(isSelected ? Color.stAccentSolid : Color.clear)
-          )
-          // An UNSELECTED segment is drawn as bare text on the track: no fill,
-          // no border, nothing separating it from a label. Hover is the only
-          // thing that says the other options are reachable. The selected
-          // segment is a solid accent pill, so it takes the white veil for the
-          // same reason the selected sidebar row does.
-          .settingsHoverRow(
-            cornerRadius: 7,
-            tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
+          WrappingSegmentedLayout {
+            ForEach(options.indices, id: \.self) { segment($0) }
+          }
         }
-        .buttonStyle(.plain)
-        .accessibilityValue(
-          isSelected
-            ? String(localized: "selected", comment: "VoiceOver: a chosen segmented option.") : "")
+      } else {
+        // AI Polish's tone picker keeps its original compression behavior.
+        HStack(spacing: 4) {
+          ForEach(options.indices, id: \.self) { segment($0) }
+        }
       }
     }
     .padding(3)
@@ -1345,7 +1320,62 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
     .overlay(
       RoundedRectangle(cornerRadius: 10)
         .strokeBorder(Color.stDivider, lineWidth: 1)
+        .allowsHitTesting(false)
     )
+  }
+
+  func segment(at index: Int) -> some View {
+    let option = options[index]
+    let isSelected = selection == option.value
+
+    return Button {
+      selection = option.value
+    } label: {
+      HStack(spacing: 6) {
+        if let symbol = option.systemImage {
+          Image(systemName: symbol)
+            .font(.system(size: 12.5, weight: .semibold))
+        }
+        Text(option.label)
+          .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+      }
+      .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
+      .padding(.vertical, verticalPadding)
+      .padding(.horizontal, horizontalPadding)
+      // Only the two width-MATCHED `comfortable` pickers (Microphone page)
+      // get a no-shrink floor: without it, imposing a wider total on the
+      // HStack from outside (`.matchingSegmentedWidth`) divides the space
+      // EQUALLY among segments rather than by each one's own need, and the
+      // longest label in the bar ("Continue", "Always") wraps even though
+      // the bar as a whole has room to spare (founder, 2026-09-16, live
+      // app). Codex correctly rejected making this unconditional (PR
+      // #3022 r1): a non-`comfortable` call site (ProviderSetup's AI
+      // Polish tone picker) relies on being able to COMPRESS below its
+      // segments' ideal width in a narrow detail column at the app's
+      // 750pt minimum, and a floor there would push its right-hand
+      // choices out of reach instead.
+      // At narrow widths the whole segment moves to the next row; it never
+      // gives up the no-shrink floor described above.
+      .conditionalFixedWidth(comfortable)
+      .frame(maxWidth: .infinity)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .fill(isSelected ? Color.stAccentSolid : Color.clear)
+      )
+      // An UNSELECTED segment is drawn as bare text on the track: no fill,
+      // no border, nothing separating it from a label. Hover is the only
+      // thing that says the other options are reachable. The selected
+      // segment is a solid accent pill, so it takes the white veil for the
+      // same reason the selected sidebar row does.
+      .settingsHoverRow(
+        cornerRadius: 7,
+        tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
+    }
+    .buttonStyle(.plain)
+    .accessibilityValue(
+      isSelected
+        ? String(localized: "selected", comment: "VoiceOver: a chosen segmented option.") : "")
   }
 }
 
@@ -1374,27 +1404,11 @@ extension View {
     )
   }
 
-  /// Sizes this view to its own natural width until `matchedWidth` is known,
-  /// then to exactly `matchedWidth`, and always reports whichever width it
-  /// rendered at.
-  ///
-  /// **Not the same as `.fixedSize(...).frame(width: matchedWidth)`.** That
-  /// order looks right and does not work: `.fixedSize()` makes a view
-  /// IGNORE any width an enclosing `.frame(width:)` proposes, so the outer
-  /// frame reserves the matched width in the LAYOUT while the visible
-  /// content stays at its own, smaller, natural width, centered inside the
-  /// extra space — a mismatch invisible in a screenshot cropped to one bar,
-  /// caught only by putting both bars in the same frame (founder,
-  /// 2026-09-16, live app). Once `matchedWidth` is known, this applies ONLY
-  /// `.frame(width:)`, so the proposal reaches the view's `.frame(maxWidth:
-  /// .infinity)` segments and they actually stretch to fill it.
-  @ViewBuilder
+  /// Match sibling bars at their natural width, capped by the row's proposal.
+  /// Unlike fixedSize/frame(width:), this forwards a narrow proposal to the
+  /// picker so it can wrap while keeping the same binding and buttons.
   func matchingSegmentedWidth(_ matchedWidth: CGFloat?) -> some View {
-    if let matchedWidth {
-      frame(width: matchedWidth).reportingWidth()
-    } else {
-      fixedSize(horizontal: true, vertical: false).reportingWidth()
-    }
+    SegmentedPickerWidthLayout(matchedWidth: matchedWidth) { self }.reportingWidth()
   }
 
   /// `.fixedSize(horizontal: true, ...)` only when `enabled`; otherwise the

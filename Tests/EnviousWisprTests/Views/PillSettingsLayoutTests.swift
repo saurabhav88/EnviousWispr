@@ -44,6 +44,11 @@ struct PillSettingsLayoutTests {
     RecordingPillPreviewTile(design: design, isSelected: selected, isEnabled: true, onSelect: {})
   }
 
+  /// AppKit snaps view edges to the backing pixel grid: 0.5pt on a 2x display, a whole point on
+  /// the 1x hosted CI runner (PR #3407: a 159.33pt slot measured 160pt there). One point covers
+  /// that rounding on every display and still fails a column that is mis-sized by more.
+  static let pixelSlack: CGFloat = 1
+
   @Test("every card in a row is one size, picked or not, at every width")
   func equalCardsAtEveryWidth() {
     for width in Self.cardWidths {
@@ -59,7 +64,7 @@ struct PillSettingsLayoutTests {
       #expect(sizes.values.allSatisfy { $0.height > 0 }, "a card measured nothing at \(width)")
       #expect(heights.count == 1, "cards differ in height at \(width): \(sizes)")
       #expect(
-        sizes.values.allSatisfy { abs($0.width - width) < 0.5 },
+        sizes.values.allSatisfy { abs($0.width - width) <= Self.pixelSlack },
         "a card is wider or narrower than its \(width)pt slot: \(sizes)")
     }
   }
@@ -114,9 +119,9 @@ struct PillSettingsLayoutTests {
       #expect(frames.count == 3)
       #expect(Set(frames.map(\.minY)).count == 1)
       let expected = (gridWidth - 24) / 3
-      #expect(frames.allSatisfy { abs($0.width - expected) < 0.5 })
+      #expect(frames.allSatisfy { abs($0.width - expected) <= Self.pixelSlack })
       #expect(Set(frames.map(\.height)).count == 1)
-      #expect(frames.allSatisfy { $0.minX >= 0 && $0.maxX <= gridWidth + 0.5 })
+      #expect(frames.allSatisfy { $0.minX >= -Self.pixelSlack && $0.maxX <= gridWidth + Self.pixelSlack })
     }
   }
 
