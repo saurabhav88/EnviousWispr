@@ -1,7 +1,7 @@
 import EnviousWisprAudio
 import Foundation
 
-/// What the Microphone & Media tab says about the microphone (#3385), as plain
+/// What the Microphone tab says about the microphone (#3385), as plain
 /// values. Built from inputs the caller has already read: the saved preference,
 /// the device the existing resolver chose, and that device's transport token.
 /// It reads no hardware and writes nothing.

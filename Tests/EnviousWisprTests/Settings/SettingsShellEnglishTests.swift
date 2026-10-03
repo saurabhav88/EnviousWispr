@@ -40,7 +40,7 @@ struct SettingsShellEnglishTests {
   func dictationTabs() {
     #expect(
       DictationTab.allCases.map { String(localized: $0.label) } == [
-        "Engine", "Microphone & Media", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
+        "Engine", "Microphone", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
       ])
     #expect(SettingsCopy.notSelectedValue == "Not selected")
   }

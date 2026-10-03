@@ -2,7 +2,7 @@ import CoreAudio
 import EnviousWisprAudio
 import SwiftUI
 
-/// The microphone dropdown on the Microphone & Media tab (#3385): a card naming
+/// The microphone dropdown on the Microphone tab (#3385): a card naming
 /// the microphone the current choice would open, which opens the system menu of
 /// choices. The menu is a native inline `Picker`, so keyboard, VoiceOver and
 /// the selection checkmark behave as they did. Presentation only: the caller

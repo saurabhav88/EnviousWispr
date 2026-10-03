@@ -16,7 +16,7 @@ import SwiftUI
 /// segmented controls, and "Learn more" roomier padding, and matched the two
 /// segmented controls' widths so they read as the same length.
 ///
-/// #3385 (Microphone & Media tab): each row now shows a short line under its
+/// #3385 (Microphone tab): each row now shows a short line under its
 /// title; the Auto picker and the "Using X" pill became one dropdown card that
 /// names the device Auto would open; the Bluetooth guide is a row of the same
 /// card; the frozen-per-recording rule is the heading's note instead of the

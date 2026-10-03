@@ -139,7 +139,7 @@ HARNESS_STATUS = {
     "close_window":    {"status": "primitive", "issue": None, "note": ""},
     "switch_backend": {"status": "primitive", "issue": None, "note": "#3385: nav(Dictation Settings, Engine), open 'Change speech engine', press the card, require choices closed and the summary naming it (settings_nav.choose_engine). UI landing is not proof the deferred runtime switch finished"},
     "choose_engine":   {"status": "primitive", "issue": None, "note": "on Dictation Settings > Engine: open Change speech engine, select Fast/All Languages, prove collapse + summary (#3385)"},
-    "read_input_choice": {"status": "primitive", "issue": None, "note": "Microphone & Media's STORED choice as InputChoice(uid, shown): uid from the shared preference preferredInputDeviceIDOverride ('' = Auto), never display text; refuses unreadable/ambiguous originals (#3385)"},
+    "read_input_choice": {"status": "primitive", "issue": None, "note": "Microphone's STORED choice as InputChoice(uid, shown): uid from the shared preference preferredInputDeviceIDOverride ('' = Auto), never display text; refuses unreadable/ambiguous originals (#3385)"},
     "select_input_choice": {"status": "primitive", "issue": None, "note": "choose Auto or a device in the Input device control's OWN menu and prove the stored UID took it; AX cancel, never Escape (#3385). Native menu AX pending live UAT"},
     "restore_input_choice": {"status": "primitive", "issue": None, "note": "put back a captured InputChoice and prove the stored UID equals the captured one (#3385)"},
     "ReadResult":      {"status": "primitive", "issue": None, "note": "check()'s dict with .missing/.ok (#3385)"},

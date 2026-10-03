@@ -28,7 +28,7 @@ ACTION_ROWS = ()
 GIFT_CAPTION = "What's New & Updates"
 TABS = {
     "Dictation Settings": (
-        "Engine", "Microphone & Media", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
+        "Engine", "Microphone", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
     ),
     "App Settings": ("Appearance", "Permissions", "Privacy", "Licenses"),
 }
@@ -541,7 +541,7 @@ def stored(read_domain, key):
     return value
 
 
-# ── The microphone menu (Dictation Settings > Microphone & Media) ──────────
+# ── The microphone menu (Dictation Settings > Microphone) ──────────
 
 INPUT_DEVICE = "Input device"
 INPUT_KEY = "preferredInputDeviceIDOverride"
@@ -872,7 +872,7 @@ SCAN = [
         ("toggle", "Spoken punctuation", None),
         ("picker", "Unload model after", None),
     ]),
-    ("Dictation Settings", "Microphone & Media", [
+    ("Dictation Settings", "Microphone", [
         ("input", INPUT_DEVICE, None),
         ("segments", ("Mic is on", None), "multi_input_device"),
         ("segments", ("Media during dictation", ("Continue", "Lower", "Mute", "Pause")), None),

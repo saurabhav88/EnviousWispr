@@ -74,11 +74,6 @@ enum DictationSettingsCopy {
       comment:
         "Speech engine settings: heading over settings that work the same on both engines, in capitals."
     )
-    static let currentEngineNote = LocalizedStringResource(
-      "How these work on this engine",
-      comment:
-        "Speech engine settings: note beside the current engine's heading. The settings below are shared by both engines; their explanations describe the current one."
-    )
     static let keepCurrent = LocalizedStringResource(
       "Keep current engine",
       comment: "Speech engine settings: closes the engine choices without changing the engine.")

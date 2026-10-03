@@ -121,7 +121,7 @@ enum DictationTab: String, CaseIterable, Hashable, Identifiable {
       return LocalizedStringResource("Engine", comment: "Dictation Settings: tab name.")
     case .microphone:
       return LocalizedStringResource(
-        "Microphone & Media",
+        "Microphone",
         comment: "Dictation Settings: tab name for the microphone and what other audio does.")
     case .livePreview:
       return LocalizedStringResource("Live Preview", comment: "Dictation Settings: tab name.")

@@ -27,7 +27,6 @@ struct EngineSettingsCopyTests {
     #expect(String(localized: Copy.sectionHeading) == "TRANSCRIPTION ENGINE")
     #expect(String(localized: Copy.nextRecordingNote) == "Changes apply to the next recording")
     #expect(String(localized: Copy.sharedHeading) == "APPLIES TO BOTH ENGINES")
-    #expect(String(localized: Copy.currentEngineNote) == "How these work on this engine")
     #expect(String(localized: Copy.keepCurrent) == "Keep current engine")
     #expect(String(localized: Copy.changeEngine) == "Change speech engine")
     #expect(String(localized: Copy.changeLanguage) == "Change dictation language")

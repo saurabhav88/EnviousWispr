@@ -16,7 +16,7 @@ struct SettingsTabStripLayoutTests {
   // Lane C drafts supplied by the founder. Explicit resources are necessary:
   // an environment locale cannot translate Strings already resolved by a host.
   static let germanDraft = [
-    "Engine", "Mikrofon & Medien", "Live-Vorschau", "Aufnahmeanzeige", "Signaltöne", "Zwischenablage",
+    "Engine", "Mikrofon", "Live-Vorschau", "Aufnahmeanzeige", "Signaltöne", "Zwischenablage",
   ]
 
   static func items(german: Bool) -> [SettingsTabItem<DictationTab>] {

@@ -22,7 +22,7 @@ GERMAN = {
     "All release notes on GitHub": "Alle Versionshinweise auf GitHub",
     "Check for Updates…": "Nach Updates suchen…",
     "App Settings": "App-Einstellungen", "Privacy": "Datenschutz", "Licenses": "Lizenzen", "Check for Updates": "Nach Updates suchen",
-    "Engine": "Engine", "Microphone & Media": "Mikrofon & Medien", "Live Preview": "Live-Vorschau",
+    "Engine": "Engine", "Microphone": "Mikrofon", "Live Preview": "Live-Vorschau",
     "Recording Pill": "Aufnahmeanzeige", "Chimes": "Signaltöne", "Clipboard": "Zwischenablage",
     "Input device": "Eingabegerät", "Choose a microphone": "Mikrofon auswählen",
     "Built-in": "Integriert",
@@ -163,7 +163,7 @@ class FakeSettings:
             kids.append(strip)
             if self.remembered_tab == "Engine":
                 kids += self.engine_tree()
-            if self.remembered_tab == "Microphone & Media":
+            if self.remembered_tab == "Microphone":
                 kids.append(self.input_tree())
         return el("AXGroup", children=kids,
                   frame={"x": 310, "y": 100, "width": 690, "height": 700})
@@ -310,7 +310,7 @@ def raising_cases():
 
     def mic(**kw):
         f = FakeSettings(**kw)
-        f.page, f.remembered_tab = "Dictation Settings", "Microphone & Media"
+        f.page, f.remembered_tab = "Dictation Settings", "Microphone"
         return f, f.ax()
 
     def input_ambiguous():
@@ -680,7 +680,7 @@ def valued_cases():
     def block_10(rows):
         # Microphone: the stored UID is the choice; the display only names it.
         f, ax = FakeSettings(), None
-        f.page, f.remembered_tab = "Dictation Settings", "Microphone & Media"
+        f.page, f.remembered_tab = "Dictation Settings", "Microphone"
         ax = f.ax()
         got = sn.read_input(ax, f.root, f.read_uid, cancel=ax.cancel)
         rows.append(("Auto reads as Auto (stored UID empty), naming the device it resolved to",
@@ -708,7 +708,7 @@ def valued_cases():
 
         def mic_with(devices, uid, auto_uid=None, german=False):
             f = FakeSettings(german=german)
-            f.page, f.remembered_tab = "Dictation Settings", "Microphone & Media"
+            f.page, f.remembered_tab = "Dictation Settings", "Microphone"
             f.devices, f.input_uid = devices, uid
             if auto_uid:
                 f.auto_uid = auto_uid

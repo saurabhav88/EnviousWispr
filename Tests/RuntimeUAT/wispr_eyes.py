@@ -1898,14 +1898,14 @@ def _cancel_menu(menu):
 
 
 def read_input_choice():
-    """The app's STORED microphone choice from Dictation Settings > Microphone & Media:
+    """The app's STORED microphone choice from Dictation Settings > Microphone:
     `settings_nav.InputChoice(uid, shown)`. The UID comes from the shared preference
     `preferredInputDeviceIDOverride` ("" = Auto), never from display text; `shown` is the
     device name the control shows. Raises, before anything changes, when the stored choice is
     unreadable, the display contradicts it, or a chosen device's name cannot be told."""
     connect()
-    if not nav("Dictation Settings", "Microphone & Media"):
-        raise NavigationError("could not navigate to Dictation Settings > Microphone & Media")
+    if not nav("Dictation Settings", "Microphone"):
+        raise NavigationError("could not navigate to Dictation Settings > Microphone")
     return _sn.read_input(_ax(), lambda: _app, _input_read_uid, cancel=_cancel_menu)
 
 
@@ -1914,8 +1914,8 @@ def select_input_choice(auto, name=None):
     stored choice took it. A stale open menu is cancelled through AX on that control, never with
     an Escape key, which would reach whatever app is in front (#3105's alert beep)."""
     connect()
-    if not nav("Dictation Settings", "Microphone & Media"):
-        raise NavigationError("could not navigate to Dictation Settings > Microphone & Media")
+    if not nav("Dictation Settings", "Microphone"):
+        raise NavigationError("could not navigate to Dictation Settings > Microphone")
     return _sn.select_input(_ax(), lambda: _app, _input_read_uid, auto, name,
                             cancel=_cancel_menu)
 
@@ -1923,8 +1923,8 @@ def select_input_choice(auto, name=None):
 def restore_input_choice(choice):
     """Put back a choice `read_input_choice` captured and prove the stored UID matches it."""
     connect()
-    if not nav("Dictation Settings", "Microphone & Media"):
-        raise NavigationError("could not navigate to Dictation Settings > Microphone & Media")
+    if not nav("Dictation Settings", "Microphone"):
+        raise NavigationError("could not navigate to Dictation Settings > Microphone")
     return _sn.restore_input(_ax(), lambda: _app, _input_read_uid, choice, cancel=_cancel_menu)
 
 
@@ -4016,8 +4016,8 @@ def _self_test():
                            route_calls[-2:], [("nav", "Dictation Settings", "Engine"),
                                               ("engine", "All Languages")]))
         select_input_choice(auto=True)
-        cycle_rows.append(("select_input_choice routes to Microphone & Media and asks for Auto",
-                           route_calls[-2:], [("nav", "Dictation Settings", "Microphone & Media"),
+        cycle_rows.append(("select_input_choice routes to Microphone and asks for Auto",
+                           route_calls[-2:], [("nav", "Dictation Settings", "Microphone"),
                                               ("input", True, None, True)]))
         select_input_choice(auto=False, name="BlackHole 2ch")
         cycle_rows.append(("select_input_choice forwards a device name and an AX menu cancel",
@@ -4025,7 +4025,7 @@ def _self_test():
         want = _sn.InputChoice("BuiltInMicrophoneDevice", "MacBook Pro Microphone")
         restore_input_choice(want)
         cycle_rows.append(("restore_input_choice routes there and hands over the captured choice",
-                           route_calls[-2:], [("nav", "Dictation Settings", "Microphone & Media"),
+                           route_calls[-2:], [("nav", "Dictation Settings", "Microphone"),
                                               ("restore", want, True)]))
         try:
             switch_backend("turbo")
