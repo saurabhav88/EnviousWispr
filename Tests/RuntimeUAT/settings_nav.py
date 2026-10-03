@@ -837,7 +837,8 @@ KEYBINDS = {
     "Change paste last dictation keybind": "Paste last dictation",
     "Change copy last dictation keybind": "Copy last dictation",
 }
-# The capture field keeps main's VoiceOver name; only the separate Change button says "Change ...".
+# The keys above are row ids (once the separate Change buttons' names). The field is the one
+# target since founder 2026-10-03 and keeps main's VoiceOver name below.
 KEYBIND_FIELDS = {
     "Change recording keybind": "Recording keybind",
     "Change cancel keybind": "Cancel keybind",
@@ -1239,13 +1240,13 @@ def _scan_control(ax, root, kind, spec, hooks):
         field = keybind_control(ax, root, spec)
         if field is None:
             return None, f"keybind:{spec}=absent"
+        # The field itself changes the keys; a separate Change button would be a regression.
         _, buttons = row_controls(ax, root, KEYBINDS[spec],
                                   lambda e: ax.role(e) == "AXButton"
                                   and _names_match(ax, e, spec))
-        actions = [b for b in buttons if not ax.text(b, "AXValue")]
-        if len(actions) != 1:
-            raise ControlError(f"keybind {spec!r}: {len(actions)} Change actions")
-        return "OK", f"keybind:{spec}={ax.text(field, 'AXValue')} (Change found)"
+        if buttons:
+            raise ControlError(f"keybind {spec!r}: {len(buttons)} separate Change buttons")
+        return "OK", f"keybind:{spec}={ax.text(field, 'AXValue')} (field is the target)"
     if kind == "provider":
         button = provider_button(ax, root, spec)
         if button is None:
