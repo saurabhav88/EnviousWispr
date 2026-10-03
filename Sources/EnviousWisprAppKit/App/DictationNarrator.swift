@@ -174,15 +174,15 @@ enum DictationNarrator {
   /// FOUNDER-LOCKED at Gate 2, 2026-09-05; no dashes. A nil hint is the locked
   /// seventh sentence above, byte for byte, so every existing caller is unchanged.
   /// #3385: the approved Settings move supersedes only the locked route wording
-  /// with Settings > Dictation Settings > Microphone & Media. The device-specific
+  /// with Settings > Dictation Settings > Microphone. The device-specific
   /// remedy and the nil-hint sentence keep the #2664 contract above.
   static func copy(for reason: TerminalAdvisoryReason, hint: MultiInputAdvisoryHint?) -> String {
     guard let hint else { return copy(for: reason) }
     return String(
       localized:
-        "Audio isn't capturing from \(hint.deviceName). Try a different input under Settings > Dictation Settings > Microphone & Media.",
+        "Audio isn't capturing from \(hint.deviceName). Try a different input under Settings > Dictation Settings > Microphone.",
       comment:
-        "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Dictation Settings > Microphone & Media is a place in this app."
+        "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Dictation Settings > Microphone is a place in this app."
     )
   }
 

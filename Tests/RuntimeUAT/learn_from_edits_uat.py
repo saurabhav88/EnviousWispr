@@ -1205,7 +1205,7 @@ BAND_SCRIPT = os.path.expanduser(
 def audio_route():
     """`AudioRoute` from the #1946 artifact (main checkout, gitignored): apply
     BlackHole to output + input and pick it in Settings → Dictation Settings →
-    Microphone & Media by AX (#3385); restore reads the values back.
+    Microphone by AX (#3385); restore reads the values back.
 
     The artifact drives the app through THIS process's already-imported `wispr_eyes`
     (this worktree's, imported at the top of this file), not the main checkout's copy:

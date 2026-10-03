@@ -65,7 +65,7 @@ enum WhatsNewContent {
         "Settings now puts related controls together, with shorter explanations and help beside each row. Keybinds, AI Polish and Snippets have a clearer layout too. Here is where each moved setting lives now:",
       bullets: [
         "Transcription -> Dictation Settings > Engine",
-        "Microphone -> Dictation Settings > Microphone & Media",
+        "Microphone -> Dictation Settings > Microphone",
         "Live Preview -> Dictation Settings > Live Preview",
         "Sounds -> Dictation Settings > Chimes",
         "Clipboard -> Dictation Settings > Clipboard",

@@ -212,14 +212,10 @@ struct SpeechEngineSettingsView: View {
       // ── The current engine's group (#3385, founder Q5 Option A) ─────
       // Language and Faster Transcription stay with the engine they are
       // explained for. Each is still ONE stored value shared by both engines
-      // (`languageMode`, `useStreamingASR`); only the explanations differ, so
-      // the note says how they work here, never that they belong only here.
+      // (`languageMode`, `useStreamingASR`); only the explanations differ. The
+      // heading names the engine, so no note sits beside it (founder, 2026-10-03).
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-      SettingsSectionHeading(resolvedTitle: currentEngineHeading, icon: currentEngineIcon) {
-        Text(Copy.currentEngineNote)
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-      }
+      SettingsSectionHeading(resolvedTitle: currentEngineHeading, icon: currentEngineIcon)
 
       BrandedSection {
         // ── Section 3: Language Selection ──

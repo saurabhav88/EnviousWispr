@@ -59,10 +59,12 @@ struct MicrophoneCaptureWiringTests {
     #expect(picker.contains("MicrophoneChoiceCopy.inUse") == false)
     #expect(picker.contains(".accessibilityLabel(String(localized:DictationSettingsCopy.Microphone.inputDeviceTitle))"))
     #expect(picker.contains(".accessibilityValue([presentation.deviceName??placeholder,detail].compactMap{$0}.joined(separator:\", \"))"))
-    #expect(picker.contains(".pickerStyle(.inline)"))
-    #expect(picker.contains(".tag(\"\")"))
-    #expect(picker.contains(".tag(device.uid)"))
-    #expect(picker.contains("Text(MicrophoneChoiceCopy.autoExplanation).disabled(true)"))
+    // The mockup's menu (founder, 2026-10-03): Auto writes "", a device writes its UID, and the
+    // Auto note is text, never a choice.
+    #expect(picker.contains("choice(tag:\"\""))
+    #expect(picker.contains("tag:device.uid"))
+    #expect(picker.contains("selection=tag"))
+    #expect(picker.contains("Text(MicrophoneChoiceCopy.autoExplanation)"))
   }
 
   @Test("the structural scan distinguishes deferred, eager and precomputed reads")

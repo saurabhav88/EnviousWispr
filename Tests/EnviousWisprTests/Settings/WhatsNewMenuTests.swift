@@ -31,7 +31,7 @@ struct WhatsNewMenuTests {
     // Written out here, not read from WhatsNewContent: dropping or changing a move must fail.
     #expect(entry.bullets == [
       "Transcription -> Dictation Settings > Engine",
-      "Microphone -> Dictation Settings > Microphone & Media",
+      "Microphone -> Dictation Settings > Microphone",
       "Live Preview -> Dictation Settings > Live Preview",
       "Sounds -> Dictation Settings > Chimes",
       "Clipboard -> Dictation Settings > Clipboard",
@@ -119,17 +119,19 @@ struct WhatsNewMenuTests {
     let update = UpdateAvailabilityService.AvailableUpdate(
       versionString: "2503", displayVersion: "2.5.3", isCriticalUpdate: false)
     #expect(WhatsNewMenuPresentation.updateStatus(.available(update)) == .available("2.5.3"))
+    // The idle prompt repeated the bottom button and is gone; the reason the button is
+    // disabled still shows.
     #expect(
-      WhatsNewMenuPresentation.updateStatus(nil).text
+      WhatsNewMenuPresentation.updateStatus(nil).headline
         == String(localized: "Update status unavailable"))
     #expect(
-      WhatsNewMenuPresentation.updateStatus(UpdateAvailabilityService.UpdateState.none).text
-        == String(localized: "Check for updates"))
+      WhatsNewMenuPresentation.updateStatus(UpdateAvailabilityService.UpdateState.none).headline
+        == nil)
     #expect(
-      WhatsNewMenuPresentation.updateStatus(.resolving).text
+      WhatsNewMenuPresentation.updateStatus(.resolving).headline
         == String(localized: "Opening update…"))
     #expect(
-      WhatsNewMenuPresentation.updateStatus(.available(update)).text
+      WhatsNewMenuPresentation.updateStatus(.available(update)).headline
         == String(localized: "Version \("2.5.3") is available"))
     #expect(WhatsNewMenuPresentation.UpdateStatus.unavailable.canCheck == false)
     #expect(WhatsNewMenuPresentation.UpdateStatus.opening.canCheck == false)

@@ -88,7 +88,7 @@ struct VocabPacksSection: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .fill(Color.stPageBg)
+        .fill(Color.stInputBg)
     )
     .overlay(
       RoundedRectangle(cornerRadius: 12, style: .continuous)

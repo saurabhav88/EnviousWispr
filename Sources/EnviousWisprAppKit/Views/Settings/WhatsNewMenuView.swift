@@ -76,6 +76,9 @@ struct WhatsNewMenuView: View {
   let version: String
   /// Height of the soft fade over the bottom of the notes area.
   static let fadeHeight: CGFloat = 28
+  /// Stronger than a list row's tint: these two links are the menu's only actions, and
+  /// the founder asked that they light up clearly under the pointer (2026-10-03).
+  static let linkHoverTint = Color.stAccent.opacity(0.14)
 
   init(
     coordinator: UpdateCoordinator?,
@@ -99,10 +102,14 @@ struct WhatsNewMenuView: View {
           .font(.stRowHelper)
           .foregroundStyle(.stTextSecondary)
       }
-      Text(status.text)
-        .font(.stRowHelper)
-        .foregroundStyle(.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+      // Only news earns the line under the title; the idle "Check for updates" prompt
+      // repeated the button at the bottom (founder, 2026-10-03).
+      if let headline = status.headline {
+        Text(headline)
+          .font(.stRowHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
 
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
@@ -164,9 +171,14 @@ struct WhatsNewMenuView: View {
           .font(.stRowLabel)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.vertical, 5)
+          .padding(.horizontal, 6)
+          .settingsHoverRow(tint: Self.linkHoverTint)
           .contentShape(Rectangle())
       }
       .foregroundStyle(.stAccent)
+      // The hover tint pads 6pt inside each label; pull the row back so its text stays
+      // aligned with the notes above.
+      .padding(.horizontal, -6)
       Button {
         coordinator?.checkForUpdatesFromWhatsNew()
       } label: {
@@ -174,11 +186,14 @@ struct WhatsNewMenuView: View {
           .font(.stRowLabel)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.vertical, 5)
+          .padding(.horizontal, 6)
+          .settingsHoverRow(tint: Self.linkHoverTint)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
       .foregroundStyle(.stAccent)
       .disabled(status.canCheck == false)
+      .padding(.horizontal, -6)
     }
     .padding(18)
     .frame(width: 380)

@@ -141,7 +141,7 @@ struct QuickAddTeachingSection: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(12)
-    .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
   }
 
   private var calloutRow: some View {
@@ -228,6 +228,6 @@ struct QuickAddTeachingSection: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(12)
-    .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
   }
 }

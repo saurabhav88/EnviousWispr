@@ -72,14 +72,15 @@ struct MicrophoneSettingsLayoutTests {
     }
   }
 
-  @Test("the native menu stays 260 points wide without a capture cue")
+  @Test("the microphone menu's card stays its fixed width without a capture cue")
   func menuLabelKeepsWidth() {
     let host = NSHostingView(rootView: MicrophoneDevicePicker(
         selection: .constant("usb"), devices: [Self.device],
         presentation: .make(preferredUID: "usb", resolvedDevice: Self.device, transportToken: "usb"),
         transportTokens: [77: "usb"]))
     print("MicrophonePicker fit=\(host.fittingSize)")
-    #expect(abs(host.fittingSize.width - 260) < 1)
+    #expect(abs(host.fittingSize.width - MicrophoneDevicePicker.width) < 1)
+    #expect(MicrophoneDevicePicker.width == 300)
     #expect(host.fittingSize.height > 30)
   }
 

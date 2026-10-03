@@ -40,19 +40,21 @@ struct PillSettingsView: View {
                   String(
                     localized: "Top",
                     comment: "Recording Pill settings, position on screen: the top of the screen."),
-                  "arrow.up.to.line", OverlayPillPosition.top
+                  nil, OverlayPillPosition.top
                 ),
                 (
                   String(
                     localized: "Bottom",
                     comment:
                       "Recording Pill settings, position on screen: the bottom of the screen."),
-                  "arrow.down.to.line", OverlayPillPosition.bottom
+                  nil, OverlayPillPosition.bottom
                 ),
               ],
               selection: $settings.overlayPillPosition
             )
-            .fixedSize()
+            // The mockup's control: two equal halves, no arrows, a fixed width so
+            // the halves match (founder, 2026-10-03).
+            .frame(width: 240)
           }
         }
 

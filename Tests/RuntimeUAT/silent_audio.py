@@ -38,7 +38,7 @@ LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 
 
 def input_picker():
-    """The Microphone & Media tab's "Input device" control, or None. #3385: found by its
+    """The Microphone tab's "Input device" control, or None. #3385: found by its
     label in the content (`settings_nav.input_control`), never "the first popup"."""
     try:
         return w._sn.input_control(w._ax(), w._app)
@@ -47,7 +47,7 @@ def input_picker():
 
 
 def select_input_device(name):
-    """Choose `name` in Dictation Settings > Microphone & Media and PROVE the control took it.
+    """Choose `name` in Dictation Settings > Microphone and PROVE the control took it.
 
     Delegates to `wispr_eyes.select_input_choice` (`settings_nav.select_input`): it walks the
     control's OWN menu (a whole-app menu-item scan returns every menu on the system), accepts
@@ -130,7 +130,7 @@ def _restore(output, input_, app_device):
     subprocess.run([SWITCH, "-s", input_, "-t", "input"], capture_output=True)
     if app_device is None:
         print("RESTORE WARNING: no captured app device choice; choose it again by hand in "
-              "Dictation Settings > Microphone & Media", flush=True)
+              "Dictation Settings > Microphone", flush=True)
     else:
         try:
             select_input_choice(app_device)

@@ -394,7 +394,8 @@ struct HotkeyRecorderColors {
 /// Click to start recording, press a key combo to set, click again or press Escape to cancel.
 struct HotkeyRecorderView: View {
   /// Visual layout. `.compact` is the original inline label + small field row.
-  /// `.prominent` shows keys and a separate Change control, with Reset below.
+  /// `.prominent` is one wide field that changes the keys when clicked, with a "Change"
+  /// chip drawn inside it and Reset below.
   enum Style {
     case compact
     case prominent
@@ -414,6 +415,9 @@ struct HotkeyRecorderView: View {
       case .prominent: return 10
       }
     }
+
+    /// The prominent field's width: the mockup's wide field (founder, 2026-10-03).
+    var fieldWidth: CGFloat { 300 }
   }
 
   @Binding var keyCode: UInt16
@@ -422,9 +426,6 @@ struct HotkeyRecorderView: View {
   let defaultKeyCode: UInt16
   let defaultModifiers: NSEvent.ModifierFlags
   let label: String
-  /// VoiceOver name for the `.prominent` Change button. The capture field keeps `label`,
-  /// main's existing name for it; nil means the button reads `label` too.
-  var changeAccessibilityLabel: String? = nil
   var colors: HotkeyRecorderColors = .system
   var style: Style = .compact
   /// #1987 — fires after a binding is ACCEPTED, so the owning surface can decide
@@ -527,18 +528,15 @@ struct HotkeyRecorderView: View {
     }
   }
 
-  // MARK: - Prominent (keys and a separate Change target)
+  // MARK: - Prominent (one wide field; clicking it changes the keys)
 
   private var prominentBody: some View {
     VStack(alignment: .trailing, spacing: 6) {
-      HStack(spacing: 8) {
-        prominentFieldWithFocus
-        SettingsActionButton(
-          title: "Change", isEnabled: true, size: .regular,
-          action: toggleRecording
-        )
-        .accessibilityLabel(changeAccessibilityLabel ?? label)
-      }
+      // No separate Change button: the field already starts a change when clicked
+      // (founder, 2026-10-03: "Do we need the change button when you can just click
+      // the field?"). The chip inside it keeps the field looking clickable.
+      prominentFieldWithFocus
+        .frame(width: Style.prominent.fieldWidth)
 
       if let refusal {
         Text(Self.message(for: refusal))
@@ -567,22 +565,41 @@ struct HotkeyRecorderView: View {
   }
 
   private var prominentField: some View {
-    Text(
-      isRecording
-        ? String(localized: "Press keys...", comment: "Keybind field: waiting for keys.")
-        : KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
-    )
-    .font(.system(size: 15, weight: .semibold))
-    .foregroundStyle(isRecording ? Color.stAccent : Color.stTextPrimary)
-    .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-    .padding(.horizontal, 10)
+    HStack(spacing: 8) {
+      Text(
+        isRecording
+          ? String(localized: "Press keys...", comment: "Keybind field: waiting for keys.")
+          : KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
+      )
+      .font(.system(size: 15, weight: .semibold))
+      .foregroundStyle(isRecording ? Color.stAccent : Color.stTextPrimary)
+      Spacer(minLength: 8)
+      if !isRecording {
+        // Paint only: the whole field is the target, and VoiceOver hears the field.
+        Text("Change", comment: "Keybind field: the chip inside the field; clicking the field changes the keys.")
+          .font(.stHelper.weight(.medium))
+          .foregroundStyle(.stAccent)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 3)
+          .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 6))
+          .accessibilityHidden(true)
+      }
+    }
+    // Padding INSIDE the width, so the field is exactly `fieldWidth` and never pokes past
+    // the card's edge.
+    .padding(.leading, 12)
+    .padding(.trailing, 6)
+    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+    .settingsHoverRow(cornerRadius: Style.prominent.fieldRadius, isEnabled: !isRecording)
     .background(
-      isRecording ? Color.stAccentLight : Color.stPageBg,
+      isRecording ? Color.stAccentLight : Color.stInputBg,
       in: RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
     )
     .overlay(
+      // Idle: the quiet control border, so a resting field does not look mid-edit.
       RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
-        .strokeBorder(Color.stAccent, lineWidth: isRecording ? 2 : 1)
+        .strokeBorder(
+          isRecording ? Color.stAccent : Color.stInputBorder, lineWidth: isRecording ? 2 : 1)
         .allowsHitTesting(false)
     )
     .modifier(keyCaptureBehavior)

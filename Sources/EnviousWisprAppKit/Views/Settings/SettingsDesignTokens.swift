@@ -89,14 +89,15 @@ extension Color {
   static let stError = stDynamic(
     lightRGB: (0.753, 0.224, 0.169, 1), darkRGB: (0.937, 0.486, 0.537, 1))  // #c0392b / #ef7c89
 
-  // Text-input surfaces
+  // Control surfaces: every field, picker box and segmented track
   //
-  // A field has to read as RECESSED against the card it sits on, in both modes.
-  // `.textFieldStyle(.roundedBorder)` draws a hairline that all but vanishes on
-  // the night palette, so a typable field and a static label looked identical
-  // (founder, 2026-09-10: "the top box isn't obvious it's editable").
+  // One fill for all of them, so a control reads the same wherever it sits. The
+  // dark value is the mockup's purple-grey (#2a2536, the card lifted 7% toward
+  // lavender), replacing the near-black boxes (founder, 2026-10-03: "I want these
+  // color boxes. I don't like the black"). The border below keeps a typable field
+  // obvious (founder, 2026-09-10: "the top box isn't obvious it's editable").
   static let stInputBg = stDynamic(
-    lightRGB: (0.965, 0.957, 0.984, 1), darkRGB: (0.055, 0.047, 0.078, 1))  // #f6f4fb / #0e0c14
+    lightRGB: (0.965, 0.957, 0.984, 1), darkRGB: (0.165, 0.145, 0.212, 1))  // #f6f4fb / #2a2536
   static let stInputBorder = stDynamic(
     lightRGB: (0.541, 0.169, 0.886, 0.20), darkRGB: (0.722, 0.667, 0.839, 0.30))
 

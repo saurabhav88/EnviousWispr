@@ -244,7 +244,10 @@ private struct SettingsHoverQuietModifier: ViewModifier {
       .padding(inset)
       .background(
         Capsule()
-          .fill(hovering ? (tint?.opacity(0.15) ?? Color.stSectionBg) : Color.clear)
+          // The neutral fill is a faint accent, not `stSectionBg`: that is the card's
+          // own colour, so on every card the capsule was invisible (founder,
+          // 2026-10-03, help icons showed no hover).
+          .fill(hovering ? (tint?.opacity(0.15) ?? Color.stAccentLight) : Color.clear)
       )
       // Brightness is the UNTINTED path only. On a red glyph it washes toward
       // pink, which reads as less urgent at the exact moment more urgency is

@@ -26,7 +26,8 @@ struct KeybindsSettingsView: View {
                 (String(localized: "Toggle"), nil, RecordingMode.toggle),
               ], selection: $settings.recordingMode
             )
-            .fixedSize(horizontal: true, vertical: false)
+            // As wide as the keybind fields below, two equal halves (founder, 2026-10-03).
+            .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
             .accessibilityLabel(Text(KeybindsSettingsCopy.modeTitle))
           }
         }
@@ -35,8 +36,7 @@ struct KeybindsSettingsView: View {
             icon: "mic", title: KeybindsSettingsCopy.recordTitle,
             short: KeybindsSettingsCopy.recordShort, help: KeybindsSettingsCopy.recordHelp,
             keyCode: $settings.toggleKeyCode,
-            modifiers: $settings.toggleModifiers, role: .record,
-            accessibilityLabel: "Change recording keybind"
+            modifiers: $settings.toggleModifiers, role: .record
           )
         }
         BrandedRow {
@@ -44,8 +44,7 @@ struct KeybindsSettingsView: View {
             icon: "xmark", title: KeybindsSettingsCopy.cancelTitle,
             short: KeybindsSettingsCopy.cancelShort, help: KeybindsSettingsCopy.cancelHelp,
             keyCode: $settings.cancelKeyCode,
-            modifiers: $settings.cancelModifiers, role: .cancel,
-            accessibilityLabel: "Change cancel keybind"
+            modifiers: $settings.cancelModifiers, role: .cancel
           )
         }
         BrandedRow(showDivider: false) {
@@ -70,8 +69,7 @@ struct KeybindsSettingsView: View {
             icon: "character.book.closed", title: KeybindsSettingsCopy.addTitle,
             short: KeybindsSettingsCopy.addShort, help: KeybindsSettingsCopy.addHelp,
             keyCode: $settings.quickAddKeyCode,
-            modifiers: $settings.quickAddModifiers, role: .quickAdd,
-            accessibilityLabel: "Change add-a-word keybind"
+            modifiers: $settings.quickAddModifiers, role: .quickAdd
           )
         }
         BrandedRow {
@@ -79,8 +77,7 @@ struct KeybindsSettingsView: View {
             icon: "clipboard", title: KeybindsSettingsCopy.pasteTitle,
             short: KeybindsSettingsCopy.pasteShort, help: KeybindsSettingsCopy.pasteHelp,
             keyCode: $settings.pasteLastKeyCode,
-            modifiers: $settings.pasteLastModifiers, role: .pasteLast,
-            accessibilityLabel: "Change paste last dictation keybind"
+            modifiers: $settings.pasteLastModifiers, role: .pasteLast
           )
         }
         BrandedRow(showDivider: false) {
@@ -88,8 +85,7 @@ struct KeybindsSettingsView: View {
             icon: "doc.on.doc", title: KeybindsSettingsCopy.copyTitle,
             short: KeybindsSettingsCopy.copyShort, help: KeybindsSettingsCopy.copyHelp,
             keyCode: $settings.copyLastKeyCode,
-            modifiers: $settings.copyLastModifiers, role: .copyLast,
-            accessibilityLabel: "Change copy last dictation keybind"
+            modifiers: $settings.copyLastModifiers, role: .copyLast
           )
         }
       }
@@ -160,7 +156,6 @@ private struct KeybindSettingsRow: View {
   /// SITES, where it applies to one row, reads as ordinary, and drifts alone. One here would apply
   /// to every row at once, which is the difference between a quiet wrong default and an obvious one.
   let role: ShortcutRole
-  let accessibilityLabel: LocalizedStringResource
 
   @Environment(SettingsManager.self) private var settings
   @Environment(DictationRuntime.self) private var dictationRuntime
@@ -204,7 +199,7 @@ private struct KeybindSettingsRow: View {
       HotkeyRecorderView(
         keyCode: $keyCode, modifiers: $modifiers,
         defaultKeyCode: defaultKeyCode, defaultModifiers: defaultModifiers,
-        label: captureLabel, changeAccessibilityLabel: String(localized: accessibilityLabel),
+        label: captureLabel,
         style: .prominent,
         onBindingAccepted: { code, _ in
           if role == .record, settings.claimGlobeKeyGuidancePresentation(for: code) {
@@ -217,7 +212,7 @@ private struct KeybindSettingsRow: View {
         keyboardFocus: $recordingKeybindFocused,
         accessibilityFocus: $guidanceReturnFocus
       )
-      .frame(width: 230)
+      .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
       .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
         GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
           .onExitCommand(perform: dismissGlobeGuidance)

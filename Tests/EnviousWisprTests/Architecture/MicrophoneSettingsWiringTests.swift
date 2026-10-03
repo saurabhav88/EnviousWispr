@@ -3,7 +3,7 @@ import SwiftParser
 import SwiftSyntax
 import Testing
 
-/// #3385: the Microphone & Media tab changed how the microphone choice LOOKS; these pin that
+/// #3385: the Microphone tab changed how the microphone choice LOOKS; these pin that
 /// it did not change what the choice DOES. Read from the source with SwiftParser: the input
 /// selection still writes both preferences, the page still asks the one resolver which device
 /// it describes, the socket choice keeps its eligibility and per-device write, and the media

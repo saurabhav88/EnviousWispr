@@ -404,7 +404,7 @@ struct LivePreviewSettingsView: View {
               .accessibilityLabel(LivePreviewSettingsCopy.toggleLabel)
           }
 
-          .rowStatus {
+          .rowTitleStatus {
             ProviderStatusChip(status: EngineSummaryPresentation.previewStatus(status), isHeadline: true)
           }
           .rowSupplementaryControl(belowWidth: 502) {
@@ -498,10 +498,10 @@ struct LivePreviewSettingsView: View {
   /// — and the card is where the reason lives.
   ///
   /// #3385: the two cards now open under a summary with Change, as on the
-  /// Engine tab. Every action and reason the cards' footers carried lives in the
-  /// summary's status region instead, so Download, Cancel, Resume, Try Again and
-  /// Remove stay reachable while the cards are closed, including when Apple is
-  /// the engine in use.
+  /// Engine tab. Download, Cancel, Resume, Try Again, reasons and progress remain
+  /// in `engineStatus`, reachable while the cards are closed. When Remove is
+  /// Universal's only action, it appears in Universal's card footer after opening
+  /// Change (founder, 2026-10-03: the engine stays one line).
   private var engineSection: some View {
     let apple = LivePreviewEnginePresentation.appleCard(
       isSelected: settings.livePreviewEngine == .apple,
@@ -581,7 +581,12 @@ struct LivePreviewSettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.leading, 4)
     }
-    if universal.unavailability != nil || universal.action != nil || universal.progress != nil {
+    // A downloaded Universal engine whose only action is Remove shows no row here: its
+    // Remove lives on its card under Change, so the engine stays one line (founder,
+    // 2026-10-03: "why are we showing remove universal... This should be all 1 line").
+    if universal.unavailability != nil || universal.progress != nil
+      || (universal.action != nil && !Self.removeLivesOnCard(universal))
+    {
           VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 11) {
               SettingsRowIcon(systemName: "globe")
@@ -659,9 +664,11 @@ struct LivePreviewSettingsView: View {
   /// that button combines its accessibility children and anything actionable
   /// inside it would be merged into the same element.
   ///
-  /// #3385: the footer moved to the summary's status region (`engineStatus`), so
-  /// the actions are reachable with the cards closed and are drawn once; the
-  /// separation above still holds there, a sibling of the selection, never a child.
+  /// #3385: the actions moved to the summary's status region (`engineStatus`), so
+  /// they are reachable with the cards closed and are drawn once. The one exception
+  /// is Universal's lone Remove, which this card's footer carries (see
+  /// `removeLivesOnCard`); the separation above holds in both places, a sibling of
+  /// the selection, never a child.
   private func engineCard(
     _ card: LivePreviewEnginePresentation.Card,
     icon: String,
@@ -679,7 +686,28 @@ struct LivePreviewSettingsView: View {
         showPreviewEngineChoices = false
       },
       fillsHeight: true,
-      footer: { EmptyView() })
+      footer: {
+        if choice == .universal, Self.removeLivesOnCard(card),
+          let action = card.action
+        {
+          // A sibling of the selection button, never a child (see above).
+          SettingsActionButton(
+            verbatimTitle: Self.label(for: action), isEnabled: true,
+            emphasis: .quiet, shape: .roundedRect, size: .medium
+          ) {
+            perform(action)
+          }
+          .padding([.horizontal, .bottom], 16)
+        }
+      })
+  }
+
+  /// Whether the Universal engine's only action is Remove, so the button belongs on its
+  /// card under Change rather than on a second line under the summary.
+  static func removeLivesOnCard(_ universal: LivePreviewEnginePresentation.Card) -> Bool {
+    // Whichever engine is in use: a separate Universal/Remove line under the summary
+    // was the second line the founder asked to remove (2026-10-03).
+    universal.action == .remove && universal.progress == nil
   }
 
   private static func label(for action: LivePreviewEnginePresentation.Action) -> String {

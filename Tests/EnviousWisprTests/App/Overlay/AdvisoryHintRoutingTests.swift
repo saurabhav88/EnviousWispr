@@ -13,7 +13,7 @@ struct AdvisoryHintRoutingTests {
 
   private static let hint = MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")
   private static let hinted =
-    "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Dictation Settings > Microphone & Media."
+    "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Dictation Settings > Microphone."
 
   @Test(
     "the catalog renders the hinted sentence, at the same width and dwell as the plain advisory")

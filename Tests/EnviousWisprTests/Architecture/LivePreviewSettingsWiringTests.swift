@@ -18,10 +18,17 @@ struct LivePreviewSettingsWiringTests {
       source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
   }
 
-  @Test("engine actions are dispatched only from the persistent status region")
+  /// Founder 2026-10-03: the engine stays one line, so a downloaded Universal engine whose ONLY
+  /// action is Remove shows it on its card under Change (`engineCard`, gated by
+  /// `removeLivesOnCard`); downloads, retries and progress stay in the status region.
+  @Test("engine actions are dispatched from the status region, and Remove alone from the card")
   func actionsLiveOutsideTheDisclosure() throws {
     let owners = Self.owningFunctions(ofCallsNamed: "perform", in: try Self.tree())
-    #expect(owners == ["engineStatus"], "perform(...) called from \(owners)")
+    #expect(Set(owners) == ["engineStatus", "engineCard"], "perform(...) called from \(owners)")
+    let source = try String(
+      contentsOf: RepoRoot.url.appending(path: Self.path), encoding: .utf8)
+    #expect(source.contains("if choice == .universal, Self.removeLivesOnCard(card),"))
+    #expect(source.contains("universal.action == .remove && universal.progress == nil"))
   }
 
   /// The owner check above cannot see WHERE `engineStatus` is placed: moved into the

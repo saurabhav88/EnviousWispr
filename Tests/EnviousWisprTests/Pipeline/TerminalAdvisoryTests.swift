@@ -71,7 +71,7 @@ import Testing
   func hintedSentenceIsFrozen() {
     let hint = MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")
     let expected =
-      "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Dictation Settings > Microphone & Media."
+      "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Dictation Settings > Microphone."
     for reason in TerminalAdvisoryReason.allCases {
       #expect(DictationNarrator.copy(for: reason, hint: hint) == expected)
       #expect(DictationNarrator.copy(for: reason, hint: nil) == DictationNarrator.copy(for: reason))

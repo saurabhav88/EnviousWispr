@@ -3,7 +3,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 
-/// #3385: what the Microphone & Media tab says about the microphone. **When this fails, the
+/// #3385: what the Microphone tab says about the microphone. **When this fails, the
 /// tab names a microphone the app would not open, or calls a device "USB" or "Built-in" when
 /// it is not.** Fake devices and transport tokens only; no hardware is read.
 @Suite("Microphone device presentation (#3385)", .tags(.productOutcome))

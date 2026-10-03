@@ -28,7 +28,7 @@ ACTION_ROWS = ()
 GIFT_CAPTION = "What's New & Updates"
 TABS = {
     "Dictation Settings": (
-        "Engine", "Microphone & Media", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
+        "Engine", "Microphone", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
     ),
     "App Settings": ("Appearance", "Permissions", "Privacy", "Licenses"),
 }
@@ -541,7 +541,7 @@ def stored(read_domain, key):
     return value
 
 
-# ── The microphone menu (Dictation Settings > Microphone & Media) ──────────
+# ── The microphone menu (Dictation Settings > Microphone) ──────────
 
 INPUT_DEVICE = "Input device"
 INPUT_KEY = "preferredInputDeviceIDOverride"
@@ -639,8 +639,19 @@ def _item_names(ax, title, name):
     return t.startswith(prefix) and t[len(prefix):].strip().lower() in _lowered(ax, TRANSPORT_BADGES)
 
 
+# The control's own list of choices: an AXPopover of AXButtons since founder 2026-10-03 (the
+# mockup's menu); a native AXMenu of AXMenuItems before. Both are read the same way.
+_MENU_ROLES = ("AXMenu", "AXPopover")
+_ITEM_ROLES = ("AXMenuItem", "AXButton")
+
+
 def _own_menu(ax, control):
-    return next((k for k in (ax.children(control) or []) if ax.role(k) == "AXMenu"), None)
+    return next((k for k in (ax.children(control) or []) if ax.role(k) in _MENU_ROLES), None)
+
+
+def _item_title(ax, item):
+    """An item's title: a menu item's AXTitle, or a popover button's name."""
+    return ax.text(item, "AXTitle") or next(iter(ax.label_names(item)), "")
 
 
 def _open_menu(ax, root_of, timeout, cancel):
@@ -656,7 +667,7 @@ def _open_menu(ax, root_of, timeout, cancel):
     wait_until(ax, lambda: _own_menu(ax, input_control(ax, root_of())) is not None, timeout,
                "the input menu open")
     menu = _own_menu(ax, input_control(ax, root_of()))
-    return menu, [i for i in ax.walk(menu) if ax.role(i) == "AXMenuItem"]
+    return menu, [i for i in ax.walk(menu) if ax.role(i) in _ITEM_ROLES]
 
 
 def _menu_titles(ax, root_of, timeout, cancel):
@@ -667,7 +678,7 @@ def _menu_titles(ax, root_of, timeout, cancel):
                               "cancel was given to close it again")
     menu, items = _open_menu(ax, root_of, timeout, cancel)
     try:
-        return [ax.text(i, "AXTitle") for i in items]
+        return [_item_title(ax, i) for i in items]
     finally:
         cancel(menu)
         wait_until(ax, lambda: _own_menu(ax, input_control(ax, root_of())) is None, timeout,
@@ -753,14 +764,14 @@ def select_input(ax, root_of, read_uid, auto, name=None, uid=None, timeout=5.0, 
     menu, items = _open_menu(ax, root_of, timeout, cancel)
     if auto:
         autos = _lowered(ax, ["Auto"])
-        hits = [i for i in items if ax.text(i, "AXTitle").lower() in autos]
+        hits = [i for i in items if _item_title(ax, i).lower() in autos]
     else:
-        hits = [i for i in items if _item_names(ax, ax.text(i, "AXTitle"), name)]
+        hits = [i for i in items if _item_names(ax, _item_title(ax, i), name)]
     if len(hits) != 1:
         if cancel is not None:
             cancel(menu)
         raise NavigationError(f"refusing: {len(hits)} menu items match "
-                              f"{'Auto' if auto else name!r} in {[ax.text(i, 'AXTitle') for i in items]}")
+                              f"{'Auto' if auto else name!r} in {[_item_title(ax, i) for i in items]}")
     ax.press(hits[0])
     result = {}
 
@@ -837,7 +848,8 @@ KEYBINDS = {
     "Change paste last dictation keybind": "Paste last dictation",
     "Change copy last dictation keybind": "Copy last dictation",
 }
-# The capture field keeps main's VoiceOver name; only the separate Change button says "Change ...".
+# The keys above are row ids (once the separate Change buttons' names). The field is the one
+# target since founder 2026-10-03 and keeps main's VoiceOver name below.
 KEYBIND_FIELDS = {
     "Change recording keybind": "Recording keybind",
     "Change cancel keybind": "Cancel keybind",
@@ -872,7 +884,7 @@ SCAN = [
         ("toggle", "Spoken punctuation", None),
         ("picker", "Unload model after", None),
     ]),
-    ("Dictation Settings", "Microphone & Media", [
+    ("Dictation Settings", "Microphone", [
         ("input", INPUT_DEVICE, None),
         ("segments", ("Mic is on", None), "multi_input_device"),
         ("segments", ("Media during dictation", ("Continue", "Lower", "Mute", "Pause")), None),
@@ -923,7 +935,7 @@ SCAN = [
         ("section", ("Quick Add", "named", "Highlight a word"), None),
     ]),
     ("Snippets", None, [("button", "Add snippet", None), ("button", "Import", None),
-                        ("field", "Keyword", None), ("named", "How snippets work", None),
+                        ("field", "Keyword", None), ("named", "Paste the text you type over and over, by voice", None),
                         ("snippet_sheet", "Add snippet", None)]),
     ("App Settings", "Privacy", [
         ("toggle", "Share usage metrics", None), ("toggle", "Send crash reports", None),
@@ -1239,13 +1251,13 @@ def _scan_control(ax, root, kind, spec, hooks):
         field = keybind_control(ax, root, spec)
         if field is None:
             return None, f"keybind:{spec}=absent"
+        # The field itself changes the keys; a separate Change button would be a regression.
         _, buttons = row_controls(ax, root, KEYBINDS[spec],
                                   lambda e: ax.role(e) == "AXButton"
                                   and _names_match(ax, e, spec))
-        actions = [b for b in buttons if not ax.text(b, "AXValue")]
-        if len(actions) != 1:
-            raise ControlError(f"keybind {spec!r}: {len(actions)} Change actions")
-        return "OK", f"keybind:{spec}={ax.text(field, 'AXValue')} (Change found)"
+        if buttons:
+            raise ControlError(f"keybind {spec!r}: {len(buttons)} separate Change buttons")
+        return "OK", f"keybind:{spec}={ax.text(field, 'AXValue')} (field is the target)"
     if kind == "provider":
         button = provider_button(ax, root, spec)
         if button is None:
@@ -1365,11 +1377,11 @@ def _scan_snippet_sheet(ax, label, hooks):
     try:
         sheet = sheets()[0]
         snippet_edit_controls(ax, sheet)
-        for name in ("Cancel", "Save"):
+        for name in ("Cancel", "Add snippet"):
             if _one([e for e in ax.walk(sheet) if ax.role(e) == "AXButton"
                      and _names_match(ax, e, name)], f"snippet {name}") is None:
                 raise ControlError(f"snippet sheet has no {name}")
-        return "OK", "snippet_sheet:Trigger, Text to paste, Cancel, Save (nothing saved)"
+        return "OK", "snippet_sheet:Trigger, Text to paste, Cancel, Add snippet (nothing saved)"
     finally:
         try:
             open_sheets = sheets()

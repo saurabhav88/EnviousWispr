@@ -401,10 +401,9 @@ struct CustomWordEditSheet: View {
       }
       .labelsHidden()
       .pickerStyle(.segmented)
-
-      Toggle("Always replace, even when the original might be right", isOn: $word.forceReplace)
-        .toggleStyle(BrandedToggleStyle())
-        .font(.stHelper)
+      // No "Always replace" switch: nothing in the corrector reads `forceReplace`, so the
+      // switch changed nothing (#3385 audit, founder 2026-10-03). Saved values stay in
+      // the word file and in import/export untouched.
     }
   }
 

@@ -63,7 +63,9 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     case .keybinds: "keyboard"
     case .transcribeFile: "waveform.badge.plus"
     case .aiPolish: "sparkles"
-    case .dictionary: "textformat.abc"
+    // A square glyph: "textformat.abc" is wider than the 19pt icon column and sat
+    // out of line with every other row (#3385 audit, 2026-10-03).
+    case .dictionary: "text.book.closed"
     case .snippets: "curlybraces"
     case .appSettings: "gearshape"
     #if DEBUG
@@ -121,7 +123,7 @@ enum DictationTab: String, CaseIterable, Hashable, Identifiable {
       return LocalizedStringResource("Engine", comment: "Dictation Settings: tab name.")
     case .microphone:
       return LocalizedStringResource(
-        "Microphone & Media",
+        "Microphone",
         comment: "Dictation Settings: tab name for the microphone and what other audio does.")
     case .livePreview:
       return LocalizedStringResource("Live Preview", comment: "Dictation Settings: tab name.")

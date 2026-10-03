@@ -120,9 +120,8 @@ struct CustomTermsSection<Actions: View>: View {
           // A real input box. The field used to be bare text on the card, the
           // same colour as everything around it, so nothing said where to type
           // (founder, 2026-08-29: "making it unclear where people need to
-          // type"). `stPageBg` is the recessed surface — darker than the card
-          // in dark mode, tinted below white in light mode — and the accent
-          // hairline is the approved mockup's `.search-row` border.
+          // type"). `stInputBg` is the shared control fill (founder, 2026-10-03)
+          // and the accent hairline is the approved mockup's `.search-row` border.
           HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
               .foregroundStyle(.stTextSecondary)
@@ -153,7 +152,7 @@ struct CustomTermsSection<Actions: View>: View {
           .padding(.vertical, 7)
           .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-              .fill(Color.stPageBg)
+              .fill(Color.stInputBg)
           )
           .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)

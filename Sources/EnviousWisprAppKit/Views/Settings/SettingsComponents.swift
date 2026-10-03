@@ -88,6 +88,9 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   /// #3385 lane F places the microphone's honest "In use" cue here, immediately
   /// after the short line. The slot is outside the control and its help button.
   private var statusContent: AnyView? = nil
+  /// A short state on the title's own line, after "?" (mockup 08's "Ready"; founder,
+  /// 2026-10-03: a status on a third line read as clutter).
+  private var titleStatusContent: AnyView? = nil
   private var supplementaryControl: AnyView? = nil
   private var supplementaryControlBelowWidth: CGFloat = 0
 
@@ -104,6 +107,12 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   func rowStatus<Status: View>(@ViewBuilder _ status: () -> Status) -> Self {
     var row = self
     row.statusContent = AnyView(status())
+    return row
+  }
+
+  func rowTitleStatus<Status: View>(@ViewBuilder _ status: () -> Status) -> Self {
+    var row = self
+    row.titleStatusContent = AnyView(status())
     return row
   }
   /// An action row (#3385, Live Preview's "Install new languages"): the whole
@@ -168,6 +177,7 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
           .font(.stRowLabel)
           .foregroundStyle(.stTextPrimary)
         SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
+        titleStatusContent
       }
       // Secondary, not the tertiary helper colour: tertiary measures 3.7:1
       // on the dark card, under the 4.5:1 a 14pt regular line needs (#3385).
@@ -361,7 +371,10 @@ struct SettingsInfoButton<Content: View>: View {
       Image(systemName: "questionmark.circle")
         .foregroundStyle(Color.stTextTertiary)
         .font(.system(size: 15, weight: .regular))
-        .settingsHoverQuiet()
+        // Accent on hover: the neutral treatment's capsule is the card's own colour,
+        // so on a card it never showed (founder, 2026-10-03: "the help icons should
+        // have the hover effect").
+        .settingsHoverQuiet(tint: .stAccent)
     }
     .buttonStyle(.borderless)
     .focused($buttonFocused)
@@ -1030,7 +1043,7 @@ extension BrandedPanel where Footnote == EmptyView {
 }
 
 /// A quiet inset "note" box for use inside a `BrandedPanel`: a purple info glyph
-/// plus microcopy, on a recessed rounded surface. Used for the frozen-per-
+/// plus microcopy, on the shared control fill (`stInputBg`). Used for the frozen-per-
 /// recording notice so it reads as owned by its card, not floating beneath it.
 struct InsetNotice: View {
   /// Resolved text. A literal goes to `text:`, which the catalog extracts by its type; text
@@ -1065,7 +1078,7 @@ struct InsetNotice: View {
     .padding(.horizontal, 12)
     .padding(.vertical, 10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: 9))
+    .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 9))
     .overlay(
       RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1)
     )
@@ -1294,7 +1307,7 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
       }
     }
     .padding(3)
-    .background(Color.stPageBg)
+    .background(Color.stInputBg)
     .clipShape(RoundedRectangle(cornerRadius: 10))
     .overlay(
       RoundedRectangle(cornerRadius: 10)
@@ -1543,8 +1556,10 @@ struct WrappingHStack: Layout {
 /// stays tappable, exactly as it was before the extraction. Moving it to the
 /// outer container would have quietly shrunk the hit target by a 16pt ring on a
 /// page this change is not about.
+/// One look on every page: the founder preferred the original table to the compact
+/// layout (2026-10-03, "the tables looked nicer before"), so the card ignores the
+/// compact density.
 struct EngineCard<Footer: View>: View {
-  @Environment(\.settingsPR1Density) private var compact
   let icon: String
   let title: String
   let tagline: String
@@ -1577,23 +1592,6 @@ struct EngineCard<Footer: View>: View {
     VStack(alignment: .leading, spacing: 0) {
       Button(action: onSelect) {
         VStack(alignment: .leading, spacing: 12) {
-          if compact {
-            HStack(alignment: .top) {
-              Image(systemName: icon)
-                .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(.stAccent)
-                .frame(width: 44, height: 44)
-                .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
-                .accessibilityHidden(true)
-              Spacer(minLength: 8)
-              if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                  .font(.system(size: 20, weight: .semibold))
-                  .foregroundStyle(Color.white, Color.stAccentSolid)
-              }
-            }
-            Text(title).settingsRowLabel()
-          } else {
           HStack(spacing: 10) {
             Image(systemName: icon)
               .font(.system(size: 18, weight: .semibold))
@@ -1613,7 +1611,6 @@ struct EngineCard<Footer: View>: View {
                 .frame(width: 20, height: 20)
             }
           }
-          }
 
           Text(tagline)
             .font(.stHelper)
@@ -1625,28 +1622,24 @@ struct EngineCard<Footer: View>: View {
           // read as a side-by-side comparison.
           if !specs.isEmpty {
             VStack(spacing: 0) {
-              if compact { Divider().overlay(Color.stDivider).padding(.bottom, 6) }
               ForEach(Array(specs.enumerated()), id: \.offset) { index, row in
-                if index != 0 && compact == false {
+                if index != 0 {
                   Divider().overlay(Color.stDivider)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                   Text(row.label)
                     .font(.stHelper)
-                    .foregroundStyle(compact ? Color.stTextSecondary : Color.stTextTertiary)
-                    // 82pt holds "Languages" at 14pt; wraps between words rather than clipping.
-                    .frame(width: compact ? 82 : nil, alignment: .leading)
+                    .foregroundStyle(Color.stTextTertiary)
                     .fixedSize(horizontal: false, vertical: true)
-                  if compact == false { Spacer(minLength: 12) }
+                  Spacer(minLength: 12)
                   Text(row.value)
                     .font(.stHelper)
                     .fontWeight(.medium)
                     .foregroundStyle(.stTextBody)
-                    .multilineTextAlignment(compact ? .leading : .trailing)
-                    .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
+                    .multilineTextAlignment(.trailing)
                     .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.vertical, compact ? 3 : 8)
+                .padding(.vertical, 8)
               }
             }
           }
