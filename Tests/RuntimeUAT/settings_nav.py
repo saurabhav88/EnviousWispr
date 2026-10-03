@@ -1131,19 +1131,11 @@ def keybind_control(ax, root, label, reset=False):
     if label not in KEYBINDS:
         raise ControlError(f"unknown keybind {label!r}")
     if reset:
-        field = keybind_control(ax, root, label)
-        info = info_button(ax, root, KEYBINDS[label])
-        if field is None or info is None:
-            return None
-        # Stop at the first subtree holding this row's info and field, even when Reset
-        # is absent. Climbing until ANY Reset appears would borrow another recorder's.
-        for ancestor in reversed(_path_to(ax, root, info)[:-1]):
-            inside = list(ax.walk(ancestor))
-            if any(ax.same(e, field) for e in inside):
-                return _one([e for e in inside if ax.role(e) == "AXButton"
-                             and _names_match(ax, e, "Reset keybind to default")],
-                            f"Reset for {label!r}")
-        return None
+        # The row band keeps a flattened neighbour's Reset out, as for every other row control.
+        _, resets = row_controls(ax, root, KEYBINDS[label],
+                                 lambda e: ax.role(e) == "AXButton"
+                                 and _names_match(ax, e, "Reset keybind to default"))
+        return _one(resets, f"Reset for {label!r}")
     info, buttons = row_controls(ax, root, KEYBINDS[label],
                                  lambda e: ax.role(e) == "AXButton"
                                  and _names_match(ax, e, label))

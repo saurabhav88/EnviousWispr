@@ -1229,6 +1229,12 @@ def check_ai_diagnostics():
                     if _sn.provider_selected(ax, _sn.provider_button(ax, _app, name)) is True]
         if len(selected) != 1:
             raise NavigationError("the selected AI Polish provider cannot be read")
+        if selected[0] in ("OpenAI", "Google Gemini", "Claude"):
+            # Switching back re-picks the provider's DEFAULT model, so the user's
+            # chosen cloud model would be lost (SettingsManager canonicalizeLLMModelForProvider).
+            raise NavigationError(
+                f"{selected[0]} is selected; switching to Apple would reset its saved model. "
+                "Select Apple Intelligence by hand first")
         original = selected[0]
         _sn.select_provider(ax, lambda: _app, "Apple Intelligence")
         result = {"provider": "Apple Intelligence"}
@@ -3366,17 +3372,17 @@ def _pr3_diagnostics_cases():
     """Offline wrapper control: selects Apple before reading and restores the saved tile."""
     from settings_nav_fixtures import _window, _ax_plain, el, _f
     rows = []
-    for lands in (True, False):
-        chosen = {"name": "Ollama"}
+    for start, lands in (("Ollama", True), ("Ollama", False), ("OpenAI", True)):
+        chosen = {"name": start}
         tiles = []
         def select(name):
-            if lands or name == "Ollama":
+            if lands or name == start:
                 chosen["name"] = name
                 for tile, provider in tiles:
                     tile["AXValue"] = ("Selected" if name == provider else "Not selected") + ", Ready"
-        for name in ("Apple Intelligence", "Ollama"):
+        for name in ("Apple Intelligence", start):
             tiles.append((el("AXButton", desc=name + ", on this Mac",
-                             value=("Selected" if name == "Ollama" else "Not selected") + ", Ready",
+                             value=("Selected" if name == start else "Not selected") + ", Ready",
                              press=lambda n=name: select(n)), name))
         detail = el("AXGroup", children=[
             el("AXStaticText", value="Status:", frame=_f(10)),
@@ -3391,6 +3397,10 @@ def _pr3_diagnostics_cases():
         try:
             globals().update(patch)
             result = check_ai_diagnostics()
+            if start == "OpenAI":
+                rows.append(("diagnostics refuses to leave a cloud provider (its model would reset)",
+                             ("error" in result, chosen["name"]), (True, "OpenAI")))
+                continue
             rows.append((f"diagnostics selects Apple before status (lands={lands})",
                          result.get("status") if lands else "error" in result,
                          "Available" if lands else True))

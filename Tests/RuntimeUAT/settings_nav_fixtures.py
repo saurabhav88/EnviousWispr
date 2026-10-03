@@ -1300,8 +1300,10 @@ def pr3_cases():
         reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(65))
         other_reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(66))
         info = el("AXButton", desc=tr("About %@").replace("%@", tr(title)), frame=_f(20))
+        other_info = el("AXButton", desc=tr("About %@").replace("%@", "Copy last dictation"),
+                        frame=_f(60, x=10))
         group = el("AXGroup", children=[info, field, action, reset])
-        root = _window([group, el("AXGroup", children=[other_reset])])
+        root = _window([group, el("AXGroup", children=[other_info, other_reset])])
         rows.append((f"PR3 {german}: readable field wins over same-label Change",
                      sn.keybind_control(ax, root, label) is field, True))
         rows.append((f"PR3 {german}: Reset stays inside the recorder row",
@@ -1314,6 +1316,18 @@ def pr3_cases():
         group["AXChildren"].remove(action)
         rows.append((f"PR3 {german}: missing Change fails even with a field",
                      sn.scan_control(ax, root, "keybind", label, {})[0], "FAIL"))
+        # SwiftUI may flatten recorder rows into one container; only the band separates them.
+        flat_reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(65))
+        next_info = el("AXButton", desc=tr("About %@").replace("%@", "Copy last dictation"),
+                       frame=_f(120, x=10))
+        next_reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(160))
+        flat = el("AXGroup", children=[info, field, flat_reset, next_info, next_reset])
+        flat_root = _window([flat])
+        rows.append((f"PR3 {german}: flattened rows: Reset is this row's own",
+                     sn.keybind_control(ax, flat_root, label, reset=True) is flat_reset, True))
+        flat["AXChildren"].remove(flat_reset)
+        rows.append((f"PR3 {german}: flattened rows: no own Reset never borrows the next row's",
+                     sn.keybind_control(ax, flat_root, label, reset=True), None))
         chosen = {"name": "Ollama"}
         def tile(name):
             return el("AXButton", desc=tr(name) + ", on this Mac",
