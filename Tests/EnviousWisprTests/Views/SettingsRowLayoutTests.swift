@@ -141,8 +141,9 @@ struct SettingsRowLayoutTests {
   }
 
   /// #3385 chunk 5: the real microphone dropdown in the real row, at the minimum and an ordinary
-  /// width, with a long device name and with Auto plus a transport. The card is a fixed 260
-  /// points; a long name truncates inside it rather than widening the row.
+  /// width, with a long device name and with Auto plus a transport. The card is a fixed
+  /// `MicrophoneDevicePicker.width` (300 since the mockup's menu, founder 2026-10-03); a long
+  /// name truncates inside it rather than widening the row.
   @Test("the microphone dropdown stays a fixed card inside the row at both widths")
   func microphonePickerLayout() throws {
     let longName = AudioInputDevice(
@@ -174,7 +175,7 @@ struct SettingsRowLayoutTests {
       }
       let picker = try #require(frames.control, "the picker never reported a frame")
       print("MicrophonePicker width=\(width) auto=\(presentation.isAutomatic) frame=\(picker)")
-      #expect(abs(picker.width - 260) < 1, "picker is \(picker.width) wide")
+      #expect(abs(picker.width - MicrophoneDevicePicker.width) < 1, "picker is \(picker.width) wide")
       #expect(picker.maxX <= width + 0.5, "picker ends at \(picker.maxX), past \(width)")
     }
   }

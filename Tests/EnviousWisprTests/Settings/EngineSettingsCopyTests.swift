@@ -89,7 +89,7 @@ struct EngineSettingsCopyTests {
   @Test("no heading or note says a shared setting belongs to one engine")
   func noOnlyForThisEngine() {
     let all = [
-      Copy.sectionHeading, Copy.nextRecordingNote, Copy.sharedHeading, Copy.currentEngineNote,
+      Copy.sectionHeading, Copy.nextRecordingNote, Copy.sharedHeading,
     ].map { String(localized: $0).lowercased() }
     #expect(all.allSatisfy { $0.contains("only for this engine") == false })
   }

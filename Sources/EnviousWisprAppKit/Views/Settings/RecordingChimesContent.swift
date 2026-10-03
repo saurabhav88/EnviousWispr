@@ -313,24 +313,26 @@ struct RecordingChimeCard: View {
 
   /// The sound strip across the card, with the badge at its end only on the chosen chime
   /// (mockup 10): an unchosen card's strip runs the full width (founder, 2026-10-03).
-  /// The badge is no taller than the strip, so picking a chime never resizes its card.
+  /// The badge is always laid out in the ZStack, so the footer is the same size chosen or
+  /// not and picking a chime never moves or resizes a card.
   var footer: some View {
-    ViewThatFits(in: .horizontal) {
+    ZStack(alignment: .trailing) {
       HStack(spacing: 8) {
         RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
-          // 40 bars retain at least 1.5pt each; narrower than this crowds them.
-          .frame(minWidth: 60)
-        if isSelected { inUseBadge.fixedSize() }
+        if isSelected { inUseBadge.fixedSize().hidden() }
       }
-      VStack(alignment: .leading, spacing: 2) {
-        if isSelected { inUseBadge }
-        RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
-      }
+      reservedBadge.fixedSize()
     }
     .padding(.horizontal, 10)
     .padding(.bottom, 8)
     .accessibilityHidden(true)
     .allowsHitTesting(false)
+  }
+
+  /// Always laid out, shown only when selected.
+  private var reservedBadge: some View {
+    inUseBadge
+      .opacity(isSelected ? 1 : 0)
   }
 
   var inUseBadge: some View {

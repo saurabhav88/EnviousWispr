@@ -88,13 +88,23 @@ struct SettingsTabStripLayoutTests {
 
   @Test("separators appear only inside rows, never at row starts or endings")
   func separatorsStayInsideRows() throws {
-    // Independent expected boundaries: three plus three at the narrow widths;
-    // all six on one row at 1300. No production neighbour predicate is copied.
+    // Independent expected boundaries: three plus three at 750; four plus two at 820 since
+    // the tab is "Microphone" (founder, 2026-10-03), in English and German alike; all six on
+    // one row at 1300. No production neighbour predicate is copied.
     for (window, width): (Int, CGFloat) in [(750, 468), (820, 538), (1300, 1018)] {
-      let interior: Set<DictationTab> = window == 1300
-        ? [.engine, .microphone, .livePreview, .pill, .chimes]
-        : [.engine, .microphone, .pill, .chimes]
-      let starts: [DictationTab] = window == 1300 ? [.engine] : [.engine, .pill]
+      let interior: Set<DictationTab>
+      let starts: [DictationTab]
+      switch window {
+      case 1300:
+        interior = [.engine, .microphone, .livePreview, .pill, .chimes]
+        starts = [.engine]
+      case 820:
+        interior = [.engine, .microphone, .livePreview, .chimes]
+        starts = [.engine, .chimes]
+      default:
+        interior = [.engine, .microphone, .pill, .chimes]
+        starts = [.engine, .pill]
+      }
       for german in [false, true] {
         let measured = try Self.measure(width: width, german: german)
         for dark in [false, true] {

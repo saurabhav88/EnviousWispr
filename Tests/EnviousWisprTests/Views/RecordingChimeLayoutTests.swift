@@ -102,6 +102,24 @@ struct RecordingChimeLayoutTests {
     }
   }
 
+  /// Founder 2026-10-03: "are the soundwaves just made up or actually accurate". They are read
+  /// from the bundled WAVs: every pairing's files exist and carry sound, two different chimes
+  /// draw different shapes, and a missing file draws silence rather than an invented shape.
+  @Test("each chime strip is read from its own bundled start and stop sounds")
+  func waveformsComeFromTheSounds() {
+    for pairing in RecordingSoundPairing.allCases {
+      for moment in ["start", "stop"] {
+        let bars = RecordingChimeWaveform.envelope(name: "\(pairing.rawValue)_\(moment)", bars: 20)
+        #expect(bars.count == 20)
+        #expect(bars.contains { $0 > 0 }, "\(pairing.rawValue)_\(moment) read as silence")
+      }
+    }
+    #expect(
+      RecordingChimeWaveform.heights(for: .whisperTick)
+        != RecordingChimeWaveform.heights(for: .softHush))
+    #expect(RecordingChimeWaveform.envelope(name: "no_such_chime", bars: 8) == Array(repeating: 0, count: 8))
+  }
+
   @Test("picking a chime, or disabling Preview, moves and resizes nothing")
   func selectionIsGeometryFree() {
     for width in Self.gridWidths {
