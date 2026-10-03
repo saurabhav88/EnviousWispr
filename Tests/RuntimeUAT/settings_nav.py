@@ -80,13 +80,12 @@ def validate_route(page, tab=None, debug_build=None):
 class AX:
     """How this module touches the accessibility tree. Every operation is injected."""
 
-    def __init__(self, get_attr, children, press, frame=None, scroll_to_visible=None,
+    def __init__(self, get_attr, children, press, frame=None,
                  terms=None, sleep=time.sleep, clock=time.monotonic, same=None):
         self.get_attr = get_attr
         self.children = children
         self.press = press
         self.frame = frame or (lambda el: None)
-        self.scroll_to_visible = scroll_to_visible or (lambda el: False)
         # English name -> [English, and what the app shows for it in each shipped language]
         self.terms = terms or (lambda text: [text])
         self.sleep = sleep
@@ -243,7 +242,7 @@ def _intersect(a, b):
 def _visible_rect(ax, root, el):
     """The part of the window `el` can be seen through: the window's frame clipped by every
     scroll viewport (AXScrollArea) above `el`. A plain group's frame is NOT a viewport: a
-    strip's content group is as wide as all its tabs, so it would call every tab visible."""
+    wrapped strip's group can include content outside an ancestor viewport."""
     path = _path_to(ax, root, el)
     if not path:
         raise NavigationError("the control is not in the tree it was found in")
@@ -265,7 +264,7 @@ def _visible_within(ax, el, root):
     if not f:
         raise NavigationError("cannot read the frame that says whether a tab is on screen")
     r = _visible_rect(ax, root, el)
-    return (f["x"] >= r["x"] - 0.5 and f["x"] + f["width"] <= r["x"] + r["width"] + 0.5
+    return (f["width"] > 0 and f["height"] > 0 and f["x"] >= r["x"] - 0.5 and f["x"] + f["width"] <= r["x"] + r["width"] + 0.5
             and f["y"] >= r["y"] - 0.5 and f["y"] + f["height"] <= r["y"] + r["height"] + 0.5)
 
 
@@ -321,31 +320,34 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
         except NavigationError as e:
             raise NavigationError(f"{e} (the press itself reported {pressed!r})") from None
 
-    if tab is None:
-        shown = None
-        if page in TABS:
-            try:
-                shown = current_tab(ax, root_of(), page)
-            except NavigationError:
-                shown = None
-        return Route(page, None, shown)
+    if page not in TABS:
+        return Route(page, None, None)
 
-    def strip_and_tab():
+    def strip_buttons():
         root2 = root_of()
         side2 = sidebar(ax, root2)
         strip = tab_strip(ax, root2, page, side2)
-        return root2, unique_control(ax, strip, tab)
+        return root2, {name: unique_control(ax, strip, name) for name in TABS[page]}
 
-    wait_until(ax, lambda: strip_and_tab() is not None, timeout, f"the {page!r} tab strip")
-    root, button = strip_and_tab()
-    if not _visible_within(ax, button, root):
-        ax.scroll_to_visible(button)
+    wait_until(ax, lambda: strip_buttons() is not None, timeout, f"the {page!r} tab strip")
+    def visible_buttons():
+        root2, buttons2 = strip_buttons()
+        # Founder 2026-10-02 (#3385): every tab wraps into view. An offscreen tab is
+        # a layout failure, never something AXScrollToVisible may rescue.
+        for name, candidate in buttons2.items():
+            if not _visible_within(ax, candidate, root2):
+                raise NavigationError(f"wrapped tab {name!r} is clipped outside its viewport")
+        return root2, buttons2
 
-        def on_screen():
-            r, b = strip_and_tab()
-            return _visible_within(ax, b, r)
-        wait_until(ax, on_screen, timeout, f"tab {tab!r} scrolled into view")
-        root, button = strip_and_tab()
+    root, buttons = visible_buttons()
+    if tab is None:
+        return Route(page, None, current_tab(ax, root, page))
+
+    def strip_and_tab():
+        root2, buttons2 = visible_buttons()
+        return root2, buttons2[tab]
+
+    button = buttons[tab]
     if selection_state(ax, ax.get_attr(button, "AXValue")) is not True:
         pressed = ax.press(button)
 

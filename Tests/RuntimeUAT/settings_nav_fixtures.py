@@ -1,13 +1,16 @@
 """Modelled Settings windows for `settings_nav --self-test` (#3385).
 
-A `FakeSettings` holds the window's state (selected page, remembered tab, the strip's scroll
-offset, engine choices open or not, the microphone choice) and builds a fresh dictionary tree
+Founder 2026-10-02 (#3385): wrapping supersedes the horizontal scrolling
+fixture; clipped wrapped tabs must fail without a scrolling rescue.
+
+A `FakeSettings` holds the window's state (selected page, remembered tab, the wrapped strip's geometry, engine choices open or not, the microphone choice) and builds a fresh dictionary tree
 on every `root()` call, the way the real tree is re-read after a press. Presses mutate the
 state through the elements' `_press` callbacks, so `settings_nav.navigate` and friends run
 their real code paths. No app, process, input device, audio, defaults or network is touched.
 """
 import settings_nav as sn
 
+# German tab names are lane C draft fixtures, not verified catalog lookups.
 GERMAN = {
     "Selected": "Ausgewählt", "Not selected": "Nicht ausgewählt", "Auto": "Automatisch",
     "History": "Verlauf", "What's New": "Neuigkeiten", "Appearance": "Erscheinungsbild",
@@ -16,7 +19,7 @@ GERMAN = {
     "Dictionary": "Wörterbuch", "Snippets": "Textbausteine", "Permissions": "Berechtigungen",
     "Open Source Licenses": "Open-Source-Lizenzen", "Check for Updates": "Nach Updates suchen",
     "Engine": "Engine", "Microphone & Media": "Mikrofon & Medien", "Live Preview": "Live-Vorschau",
-    "Recording Pill": "Aufnahme-Pille", "Chimes": "Töne", "Clipboard": "Zwischenablage",
+    "Recording Pill": "Aufnahmeanzeige", "Chimes": "Signaltöne", "Clipboard": "Zwischenablage",
     "Input device": "Eingabegerät", "Choose a microphone": "Mikrofon auswählen",
     "Built-in": "Integriert",
 }
@@ -29,17 +32,17 @@ def el(role, title="", value="", desc="", children=(), frame=None, press=None):
 
 class FakeSettings:
     def __init__(self, german=False, open_=True, press_result=True, press_lands=True,
-                 strip_width=300, tab_width=120, duplicate_sidebar_label=None,
-                 description_only=True, strip_group=True, scroll_moves=True):
+                 strip_width=476, tab_width=120, duplicate_sidebar_label=None,
+                 description_only=True, strip_group=True, clip_height=None, tab_dx=0):
         self.german = german
         self.open = open_
         self.page = "History"
         self.remembered_tab = "Engine"
-        self.offset = 0.0                  # how far the strip is scrolled
         self.strip_width = strip_width
         self.tab_width = tab_width
-        self.strip_group = strip_group     # tabs inside a content group as wide as all tabs
-        self.scroll_moves = scroll_moves   # whether AXScrollToVisible really scrolls
+        self.strip_group = strip_group     # row groups under the wrapping group
+        self.clip_height = clip_height     # optional ancestor scroll viewport
+        self.tab_dx = tab_dx               # deliberately broken horizontal placement
         self.press_result = press_result   # what AXPress REPORTS
         self.press_lands = press_lands     # whether the press CHANGES anything
         self.duplicate_sidebar_label = duplicate_sidebar_label
@@ -122,21 +125,28 @@ class FakeSettings:
         kids.append(self.named("AXButton", "Engine", value=""))
         if self.page == "Dictation Settings":
             tabs = []
+            per_row = max(1, int(self.strip_width // self.tab_width))
+            row_count = (len(sn.TABS["Dictation Settings"]) + per_row - 1) // per_row
             for i, tab in enumerate(sn.TABS["Dictation Settings"]):
-                x = 320 + i * self.tab_width - self.offset
+                x = 320 + (i % per_row) * self.tab_width + self.tab_dx
+                y = 120 + (i // per_row) * 52
                 tabs.append(self.named("AXButton", tab, value=self.sel(tab == self.remembered_tab),
-                                       frame={"x": x, "y": 120, "width": self.tab_width - 4,
-                                              "height": 30},
+                                       frame={"x": x, "y": y, "width": self.tab_width - 4,
+                                              "height": 52},
                                        press=self._select_tab(tab)))
             if self.strip_group:
-                # SwiftUI's horizontal ScrollView: a scroll viewport holding ONE group as wide
-                # as every tab together, moved left by the scroll offset.
-                n = len(tabs)
-                tabs = [el("AXGroup", children=tabs,
-                           frame={"x": 320 - self.offset, "y": 120,
-                                  "width": n * self.tab_width, "height": 30})]
-            kids.append(el("AXScrollArea", children=tabs,
-                           frame={"x": 320, "y": 120, "width": self.strip_width, "height": 30}))
+                # Both rows are modelled in AX. Groups do not clip; only a window
+                # or a scroll viewport decides whether a wrapped tab is visible.
+                tabs = [el("AXGroup", children=tabs[i:i + per_row])
+                        for i in range(0, len(tabs), per_row)]
+            strip = el("AXGroup", children=tabs,
+                       frame={"x": 320, "y": 120, "width": self.strip_width,
+                              "height": row_count * 52})
+            if self.clip_height is not None:
+                strip = el("AXScrollArea", children=[strip],
+                           frame={"x": 320, "y": 120, "width": self.strip_width,
+                                  "height": self.clip_height})
+            kids.append(strip)
             if self.remembered_tab == "Engine":
                 kids += self.engine_tree()
             if self.remembered_tab == "Microphone & Media":
@@ -205,13 +215,6 @@ class FakeSettings:
         def sleep(s):
             clock["t"] += s
 
-        def scroll(element):
-            self.scrolls += 1
-            if self.scroll_moves:
-                self.offset = max(0.0, element["_frame"]["x"] + self.offset - 320
-                                  - self.strip_width + self.tab_width)
-            return True
-
         def cancel(menu):
             self.cancels += 1
             self.presses.append("cancel")
@@ -222,9 +225,13 @@ class FakeSettings:
             children=lambda e: e.get("AXChildren") or [],
             press=lambda e: e["_press"]() if e.get("_press") else False,
             frame=lambda e: e.get("_frame"),
-            scroll_to_visible=scroll,
             terms=lambda text: [text] + ([GERMAN[text]] if self.german and text in GERMAN else []),
             sleep=sleep, clock=lambda: clock["t"])
+        # Trap any future attempt to rescue clipped tabs by scrolling.
+        def scroll(element):
+            self.scrolls += 1
+            raise AssertionError("wrapped tabs must never scroll")
+        a.scroll_to_visible = scroll
         a.cancel = cancel
         return a
 
@@ -360,9 +367,36 @@ def raising_cases():
     def legacy_restore_record():
         sn.InputChoice.from_json({"auto": False, "shown": "Studio Mic"})
 
-    def tab_scroll_reports_success_but_never_moves():
-        f = FakeSettings(strip_width=300, scroll_moves=False)
-        _nav(f, "Dictation Settings", "Clipboard")
+    def wrapped_second_row_clipped():
+        f = FakeSettings(clip_height=52)
+        try:
+            _nav(f, "Dictation Settings", "Clipboard")
+        finally:
+            assert f.scrolls == 0 and "tab:Clipboard" not in f.presses
+
+    def wrapped_tab_clipped_horizontally():
+        f = FakeSettings(tab_dx=-221)
+        _nav(f, "Dictation Settings", "Engine")
+
+    def remembered_page_with_clipped_tab():
+        f = FakeSettings(clip_height=52)
+        _nav(f, "Dictation Settings")
+
+    def selection_moves_tab_outside_viewport():
+        f = FakeSettings()
+        old_select = f._select_tab
+        def select(tab):
+            action = old_select(tab)
+            def press():
+                result = action()
+                f.tab_dx = 1000
+                return result
+            return press
+        f._select_tab = select
+        try:
+            _nav(f, "Dictation Settings", "Clipboard")
+        finally:
+            assert f.scrolls == 0
 
     def closed_window_no_opener():
         f = FakeSettings(open_=False)
@@ -414,8 +448,14 @@ def raising_cases():
          duplicate_auto_refuses_at_capture, sn.NavigationError),
         ("a menu whose AX cancel does not close it refuses the capture",
          menu_that_will_not_close_refuses, sn.NavigationError),
-        ("a scroll that reports success but never moves the tab fails, nothing pressed",
-         tab_scroll_reports_success_but_never_moves, sn.NavigationError),
+        ("a wrapped second row clipped by an ancestor viewport fails without rescue",
+         wrapped_second_row_clipped, sn.NavigationError),
+        ("a wrapped tab clipped by the window fails", wrapped_tab_clipped_horizontally,
+         sn.NavigationError),
+        ("returning to a remembered page also refuses clipped tabs",
+         remembered_page_with_clipped_tab, sn.NavigationError),
+        ("a selected value cannot pass after selection moves tabs out of view",
+         selection_moves_tab_outside_viewport, sn.NavigationError),
         ("a closed window with no opener fails instead of pressing anything",
          closed_window_no_opener, sn.NavigationError),
         ("an unknown engine label is refused",
@@ -495,14 +535,18 @@ def valued_cases():
     blocks.append(('Remembered parent: no tab keeps the remembered tab; explicit tab overrides it', block_5))
 
     def block_6(rows):
-        # Offscreen tab: a narrow viewport hides Clipboard inside a content group as wide as all
-        # the tabs; it is scrolled into view, then pressed.
-        f = FakeSettings(strip_width=300)
-        _nav(f, "Dictation Settings", "Clipboard")
-        rows.append(("an offscreen tab is scrolled into view and then selected",
-                     (f.scrolls >= 1, f.remembered_tab), (True, "Clipboard")))
+        f = FakeSettings()
+        for tab in sn.TABS["Dictation Settings"]:
+            _nav(f, "Dictation Settings", tab)
+        rows.append(("all six tabs across both rows are selected without scrolling",
+                     (f.scrolls, f.remembered_tab), (0, "Clipboard")))
+        strip = sn.tab_strip(f.ax(), f.root(), "Dictation Settings")
+        frames = [f.ax().frame(sn.unique_control(f.ax(), strip, tab))
+                  for tab in sn.TABS["Dictation Settings"]]
+        rows.append(("the fixture actually models two distinct rows",
+                     sorted(set(frame["y"] for frame in frames)), [120, 172]))
 
-    blocks.append(('Offscreen tab: a narrow viewport hides Clipboard inside a content group as wide as all the tabs; it is scrolled into view, then pressed', block_6))
+    blocks.append(('Wrapped tabs: every tab is visible and selectable', block_6))
 
     def block_7(rows):
         # Already on the route: nothing is pressed again, the state is still re-read.
@@ -641,13 +685,13 @@ def valued_cases():
     blocks.append(("Stored settings: the shared domain, the app's own fallbacks, refusals", block_11))
 
     def block_12(rows):
-        # Nested strip: the viewport, not the content group, decides what is on screen.
+        # Wrapped tabs can also be direct children of the strip.
         f = FakeSettings(strip_width=300, strip_group=False)
         _nav(f, "Dictation Settings", "Clipboard")
-        rows.append(("a tab directly under the viewport is scrolled into view too",
-                     (f.scrolls >= 1, f.remembered_tab), (True, "Clipboard")))
+        rows.append(("a wrapped tab directly under the group is selected without scrolling",
+                     (f.scrolls, f.remembered_tab), (0, "Clipboard")))
 
-    blocks.append(('Nested strip: the viewport, not the content group, decides what is on screen', block_12))
+    blocks.append(('Direct wrapped tabs remain reachable', block_12))
 
     def block_13(rows):
         # Scan statuses.

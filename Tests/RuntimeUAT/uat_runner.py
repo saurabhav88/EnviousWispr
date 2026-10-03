@@ -71,8 +71,7 @@ def navigate_settings(pid, page, tab=None, open_settings=None):
         get_attr=get_attr,
         children=lambda el: list(get_attr(el, "AXChildren") or []),
         press=lambda el: perform_action(el, "AXPress"),
-        frame=element_frame,
-        scroll_to_visible=lambda el: perform_action(el, "AXScrollToVisible"))
+        frame=element_frame)
     return settings_nav.navigate(ax, lambda: get_ax_app(pid), page, tab, open_settings=open_settings)
 
 

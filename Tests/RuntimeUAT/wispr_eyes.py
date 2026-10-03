@@ -572,7 +572,6 @@ def _ax():
         children=lambda el: list(_iter_children_with_menubars(el) or []),
         press=lambda el: perform_action(el, "AXPress"),
         frame=lambda el: element_frame(el),
-        scroll_to_visible=lambda el: perform_action(el, "AXScrollToVisible"),
         terms=_ui_terms)
 
 

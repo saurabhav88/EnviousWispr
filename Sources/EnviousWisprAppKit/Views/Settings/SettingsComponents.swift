@@ -418,64 +418,106 @@ struct SettingsTabItem<Tab: Hashable>: Identifiable {
   let label: LocalizedStringResource
 }
 
-/// The row of tabs across the top of a tabbed Settings page (#3385): icon and
-/// name per tab, an accent underline under the chosen one. Names never shrink
-/// or truncate; when they do not all fit (German at the 750pt minimum window)
-/// the row scrolls sideways, and the chosen tab, or the tab keyboard focus
-/// lands on, is scrolled into view.
+/// The tabs across the top of a tabbed Settings page (#3385): icon and name
+/// per tab, an accent underline under the chosen one. The founder's 2026-10-02
+/// decision supersedes the scrolling/one-row design: keep all six names visible
+/// and wrap naturally when they do not fit, without shrinking or truncating.
 struct SettingsTabStrip<Tab: Hashable>: View {
   let items: [SettingsTabItem<Tab>]
   @Binding var selection: Tab
   @FocusState private var focusedTab: Tab?
 
   var body: some View {
-    ScrollViewReader { proxy in
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 2) {
-          ForEach(items) { item in
-            SettingsTabButton(item: item, isSelected: item.id == selection) {
-              selection = item.id
-            }
-            .focused($focusedTab, equals: item.id)
-            .id(item.id)
+    SettingsTabWrappingLayout {
+      ForEach(items) { item in
+        SettingsTabButton(item: item, isSelected: item.id == selection) {
+          selection = item.id
+        }
+        .focused($focusedTab, equals: item.id)
+        .id(item.id)
+        .overlay(alignment: .trailing) {
+          if item.id != items.last?.id {
+            Rectangle()
+              .fill(Color.stDivider)
+              .frame(width: 1)
+              .padding(.vertical, 13)
+              .allowsHitTesting(false)
+              .accessibilityHidden(true)
           }
         }
-        .padding(.horizontal, 4)
       }
-      // One row tall whatever the page below offers: a horizontal ScrollView
-      // is flexible on both axes and would otherwise share the page's height.
-      .fixedSize(horizontal: false, vertical: true)
-      // Scrolling happens only in lifecycle and change handlers, never while
-      // the view is being built.
-      .task { proxy.scrollTo(selection) }
-      .onChange(of: selection) { _, tab in
-        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(tab) }
-      }
-      .onChange(of: focusedTab) { _, tab in
-        guard let tab else { return }
-        proxy.scrollTo(tab)
-      }
-      // A narrower window can hide the chosen tab; bring it back.
-      .background(
-        GeometryReader { geometry in
-          Color.clear.onChange(of: geometry.size.width) { _, _ in
-            proxy.scrollTo(selection)
-          }
-        }
-      )
     }
-    .overlay(alignment: .bottom) {
-      Rectangle()
-        .fill(Color.stDivider)
-        .frame(height: 1)
+    // Its natural row count owns the height, never the flexible page below.
+    .fixedSize(horizontal: false, vertical: true)
+    .background(Color.stSectionBg)
+    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
+  }
+}
+
+/// Intrinsic label widths decide the breaks; surplus width is shared within
+/// each row to keep the tab card filled. Height ignores a parent's surplus.
+/// Unlike the chip flow, tabs measure without a width proposal: a label must
+/// remain whole rather than squeezing enough to evade the wrap decision.
+struct SettingsTabWrappingLayout: Layout {
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let result = frames(width: proposal.width, subviews: subviews)
+    return result.size
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    let result = frames(width: bounds.width, subviews: subviews)
+    for (index, frame) in result.frames.enumerated() {
+      subviews[index].place(
+        at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        anchor: .topLeading, proposal: ProposedViewSize(frame.size))
+    }
+  }
+
+  private func frames(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+    let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+    let available = width.flatMap { $0.isFinite ? max(0, $0) : nil }
+      ?? sizes.reduce(0) { $0 + $1.width }
+    var rows: [[CGSize]] = []
+    var row: [CGSize] = []
+    var rowWidth: CGFloat = 0
+    for size in sizes {
+      if row.isEmpty == false && rowWidth + size.width > available {
+        rows.append(row)
+        row = []
+        rowWidth = 0
+      }
+      row.append(size)
+      rowWidth += size.width
+    }
+    if row.isEmpty == false { rows.append(row) }
+    var frames: [CGRect] = []
+    var y: CGFloat = 0
+    for row in rows {
+      let height = row.map(\.height).max() ?? 0
+      let surplus = max(0, available - row.reduce(0) { $0 + $1.width }) / CGFloat(row.count)
+      var x: CGFloat = 0
+      for size in row {
+        let cellWidth = size.width + surplus
+        frames.append(CGRect(x: x, y: y, width: cellWidth, height: height))
+        x += cellWidth
+      }
+      y += height
+    }
+    return (CGSize(width: available, height: y), frames)
   }
 }
 
 /// One tab: a real button, so keyboard and VoiceOver users reach it, whose
 /// spoken value says whether it is the chosen tab.
-private struct SettingsTabButton<Tab: Hashable>: View {
+struct SettingsTabButton<Tab: Hashable>: View {
   let item: SettingsTabItem<Tab>
   let isSelected: Bool
   let action: () -> Void
@@ -483,8 +525,8 @@ private struct SettingsTabButton<Tab: Hashable>: View {
   var body: some View {
     Button(action: action) {
       HStack(spacing: 7) {
-        Image(systemName: item.icon)
-          .font(.system(size: 14, weight: .medium))
+        SettingsTabGlyph(icon: item.icon)
+          .frame(width: 18, height: 18)
           .accessibilityHidden(true)
         Text(item.label)
           .font(.stRowLabel)
@@ -492,15 +534,16 @@ private struct SettingsTabButton<Tab: Hashable>: View {
       }
       .foregroundStyle(isSelected ? Color.stAccent : Color.stTextBody)
       .padding(.horizontal, 12)
-      .padding(.vertical, 10)
+      .padding(.vertical, 16)
+      .frame(maxWidth: .infinity, minHeight: 52)
       .settingsHoverRow(cornerRadius: 8)
       .contentShape(Rectangle())
       .overlay(alignment: .bottom) {
         if isSelected {
           Capsule()
             .fill(Color.stAccent)
-            .frame(height: 2.5)
-            .padding(.horizontal, 6)
+            .frame(height: 3)
+            .padding(.horizontal, 12)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
@@ -510,6 +553,56 @@ private struct SettingsTabButton<Tab: Hashable>: View {
     .accessibilityLabel(String(localized: item.label))
     .accessibilityValue(isSelected ? SettingsCopy.selectedValue : SettingsCopy.notSelectedValue)
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+  }
+}
+
+/// The three distinctive glyphs follow the approved mock-up; the metadata's
+/// icon strings stay stable. These are static decorations, not audio meters.
+private struct SettingsTabGlyph: View {
+  let icon: String
+
+  var body: some View {
+    if ["waveform", "capsule", "bell.and.waveform"].contains(icon) {
+      SettingsTabGlyphTrace(icon: icon)
+        .stroke(style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+        .allowsHitTesting(false)
+    } else {
+      Image(systemName: icon)
+        .font(.system(size: 14, weight: .medium))
+    }
+  }
+}
+
+private struct SettingsTabGlyphTrace: Shape {
+  let icon: String
+
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    switch icon {
+    case "waveform":
+      let points: [CGPoint] = [
+        .init(x: 3, y: 12), .init(x: 5, y: 12), .init(x: 7, y: 6),
+        .init(x: 10, y: 18), .init(x: 13, y: 9), .init(x: 15, y: 14),
+        .init(x: 17, y: 12), .init(x: 21, y: 12),
+      ]
+      path.addLines(points)
+    case "capsule":
+      path.addRoundedRect(in: CGRect(x: 3, y: 8, width: 18, height: 8), cornerSize: CGSize(width: 4, height: 4))
+      path.move(to: CGPoint(x: 9, y: 12)); path.addLine(to: CGPoint(x: 9.01, y: 12))
+      path.move(to: CGPoint(x: 12, y: 10)); path.addLine(to: CGPoint(x: 12, y: 14))
+      path.move(to: CGPoint(x: 15, y: 11)); path.addLine(to: CGPoint(x: 15, y: 13))
+    case "bell.and.waveform":
+      path.move(to: CGPoint(x: 14, y: 5))
+      path.addCurve(to: CGPoint(x: 16, y: 16), control1: CGPoint(x: 21, y: 5), control2: CGPoint(x: 23, y: 12))
+      path.addLine(to: CGPoint(x: 7, y: 16))
+      path.addCurve(to: CGPoint(x: 14, y: 5), control1: CGPoint(x: 1, y: 12), control2: CGPoint(x: 5, y: 3))
+      path.closeSubpath()
+      path.move(to: CGPoint(x: 10, y: 20)); path.addLine(to: CGPoint(x: 14, y: 20))
+      path.addLines([CGPoint(x: 12, y: 9), CGPoint(x: 12, y: 13), CGPoint(x: 14, y: 14)])
+    default: break
+    }
+    return path.applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
+      .applying(CGAffineTransform(translationX: rect.minX, y: rect.minY))
   }
 }
 

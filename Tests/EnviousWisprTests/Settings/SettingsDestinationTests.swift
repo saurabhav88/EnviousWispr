@@ -79,26 +79,11 @@ struct SettingsDestinationTests {
     #endif
   }
 
-  /// The tab strip stays one row tall above a page that wants all the height it can get, at
-  /// the 750-point minimum (468 = 750 - 3*14 frame insets - 200 sidebar - 2*20 strip margins)
-  /// and at a 1,100-point window (818). The production strip, hosted here.
-  @MainActor
-  @Test("the tab strip stays one row tall above a flexible page")
-  func tabStripHeightIsStable() throws {
-    _ = NSApplication.shared
-    var heights: [CGFloat] = []
-    for (width, height) in [(CGFloat(468), CGFloat(400)), (468, 900), (818, 400), (818, 900)] {
-      let measured = try Self.stripHeight(width: width, parentHeight: height)
-      print("SettingsTabStrip width=\(width) parentHeight=\(height) stripHeight=\(measured)")
-      heights.append(measured)
-    }
-    let first = try #require(heights.first)
-    // A row of 14pt labels with 10pt padding top and bottom: about 37 points, never the
-    // hundreds a flexible scroll view would claim.
-    #expect(first > 30 && first < 60, "strip is \(first) points tall")
-    #expect(heights.allSatisfy { abs($0 - first) < 0.5 }, "strip heights \(heights)")
-  }
+  // The superseded one-row height assertion now lives in
+  // SettingsTabStripLayoutTests: founder 2026-10-02 (#3385) requires wrapping.
 
+  /// The actual strip, above flexible content. Wrapping replaces the one-row
+  /// outcome by founder decision 2026-10-02 (#3385); the height reader remains.
   @MainActor
   static func stripHeight(width: CGFloat, parentHeight: CGFloat) throws -> CGFloat {
     @MainActor final class Box { var height: CGFloat? }
@@ -107,13 +92,10 @@ struct SettingsDestinationTests {
       SettingsTabStrip(
         items: DictationTab.allCases.map {
           SettingsTabItem(id: $0, icon: $0.icon, label: $0.label)
-        },
-        selection: .constant(DictationTab.engine)
-      )
-      .background(
-        GeometryReader { proxy in
-          Color.clear.preference(key: StripHeightKey.self, value: proxy.size.height)
-        })
+        }, selection: .constant(DictationTab.engine))
+      .background(GeometryReader { proxy in
+        Color.clear.preference(key: StripHeightKey.self, value: proxy.size.height)
+      })
       Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .frame(width: width, height: parentHeight)
@@ -121,8 +103,7 @@ struct SettingsDestinationTests {
       MainActor.assumeIsolated { box.height = value }
     }
     let host = NSHostingView(rootView: root)
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: width, height: parentHeight),
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: parentHeight),
       styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentView = host
     host.layoutSubtreeIfNeeded()
@@ -134,6 +115,20 @@ struct SettingsDestinationTests {
     static let defaultValue: CGFloat? = nil
     static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
       value = nextValue() ?? value
+    }
+  }
+
+  @Test("every explicit tab becomes the remembered tab across sidebar navigation")
+  func everyTabRemembersAndOverrides() {
+    for tab in DictationTab.allCases {
+      var state = SettingsNavigationState()
+      state.apply(.dictation(.clipboard))
+      state.apply(.dictation(tab))
+      #expect(state.dictationTab == tab)
+      state.selectSidebar(.history)
+      state.selectSidebar(.dictation)
+      #expect(state.selectedPage == .dictation)
+      #expect(state.dictationTab == tab)
     }
   }
 
