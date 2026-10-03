@@ -118,6 +118,21 @@ struct WhatsNewMenuView: View {
                 Text(entry.description)
                   .font(.stRowHelper)
                   .foregroundStyle(.stTextSecondary)
+                // Same bullet list as main's What's New page, in the menu's helper type.
+                if !entry.bullets.isEmpty {
+                  VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(entry.bullets.enumerated()), id: \.offset) { _, bullet in
+                      HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(verbatim: "•")
+                          .foregroundStyle(.stTextTertiary)
+                          .accessibilityHidden(true)
+                        Text(bullet)
+                          .font(.stRowHelper)
+                          .foregroundStyle(.stTextSecondary)
+                      }
+                    }
+                  }
+                }
               }
               .fixedSize(horizontal: false, vertical: true)
             }

@@ -34,6 +34,7 @@ struct WhatsNewMenuTests {
       "whatsNew.privacy-controls.title": "Translated title",
       "whatsNew.privacy-controls.description": "Translated existing description",
       "whatsNew.future-entry.description": "Translated full description",
+      "whatsNew.future-entry.bullet.0": "Translated first point",
     ]
     let data = try PropertyListSerialization.data(
       fromPropertyList: table, format: .binary, options: 0)
@@ -42,7 +43,7 @@ struct WhatsNewMenuTests {
     let known = try #require(WhatsNewContent.entries.first { $0.id == "privacy-controls" })
     let future = WhatsNewContent.Entry(
       id: "future-entry", icon: "gift", title: "Future", description: "Full English description",
-      version: "2.5.2")
+      bullets: ["First point", "Second point"], version: "2.5.2")
     let rows = WhatsNewMenuPresentation.entries(from: [known, future], bundle: bundle)
     #expect(rows.map(\.title) == ["Translated title", "Future"])
     #expect(
@@ -50,6 +51,8 @@ struct WhatsNewMenuTests {
     #expect(
       WhatsNewMenuPresentation.entries(from: [future]).first?.description
         == "Full English description")
+    // Bullets reach the menu, each localized by its own key with English fallback.
+    #expect(rows.map(\.bullets) == [[], ["Translated first point", "Second point"]])
   }
 
   @Test("Toolbar rendering and an unfulfilled open request leave unread notes intact")
