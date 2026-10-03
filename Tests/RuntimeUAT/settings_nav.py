@@ -341,7 +341,18 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
 
     root, buttons = visible_buttons()
     if tab is None:
-        return Route(page, None, current_tab(ax, root, page))
+        # The remembered tab must be exactly ONE selected tab: none or two selected is a
+        # strip the harness cannot read, never a success with an unknown tab.
+        shown = {}
+
+        def remembered_landed():
+            selected = current_tab(ax, visible_buttons()[0], page)
+            if selected is None:
+                return False
+            shown["tab"] = selected
+            return True
+        wait_until(ax, remembered_landed, timeout, "exactly one selected tab")
+        return Route(page, None, shown["tab"])
 
     def strip_and_tab():
         root2, buttons2 = visible_buttons()
@@ -358,6 +369,9 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
             wait_until(ax, tab_landed, timeout, f"tab {tab!r} selected")
         except NavigationError as e:
             raise NavigationError(f"{e} (the press itself reported {pressed!r})") from None
+    # Selected is not enough: no OTHER tab may read Selected too.
+    wait_until(ax, lambda: current_tab(ax, visible_buttons()[0], page) == tab, timeout,
+               f"exactly tab {tab!r} selected")
     return Route(page, tab, tab)
 
 

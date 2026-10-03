@@ -14,12 +14,13 @@ struct ClipboardSettingsCopyTests {
 
   static let expected: [String: (LocalizedStringResource, String)] = [
     "autoCopyTitle": (Copy.autoCopyTitle, "Auto-copy to clipboard"),
-    "autoCopyShort": (Copy.autoCopyShort, "Keeps your latest dictation on the clipboard."),
+    "autoCopyShort": (Copy.autoCopyShort, "Copies dictation when automatic pasting is skipped."),
     "autoCopyHelp": (
-      Copy.autoCopyHelp, "Copies your dictation to the clipboard after it finishes."
+      Copy.autoCopyHelp,
+      "Copies your dictation to the clipboard when automatic pasting is skipped. After an automatic paste, Restore clipboard after paste controls whether your earlier clipboard contents return."
     ),
     "restoreTitle": (Copy.restoreTitle, "Restore clipboard after paste"),
-    "restoreShort": (Copy.restoreShort, "Puts back what was on your clipboard before dictation."),
+    "restoreShort": (Copy.restoreShort, "Puts back what was on your clipboard before pasting."),
     "restoreHelp": (
       Copy.restoreHelp,
       "Saves and restores whatever was on your clipboard before pasting your dictation."

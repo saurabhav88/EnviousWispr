@@ -40,6 +40,8 @@ struct RecordingChimeRenderHarness {
       onSelect: { _ in },
       onPreview: { _ in }
     )
+    // The app's Dictation tab host supplies the PR1 row density; render with it.
+    .environment(\.settingsPR1Density, true)
     .frame(width: pageWidth)
 
     let host = NSHostingView(rootView: AnyView(page))

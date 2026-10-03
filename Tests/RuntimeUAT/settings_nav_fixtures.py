@@ -69,6 +69,17 @@ class FakeSettings:
         base = self.t("Selected") if on else self.t("Not selected")
         return f"{base}. {activity}" if activity else base
 
+    # None: the remembered tab alone reads Selected. "none": no tab does. "two": the
+    # remembered tab AND Engine both do (a strip the harness must refuse to read).
+    tab_selection = None
+
+    def _tab_selected(self, tab):
+        if self.tab_selection == "none":
+            return False
+        if self.tab_selection == "two":
+            return tab in (self.remembered_tab, "Engine")
+        return tab == self.remembered_tab
+
     def named(self, role, english, value="", frame=None, press=None):
         if self.description_only:
             return el(role, desc=self.t(english), value=value, frame=frame, press=press)
@@ -130,7 +141,7 @@ class FakeSettings:
             for i, tab in enumerate(sn.TABS["Dictation Settings"]):
                 x = 320 + (i % per_row) * self.tab_width + self.tab_dx
                 y = 120 + (i // per_row) * 52
-                tabs.append(self.named("AXButton", tab, value=self.sel(tab == self.remembered_tab),
+                tabs.append(self.named("AXButton", tab, value=self.sel(self._tab_selected(tab)),
                                        frame={"x": x, "y": y, "width": self.tab_width - 4,
                                               "height": 52},
                                        press=self._select_tab(tab)))
@@ -243,6 +254,21 @@ def _nav(fake, page, tab=None, **kw):
 
 def raising_cases():
     """(why, fn, exception) rows: each must raise that exception."""
+    def no_tab_selected():
+        f = FakeSettings()
+        f.page, f.tab_selection = "Dictation Settings", "none"
+        _nav(f, "Dictation Settings")
+
+    def two_tabs_selected_remembered():
+        f = FakeSettings()
+        f.page, f.remembered_tab, f.tab_selection = "Dictation Settings", "Chimes", "two"
+        _nav(f, "Dictation Settings")
+
+    def two_tabs_selected_explicit():
+        f = FakeSettings()
+        f.page, f.remembered_tab, f.tab_selection = "Dictation Settings", "Chimes", "two"
+        _nav(f, "Dictation Settings", "Engine")
+
     def wrong_region():
         # A content button named "Dictionary" sits beside the sidebar row: the lookup must
         # still pick the sidebar's, so a SECOND sidebar row of that name is what refuses.
@@ -403,6 +429,12 @@ def raising_cases():
         _nav(f, "History")
 
     return [
+        ("no selected tab is never a success with an unknown tab", no_tab_selected,
+         sn.NavigationError),
+        ("two selected tabs fail the remembered route", two_tabs_selected_remembered,
+         sn.NavigationError),
+        ("two selected tabs fail an explicit route even when the asked tab is one of them",
+         two_tabs_selected_explicit, sn.NavigationError),
         ("a tab without its page is refused before any action",
          lambda: sn.validate_route(None, "Engine"), sn.RouteError),
         ("a tab on a page without tabs is refused",

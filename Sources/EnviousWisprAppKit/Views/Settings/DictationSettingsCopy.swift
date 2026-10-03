@@ -305,16 +305,16 @@ enum DictationSettingsCopy {
     static let autoCopyTitle = LocalizedStringResource(
       "Auto-copy to clipboard", comment: "Clipboard settings: switch title.")
     static let autoCopyShort = LocalizedStringResource(
-      "Keeps your latest dictation on the clipboard.",
+      "Copies dictation when automatic pasting is skipped.",
       comment: "Clipboard settings: short line under Auto-copy to clipboard.")
     static let autoCopyHelp = LocalizedStringResource(
-      "Copies your dictation to the clipboard after it finishes.",
+      "Copies your dictation to the clipboard when automatic pasting is skipped. After an automatic paste, Restore clipboard after paste controls whether your earlier clipboard contents return.",
       comment: "Clipboard settings: explains Auto-copy to clipboard.")
 
     static let restoreTitle = LocalizedStringResource(
       "Restore clipboard after paste", comment: "Clipboard settings: switch title.")
     static let restoreShort = LocalizedStringResource(
-      "Puts back what was on your clipboard before dictation.",
+      "Puts back what was on your clipboard before pasting.",
       comment: "Clipboard settings: short line under Restore clipboard after paste.")
     static let restoreHelp = LocalizedStringResource(
       "Saves and restores whatever was on your clipboard before pasting your dictation.",

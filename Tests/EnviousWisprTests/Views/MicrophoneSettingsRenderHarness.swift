@@ -185,7 +185,7 @@ struct MicrophoneSettingsRenderHarness {
         for german in [false, true] {
           let suffix = "\(windowWidth)-\(dark ? "dark" : "light")-\(german ? "de-draft" : "en")"
           for scenario in Self.scenarios {
-            try Self.render(Self.page(scenario, german: german), label: "page-\(scenario.name)-\(suffix)", width: width, dark: dark)
+            try Self.render(Self.page(scenario, german: german).environment(\.settingsPR1Density, true), label: "page-\(scenario.name)-\(suffix)", width: width, dark: dark)
           }
           for manual in [false, true] {
             try Self.render(Self.menuDraft(manual: manual, german: german),

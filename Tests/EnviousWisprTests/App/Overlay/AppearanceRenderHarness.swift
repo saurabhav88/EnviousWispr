@@ -81,7 +81,7 @@ struct AppearanceRenderHarness {
     let content: AnyView =
       switch page {
       case .appearance: AnyView(AppearanceSettingsView())
-      case .pill: AnyView(PillSettingsView())
+      case .pill: AnyView(PillSettingsView().environment(\.settingsPR1Density, true))
       }
     let root = content
       .environment(settings)
