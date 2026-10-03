@@ -227,6 +227,7 @@ struct TranscribeFileView: View {
           stepChip(step, compact: compact)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(step.title)
+            .accessibilityAddTraits(.isStaticText)
         } else {
           Button {
             coordinator.jump(to: step)
