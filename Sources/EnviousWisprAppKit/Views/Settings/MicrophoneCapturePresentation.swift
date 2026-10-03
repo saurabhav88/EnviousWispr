@@ -18,11 +18,13 @@ struct MicrophoneCapturePresentation: Equatable, Sendable {
 }
 
 private struct MicrophoneCapturePresentationKey: EnvironmentKey {
-  static let defaultValue = MicrophoneCapturePresentation.unknown
+  static let defaultValue:
+    @MainActor @Sendable () -> MicrophoneCapturePresentation = { .unknown }
 }
 
 extension EnvironmentValues {
-  var microphoneCapturePresentation: MicrophoneCapturePresentation {
+  var microphoneCapturePresentation:
+    @MainActor @Sendable () -> MicrophoneCapturePresentation {
     get { self[MicrophoneCapturePresentationKey.self] }
     set { self[MicrophoneCapturePresentationKey.self] = newValue }
   }

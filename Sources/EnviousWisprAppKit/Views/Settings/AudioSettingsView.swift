@@ -24,7 +24,6 @@ import SwiftUI
 struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
-  @Environment(\.microphoneCapturePresentation) private var capturePresentation
 
   /// `SettingsRowIcon`'s fixed width (26) plus the row's own leading spacing
   /// (11), so helper text under a row's icon+label aligns under the LABEL
@@ -115,8 +114,7 @@ struct AudioSettingsView: View {
                 selection: inputDeviceSelection,
                 devices: audioDeviceList.availableInputDevices,
                 presentation: devicePresentation,
-                transportTokens: transportTokens,
-                capturePresentation: capturePresentation)
+                transportTokens: transportTokens)
             }
 
             if let device = multiInputDevice {

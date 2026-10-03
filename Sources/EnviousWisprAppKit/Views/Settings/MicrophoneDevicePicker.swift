@@ -13,9 +13,15 @@ struct MicrophoneDevicePicker: View {
   let devices: [AudioInputDevice]
   let presentation: MicrophoneDevicePresentation
   let transportTokens: [UInt32: String]
-  var capturePresentation: MicrophoneCapturePresentation = .unknown
+  @Environment(\.microphoneCapturePresentation)
+  private var readCapturePresentation
+
+  /// Explicit snapshots keep render fixtures independent of live capture observation.
+  var capturePresentation: MicrophoneCapturePresentation? = nil
 
   var body: some View {
+    let capturePresentation =
+      capturePresentation ?? readCapturePresentation()
     VStack(alignment: .leading, spacing: 5) {
       microphoneMenu
       if capturePresentation.isInUse(displayedUID: presentation.deviceUID) {
