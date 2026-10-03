@@ -14,6 +14,7 @@ a holder session "exits".
     python3 scripts/lib/dev-app-lock-test.py
 """
 
+import fcntl
 import json
 import os
 import shutil
@@ -217,6 +218,9 @@ def main():
         h = Session(tmp, rem_tool, ["claim --label rem2", "remind --event PostToolUse",
                                     "remind --event UserPromptSubmit"], step_sleep=1.2)
         h.wait_done()
+        saved = card(lock7)
+        check("the reminder time is saved, so the next one waits a full interval",
+              saved["reminded_at"] > saved["claimed_at"] + 1, str(saved))
         out1 = h.out(1)
         try:
             msg = json.loads(out1)
@@ -248,6 +252,47 @@ def main():
             f.write("{not json")
         rc, out = run_tool(rem_tool, "remind")
         check("remind never fails on a broken card", rc == 0 and out == "", out)
+
+        # The reminder runs inside every tool call, so it must skip, not wait,
+        # when another process holds the mutex. Hold the mutex from here while
+        # a due reminder runs; a waiting reminder would never finish.
+        lock9 = os.path.join(tmp, "lock9")
+        nb_tool = make_copy(tmp, "nb.py", base_rewrites(lock9) + [
+            ("REMIND_SECONDS = 30 * 60", "REMIND_SECONDS = 0")])
+        nb = Session(tmp, nb_tool, ["claim --label nb", "remind"], step_sleep=1.0)
+        rc0 = os.path.join(nb.dir, "rc0")
+        deadline = time.time() + 30
+        while not (os.path.exists(rc0) and open(rc0).read().strip()) \
+                and time.time() < deadline:
+            time.sleep(0.05)
+        mfd = os.open(os.path.join(lock9, "mutex"), os.O_RDWR)
+        fcntl.flock(mfd, fcntl.LOCK_EX)
+        try:
+            finished = nb.wait_done(timeout=5)
+        finally:
+            fcntl.flock(mfd, fcntl.LOCK_UN)
+            os.close(mfd)
+        check("a due reminder skips a busy mutex instead of waiting",
+              finished and nb.rc(1) == 0 and nb.out(1) == "",
+              nb.out(1) if finished else "still waiting after 5 s")
+
+        # A process that exited but is not reaped yet: still listed, but gone.
+        zombie_ps = os.path.join(tmp, "zombie-ps")
+        with open(zombie_ps, "w") as f:
+            f.write('#!/bin/sh\nfor a; do p=$a; done\n'
+                    'echo "1 Thu Jan  1 00:00:00 1970 Z sh"\n')
+        os.chmod(zombie_ps, 0o755)
+        lock8 = os.path.join(tmp, "lock8")
+        os.makedirs(lock8)
+        zcard = dict(card(lock) or {}, version=3, kind="bash", pid=424242,
+                     started="Thu Jan 1 00:00:00 1970", label="z", worktree="-",
+                     claimed_at=time.time(), reminded_at=time.time(), nonce="z")
+        with open(os.path.join(lock8, "holder.json"), "w") as f:
+            json.dump(zcard, f)
+        z_tool = make_copy(tmp, "z.py", base_rewrites(lock8, ps=repr(zombie_ps)))
+        rc, out = run_tool(z_tool, "status")
+        check("an exited but unreaped holder reads as exited",
+              rc == 0 and "holder session exited" in out, out)
 
         print("founder run (no Claude or Codex ancestor)")
         lock3 = os.path.join(tmp, "lock3")
@@ -341,7 +386,7 @@ def main():
         endless_ps = os.path.join(tmp, "endless-ps")
         with open(endless_ps, "w") as f:
             f.write('#!/bin/sh\nfor a; do p=$a; done\n'
-                    'echo "$((p+1)) Thu Jan  1 00:00:00 1970 sh"\n')
+                    'echo "$((p+1)) Thu Jan  1 00:00:00 1970 S sh"\n')
         os.chmod(endless_ps, 0o755)
         e_tool = make_copy(tmp, "e.py", base_rewrites(
             os.path.join(tmp, "lock6"), agents='("no-such-agent",)',

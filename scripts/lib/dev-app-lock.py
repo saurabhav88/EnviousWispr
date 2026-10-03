@@ -80,7 +80,7 @@ def process_info(pid):
     """
     try:
         out = subprocess.run(
-            [PS, "-o", "ppid=,lstart=,comm=", "-p", str(pid)],
+            [PS, "-o", "ppid=,lstart=,stat=,comm=", "-p", str(pid)],
             # `lstart` prints LOCAL time: two sessions with different TZ
             # values would see different start strings for one live process
             # and call it dead. Pin both locale and zone.
@@ -97,10 +97,14 @@ def process_info(pid):
         raise Undecided(f"{PS} failed for pid {pid} (exit {out.returncode}): "
                         f"{out.stderr.strip()}")
     # `lstart` is always five words: Sat Oct  3 12:10:09 2026.
-    parts = line.split(None, 6)
-    if len(parts) < 7:
+    parts = line.split(None, 7)
+    if len(parts) != 8:
         raise Undecided(f"unexpected {PS} line for pid {pid}: {line!r}")
-    return int(parts[0]), " ".join(parts[1:6]), parts[6]
+    # An exited process its parent has not reaped yet (a zombie) still lists
+    # its pid and start time; it is gone, not a live holder.
+    if parts[6].startswith("Z"):
+        return None
+    return int(parts[0]), " ".join(parts[1:6]), parts[7]
 
 
 def find_session():
@@ -197,6 +201,19 @@ class Store:
             os.unlink(self.card_path)
         except FileNotFoundError:
             pass
+
+
+class NonBlockingStore(Store):
+    """For the reminder hook: skip rather than wait if the mutex is busy, so
+    a stuck claimer can never stall a session's prompt or tool call."""
+
+    def __enter__(self):
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BaseException:
+            os.close(self.fd)
+            raise
+        return self
 
 
 def same_session(card, me):
@@ -300,7 +317,7 @@ def cmd_remind(args):
         me = find_session()
         if me is None or not same_session(peek, me):
             return EXIT_OK
-        with Store() as store:
+        with NonBlockingStore() as store:
             now = time.time()
             card = store.read()
             if card is None or not same_session(card, me) \
