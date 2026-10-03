@@ -44,6 +44,7 @@ not know is refused, never rewritten.
 import argparse
 import fcntl
 import json
+import math
 import os
 import subprocess
 import sys
@@ -74,11 +75,17 @@ def process_info(pid):
     try:
         out = subprocess.run(
             [PS, "-o", "ppid=,lstart=,comm=", "-p", str(pid)],
-            capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"})
+            # `lstart` prints LOCAL time: two sessions with different TZ
+            # values would see different start strings for one live process
+            # and call it dead. Pin both locale and zone.
+            capture_output=True, text=True,
+            env={**os.environ, "LC_ALL": "C", "TZ": "UTC"})
     except OSError as e:
         raise Undecided(f"could not run {PS}: {e}")
     line = out.stdout.strip()
-    if out.returncode == 1 and not line:
+    # macOS and procps both exit 1 with no output for an absent pid. Exit 1
+    # WITH an error message is ps failing, not the process being gone.
+    if out.returncode == 1 and not line and not out.stderr.strip():
         return None
     if out.returncode != 0 or not line:
         raise Undecided(f"{PS} failed for pid {pid} (exit {out.returncode}): "
@@ -105,6 +112,10 @@ def find_session():
         if name in AGENT_NAMES:
             return {"kind": name, "pid": pid, "started": started}
         pid, seen = ppid, seen + 1
+    if pid > 1:
+        # Ran out of steps before reaching launchd: the chain was not fully
+        # read, so "no session" is unproven and must not skip the lock.
+        raise Undecided("ancestor chain longer than 64 processes")
     return None
 
 
@@ -155,6 +166,17 @@ class Store:
                 f"holder card {self.card_path} has version "
                 f"{card.get('version') if isinstance(card, dict) else '?'}, "
                 f"this checkout knows {VERSION}. Leaving it alone.")
+        # A right-version card with a wrong-typed field could make a live
+        # holder look dead (started=None never matches) or feed garbage to ps.
+        if type(card.get("pid")) is not int or card["pid"] <= 1:
+            raise Undecided(f"holder card {self.card_path} has an invalid pid")
+        for key in ("kind", "started", "nonce"):
+            if not isinstance(card.get(key), str) or not card[key]:
+                raise Undecided(f"holder card {self.card_path} has an invalid {key}")
+        for key in ("claimed_at", "last_action_at"):
+            value = card.get(key)
+            if type(value) not in (int, float) or not math.isfinite(value):
+                raise Undecided(f"holder card {self.card_path} has an invalid {key}")
         return card
 
     def write(self, card):
@@ -203,17 +225,22 @@ def cmd_status(_args):
 def cmd_claim(args):
     now = time.time()
     me = find_session()
+    if me is None:
+        # The founder is never blocked, so nothing below may wait on the
+        # mutex or fail on a bad card. The heads-up is best effort.
+        print("dev-app-lock: no Claude or Codex session found, so this is a "
+              "founder run and takes no lock.")
+        try:
+            with open(os.path.join(LOCK_DIR, "holder.json")) as f:
+                print(f"dev-app-lock: heads-up, last recorded holder: "
+                      f"{describe(json.load(f), now)}")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"dev-app-lock: heads-up unavailable ({type(e).__name__})")
+        return EXIT_OK
     with Store() as store:
         card = store.read()
-        if me is None:
-            if card is not None and stale_reason(card, now) is None:
-                print("dev-app-lock: no Claude or Codex session found, so this is a "
-                      "founder run and takes no lock. Heads-up: the app is held by "
-                      f"{describe(card, now)}")
-            else:
-                print("dev-app-lock: no Claude or Codex session found, so this is a "
-                      "founder run and takes no lock.")
-            return EXIT_OK
         note = "claimed"
         if card is not None:
             if same_session(card, me):
@@ -272,17 +299,19 @@ def main(argv):
     claim.add_argument("--worktree", default=None)
     sub.add_parser("release")
     args = parser.parse_args(argv)
-    if args.command == "claim" and args.worktree is None:
-        args.worktree = default_worktree()
     try:
+        if args.command == "claim" and args.worktree is None:
+            args.worktree = default_worktree()
         return {"status": cmd_status, "claim": cmd_claim,
                 "release": cmd_release}[args.command](args)
-    except (Undecided, OSError, KeyError, TypeError) as e:
+    except (Undecided, OSError, KeyError, TypeError, ValueError,
+            OverflowError, RecursionError) as e:
         # OSError: the lock folder cannot be made or opened (a Codex sandbox
         # that blocks writes outside the worktree lands here). KeyError and
         # TypeError: a card of the right version with missing or wrong fields.
         # All of them are "could not decide", never a traceback a caller
-        # might read as a different exit code.
+        # might read as a different exit code. ValueError/OverflowError: a ps
+        # line or timestamp that does not parse.
         print(f"dev-app-lock: cannot decide, treating the app as busy: "
               f"{type(e).__name__}: {e}", file=sys.stderr)
         return EXIT_UNDECIDED

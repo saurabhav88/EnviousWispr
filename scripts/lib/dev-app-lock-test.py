@@ -207,8 +207,32 @@ def main():
                                  base_rewrites(lock3, agents='("no-such-agent",)'))
         rc, out = run_tool(founder_tool, "claim")
         check("a founder run is never blocked", rc == 0, out)
-        check("a founder run names the holder", "Heads-up" in out, out)
+        check("a founder run names the holder", "heads-up" in out, out)
         check("a founder run writes nothing", card(lock3) == before)
+
+        with open(os.path.join(lock3, "holder.json"), "w") as f:
+            f.write("{not json")
+        rc, out = run_tool(founder_tool, "claim")
+        check("a founder run is not blocked by a broken card",
+              rc == 0 and "founder run" in out, out)
+        with open(os.path.join(lock3, "holder.json"), "w") as f:
+            json.dump(before, f)
+
+        print("same pid, different start time (pid reuse)")
+        lock5 = os.path.join(tmp, "lock5")
+        reuse_tool = make_copy(tmp, "reuse.py", base_rewrites(lock5))
+        live = Session(tmp, reuse_tool, [])
+        time.sleep(0.3)
+        os.makedirs(lock5)
+        fake = dict(before, pid=live.proc.pid, started="Thu Jan  1 00:00:00 1970",
+                    last_action_at=time.time(), claimed_at=time.time())
+        with open(os.path.join(lock5, "holder.json"), "w") as f:
+            json.dump(fake, f)
+        s2 = Session(tmp, reuse_tool, ["claim --label reuse"])
+        s2.wait_done()
+        check("a live pid with a different start time is not the holder",
+              s2.rc() == 0 and "took over (its session has exited" in s2.out(),
+              s2.out())
 
         print("fail closed")
         broken_ps = os.path.join(tmp, "broken-ps")
@@ -222,6 +246,14 @@ def main():
         rc, out = run_tool(ps_tool, "status")
         check("status with a failing ps also refuses to guess", rc == 2, out)
         check("a failing ps leaves the card alone", card(lock3) == before)
+        quiet_ps = os.path.join(tmp, "exit1-ps")
+        with open(quiet_ps, "w") as f:
+            f.write("#!/bin/sh\necho boom >&2\nexit 1\n")
+        os.chmod(quiet_ps, 0o755)
+        q_tool = make_copy(tmp, "q.py", base_rewrites(lock3, ps=repr(quiet_ps)))
+        rc, out = run_tool(q_tool, "status")
+        check("ps exiting 1 with an error is not 'gone'",
+              rc == 2 and "cannot decide" in out, out)
 
         lock4 = os.path.join(tmp, "lock4")
         os.makedirs(lock4)
@@ -239,10 +271,10 @@ def main():
         s.wait_done()
         check("an unreadable card is refused", s.rc() == 2, s.out())
         with open(os.path.join(lock4, "holder.json"), "w") as f:
-            json.dump({"version": 1, "pid": 1}, f)
+            json.dump(dict(before, started=None), f)
         s = Session(tmp, v_tool, ["claim"])
         s.wait_done()
-        check("a card with missing fields is refused, not a traceback",
+        check("a card with a wrong-typed field is refused, not a traceback",
               s.rc() == 2 and "cannot decide" in s.out()
               and "Traceback" not in s.out(), s.out())
         blocked = os.path.join(tmp, "not-a-dir")
