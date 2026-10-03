@@ -102,10 +102,11 @@ struct RecordingChimesContent: View {
 /// fifth. Each row is as tall as its tallest card, and every card in it fills that height.
 struct RecordingChimeGrid: Layout {
   static let maxColumns = 4
-  /// Wide enough for the play button, a wrapped name and description at 14pt and the badge.
-  // #3385 lane D: 460pt of content fits four 106pt cards and three 12pt gaps.
-  // Supersedes 210pt: full-width text sits below Play instead of beside it.
-  static let minimumCardWidth: CGFloat = 106
+  /// #3385 lane G: room for the widest English/German whole name beside
+  /// the 44pt Play corner, and the one-line badge with its checkmark/insets.
+  /// `localizedCardWidths` independently measures both at the shipping font.
+  /// Narrow pages use fewer columns rather than breaking inside a name.
+  static let minimumCardWidth: CGFloat = 190
   static let spacing: CGFloat = 12
 
   static func columns(forWidth width: CGFloat) -> Int {
@@ -179,6 +180,18 @@ struct RecordingChimeCard: View {
   let onSelect: () -> Void
   let onPreview: () -> Void
 
+  /// Resolved copy can be supplied by another host; app callers use its main catalog.
+  struct TextContent {
+    let name: String
+    let description: String
+    let inUse: String
+  }
+  var text: TextContent? = nil
+
+  private var name: String { text?.name ?? RecordingChimeCatalog.name(for: pairing) }
+  private var description: String { text?.description ?? RecordingChimeCatalog.description(for: pairing) }
+  private var badgeText: String { text?.inUse ?? String(localized: DictationSettingsCopy.Chimes.inUse) }
+
   static let previewDiameter: CGFloat = 32
   static let previewRegionSide: CGFloat = 44
 
@@ -241,7 +254,7 @@ struct RecordingChimeCard: View {
     .help(
       isPreviewEnabled ? "" : String(localized: DictationSettingsCopy.Chimes.previewUnavailable)
     )
-    .accessibilityLabel("Preview \(RecordingChimeCatalog.name(for: pairing))")
+    .accessibilityLabel("Preview \(name)")
   }
 
   private var selectButton: some View {
@@ -256,7 +269,7 @@ struct RecordingChimeCard: View {
         // never resizes its card or moves either button.
         // Reserve the shared decorative row without putting it in a Button.
       // Four-point text insets preserve more room for long German names at
-      // the 106pt column; the play corner stays 44pt and the waveform inset 8pt.
+      // narrow columns; the play corner stays 44pt and the waveform inset 8pt.
       // #3385 lane D review r1 supersedes the three separate rows and 4pt outer
       // padding above. The header and shared footer have no expanding Spacer;
       // equal grid-row heights add only the space a longer sibling's text needs.
@@ -265,7 +278,7 @@ struct RecordingChimeCard: View {
       .contentShape(RecordingChimeSelectRegion())
     }
     .buttonStyle(.plain)
-    .accessibilityLabel(RecordingChimeCatalog.name(for: pairing))
+    .accessibilityLabel(name)
     .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
@@ -275,7 +288,7 @@ struct RecordingChimeCard: View {
   var header: some View {
       // A complete name and description beside Play only when the text
       // can keep at least the narrow card's 98pt readable text width.
-      // At 106pt, a name sits beside Play and the description takes the
+      // Below the 150pt header threshold, the description takes the
       // full lower row. It is not squeezed into the Play-side text column.
     // Review r1 measured a fitting wrapped header rejected by ViewThatFits's
     // unconstrained ideal width. Measure at the actual text-column proposal.
@@ -286,15 +299,15 @@ struct RecordingChimeCard: View {
     .padding(.top, 4)
   }
 
-  private var cardName: some View {
-    Text(RecordingChimeCatalog.name(for: pairing))
+  var cardName: some View {
+    Text(name)
       .font(.stRowLabel)
       .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
       .fixedSize(horizontal: false, vertical: true)
   }
 
   private var cardDescription: some View {
-    Text(RecordingChimeCatalog.description(for: pairing))
+    Text(description)
       .font(.stRowHelper)
       .foregroundStyle(Color.stTextSecondary)
       .fixedSize(horizontal: false, vertical: true)
@@ -326,13 +339,13 @@ struct RecordingChimeCard: View {
       .opacity(isSelected ? 1 : 0)
   }
 
-  private var inUseBadge: some View {
+  var inUseBadge: some View {
     HStack(spacing: 4) {
       Image(systemName: "checkmark")
         .font(.system(size: 11, weight: .bold))
-      Text(DictationSettingsCopy.Chimes.inUse)
+      Text(badgeText)
         .font(.stSectionHeader)
-        .fixedSize(horizontal: false, vertical: true)
+        .fixedSize()
     }
     .foregroundStyle(Color.white)
     .padding(.horizontal, 8)
@@ -355,7 +368,7 @@ struct RecordingChimeHeaderLayout: Layout {
 
   private func plan(width: CGFloat, subviews: Subviews) -> Plan {
     let play = RecordingChimeCard.previewRegionSide
-    let minimumText = RecordingChimeGrid.minimumCardWidth - 8
+    let minimumText: CGFloat = 98
     let side = width >= play + 4 + minimumText + 4
     let nameWidth = max(0, width - (side ? play + 8 : play + 4))
     let descriptionWidth = max(0, width - (side ? play + 8 : 8))
