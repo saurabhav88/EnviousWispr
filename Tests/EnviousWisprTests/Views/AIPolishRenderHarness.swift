@@ -43,7 +43,7 @@ struct AIPolishRenderHarness {
     window.contentView = nil
   }
 
-  private static func detailPage(provider: LLMProvider, pageWidth: CGFloat) throws -> AnyView {
+  private static func detailPage(provider: LLMProvider, pageWidth: CGFloat, surface: ProviderSetupSurface = .dictation) throws -> AnyView {
     let defaults = try #require(TestDefaults.suite("ew.aiPolishRender.\(UUID().uuidString)"))
     let settings = SettingsManager(defaults: defaults)
     settings.llmProvider = provider
@@ -67,11 +67,18 @@ struct AIPolishRenderHarness {
     let snapshot = ProviderStatusSnapshot.capture(model: model, egOne: egOne, runtimes: runtimes,
       availability: availability, discovery: discovery, setup: setup)
     return AnyView(VStack(alignment: .leading, spacing: 16) {
+      if surface == .dictation {
       HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
         ProviderRail(selection: .constant(provider), snapshot: snapshot)
           .frame(width: PolishRailMetrics.railWidth)
         ProviderSetupSection(model: model, part: .detail, surface: .dictation)
           .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      } else {
+        ProviderSetupSection(model: model, part: .detail, surface: .fileImport)
+        if provider == .ollama {
+          ProviderSetupSection(model: model, part: .manageModels, surface: .fileImport)
+        }
       }
     }
     .padding(.horizontal, SettingsLayout.contentH)
@@ -95,4 +102,53 @@ struct AIPolishRenderHarness {
       }
     }
   }
+  @Test("Render both file-import provider parts without their lifecycle",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_AI_POLISH"] == "1"))
+  func fileImportDetails() throws {
+    for windowWidth: CGFloat in [750, 820, 1300] {
+      let pageWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+      for entry in PolishRailCatalog.all {
+        for dark in [false, true] {
+          try Self.render("import-\(entry.provider.rawValue)-\(Int(windowWidth))", width: pageWidth,
+            dark: dark, content: Self.detailPage(provider: entry.provider, pageWidth: pageWidth, surface: .fileImport))
+        }
+      }
+    }
+  }
+
+  /// Literal stress text checks shared row wrapping, not catalog translation.
+  @Test("Render long German literal row fixtures at the actual narrow detail widths",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_AI_POLISH"] == "1"))
+  func germanRowFixtures() throws {
+    for windowWidth: CGFloat in [750, 820, 1300] {
+      let detailWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+        - 2 * SettingsLayout.contentH - PolishRailMetrics.railWidth - PolishRailMetrics.columnGap
+      for dark in [false, true] {
+        let fixture = BrandedSection {
+          BrandedRow {
+            SettingsRow(icon: "key", resolvedTitle: "Google Gemini API-Schlüssel",
+              resolvedShort: "Sendet Text und Diktierkontext an Google",
+              resolvedHelp: "Dieser Text ist eine längere deutsche Layoutprobe.") {
+                VStack(alignment: .leading, spacing: 8) {
+                  SecureField("API-Schlüssel", text: .constant(""))
+                  HStack { Button("Speichern") {}; Button("Löschen") {} }
+                }.frame(minWidth: 160)
+              }
+          }
+          BrandedRow {
+            SettingsRow(icon: "list.bullet", resolvedTitle: "Struktur",
+              resolvedShort: "Sätze beibehalten oder gesprochene Punkte als Liste ausgeben",
+              resolvedHelp: "Dieser Text ist eine längere deutsche Layoutprobe.") {
+                Picker("Struktur", selection: .constant(0)) {
+                  Text("Fließtext beibehalten").tag(0)
+                  Text("Aufzählungspunkte").tag(1)
+                }.labelsHidden()
+              }
+          }
+        }.environment(\.settingsPR1Density, true).background(Color.stPageBg)
+        try Self.render("german-literals-\(Int(windowWidth))", width: detailWidth, dark: dark, content: fixture)
+      }
+    }
+  }
+
 }

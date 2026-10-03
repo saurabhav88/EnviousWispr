@@ -725,7 +725,7 @@ struct ProviderSetupSection: View {
     // nothing downstream would notice.
     if provider == .egOne {
       LocalEngineStatusCard(
-        runtime: egOne, engine: .egOne, allowsRuntimeActivation: surface == .dictation
+        runtime: egOne, engine: .egOne, allowsRuntimeActivation: surface == .dictation, surface: surface
       ) {
         egOne.removeModel()
         // Removing the selected engine must move the user somewhere that
@@ -749,7 +749,7 @@ struct ProviderSetupSection: View {
     if provider == .s1Mini {
       LocalEngineStatusCard(
         runtime: localPolishRuntimes.s1Mini, engine: .s1Mini,
-        allowsRuntimeActivation: surface == .dictation
+        allowsRuntimeActivation: surface == .dictation, surface: surface
       ) {
         localPolishRuntimes.s1Mini.removeModel()
         if settings.llmProvider == .s1Mini { settings.llmProvider = .appleIntelligence }
@@ -1051,7 +1051,9 @@ struct ProviderSetupSection: View {
           resolvedShort: ProviderCompactCopy.keyShort(for: provider),
           resolvedHelp: descriptor.privacySentence) {
           VStack(alignment: .leading, spacing: 8) {
-            keyField.settingsFieldChrome(focused: $keyFieldFocused)
+            keyField
+              .focused($keyFieldFocused)
+              .settingsFieldChrome(focused: $keyFieldFocused)
             validationBadge
             HStack(spacing: 8) { apiKeyActions }
           }
@@ -1497,7 +1499,7 @@ struct ProviderSetupSection: View {
   private var ollamaSetupContent: some View {
     switch setup.ollamaSetup.setupState {
     case .detecting:
-      HStack {
+      ollamaSetupRow {
         ProgressView()
           .controlSize(.small)
         Text("Checking Ollama installation...")
@@ -1518,7 +1520,7 @@ struct ProviderSetupSection: View {
         .font(.stHelper)
         .foregroundStyle(Color.stTextSecondary)
 
-        HStack {
+        ollamaSetupRow {
           SettingsActionButton(
             title: LocalizedStringResource(
               "Download Ollama", comment: "AI Polish, Ollama setup: opens the Ollama download page."
@@ -1546,7 +1548,7 @@ struct ProviderSetupSection: View {
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
 
-        HStack {
+        ollamaSetupRow {
           SettingsActionButton(
             title: LocalizedStringResource(
               "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
@@ -1571,7 +1573,7 @@ struct ProviderSetupSection: View {
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
 
-        HStack {
+        ollamaSetupRow {
           // #1956: the SECOND control that can reach `pullModel`, and the one my
           // catalog-row sweep missed (review r4). The service has one pull slot,
           // so if this is pressed while a hosted Add is still probing, the
@@ -1608,12 +1610,12 @@ struct ProviderSetupSection: View {
         ProgressView(value: progress)
           .progressViewStyle(.linear)
 
-        HStack {
+        ollamaSetupRow {
           Text(status)
             .font(.stHelper)
             .foregroundStyle(Color.stTextSecondary)
-            .lineLimit(1)
-          Spacer()
+            .lineLimit(surface == .dictation ? nil : 1)
+          if surface == .fileImport { Spacer() }
           if progress > 0 {
             Text("\(Int(progress * 100))%")
               .font(.stHelper)
@@ -1630,9 +1632,9 @@ struct ProviderSetupSection: View {
       }
 
     case .ready:
-      HStack {
+      ollamaSetupRow {
         Text("Status:")
-        Spacer()
+        if surface == .fileImport { Spacer() }
         Label("Running", systemImage: "checkmark.circle.fill")
           .foregroundStyle(.stSuccess)
 
@@ -2266,9 +2268,22 @@ struct ProviderSetupSection: View {
     }
   }
 
+  /// One wizard/action implementation, with an explicit compact Settings layout.
+  @ViewBuilder
+  private func ollamaSetupRow<Content: View>(
+    spacing: CGFloat? = nil, @ViewBuilder content: () -> Content
+  ) -> some View {
+    switch surface {
+    case .dictation:
+      VStack(alignment: .leading, spacing: 8) { content() }
+    case .fileImport:
+      HStack(spacing: spacing) { content() }
+    }
+  }
+
   @ViewBuilder
   private func ollamaStepIndicators(current: Int, currentLabel: String? = nil) -> some View {
-    HStack(spacing: 12) {
+    ollamaSetupRow(spacing: 12) {
       if current > 1 {
         Label("Installed", systemImage: "checkmark.circle.fill")
           .foregroundStyle(.stSuccess)
