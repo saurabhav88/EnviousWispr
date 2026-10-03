@@ -118,11 +118,20 @@ struct WhatsNewMenuView: View {
                 Text(entry.description)
                   .font(.stRowHelper)
                   .foregroundStyle(.stTextSecondary)
-                if let destination = entry.readMoreURL {
-                  Link("Read more", destination: destination)
-                    .font(.stRowLabel)
-                    .foregroundStyle(.stAccent)
-                    .padding(.vertical, 5)
+                // Same bullet list as main's What's New page, in the menu's helper type.
+                if !entry.bullets.isEmpty {
+                  VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(entry.bullets.enumerated()), id: \.offset) { _, bullet in
+                      HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(verbatim: "•")
+                          .foregroundStyle(.stTextTertiary)
+                          .accessibilityHidden(true)
+                        Text(bullet)
+                          .font(.stRowHelper)
+                          .foregroundStyle(.stTextSecondary)
+                      }
+                    }
+                  }
                 }
               }
               .fixedSize(horizontal: false, vertical: true)

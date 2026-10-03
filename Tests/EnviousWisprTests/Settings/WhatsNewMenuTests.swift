@@ -24,20 +24,15 @@ struct WhatsNewMenuTests {
     #expect(WhatsNewMenuPresentation.entries(version: "no-such-release").isEmpty)
   }
 
-  @Test("The settings announcement links to its own release, without adding links to history")
-  func moveAnnouncementLink() throws {
+  @Test("The settings announcement lists each move in the menu itself")
+  func moveAnnouncementBullets() throws {
     let entry = try #require(WhatsNewMenuPresentation.entries().first)
     #expect(entry.id == "settings-easier-to-find")
     #expect(entry.version == "2.5.3")
-    #expect(entry.readMoreURL?.absoluteString
-      == "https://github.com/saurabhav88/EnviousWispr/releases/tag/v2.5.3")
-    let older = WhatsNewMenuPresentation.ReleaseEntry(
-      id: entry.id, icon: entry.icon, title: entry.title, description: entry.description,
-      version: "2.4.8")
-    #expect(older.readMoreURL?.absoluteString
-      == "https://github.com/saurabhav88/EnviousWispr/releases/tag/v2.4.8")
-    #expect(WhatsNewMenuPresentation.entries(version: "2.5.2")
-      .allSatisfy { $0.readMoreURL == nil })
+    let source = try #require(WhatsNewContent.entries.first { $0.id == "settings-easier-to-find" })
+    #expect(!source.bullets.isEmpty)
+    #expect(entry.bullets == source.bullets)
+    #expect(entry.bullets.contains("Transcription -> Dictation Settings > Engine"))
   }
 
   @Test("Existing full descriptions use their localized entry keys and English fallback")
@@ -50,6 +45,7 @@ struct WhatsNewMenuTests {
       "whatsNew.privacy-controls.title": "Translated title",
       "whatsNew.privacy-controls.description": "Translated existing description",
       "whatsNew.future-entry.description": "Translated full description",
+      "whatsNew.future-entry.bullet.0": "Translated first point",
     ]
     let data = try PropertyListSerialization.data(
       fromPropertyList: table, format: .binary, options: 0)
@@ -58,7 +54,7 @@ struct WhatsNewMenuTests {
     let known = try #require(WhatsNewContent.entries.first { $0.id == "privacy-controls" })
     let future = WhatsNewContent.Entry(
       id: "future-entry", icon: "gift", title: "Future", description: "Full English description",
-      version: "2.5.2")
+      bullets: ["First point", "Second point"], version: "2.5.2")
     let rows = WhatsNewMenuPresentation.entries(from: [known, future], version: "2.5.2", bundle: bundle)
     #expect(rows.map(\.title) == ["Translated title", "Future"])
     #expect(
@@ -66,6 +62,8 @@ struct WhatsNewMenuTests {
     #expect(
       WhatsNewMenuPresentation.entries(from: [future], version: "2.5.2").first?.description
         == "Full English description")
+    // Bullets reach the menu, each localized by its own key with English fallback.
+    #expect(rows.map(\.bullets) == [[], ["Translated first point", "Second point"]])
   }
 
   @Test("Toolbar rendering and an unfulfilled open request leave unread notes intact")

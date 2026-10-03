@@ -62,7 +62,7 @@ enum WhatsNewContent {
       icon: "slider.horizontal.3",
       title: "Settings are easier to find",
       description:
-        "Settings now puts related controls together, with shorter explanations and help beside each row. Keybinds, AI Polish and Snippets have a clearer layout too. Read more for the old and new paths.",
+        "Settings now puts related controls together, with shorter explanations and help beside each row. Keybinds, AI Polish and Snippets have a clearer layout too. Here is where each moved setting lives now:",
       bullets: [
         "Transcription -> Dictation Settings > Engine",
         "Microphone -> Dictation Settings > Microphone & Media",
