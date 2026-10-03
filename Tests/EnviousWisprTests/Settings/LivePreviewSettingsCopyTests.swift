@@ -1,5 +1,7 @@
 import Foundation
 import Testing
+import SwiftParser
+import SwiftSyntax
 
 @testable import EnviousWisprAppKit
 
@@ -10,6 +12,7 @@ import Testing
 /// did not do, so the copy that replaces it earns the same protection: a change
 /// here should be a conscious act, not drift.
 @MainActor
+@Suite(.tags(.productOutcome))
 struct LivePreviewSettingsCopyTests {
 
   /// Every user-facing string on this page, plus the pill's. The brand and non-empty checks below
@@ -83,6 +86,18 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewCopy.notReady,
       LivePreviewCopy.preparing,
       LivePreviewCopy.listening,
+      // #3385: the Live Preview tab's short lines, notes and Change labels.
+      String(localized: DictationSettingsCopy.Preview.privacyNote),
+      String(localized: DictationSettingsCopy.Preview.toggleShort),
+      String(localized: DictationSettingsCopy.Preview.toggleHelp),
+      String(localized: DictationSettingsCopy.Preview.languageShort),
+      String(localized: DictationSettingsCopy.Preview.appleSummary),
+      String(localized: DictationSettingsCopy.Preview.universalSummary),
+      String(localized: DictationSettingsCopy.Preview.engineShort),
+      String(localized: DictationSettingsCopy.Preview.engineHelp),
+      String(localized: DictationSettingsCopy.Preview.installShort),
+      String(localized: DictationSettingsCopy.Preview.changeEngine),
+      String(localized: DictationSettingsCopy.Preview.keepCurrent),
     ]
   }
 
@@ -119,6 +134,28 @@ struct LivePreviewSettingsCopyTests {
     #expect(
       missing.isEmpty,
       "not covered by allStrings, so no brand or empty check runs on them: \(missing)")
+  }
+
+  /// #3385: the same omission check over the Live Preview tab's copy in `DictationSettingsCopy`,
+  /// scoped to its `enum Preview` block so the other tabs' copy is not counted.
+  @Test("Every Live Preview tab copy property is covered by allStrings")
+  func everyPreviewTabCopyPropertyIsCovered() throws {
+    let sourceURL = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprAppKit/Views/Settings/DictationSettingsCopy.swift")
+    let source = try String(contentsOf: sourceURL, encoding: .utf8)
+    // BASE_SHA control: the old slice continued to EOF and counted Pill and
+    // Clipboard's sibling keys. Parse the actual enum boundary instead.
+    let tree = Parser.parse(source: source)
+    let preview = try #require(tree.tokens(viewMode: .sourceAccurate).first {
+      $0.text == "Preview" && $0.parent?.is(EnumDeclSyntax.self) == true
+    }?.parent?.as(EnumDeclSyntax.self), "no enum Preview block")
+    let declared = Self.staticLetNames(in: preview.trimmedDescription)
+    #expect(declared.count >= 11, "parsed \(declared.count) properties; the block has moved")
+    let ownSource = try String(contentsOf: URL(filePath: #filePath), encoding: .utf8)
+    let list = try #require(Self.allStringsLiteral(in: ownSource))
+    let listed = Self.staticLetNames(referencedAs: "DictationSettingsCopy.Preview", in: list)
+    let missing = declared.subtracting(listed).sorted()
+    #expect(missing.isEmpty, "Live Preview tab copy not covered by allStrings: \(missing)")
   }
 
   /// The text of the `allStrings` array literal, from its opening bracket to the line that closes

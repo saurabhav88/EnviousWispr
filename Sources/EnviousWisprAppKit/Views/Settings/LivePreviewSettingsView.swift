@@ -29,6 +29,8 @@ struct LivePreviewSettingsView: View {
   /// workflow like a download must outlive view churn. This page only renders it.
   let packs: LivePreviewPacksModel
 
+  private typealias PreviewCopy = DictationSettingsCopy.Preview
+
   /// #2123: the preview model's download lifecycle. Optional for the same
   /// reason the speech-engine page's is — a preview or a test may render this
   /// page with no delivery home in the environment.
@@ -40,6 +42,14 @@ struct LivePreviewSettingsView: View {
 
   /// #2154: the dictation-language picker, opened by the Change button.
   @State private var showLanguageSheet: Bool = false
+
+  /// #3385: whether the two preview-engine cards are open under the summary.
+  @State private var showPreviewEngineChoices: Bool = false
+
+  init(packs: LivePreviewPacksModel, choicesExpanded: Bool = false) {
+    self.packs = packs
+    _showPreviewEngineChoices = State(initialValue: choicesExpanded)
+  }
 
   /// #2436: the pack catalogue, opened by the Languages row or the bar's remedy.
   ///
@@ -119,8 +129,18 @@ struct LivePreviewSettingsView: View {
   /// The status card's answer. One call, so the chip and its detail line can
   /// never describe different states.
   private var status: LivePreviewStatusMapping.Summary {
+    previewStatus(isEnabled: isPreviewOn)
+  }
+
+  /// Capability for the selected engine even while the feature is switched off.
+  /// Same readiness owner, including language, install and stale guards.
+  private var engineReadiness: LivePreviewStatusMapping.Summary {
+    previewStatus(isEnabled: true)
+  }
+
+  private func previewStatus(isEnabled: Bool) -> LivePreviewStatusMapping.Summary {
     LivePreviewStatusMapping.summary(
-      isEnabled: isPreviewOn,
+      isEnabled: isEnabled,
       engine: settings.livePreviewEngine,
       appleSupported: isAppleSupported,
       universalExists: universalExists,
@@ -218,10 +238,20 @@ struct LivePreviewSettingsView: View {
   var body: some View {
     @Bindable var settings = settings
     return SettingsContentView {
+      // #3385: the privacy sentence belongs to the PREVIEW, so its short form is
+      // this section's note and never a Dictation-wide or shared-component claim.
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
+      SettingsSectionHeading(resolvedTitle: LivePreviewSettingsCopy.sectionHeader.uppercased()) {
+        Text(PreviewCopy.privacyNote)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
       statusBar
+      }
       engineSection
       packsSection
     }
+    .environment(\.settingsPR1Density, true)
     // **Keyed on the language, not merely on appearance.**
     //
     // A plain `.task` runs once per appearance, and the dictation language can
@@ -286,6 +316,7 @@ struct LivePreviewSettingsView: View {
 
   /// What is happening, which language, and the switch — on one line (#2436).
   ///
+  /// Historical #2436 reason, carried verbatim (current placement below):
   /// Replaces the hero card, its status column and the toggle row. Those three said
   /// the same sentence three times before the page said anything: the page header
   /// already carries "See your words on screen while you are still speaking"
@@ -303,6 +334,10 @@ struct LivePreviewSettingsView: View {
   /// once now lives one line above in the page header, and what the right half said
   /// is the only thing left here.
   ///
+  /// #3385: the page-header references above describe #2436's original layout.
+  /// The header is now removed; the shared row's title, short line and help carry
+  /// the explanation. The reason for removing duplicate prose still applies.
+  ///
   /// Composition is `LivePreviewStatusBarPresentation`, not this body, so the rules
   /// about what may be named in which state are testable without rendering.
   private var statusBar: some View {
@@ -313,85 +348,117 @@ struct LivePreviewSettingsView: View {
 
     return BrandedSection {
       BrandedRow(showDivider: bar.action != nil) {
-        HStack(alignment: .center, spacing: 12) {
-          VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 8) {
-              ProviderStatusChip(status: status.chip, isHeadline: true)
+        VStack(alignment: .leading, spacing: 8) {
+          // #3385: the switch has its visible name again, with the shared row's
+          // short line and "?" (the tab has no page header to say what it does).
+          SettingsRow(
+            icon: "text.viewfinder",
+            resolvedTitle: LivePreviewSettingsCopy.toggleLabel,
+            resolvedShort: String(localized: PreviewCopy.toggleShort)
+          ) {
+            // Both sentences: the approved short help, and the original one whose
+            // pasted-text half may not be dropped (`previewPrivacyFooter`).
+            VStack(alignment: .leading, spacing: 8) {
+              SettingsHelpText(text: String(localized: PreviewCopy.toggleHelp))
+              SettingsHelpText(text: LivePreviewSettingsCopy.previewPrivacyFooter)
+              SettingsHelpText(text: bar.detail)
             }
-            Text(bar.detail).settingsHelperCopy()
+          } control: {
+              // **The reason lives in the hero card now, and only there.**
+              // This row used to repeat `needsNewerMacOS` whenever neither engine
+              // could run — but that condition is an OR of two independent causes,
+              // so on macOS 14 with a defective build it told the user to upgrade
+              // macOS when upgrading would not have helped. The status card above
+              // states the SELECTED engine's own reason, which is specific by
+              // construction, and two places saying why is how they come to
+              // disagree.
+              //
+              // #2436: "the hero card" is now this same row's left half, so the rule
+              // is unchanged and its one-owner property is stronger — there is no
+              // longer a second container that could drift.
+              // **`.fixedSize()` is load-bearing, and its absence was a real defect.**
+              // `BrandedToggleStyle` lays out `HStack { label; Spacer(); track }` so that
+              // on an ORDINARY settings row the whole row is the hit target and the switch
+              // sits at its right edge. That is correct where a visible label owns the row.
+              //
+              // Historical #2436 measurement and reason, carried verbatim:
+              // This row has no label — #2436 deleted it, because the page header above
+              // already says what the switch does. The style's `Spacer` then claimed every
+              // remaining point: Live UAT measured the checkbox at 738pt wide starting
+              // immediately after the language chip, so the empty middle of the status bar
+              // silently toggled Live Preview, and the chip rendered stranded a third of the
+              // way across instead of beside the switch as designed.
+              //
+              // Sizing to the ideal width collapses the style's internal `Spacer` and lets
+              // this row's own `Spacer(minLength: 12)` above do the pushing. Deliberately
+              // NOT a `.frame(width:)`: the track's size belongs to `BrandedToggleTrack`,
+              // and pinning a number here would be a second place to change it.
+              // (#3385: the visible label is back as the shared row's title, but the
+              // switch itself still carries no visible label of its own, so the same
+              // hit-rectangle rule applies.)
+              Toggle("", isOn: $settings.livePreviewEnabled)
+              .labelsHidden()
+              .toggleStyle(BrandedToggleStyle())
+              .fixedSize()
+              .disabled(!anyEngineAvailable)
+              // The visible label is gone; this is the only thing naming the switch
+              // for VoiceOver, which is why `toggleLabel` survives the copy cull.
+              // (#3385: the name is visible again as the row's title, but the
+              // switch itself still has none, so this still names it.)
+              .accessibilityLabel(LivePreviewSettingsCopy.toggleLabel)
           }
-          Spacer(minLength: 12)
 
-          if let language = bar.language {
-            // **It has to LOOK like a control, and two stacked Texts did not.**
-            // `.buttonStyle(.plain)` over a bare VStack renders as ordinary
-            // right-aligned copy — the founder read the most important control on
-            // the page as a status readout and did not know it could be pressed
-            // (2026-08-26). A bordered container plus a disclosure chevron is the
-            // platform's own vocabulary for "this opens a list", which is exactly
-            // what it does.
-            //
-            // The provenance moves INSIDE the container rather than under it: it
-            // describes the value, so leaving it outside made the control look
-            // like it ended at the name.
-            LivePreviewLanguageMenuButton(
-              name: language.name, provenance: language.provenance
-            ) {
-              showLanguageSheet = true
-            }
-            // **The provenance is IN the label, not just on screen.** An explicit
-            // `accessibilityLabel` REPLACES the child text announcement, so naming
-            // only `language.name` dropped the second line entirely for VoiceOver —
-            // and that line is the one carrying the Auto asymmetry, the distinction
-            // between a language the Mac chose and one the user picked. A sighted
-            // user reads both; a VoiceOver user heard one. Cloud review on PR #2440.
-            .accessibilityLabel(
-              "Change dictation language: \(language.name), \(language.provenance)")
+          .rowStatus {
+            ProviderStatusChip(status: EngineSummaryPresentation.previewStatus(status), isHeadline: true)
+          }
+          .rowSupplementaryControl(belowWidth: 502) {
+              if let language = bar.language {
+                // **It has to LOOK like a control, and two stacked Texts did not.**
+                // `.buttonStyle(.plain)` over a bare VStack renders as ordinary
+                // right-aligned copy — the founder read the most important control on
+                // the page as a status readout and did not know it could be pressed
+                // (2026-08-26). A bordered container plus a disclosure chevron is the
+                // platform's own vocabulary for "this opens a list", which is exactly
+                // what it does.
+                //
+                // The provenance moves INSIDE the container rather than under it: it
+                // describes the value, so leaving it outside made the control look
+                // like it ended at the name.
+                LivePreviewLanguageMenuButton(
+                  name: language.name, provenance: language.provenance
+                ) {
+                  showLanguageSheet = true
+                }
+                // **The provenance is IN the label, not just on screen.** An explicit
+                // `accessibilityLabel` REPLACES the child text announcement, so naming
+                // only `language.name` dropped the second line entirely for VoiceOver —
+                // and that line is the one carrying the Auto asymmetry, the distinction
+                // between a language the Mac chose and one the user picked. A sighted
+                // user reads both; a VoiceOver user heard one. Cloud review on PR #2440.
+                .accessibilityLabel(
+                  "Change dictation language: \(language.name), \(language.provenance)")
+                .help(String(localized: PreviewCopy.languageShort))
+              }
+
           }
 
-          // **The reason lives in the hero card now, and only there.**
-          // This row used to repeat `needsNewerMacOS` whenever neither engine
-          // could run — but that condition is an OR of two independent causes,
-          // so on macOS 14 with a defective build it told the user to upgrade
-          // macOS when upgrading would not have helped. The status card above
-          // states the SELECTED engine's own reason, which is specific by
-          // construction, and two places saying why is how they come to
-          // disagree.
-          //
-          // #2436: "the hero card" is now this same row's left half, so the rule
-          // is unchanged and its one-owner property is stronger — there is no
-          // longer a second container that could drift.
-          // **`.fixedSize()` is load-bearing, and its absence was a real defect.**
-          // `BrandedToggleStyle` lays out `HStack { label; Spacer(); track }` so that
-          // on an ORDINARY settings row the whole row is the hit target and the switch
-          // sits at its right edge. That is correct where a visible label owns the row.
-          //
-          // This row has no label — #2436 deleted it, because the page header above
-          // already says what the switch does. The style's `Spacer` then claimed every
-          // remaining point: Live UAT measured the checkbox at 738pt wide starting
-          // immediately after the language chip, so the empty middle of the status bar
-          // silently toggled Live Preview, and the chip rendered stranded a third of the
-          // way across instead of beside the switch as designed.
-          //
-          // Sizing to the ideal width collapses the style's internal `Spacer` and lets
-          // this row's own `Spacer(minLength: 12)` above do the pushing. Deliberately
-          // NOT a `.frame(width:)`: the track's size belongs to `BrandedToggleTrack`,
-          // and pinning a number here would be a second place to change it.
-          Toggle("", isOn: $settings.livePreviewEnabled)
-            .labelsHidden()
-            .toggleStyle(BrandedToggleStyle())
-            .fixedSize()
-            .disabled(!anyEngineAvailable)
-            // The visible label is gone; this is the only thing naming the switch
-            // for VoiceOver, which is why `toggleLabel` survives the copy cull.
-            .accessibilityLabel(LivePreviewSettingsCopy.toggleLabel)
+          // #3385 founder supersedes the always-visible detail hierarchy: Ready/Off
+          // stay compact; the full detail remains in help. Unhappy detail and remedies
+          // remain visible because the reason is what a returning user needs.
+          if EngineSummaryPresentation.showsDetail(status) {
+            Text(bar.detail).font(.stHelper).foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .padding(.leading, 37)
+          }
         }
       }
 
       // The bar's one remedy, and the only button on the page. Every other unhappy
       // state is repaired where the control already lives: the engine cards own
       // download, cancel, resume, retry and remove, and Faster Transcription is
-      // turned off on its own page.
+      // turned off on its own page. (#3385: the engine actions now sit in the
+      // preview-engine summary's status region, visible whether or not the cards
+      // are open.)
       if let action = bar.action {
         BrandedRow(showDivider: false) {
           HStack(spacing: 12) {
@@ -411,11 +478,11 @@ struct LivePreviewSettingsView: View {
           }
         }
       }
-
-    } footer: {
-      // Always visible: never gated on engine, toggle, Apple support or pack state.
-      Text(LivePreviewSettingsCopy.previewPrivacyFooter).settingsHelperCopy()
     }
+    // Always visible: never gated on engine, toggle, Apple support or pack state.
+    // (#3385: the footer moved. Its short form is the Live Preview heading's note,
+    // and the full sentence is the switch's "?" help above, still shown on every
+    // engine and every Mac.)
   }
 
   // MARK: - Engine picker
@@ -433,18 +500,27 @@ struct LivePreviewSettingsView: View {
   /// Both cards ALWAYS render, including one that cannot run here. Hiding the
   /// unavailable option reads as a bug — the user knows the app has two engines
   /// — and the card is where the reason lives.
+  ///
+  /// #3385: the two cards now open under a summary with Change, as on the
+  /// Engine tab. Every action and reason the cards' footers carried lives in the
+  /// summary's status region instead, so Download, Cancel, Resume, Try Again and
+  /// Remove stay reachable while the cards are closed, including when Apple is
+  /// the engine in use.
   private var engineSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(LivePreviewEngineCopy.sectionHeader.uppercased())
-          .font(.stSectionHeader)
-          .tracking(0.6)
-          .foregroundStyle(.stAccent)
-          .padding(.leading, 4)
-        Spacer(minLength: 12)
-        // The first link from a settings page to the Help Centre. The two
-        // engines differ in OS floor, language coverage and download size, and
-        // a card cannot carry that comparison without becoming the article.
+    let apple = LivePreviewEnginePresentation.appleCard(
+      isSelected: settings.livePreviewEngine == .apple,
+      isSupported: isAppleSupported)
+    let universal = LivePreviewEnginePresentation.universalCard(
+      isSelected: settings.livePreviewEngine == .universal,
+      routeExists: universalExists,
+      state: universalState)
+    let selected = isUsingApple ? apple : universal
+
+    return VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
+      // The first link from a settings page to the Help Centre. The two
+      // engines differ in OS floor, language coverage and download size, and
+      // a card cannot carry that comparison without becoming the article.
+      SettingsSectionHeading(resolvedTitle: LivePreviewEngineCopy.sectionHeader.uppercased()) {
         Link(destination: URL(string: LivePreviewEngineCopy.learnMoreURL)!) {
           HStack(spacing: 4) {
             Text(LivePreviewEngineCopy.learnMoreLabel)
@@ -455,38 +531,125 @@ struct LivePreviewSettingsView: View {
         .foregroundStyle(.stAccent)
       }
 
-      // **`GridItem` defaults to `.center`, which is why the two cards did not
-      // line up.** Measured on the live page: Apple 101.5pt tall starting at
-      // y=341, Universal 82.5pt starting at y=330.5 — two cards presented as
-      // equal choices, disagreeing on both edges, which reads as unfinished and
-      // makes the taller one look more important (Codex UX review, 2026-08-26).
-      //
-      // Two changes, because one alone is not enough: `alignment: .top` settles
-      // the top edge, and `maxHeight: .infinity` on the cards below makes them
-      // fill the row so the bottoms agree too. The heights differ legitimately —
-      // Apple's tagline runs to two lines and Universal carries a footer button —
-      // so equalising is the fix rather than trimming copy to match.
-      LazyVGrid(
-        columns: [
-          GridItem(.flexible(), spacing: 12, alignment: .top),
-          GridItem(.flexible(), spacing: 12, alignment: .top),
-        ],
-        spacing: 12
-      ) {
-        engineCard(
-          LivePreviewEnginePresentation.appleCard(
-            isSelected: settings.livePreviewEngine == .apple,
-            isSupported: isAppleSupported),
-          icon: "apple.logo",
-          choice: .apple)
-        engineCard(
-          LivePreviewEnginePresentation.universalCard(
-            isSelected: settings.livePreviewEngine == .universal,
-            routeExists: universalExists,
-            state: universalState),
-          icon: "globe",
-          choice: .universal)
+      HStack(spacing: 6) {
+        Text(PreviewCopy.engineShort)
+          .font(.stRowHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        SettingsInfoButton(
+          rowTitle: LivePreviewEngineCopy.sectionHeader,
+          tooltip: String(localized: PreviewCopy.engineHelp)
+        ) {
+          SettingsHelpText(text: String(localized: PreviewCopy.engineHelp))
+        }
       }
+      .padding(.leading, 4)
+
+      SettingsSummaryCard(
+        isExpanded: $showPreviewEngineChoices,
+        changeAccessibilityLabel: PreviewCopy.changeEngine,
+        keepCurrentTitle: PreviewCopy.keepCurrent
+      ) {
+        engineSummary(selected)
+      } status: {
+        engineStatus(selected: selected, universal: universal)
+      } choices: {
+        engineChoices(apple: apple, universal: universal)
+      }
+      // An engine change made elsewhere leaves the summary describing the new
+      // engine; close choices it made obsolete.
+      .onChange(of: settings.livePreviewEngine) { _, _ in
+        showPreviewEngineChoices = false
+      }
+    }
+  }
+
+  private func engineSummary(_ card: LivePreviewEnginePresentation.Card) -> some View {
+    EngineSummaryContent(icon: isUsingApple ? "apple.logo" : "globe", name: card.title,
+      short: String(localized: isUsingApple ? PreviewCopy.appleSummary : PreviewCopy.universalSummary),
+      status: engineReadiness.kind == .active ? EngineSummaryPresentation.previewStatus(engineReadiness) : nil)
+  }
+
+  /// Reasons and actions, outside the disclosure. The selected engine's own
+  /// reason first; then the Universal engine's state and its one action,
+  /// whichever engine is in use, named so it is clear which engine they are for.
+  @ViewBuilder
+  private func engineStatus(
+    selected: LivePreviewEnginePresentation.Card,
+    universal: LivePreviewEnginePresentation.Card
+  ) -> some View {
+    if isUsingApple, let reason = selected.unavailability {
+      Text(reason)
+        .font(.stHelper)
+        .foregroundStyle(.stWarning)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.leading, 4)
+    }
+    if universal.unavailability != nil || universal.action != nil || universal.progress != nil {
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 11) {
+              SettingsRowIcon(systemName: "globe")
+              VStack(alignment: .leading, spacing: 2) {
+                Text(universal.title).settingsRowLabel()
+                if let reason = universal.unavailability {
+                  Text(reason).font(.stHelper).foregroundStyle(.stTextSecondary).fixedSize(horizontal: false, vertical: true)
+                }
+              }
+              Spacer(minLength: 8)
+              if let action = universal.action {
+                // **Same intent as before, on a control that renders it.** Kept
+                // verbatim, because the reason still holds:
+                //
+                // > Removal is bordered, everything else prominent: the destructive
+                // > action should not be the most inviting thing on the card.
+                //
+                // What changed is the mechanism. `.bordered` rendered `Remove` as a
+                // flat grey capsule indistinguishable from this app's disabled
+                // treatment, so "quieter than the primary" became "looks broken"
+                // (Codex UX review, 2026-08-26) — the same defect already measured
+                // on Download and Browse. Outlined is the quiet-but-alive rung, and
+                // it has a hover state, which the flat one did not.
+                SettingsActionButton(
+                  verbatimTitle: Self.label(for: action),
+                  isEnabled: true,
+                  emphasis: action == .remove ? .quiet : .filled, shape: .roundedRect, size: .medium
+                ) {
+                  perform(action)
+                }
+              }
+            }
+            if let progress = universal.progress {
+              ProgressView(value: progress)
+                .padding(.leading, 37)
+            }
+          }
+    }
+  }
+
+  private func engineChoices(
+    apple: LivePreviewEnginePresentation.Card,
+    universal: LivePreviewEnginePresentation.Card
+  ) -> some View {
+    // **`GridItem` defaults to `.center`, which is why the two cards did not
+    // line up.** Measured on the live page: Apple 101.5pt tall starting at
+    // y=341, Universal 82.5pt starting at y=330.5 — two cards presented as
+    // equal choices, disagreeing on both edges, which reads as unfinished and
+    // makes the taller one look more important (Codex UX review, 2026-08-26).
+    //
+    // Two changes, because one alone is not enough: `alignment: .top` settles
+    // the top edge, and `maxHeight: .infinity` on the cards below makes them
+    // fill the row so the bottoms agree too. The heights differ legitimately —
+    // Apple's tagline runs to two lines and Universal carries a footer button —
+    // so equalising is the fix rather than trimming copy to match.
+    LazyVGrid(
+      columns: [
+        GridItem(.flexible(), spacing: 12, alignment: .top),
+        GridItem(.flexible(), spacing: 12, alignment: .top),
+      ],
+      spacing: 12
+    ) {
+      engineCard(apple, icon: "apple.logo", choice: .apple)
+      engineCard(universal, icon: "globe", choice: .universal)
     }
   }
 
@@ -499,7 +662,10 @@ struct LivePreviewSettingsView: View {
   /// a sibling of `EngineCard`'s selection button rather than a child, because
   /// that button combines its accessibility children and anything actionable
   /// inside it would be merged into the same element.
-  @ViewBuilder
+  ///
+  /// #3385: the footer moved to the summary's status region (`engineStatus`), so
+  /// the actions are reachable with the cards closed and are drawn once; the
+  /// separation above still holds there, a sibling of the selection, never a child.
   private func engineCard(
     _ card: LivePreviewEnginePresentation.Card,
     icon: String,
@@ -511,40 +677,13 @@ struct LivePreviewSettingsView: View {
       tagline: card.description,
       unavailability: card.unavailability,
       isSelected: card.isSelected,
-      onSelect: { settings.livePreviewEngine = choice },
+      onSelect: {
+        settings.livePreviewEngine = choice
+        // Picking, including the engine already chosen, closes the cards.
+        showPreviewEngineChoices = false
+      },
       fillsHeight: true,
-      footer: {
-        if card.action != nil || card.progress != nil {
-          VStack(alignment: .leading, spacing: 8) {
-            if let progress = card.progress {
-              ProgressView(value: progress)
-            }
-            if let action = card.action {
-              // **Same intent as before, on a control that renders it.** Kept
-              // verbatim, because the reason still holds:
-              //
-              // > Removal is bordered, everything else prominent: the destructive
-              // > action should not be the most inviting thing on the card.
-              //
-              // What changed is the mechanism. `.bordered` rendered `Remove` as a
-              // flat grey capsule indistinguishable from this app's disabled
-              // treatment, so "quieter than the primary" became "looks broken"
-              // (Codex UX review, 2026-08-26) — the same defect already measured
-              // on Download and Browse. Outlined is the quiet-but-alive rung, and
-              // it has a hover state, which the flat one did not.
-              SettingsActionButton(
-                verbatimTitle: Self.label(for: action),
-                isEnabled: true,
-                emphasis: action == .remove ? .outlined : .filled
-              ) {
-                perform(action)
-              }
-            }
-          }
-          .padding(.horizontal, 16)
-          .padding(.bottom, 16)
-        }
-      })
+      footer: { EmptyView() })
   }
 
   private static func label(for action: LivePreviewEnginePresentation.Action) -> String {
@@ -674,7 +813,17 @@ struct LivePreviewSettingsView: View {
   @ViewBuilder
   private var packsSection: some View {
     if showsApplePacks {
-      BrandedSection(verbatimHeader: LivePreviewSettingsCopy.packsHeader) {
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
+      SettingsSectionHeading(resolvedTitle: LivePreviewSettingsCopy.packsHeader.uppercased()) {
+        // #3385 B14 supersedes the 2026-08-26 count removal: a quiet heading
+        // note only from the currently loaded inventory, never a 7/54 guess.
+        if case .loaded(let inventory) = packs.state {
+          Text(EngineSummaryCopy.installedPacks(installed: inventory.filter(\.isInstalled).count, total: inventory.count))
+            .font(.stHelper).foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      BrandedSection {
         // **The ROW is the button, not a card containing one** (founder,
         // 2026-08-26). Everything here did one thing: the title named the action,
         // the paragraph explained it, and a separate `Browse` performed it — so
@@ -689,20 +838,42 @@ struct LivePreviewSettingsView: View {
         // re-reads the inventory when it opens, so pressing a row that says "could
         // not read the language list" is exactly the retry a user wants. A
         // disabled row there would be a dead end wearing a reason.
-        LivePreviewInstallRow(
-          title: {
-            switch packs.state {
-            case .loading: return LivePreviewSettingsCopy.packsLoading
-            case .failed: return LivePreviewSettingsCopy.packsUnavailable
-            case .loaded: return LivePreviewSettingsCopy.packsInstallRowTitle
-            }
-          }(),
-          detail: LivePreviewSettingsCopy.packsDescription
-        ) {
-          catalogRequest = CatalogRequest(search: "")
+        //
+        // #3385: the shared row's action variant. The row (icon, name, short
+        // line, chevron) is the button; its "?" is a separate sibling control.
+        // Carried from the deleted `LivePreviewInstallRow`: **a row whose title is
+        // a verb should be pressable.** This replaced a card that contained a
+        // `Browse` button: the title said "Install new languages", the body
+        // explained downloads, and a small button at the far right did the only
+        // thing available. That is two names for one job, and the smallest part of
+        // the row was the only part that worked. The whole row is the target
+        // (`swift-patterns.md` RULE: plain-button-content-shape, in `SettingsRow`).
+        BrandedRow(showDivider: false) {
+          SettingsRow(
+            icon: "arrow.down.circle",
+            resolvedTitle: {
+              switch packs.state {
+              case .loading: return LivePreviewSettingsCopy.packsLoading
+              case .failed: return LivePreviewSettingsCopy.packsUnavailable
+              case .loaded: return LivePreviewSettingsCopy.packsInstallRowTitle
+              }
+            }(),
+            resolvedShort: String(localized: PreviewCopy.installShort),
+            resolvedHelp: LivePreviewSettingsCopy.packsDescription,
+            primaryAction: { catalogRequest = CatalogRequest(search: "") }
+          ) {
+            // The chevron replaces the button rather than joining it. A trailing
+            // disclosure is the platform's own "this opens something" mark, and it
+            // does not need a word that would then have to agree with the title.
+            Image(systemName: "chevron.right")
+              .font(.system(size: 12, weight: .semibold))
+              .foregroundStyle(Color.stTextTertiary)
+              .accessibilityHidden(true)
+          }
         }
       }
     }
+      }
   }
 
 
@@ -740,7 +911,7 @@ struct LivePreviewLanguageMenuButton: View {
       HStack(spacing: 10) {
         VStack(alignment: .leading, spacing: 1) {
           Text(name)
-            .font(.system(size: 13, weight: .semibold))
+            .font(.stRowLabel)
             .foregroundStyle(Color.stTextPrimary)
             .lineLimit(1)
           Text(provenance)
@@ -761,71 +932,12 @@ struct LivePreviewLanguageMenuButton: View {
       .overlay(
         RoundedRectangle(cornerRadius: 8, style: .continuous)
           .strokeBorder(hovering ? Color.stAccent : Color.stDivider, lineWidth: 1)
+          .allowsHitTesting(false)
       )
       .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)
     .onHover { pointerInside = $0 }
     .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
-  }
-}
-
-// MARK: - Languages row
-
-/// The whole Languages row, as one control.
-///
-/// **A row whose title is a verb should be pressable.** This replaced a card that
-/// contained a `Browse` button: the title said "Install new languages", the body
-/// explained downloads, and a small button at the far right did the only thing
-/// available. That is two names for one job, and the smallest part of the row was
-/// the only part that worked.
-///
-/// The chevron replaces the button rather than joining it. A trailing disclosure
-/// is the platform's own "this opens something" mark, and it does not need a word
-/// that would then have to agree with the title.
-struct LivePreviewInstallRow: View {
-  let title: String
-  let detail: String
-  let action: () -> Void
-
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  /// See `SettingsHover.respondsToPointer`.
-  @Environment(\.isEnabled) private var environmentEnabled
-  @State private var pointerInside = false
-
-  /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
-  private var hovering: Bool {
-    SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
-  }
-
-  var body: some View {
-    Button(action: action) {
-      HStack(alignment: .top, spacing: 11) {
-        SettingsRowIcon(systemName: "arrow.down.circle")
-        VStack(alignment: .leading, spacing: 4) {
-          Text(title).settingsRowLabel()
-          Text(detail).settingsHelperCopy()
-        }
-        Spacer(minLength: 8)
-        Image(systemName: "chevron.right")
-          .font(.system(size: 12, weight: .semibold))
-          .foregroundStyle(hovering ? Color.stAccent : Color.stTextTertiary)
-      }
-      .padding(.horizontal, 14)
-      .padding(.vertical, 12)
-      // The whole row, so the target is the row rather than the chevron. Without
-      // this the hit area is the rendered content and the gaps between the icon,
-      // the text and the chevron are dead (`swift-patterns.md`
-      // RULE: plain-button-content-shape).
-      .contentShape(Rectangle())
-      .background(hovering ? Color.stAccent.opacity(0.06) : Color.clear)
-    }
-    .buttonStyle(.plain)
-    .onHover { pointerInside = $0 }
-    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
-    .accessibilityElement(children: .combine)
-    .accessibilityAddTraits(.isButton)
-    .accessibilityLabel(title)
-    .accessibilityHint(detail)
   }
 }

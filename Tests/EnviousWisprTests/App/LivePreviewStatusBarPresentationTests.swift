@@ -225,7 +225,7 @@ struct LivePreviewStatusBarPresentationTests {
     let auto = bar(
       .unsupportedLanguage, engine: .apple, appleActive: .unsupportedLanguage,
       languageMode: .auto)
-    #expect(auto.language?.provenance == LivePreviewSettingsCopy.languageProvenanceFromMac)
+    #expect(auto.language?.provenance == "Auto · from your Mac")
     #expect(auto.language?.provenance != LivePreviewSettingsCopy.languageProvenanceDetected)
   }
 
@@ -272,7 +272,7 @@ struct LivePreviewStatusBarPresentationTests {
     // every honest correction while catching none of the wrong ones.
     let auto = bar(.active, engine: .universal, appleActive: nil, languageMode: .auto)
     #expect(auto.language?.name == LivePreviewSettingsCopy.languageAnyLanguage)
-    #expect(auto.language?.provenance == LivePreviewSettingsCopy.languageProvenanceDetected)
+    #expect(auto.language?.provenance == "Auto · no language pinned")
 
     let locked = bar(
       .active, engine: .universal, appleActive: nil, languageMode: .locked("de"))
@@ -305,9 +305,7 @@ struct LivePreviewStatusBarPresentationTests {
 
     // And one literal, so the pair cannot drift together into wording that
     // distinguishes nothing a reader would notice.
-    #expect(auto == "from your Mac")
-
-    #expect(auto == LivePreviewSettingsCopy.languageProvenanceFromMac)
+    #expect(auto == "Auto · from your Mac")
     #expect(locked == LivePreviewSettingsCopy.languageProvenanceUserPicked)
   }
 

@@ -5,42 +5,42 @@ import Testing
 /// Issue #765 (PR2 of epic #763) — pins the `NavigationCoordinator` contract
 /// that was extracted from the former root state.
 @MainActor
-@Suite("NavigationCoordinator — pending settings tab handoff")
+@Suite("NavigationCoordinator — pending settings tab handoff", .tags(.productOutcome))
 struct NavigationCoordinatorTests {
 
-  @Test("initial pending section is nil")
-  func initialPendingSectionIsNil() {
+  @Test("initial pending destination is nil")
+  func initialPendingDestinationIsNil() {
     let coordinator = NavigationCoordinator()
-    #expect(coordinator.pendingSection == nil)
+    #expect(coordinator.pendingDestination == nil)
   }
 
-  @Test("request sets pending section")
-  func requestSetsPendingSection() {
+  @Test("request sets pending destination")
+  func requestSetsPendingDestination() {
     let coordinator = NavigationCoordinator()
     coordinator.request(.permissions)
-    #expect(coordinator.pendingSection == .permissions)
+    #expect(coordinator.pendingDestination == .permissions)
   }
 
-  @Test("consume clears pending section")
+  @Test("consume clears pending destination")
   func consumeClearsPending() {
     let coordinator = NavigationCoordinator()
-    coordinator.request(.speechEngine)
+    coordinator.request(.dictation(.engine))
     coordinator.consume()
-    #expect(coordinator.pendingSection == nil)
+    #expect(coordinator.pendingDestination == nil)
   }
 
   @Test("request replaces a prior unconsumed value")
   func requestReplacesPriorUnconsumed() {
     let coordinator = NavigationCoordinator()
-    coordinator.request(.speechEngine)
+    coordinator.request(.dictation(.engine))
     coordinator.request(.permissions)
-    #expect(coordinator.pendingSection == .permissions)
+    #expect(coordinator.pendingDestination == .permissions)
   }
 
   @Test("consume when nil is a no-op")
   func consumeWhenNilIsNoop() {
     let coordinator = NavigationCoordinator()
     coordinator.consume()
-    #expect(coordinator.pendingSection == nil)
+    #expect(coordinator.pendingDestination == nil)
   }
 }

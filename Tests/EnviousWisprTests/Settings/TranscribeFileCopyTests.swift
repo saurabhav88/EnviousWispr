@@ -11,6 +11,32 @@ import Testing
 @Suite("Transcribe a File copy", .tags(.productOutcome))
 struct TranscribeFileCopyTests {
 
+  /// #3385 changes only the missing-engine route. Every other refusal keeps its
+  /// existing sentence, so a Settings move cannot rewrite an unrelated outcome.
+  @Test("File refusals keep their sentences and name the current engine route")
+  @MainActor
+  func refusalSentences() {
+    let rows: [(FileImportCoordinator.FileImportRejection, String)] = [
+      (.cannotRead, "That file couldn't be opened. Try a different one."),
+      (.noAudio, "There's no sound in that file."),
+      (.noSpeechFound, "No speech was found in that file."),
+      (.engineBusy(.dictation), "A dictation is running. Try again when it finishes."),
+      (.engineBusy(.crashRecovery), "Finishing an earlier take. Try again in a moment."),
+      (.engineNotInstalled,
+       "That transcription engine isn't downloaded yet. Get it under Settings > Dictation Settings > Engine."),
+      (.engineNotReady, "The transcription engine didn't start. Try again."),
+      (.polisherNotReady,
+       "The cleanup engine didn't start. Your words are here. Clean it again to retry."),
+      (.engineBusy(.fileImport), "Another file is being transcribed right now."),
+      (.engineBusy(.abandonedDecode),
+       "The last dictation is still transcribing. Restart the app, then try again."),
+      (.failed("internal detail"), "Something went wrong reading that file. Try a different one."),
+    ]
+    for (reason, expected) in rows {
+      #expect(TranscribeFileView.sentence(for: reason) == expected, "refusal: \(reason)")
+    }
+  }
+
   /// The old phrase: rounded minutes, "under a minute" below 30 s.
   private static func oldPhrase(_ seconds: Double) -> String {
     let minutes = Int((seconds / 60).rounded())

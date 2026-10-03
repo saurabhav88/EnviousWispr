@@ -30,8 +30,10 @@ enum LivePreviewSettingsCopy {
     localized: "Live Preview",
     comment: "Live Preview settings: section header.")
 
+  /// #3385: the visible name of the switch again (the Live Preview tab has no
+  /// page header to say what it does), worded as the founder's design has it.
   static let toggleLabel = String(
-    localized: "Show words while I speak",
+    localized: "Show words while you speak",
     comment: "Live Preview settings: toggle label.")
 
   // MARK: - Language packs (#2080)

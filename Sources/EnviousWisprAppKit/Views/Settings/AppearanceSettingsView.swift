@@ -13,7 +13,8 @@ import SwiftUI
 /// **The cards are a ROW rather than a column, and carry no description (#2435,
 /// founder).** They cost 191 points of height each and the page below them is now
 /// three pill pictures; laid out horizontally they cost 90. The picture is the
-/// explanation for Light and Dark.
+/// explanation for Light and Dark. (#3385 moved the pill pictures and Pill
+/// Position to Dictation Settings > Recording Pill; the row layout stays.)
 ///
 /// **What that trades away, so nobody restores it by accident: the `System`
 /// card's split thumbnail cannot say that it FOLLOWS the Mac.** Keeping a short
@@ -72,37 +73,6 @@ struct AppearanceSettingsView: View {
           }
         }
       }
-
-      // #1341: where the recording pill and status notices open on screen.
-      // #2435: the description went with the picker's. The two segments say
-      // "Top" and "Bottom" and the panel is called Pill Position, so a sentence
-      // repeating that is text for its own sake, and the pill panel below carries
-      // the one next-recording note the page needs.
-      BrandedPanel(
-        icon: "rectangle.portrait.and.arrow.right",
-        header: "Pill Position"
-      ) {
-        BrandedSegmentedPicker(
-          options: [
-            (
-              String(
-                localized: "Top",
-                comment: "Appearance settings, pill position: the top of the screen."),
-              "arrow.up.to.line", OverlayPillPosition.top
-            ),
-            (
-              String(
-                localized: "Bottom",
-                comment: "Appearance settings, pill position: the bottom of the screen."),
-              "arrow.down.to.line", OverlayPillPosition.bottom
-            ),
-          ],
-          selection: $settings.overlayPillPosition
-        )
-      }
-
-      // #2376: which pill is drawn while dictating, per capability group.
-      RecordingPillAppearancePanel()
 
       // #2480: the Dock icon. The menu bar icon has no switch (founder, 2026-09-24),
       // so the helper says it always stays: turning this off can never leave the

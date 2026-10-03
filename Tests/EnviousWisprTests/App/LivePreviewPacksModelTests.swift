@@ -13,6 +13,7 @@ import Testing
 /// await, in one guarded step. These tests assert that the window is CLOSED, which is a stronger
 /// and more stable claim than asserting a particular interleaving was survived.
 @MainActor
+@Suite(.tags(.productOutcome))
 struct LivePreviewPacksModelTests {
 
   /// A claim owner over a fake inventory. Required now that `ApplePackCatalog` has no `.shared`
@@ -559,9 +560,29 @@ struct LivePreviewPacksModelTests {
     #expect(
       ownerSource.contains("@State private var livePreviewPacks"),
       "the retained window must own the model")
+    // #3385: Live Preview is a tab of Dictation Settings now, so the window's instance travels
+    // through the tab host. Both hops pass it on; neither builds or owns one.
     #expect(
-      ownerSource.contains("LivePreviewSettingsView(packs: livePreviewPacks)"),
+      ownerSource.contains(
+        "DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)"),
       "and pass that same instance in, not build a new one per appearance")
+    let host = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprAppKit/Views/Settings/DictationSettingsView.swift")
+    let hostSource = LivePreviewNoAutoDownloadTests.codeOnly(
+      try String(contentsOf: host, encoding: .utf8))
+    #expect(
+      hostSource.contains("let packs: LivePreviewPacksModel"),
+      "the tab host takes the model in as a plain let")
+    #expect(
+      hostSource.split(separator: "\n").contains { $0.contains("@State") && $0.contains("packs") }
+        == false,
+      "the tab host must not own the model either")
+    #expect(
+      hostSource.contains("LivePreviewSettingsView(packs: packs)"),
+      "the tab host hands the page the instance it was given")
+    #expect(
+      hostSource.contains("LivePreviewPacksModel(") == false,
+      "the tab host never builds a model of its own")
   }
 
   /// Closing the page must NOT make a running download look finished.

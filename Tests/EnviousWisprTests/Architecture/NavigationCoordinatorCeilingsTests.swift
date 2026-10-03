@@ -7,11 +7,11 @@ import Testing
 /// backfills the cap to lock the current shape.
 ///
 /// Caps:
-/// - 0 stored collaborators (the one stored property is `var pendingSection: SettingsSection?` — primitive optional)
+/// - 0 stored collaborators (the one stored property is `var pendingDestination: SettingsDestination?` — a value-type optional, #3385)
 /// - 2 non-private methods (`request`, `consume`)
 /// - ≤20 lines
 /// - imports ⊆ {Observation}
-@Suite struct NavigationCoordinatorCeilingsTests {
+@Suite(.tags(.driftGuard)) struct NavigationCoordinatorCeilingsTests {
   private static let sourcePath = "Sources/EnviousWisprAppKit/App/NavigationCoordinator.swift"
 
   @Test func storedCollaboratorCeiling() throws {
@@ -23,7 +23,7 @@ import Testing
       total == 0,
       """
       NavigationCoordinator stored-collaborator ceiling exceeded: \(total) > 0. \
-      The home owns only the primitive `pendingSection: SettingsSection?` signal. \
+      The home owns only the value-type `pendingDestination: SettingsDestination?` signal. \
       Raising this cap requires a Bible §30 changelog entry.
       """)
   }

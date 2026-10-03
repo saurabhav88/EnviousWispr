@@ -38,16 +38,34 @@ import SwiftUI
 /// the disabled control onto another card, on the recorded grounds that two
 /// places saying why is how they come to disagree. One line for one row keeps
 /// that property with no group to hang it on.
+///
+/// **#3385 (Recording Pill tab) supersedes the picture-only card, keeping its
+/// protections.** The approved design gives each card its visible name and one
+/// short line under the picture, and puts the row under a "Style" title with
+/// its own "?". The paragraphs above still hold for what they protect: the
+/// pictures are the real pill, the screen reader still hears the name AND the
+/// full summary, offerability still comes from `PillCatalog`, and the reason is
+/// still one line under the row.
 struct RecordingPillAppearancePanel: View {
 
   @Environment(PillAppearanceModel.self) private var model
   @Environment(\.settingsNavigate) private var navigate
 
   var body: some View {
-    BrandedPanel(
-      icon: "waveform.badge.mic",
-      header: "Recording Pill"
-    ) {
+    // #3385: the panel's "Recording Pill" header is now the tab's section
+    // heading (`PillSettingsView`); this is the Style row inside that section.
+    VStack(alignment: .leading, spacing: 12) {
+      // The help never sits inside a card's Button: the explanation is on the
+      // row, and the cards below are only choices.
+      SettingsRow(
+        icon: "waveform.badge.mic",
+        title: DictationSettingsCopy.Pill.styleTitle,
+        short: DictationSettingsCopy.Pill.styleShort,
+        help: DictationSettingsCopy.Pill.styleHelp
+      ) {
+        EmptyView()
+      }
+
       VStack(alignment: .leading, spacing: 10) {
         // **ONE row of identical cards, no with-words / without-words split**
         // (founder, 2026-08-26, on seeing the split rendered). The two groups
@@ -61,11 +79,14 @@ struct RecordingPillAppearancePanel: View {
         // read as the same kind of control. A shared literal would be a second
         // authority for one number, so if these ever need to move together the
         // fix is a named constant on `SettingsLayout`, not a copy here.
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 270, maximum: .infinity), spacing: 12)],
-          alignment: .leading,
-          spacing: 12
-        ) {
+        // (#3385: the theme cards stayed on Appearance and these moved to the
+        // Recording Pill tab, so "above" is now another page; the metric is kept
+        // because 270 is what lets a card hold a readable picture, name and line
+        // before the grid reflows to fewer columns.)
+        // #3385 lane D supersedes the 270pt reflow above: the approved comparison
+        // keeps all three pictures together, with full wrapping captions and a
+        // naturally measured equal height instead of a minimum-width card.
+        RecordingPillGrid {
           ForEach(Self.displayOrder, id: \.self) { design in
             RecordingPillPreviewTile(
               design: design,
@@ -93,12 +114,17 @@ struct RecordingPillAppearancePanel: View {
         // because it is answering a question nobody else has asked.
         if Self.selected(in: model).canHoldWords {
           Button {
-            navigate(.livePreview)
+            navigate(.dictation(.livePreview))
           } label: {
+            // The hover padding sits INSIDE the label and carries the hit shape, so the
+            // painted hover area is also the clickable area.
             Text("Configure Live Preview")
+              .foregroundStyle(Color.stAccent)
+              .settingsHoverQuiet()
+              .contentShape(Rectangle())
           }
-          .buttonStyle(.link)
-          .accessibilityHint("Opens the Live Preview settings page")
+          .buttonStyle(.plain)
+          .accessibilityHint("Opens Dictation Settings, Live Preview.")
         }
       }
     }
@@ -167,12 +193,35 @@ struct RecordingPillAppearancePanel: View {
       return String(
         localized: "Your engine cannot show words on this Mac.",
         comment:
-          "Appearance settings, recording pill picker: why the word-showing pill designs are unavailable."
+          "Recording Pill settings, style picker: why the word-showing pill designs are unavailable."
       )
     case .modelBeingRemoved:
       return String(
         localized: "Unavailable while a removed model finishes clearing.",
-        comment: "Appearance settings, recording pill picker: why a design is briefly unavailable.")
+        comment: "Recording Pill settings, style picker: why a design is briefly unavailable.")
+    }
+  }
+}
+
+/// The three choices share one comparison row. Each caption measures at its actual
+/// column width; the tallest natural card sets the row height, never a fixed line count.
+struct RecordingPillGrid: Layout {
+  static let spacing: CGFloat = 12
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let width = proposal.width ?? 900
+    let count = max(1, subviews.count)
+    let cardWidth = max(0, (width - Self.spacing * CGFloat(count - 1)) / CGFloat(count))
+    let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: cardWidth, height: nil)).height }.max() ?? 0
+    return CGSize(width: width, height: height)
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let count = max(1, subviews.count)
+    let cardWidth = max(0, (bounds.width - Self.spacing * CGFloat(count - 1)) / CGFloat(count))
+    for (index, subview) in subviews.enumerated() {
+      subview.place(at: CGPoint(x: bounds.minX + CGFloat(index) * (cardWidth + Self.spacing), y: bounds.minY),
+        anchor: .topLeading, proposal: ProposedViewSize(width: cardWidth, height: bounds.height))
     }
   }
 }
@@ -205,11 +254,15 @@ struct RecordingPillPreviewTile: View {
   ///
   /// The cost is a longer announcement on every focus, which is accepted: the
   /// summaries are one short sentence each, which bounds it.
+  ///
+  /// #3385: the card now shows the name and a SHORT line, and the label keeps the
+  /// name and the FULL summary unchanged. The visible line is a glance; the label
+  /// is still the equivalent text alternative, so it is not shortened to match.
   static func accessibilityLabel(for design: RecordingPillDesign) -> String {
     String(
       localized: "\(design.displayName). \(design.summary)",
       comment:
-        "Appearance settings, recording pill picker, VoiceOver: a design card. The first %@ is the design's name, the second one sentence about it."
+        "Recording Pill settings, style picker, VoiceOver: a design card. The first %@ is the design's name, the second one sentence about it."
     )
   }
 
@@ -238,6 +291,12 @@ struct RecordingPillPreviewTile: View {
   /// remaining width on an icon and a name, and this card has neither, so the
   /// picture takes that room instead. Same rectangle, more of it given to the
   /// preview.
+  ///
+  /// #3385 supersedes the exact theme-card size: the approved card adds the name
+  /// and a short line under the picture, so the CARD is taller than a theme card.
+  /// The 63pt picture box is unchanged, because `maxMagnification` is the
+  /// capsule's height budget inside exactly this box; every card is still one
+  /// size at a given width (`caption` reserves the tallest design's text).
   static let thumbnailSize = CGSize(width: 300, height: 63)
 
   /// **Each design fills the box on its OWN scale** (founder, 2026-08-26).
@@ -338,7 +397,7 @@ struct RecordingPillPreviewTile: View {
         String(
           localized: "the quarterly numbers came in",
           comment:
-            "Appearance settings, recording pill picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence."
+            "Recording Pill settings, style picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence."
         ))
       : .off
   }
@@ -379,9 +438,45 @@ struct RecordingPillPreviewTile: View {
     0.64, 0.47, 0.29, 0.16, 0.10, 0.21, 0.35, CGFloat(sampleLevel),
   ]
 
+  /// The card's visible name and short line (#3385).
+  ///
+  /// **Every design's caption is laid out, hidden, under this one**, so the text
+  /// area is the TALLEST design's at the width the card is given. Equal cards at
+  /// any width and in any language, with no line count or height fixed here: a
+  /// German line that wraps once more grows every card in the row together.
+  /// Hidden copies are not drawn and not announced; the card's label is set
+  /// explicitly below.
+  private var caption: some View {
+    ZStack(alignment: .topLeading) {
+      ForEach(RecordingPillDesign.allCases, id: \.self) { other in
+        Self.captionText(for: other, highlighted: false).hidden()
+      }
+      Self.captionText(for: design, highlighted: isSelected && isEnabled)
+    }
+  }
+
+  /// Name at 14pt row label, line at 14pt helper in the readable secondary colour.
+  /// Both wrap; nothing truncates a translation.
+  static func captionText(for design: RecordingPillDesign, highlighted: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(design.displayName)
+        .font(.stRowLabel)
+        .foregroundStyle(highlighted ? Color.stAccent : Color.stTextPrimary)
+        // The tick's name-only slot is reserved even when it is not drawn.
+        .padding(.trailing, 26)
+      Text(DictationSettingsCopy.Pill.shortDescription(for: design))
+        .font(.stRowHelper)
+        .foregroundStyle(Color.stTextSecondary)
+    }
+    .fixedSize(horizontal: false, vertical: true)
+  }
+
   var body: some View {
     Button(action: onSelect) {
-      HStack(spacing: 12) {
+      // #3385: the picture on top, the name and short line under it. The tick
+      // moved to the text line, so the picture's width no longer depends on
+      // selection at all.
+      VStack(alignment: .leading, spacing: 10) {
         // **No spacers around the picture.** They were added to centre a fixed-width
         // preview inside a much wider card; now that the preview TAKES the card's
         // width they only compete with it for that width, and the picture ends up
@@ -415,7 +510,7 @@ struct RecordingPillPreviewTile: View {
         .frame(height: Self.thumbnailSize.height)
         // The scaled draw can exceed the reserved box by a hair on a design whose
         // natural height is unusually tall; clip rather than let it paint over the
-        // tick beside it.
+        // tick beside it. (#3385: over the caption under it, now.)
         .clipped()
 
         // **NO VISIBLE NAME** (founder, 2026-08-26): "people know what it is
@@ -432,6 +527,14 @@ struct RecordingPillPreviewTile: View {
         // Checked before removing: no help article, blog post or website page
         // refers to a design by name, so nothing in the documentation now points
         // at a label the user cannot find.
+        //
+        // #3385 supersedes NO VISIBLE NAME: the approved Recording Pill tab shows
+        // each design's name and a short line under its picture (founder, Gate 2,
+        // 2026-10-02). The label above is still the full name and summary, so a
+        // VoiceOver user still gets everything a sighted one does.
+        // #3385 lane D supersedes the caption-line slot below: the tick gets
+        // its own reserved row, so names and captions use the full card width.
+        // Its row exists selected or not, and never changes the picture's box.
         // **The tick's slot is reserved whether or not it is shown, and that is a
         // correctness requirement rather than tidiness.** The preview's scale is
         // computed from the width its `GeometryReader` is handed, so a tick that
@@ -443,14 +546,24 @@ struct RecordingPillPreviewTile: View {
         //
         // An empty frame rather than an overlay, so the picture is never drawn
         // underneath the tick.
-        ZStack {
-          if isSelected {
-            Image(systemName: "checkmark.circle.fill")
-              .font(.system(size: 18, weight: .semibold))
-              .foregroundStyle(Color.white, isEnabled ? Color.stAccent : Color.stTextSecondary)
+        //
+        // #3385: the tick now sits on the caption line, not beside the picture,
+        // so the picture's width cannot move on selection at all; the reserved
+        // slot keeps the CAPTION's width, and so its wrapping and the card's
+        // height, the same selected or not.
+        // #3385 lane D review r1 supersedes the separate 18+8pt tick row and
+        // the empty-frame choice above: only the NAME reserves 26pt at its end.
+        // The overlay never takes hits or changes the caption/picture geometry.
+        caption
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .overlay(alignment: .topTrailing) {
+            if isSelected {
+              Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.white, isEnabled ? Color.stAccent : Color.stTextSecondary)
+                .allowsHitTesting(false)
+            }
           }
-        }
-        .frame(width: 18)
       }
       .padding(12)
       // Before `.buttonStyle(.plain)`: the reserved tick slot is otherwise dead
@@ -464,11 +577,15 @@ struct RecordingPillPreviewTile: View {
       // floating in it. Heavier than the theme cards above deliberately: those
       // carry a name and an icon that give them an edge, and these are now bare
       // pictures with nothing else to bound them.
+      // (#3385: the cards carry a name and a line again, but the row of three
+      // still needs visible edges to read as three choices; the border is kept.)
       .overlay(
         RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
           .strokeBorder(
             isSelected && isEnabled ? Color.stAccent : Color.stTextTertiary.opacity(0.5),
             lineWidth: isSelected && isEnabled ? 2 : 1.5)
+          // Decoration: a click on the edge belongs to the card (#3385).
+          .allowsHitTesting(false)
       )
       // These tiles SHOW the product rather than describing it (#2435), which
       // makes them read as illustrations. Hover is what says they are also the

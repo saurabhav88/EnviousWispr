@@ -149,6 +149,10 @@ extension Font {
   /// Caption / hint / status microcopy: footnotes, link hints, status lines.
   /// Same 14pt floor as body; it reads quieter through colour, not size.
   static let stHelper = Font.system(size: 14)
+  /// A settings row's short grey line under its name (#3385). Held at the
+  /// 14pt floor by founder decision (2026-10-02) rather than the mockup's
+  /// 13px; kept as its own token so the row line has one owner.
+  static let stRowHelper = Font.system(size: 14)
 }
 
 // MARK: - Settings Layout Constants
@@ -171,4 +175,20 @@ enum SettingsLayout {
   // cards clearly contain the content cards rather than competing with them.
   static let windowCardRadius: CGFloat = 18
   static let windowFrameInset: CGFloat = 14
+}
+
+// #3385: density belongs to Dictation Settings, not every shared consumer.
+enum SettingsPR1Layout {
+  static let rowPaddingV: CGFloat = 10
+  static let headingGap: CGFloat = 8
+}
+
+private struct SettingsPR1DensityKey: EnvironmentKey {
+  static let defaultValue = false
+}
+extension EnvironmentValues {
+  var settingsPR1Density: Bool {
+    get { self[SettingsPR1DensityKey.self] }
+    set { self[SettingsPR1DensityKey.self] = newValue }
+  }
 }

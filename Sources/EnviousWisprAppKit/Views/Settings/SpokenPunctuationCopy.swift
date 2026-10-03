@@ -17,7 +17,7 @@ import Foundation
 /// No em-dashes or en-dashes (brand rule).
 enum SpokenPunctuationCopy {
   static let toggleLabel = String(
-    localized: "Convert spoken punctuation",
+    localized: "Spoken punctuation",
     comment: "Speech engine settings, spoken punctuation: the toggle's name.")
   static let toggleDescription =
     String(

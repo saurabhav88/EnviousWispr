@@ -1588,7 +1588,7 @@ package final class WisprBootstrapper {
         addSelectedWord: { quickAdd.beginFromMenuBar(selection: $0, context: $1) },
         continueOnboarding: { appWindowCoordinator.openOnboardingWindow() },
         openSettings: {
-          navigationCoordinator.request(.speechEngine)
+          navigationCoordinator.request(.dictation(.engine))
           appWindowCoordinator.showWindow()
         },
         openTranscribeFile: {
@@ -2405,6 +2405,14 @@ private struct MainWindowRoot: View {
       // set names them instead.
       .environment(b.localPolishRuntimes)
       .environment(b.audioDeviceList)
+      // Only the microphone status view invokes this reader and observes capture changes.
+      // No second state owner or capture command; the diagnostic UID survives stop.
+      .environment(\.microphoneCapturePresentation, {
+        MicrophoneCapturePresentation(
+          isCapturing: b.liveRecordingState.audioCapture.isCapturing,
+          boundDeviceUID:
+            b.liveRecordingState.audioCapture.zeroSignalDiscriminatorDevice?.deviceUID)
+      })
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
       .environment(b.vocabularyPackManager)

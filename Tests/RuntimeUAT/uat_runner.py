@@ -57,6 +57,22 @@ from ui_helpers import (
     find_control_for_label,
 )
 from simulate_input import click, press_key
+import settings_nav  # noqa: E402  #3385: the one Settings navigation owner
+
+
+def navigate_settings(pid, page, tab=None, open_settings=None):
+    """Select `page` (and `tab`) in this app's Settings window and prove both landed.
+
+    Delegates to `settings_nav.navigate`, the same implementation `wispr_eyes.nav` uses: rows
+    are found in the sidebar, tabs in the strip, and success is the row and tab reading
+    Selected afterwards. English labels only here (this runner has no translation table).
+    Raises settings_nav.RouteError / NavigationError."""
+    ax = settings_nav.AX(
+        get_attr=get_attr,
+        children=lambda el: list(get_attr(el, "AXChildren") or []),
+        press=lambda el: perform_action(el, "AXPress"),
+        frame=element_frame)
+    return settings_nav.navigate(ax, lambda: get_ax_app(pid), page, tab, open_settings=open_settings)
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +213,9 @@ class TestSession:
         self.verbose = verbose
         self._menu_snapshot = None
         self._snapshot_valid = False
-        self._current_tab = None  # name of the currently selected Settings tab
+        # The last (page, tab) this session navigated to. A log, never proof: every
+        # ensure_route re-reads the window, because the user or another step can change it.
+        self._current_route = None
 
     def get_menu_snapshot(self, force_refresh=False):
         """Return cached MenuBarSnapshot, taking one if needed."""
@@ -254,48 +272,19 @@ class TestSession:
         if self.verbose:
             print("  [SESSION] Menu snapshot invalidated", file=sys.stderr)
 
-    def ensure_tab_selected(self, tab_name):
-        """Select a Settings tab by name, skipping navigation if already selected.
+    def ensure_route(self, page, tab=None):
+        """Open Settings and select `page` (and `tab`), proving both landed.
 
-        Returns the Settings AXWindow element. Uses the same row-click logic as
-        test_settings_tab_switch so the two stay in sync.
+        #3385: replaces the AXOutline/AXRow tab click (gone since #1296's button sidebar).
+        Always re-reads the window; the cached route is reported, never trusted.
+        Returns the Settings AXWindow element.
         """
-        if self._current_tab == tab_name:
-            if self.verbose:
-                print(f"  [SESSION] Tab already selected: {tab_name!r}", file=sys.stderr)
-            # Settings must still be open; return it
-            return self.ensure_settings_open()
-
         settings_win = self.ensure_settings_open()
-
-        outline = find_element(settings_win, role="AXOutline")
-        if outline is None:
-            raise RuntimeError("Settings sidebar outline not found")
-
-        rows = get_attr(outline, "AXChildren") or []
-        clicked = False
-        for row in rows:
-            if get_attr(row, "AXRole") != "AXRow":
-                continue
-            row_texts = find_all_elements(row, role="AXStaticText")
-            for txt in row_texts:
-                val = get_attr(txt, "AXValue") or ""
-                if val == tab_name:
-                    # Use AXSelected (works without Accessibility permission)
-                    # instead of CGEvent click which requires Accessibility.
-                    set_attr(row, "AXSelected", True)
-                    time.sleep(0.5)
-                    if self.verbose:
-                        print(f"  [SESSION] Switched to tab: {tab_name!r}", file=sys.stderr)
-                    clicked = True
-                    break
-            if clicked:
-                break
-
-        if not clicked:
-            raise RuntimeError(f"Settings tab not found in sidebar: {tab_name!r}")
-
-        self._current_tab = tab_name
+        route = navigate_settings(self.pid, page, tab)
+        if self.verbose:
+            note = " (was cached)" if self._current_route == (page, tab) else ""
+            print(f"  [SESSION] On {route!r}{note}", file=sys.stderr)
+        self._current_route = (page, tab)
         return settings_win
 
     def reset_state(self):
@@ -304,7 +293,7 @@ class TestSession:
         Clears tab cache, invalidates menu snapshot, and ensures clean state
         so one test's side effects don't leak into the next.
         """
-        self._current_tab = None
+        self._current_route = None
         self._snapshot_valid = False
         if self.verbose:
             print("  [SESSION] State reset for test isolation", file=sys.stderr)
@@ -314,8 +303,8 @@ class TestSession:
         if self.verbose:
             print("  [SESSION] Tearing down — closing all app windows...", file=sys.stderr)
 
-        # Reset tab cache — windows will close so state is gone
-        self._current_tab = None
+        # Reset the route log — windows will close so state is gone
+        self._current_route = None
 
         # Dismiss any open menu first
         try:
@@ -947,37 +936,21 @@ class TestContext:
         time.sleep(1.0)
         return _find_app_window(self.pid, timeout=3.0)
 
-    def ensure_tab_selected(self, tab_name):
-        """Open Settings (if needed) and select the named sidebar tab.
+    def ensure_route(self, page, tab=None):
+        """Open Settings (if needed) and select `page` (and `tab`), proving both landed.
 
-        If the tab is already selected (tracked by the session), navigation is
-        skipped entirely — no redundant clicks. Falls back to manual navigation
-        when no session is available.
-
+        With a session, delegates to it; without one, uses the same `navigate_settings`
+        (#3385: one implementation, no separate fallback click path).
         Returns the Settings AXWindow element.
         """
         if self.session:
-            return self.session.ensure_tab_selected(tab_name)
-        # Fallback: open settings and click the tab manually (no cache available)
+            return self.session.ensure_route(page, tab)
         settings_win = self.ensure_settings_open()
         if settings_win is None:
             raise RuntimeError("Settings window did not appear")
-        outline = find_element(settings_win, role="AXOutline")
-        if outline is None:
-            raise RuntimeError("Settings sidebar outline not found")
-        rows = get_attr(outline, "AXChildren") or []
-        for row in rows:
-            if get_attr(row, "AXRole") != "AXRow":
-                continue
-            row_texts = find_all_elements(row, role="AXStaticText")
-            for txt in row_texts:
-                val = get_attr(txt, "AXValue") or ""
-                if val == tab_name:
-                    set_attr(row, "AXSelected", True)
-                    time.sleep(0.5)
-                    self.log(f"Switched to tab: {tab_name!r} (no-session fallback)")
-                    return settings_win
-        raise RuntimeError(f"Settings tab not found in sidebar: {tab_name!r}")
+        route = navigate_settings(self.pid, page, tab)
+        self.log(f"On {route!r} (no-session)")
+        return settings_win
 
 
 # ---------------------------------------------------------------------------
@@ -1304,18 +1277,16 @@ def test_settings_tabs(ctx):
     if settings_win is None:
         raise AssertionError("Settings window did not appear")
 
-    expected_tabs = ["Keybinds", "AI Polish", "Permissions", "Transcription"]
-    sidebar_texts = find_all_elements(settings_win, role="AXStaticText")
-    sidebar_values = [get_attr(el, "AXValue") or "" for el in sidebar_texts]
-    ctx.log(f"Sidebar text values: {sidebar_values[:20]}")
-
-    found = [tab_name for tab_name in expected_tabs if tab_name in sidebar_values]
-
-    missing = set(expected_tabs) - set(found)
-    if missing:
-        ctx.log(f"Found tabs: {found}, missing: {missing}")
-        raise AssertionError(f"Missing settings tabs: {missing}. Found: {found}")
-    ctx.log(f"All tabs present: {found}")
+    # #3385: the sidebar is recognised only when EVERY page row and the update row are in
+    # one region; a missing row is a failure, not a partial pass.
+    ax = settings_nav.AX(get_attr=get_attr,
+                         children=lambda el: list(get_attr(el, "AXChildren") or []),
+                         press=lambda el: perform_action(el, "AXPress"))
+    try:
+        settings_nav.sidebar(ax, get_ax_app(ctx.pid))
+    except settings_nav.NavigationError as e:
+        raise AssertionError(f"Settings sidebar incomplete: {e}") from None
+    ctx.log(f"All sidebar rows present: {list(settings_nav.SIDEBAR_LABELS)}")
 
 
 @uat_test("settings_tab_switching_works", suite="settings", context="settings")
@@ -1327,41 +1298,16 @@ def test_settings_tab_switch(ctx):
     if settings_win is None:
         raise AssertionError("Settings window did not appear")
 
-    outline = find_element(settings_win, role="AXOutline")
-    if outline is None:
-        raise AssertionError("Settings sidebar outline not found")
-
-    rows = get_attr(outline, "AXChildren") or []
-    tabs_to_click = ["AI Polish", "Permissions", "Transcription", "Keybinds"]
-    clicked = 0
-
-    for tab_name in tabs_to_click:
-        for row in rows:
-            if get_attr(row, "AXRole") != "AXRow":
-                continue
-            row_texts = find_all_elements(row, role="AXStaticText")
-            for txt in row_texts:
-                val = get_attr(txt, "AXValue") or ""
-                if val == tab_name:
-                    center = element_center(row)
-                    if center:
-                        # SAFETY: activate first so the click lands on the
-                        # Settings window, not an overlapping app window.
-                        activate_app(ctx.pid)
-                        time.sleep(0.05)
-                        click(center[0], center[1])
-                        time.sleep(0.5)  # Allow tab switch to render
-                        ctx.log(f"Switched to tab: {tab_name}")
-                        clicked += 1
-                    break
-            else:
-                continue
-            break
-        else:
-            ctx.log(f"Skipping tab {tab_name} — not found in sidebar")
-
-    if clicked == 0:
-        raise AssertionError("Could not click any settings tabs")
+    # #3385: every route must land; a partial set of clicks is a failure.
+    routes = [("AI Polish", None), ("Permissions", None), ("Dictation Settings", "Engine"),
+              ("Dictation Settings", "Clipboard"), ("Keybinds", None)]
+    activate_app(ctx.pid)
+    for page, tab in routes:
+        try:
+            route = navigate_settings(ctx.pid, page, tab)
+        except settings_nav.NavigationError as e:
+            raise AssertionError(f"{page} > {tab}: {e}") from None
+        ctx.log(f"Landed on {route!r}")
 
 
 # --- Suite: clipboard ---

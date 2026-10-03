@@ -12,7 +12,7 @@ import Testing
   /// engine took, never whether we told anyone. So the payload is pinned here: a wrong
   /// event name or a renamed property would silently restore that blind spot, and the
   /// dashboard would show nothing while looking exactly like "the state never happened".
-  @Suite("Model preparing impression telemetry", .serialized)
+  @Suite("Model preparing impression telemetry", .serialized, .tags(.observabilityContract))
   struct ModelPreparingImpressionTelemetryTests {
 
     final class EventBox: @unchecked Sendable {

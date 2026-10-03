@@ -46,53 +46,6 @@ extension View {
   }
 }
 
-// MARK: - Per-page header
-
-/// The header that introduces each settings page: a lavender icon tile, the
-/// page title, and a one-line subtitle. Rendered as its OWN card (same surface
-/// and radius as the setting cards) so it lives inside the content area with the
-/// options and never blends into the top bar (founder decision, 2026-07-03,
-/// Option B). Injected as the first card of `SettingsContentView`.
-struct SettingsPageHeader: View {
-  let icon: String
-  let title: String
-  let subtitle: String
-
-  var body: some View {
-    HStack(spacing: 14) {
-      Image(systemName: icon)
-        .font(.system(size: 21, weight: .medium))
-        .foregroundStyle(.stAccent)
-        .frame(width: 46, height: 46)
-        .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-          RoundedRectangle(cornerRadius: 12)
-            .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
-        )
-        .accessibilityHidden(true)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title)
-          .font(.system(size: 22, weight: .semibold))
-          .foregroundStyle(.stTextPrimary)
-        if !subtitle.isEmpty {
-          Text(subtitle).settingsReadingCopy()
-        }
-      }
-
-      Spacer(minLength: 0)
-    }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stSectionBg)
-    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-        .strokeBorder(Color.stDivider, lineWidth: 1)
-    )
-  }
-}
-
 // MARK: - Row leading icon
 
 /// The brand-accent leading glyph for a settings row (mockup #4). Fixed width so
@@ -109,69 +62,313 @@ struct SettingsRowIcon: View {
 }
 
 /// A settings row that reads horizontally (icon, then title, then a trailing
-/// control) at ordinary widths, and drops the control BELOW the title at the
+/// control) at ordinary widths. Large controls drop BELOW the title at the
 /// app's declared 750pt minimum window width — where a multi-segment picker
 /// sized to its own content cannot share one line with the title and stay
 /// readable (Codex, PR #3007, live-reproduced by resizing the Microphone page
-/// to its minimum).
+/// to its minimum). #3385 founder carry-over: small switches remain trailing;
+/// their short line wraps instead of making sibling switches change position.
 ///
 /// The row's explanatory sentence lives behind the small "?" beside the
 /// title (`SettingsInfoButton`) rather than always rendering underneath it —
 /// freeing the row down to one line so the control reads as the main event
 /// (founder, 2026-09-16: "so much more space, make everything look nicer").
-struct SettingsControlRow<Control: View>: View {
+/// #3385 refines that: one short grey line now sits under the title, in the
+/// founder's words "one short grey line + ? on every row" (2026-10-02), so the
+/// row says what the control is for at a glance while the full explanation
+/// stays behind the "?". Every row has help; there is no help-less variant.
+struct SettingsRow<Control: View, HelpContent: View>: View {
   let icon: String
   let title: String
-  let description: String
-  @ViewBuilder let control: () -> Control
+  let short: String
+  /// The sentence a mouse hover shows (`.help`). Structured help has none.
+  let tooltip: String?
+  let helpContent: HelpContent
+  let control: Control
+  /// #3385 lane F places the microphone's honest "In use" cue here, immediately
+  /// after the short line. The slot is outside the control and its help button.
+  private var statusContent: AnyView? = nil
+  private var supplementaryControl: AnyView? = nil
+  private var supplementaryControlBelowWidth: CGFloat = 0
+
+  /// A secondary control shares the trailing group when there is room, and
+  /// sits under text/status at the named row width. The primary switch stays trailing.
+  func rowSupplementaryControl<Secondary: View>(belowWidth: CGFloat,
+    @ViewBuilder _ secondary: () -> Secondary) -> Self {
+    var row = self
+    row.supplementaryControl = AnyView(secondary())
+    row.supplementaryControlBelowWidth = belowWidth
+    return row
+  }
+
+  func rowStatus<Status: View>(@ViewBuilder _ status: () -> Status) -> Self {
+    var row = self
+    row.statusContent = AnyView(status())
+    return row
+  }
+  /// An action row (#3385, Live Preview's "Install new languages"): the whole
+  /// row except its "?" is one button, so the target is the row rather than a
+  /// small chevron, and the help stays a separate sibling control.
+  var primaryAction: (() -> Void)? = nil
 
   var body: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(alignment: .center, spacing: 11) {
-        SettingsRowIcon(systemName: icon)
-        label
-        Spacer(minLength: 12)
-        control()
-      }
-      VStack(alignment: .leading, spacing: 10) {
+    if let primaryAction {
+      actionRow(primaryAction)
+    } else {
+      standardRow
+    }
+  }
+
+  private func actionRow(_ action: @escaping () -> Void) -> some View {
+    HStack(alignment: .center, spacing: 8) {
+      Button(action: action) {
         HStack(alignment: .center, spacing: 11) {
           SettingsRowIcon(systemName: icon)
-          label
+          VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+              .font(.stRowLabel)
+              .foregroundStyle(.stTextPrimary)
+            Text(short)
+              .font(.stRowHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+            statusContent
+          }
+          Spacer(minLength: 8)
+          control
         }
-        // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
-        // spacing (11), so the control aligns under the LABEL rather than
-        // the icon.
-        control()
-          .padding(.leading, 37)
+        .padding(.vertical, 4)
+        // The whole row, so the gaps between icon, text and control are part of
+        // the target (`swift-patterns.md` RULE: plain-button-content-shape).
+        .contentShape(Rectangle())
+        .settingsHoverRow(cornerRadius: 8)
       }
+      .buttonStyle(.plain)
+      .accessibilityLabel(title)
+      .accessibilityHint(short)
+      SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
+    }
+  }
+
+  private var standardRow: some View {
+    SettingsRowControlLayout(supplementaryBelowWidth: supplementaryControlBelowWidth) {
+      SettingsRowIcon(systemName: icon)
+      label
+      // A builder may supply zero or several roots. One container keeps the
+      // Layout's three slots stable instead of indexing SwiftUI's flattened roots.
+      VStack(alignment: .leading, spacing: 0) { control }
+      VStack(alignment: .leading, spacing: 0) { supplementaryControl }
     }
   }
 
   private var label: some View {
-    HStack(spacing: 6) {
-      Text(title)
-        .font(.stRowTitle)
-        .foregroundStyle(.stTextPrimary)
-      SettingsInfoButton(text: description)
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 6) {
+        Text(title)
+          .font(.stRowLabel)
+          .foregroundStyle(.stTextPrimary)
+        SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
+      }
+      // Secondary, not the tertiary helper colour: tertiary measures 3.7:1
+      // on the dark card, under the 4.5:1 a 14pt regular line needs (#3385).
+      Text(short)
+        .font(.stRowHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      statusContent
     }
   }
 }
 
+/// Compact controls stay trailing while their text wraps (#3385 founder carry-over).
+/// A picker taking over half the remaining row still moves under the label: the
+/// #3007 narrow-window reason applies to those larger controls, not a switch.
+struct SettingsRowControlLayout: Layout {
+  var supplementaryBelowWidth: CGFloat = 0
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    dimensions(width: proposal.width, subviews: subviews).size
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let result = dimensions(width: bounds.width, subviews: subviews)
+    for (index, frame) in result.frames.enumerated() {
+      subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        proposal: ProposedViewSize(frame.size))
+    }
+  }
+
+  private func dimensions(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+    let icon = subviews[0].sizeThatFits(.unspecified)
+    let idealControl = subviews[2].sizeThatFits(.unspecified)
+    let secondary = subviews[3].sizeThatFits(.unspecified)
+    let idealLabel = subviews[1].sizeThatFits(.unspecified)
+    let width = width ?? icon.width + 11 + idealLabel.width + 12 + idealControl.width + secondary.width
+    // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
+    // spacing (11), so the control aligns under the LABEL rather than
+    // the icon.
+    let labelStart = icon.width + 11
+    let available = max(0, width - labelStart)
+    // A content-sized control can exceed the entire stacked row in a longer
+    // localization. Pass the available width back down so adaptive controls
+    // can reflow, including their new height, instead of placing an ideal-size bar.
+    let control = idealControl.width > available
+      ? subviews[2].sizeThatFits(ProposedViewSize(width: available, height: nil))
+      : idealControl
+    let hasSecondary = secondary.height > 0
+    let secondaryBelow = hasSecondary && width <= supplementaryBelowWidth
+    let trailingWidth = control.width + (hasSecondary && !secondaryBelow ? secondary.width + 12 : 0)
+    let inline = hasSecondary || trailingWidth <= available / 2 || idealLabel.width + 12 + trailingWidth <= available
+    let labelWidth = max(0, available - (inline ? trailingWidth + 12 : 0))
+    let label = subviews[1].sizeThatFits(ProposedViewSize(width: labelWidth, height: nil))
+    let trailingHeight = max(control.height, secondaryBelow ? 0 : secondary.height)
+    let headerHeight = inline ? max(icon.height, label.height, trailingHeight) : max(icon.height, label.height)
+    let controlY = inline ? (headerHeight - control.height) / 2 : headerHeight + 10
+    let contentHeight = inline ? headerHeight : controlY + trailingHeight
+    let secondaryY = secondaryBelow ? contentHeight + 10 : (inline ? (headerHeight - secondary.height) / 2 : controlY)
+    let secondaryX = secondaryBelow ? labelStart : (inline ? width - trailingWidth : labelStart)
+    let primaryX = inline ? width - control.width : labelStart + (hasSecondary && !secondaryBelow ? secondary.width + 12 : 0)
+    let height = secondaryBelow ? secondaryY + secondary.height : contentHeight
+    return (CGSize(width: width, height: height), [
+      CGRect(x: 0, y: inline ? (headerHeight - icon.height) / 2 : 0, width: icon.width, height: icon.height),
+      CGRect(x: labelStart, y: inline ? (headerHeight - label.height) / 2 : 0, width: labelWidth, height: label.height),
+      CGRect(x: primaryX, y: controlY, width: control.width, height: control.height),
+      CGRect(x: secondaryX, y: secondaryY, width: secondary.width, height: secondary.height),
+    ])
+  }
+}
+
+/// A row's full explanation as plain reading copy inside the "?" popover.
+struct SettingsHelpText: View {
+  let text: String
+
+  var body: some View {
+    Text(text)
+      .settingsReadingCopy()
+      .frame(maxWidth: 280, alignment: .leading)
+  }
+}
+
+extension SettingsRow where HelpContent == SettingsHelpText {
+  /// Literal copy: the catalog extracts all three strings by their type.
+  init(
+    icon: String,
+    title: LocalizedStringResource,
+    short: LocalizedStringResource,
+    help: LocalizedStringResource,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      icon: icon,
+      resolvedTitle: String(localized: title),
+      resolvedShort: String(localized: short),
+      resolvedHelp: String(localized: help),
+      control: control)
+  }
+
+  /// Already-translated runtime strings (for example a help sentence chosen by
+  /// the current setting). Never pass an untranslated literal here.
+  init(
+    icon: String,
+    resolvedTitle: String,
+    resolvedShort: String,
+    resolvedHelp: String,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.icon = icon
+    self.title = resolvedTitle
+    self.short = resolvedShort
+    self.tooltip = resolvedHelp
+    self.helpContent = SettingsHelpText(text: resolvedHelp)
+    self.control = control()
+  }
+
+  /// An action row: pressing anywhere but the "?" runs `primaryAction`;
+  /// `control` is its trailing decoration (a disclosure chevron), not a second
+  /// control.
+  init(
+    icon: String,
+    resolvedTitle: String,
+    resolvedShort: String,
+    resolvedHelp: String,
+    primaryAction: @escaping () -> Void,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      icon: icon, resolvedTitle: resolvedTitle, resolvedShort: resolvedShort,
+      resolvedHelp: resolvedHelp, control: control)
+    self.primaryAction = primaryAction
+  }
+}
+
+extension SettingsRow {
+  /// Help that needs more than one paragraph (a table, a list, a link).
+  init(
+    icon: String,
+    title: LocalizedStringResource,
+    short: LocalizedStringResource,
+    @ViewBuilder helpContent: () -> HelpContent,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      icon: icon, resolvedTitle: String(localized: title), resolvedShort: String(localized: short),
+      helpContent: helpContent, control: control)
+  }
+
+  /// Structured help under a name that is already translated (a copy owner that
+  /// resolves its own string). Never pass an untranslated literal here.
+  init(
+    icon: String,
+    resolvedTitle: String,
+    resolvedShort: String,
+    @ViewBuilder helpContent: () -> HelpContent,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.icon = icon
+    self.title = resolvedTitle
+    self.short = resolvedShort
+    self.tooltip = nil
+    self.helpContent = helpContent()
+    self.control = control()
+  }
+}
+
 /// A small "?" affordance that reveals a row's explanatory sentence on
-/// demand, used by `SettingsControlRow` so a row's title line stays short
+/// demand, used by `SettingsRow` so a row's title line stays short
 /// while the full explanation stays one click away.
 ///
 /// A real `Button`, never a hover-only reveal — hover is unreachable by
 /// keyboard and VoiceOver, and those are exactly the readers who most need
-/// the sentence spelled out (same reasoning as
-/// `SpeechEngineSettingsView.spokenPunctuationHelpButton`). `.help()` answers
+/// the sentence spelled out (the reasoning #1794 gave for the spoken
+/// punctuation help, which is now this button too). `.help()` answers
 /// a mouse hover for free on top of the click-to-open popover.
-struct SettingsInfoButton: View {
-  let text: String
+///
+/// #3385: closing the popover returns focus to this button, whichever way it
+/// was closed (Escape, a click outside, or reopening), through ONE path, the
+/// same pattern as the Keybinds Globe guidance (#1987). Focus is returned only
+/// to a reader who was using it: keyboard focus when the button held keyboard
+/// focus as it opened, VoiceOver focus when the button held VoiceOver focus as
+/// it opened. A pointer click leaves focus alone, so the window does not grow
+/// a focus ring the mouse user never asked for, and VoiceOver is not pulled
+/// away from wherever its user had moved it.
+struct SettingsInfoButton<Content: View>: View {
+  let rowTitle: String
+  let tooltip: String?
+  @ViewBuilder let content: () -> Content
+
   @State private var showPopover = false
+  /// Captured as the popover opens; decides where focus goes when it closes.
+  @State private var openedFromKeyboard = false
+  @State private var openedFromAccessibility = false
+  /// A row can leave the screen while its popover is open; never send focus to
+  /// a button that is no longer there.
+  @State private var isMounted = false
+  @FocusState private var buttonFocused: Bool
+  @AccessibilityFocusState private var accessibilityFocused: Bool
 
   var body: some View {
     Button {
+      openedFromKeyboard = buttonFocused
+      openedFromAccessibility = accessibilityFocused
       showPopover = true
     } label: {
       Image(systemName: "questionmark.circle")
@@ -180,35 +377,504 @@ struct SettingsInfoButton: View {
         .settingsHoverQuiet()
     }
     .buttonStyle(.borderless)
-    .help(text)
-    .accessibilityLabel(text)
+    .focused($buttonFocused)
+    .accessibilityFocused($accessibilityFocused)
+    .help(tooltip ?? "")
+    .accessibilityLabel(
+      String(
+        localized: "About \(rowTitle)",
+        comment:
+          "Settings: accessibility name of the ? button beside a setting. %@ is the setting's name."
+      )
+    )
     .popover(isPresented: $showPopover, arrowEdge: .bottom) {
-      Text(text)
-        .settingsReadingCopy()
-        .frame(maxWidth: 280, alignment: .leading)
+      // Width belongs to the content: plain sentences cap themselves at 280
+      // (`SettingsHelpText`); a structured panel sets its own.
+      content()
         .padding(14)
+        .onExitCommand { showPopover = false }
     }
+    // The single restoration path: every dismissal (Escape above, a click
+    // outside, AppKit closing it) arrives here as the binding turning false.
+    .onAppear { isMounted = true }
+    .onDisappear {
+      isMounted = false
+      openedFromKeyboard = false
+      openedFromAccessibility = false
+    }
+    .onChange(of: showPopover) { _, isShowing in
+      guard isShowing == false else { return }
+      defer {
+        openedFromKeyboard = false
+        openedFromAccessibility = false
+      }
+      guard isMounted else { return }
+      if openedFromKeyboard { buttonFocused = true }
+      if openedFromAccessibility && NSWorkspace.shared.isVoiceOverEnabled {
+        accessibilityFocused = true
+      }
+    }
+  }
+}
+
+// MARK: - Section heading
+
+/// The accent capitals heading above a group of rows ("INPUT & BEHAVIOR"),
+/// with an optional decorative icon and an optional trailing note or link.
+/// A heading for assistive technology too: it carries the header trait.
+struct SettingsSectionHeading<Trailing: View>: View {
+  let title: String
+  let icon: String?
+  let trailing: Trailing
+
+  init(
+    title: LocalizedStringResource,
+    icon: String? = nil,
+    @ViewBuilder trailing: () -> Trailing
+  ) {
+    self.init(resolvedTitle: String(localized: title), icon: icon, trailing: trailing)
+  }
+
+  /// An already-translated heading. Never pass an untranslated literal here.
+  init(
+    resolvedTitle: String,
+    icon: String? = nil,
+    @ViewBuilder trailing: () -> Trailing
+  ) {
+    self.title = resolvedTitle
+    self.icon = icon
+    self.trailing = trailing()
+  }
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      HStack(spacing: 6) {
+        if let icon {
+          Image(systemName: icon)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.stAccent)
+            .accessibilityHidden(true)
+        }
+        Text(title)
+          .font(.stSectionHeader)
+          .tracking(0.6)
+          .foregroundStyle(.stAccent)
+          .accessibilityAddTraits(.isHeader)
+      }
+      Spacer(minLength: 8)
+      trailing
+    }
+    .padding(.leading, 4)
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+extension SettingsSectionHeading where Trailing == EmptyView {
+  init(title: LocalizedStringResource, icon: String? = nil) {
+    self.init(title: title, icon: icon) { EmptyView() }
+  }
+
+  init(resolvedTitle: String, icon: String? = nil) {
+    self.init(resolvedTitle: resolvedTitle, icon: icon) { EmptyView() }
+  }
+}
+
+// MARK: - Tab strip
+
+/// One tab in a `SettingsTabStrip`: a stable identity, a decorative glyph and
+/// a translated name.
+struct SettingsTabItem<Tab: Hashable>: Identifiable {
+  let id: Tab
+  let icon: String
+  let label: LocalizedStringResource
+}
+
+/// The tabs across the top of a tabbed Settings page (#3385): icon and name
+/// per tab, an accent underline under the chosen one. The founder's 2026-10-02
+/// decision supersedes the scrolling/one-row design: keep all six names visible
+/// and wrap naturally when they do not fit, without shrinking or truncating.
+struct SettingsTabStrip<Tab: Hashable>: View {
+  let items: [SettingsTabItem<Tab>]
+  @Binding var selection: Tab
+  @FocusState private var focusedTab: Tab?
+
+  var body: some View {
+    SettingsTabWrappingLayout {
+      ForEach(items) { item in
+        SettingsTabButton(item: item, isSelected: item.id == selection) {
+          selection = item.id
+        }
+        .focused($focusedTab, equals: item.id)
+        .id(item.id)
+        .anchorPreference(key: SettingsTabBoundsKey.self, value: .bounds) { [$0] }
+      }
+    }
+    .overlayPreferenceValue(SettingsTabBoundsKey.self) { anchors in
+      GeometryReader { proxy in
+        let frames = anchors.map { proxy[$0] }
+        ForEach(frames.indices, id: \.self) { index in
+          let frame = frames[index]
+          // #3385 review 1: only measured neighbours on the same row share
+          // a separator. Array order alone also decorates a wrapped row end.
+          if index + 1 < frames.count,
+            abs(frames[index + 1].minY - frame.minY) < 0.5
+          {
+            Rectangle()
+              .fill(Color.stDivider)
+              .frame(width: 1, height: max(0, frame.height - 26))
+              .position(x: frame.maxX - 0.5, y: frame.midY)
+          }
+        }
+      }
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+    }
+    // Its natural row count owns the height, never the flexible page below.
+    .fixedSize(horizontal: false, vertical: true)
+    .background(Color.stSectionBg)
+    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+  }
+}
+
+private struct SettingsTabBoundsKey: PreferenceKey {
+  static var defaultValue: [Anchor<CGRect>] { [] }
+
+  static func reduce(value: inout [Anchor<CGRect>], nextValue: () -> [Anchor<CGRect>]) {
+    value.append(contentsOf: nextValue())
+  }
+}
+
+/// Intrinsic label widths decide the breaks; surplus width is shared within
+/// each row to keep the tab card filled. Height ignores a parent's surplus.
+/// Unlike the chip flow, tabs measure without a width proposal: a label must
+/// remain whole rather than squeezing enough to evade the wrap decision.
+struct SettingsTabWrappingLayout: Layout {
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let result = frames(width: proposal.width, subviews: subviews)
+    return result.size
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    let result = frames(width: bounds.width, subviews: subviews)
+    for (index, frame) in result.frames.enumerated() {
+      subviews[index].place(
+        at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        anchor: .topLeading, proposal: ProposedViewSize(frame.size))
+    }
+  }
+
+  private func frames(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+    let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+    let available = width.flatMap { $0.isFinite ? max(0, $0) : nil }
+      ?? sizes.reduce(0) { $0 + $1.width }
+    var rows: [[CGSize]] = []
+    var row: [CGSize] = []
+    var rowWidth: CGFloat = 0
+    for size in sizes {
+      if row.isEmpty == false && rowWidth + size.width > available {
+        rows.append(row)
+        row = []
+        rowWidth = 0
+      }
+      row.append(size)
+      rowWidth += size.width
+    }
+    if row.isEmpty == false { rows.append(row) }
+    var frames: [CGRect] = []
+    var y: CGFloat = 0
+    for row in rows {
+      let height = row.map(\.height).max() ?? 0
+      let surplus = max(0, available - row.reduce(0) { $0 + $1.width }) / CGFloat(row.count)
+      var x: CGFloat = 0
+      for size in row {
+        let cellWidth = size.width + surplus
+        frames.append(CGRect(x: x, y: y, width: cellWidth, height: height))
+        x += cellWidth
+      }
+      y += height
+    }
+    return (CGSize(width: available, height: y), frames)
+  }
+}
+
+/// One tab: a real button, so keyboard and VoiceOver users reach it, whose
+/// spoken value says whether it is the chosen tab.
+struct SettingsTabButton<Tab: Hashable>: View {
+  let item: SettingsTabItem<Tab>
+  let isSelected: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 7) {
+        SettingsTabGlyph(icon: item.icon)
+          .frame(width: 18, height: 18)
+          .accessibilityHidden(true)
+        Text(item.label)
+          .font(.stRowLabel)
+          .fixedSize()
+      }
+      .foregroundStyle(isSelected ? Color.stAccent : Color.stTextBody)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 16)
+      .frame(maxWidth: .infinity, minHeight: 52)
+      .settingsHoverRow(cornerRadius: 8)
+      .contentShape(Rectangle())
+      .overlay(alignment: .bottom) {
+        if isSelected {
+          Capsule()
+            .fill(Color.stAccent)
+            .frame(height: 3)
+            .padding(.horizontal, 12)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(String(localized: item.label))
+    .accessibilityValue(isSelected ? SettingsCopy.selectedValue : SettingsCopy.notSelectedValue)
+    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+  }
+}
+
+/// The three distinctive glyphs follow the approved mock-up; the metadata's
+/// icon strings stay stable. These are static decorations, not audio meters.
+private struct SettingsTabGlyph: View {
+  let icon: String
+
+  var body: some View {
+    if ["waveform", "capsule", "bell.and.waveform"].contains(icon) {
+      SettingsTabGlyphTrace(icon: icon)
+        .stroke(style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+        .allowsHitTesting(false)
+    } else {
+      Image(systemName: icon)
+        .font(.system(size: 14, weight: .medium))
+    }
+  }
+}
+
+private struct SettingsTabGlyphTrace: Shape {
+  let icon: String
+
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    switch icon {
+    case "waveform":
+      let points: [CGPoint] = [
+        .init(x: 3, y: 12), .init(x: 5, y: 12), .init(x: 7, y: 6),
+        .init(x: 10, y: 18), .init(x: 13, y: 9), .init(x: 15, y: 14),
+        .init(x: 17, y: 12), .init(x: 21, y: 12),
+      ]
+      path.addLines(points)
+    case "capsule":
+      path.addRoundedRect(in: CGRect(x: 3, y: 8, width: 18, height: 8), cornerSize: CGSize(width: 4, height: 4))
+      path.move(to: CGPoint(x: 9, y: 12)); path.addLine(to: CGPoint(x: 9.01, y: 12))
+      path.move(to: CGPoint(x: 12, y: 10)); path.addLine(to: CGPoint(x: 12, y: 14))
+      path.move(to: CGPoint(x: 15, y: 11)); path.addLine(to: CGPoint(x: 15, y: 13))
+    case "bell.and.waveform":
+      path.move(to: CGPoint(x: 14, y: 5))
+      path.addCurve(to: CGPoint(x: 16, y: 16), control1: CGPoint(x: 21, y: 5), control2: CGPoint(x: 23, y: 12))
+      path.addLine(to: CGPoint(x: 7, y: 16))
+      path.addCurve(to: CGPoint(x: 14, y: 5), control1: CGPoint(x: 1, y: 12), control2: CGPoint(x: 5, y: 3))
+      path.closeSubpath()
+      path.move(to: CGPoint(x: 10, y: 20)); path.addLine(to: CGPoint(x: 14, y: 20))
+      path.addLines([CGPoint(x: 12, y: 9), CGPoint(x: 12, y: 13), CGPoint(x: 14, y: 14)])
+    default: break
+    }
+    return path.applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
+      .applying(CGAffineTransform(translationX: rect.minX, y: rect.minY))
+  }
+}
+
+// MARK: - Summary card
+
+/// A choice shown as a summary with a "Change" button (#3385): the current
+/// option and why to pick it, with the alternatives opening in place only when
+/// asked for. Used where a page used to show every option all the time.
+///
+/// It owns presentation and focus only. The caller owns the expansion flag and
+/// every write: picking an option, or "Keep current", collapses through the
+/// caller's binding. `status` sits OUTSIDE the expansion, so progress, a
+/// download's Cancel, a warning or a remedy stays on screen whether the
+/// choices are open or not.
+///
+/// Focus follows the help button's rule: when the choices close, focus goes
+/// back to "Change" only for a reader who opened them with the keyboard or
+/// VoiceOver, and never to a button that is no longer there.
+struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
+  @Binding var isExpanded: Bool
+  let changeAccessibilityLabel: LocalizedStringResource
+  let keepCurrentTitle: LocalizedStringResource
+  let summary: Summary
+  let status: Status
+  let choices: Choices
+  private var statusIsCompact = false
+
+  func statusAlongsideChange(_ enabled: Bool = true) -> Self {
+    var card = self
+    card.statusIsCompact = enabled
+    return card
+  }
+
+  @State private var openedFromKeyboard = false
+  @State private var openedFromAccessibility = false
+  @State private var isMounted = false
+  @FocusState private var changeFocused: Bool
+  @AccessibilityFocusState private var changeAccessibilityFocused: Bool
+
+  init(
+    isExpanded: Binding<Bool>,
+    changeAccessibilityLabel: LocalizedStringResource,
+    keepCurrentTitle: LocalizedStringResource,
+    @ViewBuilder summary: () -> Summary,
+    @ViewBuilder status: () -> Status,
+    @ViewBuilder choices: () -> Choices
+  ) {
+    self._isExpanded = isExpanded
+    self.changeAccessibilityLabel = changeAccessibilityLabel
+    self.keepCurrentTitle = keepCurrentTitle
+    self.summary = summary()
+    self.status = status()
+    self.choices = choices()
+  }
+
+  var body: some View {
+    SettingsSummaryContentLayout(compactStatus: statusIsCompact, isExpanded: isExpanded) {
+      VStack(alignment: .leading, spacing: 10) {
+        if isExpanded {
+          choices
+          Button {
+            isExpanded = false
+          } label: {
+            Text(keepCurrentTitle)
+              .font(.stBody)
+              .foregroundStyle(Color.stAccent)
+              .settingsHoverQuiet()
+          }
+          .buttonStyle(.plain)
+          .padding(.leading, 4)
+        } else {
+          summary
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      VStack(alignment: .leading, spacing: 0) { status }
+      VStack(spacing: 0) {
+        if isExpanded == false { changeButton }
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(14)
+    .background(Color.stSectionBg)
+    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+        .allowsHitTesting(false)
+    )
+    // Leading and full width in both states, so the status region does not
+    // drift to the middle when the choices are narrower than the page.
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .onAppear { isMounted = true }
+    .onDisappear {
+      isMounted = false
+      openedFromKeyboard = false
+      openedFromAccessibility = false
+    }
+    .onChange(of: isExpanded) { _, expanded in
+      guard expanded == false else { return }
+      defer {
+        openedFromKeyboard = false
+        openedFromAccessibility = false
+      }
+      guard isMounted else { return }
+      if openedFromKeyboard { changeFocused = true }
+      if openedFromAccessibility && NSWorkspace.shared.isVoiceOverEnabled {
+        changeAccessibilityFocused = true
+      }
+    }
+  }
+
+  /// The real control is this `Button`; `SettingsActionButton` without an action only draws
+  /// the page's button treatment, so focus modifiers land on an actual control.
+  private var changeButton: some View {
+    Button {
+      openedFromKeyboard = changeFocused
+      openedFromAccessibility = changeAccessibilityFocused
+      isExpanded = true
+    } label: {
+      SettingsActionButton(
+        title: LocalizedStringResource(
+          "Change", comment: "Settings: button that opens the other choices for a setting."),
+        isEnabled: true, emphasis: .outlined, shape: .roundedRect, size: .medium)
+    }
+    .buttonStyle(.plain)
+    .fixedSize()
+    .focused($changeFocused)
+    .accessibilityFocused($changeAccessibilityFocused)
+    .accessibilityLabel(String(localized: changeAccessibilityLabel))
+  }
+}
+
+/// Summary, status and Change are one stable set of slots. Moving status is
+/// placement only: no second view, hidden copy or disclosure-bound status mount.
+struct SettingsSummaryContentLayout: Layout {
+  var compactStatus: Bool
+  var isExpanded: Bool
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    dimensions(width: proposal.width, subviews: subviews).size
+  }
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let result = dimensions(width: bounds.width, subviews: subviews)
+    for (index, frame) in result.frames.enumerated() {
+      subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        proposal: ProposedViewSize(frame.size))
+    }
+  }
+  private func dimensions(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+    let ideal = subviews[0].sizeThatFits(.unspecified)
+    let status = subviews[1].sizeThatFits(.unspecified)
+    let change = subviews[2].sizeThatFits(.unspecified)
+    let width = width ?? ideal.width + status.width + change.width + 24
+    let inline = compactStatus && !isExpanded && ideal.width + status.width + change.width + 24 <= width
+    let primaryWidth = max(0, width - (isExpanded ? 0 : change.width + 12) - (inline ? status.width + 12 : 0))
+    let primary = subviews[0].sizeThatFits(ProposedViewSize(width: primaryWidth, height: nil))
+    let headerHeight = max(primary.height, change.height, inline ? status.height : 0)
+    let statusX: CGFloat = inline ? primaryWidth + 12 : (compactStatus && !isExpanded ? 48 : 0)
+    let statusWidth = inline || compactStatus ? min(status.width, max(0, width - statusX)) : width
+    let resolvedStatus = subviews[1].sizeThatFits(ProposedViewSize(width: statusWidth, height: nil))
+    let statusY = inline ? (headerHeight - resolvedStatus.height) / 2 : headerHeight + (resolvedStatus.height > 0 ? 10 : 0)
+    let height = inline ? headerHeight : statusY + resolvedStatus.height
+    return (CGSize(width: width, height: height), [
+      CGRect(x: 0, y: (headerHeight - primary.height) / 2, width: primaryWidth, height: primary.height),
+      CGRect(x: statusX, y: statusY, width: statusWidth, height: resolvedStatus.height),
+      CGRect(x: width - change.width, y: (headerHeight - change.height) / 2, width: change.width, height: change.height),
+    ])
   }
 }
 
 // MARK: - Settings Content Container
 
 /// Replaces `Form { }.formStyle(.grouped)` with a branded ScrollView layout.
-/// When the environment carries a `settingsPageSection`, the page-header card is
-/// rendered as the first item so it scrolls with the setting cards (Option B).
+/// #3385: no page header any more (tracker A5); the page's first section
+/// heading, or its tab strip, is the first thing in it.
 struct SettingsContentView<Content: View>: View {
-  @Environment(\.settingsPageSection) private var pageSection
   @ViewBuilder let content: Content
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-        if let pageSection {
-          SettingsPageHeader(
-            icon: pageSection.icon,
-            title: pageSection.label,
-            subtitle: pageSection.subtitle)
-        }
         content
       }
       .padding(.top, SettingsLayout.contentTop)
@@ -435,6 +1101,10 @@ enum SettingsCopy {
   /// shipped language, reading the translation from the app's own bundle (#3142 5D).
   static let selectedValue = String(
     localized: "Selected", comment: "VoiceOver: the value spoken for the chosen card or option.")
+  /// The value of an option that is not chosen. Same key and comment as the Dictionary tabs'
+  /// existing use, so both read one catalog entry.
+  static let notSelectedValue = String(
+    localized: "Not selected", comment: "VoiceOver: the value of an option that is not chosen.")
   static let frozenPerRecording = String(
     localized: "Changes made during a recording apply to the next recording.",
     comment: "Settings: notice that a change made while recording takes effect next time.")
@@ -447,38 +1117,11 @@ enum SettingsCopy {
   )
 }
 
-/// Page-level banner stating that this page's settings freeze at recording start.
-/// The rule is page-wide, so it appears ONCE at the top of a page rather than
-/// repeated in every card (founder, 2026-07-03). Accent-tinted so it reads as a
-/// standing notice above the cards, not part of any one of them.
-struct FrozenPerRecordingBanner: View {
-  var body: some View {
-    HStack(spacing: 9) {
-      Image(systemName: "info.circle")
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(.stAccent)
-        .accessibilityHidden(true)
-      Text(SettingsCopy.frozenPerRecording)
-        .font(.stHelper)
-        .foregroundStyle(.stTextBody)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 11)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .strokeBorder(Color.stAccent.opacity(0.25), lineWidth: 1)
-    )
-  }
-}
-
 // MARK: - Branded Row
 
 /// Provides consistent row padding and an optional purple-tinted divider.
 struct BrandedRow<Content: View>: View {
+  @Environment(\.settingsPR1Density) private var compact
   let showDivider: Bool
   @ViewBuilder let content: Content
 
@@ -492,7 +1135,7 @@ struct BrandedRow<Content: View>: View {
       content
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, SettingsLayout.rowPaddingH)
-        .padding(.vertical, SettingsLayout.rowPaddingV)
+        .padding(.vertical, compact ? SettingsPR1Layout.rowPaddingV : SettingsLayout.rowPaddingV)
 
       if showDivider {
         Divider()
@@ -649,57 +1292,26 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
   private var horizontalPadding: CGFloat { comfortable ? 18 : 12 }
 
   var body: some View {
-    HStack(spacing: 4) {
-      ForEach(options.indices, id: \.self) { index in
-        let option = options[index]
-        let isSelected = selection == option.value
+    content { segment(at: $0) }
+  }
 
-        Button {
-          selection = option.value
-        } label: {
-          HStack(spacing: 6) {
-            if let symbol = option.systemImage {
-              Image(systemName: symbol)
-                .font(.system(size: 12.5, weight: .semibold))
-            }
-            Text(option.label)
-              .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+  // Tests attach frame probes to the real buttons in this same production container.
+  func content<Segment: View>(@ViewBuilder segment: @escaping (Int) -> Segment) -> some View {
+    Group {
+      if comfortable {
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 4) {
+            ForEach(options.indices, id: \.self) { segment($0) }
           }
-          .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
-          .padding(.vertical, verticalPadding)
-          .padding(.horizontal, horizontalPadding)
-          // Only the two width-MATCHED `comfortable` pickers (Microphone page)
-          // get a no-shrink floor: without it, imposing a wider total on the
-          // HStack from outside (`.matchingSegmentedWidth`) divides the space
-          // EQUALLY among segments rather than by each one's own need, and the
-          // longest label in the bar ("Continue", "Always") wraps even though
-          // the bar as a whole has room to spare (founder, 2026-09-16, live
-          // app). Codex correctly rejected making this unconditional (PR
-          // #3022 r1): a non-`comfortable` call site (ProviderSetup's AI
-          // Polish tone picker) relies on being able to COMPRESS below its
-          // segments' ideal width in a narrow detail column at the app's
-          // 750pt minimum, and a floor there would push its right-hand
-          // choices out of reach instead.
-          .conditionalFixedWidth(comfortable)
-          .frame(maxWidth: .infinity)
-          .contentShape(Rectangle())
-          .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-              .fill(isSelected ? Color.stAccentSolid : Color.clear)
-          )
-          // An UNSELECTED segment is drawn as bare text on the track: no fill,
-          // no border, nothing separating it from a label. Hover is the only
-          // thing that says the other options are reachable. The selected
-          // segment is a solid accent pill, so it takes the white veil for the
-          // same reason the selected sidebar row does.
-          .settingsHoverRow(
-            cornerRadius: 7,
-            tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
+          WrappingSegmentedLayout {
+            ForEach(options.indices, id: \.self) { segment($0) }
+          }
         }
-        .buttonStyle(.plain)
-        .accessibilityValue(
-          isSelected
-            ? String(localized: "selected", comment: "VoiceOver: a chosen segmented option.") : "")
+      } else {
+        // AI Polish's tone picker keeps its original compression behavior.
+        HStack(spacing: 4) {
+          ForEach(options.indices, id: \.self) { segment($0) }
+        }
       }
     }
     .padding(3)
@@ -708,7 +1320,62 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
     .overlay(
       RoundedRectangle(cornerRadius: 10)
         .strokeBorder(Color.stDivider, lineWidth: 1)
+        .allowsHitTesting(false)
     )
+  }
+
+  func segment(at index: Int) -> some View {
+    let option = options[index]
+    let isSelected = selection == option.value
+
+    return Button {
+      selection = option.value
+    } label: {
+      HStack(spacing: 6) {
+        if let symbol = option.systemImage {
+          Image(systemName: symbol)
+            .font(.system(size: 12.5, weight: .semibold))
+        }
+        Text(option.label)
+          .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+      }
+      .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
+      .padding(.vertical, verticalPadding)
+      .padding(.horizontal, horizontalPadding)
+      // Only the two width-MATCHED `comfortable` pickers (Microphone page)
+      // get a no-shrink floor: without it, imposing a wider total on the
+      // HStack from outside (`.matchingSegmentedWidth`) divides the space
+      // EQUALLY among segments rather than by each one's own need, and the
+      // longest label in the bar ("Continue", "Always") wraps even though
+      // the bar as a whole has room to spare (founder, 2026-09-16, live
+      // app). Codex correctly rejected making this unconditional (PR
+      // #3022 r1): a non-`comfortable` call site (ProviderSetup's AI
+      // Polish tone picker) relies on being able to COMPRESS below its
+      // segments' ideal width in a narrow detail column at the app's
+      // 750pt minimum, and a floor there would push its right-hand
+      // choices out of reach instead.
+      // At narrow widths the whole segment moves to the next row; it never
+      // gives up the no-shrink floor described above.
+      .conditionalFixedWidth(comfortable)
+      .frame(maxWidth: .infinity)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .fill(isSelected ? Color.stAccentSolid : Color.clear)
+      )
+      // An UNSELECTED segment is drawn as bare text on the track: no fill,
+      // no border, nothing separating it from a label. Hover is the only
+      // thing that says the other options are reachable. The selected
+      // segment is a solid accent pill, so it takes the white veil for the
+      // same reason the selected sidebar row does.
+      .settingsHoverRow(
+        cornerRadius: 7,
+        tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
+    }
+    .buttonStyle(.plain)
+    .accessibilityValue(
+      isSelected
+        ? String(localized: "selected", comment: "VoiceOver: a chosen segmented option.") : "")
   }
 }
 
@@ -737,27 +1404,11 @@ extension View {
     )
   }
 
-  /// Sizes this view to its own natural width until `matchedWidth` is known,
-  /// then to exactly `matchedWidth`, and always reports whichever width it
-  /// rendered at.
-  ///
-  /// **Not the same as `.fixedSize(...).frame(width: matchedWidth)`.** That
-  /// order looks right and does not work: `.fixedSize()` makes a view
-  /// IGNORE any width an enclosing `.frame(width:)` proposes, so the outer
-  /// frame reserves the matched width in the LAYOUT while the visible
-  /// content stays at its own, smaller, natural width, centered inside the
-  /// extra space — a mismatch invisible in a screenshot cropped to one bar,
-  /// caught only by putting both bars in the same frame (founder,
-  /// 2026-09-16, live app). Once `matchedWidth` is known, this applies ONLY
-  /// `.frame(width:)`, so the proposal reaches the view's `.frame(maxWidth:
-  /// .infinity)` segments and they actually stretch to fill it.
-  @ViewBuilder
+  /// Match sibling bars at their natural width, capped by the row's proposal.
+  /// Unlike fixedSize/frame(width:), this forwards a narrow proposal to the
+  /// picker so it can wrap while keeping the same binding and buttons.
   func matchingSegmentedWidth(_ matchedWidth: CGFloat?) -> some View {
-    if let matchedWidth {
-      frame(width: matchedWidth).reportingWidth()
-    } else {
-      fixedSize(horizontal: true, vertical: false).reportingWidth()
-    }
+    SegmentedPickerWidthLayout(matchedWidth: matchedWidth) { self }.reportingWidth()
   }
 
   /// `.fixedSize(horizontal: true, ...)` only when `enabled`; otherwise the
@@ -935,7 +1586,9 @@ struct WrappingHStack: Layout {
 /// gesture and had grown a visibly different shape for the same job on the page
 /// next door (#2136). Transcription passes neither new parameter, so its two
 /// cards must render exactly as before — asserted by a before/after capture in
-/// the #2154 Live UAT, not assumed.
+/// the #2154 Live UAT, not assumed. #3385 supersedes that visual shape only on
+/// Dictation Settings via `settingsPR1Density`; the default for other consumers
+/// retains the earlier presentation. Footer/selection target separation stays binding.
 ///
 /// **The footer sits OUTSIDE the selection button, and that is a correctness
 /// constraint rather than a layout preference.** Live Preview's own card
@@ -953,6 +1606,7 @@ struct WrappingHStack: Layout {
 /// outer container would have quietly shrunk the hit target by a 16pt ring on a
 /// page this change is not about.
 struct EngineCard<Footer: View>: View {
+  @Environment(\.settingsPR1Density) private var compact
   let icon: String
   let title: String
   let tagline: String
@@ -985,6 +1639,23 @@ struct EngineCard<Footer: View>: View {
     VStack(alignment: .leading, spacing: 0) {
       Button(action: onSelect) {
         VStack(alignment: .leading, spacing: 12) {
+          if compact {
+            HStack(alignment: .top) {
+              Image(systemName: icon)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(.stAccent)
+                .frame(width: 44, height: 44)
+                .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityHidden(true)
+              Spacer(minLength: 8)
+              if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                  .font(.system(size: 20, weight: .semibold))
+                  .foregroundStyle(Color.white, Color.stAccentSolid)
+              }
+            }
+            Text(title).settingsRowLabel()
+          } else {
           HStack(spacing: 10) {
             Image(systemName: icon)
               .font(.system(size: 18, weight: .semibold))
@@ -1004,6 +1675,7 @@ struct EngineCard<Footer: View>: View {
                 .frame(width: 20, height: 20)
             }
           }
+          }
 
           Text(tagline)
             .font(.stHelper)
@@ -1015,23 +1687,28 @@ struct EngineCard<Footer: View>: View {
           // read as a side-by-side comparison.
           if !specs.isEmpty {
             VStack(spacing: 0) {
+              if compact { Divider().overlay(Color.stDivider).padding(.bottom, 6) }
               ForEach(Array(specs.enumerated()), id: \.offset) { index, row in
-                if index != 0 {
+                if index != 0 && compact == false {
                   Divider().overlay(Color.stDivider)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                   Text(row.label)
                     .font(.stHelper)
-                    .foregroundStyle(.stTextTertiary)
-                  Spacer(minLength: 12)
+                    .foregroundStyle(compact ? Color.stTextSecondary : Color.stTextTertiary)
+                    // 82pt holds "Languages" at 14pt; wraps between words rather than clipping.
+                    .frame(width: compact ? 82 : nil, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                  if compact == false { Spacer(minLength: 12) }
                   Text(row.value)
                     .font(.stHelper)
                     .fontWeight(.medium)
                     .foregroundStyle(.stTextBody)
-                    .multilineTextAlignment(.trailing)
+                    .multilineTextAlignment(compact ? .leading : .trailing)
+                    .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, compact ? 3 : 8)
               }
             }
           }
@@ -1424,7 +2101,7 @@ struct SettingsActionButton: View {
     .padding(.vertical, verticalPadding)
     .foregroundStyle(foreground)
     .background(fill, in: outline)
-    .overlay(outline.strokeBorder(border, lineWidth: 1))
+    .overlay(outline.strokeBorder(border, lineWidth: 1).allowsHitTesting(false))
     .contentShape(outline)
   }
 

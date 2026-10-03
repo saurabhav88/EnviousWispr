@@ -12,7 +12,9 @@ struct UnifiedWindowView: View {
   /// including preparation. Stop clears the dot immediately; the physical engine release may
   /// finish later, and `isEngineHeld` is what protects the resource until it does.
   @Environment(FileImportCoordinator.self) private var fileImportCoordinator
-  @State private var selectedSection: SettingsSection = .history
+  /// The page and the Dictation tab on screen (#3385). One value, for the
+  /// window's life only; see `SettingsNavigationState`.
+  @State private var navigationState = SettingsNavigationState()
 
   /// Owned HERE so a language download survives the user navigating to another section: this view
   /// is retained, the pages inside `detailContent` are not. See
@@ -94,9 +96,11 @@ struct UnifiedWindowView: View {
       }
     }
     .tint(.stAccentSolid)
-    .onChange(of: navigationCoordinator.pendingSection) { _, newSection in
-      if let section = newSection {
-        selectedSection = section
+    // `initial: true`: a request made before this window existed (the menu's
+    // Settings item opens the window and asks in the same breath) still lands.
+    .onChange(of: navigationCoordinator.pendingDestination, initial: true) { _, destination in
+      if let destination {
+        navigationState.apply(destination)
         navigationCoordinator.consume()
       }
     }
@@ -202,52 +206,46 @@ struct UnifiedWindowView: View {
 
   @ViewBuilder
   private var detailContent: some View {
-    switch selectedSection {
+    switch navigationState.selectedPage {
     case .history:
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
     case .whatsNew:
-      page(.whatsNew) { WhatsNewSettingsView() }
+      page { WhatsNewSettingsView() }
     case .appearance:
-      page(.appearance) { AppearanceSettingsView() }
-    case .speechEngine:
-      page(.speechEngine) { SpeechEngineSettingsView() }
+      page { AppearanceSettingsView() }
+    case .dictation:
+      page {
+        DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
+      }
     case .transcribeFile:
-      page(.transcribeFile) { TranscribeFileView() }
-    case .livePreview:
-      page(.livePreview) { LivePreviewSettingsView(packs: livePreviewPacks) }
-    case .audio:
-      page(.audio) { AudioSettingsView() }
-    case .recordingSounds:
-      page(.recordingSounds) { RecordingSoundsSettingsView() }
+      page { TranscribeFileView() }
     case .keybinds:
-      page(.keybinds) { KeybindsSettingsView() }
+      page { KeybindsSettingsView() }
     case .aiPolish:
-      page(.aiPolish) { AIPolishSettingsView() }
+      page { AIPolishSettingsView() }
     case .wordCorrection:
-      page(.wordCorrection) { YourWordsView() }
+      page { YourWordsView() }
     case .snippets:
-      page(.snippets) { SnippetsView() }
-    case .clipboard:
-      page(.clipboard) { ClipboardSettingsView() }
+      page { SnippetsView() }
     case .permissions:
-      page(.permissions) { PermissionsSettingsView() }
+      page { PermissionsSettingsView() }
     case .checkForUpdates:
       // Issue #958: D1 action row never selects this case (no `.tag`), but the
       // exhaustive switch requires an arm.
       EmptyView()
     case .openSourceLicenses:
-      page(.openSourceLicenses) { OpenSourceLicensesView() }
+      page { OpenSourceLicensesView() }
     #if DEBUG
       case .diagnostics:
-        page(.diagnostics) { DiagnosticsSettingsView() }
+        page { DiagnosticsSettingsView() }
     #endif
     }
   }
 
   /// One sidebar row. `checkForUpdates` fires its action and never selects
   /// (#958); `whatsNew` carries the animated unread glyph; everything else is a
-  /// standard nav row that sets `selectedSection`.
+  /// standard nav row that selects its page through `navigationState`.
   @ViewBuilder
   private func sidebarRow(_ section: SettingsSection) -> some View {
     if section == .checkForUpdates {
@@ -259,25 +257,25 @@ struct UnifiedWindowView: View {
         updateCoordinatorHolder.coordinator?.checkForUpdatesFromSettings()
       }
     } else if section == .whatsNew {
-      let selected = selectedSection == section
+      let selected = navigationState.selectedPage == section
       SidebarNavRow(label: section.label, isSelected: selected) {
         WhatsNewSidebarGlyph(
           isUnread: settings.hasUnreadWhatsNew,
           restColor: selected ? .white : .stAccent)
       } action: {
-        selectedSection = section
+        navigationState.selectSidebar(section)
       }
     } else {
-      let selected = selectedSection == section
+      let selected = navigationState.selectedPage == section
       SidebarNavRow(
         label: section.label, isSelected: selected,
-        showsBadge: sectionShowsActivityBadge(section)
+        activity: sidebarActivity(section)
       ) {
         Image(systemName: section.icon)
           .font(.system(size: 15, weight: .medium))
           .foregroundStyle(selected ? .white : .stAccent)
       } action: {
-        selectedSection = section
+        navigationState.selectSidebar(section)
       }
     }
   }
@@ -301,9 +299,15 @@ struct UnifiedWindowView: View {
   /// **Through the badge that already exists, deliberately.** `SidebarNavRow(showsBadge:)`
   /// has done this job for Your Words since #1701, and its accessibility value already says
   /// "in progress". A second dot mechanism would be a second answer to one question.
-  private func sectionShowsActivityBadge(_ section: SettingsSection) -> Bool {
-    if section == .transcribeFile { return fileImportCoordinator.isRunning }
-    return yourWordsEnrichmentBadgeVisible(for: section)
+  ///
+  /// #3385: the badge is now `SidebarNavRow(activity:)`, and the activity names WHICH
+  /// thing is running, so the dot and its spoken value come from this one answer. Before,
+  /// the Dictionary dot was announced as "Importing in progress". File import reads
+  /// `isRunning`, which Stop clears at the press, never the engine claim it still holds.
+  private func sidebarActivity(_ section: SettingsSection) -> SettingsShellCopy.SidebarActivity {
+    if section == .transcribeFile && fileImportCoordinator.isRunning { return .fileImport }
+    if yourWordsEnrichmentBadgeVisible(for: section) { return .dictionaryEnrichment }
+    return .none
   }
 
   /// The centered top-bar identity: the brand mark plus the app wordmark. Held
@@ -323,93 +327,13 @@ struct UnifiedWindowView: View {
   /// Tags a page's content with its section so `SettingsContentView` renders the
   /// page-header card as its first item (Option B — the header lives with the
   /// setting cards, not floating under the top bar).
+  /// #3385: superseded; pages have no header (tracker A5). What remains is the
+  /// window-navigation action every page can call.
   @ViewBuilder
-  private func page(
-    _ section: SettingsSection, @ViewBuilder content: () -> some View
-  ) -> some View {
+  private func page(@ViewBuilder content: () -> some View) -> some View {
     content()
-      .environment(\.settingsPageSection, section)
-      // The only place `selectedSection` is in scope, so the only place this can
+      // The only place `navigationState` is in scope, so the only place this can
       // be supplied without threading a binding through every page.
-      .environment(\.settingsNavigate) { selectedSection = $0 }
-  }
-}
-
-/// A single sidebar navigation row. When selected it carries the brand-purple
-/// gradient pill, a lavender hairline, and a soft glow (the "spiced" selection);
-/// otherwise it's a quiet lavender-icon row. Drawn manually so the selection
-/// looks identical whether or not the window is the key window.
-private struct SidebarNavRow<Icon: View>: View {
-  let label: String
-  let isSelected: Bool
-  /// Small in-progress dot (#1701 Chunk 2). Paired with an accessibility
-  /// value rather than color/shape alone, per accessibility-noncolor-motion.
-  var showsBadge: Bool = false
-  @ViewBuilder var icon: () -> Icon
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 10) {
-        icon()
-          .frame(width: 19, height: 18)
-        Text(label)
-          .font(.stBody)
-          .foregroundStyle(isSelected ? Color.white : .stTextBody)
-          .lineLimit(1)
-          .minimumScaleFactor(0.85)
-        Spacer(minLength: 2)
-        if showsBadge {
-          Circle()
-            .fill(isSelected ? Color.white : Color.stAccentSolid)
-            .frame(width: 7, height: 7)
-            .accessibilityHidden(true)
-        }
-      }
-      .padding(.horizontal, 9)
-      .padding(.vertical, 8)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background {
-        if isSelected {
-          RoundedRectangle(cornerRadius: 9, style: .continuous)
-            .fill(
-              LinearGradient(
-                colors: [
-                  Color(.sRGB, red: 0.604, green: 0.361, blue: 0.965, opacity: 1),
-                  Color(.sRGB, red: 0.486, green: 0.227, blue: 0.929, opacity: 1),
-                ],
-                startPoint: .top, endPoint: .bottom)
-            )
-            .overlay(
-              RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(
-                  Color(.sRGB, red: 0.773, green: 0.714, blue: 1.0, opacity: 0.5),
-                  lineWidth: 1)
-            )
-            .shadow(color: Color.stAccent.opacity(0.40), radius: 7, y: 2)
-        }
-      }
-      // The pointer's answer to "is this a thing I can click". Fifteen rows,
-      // the most-visited control in the window, and until #2447 not one of them
-      // reacted. Tint radius matches the selection pill's 9 so a row that is
-      // hovered and then selected does not change shape.
-      //
-      // A SELECTED row already carries the brand gradient, which a 6% accent
-      // tint disappears into, so it takes a white veil instead -- otherwise the
-      // row the pointer rests on most often is the one row that looks dead.
-      .settingsHoverRow(
-        cornerRadius: 9,
-        tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel(label)
-    .accessibilityValue(
-      showsBadge
-        ? String(
-          localized: "Importing in progress", comment: "Settings sidebar: file import is running.")
-        : ""
-    )
-    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+      .environment(\.settingsNavigate) { navigationState.apply($0) }
   }
 }

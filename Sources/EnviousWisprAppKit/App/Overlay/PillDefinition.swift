@@ -78,7 +78,7 @@ extension RecordingPillDesign {
     }
   }
 
-  /// What the Appearance picker calls this design.
+  /// What the Recording Pill picker calls this design (on the Appearance page before #3385).
   ///
   /// **On the design rather than in the picker, deliberately.** A per-design
   /// table in the view would be a second one on day one — the drift shape this
@@ -89,37 +89,40 @@ extension RecordingPillDesign {
     case .classic:
       return String(
         localized: "Capsule",
-        comment: "Appearance settings: name of the original recording pill style.")
+        comment: "Recording Pill settings: name of the original recording pill style.")
     case .readingWell:
       return String(
         localized: "Reading Well",
         comment:
-          "Appearance settings: name of the recording pill style that shows your words as you speak."
+          "Recording Pill settings: name of the recording pill style that shows your words as you speak."
       )
     case .levelRail:
       return String(
         localized: "Level Rail",
-        comment: "Appearance settings: name of the recording pill style with a voice level meter.")
+        comment: "Recording Pill settings: name of the recording pill style with a voice level meter.")
     }
   }
 
   /// One sentence on the card, in the user's terms rather than ours. No em or en
   /// dashes (GR-NO-DASHES).
+  /// #3385: the card now SHOWS a shorter line
+  /// (`DictationSettingsCopy.Pill.shortDescription`); this sentence is the one
+  /// its accessibility label carries, after the name.
   var summary: String {
     switch self {
     case .classic:
       return String(
         localized:
           "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown.",
-        comment: "Appearance settings: description of the Capsule recording pill style.")
+        comment: "Recording Pill settings: description of the Capsule recording pill style.")
     case .readingWell:
       return String(
         localized: "A wide panel that shows your words as you speak, growing a line at a time.",
-        comment: "Appearance settings: description of the Reading Well recording pill style.")
+        comment: "Recording Pill settings: description of the Reading Well recording pill style.")
     case .levelRail:
       return String(
         localized: "A wider capsule with a live rainbow meter of your voice beside the timer.",
-        comment: "Appearance settings: description of the Level Rail recording pill style.")
+        comment: "Recording Pill settings: description of the Level Rail recording pill style.")
     }
   }
 

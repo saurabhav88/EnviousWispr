@@ -6,13 +6,13 @@ import Observation
 @MainActor
 @Observable
 final class NavigationCoordinator {
-  private(set) var pendingSection: SettingsSection?
+  private(set) var pendingDestination: SettingsDestination?
 
-  func request(_ section: SettingsSection) {
-    pendingSection = section
+  func request(_ destination: SettingsDestination) {
+    pendingDestination = destination
   }
 
   func consume() {
-    pendingSection = nil
+    pendingDestination = nil
   }
 }

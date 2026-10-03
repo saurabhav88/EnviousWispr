@@ -56,7 +56,14 @@ once per session when harness use begins, so a session reuses the harness instea
 
 **Quick AX probe from repo root:**
 ```bash
-python3 -c "import sys; sys.path.insert(0, 'Tests/RuntimeUAT'); from wispr_eyes import *; look('main')"
+python3 -c "import sys; sys.path.insert(0, 'Tests/RuntimeUAT'); from wispr_eyes import *; look()"
+```
+
+**A Settings page or Dictation Settings tab** (pages and tabs come from `settings_nav.py`; a
+removed name such as `Transcription` raises before anything is pressed):
+```bash
+python3 -c "import sys; sys.path.insert(0, 'Tests/RuntimeUAT'); from wispr_eyes import *; look('Dictation Settings', tab='Engine')"
+python3 Tests/RuntimeUAT/settings_nav.py --self-test   # the navigation instrument's offline control
 ```
 
 **Synthetic dictation (TTS into mic via afplay, watch clipboard):**

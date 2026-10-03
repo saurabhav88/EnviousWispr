@@ -37,30 +37,13 @@ struct SettingsControlAffordanceTests {
     }
   }
 
-  private static var repoRoot: URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()  // Architecture
-      .deletingLastPathComponent()  // EnviousWisprTests
-      .deletingLastPathComponent()  // Tests
-      .deletingLastPathComponent()  // repo root
-  }
-
   /// Every `.swift` under the settings view directory, with its repo-relative path.
   ///
   /// **Fails closed.** An empty or unreadable directory would otherwise make
   /// every assertion below vacuously true, which is the shape where a guard
   /// stops guarding without anything going red.
   private static func settingsSources() throws -> [(path: String, text: String)] {
-    let dir = repoRoot.appendingPathComponent("Sources/EnviousWisprAppKit/Views/Settings")
-    let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-      .filter { $0.hasSuffix(".swift") }
-      .sorted()
-    let files = try names.map { name -> (String, String) in
-      let url = dir.appendingPathComponent(name)
-      return ("Sources/EnviousWisprAppKit/Views/Settings/\(name)", try String(contentsOf: url, encoding: .utf8))
-    }
-    #expect(files.count > 20, "settings source scan found \(files.count) files; the directory moved")
-    return files
+    try SettingsSourceEnumeration.sources()
   }
 
   /// The system button styles whose appearance is a property of the CONTAINER

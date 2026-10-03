@@ -13,7 +13,7 @@ struct AdvisoryHintRoutingTests {
 
   private static let hint = MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")
   private static let hinted =
-    "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Microphone."
+    "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Dictation Settings > Microphone & Media."
 
   @Test(
     "the catalog renders the hinted sentence, at the same width and dwell as the plain advisory")
@@ -33,6 +33,10 @@ struct AdvisoryHintRoutingTests {
     #expect(plainNotice.text == DictationNarrator.copy(for: TerminalAdvisoryReason.zeroSignal))
     #expect(hinted.requestedWidth == plain.requestedWidth)
     #expect(hinted.expiry == plain.expiry)
+    #expect(hinted.requestedWidth == .fixed(360))
+    #expect(hinted.reservesFixedHeight == nil)
+    #expect(hinted.expiry == .after(seconds: 8))
+    #expect(hintedNotice.isMultiline == true)
   }
 
   @Test("VoiceOver reads the sentence the pill shows, with no Error prefix")

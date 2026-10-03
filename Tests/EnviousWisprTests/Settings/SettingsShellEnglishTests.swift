@@ -11,65 +11,65 @@ import Testing
 @Suite("Settings shell English", .tags(.productOutcome))
 struct SettingsShellEnglishTests {
 
-  @Test("every Settings page keeps its sidebar name and description")
+  @Test("every Settings page keeps its sidebar name")
   func pages() {
     #expect(SettingsSection.history.label == "History")
     #expect(SettingsSection.whatsNew.label == "What's New")
     #expect(SettingsSection.appearance.label == "Appearance")
-    #expect(SettingsSection.speechEngine.label == "Transcription")
+    #expect(SettingsSection.dictation.label == "Dictation Settings")
     #expect(SettingsSection.transcribeFile.label == "Transcribe a File")
-    #expect(SettingsSection.livePreview.label == "Live Preview")
-    #expect(SettingsSection.audio.label == "Microphone")
-    #expect(SettingsSection.recordingSounds.label == "Sounds")
     #expect(SettingsSection.keybinds.label == "Keybinds")
     #expect(SettingsSection.aiPolish.label == "AI Polish")
     #expect(SettingsSection.wordCorrection.label == "Dictionary")
     #expect(SettingsSection.snippets.label == "Snippets")
-    #expect(SettingsSection.clipboard.label == "Clipboard")
     #expect(SettingsSection.permissions.label == "Permissions")
     #expect(SettingsSection.checkForUpdates.label == "Check for Updates")
     #expect(SettingsSection.openSourceLicenses.label == "Open Source Licenses")
-    #expect(
-      SettingsSection.history.subtitle == "Your past dictations, searchable and ready to reuse.")
-    #expect(
-      SettingsSection.whatsNew.subtitle == "The latest improvements and fixes in this release.")
-    #expect(
-      SettingsSection.appearance.subtitle
-        == "How the app looks, and the pill you see while dictating.")
-    #expect(
-      SettingsSection.speechEngine.subtitle == "The speech engine that turns your voice into text.")
-    #expect(
-      SettingsSection.transcribeFile.subtitle
-        == "Turn a recording you already have into clean text.")
-    #expect(
-      SettingsSection.livePreview.subtitle
-        == "See your words on screen while you are still speaking.")
-    #expect(SettingsSection.audio.subtitle == "Choose your input source and readiness behavior.")
-    #expect(
-      SettingsSection.recordingSounds.subtitle
-        == "Play a short sound when recording starts and stops.")
-    #expect(
-      SettingsSection.keybinds.subtitle
-        == "Set the keybinds that start, stop, and cancel dictation.")
-    #expect(SettingsSection.aiPolish.subtitle == "Clean up and rewrite your dictation with AI.")
-    #expect(
-      SettingsSection.wordCorrection.subtitle
-        == "Improve recognition with your words and vocabulary.")
-    #expect(
-      SettingsSection.snippets.subtitle
-        == "Say your keyword, then a snippet. The saved text lands for you.")
-    #expect(
-      SettingsSection.clipboard.subtitle
-        == "How your dictation reaches the clipboard and the app you're in.")
-    #expect(
-      SettingsSection.permissions.subtitle
-        == "Manage app permissions and privacy settings.")
-    #expect(SettingsSection.checkForUpdates.subtitle == "")
-    #expect(
-      SettingsSection.openSourceLicenses.subtitle
-        == "EnviousWispr is GPLv3 open source. The license and third-party notices.")
-    #expect(SettingsSection.checkForUpdates.subtitle == "")
+    // #3385: the per-page description lines went with the page headers (tracker A5);
+    // Dictionary's moved to its Enable row's "?" (`dictionaryHeading`).
+    #expect(SettingsGroup.allCases.map(\.rawValue) == ["APP", "RECORD", "PROCESS", "SYSTEM"])
     #expect(SettingsGroup.allCases.map(\.heading) == SettingsGroup.allCases.map(\.rawValue))
+    #expect(SettingsGroup.record.sections == [.dictation, .keybinds, .transcribeFile])
+  }
+
+  /// #3385: the six Dictation Settings tabs, in order, with the founder's 2026-10-02 names.
+  @Test("the Dictation Settings tabs keep their names and order")
+  func dictationTabs() {
+    #expect(
+      DictationTab.allCases.map { String(localized: $0.label) } == [
+        "Engine", "Microphone & Media", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
+      ])
+    #expect(SettingsCopy.notSelectedValue == "Not selected")
+  }
+
+  /// #3385: the Dictionary page's heading row replaced its banner. The "?" keeps the sentence
+  /// the page header showed under "Dictionary", typed here from the pre-#3385 source.
+  @Test("the Dictionary heading row keeps its approved English")
+  func dictionaryHeading() {
+    typealias Copy = SettingsShellCopy.Dictionary
+    #expect(String(localized: Copy.heading) == "Dictionary")
+    #expect(String(localized: Copy.enableTitle) == "Enable Dictionary")
+    #expect(String(localized: Copy.enableShort) == "Use your words and vocabulary to improve recognition.")
+    #expect(String(localized: Copy.enableHelp) == "Improve recognition with your words and vocabulary.")
+    #expect(String(localized: Copy.enableShort).count <= 60)
+  }
+
+  /// #3385: a sidebar row says whether it is selected AND what is running there, from one
+  /// activity value, so a Dictionary dot is never announced as a file import.
+  @Test("a sidebar row's spoken value covers all six states")
+  func sidebarValues() {
+    typealias Copy = SettingsShellCopy
+    let cases: [(Bool, Copy.SidebarActivity, String)] = [
+      (false, .none, "Not selected"),
+      (true, .none, "Selected"),
+      (false, .dictionaryEnrichment, "Not selected. Dictionary enrichment in progress"),
+      (true, .dictionaryEnrichment, "Selected. Dictionary enrichment in progress"),
+      (false, .fileImport, "Not selected. Importing in progress"),
+      (true, .fileImport, "Selected. Importing in progress"),
+    ]
+    for (selected, activity, english) in cases {
+      #expect(Copy.sidebarValue(isSelected: selected, activity: activity) == english)
+    }
   }
 
   @Test("the shared notices and the spoken selected value keep their English")
@@ -102,6 +102,52 @@ struct SettingsShellEnglishTests {
       OtherAudioSettingsPanel.pauseAnythingUnavailableNote
         == "On this Mac only Music and Spotify can be paused. macOS may ask for permission the first time; a take that needs permission is not paused."
     )
+  }
+
+  /// #3385: each Microphone row gains one short line; its full explanation moves behind "?"
+  /// with the English it had before. Expected strings typed from the pre-#3385 source.
+  @Test("Microphone rows keep their explanations and gain a short line")
+  func microphoneRowCopy() {
+    typealias Copy = DictationSettingsCopy.Microphone
+    #expect(String(localized: Copy.sectionHeading) == "INPUT & BEHAVIOR")
+    #expect(String(localized: Copy.inputDeviceTitle) == "Input device")
+    #expect(
+      String(localized: Copy.inputDeviceShort) == "Choose the microphone used for recording.")
+    #expect(
+      String(localized: Copy.inputDeviceHelp)
+        == "Select which microphone to use for recording. \"Auto\" follows the input device selected in macOS. If that device turns out not to be a real microphone, recording uses an available microphone instead."
+    )
+    #expect(String(localized: Copy.mediaTitle) == "Media during dictation")
+    #expect(
+      String(localized: Copy.mediaShort) == "What music and video do while you dictate.")
+    #expect(String(localized: Copy.readinessTitle) == "Microphone readiness")
+    #expect(
+      String(localized: Copy.readinessShort) == "How long the mic stays ready after recording.")
+    #expect(
+      String(localized: Copy.readinessHelp)
+        == "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
+    )
+    // #3385 chunk 5: the socket and Bluetooth rows.
+    #expect(
+      String(localized: Copy.socketShort) == "Choose the socket your microphone is plugged into.")
+    #expect(
+      String(localized: Copy.socketHelp)
+        == "Pick the input your microphone uses. The choice is remembered for this device.")
+    #expect(
+      String(localized: Copy.bluetoothShort)
+        == "Keeping your mic ready reduces Bluetooth startup delay.")
+    #expect(
+      String(localized: Copy.bluetoothTipsShort) == "Show the Bluetooth reminder once per launch.")
+    #expect(
+      String(localized: Copy.bluetoothTipsHelp)
+        == "Shows the reminder popover once per launch. This guide always stays.")
+    #expect(InputSocketCopy.label == "Mic is on")
+    for short in [
+      Copy.inputDeviceShort, Copy.mediaShort, Copy.readinessShort, Copy.socketShort,
+      Copy.bluetoothShort, Copy.bluetoothTipsShort,
+    ] {
+      #expect(String(localized: short).count <= 60)
+    }
   }
 
   @Test("the Globe key tip keeps its English")

@@ -12,7 +12,8 @@ struct LivePreviewSettingsEnglishTests {
   @Test("every Live Preview copy entry keeps its English")
   func copyEntries() {
     #expect(LivePreviewSettingsCopy.sectionHeader == "Live Preview")
-    #expect(LivePreviewSettingsCopy.toggleLabel == "Show words while I speak")
+    // #3385: the founder design's wording, now the visible row name.
+    #expect(LivePreviewSettingsCopy.toggleLabel == "Show words while you speak")
     #expect(LivePreviewSettingsCopy.packsHeader == "Languages")
     #expect(
       LivePreviewSettingsCopy.packsDescription
@@ -128,7 +129,7 @@ struct LivePreviewSettingsEnglishTests {
   @Test("every preview-engine entry keeps its English")
   func engineCopy() {
     #expect(LivePreviewEngineCopy.sectionHeader == "Preview engine")
-    #expect(LivePreviewEngineCopy.learnMoreLabel == "Learn more about engines")
+    #expect(LivePreviewEngineCopy.learnMoreLabel == "Compare engines")
     #expect(
       LivePreviewEngineCopy.learnMoreURL
         == "https://enviouswispr.com/help/live-preview-words-on-screen/")

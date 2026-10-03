@@ -217,8 +217,9 @@ enum LivePreviewEngineCopy {
   /// This is the first link from a settings page to the Help Centre, so the
   /// destination has to exist before the link ships — it does, added in the same
   /// change (#2134).
+  /// #3385: "Compare engines", the founder design's name for the same link.
   static let learnMoreLabel = String(
-    localized: "Learn more about engines",
+    localized: "Compare engines",
     comment: "Live Preview settings, preview engine: learn more label.")
   static let learnMoreURL = "https://enviouswispr.com/help/live-preview-words-on-screen/"
 

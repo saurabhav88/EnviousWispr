@@ -67,21 +67,15 @@ struct LanguageLockOptionsTests {
   /// helper parameters can hide the eventual member access.
   @Test("Only the shared owner names the fast backend")
   func onlyTheOwnerNamesTheFastBackend() throws {
-    let settingsDir = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()  // Settings
-      .deletingLastPathComponent()  // EnviousWisprTests
-      .deletingLastPathComponent()  // Tests
-      .deletingLastPathComponent()  // repo root
-      .appendingPathComponent("Sources/EnviousWisprAppKit/Views/Settings")
-
-    let files = try FileManager.default.contentsOfDirectory(atPath: settingsDir.path)
-      .filter { $0.hasSuffix(".swift") && $0 != "LanguageLockOptions.swift" }
+    let sources = try SettingsSourceEnumeration.sources()
+    let ownerPath = SettingsSourceEnumeration.relativeDirectory + "/LanguageLockOptions.swift"
+    let files = sources.filter { $0.path != ownerPath }
+    try #require(files.isEmpty == false, "the backend boundary has no non-owner subjects")
 
     var offenders: [String] = []
     for file in files {
-      let source = try String(contentsOf: settingsDir.appendingPathComponent(file), encoding: .utf8)
-      if Self.namesFastBackend(in: source) {
-        offenders.append(file)
+      if Self.namesFastBackend(in: file.text) {
+        offenders.append(file.path)
       }
     }
     #expect(
@@ -91,8 +85,7 @@ struct LanguageLockOptionsTests {
     // Two-way control: the check can actually find the string, so an empty
     // result means "looked correctly and found nothing" rather than "the sweep
     // is broken". Without this, a wrong path reads as a clean pass.
-    let owner = try String(
-      contentsOf: settingsDir.appendingPathComponent("LanguageLockOptions.swift"), encoding: .utf8)
+    let owner = try #require(sources.first { $0.path == ownerPath }).text
     #expect(
       Self.namesFastBackend(in: owner),
       "positive control failed: the sweep cannot see the owner naming ParakeetBackend"

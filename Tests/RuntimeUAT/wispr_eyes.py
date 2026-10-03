@@ -2,7 +2,7 @@
 Usage:  python3 -c "from wispr_eyes import *; connect(); see()"
         python3 -c "from wispr_eyes import *; connect(); tap('AI Polish')"
 """
-import json, os, sys, subprocess, time
+import json, os, platform, sys, subprocess, time
 import datetime as _dt
 import pathlib
 sys.path.insert(0, os.path.dirname(__file__))
@@ -18,6 +18,10 @@ from instance_guard import (running_enviouswispr_instances,  # noqa: F401
                             _require_single_instance, run_guard_cases)
 # #2885: the DEBUG-only door. Hand a file to a running dev build without the screen.
 from import_door import resolve_pid, transcribe_file_backend  # noqa: F401,E402
+# #3385: Settings navigation has ONE owner. `nav/check/look/verify/scan/switch_backend` and
+# every scenario driver route through it; its offline control is `settings_nav.py --self-test`.
+import settings_nav as _sn  # noqa: E402
+from settings_nav import NavigationError, RouteError  # noqa: E402,F401
 
 _pid = None
 _app = None
@@ -499,6 +503,9 @@ _CARD_GROUPS = {
     # asserts that label still carries the name, and `theSelectedValueIsExactly`
     # pins the "Selected" value this reader compares against.
     "pill": ["Capsule", "Reading Well", "Level Rail"],
+    # #3385: the Chimes tab's twelve selection buttons (their Preview siblings are named
+    # "Preview <name>", which `_names_card` does not match).
+    "chime": list(_sn.CHIME_NAMES),
 }
 
 def _names_card(title, name):
@@ -509,10 +516,12 @@ def _names_card(title, name):
 
 
 def _is_selected(el):
-    """Whether a card or option reports itself chosen: its AXValue is the app's "Selected"
-    (`SettingsCopy.selectedValue`) in the language it runs in."""
-    value = str(get_attr(el, "AXValue") or "").lower()
-    return any(value == term.lower() for term in _ui_terms("Selected"))
+    """Whether a card, option, tab or sidebar row reports itself chosen: its AXValue's first
+    clause is the app's "Selected" (`SettingsCopy.selectedValue`) in the language it runs in.
+    #3385: a sidebar row reads "Selected. <activity>" while something runs, and "Not
+    selected" contains "selected", so this parses the clause (`settings_nav.selection_state`)
+    instead of comparing or searching the whole string."""
+    return _sn.selection_state(_ax(), get_attr(el, "AXValue")) is True
 
 
 def read_cards(group):
@@ -529,13 +538,13 @@ def read_cards(group):
             print(f"read_cards: unknown group '{group}', use: {list(_CARD_GROUPS)}")
             return {}
         results = {}
-        for btn in find_all_elements(_app, role="AXButton"):
-            fr = element_frame(btn)
-            # The sidebar is the window's first 200pt, measured from the WINDOW's edge: an
-            # absolute x only worked with the window at the screen's left, and on the German app
-            # a sidebar-region "Schnell" button overwrote the Fast card's state (#3142 5D).
-            win_fr = element_frame(get_attr(btn, "AXWindow")) if get_attr(btn, "AXWindow") else None
-            if not fr or fr["x"] - (win_fr["x"] if win_fr else 0) < 200: continue
+        # The sidebar is excluded by its SUBTREE, not by geometry: on the German app a
+        # sidebar-region "Schnell" button overwrote the Fast card's state (#3142 5D), and the
+        # old "first 200pt of the window" rule was a stand-in for exactly this (#3385).
+        ax = _ax()
+        side = _sn.sidebar(ax, _app)
+        for btn in ax.walk(_app, skip=[side]):
+            if ax.role(btn) != "AXButton": continue
             title = get_attr(btn, "AXTitle") or get_attr(btn, "AXDescription") or ""
             if not title: continue
             # Match button to this group by keyword
@@ -555,37 +564,50 @@ def read_cards(group):
     except Exception as e: print(f"read_cards error: {e}"); return {}
 
 
-def nav(tab):
-    """Open a Settings page. #1296 replaced the sidebar's AXOutline/AXRow
-    list with a ScrollView of AXButton rows (code-conventions.md FACT:
-    view-patterns); this pre-dates the Dictionary rename and blocked
-    every tab, not only this one. Fixed here because the Dictionary
-    diff needed a working nav() to verify itself, and touching the
-    caller string (faultInjection.py) without repairing the callee
-    would have left it silently unreachable."""
+def _ax():
+    """The accessibility adapter `settings_nav` reads through. Built per call, so a self-test
+    that rebinds `get_attr` / `_iter_children_with_menubars` is seen here too."""
+    return _sn.AX(
+        get_attr=lambda el, a: get_attr(el, a),
+        children=lambda el: list(_iter_children_with_menubars(el) or []),
+        press=lambda el: perform_action(el, "AXPress"),
+        frame=lambda el: element_frame(el),
+        terms=_ui_terms)
+
+
+def _open_settings():
+    settings_item = _find_match(_app, "Settings...", "AXMenuItem", exact=True)
+    if not settings_item:
+        raise NavigationError("the Settings window is not open and no Settings... item was found")
+    perform_action(settings_item, "AXPress")
+    print("Auto-opened Settings")
+
+
+def nav(page, tab=None):
+    """Open a Settings page, and with `tab` one of its tabs, and PROVE both are selected.
+
+        nav("Dictation Settings", "Engine")   nav("Keybinds")
+        nav("Dictation Settings")             # keeps the tab the app remembers
+
+    #3385: pages and tabs come from `settings_nav` (one route table). Removed names
+    (Transcription, Sounds, Microphone, Clipboard, ...) are refused, not translated, and an
+    impossible route raises `RouteError` before anything is pressed. The row is found inside the
+    sidebar and the tab inside the tab strip, never by a whole-app fuzzy match, and success is
+    the row and tab reading Selected afterwards, not the press's return value.
+
+    #1296 replaced the sidebar's AXOutline/AXRow list with AXButton rows; this is the button
+    sidebar's driver. Returns True, or False (with the reason printed) when the window did
+    not land on the route."""
+    _sn.validate_route(page, tab)   # a route error is the caller's, raised before any app check
     _ensure_connected()
     try:
-        if tap(tab, role="AXButton"):
-            time.sleep(0.3)  # settle: unchanged from the pre-#1296 nav(), let the page swap render
-            print(f"Navigated to {tab}")
-            return True
-
-        settings_item = _find_match(_app, "Settings...", "AXMenuItem", exact=True)
-        if not settings_item:
-            print("No Settings sidebar found. Is Settings available?")
-            return False
-        perform_action(settings_item, "AXPress")
-        time.sleep(0.8)  # settle: unchanged from the pre-#1296 nav(), let the Settings window open
-        print("Auto-opened Settings")
-
-        if tap(tab, role="AXButton"):
-            time.sleep(0.3)  # settle: unchanged from the pre-#1296 nav(), let the page swap render
-            print(f"Navigated to {tab}")
-            return True
-
-        print(f"Tab '{tab}' not found in sidebar")
+        route = _sn.navigate(_ax(), lambda: _app, page, tab, open_settings=_open_settings)
+    except NavigationError as e:
+        print(f"nav({page!r}, {tab!r}) FAILED: {e}")
         return False
-    except Exception as e: print(f"nav error: {e}"); return False
+    shown = f" (tab {route.shown_tab})" if route.shown_tab and tab is None else ""
+    print(f"Navigated to {page}" + (f" > {tab}" if tab else "") + shown)
+    return True
 
 def menu():
     _ensure_connected()
@@ -1079,7 +1101,7 @@ def batch(actions):
             ('read', 'Provider'),
             ('read', 'Model'),
             ('screenshot',),
-            ('tap', 'Transcription'),
+            ('nav', 'Dictation Settings', 'Engine'),
             ('read', 'Stop recording on silence'),
         ])
 
@@ -1277,148 +1299,368 @@ def check_ai_diagnostics():
 
 # ── High-Level Tasks (one call, no decisions) ─────────────────────────
 
-def check(tab, *labels):
-    """Navigate to a settings tab and read one or more label values.
-    Usage: check('polish', 'Provider', 'Model')
-    Returns dict of label→value."""
+class ReadResult(dict):
+    """`check()`'s answer: {label: value}, plus `missing` (labels with no readable value) and
+    `ok`. A dict, so existing callers keep working; never an empty dict standing in for a
+    failure (#3385)."""
+
+    def __init__(self, values):
+        super().__init__(values)
+        self.missing = [k for k, v in values.items() if v is None]
+        self.ok = not self.missing
+
+
+def check(page, *labels, tab=None):
+    """Navigate to a Settings page (and tab) and read one or more label values.
+    Usage: check('AI Polish', 'Provider', 'Model')
+           check('Dictation Settings', 'Unload model after', tab='Engine')
+    Returns a ReadResult. Raises RouteError for a route that does not exist, before connecting
+    or notifying, and NavigationError when the route does not land."""
+    _sn.validate_route(page, tab)
     connect()
-    begin_test(f"check {tab}")
-    if not nav(tab):
+    begin_test(f"check {page}" + (f" > {tab}" if tab else ""))
+    try:
+        if not nav(page, tab):
+            raise NavigationError(f"could not navigate to {page!r}" + (f" > {tab!r}" if tab else ""))
+        result = ReadResult({label: read(label) for label in labels})
+        for label in result.missing:
+            print(f"MISSING: {label}")
+        return result
+    finally:
         end_test()
         close_window()
-        return {}
-    results = {}
-    for label in labels:
-        results[label] = read(label)
-    end_test()
-    close_window()
-    return results
 
-def look(tab=None):
-    """Connect and show what's on screen. Optionally navigate to a tab first.
-    Usage: look()  or  look('polish')"""
+
+def look(page=None, tab=None):
+    """Connect and show what's on screen. With a page (and tab), navigate there first.
+    Usage: look()  or  look('AI Polish')  or  look('Dictation Settings', tab='Chimes')
+    Without arguments it only observes. A route that does not exist raises RouteError before
+    connecting."""
+    if page is not None or tab is not None:
+        _sn.validate_route(page, tab)
     connect()
-    if tab:
-        nav(tab)
+    if page is not None and not nav(page, tab):
+        raise NavigationError(f"could not navigate to {page!r}" + (f" > {tab!r}" if tab else ""))
     see()
 
-def scan(toggle=False):
-    """Full settings scan — reads every control on all 10 tabs in ONE call.
 
-    If toggle=True, exercises each toggle (flip + verify + restore + verify).
-    If toggle=False, reads current state only (faster).
+def _stored(key):
+    """The value the app uses for a stored setting. Both builds keep settings in the SHARED
+    domain (`ptt_binding.read_domain`); `settings_nav.stored` owns how each key is read and
+    raises PreferenceError rather than guessing."""
+    from ptt_binding import read_domain
+    return _sn.stored(read_domain, key)
+
+
+def _content_switch(label, prefix=False):
+    """The one switch named `label` in the window's content (never the sidebar), or None."""
+    return _sn.find_switch(_ax(), _app, label, prefix)
+
+
+def _switch_state(el):
+    return _sn.switch_state(_ax(), get_attr(el, "AXValue"))
+
+
+def _audio_profile():
+    """`system_profiler SPAudioDataType -json`, parsed, or None. Read-only."""
+    try:
+        out = subprocess.run(["system_profiler", "SPAudioDataType", "-json"],
+                             capture_output=True, text=True, timeout=20)
+        return json.loads(out.stdout) if out.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def _scan_probes():
+    """Answers for the scan manifest's conditions: True / False / None (cannot tell). Each
+    reads evidence other than the control it decides about: a stored setting, the OS, or
+    another element on the page."""
+    def stored_or_none(key):
+        try:
+            return _stored(key)
+        except _sn.PreferenceError:
+            return None
+
+    def button(label):
+        try:
+            return _sn.find_button(_ax(), _app, label) is not None
+        except NavigationError:
+            return None
+
+    def text(t):
+        try:
+            return _sn.read_named(_ax(), _app, t) is not None
+        except NavigationError:
+            return None
+
+    def parakeet_selected():
+        backend = stored_or_none("selectedBackend")
+        return None if backend is None else backend == "parakeet"
+
+    def language_section_visible():
+        backend = stored_or_none("selectedBackend")
+        if backend is None: return None
+        if backend == "parakeet": return True
+        # WhisperKit shows the language rows only once its model is ready, the state that
+        # also shows Remove Model (`languageSectionIsAvailable`).
+        if button("Remove Model") or text("Removing model..."): return True
+        if any(button(b) for b in ("Set up model", "Resume", "Try Again")): return False
+        if text("Checking model status..."): return False
+        return None
+
+    def whisperkit_actions_shown():
+        backend = stored_or_none("selectedBackend")
+        if backend is None: return None
+        if backend == "parakeet": return False
+        # Every WhisperKit state offers one action except checking and removing.
+        checking, removing = text("Checking model status..."), text("Removing model...")
+        if checking is None or removing is None: return None
+        return not (checking or removing)
+
+    def whisperkit_recheck_shown():
+        backend = stored_or_none("selectedBackend")
+        if backend is None: return None
+        if backend == "parakeet": return False
+        # Re-check shows while the model is not downloaded, paused or ready (not removing).
+        if text("Removing model..."): return False
+        if any(button(b) for b in ("Set up model", "Resume", "Remove Model")): return True
+        if any(button(b) for b in ("Cancel", "Try Again")) or text("Checking model status..."):
+            return False
+        return None
+
+    def parakeet_delivery_actions_shown():
+        backend = stored_or_none("selectedBackend")
+        if backend is None: return None
+        if backend != "parakeet": return False
+        # The delivery row offers an action only while downloading (Cancel), paused (Resume)
+        # or failed (Try Again); preparing and verifying show none.
+        acting = [text(t) for t in ("Downloading speech model...", "Download paused. Resume anytime.",
+                                    "Speech model download failed.")]
+        if None in acting: return None
+        return any(acting)
+
+    def preview_language_shown():
+        # The language button is missing while the status is checking, while the build cannot
+        # run the engine, and below macOS 26 on the Apple engine.
+        engine = stored_or_none("livePreviewEngine")
+        checking = text("Checking")
+        defect = text("This version of EnviousWispr cannot run that preview engine.")
+        if engine is None or checking is None or defect is None: return None
+        try:
+            major = int(platform.mac_ver()[0].split(".")[0])
+        except ValueError:
+            return None
+        if checking or (engine == "universal" and defect): return False
+        if engine == "apple" and major < 26: return False
+        return True
+
+    def model_picker_shown():
+        provider = stored_or_none("llmProvider")
+        if provider is None: return None
+        return provider in ("openAI", "gemini", "claude", "ollama")
+
+    def language_locked():
+        visible = language_section_visible()
+        if visible is not True: return visible
+        try:
+            el = _content_switch("Auto-detect language")
+        except NavigationError:
+            return None
+        state = _switch_state(el) if el is not None else None
+        return {"OFF": True, "ON": False}.get(state)
+
+    def multi_input_device():
+        try:
+            uid = _stored(_sn.INPUT_KEY)
+            names = _sn.display_candidates(
+                _ax(), get_attr(_sn.input_control(_ax(), _app), "AXValue"), auto=(uid == ""))
+        except (NavigationError, _sn.PreferenceError):
+            return None
+        if len(names) != 1: return None
+        n = _sn.inputs_on_device(_audio_profile(), names[0])
+        return None if n is None else n > 1
+
+    def universal_engine_built():
+        shown = text("This version of EnviousWispr cannot run that preview engine.")
+        return None if shown is None else not shown
+
+    def preview_needs_language():
+        return text("Use Browse downloads below to get it and start the preview.")
+
+    def apple_packs_shown():
+        engine = stored_or_none("livePreviewEngine")
+        if engine is None: return None
+        try:
+            major = int(platform.mac_ver()[0].split(".")[0])
+        except ValueError:
+            return None
+        return major >= 26 and engine == "apple"
+
+    def pill_holds_words():
+        cards = read_cards("pill")
+        if not cards: return None
+        return bool(cards.get("Reading Well"))
+
+    def debug_mode_on():
+        try:
+            el = _content_switch("Enable debug mode")
+        except NavigationError:
+            return None
+        return {"ON": True, "OFF": False}.get(_switch_state(el)) if el is not None else None
+
+    return {
+        "language_section_visible": language_section_visible,
+        "whisperkit_actions_shown": whisperkit_actions_shown,
+        "whisperkit_recheck_shown": whisperkit_recheck_shown,
+        "parakeet_selected": parakeet_selected,
+        "parakeet_delivery_actions_shown": parakeet_delivery_actions_shown,
+        "preview_language_shown": preview_language_shown,
+        "model_picker_shown": model_picker_shown,
+        "language_locked": language_locked,
+        "vad_auto_stop": lambda: stored_or_none("vadAutoStop"),
+        "multi_input_device": multi_input_device,
+        "universal_engine_built": universal_engine_built,
+        "preview_needs_language": preview_needs_language,
+        "apple_packs_shown": apple_packs_shown,
+        "pill_holds_words": pill_holds_words,
+        "debug_mode_on": debug_mode_on,
+    }
+
+
+def _cycle_switch(label, before):
+    """Flip, verify, flip back, verify. On any failure, put the switch back to `before` if
+    it is readable and differs; never restores to an unknown value."""
+    def now():
+        el = _content_switch(label)
+        return _switch_state(el) if el is not None else None
+
+    def press_until(want):
+        el = _content_switch(label)
+        if el is None: return False
+        perform_action(el, "AXPress")
+        try:
+            return wait_for_condition(lambda: now() == want, timeout=3.0)
+        except Exception:
+            return now() == want
+
+    flipped = "OFF" if before == "ON" else "ON"
+    ok_flip = press_until(flipped)
+    ok_back = press_until(before) if ok_flip else False
+    if not (ok_flip and ok_back):
+        after = now()
+        if after is not None and after != before:
+            press_until(before)
+        final = now()
+        return "FAIL", (f"toggle:{label} cycle FAILED (before={before} flip={ok_flip} "
+                        f"back={ok_back} final={final})")
+    return "OK", f"toggle:{label}={before} cycle=OK"
+
+
+def scan(toggle=False):
+    """Full Settings scan: every PR1 page and each Dictation Settings tab, from the manifest in
+    `settings_nav.SCAN` (#3385), read by `settings_nav.scan_surface`. One row per surface: OK,
+    FAIL or BLOCKED. A required control that is absent, unreadable or ambiguous FAILs; a
+    state-dependent one is N/A only when its condition is known false, and BLOCKED when it
+    cannot be told. Pickers and option groups are read inside the row their "?" names, never
+    by distance from a label. `toggle=True` flips each switch, verifies, restores and
+    verifies; a failed cycle FAILs and is put back. Dictionary's sections are each selected
+    and read, then the section it showed is selected again.
     Usage: scan()  or  scan(toggle=True)
-    """
+    Returns [(surface, status, seconds, details)]."""
     connect()
     begin_test("full-scan" + (" +toggle" if toggle else ""))
     t_total = time.time()
-
-    # Tab manifest: (tab_name, toggles, pickers, card_groups, buttons_to_report)
-    TABS = [
-        ("History", [], [], [], []),  # skip button scan — 711 rows make it slow
-        ("Transcription",
-         ["Stop recording on silence", "Remove filler words"],
-         ["Unload model after"], ["engine"], []),
-        ("Microphone", [], ["Input"], [], []),
-        ("Keybinds", [], [], [], []),
-        # #1831 removed the Deep reasoning toggle, so the AI Polish tab now
-        # declares no expected switches. An empty list is the correct
-        # expectation, not a gap: naming a control that no longer exists would
-        # fail every run, and naming none asserts the tab still renders.
-        ("AI Polish", [], ["Provider", "Model"],
-         ["style"], ["Save", "Clear", "Refresh", "Copy Diagnostics"]),
-        ("Dictionary", ["Enable Dictionary"], [], [], []),
-        ("Clipboard",
-         ["Auto-copy to clipboard", "Restore clipboard after paste"],
-         [], [], []),
-        ("Permissions", [], [], [], []),
-        ("Diagnostics", ["Enable debug mode"], [], [],
-         ["Open Log Directory", "Copy Log Path", "Clear Logs",
-          "Open Console.app", "Run ASR Benchmark", "Run Pipeline Benchmark"]),
-    ]
-
+    probes = _scan_probes()
+    surfaces = list(_sn.SCAN)
+    debug = _diagnostics_row_present()
+    if debug:
+        surfaces += _sn.SCAN_DEBUG
+    hooks = {
+        "cards": read_cards,
+        "read_uid": lambda: _stored(_sn.INPUT_KEY),
+        "cycle": _cycle_switch if toggle else None,
+        "cancel": lambda el: perform_action(el, "AXCancel"),
+    }
     results = []
-    for tab_name, toggles, pickers, cards, buttons in TABS:
-        t0 = time.time()
-        if not nav(tab_name):
-            results.append((tab_name, "BLOCKED", time.time() - t0, []))
-            continue
-        details = []
+    try:
+        for page, tab, controls in surfaces:
+            name = page + (f" > {tab}" if tab else "")
+            t0 = time.time()
+            if not nav(page, tab):
+                results.append((name, "BLOCKED", time.time() - t0, ["navigation did not land"]))
+                continue
+            try:
+                rows = _sn.scan_surface(_ax(), lambda: _app, controls, probes, hooks)
+            except _sn.ScanStop as e:
+                # Something the scan opened could not be closed: stop driving the window.
+                results.append((name, "FAIL", time.time() - t0, [f"SCAN STOPPED: {e}"]))
+                break
+            results.append((name, _sn.row_status([s for s, _ in rows]), time.time() - t0,
+                            [d for _, d in rows]))
+        else:
+            # Remembered parent, separately: no tab keeps the last tab shown above.
+            t0 = time.time()
+            ok = nav("Dictation Settings")
+            results.append(("Dictation Settings (remembered tab)", "OK" if ok else "BLOCKED",
+                            time.time() - t0, []))
+    finally:
+        total = time.time() - t_total
+        close_window()
+        end_test()
 
-        # Read pickers
-        for p in pickers:
-            v = read(p)
-            details.append(f"picker:{p}={v}")
-
-        # Read card groups
-        for cg in cards:
-            cr = read_cards(cg)
-            sel = [k for k, v in cr.items() if v] if cr else []
-            details.append(f"cards:{cg}={','.join(sel) if sel else 'none'}")
-
-        # Toggles
-        for tg in toggles:
-            v = read(tg)
-            if toggle and v is not None:
-                tap(tg)
-                time.sleep(0.3)
-                v2 = read(tg)
-                tap(tg)
-                time.sleep(0.3)
-                v3 = read(tg)
-                ok = v == v3 and v != v2
-                details.append(f"toggle:{tg}={v} cycle={'OK' if ok else 'FAIL'}")
-            else:
-                details.append(f"toggle:{tg}={v}")
-
-        # Buttons (report existence)
-        for b in buttons:
-            found = _find_match(_app, b, "AXButton")
-            details.append(f"btn:{b}={'found' if found else 'missing'}")
-
-        elapsed = time.time() - t0
-        results.append((tab_name, "OK", elapsed, details))
-
-    total = time.time() - t_total
-    close_window()
-    end_test()
-
-    # Print report
     print(f"\n{'='*60}")
     print(f"FULL SETTINGS SCAN {'(with toggle)' if toggle else '(read-only)'}")
     print(f"{'='*60}")
-    for tab_name, status, elapsed, details in results:
-        print(f"\n[{status}] {tab_name} ({elapsed:.2f}s)")
+    for name, status, elapsed, details in results:
+        print(f"\n[{status}] {name} ({elapsed:.2f}s)")
         for d in details:
             print(f"  {d}")
     print(f"\n{'='*60}")
     passed = sum(1 for _, s, _, _ in results if s == "OK")
-    print(f"TOTAL: {passed}/{len(results)} tabs | {total:.2f}s")
+    print(f"TOTAL: {passed}/{len(results)} surfaces OK | {total:.2f}s"
+          + ("" if debug else " (release: Diagnostics not present)"))
     print(f"{'='*60}")
     return results
 
 
-def verify(tab, expectations):
-    """Navigate to a tab and check expected values. Reports VERIFIED/ISSUE per item.
-    Usage: verify('polish', {'Provider': 'OpenAI', 'Model': 'gpt-4o-mini'})
+def _diagnostics_row_present():
+    """Whether this build shows the DEBUG Diagnostics row in the sidebar."""
+    try:
+        ax = _ax()
+        side = _sn.sidebar(ax, _app)
+        return any(_sn._labelled(ax, el, "Diagnostics") for el in ax.walk(side))
+    except NavigationError:
+        return False
+
+
+def verify(page, expectations, tab=None):
+    """Navigate to a page (and tab) and check expected values. Prints VERIFIED / ISSUE / INFO
+    per item and returns {label: status}. Raises RouteError for a route that does not exist,
+    before connecting or notifying, and NavigationError when the route does not land.
+    Usage: verify('AI Polish', {'Provider': 'OpenAI', 'Model': 'gpt-4o-mini'})
+           verify('Dictation Settings', {'Unload model after': None}, tab='Engine')
     Pass None as value to just read without checking."""
+    _sn.validate_route(page, tab)
     connect()
-    begin_test(f"verify {tab}")
-    if not nav(tab):
-        print(f"BLOCKED: Could not navigate to '{tab}'")
+    begin_test(f"verify {page}" + (f" > {tab}" if tab else ""))
+    out = {}
+    try:
+        if not nav(page, tab):
+            raise NavigationError(f"could not navigate to {page!r}" + (f" > {tab!r}" if tab else ""))
+        for label, expected in expectations.items():
+            actual = read(label)
+            if actual is None:
+                print(f"ISSUE: {label} not found"); out[label] = "MISSING"
+            elif expected is None:
+                print(f"INFO: {label} = {actual}"); out[label] = "INFO"
+            elif expected.lower() in str(actual).lower():
+                print(f"VERIFIED: {label} = {actual}"); out[label] = "VERIFIED"
+            else:
+                print(f"ISSUE: {label} expected '{expected}', got '{actual}'"); out[label] = "ISSUE"
+        return out
+    finally:
         end_test()
         close_window()
-        return
-    for label, expected in expectations.items():
-        actual = read(label)
-        if expected is None:
-            print(f"INFO: {label} = {actual}")
-        elif actual and expected.lower() in actual.lower():
-            print(f"VERIFIED: {label} = {actual}")
-        else:
-            print(f"ISSUE: {label} expected '{expected}', got '{actual}'")
-    end_test()
-    close_window()
 
 
 _APP_LOG_PATH = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
@@ -1578,7 +1820,7 @@ def _extract_transcript_text(signal, log_state_before, clip_seen=None, lines_acc
 
 
 # Settings UI labels for the two ASR engines. Source of truth for switch_backend.
-# Updated when the buttons in Settings -> Transcription change copy.
+# #3385: they label the engine CARDS behind Dictation Settings > Engine > "Change speech engine".
 _BACKEND_LABELS = {
     "parakeet": "Fast",
     "whisperkit": "All Languages",
@@ -1592,9 +1834,12 @@ def switch_backend(name, wait=3.0):
         name: "parakeet" or "whisperkit".
         wait: seconds to let the model load after switching.
 
-    Settings -> Transcription has two buttons:
-        Fast            -> Parakeet
-        All Languages   -> WhisperKit
+    #3385: Dictation Settings > Engine shows the current engine as a summary; "Change speech
+    engine" opens the two cards (Fast -> Parakeet, All Languages -> WhisperKit). This opens
+    THAT Change (not the preview engine's or the language's), presses the card, and requires
+    the choices to close with the summary naming it (`settings_nav.choose_engine`). A card
+    press only selects; it starts no download. The UI landing is not proof that a deferred
+    runtime switch finished: recording oracles still decide that.
 
     Usage:
         switch_backend("whisperkit")
@@ -1603,51 +1848,60 @@ def switch_backend(name, wait=3.0):
     if name not in _BACKEND_LABELS:
         raise ValueError(f"Unknown backend '{name}'. Use one of: {list(_BACKEND_LABELS)}")
     connect()
-    # nav() now uses the button sidebar directly (#1296 fix, Dictionary
-    # redesign review) and owns the auto-open-Settings fallback, so this
-    # no longer needs its own copy of that logic.
-    if not nav("Transcription"):
-        raise RuntimeError("Could not navigate to Transcription")
+    if not nav("Dictation Settings", "Engine"):
+        raise RuntimeError("Could not navigate to Dictation Settings > Engine")
     label = _BACKEND_LABELS[name]
-    # These two engine buttons carry their label in AXDescription with an EMPTY
-    # AXTitle, which `tap()` does not search — so `tap("Fast")` reported
-    # 'Fast' not found while `see()` printed the button one line above
-    # (#1884 Live UAT, 2026-07-31). A missing control and an unsearched attribute
-    # look identical from the caller, which is why this resolves the element
-    # itself rather than retrying a tap that can never match.
-    button = _engine_button(label)
-    if button is None:
-        raise RuntimeError(
-            f"Could not find the '{label}' engine button in Settings -> Transcription")
-    if not perform_action(button, "AXPress"):
-        raise RuntimeError(f"Could not press the '{label}' engine button")
-    # Prove the switch LANDED, by waiting on the button's own selection state.
-    # Pressing and assuming is the precondition-never-checked shape: every later
-    # assertion would then describe whichever engine was already selected.
-    deadline = time.time() + 5.0
-    while time.time() < deadline:
-        if _is_selected(_engine_button(label)):
-            break
-        time.sleep(0.25)  # settle: poll interval around the AXValue signal wait above, not a fixed delay
-    else:
-        raise RuntimeError(f"Pressed '{label}' but it never reported itself selected")
+    choose_engine(label)
     print(f"Switched backend to {name} ({label}); waiting {wait:.0f}s for model load...")
-    time.sleep(wait)
+    time.sleep(wait)  # settle: unchanged model-load allowance; recording oracles decide success
     return True
 
 
-def _engine_button(label):
-    """The Transcription-pane engine button whose AXDescription is *label*.
+def choose_engine(label):
+    """On Dictation Settings > Engine, open the engine choices and select `label`
+    ("Fast" / "All Languages"), proving the summary then names it. Raises on failure."""
+    _ensure_connected()
+    _sn.choose_engine(_ax(), lambda: _app, label)
+    return True
 
-    Separate from `tap()` on purpose: `tap()` matches AXTitle/AXValue across the
-    whole app, and matching a description app-wide would make every caller's
-    taps fuzzier. Returns None when absent.
-    """
-    terms = _ui_terms(label)
-    for el in find_all_elements(_app, role="AXButton"):
-        if (get_attr(el, "AXDescription") or "") in terms:
-            return el
-    return None
+
+def _input_read_uid():
+    return _stored(_sn.INPUT_KEY)
+
+
+def _cancel_menu(menu):
+    perform_action(menu, "AXCancel")
+
+
+def read_input_choice():
+    """The app's STORED microphone choice from Dictation Settings > Microphone & Media:
+    `settings_nav.InputChoice(uid, shown)`. The UID comes from the shared preference
+    `preferredInputDeviceIDOverride` ("" = Auto), never from display text; `shown` is the
+    device name the control shows. Raises, before anything changes, when the stored choice is
+    unreadable, the display contradicts it, or a chosen device's name cannot be told."""
+    connect()
+    if not nav("Dictation Settings", "Microphone & Media"):
+        raise NavigationError("could not navigate to Dictation Settings > Microphone & Media")
+    return _sn.read_input(_ax(), lambda: _app, _input_read_uid, cancel=_cancel_menu)
+
+
+def select_input_choice(auto, name=None):
+    """Choose Auto or the device `name` in the Input device control's OWN menu and prove the
+    stored choice took it. A stale open menu is cancelled through AX on that control, never with
+    an Escape key, which would reach whatever app is in front (#3105's alert beep)."""
+    connect()
+    if not nav("Dictation Settings", "Microphone & Media"):
+        raise NavigationError("could not navigate to Dictation Settings > Microphone & Media")
+    return _sn.select_input(_ax(), lambda: _app, _input_read_uid, auto, name,
+                            cancel=_cancel_menu)
+
+
+def restore_input_choice(choice):
+    """Put back a choice `read_input_choice` captured and prove the stored UID matches it."""
+    connect()
+    if not nav("Dictation Settings", "Microphone & Media"):
+        raise NavigationError("could not navigate to Dictation Settings > Microphone & Media")
+    return _sn.restore_input(_ax(), lambda: _app, _input_read_uid, choice, cancel=_cancel_menu)
 
 
 def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.0):
@@ -3545,8 +3799,350 @@ def _self_test():
         _pid, _TABLES, _app = _saved_pid, _saved_tables, _saved_app
     find_rows += len(de_cases)
 
+    # ---- #3385: every public wrapper forwards page AND tab, and fails loudly -------------
+    # The wrappers are driven with their collaborators stubbed (no app, no window): nav is
+    # replaced by a recorder, so what is checked is exactly what each wrapper hands it.
+    nav_calls = []
+    stubs = {
+        "connect": lambda app="EnviousWispr": None, "begin_test": lambda label: None,
+        "end_test": lambda: None, "close_window": lambda: None, "see": lambda scope=None: None,
+        "read": lambda label: {"Provider": "OpenAI"}.get(label),
+        "nav": lambda page, tab=None: (nav_calls.append((page, tab)), page != "Keybinds")[1],
+    }
+    saved = {k: globals()[k] for k in stubs}
+    wrap_rows = []
+    try:
+        globals().update(stubs)
+        r = check("Dictation Settings", "Provider", "Gone", tab="Engine")
+        wrap_rows.append(("check forwards page and tab to nav",
+                          nav_calls[-1], ("Dictation Settings", "Engine")))
+        wrap_rows.append(("check reports an unreadable label as missing, not as success",
+                          (dict(r), r.missing, r.ok), ({"Provider": "OpenAI", "Gone": None}, ["Gone"], False)))
+        look("Dictation Settings", tab="Chimes")
+        wrap_rows.append(("look forwards page and tab", nav_calls[-1], ("Dictation Settings", "Chimes")))
+        before = len(nav_calls)
+        look()
+        wrap_rows.append(("look() with no page only observes", len(nav_calls), before))
+        out = verify("Dictation Settings", {"Provider": "OpenAI", "Gone": None}, tab="Clipboard")
+        wrap_rows.append(("verify forwards page and tab", nav_calls[-1], ("Dictation Settings", "Clipboard")))
+        wrap_rows.append(("verify returns a status per label, MISSING for an absent one",
+                          out, {"Provider": "VERIFIED", "Gone": "MISSING"}))
+        for name, call in [("check", lambda: check("Keybinds", "x")),
+                           ("verify", lambda: verify("Keybinds", {"x": None})),
+                           ("look", lambda: look("Keybinds"))]:
+            try:
+                call()
+                got = "returned"
+            except NavigationError:
+                got = "raised"
+            wrap_rows.append((f"{name} raises when navigation fails (no empty success)", got, "raised"))
+        try:
+            look(tab="Engine")
+            got = "returned"
+        except RouteError:
+            got = "raised"
+        wrap_rows.append(("look(tab=...) without a page is refused", got, "raised"))
+    finally:
+        globals().update(saved)
+    if any(globals()[k] is not saved[k] for k in stubs):
+        failures.append("#3385 wrapper rows: a stubbed global was not restored")
+    for why, got, want in wrap_rows:
+        if got != want:
+            failures.append(f"3385: {why}: got {got!r}, want {want!r}")
+        else:
+            print(f"  ok      {why}")
+    try:
+        nav("Transcription")
+        got = "returned"
+    except RouteError:
+        got = "raised"
+    except SystemExit:
+        got = "not connected"
+    why = "nav refuses a removed page name before touching the app"
+    if got != "raised":
+        failures.append(f"3385: {why}: got {got!r}")
+    else:
+        print(f"  ok      {why}")
+
+    # read_cards reads the CONTENT only: a sidebar button named like a card is ignored.
+    _pid_saved, _tables_saved, _app_saved = _pid, _TABLES, _app
+    sidebar_rows = [_el("AXButton", desc=p, value="Not selected") for p in _sn.SIDEBAR_LABELS]
+    sidebar_rows.append(_el("AXButton", desc="Fast", value="Selected"))   # the decoy
+    _app = _el("AXApplication", children=[_el("AXWindow", children=[
+        _el("AXGroup", children=sidebar_rows),
+        _el("AXGroup", children=[_el("AXButton", desc="Fast", value="Not selected"),
+                                 _el("AXButton", desc="All Languages", value="Selected")])])])
+    _pid, _TABLES = -1, (-1, [])
+    globals()["get_attr"] = lambda el, a: el.get(a) if isinstance(el, dict) else None
+    globals()["_iter_children_with_menubars"] = \
+        lambda el: (el.get("AXChildren") or []) if isinstance(el, dict) else []
+    try:
+        got = read_cards("engine")
+    finally:
+        globals()["get_attr"] = _real_get_attr
+        globals()["_iter_children_with_menubars"] = _real_iter
+        _pid, _TABLES, _app = _pid_saved, _tables_saved, _app_saved
+    why = "read_cards ignores a sidebar button named like a card"
+    if got != {"Fast": False, "All Languages": True}:
+        failures.append(f"3385: {why}: got {got!r}")
+    else:
+        print(f"  ok      {why}")
+    wrap_rows_total = len(wrap_rows) + 3   # + the restore, nav-refusal and read_cards rows
+
+    # ---- #3385: scan's toggle cycle and the engine / microphone wrappers ------------------
+    # A modelled switch: `flips` says whether each press changes it. The cycle must FAIL and
+    # put the switch back whenever it ends away from where it started, and never "restore"
+    # to an unknown value.
+    class _Switch:
+        def __init__(self, value, flips):
+            self.value, self.flips, self.presses = value, list(flips), 0
+
+    def _drive(sw):
+        stub = {
+            "_content_switch": lambda label, prefix=False: (sw if sw.value is not None else None),
+            "_switch_state": lambda el: el.value,
+            "perform_action": lambda el, a: (setattr(el, "presses", el.presses + 1),
+                                             el.flips and el.flips.pop(0) and setattr(
+                                                 el, "value", "OFF" if el.value == "ON" else "ON")),
+            "wait_for_condition": lambda pred, timeout=3.0: pred(),
+        }
+        keep = {k: globals()[k] for k in stub}
+        try:
+            globals().update(stub)
+            return _cycle_switch("Smart insertion", sw.value)
+        finally:
+            globals().update(keep)
+
+    cycle_rows = []
+    sw = _Switch("ON", [True, True])
+    cycle_rows.append(("a switch that flips and flips back cycles OK",
+                       (_drive(sw)[0], sw.value), ("OK", "ON")))
+    sw = _Switch("ON", [True, False, True])
+    cycle_rows.append(("a switch stuck after the first flip FAILs and is put back",
+                       (_drive(sw)[0], sw.value), ("FAIL", "ON")))
+    sw = _Switch("OFF", [False])
+    cycle_rows.append(("a switch that never flips FAILs and is left where it was",
+                       (_drive(sw)[0], sw.value), ("FAIL", "OFF")))
+
+    route_calls = []
+    stub = {
+        "connect": lambda app="EnviousWispr": None,
+        "nav": lambda page, tab=None: (route_calls.append(("nav", page, tab)), True)[1],
+        "_ensure_connected": lambda: None,
+    }
+    keep = {k: globals()[k] for k in stub}
+    real_choose, real_select, real_restore = _sn.choose_engine, _sn.select_input, _sn.restore_input
+    real_sleep = time.sleep
+    try:
+        globals().update(stub)
+        _sn.choose_engine = lambda ax, root_of, label, timeout=5.0: route_calls.append(("engine", label))
+        _sn.select_input = (lambda ax, root_of, read_uid, auto, name=None, uid=None, timeout=5.0,
+                            cancel=None: route_calls.append(("input", auto, name, cancel is not None)))
+        _sn.restore_input = (lambda ax, root_of, read_uid, choice, timeout=5.0, cancel=None:
+                             route_calls.append(("restore", choice, cancel is not None)))
+        time.sleep = lambda s: None
+        switch_backend("whisperkit", wait=0)
+        cycle_rows.append(("switch_backend routes to Dictation Settings > Engine and picks All Languages",
+                           route_calls[-2:], [("nav", "Dictation Settings", "Engine"),
+                                              ("engine", "All Languages")]))
+        select_input_choice(auto=True)
+        cycle_rows.append(("select_input_choice routes to Microphone & Media and asks for Auto",
+                           route_calls[-2:], [("nav", "Dictation Settings", "Microphone & Media"),
+                                              ("input", True, None, True)]))
+        select_input_choice(auto=False, name="BlackHole 2ch")
+        cycle_rows.append(("select_input_choice forwards a device name and an AX menu cancel",
+                           route_calls[-1], ("input", False, "BlackHole 2ch", True)))
+        want = _sn.InputChoice("BuiltInMicrophoneDevice", "MacBook Pro Microphone")
+        restore_input_choice(want)
+        cycle_rows.append(("restore_input_choice routes there and hands over the captured choice",
+                           route_calls[-2:], [("nav", "Dictation Settings", "Microphone & Media"),
+                                              ("restore", want, True)]))
+        try:
+            switch_backend("turbo")
+            got = "returned"
+        except ValueError:
+            got = "raised"
+        cycle_rows.append(("an unknown backend is refused before any navigation", got, "raised"))
+    finally:
+        globals().update(keep)
+        _sn.choose_engine, _sn.select_input, _sn.restore_input = (real_choose, real_select,
+                                                                   real_restore)
+        time.sleep = real_sleep
+    if (_sn.choose_engine is not real_choose or time.sleep is not real_sleep
+            or any(globals()[k] is not keep[k] for k in stub)):
+        failures.append("#3385 wrapper rows: a patched name was not restored")
+    for why, got, want in cycle_rows:
+        if got != want:
+            failures.append(f"3385: {why}: got {got!r}, want {want!r}")
+        else:
+            print(f"  ok      {why}")
+    wrap_rows_total += len(cycle_rows) + 1   # + the restore row
+
+    # ---- #3385: an impossible route is refused before ANY side effect ---------------------
+    # Every collaborator with an effect is a spy; a refused route must leave all of them unused.
+    effects = []
+    spies = {name: (lambda name: lambda *a, **k: effects.append(name))(name)
+             for name in ("connect", "begin_test", "end_test", "close_window", "_notify", "nav",
+                          "see", "read", "_ensure_connected")}
+    keep = {k: globals()[k] for k in spies}
+    refuse_rows = []
+    try:
+        globals().update(spies)
+        for why, call in [
+            ("check with a removed page", lambda: check("Transcription", "x")),
+            ("check with a tab on a page without tabs", lambda: check("Keybinds", "x", tab="Engine")),
+            ("check with an action row", lambda: check("Check for Updates")),
+            ("verify with a removed page", lambda: verify("Sounds", {"x": None})),
+            ("verify with an unknown tab", lambda: verify("Dictation Settings", {}, tab="Sounds")),
+            ("look with an action row", lambda: look("Check for Updates")),
+            ("look with an unknown tab", lambda: look("Dictation Settings", tab="Microphone")),
+            ("look with a tab and no page", lambda: look(tab="Engine")),
+        ]:
+            before = len(effects)
+            try:
+                call()
+                got = "returned"
+            except RouteError:
+                got = "refused"
+            refuse_rows.append((f"{why} is refused with zero side effects",
+                                (got, effects[before:]), ("refused", [])))
+    finally:
+        globals().update(keep)
+    if any(globals()[k] is not keep[k] for k in spies):
+        failures.append("#3385 refusal rows: a spied global was not restored")
+    for why, got, want in refuse_rows:
+        if got != want:
+            failures.append(f"3385: {why}: got {got!r}, want {want!r}")
+        else:
+            print(f"  ok      {why}")
+    wrap_rows_total += len(refuse_rows) + 1   # + the restore row
+
+    # ---- #3385: each scan condition answers True, False and "cannot tell" from evidence -----
+    # Modelled windows (`_el`) with the real sidebar; stored settings, the audio profile and
+    # the pill cards are stubs, so every probe runs its real code against known evidence.
+    def _probe_window(*content):
+        side = [_el("AXButton", desc=p, value="Not selected") for p in _sn.SIDEBAR_LABELS]
+        return _el("AXApplication", children=[_el("AXWindow", children=[
+            _el("AXGroup", children=side), _el("AXGroup", children=list(content))])])
+
+    def _probe(name, content=(), stored=None, profile=None, cards=None):
+        # content None: no Settings window at all, so nothing on the page can be read.
+        nonlocal_app = (_el("AXApplication", children=[]) if content is None
+                        else _probe_window(*content))
+
+        def fake_stored(key):
+            if stored is None or key not in stored:
+                raise _sn.PreferenceError(f"{key}: unreadable (stub)")
+            return stored[key]
+        patch = {"_stored": fake_stored, "_audio_profile": lambda: profile,
+                 "read_cards": lambda group: dict(cards or {}),
+                 "get_attr": lambda el, a: el.get(a) if isinstance(el, dict) else None,
+                 "_iter_children_with_menubars":
+                     lambda el: (el.get("AXChildren") or []) if isinstance(el, dict) else []}
+        keep_p = {k: globals()[k] for k in patch}
+        keep_app = globals()["_app"]
+        try:
+            globals().update(patch)
+            globals()["_app"] = nonlocal_app
+            return _scan_probes()[name]()
+        finally:
+            globals().update(keep_p)
+            globals()["_app"] = keep_app
+
+    btn = lambda label: _el("AXButton", desc=label)
+    txt = lambda t: _el("AXStaticText", value=t)
+    sw = lambda label, v: _el("AXCheckBox", desc=label, value=v)
+    mic = lambda value: _el("AXMenuButton", desc="Input device", value=value)
+    prof = lambda n: {"SPAudioDataType": [{"_items": [{"_name": "Scarlett 2i2",
+                                                       "coreaudio_device_input": n}]}]}
+    WK, PK = {"selectedBackend": "whisperKit"}, {"selectedBackend": "parakeet"}
+    probe_rows = [
+        ("parakeet_selected", (), PK, None, None, True),
+        ("parakeet_selected", (), WK, None, None, False),
+        ("parakeet_selected", (), None, None, None, None),
+        ("language_section_visible", (), PK, None, None, True),
+        ("language_section_visible", (btn("Remove Model"),), WK, None, None, True),
+        ("language_section_visible", (btn("Set up model"),), WK, None, None, False),
+        ("language_section_visible", (), None, None, None, None),
+        ("whisperkit_actions_shown", (), PK, None, None, False),
+        ("whisperkit_actions_shown", (btn("Set up model"),), WK, None, None, True),
+        ("whisperkit_actions_shown", (txt("Checking model status..."),), WK, None, None, False),
+        ("whisperkit_actions_shown", (), None, None, None, None),
+        ("whisperkit_recheck_shown", (btn("Resume"),), WK, None, None, True),
+        ("whisperkit_recheck_shown", (btn("Cancel"),), WK, None, None, False),
+        ("whisperkit_recheck_shown", (), WK, None, None, None),
+        ("language_locked", (sw("Auto-detect language", "Off"),), PK, None, None, True),
+        ("language_locked", (sw("Auto-detect language", "On"),), PK, None, None, False),
+        ("language_locked", (), PK, None, None, None),
+        ("vad_auto_stop", (), {"vadAutoStop": True}, None, None, True),
+        ("vad_auto_stop", (), {"vadAutoStop": False}, None, None, False),
+        ("vad_auto_stop", (), None, None, None, None),
+        ("multi_input_device", (mic("Scarlett 2i2, USB"),),
+         {_sn.INPUT_KEY: "uid-1"}, prof(2), None, None),   # name ambiguous without the menu
+        ("multi_input_device", (mic("Scarlett 2i2, Auto · USB"),), {_sn.INPUT_KEY: ""},
+         prof(2), None, True),
+        ("multi_input_device", (mic("Scarlett 2i2, Auto · USB"),), {_sn.INPUT_KEY: ""},
+         prof(1), None, False),
+        ("multi_input_device", (mic("Scarlett 2i2, Auto · USB"),), {_sn.INPUT_KEY: ""},
+         None, None, None),
+        ("universal_engine_built", (), {}, None, None, True),
+        ("universal_engine_built",
+         (txt("This version of EnviousWispr cannot run that preview engine."),), {}, None, None,
+         False),
+        ("preview_needs_language",
+         (txt("Use Browse downloads below to get it and start the preview."),), {}, None, None,
+         True),
+        ("preview_needs_language", (), {}, None, None, False),
+        ("preview_needs_language", None, {}, None, None, None),
+        ("universal_engine_built", None, {}, None, None, None),
+        ("apple_packs_shown", (), {"livePreviewEngine": "universal"}, None, None, False),
+        ("apple_packs_shown", (), None, None, None, None),
+        ("pill_holds_words", (), {}, None, {"Reading Well": True, "Capsule": False}, True),
+        ("pill_holds_words", (), {}, None, {"Reading Well": False, "Capsule": True}, False),
+        ("pill_holds_words", (), {}, None, {}, None),
+        ("debug_mode_on", (sw("Enable debug mode", 1),), {}, None, None, True),
+        ("debug_mode_on", (sw("Enable debug mode", 0),), {}, None, None, False),
+        ("debug_mode_on", (), {}, None, None, None),
+        ("parakeet_delivery_actions_shown", (txt("Downloading speech model..."),), PK, None, None,
+         True),
+        ("parakeet_delivery_actions_shown", (txt("Verifying download..."),), PK, None, None, False),
+        ("parakeet_delivery_actions_shown", (), WK, None, None, False),
+        ("parakeet_delivery_actions_shown", (), None, None, None, None),
+        ("preview_language_shown", (txt("Checking"),), {"livePreviewEngine": "universal"}, None,
+         None, False),
+        ("preview_language_shown", (), {"livePreviewEngine": "universal"}, None, None, True),
+        ("preview_language_shown", (), None, None, None, None),
+        ("model_picker_shown", (), {"llmProvider": "openAI"}, None, None, True),
+        ("model_picker_shown", (), {"llmProvider": "appleIntelligence"}, None, None, False),
+        ("model_picker_shown", (), None, None, None, None),
+    ]
+    import platform as _platform
+    apple_now = int(_platform.mac_ver()[0].split(".")[0]) >= 26
+    probe_rows.append(("apple_packs_shown", (), {"livePreviewEngine": "apple"}, None, None,
+                       apple_now))
+    probe_results = []
+    for name, content, stored, profile, cards, want in probe_rows:
+        got = _probe(name, content, stored, profile, cards)
+        probe_results.append((f"probe {name} -> {want}", got, want))
+    conditions = {c for _, _, cs in _sn.SCAN + _sn.SCAN_DEBUG for _, _, c in cs if c}
+    probe_results.append(("every manifest condition has a probe, and no probe is unused",
+                          sorted(set(_scan_probes())), sorted(conditions)))
+    probe_results.append(("every probe has a True, a False and a cannot-tell fixture",
+                          sorted(n for n in conditions
+                                 if {True, False, None} - {w for p, *_, w in probe_rows
+                                                           if p == n} - (
+                                     {True} if n == "apple_packs_shown" and not apple_now
+                                     else set())),
+                          []))
+    for why, got, want in probe_results:
+        if got != want:
+            failures.append(f"3385: {why}: got {got!r}, want {want!r}")
+        else:
+            print(f"  ok      {why}")
+    wrap_rows_total += len(probe_results)
+
     total = (guard_rows + len(banner_cases) + banner_rows_extra + file_rows
-             + len(window_cases) + entry_rows + find_rows)
+             + len(window_cases) + entry_rows + find_rows + wrap_rows_total)
     if failures:
         for f in failures:
             print(f"  FAIL    {f}")
