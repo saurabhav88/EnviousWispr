@@ -18,7 +18,7 @@ import Testing
 ///     TEST_RUNNER_EW_RENDER_CHIMES=1 scripts/xcode-test.sh \
 ///       --filter EnviousWisprTests/RecordingChimeRenderHarness
 ///
-/// PNGs land in a fresh `build/chimes-render/run-*/` directory per run. A skipped run has
+/// PNGs land in a fresh `build/pr1-lane-d/chimes-render/run-*/` directory per run. A skipped run has
 /// proven nothing.
 @MainActor
 @Suite(.tags(.harnessContract))
@@ -28,7 +28,7 @@ struct RecordingChimeRenderHarness {
 
   static let runDirectory = RepoRoot.url.appending(
     path:
-      "build/chimes-render/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
+      "build/pr1-lane-d/chimes-render/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
 
   private static func render(
     _ label: String, pageWidth: CGFloat, dark: Bool, playsChimes: Bool, dictating: Bool

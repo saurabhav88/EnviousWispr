@@ -31,6 +31,8 @@ struct RecordingChimeWiringTests {
     var selectButtons = 0
     var selectAction = ""
     var selectReferencesPreview = false
+    var previewHitShape = ""
+    var selectHitShape = ""
     /// The opacity the IN USE badge is drawn with, read from its modifier.
     var badgeOpacity = ""
     /// Any tap or gesture modifier anywhere on the card type.
@@ -41,7 +43,7 @@ struct RecordingChimeWiringTests {
     guard let card = structDecl("RecordingChimeCard", in: tree) else { return nil }
     var shape = CardShape()
     if let body = property("body", of: card),
-      let stack = firstCall(named: "HStack", in: body),
+      let stack = firstCall(named: "ZStack", in: body),
       let children = stack.trailingClosure?.statements
     {
       shape.bodyChildren = children.map { $0.item.trimmedDescription }
@@ -51,12 +53,16 @@ struct RecordingChimeWiringTests {
       shape.previewButtons = buttons.count
       shape.previewAction = buttons.first.flatMap { argument("action", of: $0) } ?? ""
       shape.previewReferencesSelect = references("onSelect", in: preview)
+      shape.previewHitShape = memberCallNodes(in: preview, named: "contentShape").first?
+        .arguments.first?.expression.trimmedDescription ?? ""
     }
     if let select = property("selectButton", of: card) {
       let buttons = calls(named: "Button", in: select)
       shape.selectButtons = buttons.count
       shape.selectAction = buttons.first.flatMap { argument("action", of: $0) } ?? ""
       shape.selectReferencesPreview = references("onPreview", in: select)
+      shape.selectHitShape = memberCallNodes(in: select, named: "contentShape").first?
+        .arguments.first?.expression.trimmedDescription ?? ""
       shape.badgeOpacity =
         memberCallNodes(in: select, named: "opacity").first {
           $0.calledExpression.as(MemberAccessExprSyntax.self)?.base?.trimmedDescription == "inUseBadge"
@@ -74,9 +80,10 @@ struct RecordingChimeWiringTests {
     #expect(
       shape
         == CardShape(
-          bodyChildren: ["previewButton", "selectButton"],
+          bodyChildren: ["selectButton", "previewButton"],
           previewButtons: 1, previewAction: "onPreview", previewReferencesSelect: false,
           selectButtons: 1, selectAction: "onSelect", selectReferencesPreview: false,
+          previewHitShape: "Rectangle()", selectHitShape: "RecordingChimeSelectRegion()",
           badgeOpacity: "isSelected ? 1 : 0", gestures: []),
       "\(shape)")
   }
@@ -86,7 +93,7 @@ struct RecordingChimeWiringTests {
     let fixture = Parser.parse(
       source: """
         struct RecordingChimeCard: View {
-          var body: some View { HStack { previewButton; selectButton }.onTapGesture { onSelect() } }
+          var body: some View { ZStack { selectButton; previewButton }.onTapGesture { onSelect() } }
           private var previewButton: some View {
             Button(action: onPreview) { Button(action: onSelect) { Text("x") } }
           }
@@ -94,7 +101,7 @@ struct RecordingChimeWiringTests {
         }
         """)
     let shape = try #require(Self.cardShape(in: fixture))
-    #expect(shape.bodyChildren == ["previewButton", "selectButton"])
+    #expect(shape.bodyChildren == ["selectButton", "previewButton"])
     #expect(shape.previewButtons == 2)
     #expect(shape.previewReferencesSelect)
     #expect(shape.gestures == ["onTapGesture"])

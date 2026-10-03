@@ -83,11 +83,10 @@ struct RecordingPillAppearancePanel: View {
         // Recording Pill tab, so "above" is now another page; the metric is kept
         // because 270 is what lets a card hold a readable picture, name and line
         // before the grid reflows to fewer columns.)
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 270, maximum: .infinity), spacing: 12)],
-          alignment: .leading,
-          spacing: 12
-        ) {
+        // #3385 lane D supersedes the 270pt reflow above: the approved comparison
+        // keeps all three pictures together, with full wrapping captions and a
+        // naturally measured equal height instead of a minimum-width card.
+        RecordingPillGrid {
           ForEach(Self.displayOrder, id: \.self) { design in
             RecordingPillPreviewTile(
               design: design,
@@ -195,6 +194,29 @@ struct RecordingPillAppearancePanel: View {
       return String(
         localized: "Unavailable while a removed model finishes clearing.",
         comment: "Recording Pill settings, style picker: why a design is briefly unavailable.")
+    }
+  }
+}
+
+/// The three choices share one comparison row. Each caption measures at its actual
+/// column width; the tallest natural card sets the row height, never a fixed line count.
+struct RecordingPillGrid: Layout {
+  static let spacing: CGFloat = 12
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let width = proposal.width ?? 900
+    let count = max(1, subviews.count)
+    let cardWidth = max(0, (width - Self.spacing * CGFloat(count - 1)) / CGFloat(count))
+    let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: cardWidth, height: nil)).height }.max() ?? 0
+    return CGSize(width: width, height: height)
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let count = max(1, subviews.count)
+    let cardWidth = max(0, (bounds.width - Self.spacing * CGFloat(count - 1)) / CGFloat(count))
+    for (index, subview) in subviews.enumerated() {
+      subview.place(at: CGPoint(x: bounds.minX + CGFloat(index) * (cardWidth + Self.spacing), y: bounds.minY),
+        anchor: .topLeading, proposal: ProposedViewSize(width: cardWidth, height: bounds.height))
     }
   }
 }
@@ -503,9 +525,10 @@ struct RecordingPillPreviewTile: View {
         // each design's name and a short line under its picture (founder, Gate 2,
         // 2026-10-02). The label above is still the full name and summary, so a
         // VoiceOver user still gets everything a sighted one does.
-        HStack(alignment: .top, spacing: 8) {
-          caption
-            .frame(maxWidth: .infinity, alignment: .leading)
+        // #3385 lane D supersedes the caption-line slot below: the tick gets
+        // its own reserved row, so names and captions use the full card width.
+        // Its row exists selected or not, and never changes the picture's box.
+        VStack(alignment: .leading, spacing: 8) {
           // **The tick's slot is reserved whether or not it is shown, and that is a
           // correctness requirement rather than tidiness.** The preview's scale is
           // computed from the width its `GeometryReader` is handed, so a tick that
@@ -530,6 +553,9 @@ struct RecordingPillPreviewTile: View {
             }
           }
           .frame(width: 18, height: 18)
+          .frame(maxWidth: .infinity, alignment: .trailing)
+          caption
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
       .padding(12)

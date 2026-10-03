@@ -31,7 +31,7 @@ import Testing
 ///     TEST_RUNNER_EW_RENDER_APPEARANCE=1 scripts/xcode-test.sh \
 ///       --filter EnviousWisprTests/AppearanceRenderHarness
 ///
-/// PNGs land in a fresh `build/appearance-render/run-*/` directory per run. A skipped receipt is not a passed
+/// PNGs land in a fresh `build/pr1-lane-d/appearance-render/run-*/` directory per run. A skipped receipt is not a passed
 /// receipt: when this row is skipped it has proven nothing at all.
 @MainActor
 @Suite(.tags(.harnessContract))
@@ -64,7 +64,7 @@ struct AppearanceRenderHarness {
 
   /// One fresh directory per run, so a PNG left by an earlier run can never pass as this one's.
   static let runDirectory = RepoRoot.url.appending(
-    path: "build/appearance-render/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
+    path: "build/pr1-lane-d/appearance-render/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
 
   /// Render one page at one width and scheme to a PNG; returns the PNG's URL after proving it
   /// decodes to a nonzero bitmap.
@@ -126,6 +126,73 @@ struct AppearanceRenderHarness {
     return url
   }
 
+  /// Fit evidence only: read German from the source catalog, never call an English
+  /// fallback a German lookup. New PR1 copy is still pending the integrator's catalog
+  /// pass; the three marked drafts below are NOT reviewed translations or app lookup.
+  static func germanFitChecks(pageWidth: CGFloat, dark: Bool) throws {
+    let catalogURL = RepoRoot.url.appending(path: "Sources/EnviousWispr/Resources/Localizable.xcstrings")
+    let json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: catalogURL)) as? [String: Any])
+    let strings = try #require(json["strings"] as? [String: Any])
+    let drafts = [
+      "A compact pill with a dot and level meter.": "Eine kompakte Anzeige mit Punkt und Pegelmesser.",
+      "A slim rail that follows your volume.": "Ein schmaler Balken, der deiner Lautstärke folgt.",
+      "Shows words as you speak. Turns Live Preview on.": "Zeigt Wörter beim Sprechen. Aktiviert die Live-Vorschau."
+    ]
+    func german(_ key: String) throws -> String {
+      if let entry = strings[key] as? [String: Any],
+        let localizations = entry["localizations"] as? [String: Any],
+        let de = localizations["de"] as? [String: Any],
+        let unit = de["stringUnit"] as? [String: String], let value = unit["value"], !value.isEmpty {
+        print("GERMAN source-catalog lookup key=\(key) value=\(value) state=\(unit["state"] ?? "unknown"); not a Bundle.main lookup")
+        return value
+      }
+      let value = try #require(drafts[key], "no German lookup or labelled draft for \(key)")
+      print("GERMAN UNREVIEWED DRAFT key=\(key) value=\(value)")
+      return value
+    }
+    let pillWidth = (pageWidth - 2 * SettingsLayout.contentH - 2 * SettingsLayout.rowPaddingH - 24) / 3
+    let chimeWidth = (pageWidth - 2 * SettingsLayout.contentH - 36) / 4
+    var rows: [AnyView] = []
+    for design in RecordingPillAppearancePanel.displayOrder {
+      let name = try german(design.displayName)
+      let caption = try german(String(localized: DictationSettingsCopy.Pill.shortDescription(for: design)))
+      let text = VStack(alignment: .leading, spacing: 2) {
+        Text(verbatim: name).font(.stRowLabel)
+        Text(verbatim: caption).font(.stRowHelper)
+      }.fixedSize(horizontal: false, vertical: true)
+      let size = PillSettingsLayoutTests.fitting(text, width: pillWidth - PillSettingsLayoutTests.captionInset)
+      print("GERMAN Pill fit card=\(pillWidth) textWidth=\(pillWidth - PillSettingsLayoutTests.captionInset) fullTextHeight=\(size.height) containsFullText=\(size.width <= pillWidth - PillSettingsLayoutTests.captionInset + 0.5)")
+      rows.append(AnyView(text.frame(width: pillWidth - PillSettingsLayoutTests.captionInset)))
+    }
+    for pairing in RecordingSoundPairing.allCases {
+      let name = try german(RecordingChimeCatalog.name(for: pairing))
+      let caption = try german(RecordingChimeCatalog.description(for: pairing))
+      let text = VStack(alignment: .leading, spacing: 2) {
+        Text(verbatim: name).font(.stRowLabel)
+        Text(verbatim: caption).font(.stRowHelper)
+      }.fixedSize(horizontal: false, vertical: true)
+      let size = PillSettingsLayoutTests.fitting(text, width: chimeWidth - 8)
+      print("GERMAN Chime fit \(pairing.rawValue) card=\(chimeWidth) textWidth=\(chimeWidth - 8) fullTextHeight=\(size.height) containsFullText=\(size.width <= chimeWidth - 8 + 0.5)")
+      rows.append(AnyView(text.frame(width: chimeWidth - 8)))
+    }
+    // This sheet is deliberately labelled fit evidence, not a German page render.
+    let sheet = VStack(alignment: .leading, spacing: 12) {
+      Text(verbatim: "German text fit: source-catalog values + UNREVIEWED Pill drafts")
+        .font(.stRowHelper)
+      ForEach(rows.indices, id: \.self) { rows[$0] }
+    }.padding(16).frame(width: 508).background(Color.stPageBg)
+    let host = NSHostingView(rootView: AnyView(sheet))
+    host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    host.frame = NSRect(origin: .zero, size: host.fittingSize)
+    host.layoutSubtreeIfNeeded()
+    let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+    host.cacheDisplay(in: host.bounds, to: rep)
+    let png = try #require(rep.representation(using: .png, properties: [:]))
+    let url = runDirectory.appending(path: "german-fit-page-\(Int(pageWidth))-\(dark ? "dark" : "light").png")
+    try png.write(to: url)
+    print("RENDERED German FIT sheet (not localized app page) -> \(url.path)")
+  }
+
   @Test(
     "render the Appearance and Recording Pill pages at the widths a user actually gets",
     .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_APPEARANCE"] == "1"))
@@ -160,6 +227,9 @@ struct AppearanceRenderHarness {
         try Self.render(
           .pill, label: "\(state)-min-750-light", pageWidth: Self.pageWidth(window: 750), dark: false,
           capability: capability))
+    }
+    for width in [CGFloat(750), 820, 1300] {
+      for dark in [false, true] { try Self.germanFitChecks(pageWidth: Self.pageWidth(window: width), dark: dark) }
     }
     #expect(made.count == 19, "rendered \(made.count) of 19 planned PNGs")
     #expect(Set(made).count == made.count, "two renders wrote one file")

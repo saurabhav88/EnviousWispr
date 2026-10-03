@@ -103,7 +103,9 @@ struct RecordingChimesContent: View {
 struct RecordingChimeGrid: Layout {
   static let maxColumns = 4
   /// Wide enough for the play button, a wrapped name and description at 14pt and the badge.
-  static let minimumCardWidth: CGFloat = 210
+  // #3385 lane D: 460pt of content fits four 106pt cards and three 12pt gaps.
+  // Supersedes 210pt: full-width text sits below Play instead of beside it.
+  static let minimumCardWidth: CGFloat = 106
   static let spacing: CGFloat = 12
 
   static func columns(forWidth width: CGFloat) -> Int {
@@ -178,11 +180,20 @@ struct RecordingChimeCard: View {
   let onPreview: () -> Void
 
   static let previewDiameter: CGFloat = 32
+  static let previewRegionSide: CGFloat = 44
 
   var body: some View {
-    HStack(alignment: .top, spacing: 0) {
-      previewButton
+    ZStack(alignment: .topLeading) {
       selectButton
+      previewButton
+    }
+    // The decorative row spans beneath BOTH controls, and belongs to neither
+    // label. It does not read sound data or take hits; Select owns this lower row.
+    .overlay(alignment: .bottom) {
+      RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 8)
+        .allowsHitTesting(false)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .background(Color.stSectionBg)
@@ -220,10 +231,11 @@ struct RecordingChimeCard: View {
         .background(
           Circle().fill(isPreviewEnabled ? Color.stAccentSolid : Color.stTextTertiary.opacity(0.35))
         )
-        .padding(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 6))
+        .frame(width: Self.previewRegionSide, height: Self.previewRegionSide)
         // The full card height, so the two Buttons tile the card with no dead
         // strip under the play circle (swift-patterns RULE: plain-button-content-shape).
-        .frame(maxHeight: .infinity, alignment: .top)
+        // #3385 lane D supersedes the full-height strip above. The corner is
+        // exactly 44x44; Select excludes it, then takes the full-width text below.
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -237,6 +249,9 @@ struct RecordingChimeCard: View {
   private var selectButton: some View {
     Button(action: onSelect) {
       VStack(alignment: .leading, spacing: 8) {
+        Color.clear.frame(height: Self.previewRegionSide - 4)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 2) {
           Text(RecordingChimeCatalog.name(for: pairing))
             .font(.stRowLabel)
@@ -248,18 +263,21 @@ struct RecordingChimeCard: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         Spacer(minLength: 0)
-        HStack(spacing: 8) {
-          RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
-          // Always laid out, shown only when selected, so picking a chime
-          // never resizes its card or moves either button.
-          inUseBadge
-            .opacity(isSelected ? 1 : 0)
-        }
-        .accessibilityHidden(true)
+        // Always laid out, shown only when selected, so picking a chime
+        // never resizes its card or moves either button.
+        inUseBadge
+          .opacity(isSelected ? 1 : 0)
+          .accessibilityHidden(true)
+        // Reserve the shared decorative row without putting it in a Button.
+        Color.clear.frame(height: 18)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
       }
-      .padding(EdgeInsets(top: 12, leading: 6, bottom: 12, trailing: 12))
+      // Four-point text insets preserve more room for long German names at
+      // the 106pt column; the play corner stays 44pt and the waveform inset 8pt.
+      .padding(4)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      .contentShape(Rectangle())
+      .contentShape(RecordingChimeSelectRegion())
     }
     .buttonStyle(.plain)
     .accessibilityLabel(RecordingChimeCatalog.name(for: pairing))
@@ -273,13 +291,29 @@ struct RecordingChimeCard: View {
         .font(.system(size: 11, weight: .bold))
       Text(DictationSettingsCopy.Chimes.inUse)
         .font(.stSectionHeader)
-        .lineLimit(1)
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
     }
     .foregroundStyle(Color.white)
     .padding(.horizontal, 8)
     .padding(.vertical, 2)
     .background(Capsule().fill(Color.stAccentSolid))
     .allowsHitTesting(false)
+  }
+}
+
+/// Select is an L-shaped region: the complete card minus Play's 44pt corner.
+/// Unlike a transparent overlay Button, this shape cannot also answer inside Play.
+struct RecordingChimeSelectRegion: Shape {
+  func path(in rect: CGRect) -> Path {
+    let corner = RecordingChimeCard.previewRegionSide
+    return Path { path in
+      path.move(to: CGPoint(x: rect.minX + corner, y: rect.minY))
+      path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+      path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+      path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+      path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + corner))
+      path.addLine(to: CGPoint(x: rect.minX + corner, y: rect.minY + corner))
+      path.closeSubpath()
+    }
   }
 }

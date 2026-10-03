@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 
 /// #3385: the twelve chime cards reflow to at most four columns. **When this fails, a narrow
-/// window squeezes four unreadable cards into a row, a wide one grows a fifth column, cards in
+/// window loses the four-column overview or cuts off readable text, a wide one grows a fifth column, cards in
 /// a row come out different sizes, or picking a chime resizes its card and moves both buttons.**
 /// Production views hosted here: `RecordingChimeGrid` laying out the real `RecordingChimeCard`s,
 /// each wrapped only in a background probe that reports its frame.
@@ -24,7 +24,7 @@ struct RecordingChimeLayoutTests {
   /// two `SettingsLayout.contentH` margins.
   static let gridWidths: [CGFloat] = [380, 508, 578, 1058].map { $0 - 2 * SettingsLayout.contentH }
 
-  @Test("never more than four columns, and fewer when a card would drop below its minimum")
+  @Test("four columns at required widths, with a fallback below the supported window")
   func columnCeiling() {
     for width in Self.gridWidths + [1400, 2400] {
       let columns = RecordingChimeGrid.columns(forWidth: width)
@@ -35,7 +35,7 @@ struct RecordingChimeLayoutTests {
       #expect(columns == 1 || card >= RecordingChimeGrid.minimumCardWidth, "\(width): \(card)")
     }
     #expect(RecordingChimeGrid.columns(forWidth: 1058 - 2 * SettingsLayout.contentH) == 4)
-    #expect(RecordingChimeGrid.columns(forWidth: 508 - 2 * SettingsLayout.contentH) < 4)
+    #expect(RecordingChimeGrid.columns(forWidth: 508 - 2 * SettingsLayout.contentH) == 4)
   }
 
   struct Frames: PreferenceKey {
@@ -98,7 +98,7 @@ struct RecordingChimeLayoutTests {
         #expect(
           Set(row.map { ($0.height * 2).rounded() }).count == 1, "\(width): a row's heights differ")
       }
-      #expect(frames.values.allSatisfy { $0.height > 40 && $0.height < 220 }, "\(width): \(frames)")
+      #expect(frames.values.allSatisfy { $0.height > 40 && $0.height < 300 }, "\(width): \(frames)")
     }
   }
 
@@ -111,6 +111,37 @@ struct RecordingChimeLayoutTests {
       #expect(base.count == 12)
       #expect(base == other, "\(width): selection moved a card")
       #expect(base == busy, "\(width): disabling Preview moved a card")
+    }
+  }
+
+  @Test("full-width 14pt names and captions fit; Play and Select have disjoint effective regions")
+  func textAndHitRegionsFit() throws {
+    for width in Self.gridWidths.dropFirst() {
+      let frames = Self.cardFrames(width: width, selected: .whisperTick)
+      for pairing in RecordingSoundPairing.allCases {
+        let card = try #require(frames[pairing.rawValue])
+        let text = VStack(alignment: .leading, spacing: 2) {
+          Text(RecordingChimeCatalog.name(for: pairing)).font(.stRowLabel)
+          Text(RecordingChimeCatalog.description(for: pairing)).font(.stRowHelper)
+        }.fixedSize(horizontal: false, vertical: true)
+        let textHeight = PillSettingsLayoutTests.fitting(text, width: card.width - 8).height
+        #expect(card.height >= 44 + textHeight + 18 + 16)
+        let rect = CGRect(origin: .zero, size: card.size)
+        let select = RecordingChimeSelectRegion().path(in: rect)
+        // Independent rectangle oracle, sampling interiors, edges left to native Live UAT.
+        var overlap = 0
+        var missing = 0
+        for y in stride(from: CGFloat(0.5), to: card.height, by: 1) {
+          for x in stride(from: CGFloat(0.5), to: card.width, by: 1) {
+            let play = x < 44 && y < 44
+            let chooses = select.contains(CGPoint(x: x, y: y))
+            if play && chooses { overlap += 1 }
+            if !play && !chooses { missing += 1 }
+          }
+        }
+        print("ChimeFit \(pairing.rawValue) card=\(card) textWidth=\(card.width - 8) fullTextHeight=\(textHeight) play=44x44 select=L-shaped overlap=\(overlap) uncovered=\(missing) contained=\(card.maxX <= width + 0.5)")
+        #expect(overlap == 0 && missing == 0)
+      }
     }
   }
 
