@@ -4,9 +4,9 @@ import SwiftUI
 /// The Snippets page (#628), built to the approved Claude Design prototype
 /// (`docs/feature-requests/issue-628-design/EnviousWispr Snippets.dc.html`).
 ///
-/// Three cards: the keyword, the list, and — when the list is empty — the state that explains
-/// what a snippet is for. Import (#2997) opens the review-then-commit sheet from the place the
-/// design gives its button.
+/// The explainer and keyword share one card (#3385); the list retains its empty state.
+/// Import (#2997) opens the review-then-commit sheet from the place the design gives its button.
+/// Single-screen exception: the list and its retained states stay together in this file.
 struct SnippetsView: View {
   @Environment(SnippetsCoordinator.self) private var coordinator
 
@@ -29,6 +29,7 @@ struct SnippetsView: View {
       keywordCard
       listCard
     }
+    .environment(\.settingsPR1Density, true)
     .onAppear { keywordField = coordinator.keyword }
     // A refresh from disk (an import's review, an export) can adopt a keyword another
     // EnviousWispr process changed; the field follows unless the user is typing in it, or
@@ -55,27 +56,46 @@ struct SnippetsView: View {
   // MARK: - Keyword
 
   private var keywordCard: some View {
-    BrandedPanel(
-      icon: "mic",
-      header: "Keyword",
-      description:
-        "A snippet only fires when you say this word first. Say the trigger on its own and your dictation is left alone."
-    ) {
-      HStack(spacing: 10) {
-        Text("Say").settingsRowLabel()
-        TextField("", text: $keywordField)
-          .textFieldStyle(.roundedBorder)
-          .frame(width: 190)
-          .focused($keywordFocused)
-          .onSubmit { commitKeyword() }
-          .onChange(of: keywordFocused) { _, focused in
-            if !focused { commitKeyword() }
+    VStack(alignment: .leading, spacing: 7) {
+      SettingsSectionHeading(resolvedTitle: String(localized: SnippetsSettingsCopy.heading).uppercased())
+      BrandedSection {
+        BrandedRow {
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "curlybraces")
+            VStack(alignment: .leading, spacing: 6) {
+              Text(SnippetsSettingsCopy.headline).settingsRowTitle()
+              Text(SnippetsSettingsCopy.body)
+                .font(.stRowHelper)
+                .foregroundStyle(.stTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
           }
-        Text("then your snippet, and it expands.").settingsHelperCopy()
-        Spacer(minLength: 0)
+        }
+        BrandedRow {
+          SettingsRow(
+            icon: "mic",
+            title: "Keyword",
+            short: SnippetsSettingsCopy.keywordShort,
+            help: SnippetsSettingsCopy.keywordHelp
+          ) {
+            TextField("", text: $keywordField)
+              .accessibilityLabel("Keyword")
+              .focused($keywordFocused)
+              .settingsFieldChrome(focused: $keywordFocused)
+              .frame(width: 150)
+              .onSubmit { commitKeyword() }
+              .onChange(of: keywordFocused) { _, focused in
+                if !focused { commitKeyword() }
+              }
+          }
+          .rowStatus {
+            keywordExample
+              .font(.stRowHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
       }
-    } footnote: {
-      keywordExample.settingsHelperCopy()
     }
   }
 
@@ -337,4 +357,19 @@ enum SnippetsSheetRoute: Identifiable {
     case .importSnippets: return "import"
     }
   }
+}
+
+/// Approved #3385 copy. Shared with the edit sheet; the catalog owns translations.
+enum SnippetsSettingsCopy {
+  static let heading: LocalizedStringResource = "How snippets work"
+  static let headline: LocalizedStringResource = "Paste the text you type over and over, by voice"
+  static let body: LocalizedStringResource =
+    "Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone."
+  static let keywordShort: LocalizedStringResource = "Say this first, then your trigger. One word."
+  static let keywordHelp: LocalizedStringResource =
+    "A snippet only fires when you say this word first. Say the trigger on its own and your dictation is left alone."
+  static let triggerShort: LocalizedStringResource = "Choose short, distinctive words after the keyword"
+  static let textShort: LocalizedStringResource = "Line breaks are kept, including in signatures"
+  static let fillInHelp: LocalizedStringResource =
+    "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere."
 }

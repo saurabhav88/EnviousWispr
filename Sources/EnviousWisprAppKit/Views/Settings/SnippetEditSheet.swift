@@ -3,13 +3,9 @@ import SwiftUI
 
 /// Add or edit one snippet (#628), to the approved design's sheet.
 ///
-/// The sheet carried a live preview card until #2631. It was the only element in this fixed
-/// 600pt frame with no height bound — its "You get" line rendered every line of the expansion
-/// on purpose, so a multi-paragraph snippet grew the card until Delete, Cancel and Save were
-/// off the bottom and Escape was the only way out. It also restated what sat one row above it:
-/// the keyword is already a pill beside the trigger input, and the expansion is already in the
-/// editor. Removed rather than bounded, and the space went to that editor, which is where a
-/// long snippet is actually written.
+/// #2631: an unbounded preview of the expansion pushed the footer outside this 600pt sheet.
+/// #3385 restores only the spoken keyword + trigger, in a bounded scroll area. The expansion
+/// stays in the flexible editor; errors are bounded too, so fill-ins and actions keep their space.
 struct SnippetEditSheet: View {
   @Environment(SnippetsCoordinator.self) private var coordinator
   @Environment(\.dismiss) private var dismiss
@@ -24,6 +20,7 @@ struct SnippetEditSheet: View {
   @State private var expansion = ""
   @State private var error: String?
   @State private var didLoad = false
+  @FocusState private var triggerFocused: Bool
 
   private var isEditing: Bool { draft.snippet != nil }
 
@@ -40,6 +37,7 @@ struct SnippetEditSheet: View {
 
       triggerField
       expansionField
+      SnippetSpeechPreview(keyword: keyword, trigger: trigger)
 
       footer
     }
@@ -60,47 +58,55 @@ struct SnippetEditSheet: View {
 
   private var triggerField: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Snippet").settingsRowLabel()
+      SettingsRow(
+        icon: "text.word.spacing",
+        title: "Trigger",
+        short: SnippetsSettingsCopy.triggerShort,
+        help: "Matched word for word, and only after you say \u{201C}\(keyword)\u{201D}."
+      ) { EmptyView() }
       HStack(spacing: 8) {
-        // The keyword is shown, not editable here: it belongs to every snippet, so editing it
-        // in one snippet's sheet would silently change all of them.
+        // The opening keyword is shared by every snippet and is not editable here.
         Text(keyword)
           .font(.stRowLabel)
           .foregroundStyle(.stAccent)
+          .lineLimit(1)
           .padding(.horizontal, 12)
           .padding(.vertical, 6)
+          .frame(maxWidth: 130)
           .background(Color.stAccentLight, in: Capsule())
-          .overlay(Capsule().strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1))
+          .overlay(
+            Capsule().strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
+              .allowsHitTesting(false))
         TextField("my email address", text: $trigger)
-          .textFieldStyle(.roundedBorder)
+          .accessibilityLabel("Trigger")
+          .focused($triggerFocused)
+          .settingsFieldChrome(focused: $triggerFocused)
       }
-      Text("Matched word for word, and only after you say \u{201C}\(keyword)\u{201D}.")
-        .settingsHelperCopy()
     }
   }
 
   private var expansionField: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Expands to").settingsRowLabel()
+      SettingsRow(
+        icon: "doc.text",
+        title: "Text to paste",
+        short: SnippetsSettingsCopy.textShort,
+        help: SnippetsSettingsCopy.fillInHelp
+      ) { EmptyView() }
       // Takes every point the sheet has left rather than a fixed height. A snippet is routinely
       // a whole canned message, and the previous 110pt showed about four lines of one.
       TextEditor(text: $expansion)
         .font(.stBody)
+        .accessibilityLabel("Text to paste")
         .frame(minHeight: 110, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
         .padding(6)
         .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
           RoundedRectangle(cornerRadius: 8)
-            .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1))
+            .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
+            .allowsHitTesting(false))
       fillInButtons
-      Text(
-        """
-        A fill-in becomes the date, the time, or what you copied. Everything else is pasted as \
-        written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move \
-        it anywhere.
-        """
-      ).settingsHelperCopy()
     }
   }
 
@@ -112,7 +118,7 @@ struct SnippetEditSheet: View {
   /// looks like.
   ///
   /// **Appends rather than inserting at the caret**, because SwiftUI's `TextEditor` exposes no
-  /// selection binding on macOS 14. The helper copy above says so, because for someone editing an
+  /// selection binding on macOS 14. The Text to paste help says so, because for someone editing an
   /// existing template that is a real cost rather than a detail.
   ///
   /// A fixed-height row under a `TextEditor` that takes `maxHeight: .infinity`, so the editor
@@ -155,10 +161,14 @@ struct SnippetEditSheet: View {
   private var footer: some View {
     VStack(alignment: .leading, spacing: 8) {
       if let error {
-        Text(error)
-          .font(.stHelper)
-          .foregroundStyle(.stError)
-          .fixedSize(horizontal: false, vertical: true)
+        ScrollView(.vertical) {
+          Text(error)
+            .font(.stRowHelper)
+            .foregroundStyle(.stError)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: 54)
       }
       HStack(spacing: 8) {
         if let existing = draft.snippet {
@@ -192,5 +202,32 @@ struct SnippetEditSheet: View {
       // message has to be visible where the user is looking rather than behind it.
       error = coordinator.errorMessage
     }
+  }
+}
+
+/// Speech only, never the expansion (#2631). Long triggers scroll inside a fixed height.
+private struct SnippetSpeechPreview: View {
+  let keyword: String
+  let trigger: String
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      SettingsRowIcon(systemName: "mic")
+      ScrollView(.vertical) {
+        Text("You'll say \u{201C}\(keyword) \(trigger)\u{201D}")
+          .font(.stRowHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .textSelection(.enabled)
+      }
+      .frame(height: 40)
+    }
+    .padding(10)
+    .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
+        .allowsHitTesting(false))
   }
 }
