@@ -924,7 +924,7 @@ SCAN = [
         ("section", ("Quick Add", "named", "Highlight a word"), None),
     ]),
     ("Snippets", None, [("button", "Add snippet", None), ("button", "Import", None),
-                        ("field", "Keyword", None), ("named", "How snippets work", None),
+                        ("field", "Keyword", None), ("named", "Paste the text you type over and over, by voice", None),
                         ("snippet_sheet", "Add snippet", None)]),
     ("App Settings", "Privacy", [
         ("toggle", "Share usage metrics", None), ("toggle", "Send crash reports", None),

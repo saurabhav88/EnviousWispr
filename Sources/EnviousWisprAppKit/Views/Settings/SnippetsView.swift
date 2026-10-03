@@ -4,7 +4,8 @@ import SwiftUI
 /// The Snippets page (#628), built to the approved Claude Design prototype
 /// (`docs/feature-requests/issue-628-design/EnviousWispr Snippets.dc.html`).
 ///
-/// The explainer and keyword share one card (#3385); the list retains its empty state.
+/// The explainer and keyword share one card (#3385); the list retains its empty state. Laid out
+/// to mockup 14 (founder, 2026-10-03: "You didn't update the snippets UX").
 /// Import (#2997) opens the review-then-commit sheet from the place the design gives its button.
 /// Single-screen exception: the list and its retained states stay together in this file.
 struct SnippetsView: View {
@@ -55,45 +56,77 @@ struct SnippetsView: View {
 
   // MARK: - Keyword
 
+  /// The mockup's top card (founder, 2026-10-03): the braces tile beside the headline, then
+  /// the keyword on one line with its field inline and the hint after it.
   private var keywordCard: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      SettingsSectionHeading(resolvedTitle: String(localized: SnippetsSettingsCopy.heading).uppercased())
-      BrandedSection {
-        BrandedRow {
-          HStack(alignment: .top, spacing: 11) {
-            SettingsRowIcon(systemName: "curlybraces")
-            VStack(alignment: .leading, spacing: 6) {
-              Text(SnippetsSettingsCopy.headline).settingsRowTitle()
-              Text(SnippetsSettingsCopy.body)
-                .font(.stRowHelper)
-                .foregroundStyle(.stTextSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-          }
-        }
-        BrandedRow {
-          SettingsRow(
-            icon: "mic",
-            title: "Keyword",
-            short: SnippetsSettingsCopy.keywordShort,
-            help: SnippetsSettingsCopy.keywordHelp
-          ) {
-            TextField("", text: $keywordField)
-              .accessibilityLabel("Keyword")
-              .focused($keywordFocused)
-              .settingsFieldChrome(focused: $keywordFocused)
-              .frame(width: 150)
-              .onSubmit { commitKeyword() }
-              .onChange(of: keywordFocused) { _, focused in
-                if !focused { commitKeyword() }
-              }
-          }
-          .rowStatus {
-            keywordExample
+    BrandedSection {
+      BrandedRow {
+        HStack(alignment: .top, spacing: 14) {
+          Image(systemName: "curlybraces")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(.stAccent)
+            .frame(width: 40, height: 40)
+            .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(
+              RoundedRectangle(cornerRadius: 10).strokeBorder(Color.stAccent.opacity(0.25), lineWidth: 1)
+                .allowsHitTesting(false))
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: 6) {
+            Text(SnippetsSettingsCopy.headline).settingsRowTitle()
+            Text(SnippetsSettingsCopy.body)
               .font(.stRowHelper)
               .foregroundStyle(.stTextSecondary)
               .fixedSize(horizontal: false, vertical: true)
           }
+        }
+      }
+      BrandedRow(showDivider: false) {
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 12) { keywordLabel; keywordInput; keywordHint; Spacer(minLength: 0) }
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) { keywordLabel; keywordInput }
+            keywordHint
+          }
+        }
+      }
+    }
+  }
+
+  private var keywordLabel: some View {
+    HStack(spacing: 10) {
+      SettingsRowIcon(systemName: "mic")
+      Text("Keyword").settingsRowLabel()
+    }
+    .accessibilityHidden(true)
+  }
+
+  private var keywordInput: some View {
+    TextField("", text: $keywordField)
+      .accessibilityLabel("Keyword")
+      .focused($keywordFocused)
+      .settingsFieldChrome(focused: $keywordFocused)
+      .frame(width: 200)
+      .onSubmit { commitKeyword() }
+      .onChange(of: keywordFocused) { _, focused in
+        if !focused { commitKeyword() }
+      }
+  }
+
+  /// The short hint inline, with main's full help and its live example behind "?".
+  private var keywordHint: some View {
+    HStack(spacing: 6) {
+      Text(SnippetsSettingsCopy.keywordShort)
+        .font(.stRowHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      SettingsInfoButton(rowTitle: String(localized: "Keyword"), tooltip: nil) {
+        VStack(alignment: .leading, spacing: 8) {
+          SettingsHelpText(text: String(localized: SnippetsSettingsCopy.keywordHelp))
+          keywordExample
+            .font(.stRowHelper)
+            .foregroundStyle(.stTextSecondary)
+            .frame(maxWidth: 280, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
@@ -129,45 +162,57 @@ struct SnippetsView: View {
   // MARK: - List
 
   private var listCard: some View {
-    BrandedSection(header: "Your snippets") {
-      VStack(alignment: .leading, spacing: 0) {
-        header
-        if coordinator.storeUnreadable {
-          // NOT the empty state. An empty list is a lie the user would act on by adding
-          // snippets over the top of ones that still exist.
-          unreadableState
-        } else if coordinator.snippets.isEmpty {
-          emptyState
-        } else {
-          searchField
-          Divider().overlay(Color.stDivider)
-          rows
+    VStack(alignment: .leading, spacing: 7) {
+      // The count sits on the heading line, right (mockup 14).
+      SettingsSectionHeading(resolvedTitle: String(localized: "Your snippets").uppercased()) {
+        if !coordinator.storeUnreadable, !coordinator.snippets.isEmpty {
+          Text(countLabel).font(.stHelper).foregroundStyle(.stTextSecondary)
         }
       }
-    } footer: {
-      if let message = coordinator.errorMessage ?? exportMessage {
-        Text(message)
-          .font(.stHelper)
-          .foregroundStyle(.stError)
-          .fixedSize(horizontal: false, vertical: true)
+      BrandedSection {
+        VStack(alignment: .leading, spacing: 0) {
+          toolbar
+          if coordinator.storeUnreadable {
+            // NOT the empty state. An empty list is a lie the user would act on by adding
+            // snippets over the top of ones that still exist.
+            unreadableState
+          } else if coordinator.snippets.isEmpty {
+            emptyState
+          } else {
+            Divider().overlay(Color.stDivider)
+            rows
+          }
+        }
+      } footer: {
+        if let message = coordinator.errorMessage ?? exportMessage {
+          Text(message)
+            .font(.stHelper)
+            .foregroundStyle(.stError)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
     }
   }
 
-  private var header: some View {
-    HStack(spacing: 8) {
-      Text(countLabel).settingsHelperCopy()
-      Spacer(minLength: 0)
+  /// One line: a full search field, then Import, Export and Add snippet (mockup 14).
+  private var toolbar: some View {
+    HStack(spacing: 10) {
+      if !coordinator.storeUnreadable, !coordinator.snippets.isEmpty {
+        searchField
+      } else {
+        Spacer(minLength: 0)
+      }
       // Enabled even when the store is unreadable, like Export: the import itself then
       // refuses with the coordinator's own sentence rather than the button going dark.
       SettingsActionButton(
-        title: "Import", isEnabled: true, emphasis: .outlined,
-        systemImage: "square.and.arrow.down"
+        title: "Import", isEnabled: true, emphasis: .outlined, shape: .roundedRect,
+        size: .medium, systemImage: "square.and.arrow.down"
       ) {
         sheetRoute = .importSnippets
       }
       SettingsActionButton(
-        title: "Export", isEnabled: !coordinator.snippets.isEmpty, emphasis: .outlined
+        title: "Export", isEnabled: !coordinator.snippets.isEmpty, emphasis: .outlined,
+        shape: .roundedRect, size: .medium, systemImage: "square.and.arrow.up"
       ) {
         let vocabulary = coordinator.vocabulary
         Task {
@@ -177,7 +222,10 @@ struct SnippetsView: View {
               currentVocabulary: { coordinator.refreshFromDisk() }))
         }
       }
-      SettingsActionButton(title: "Add snippet", isEnabled: true, emphasis: .filled) {
+      SettingsActionButton(
+        title: "Add snippet", isEnabled: true, emphasis: .filled, shape: .roundedRect,
+        size: .medium, systemImage: "plus"
+      ) {
         sheetRoute = .edit(SnippetDraft(snippet: nil))
       }
     }
@@ -214,8 +262,13 @@ struct SnippetsView: View {
       TextField("Search snippets", text: $query)
         .textFieldStyle(.plain)
     }
-    .padding(.horizontal, SettingsLayout.rowPaddingH)
-    .padding(.bottom, 10)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 7)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8).strokeBorder(Color.stInputBorder, lineWidth: 1)
+        .allowsHitTesting(false))
   }
 
   @ViewBuilder
@@ -361,7 +414,6 @@ enum SnippetsSheetRoute: Identifiable {
 
 /// Approved #3385 copy. Shared with the edit sheet; the catalog owns translations.
 enum SnippetsSettingsCopy {
-  static let heading: LocalizedStringResource = "How snippets work"
   static let headline: LocalizedStringResource = "Paste the text you type over and over, by voice"
   static let body: LocalizedStringResource =
     "Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone."
