@@ -1229,12 +1229,13 @@ def check_ai_diagnostics():
                     if _sn.provider_selected(ax, _sn.provider_button(ax, _app, name)) is True]
         if len(selected) != 1:
             raise NavigationError("the selected AI Polish provider cannot be read")
-        if selected[0] in ("OpenAI", "Google Gemini", "Claude"):
-            # Switching back re-picks the provider's DEFAULT model, so the user's
-            # chosen cloud model would be lost (SettingsManager canonicalizeLLMModelForProvider).
+        if selected[0] not in ("Apple Intelligence", "EG-1", "S1-mini"):
+            # Only fixed-model providers come back exactly. Cloud providers re-pick their
+            # default model, and leaving Ollama can refill a cleared model or cancel its
+            # download (SettingsManager canonicalizeLLMModelForProvider, ProviderSetup).
             raise NavigationError(
-                f"{selected[0]} is selected; switching to Apple would reset its saved model. "
-                "Select Apple Intelligence by hand first")
+                f"{selected[0]} is selected; switching providers for diagnostics could change "
+                "saved model state or interrupt Ollama work. Select Apple Intelligence by hand first")
         original = selected[0]
         _sn.select_provider(ax, lambda: _app, "Apple Intelligence")
         result = {"provider": "Apple Intelligence"}
@@ -3369,10 +3370,11 @@ def record_with_fault(scenario_name, **kwargs):
 
 
 def _pr3_diagnostics_cases():
-    """Offline wrapper control: selects Apple before reading and restores the saved tile."""
+    """Offline wrapper control: selects Apple before reading and restores the saved tile;
+    refuses to leave a provider whose saved model state would not come back exactly."""
     from settings_nav_fixtures import _window, _ax_plain, el, _f
     rows = []
-    for start, lands in (("Ollama", True), ("Ollama", False), ("OpenAI", True)):
+    for start, lands in (("EG-1", True), ("EG-1", False), ("OpenAI", True), ("Ollama", True)):
         chosen = {"name": start}
         tiles = []
         def select(name):
@@ -3397,15 +3399,15 @@ def _pr3_diagnostics_cases():
         try:
             globals().update(patch)
             result = check_ai_diagnostics()
-            if start == "OpenAI":
-                rows.append(("diagnostics refuses to leave a cloud provider (its model would reset)",
-                             ("error" in result, chosen["name"]), (True, "OpenAI")))
+            if start in ("OpenAI", "Ollama"):
+                rows.append((f"diagnostics refuses to leave {start} (its saved model state could change)",
+                             ("error" in result, chosen["name"]), (True, start)))
                 continue
             rows.append((f"diagnostics selects Apple before status (lands={lands})",
                          result.get("status") if lands else "error" in result,
                          "Available" if lands else True))
             rows.append((f"diagnostics restores the original provider (lands={lands})",
-                         chosen["name"], "Ollama"))
+                         chosen["name"], "EG-1"))
         finally:
             globals().update(keep)
     return rows
