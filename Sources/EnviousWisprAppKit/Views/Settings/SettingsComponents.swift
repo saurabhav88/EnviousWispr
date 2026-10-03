@@ -1601,7 +1601,6 @@ struct EngineCard<Footer: View>: View {
                 .frame(width: 20, height: 20)
             }
           }
-          }
 
           Text(tagline)
             .font(.stHelper)
