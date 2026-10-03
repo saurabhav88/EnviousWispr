@@ -75,7 +75,6 @@ enum WhatsNewContent {
         "Permissions privacy controls -> App Settings > Privacy",
         "Open Source Licenses -> App Settings > Licenses",
         "What's New and Check for Updates -> the gift button, What's New & Updates",
-        "Word Correction -> Dictionary",
       ],
       version: "2.5.3"
     ),
