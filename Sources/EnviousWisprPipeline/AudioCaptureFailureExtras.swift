@@ -34,6 +34,15 @@ enum AudioCaptureFailureExtras {
     if let source = (error as? AudioError)?.diagnosticSource {
       extras["capture.error_source"] = source
     }
+    // #1851: the Mac's own answer at the failing step, a signed Int as a number.
+    // Absent when the step has none: nil is NOT KNOWN, never zero. The Sentry
+    // fingerprint is unchanged (it reads the domain and the fixed code 1).
+    if let status = (error as? AudioError)?.diagnosticOSStatus {
+      extras["capture.os_status"] = Int(status)
+      if let fourCC = AudioStatusFormatting.fourCharacterCode(status) {
+        extras["capture.os_status_fourcc"] = fourCC
+      }
+    }
     if let backend {
       extras["backend"] = backend
     }

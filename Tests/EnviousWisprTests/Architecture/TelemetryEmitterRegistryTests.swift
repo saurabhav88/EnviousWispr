@@ -118,8 +118,15 @@ struct TelemetryEmitterRegistryTests {
   /// #3101: `learnJudged` gained `evidence`, which changes that site's enclosing-function
   /// identity. No new site, no new event, same cadence; one closed token (`strong`/`weak`),
   /// String on the wire, no text or score; registry row updated.
+  /// #1851: `audioInputResolution` gained `prepareFailedStep:`, `prepareFailedOSStatus:` and
+  /// `prepareFailedOSStatusFourCC:`, which changes the enclosing-function identity of the same
+  /// single `audio.input_resolution` site. No new site, no new event, same once-per-cold-prepare
+  /// cadence and the same treatment (failures are never sampled out). Checklist: existing row, the
+  /// three properties ride only on a failed cold attempt and are omitted when unknown; a fixed
+  /// producer step label, a signed Int and a four-character String, no content; reader is the
+  /// #1851 failure query grouped by `prepare_failed_os_status`; registry row unchanged.
   static let sitesFingerprint =
-    "dbd303aa7f4ff9d1a8f7b36fb3fddd657e01bfd540ba8cab259bad19ba3cc04f"
+    "1d0b9b24818ec273151a5cae1d89f83ddb5d8fb8c46c0fc89ff438ae31affb03"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

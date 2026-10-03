@@ -59,6 +59,131 @@ struct InputResolutionTelemetryTests {
       #expect(event?.stringProps["prepare_outcome"] == "succeeded")
     }
 
+    // MARK: - #1851 the failing step and the Mac's status
+
+    @Test(
+      "a failed cold attempt emits the step, the signed status and its four-character form",
+      .tags(.observabilityContract))
+    func failedAttemptEmitsStepAndStatus() {
+      let event = capture {
+        TelemetryService.shared.audioInputResolution(
+          defaultPresent: true,
+          enumerationOutcome: "succeeded",
+          inputDeviceCount: 2,
+          eligibleDeviceCount: 1,
+          inputResolutionSource: "system_default",
+          selectedTransport: "built_in",
+          bindOutcome: "succeeded",
+          prepareOutcome: "failed",
+          prepareFailedStep: "HALDeviceInputSource.prepare.start",
+          prepareFailedOSStatus: 1_937_010_544,
+          prepareFailedOSStatusFourCC: "stop"
+        )
+      }
+
+      #expect(event?.stringProps["prepare_outcome"] == "failed")
+      #expect(event?.stringProps["prepare_failed_step"] == "HALDeviceInputSource.prepare.start")
+      #expect(event?.intProps["prepare_failed_os_status"] == 1_937_010_544)
+      #expect(event?.stringProps["prepare_failed_os_status_fourcc"] == "stop")
+    }
+
+    @Test(
+      "a negative status stays negative and an absent step or status is omitted",
+      .tags(.observabilityContract))
+    func absentFailureFieldsAreOmitted() {
+      let negative = capture {
+        TelemetryService.shared.audioInputResolution(
+          defaultPresent: true, enumerationOutcome: "succeeded", inputDeviceCount: nil,
+          eligibleDeviceCount: nil, inputResolutionSource: nil, selectedTransport: nil,
+          bindOutcome: "succeeded", prepareOutcome: "failed",
+          prepareFailedStep: "HALDeviceInputSource.prepare.initialize",
+          prepareFailedOSStatus: -10868, prepareFailedOSStatusFourCC: nil)
+      }
+      #expect(negative?.intProps["prepare_failed_os_status"] == -10868)
+      #expect(negative?.stringProps.keys.contains("prepare_failed_os_status_fourcc") == false)
+
+      let none = capture {
+        TelemetryService.shared.audioInputResolution(
+          defaultPresent: true, enumerationOutcome: "succeeded", inputDeviceCount: nil,
+          eligibleDeviceCount: nil, inputResolutionSource: nil, selectedTransport: nil,
+          bindOutcome: "succeeded", prepareOutcome: "succeeded")
+      }
+      #expect(none?.stringProps.keys.contains("prepare_failed_step") == false)
+      #expect(none?.intProps.keys.contains("prepare_failed_os_status") == false)
+      #expect(none?.stringProps.keys.contains("prepare_failed_os_status_fourcc") == false)
+    }
+
+    @Test(
+      "the outgoing property list has exactly the expected keys and the hook preserves them",
+      .tags(.observabilityContract))
+    func outgoingKeysAreTheExpectedLiteralSet() {
+      // The expected set is a literal written from the event's documented
+      // properties, not read from the builder under test. This checks the
+      // builder's keys and the DEBUG hook's conversion; it does not observe
+      // the SDK's own delivery, which no seam exposes.
+      let expectedKeys: Set<String> = [
+        "default_present", "enumeration_outcome",
+        "input_device_count", "eligible_device_count",
+        "input_resolution_source", "selected_transport",
+        "bind_outcome", "prepare_outcome",
+        "prepare_failed_step", "prepare_failed_os_status",
+        "prepare_failed_os_status_fourcc",
+      ]
+      let outgoing = TelemetryService.inputResolutionProperties(
+        defaultPresent: true, enumerationOutcome: "succeeded", inputDeviceCount: 3,
+        eligibleDeviceCount: 0, inputResolutionSource: "system_default",
+        selectedTransport: "usb", bindOutcome: "succeeded", prepareOutcome: "failed",
+        prepareFailedStep: "HALDeviceInputSource.prepare.start",
+        prepareFailedOSStatus: 560_227_702, prepareFailedOSStatusFourCC: "!dev")
+      let event = capture {
+        TelemetryService.shared.audioInputResolution(
+          defaultPresent: true, enumerationOutcome: "succeeded", inputDeviceCount: 3,
+          eligibleDeviceCount: 0, inputResolutionSource: "system_default",
+          selectedTransport: "usb", bindOutcome: "succeeded", prepareOutcome: "failed",
+          prepareFailedStep: "HALDeviceInputSource.prepare.start",
+          prepareFailedOSStatus: 560_227_702, prepareFailedOSStatusFourCC: "!dev")
+      }
+      var hookKeys = Set<String>()
+      if let event {
+        hookKeys.formUnion(event.stringProps.keys)
+        hookKeys.formUnion(event.intProps.keys)
+        hookKeys.formUnion(event.boolProps.keys)
+      }
+
+      #expect(Set(outgoing.keys) == expectedKeys)
+      #expect(hookKeys == expectedKeys)
+      // An explicit zero count is a real answer and rides as zero.
+      #expect(outgoing["eligible_device_count"] as? Int == 0)
+      #expect(event?.intProps["eligible_device_count"] == 0)
+      #expect(outgoing["prepare_failed_os_status"] as? Int == 560_227_702)
+    }
+
+    @Test(
+      "the property builder is the outgoing shape: signed Int, nil keys omitted",
+      .tags(.observabilityContract))
+    func builderIsTheOutgoingShape() {
+      // The DEBUG hook and the PostHog capture both read this one builder, so a
+      // test on it is a test on what leaves the Mac.
+      let full = TelemetryService.inputResolutionFailureProperties(
+        step: "HALDeviceInputSource.prepare.start", osStatus: -10851, fourCC: nil)
+      #expect(full.count == 2)
+      #expect(full["prepare_failed_step"] as? String == "HALDeviceInputSource.prepare.start")
+      #expect(full["prepare_failed_os_status"] as? Int == -10851)
+
+      #expect(TelemetryService.inputResolutionFailureProperties(step: nil, osStatus: nil, fourCC: nil)
+        .isEmpty)
+      // An empty or "unknown" step is never sent; an invented step is worse than none.
+      #expect(TelemetryService.inputResolutionFailureProperties(step: "", osStatus: nil, fourCC: nil)
+        .isEmpty)
+      #expect(
+        TelemetryService.inputResolutionFailureProperties(step: "unknown", osStatus: nil, fourCC: nil)
+          .isEmpty)
+      // A status of zero is a real, different answer and is sent as zero.
+      #expect(
+        TelemetryService.inputResolutionFailureProperties(step: nil, osStatus: 0, fourCC: nil)[
+          "prepare_failed_os_status"] as? Int == 0)
+    }
+
     @Test("a nil count is OMITTED, never flattened to zero")
     func nilCountsOmitted() {
       // nil means NOT KNOWN — enumeration was skipped or its read failed.

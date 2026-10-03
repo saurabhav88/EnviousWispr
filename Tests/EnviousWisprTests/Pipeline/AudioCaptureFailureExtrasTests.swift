@@ -102,6 +102,54 @@ struct AudioCaptureFailureExtrasTests {
     #expect(extras["capture.route_resolution_source"] as? String == "app_derived")
   }
 
+  // MARK: - #1851 the Mac's own status at the failing step
+
+  @Test(
+    "a start failure carries the Mac's status and its four-character form",
+    .tags(.observabilityContract))
+  func startFailureCarriesOSStatus() {
+    // The kernel stores the thrown error as `any Error & StableSentryErrorIdentity`
+    // (`RecordingSessionKernel` catch sites) and the sink hands THAT value to the
+    // builder. Build from the same existential, not from the concrete enum.
+    let thrown: any Error & StableSentryErrorIdentity = AudioError.formatCreationFailed(
+      source: "HALDeviceInputSource.prepare.start", osStatus: 1_937_010_544)
+
+    let extras = AudioCaptureFailureExtras.build(
+      error: thrown, audioCapture: ExtrasAudioCapture(), failureMode: "thrown_start")
+
+    #expect(extras["capture.error_source"] as? String == "HALDeviceInputSource.prepare.start")
+    #expect(extras["capture.os_status"] as? Int == 1_937_010_544)
+    #expect(extras["capture.os_status_fourcc"] as? String == "stop")
+  }
+
+  @Test(
+    "a negative status is sent as a number with no four-character form",
+    .tags(.observabilityContract))
+  func negativeStatusHasNoFourCC() {
+    let extras = AudioCaptureFailureExtras.build(
+      error: AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.prepare.initialize", osStatus: -10868),
+      audioCapture: ExtrasAudioCapture(), failureMode: "thrown_start")
+
+    #expect(extras["capture.os_status"] as? Int == -10868)
+    #expect(extras.keys.contains("capture.os_status_fourcc") == false)
+  }
+
+  @Test("no status OMITS both keys: not zero, not NSNull", .tags(.observabilityContract))
+  func absentStatusOmitsKeys() {
+    let withoutStatus = AudioCaptureFailureExtras.build(
+      error: AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.converter"),
+      audioCapture: ExtrasAudioCapture(), failureMode: "thrown_start")
+    let otherError = AudioCaptureFailureExtras.build(
+      error: GenericStartError.failed, audioCapture: ExtrasAudioCapture(),
+      failureMode: "thrown_start")
+
+    for extras in [withoutStatus, otherError] {
+      #expect(extras.keys.contains("capture.os_status") == false)
+      #expect(extras.keys.contains("capture.os_status_fourcc") == false)
+    }
+  }
+
   @Test("audio error keeps user-facing message stable")
   func audioErrorMessageStable() {
     let error = AudioError.formatCreationFailed(source: "unit.test")
