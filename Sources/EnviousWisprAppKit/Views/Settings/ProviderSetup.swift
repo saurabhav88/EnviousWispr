@@ -458,27 +458,10 @@ struct ProviderSetupSection: View {
   /// coordinators the inline controls use (no cross-provider leak). Rendered
   /// once, in the detail header.
   private var currentProviderStatus: ProviderStatus {
-    let cloudKeyPresent: Bool
-    switch provider {
-    case .openAI: cloudKeyPresent = !model.openAIKey.isEmpty
-    case .gemini: cloudKeyPresent = !model.geminiKey.isEmpty
-    case .claude: cloudKeyPresent = !model.claudeKey.isEmpty
-    // #2651: enumerated rather than `default:`. These providers carry no API
-    // key, so "no key present" is the true answer and
-    // `ProviderStatusMapping.status` ignores it for them. A NEW cloud provider
-    // reaching a `default:` would have read as permanently key-less.
-    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: cloudKeyPresent = false
-    }
-    return ProviderStatusMapping.status(
-      for: provider,
-      egOneInstall: egOne.installState,
-      egOneHealth: egOne.health,
-      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
-      s1MiniHealth: localPolishRuntimes.s1Mini.health,
-      appleStatus: aiAvailability.latestReport?.overallStatus,
-      cloudValidation: surfaceValidation,
-      cloudKeyPresent: cloudKeyPresent,
-      ollamaSetup: setup.ollamaSetup.setupState)
+    ProviderStatusSnapshot.capture(
+      model: model, egOne: egOne, runtimes: localPolishRuntimes,
+      availability: aiAvailability, discovery: llmDiscovery, setup: setup
+    ).status(for: provider)
   }
 
   /// Whether the CONFIRMED-persisted key for the current provider read back

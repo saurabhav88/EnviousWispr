@@ -25,7 +25,7 @@ import Testing
 /// The fix centralizes the three presentation values on an exhaustive group
 /// enum. This suite freezes the approved policy while Live UAT verifies its
 /// SwiftUI and VoiceOver wiring.
-@Suite("Provider rail grouping and copy (#1914)")
+@Suite("Provider rail grouping and copy (#1914)", .tags(.driftGuard))
 struct PolishRailCatalogTests {
 
   // MARK: - Group policy
@@ -90,7 +90,7 @@ struct PolishRailCatalogTests {
   @Test(
     "each group contains exactly its approved providers, in order",
     arguments: [
-      (PolishRailGroup.onThisMac, [LLMProvider.egOne, .appleIntelligence, .s1Mini]),
+      (PolishRailGroup.onThisMac, [LLMProvider.egOne, .s1Mini, .appleIntelligence]),
       (PolishRailGroup.yourOwnSetup, [LLMProvider.ollama]),
       (PolishRailGroup.cloud, [LLMProvider.openAI, .gemini, .claude]),
     ])
@@ -165,7 +165,7 @@ struct PolishRailCatalogTests {
   func ollamaRowCopyIsExact() throws {
     let ollama = try #require(PolishRailCatalog.entry(for: .ollama))
     #expect(ollama.name == "Ollama")
-    #expect(ollama.tagline == "Any open model, local or hosted")
+    #expect(ollama.tagline == "Your models, local or hosted")
     #expect(ollama.group == .yourOwnSetup)
     #expect(ollama.recommended == false)
     // The old name is gone. "Local" was a claim, not a label, and it stopped

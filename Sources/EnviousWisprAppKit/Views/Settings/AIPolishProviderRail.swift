@@ -6,7 +6,7 @@ import SwiftUI
 // MARK: - Provider status (single at-a-glance authority)
 //
 // #1286 Phase 2. The rail's detail header shows exactly ONE status light per
-// selected engine. To avoid a sixth ad-hoc status mapping, this file owns the
+// engine, now also on every rail row (#3385). To avoid ad-hoc mappings, this file owns the
 // single summary mapping (`ProviderStatusMapping.status`) that reads the SAME
 // coordinator values the existing inline controls read in `AIPolishSettingsView`
 // (EG-1 install/health, Apple availability, cloud key validation, Ollama setup).
@@ -35,7 +35,7 @@ enum ProviderStatusMapping {
     s1MiniHealth: EGOneHealth,
     appleStatus: AIAvailabilityStatus?,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState,
-    cloudKeyPresent: Bool = false,
+    cloudKeyPresent: Bool? = false,
     ollamaSetup: OllamaSetupState
   ) -> ProviderStatus {
     switch provider {
@@ -154,7 +154,7 @@ enum ProviderStatusMapping {
     }
   }
 
-  // Cloud (OpenAI / Gemini): keyed off validation state. `.idle` means we have
+  // Cloud: persisted presence first, then the provider-owned validation state. `.idle` means we have
   // not validated this session — which is the normal state when a saved key is
   // loaded from the Keychain on settings-open (onAppear does not re-validate).
   // Showing "Key needed" there would falsely alarm a user with a working saved
@@ -162,8 +162,14 @@ enum ProviderStatusMapping {
   // NO key reads as "Key needed" (cloud review PR #1293, #1286).
   private static func cloud(
     _ state: LLMModelDiscoveryCoordinator.KeyValidationState,
-    keyPresent: Bool
+    keyPresent: Bool?
   ) -> ProviderStatus {
+    guard let keyPresent else {
+      return ProviderStatus(label: String(localized: "Not checked"), tone: .unavailable)
+    }
+    guard keyPresent else {
+      return ProviderStatus(label: String(localized: "Key needed"), tone: .needsSetup)
+    }
     switch state {
     case .idle:
       return keyPresent
@@ -219,6 +225,52 @@ enum ProviderStatusMapping {
       return ProviderStatus(
         label: String(localized: "Error", comment: "AI Polish provider status chip."), tone: .error)
     }
+  }
+}
+
+/// Observation only. Saved-key flags come from the existing load/save/clear owner;
+/// constructing or reading a snapshot never reads credentials or starts provider work.
+struct ProviderStatusSnapshot {
+  let egOneInstall: EGOneInstallState
+  let egOneHealth: EGOneHealth
+  let s1MiniInstall: EGOneInstallState
+  let s1MiniHealth: EGOneHealth
+  let appleStatus: AIAvailabilityStatus?
+  let validationProvider: LLMProvider?
+  let cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState
+  let openAIKeySaved: Bool?
+  let geminiKeySaved: Bool?
+  let claudeKeySaved: Bool?
+  let ollamaSetup: OllamaSetupState
+
+  func status(for provider: LLMProvider) -> ProviderStatus {
+    let saved: Bool?
+    switch provider {
+    case .openAI: saved = openAIKeySaved
+    case .gemini: saved = geminiKeySaved
+    case .claude: saved = claudeKeySaved
+    case .none, .egOne, .s1Mini, .appleIntelligence, .ollama: saved = nil
+    }
+    return ProviderStatusMapping.status(
+      for: provider, egOneInstall: egOneInstall, egOneHealth: egOneHealth,
+      s1MiniInstall: s1MiniInstall, s1MiniHealth: s1MiniHealth, appleStatus: appleStatus,
+      cloudValidation: validationProvider == provider ? cloudValidation : .idle,
+      cloudKeyPresent: saved, ollamaSetup: ollamaSetup)
+  }
+
+  @MainActor
+  static func capture(
+    model: ProviderSetupModel, egOne: EGOneRuntime, runtimes: LocalPolishRuntimeSet,
+    availability: AIAvailabilityCoordinator, discovery: LLMModelDiscoveryCoordinator,
+    setup: SetupCoordinator
+  ) -> Self {
+    Self(
+      egOneInstall: egOne.installState, egOneHealth: egOne.health,
+      s1MiniInstall: runtimes.s1Mini.installState, s1MiniHealth: runtimes.s1Mini.health,
+      appleStatus: availability.latestReport?.overallStatus,
+      validationProvider: discovery.stateProvider, cloudValidation: discovery.keyValidationState,
+      openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,
+      claudeKeySaved: model.claudeKeySaved, ollamaSetup: setup.ollamaSetup.setupState)
   }
 }
 
@@ -327,12 +379,6 @@ enum PolishRailCatalog {
         localized: "Our tuned model",
         comment: "AI Polish provider list: description under a provider name. EG-1, our own model."),
       group: .onThisMac, recommended: true),
-    PolishRailProvider(
-      provider: .appleIntelligence, name: LLMProvider.appleIntelligence.displayName,
-      tagline: String(
-        localized: "Built into macOS",
-        comment: "AI Polish provider list: description under a provider name. Apple Intelligence."),
-      group: .onThisMac, recommended: false),
     // #2649. Founder placement: beside EG-1 on this Mac, never above it. EG-1
     // keeps `recommended`; Apple Intelligence remains what a fresh install
     // selects. The tagline says what the model IS rather than praising it,
@@ -352,9 +398,15 @@ enum PolishRailCatalog {
       ),
       group: .onThisMac, recommended: false),
     PolishRailProvider(
+      provider: .appleIntelligence, name: LLMProvider.appleIntelligence.displayName,
+      tagline: String(
+        localized: "Built into macOS",
+        comment: "AI Polish provider list: description under a provider name. Apple Intelligence."),
+      group: .onThisMac, recommended: false),
+    PolishRailProvider(
       provider: .ollama, name: LLMProvider.ollama.displayName,
       tagline: String(
-        localized: "Any open model, local or hosted",
+        localized: "Your models, local or hosted",
         comment: "AI Polish provider list: description under a provider name. Ollama."),
       group: .yourOwnSetup, recommended: false),
     PolishRailProvider(
@@ -397,14 +449,12 @@ enum PolishRailCatalog {
 
 // MARK: - Layout metrics
 
-/// Fixed measurements for the two-column master-detail. The settings window's
-/// 710pt minimum guarantees both columns fit, so the layout is always
-/// side-by-side and needs no adaptive width measurement.
+/// Fixed rail and gap for the two-column layout. Detail controls stack at narrow
+/// widths; the shell minimum is 750pt. Rendering is checked separately from policy.
 enum PolishRailMetrics {
   /// Fixed rail column width. Sized to fit the longest engine name
-  /// ("Apple Intelligence") beside a 32pt logo tile at full size, while leaving
-  /// the detail column as much room as possible at narrow window widths (the
-  /// rail row name also shrinks slightly before it would ever truncate).
+  /// ("Apple Intelligence") beside a 32pt logo tile. Titles wrap at whole words;
+  /// the status chip sits below the tagline rather than taking more width.
   static let railWidth: CGFloat = 216
   /// Gap between the rail and the detail column.
   static let columnGap: CGFloat = 16
@@ -608,6 +658,7 @@ enum ProviderLogoSVG {
 struct ProviderRailRow: View {
   let entry: PolishRailProvider
   let isSelected: Bool
+  let status: ProviderStatus
   let namespace: Namespace.ID
   let onSelect: () -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -645,21 +696,20 @@ struct ProviderRailRow: View {
             Text(entry.name)
               .font(.system(size: 14, weight: .semibold))
               .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
-              .lineLimit(1)
-              .minimumScaleFactor(0.85)
+              .fixedSize(horizontal: false, vertical: true)
             if entry.recommended {
               Image(systemName: "star.fill")
                 .font(.system(size: 10))
                 .foregroundStyle(Color.stAccent)
             }
           }
-          // Up to three lines: German taglines ("Jedes offene Modell, lokal oder gehostet") do not
-          // fit the fixed rail width on one or two (#3142 5C walkthrough).
+          // The chip lives below the tagline so it never competes for rail width.
           Text(entry.tagline)
-            .font(.stHelper)
+            .font(.stRowHelper)
             .foregroundStyle(Color.stTextSecondary)
-            .lineLimit(3)
+            .lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true)
+          ProviderStatusChip(status: status)
         }
         Spacer(minLength: 0)
       }
@@ -707,7 +757,7 @@ struct ProviderRailRow: View {
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel("\(entry.name), \(entry.group.accessibilityPhrase)")
-    .accessibilityValue(selectionValue)
+    .accessibilityValue([selectionValue, status.label].filter { !$0.isEmpty }.joined(separator: ", "))
     .accessibilityHint("Selects \(entry.name) for AI polish")
     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     .accessibilityAction { onSelect() }
@@ -721,6 +771,7 @@ struct ProviderRailRow: View {
 /// state home (plan §3b).
 struct ProviderRail: View {
   @Binding var selection: LLMProvider
+  let snapshot: ProviderStatusSnapshot
   /// Shared namespace so the single selection highlight glides between rows
   /// (matchedGeometryEffect) instead of jumping. #1298.
   @Namespace private var selectionNS
@@ -754,6 +805,7 @@ struct ProviderRail: View {
     ProviderRailRow(
       entry: entry,
       isSelected: selection == entry.provider,
+      status: snapshot.status(for: entry.provider),
       namespace: selectionNS,
       onSelect: {
         // State commits immediately; the spring only animates the highlight

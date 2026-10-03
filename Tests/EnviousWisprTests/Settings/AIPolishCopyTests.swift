@@ -17,7 +17,7 @@ struct AIPolishCopyTests {
     health: EGOneHealth = .green,
     apple: AIAvailabilityStatus? = .available,
     cloud: LLMModelDiscoveryCoordinator.KeyValidationState = .valid,
-    keyPresent: Bool = false,
+    keyPresent: Bool? = true,
     ollama: OllamaSetupState = .ready
   ) -> String {
     ProviderStatusMapping.status(

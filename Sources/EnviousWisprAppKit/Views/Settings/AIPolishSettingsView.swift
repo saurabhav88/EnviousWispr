@@ -338,6 +338,10 @@ enum OllamaModelPickerPresentation {
 struct AIPolishSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
+  @Environment(EGOneRuntime.self) private var egOne
+  @Environment(LocalPolishRuntimeSet.self) private var runtimes
+  @Environment(AIAvailabilityCoordinator.self) private var availability
+  @Environment(LLMModelDiscoveryCoordinator.self) private var discovery
 
   /// #2772 chunk 1: the setup editor's state, owned here and handed to both of its
   /// holes and to the lifecycle modifier. See `ProviderSetup.swift`.
@@ -386,11 +390,14 @@ struct AIPolishSettingsView: View {
       // the rail and the detail read as elevated cards, not dark-on-dark
       // nested boxes (#1286 polish pass). Same `llmProvider` setter.
       if settings.llmProvider != .none {
+        let snapshot = ProviderStatusSnapshot.capture(
+          model: setupModel, egOne: egOne, runtimes: runtimes,
+          availability: availability, discovery: discovery, setup: setup)
         HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
           ProviderRail(
             selection: Binding(
               get: { settings.llmProvider },
-              set: { settings.llmProvider = $0 }))
+              set: { settings.llmProvider = $0 }), snapshot: snapshot)
             .frame(width: PolishRailMetrics.railWidth, alignment: .leading)
           ProviderSetupSection(model: setupModel, part: .detail)
             .frame(maxWidth: .infinity, alignment: .leading)
