@@ -375,6 +375,12 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
     return Route(page, tab, tab)
 
 
+def _gift_heading(ax, el):
+    """The dropdown's "What's New" title; SwiftUI exposes it as AXHeading (it is a header)."""
+    return (ax.role(el) in ("AXHeading", "AXStaticText")
+            and _labelled(ax, el, "What's New", role=None))
+
+
 def open_gift(ax, root_of, timeout=3.0):
     """Open the toolbar gift and require its OWN popover heading and both footer actions.
     Never checks for updates or follows the release link. Returns the presented popover.
@@ -394,10 +400,16 @@ def open_gift(ax, root_of, timeout=3.0):
     # An already-open gift dropdown is reused (pressing again would toggle it shut), so
     # gift(True) then gift(False) can close what the first call opened.
     existing = [p for p in before
-                if any(_labelled(ax, e, "What's New", role="AXStaticText") for e in ax.walk(p))]
+                if any(_gift_heading(ax, e) for e in ax.walk(p))]
     if len(existing) > 1:
         raise NavigationError("multiple gift popovers; refusing to choose")
     if not existing:
+        # Opening marks the notes read in the app's real saved settings, and nothing
+        # here can put the unread state back, so an unread gift is never opened.
+        if ax.text(opener, "AXValue") not in ax.terms("No new release notes"):
+            raise NavigationError(
+                "the gift has unread release notes; opening it would mark them read. "
+                "Open it by hand first, or run with isolated settings")
         ax.press(opener)
     found = {}
 
@@ -408,7 +420,7 @@ def open_gift(ax, root_of, timeout=3.0):
         if len(pops) != 1:
             return False
         pop = pops[0]
-        if not any(_labelled(ax, e, "What's New", role="AXStaticText") for e in ax.walk(pop)):
+        if not any(_gift_heading(ax, e) for e in ax.walk(pop)):
             return False
         unique_control(ax, pop, "Check for Updates…")
         links = [e for e in ax.walk(pop) if ax.role(e) in ("AXLink", "AXButton")

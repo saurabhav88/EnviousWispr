@@ -18,6 +18,7 @@ GERMAN = {
     "Transcribe a File": "Datei transkribieren", "AI Polish": "KI-Feinschliff",
     "Dictionary": "Wörterbuch", "Snippets": "Textbausteine", "Permissions": "Berechtigungen",
     "What's New & Updates": "Neuigkeiten & Updates", "Send feedback": "Feedback senden",
+    "No new release notes": "Keine neuen Versionshinweise", "New release notes": "Neue Versionshinweise",
     "All release notes on GitHub": "Alle Versionshinweise auf GitHub",
     "Check for Updates…": "Nach Updates suchen…",
     "App Settings": "App-Einstellungen", "Privacy": "Datenschutz", "Licenses": "Lizenzen", "Check for Updates": "Nach Updates suchen",
@@ -585,12 +586,15 @@ def valued_cases():
                 # A real toolbar button toggles: pressing it while open closes the dropdown.
                 showing["presses"] += 1
                 showing["open"] = not showing["open"]
-            pop_el = el("AXPopover", children=[f.named("AXStaticText", "What's New"),
+            unread = {"value": "No new release notes"}
+            # The real title is a header (AXHeading); German keeps the plain-text shape too.
+            pop_el = el("AXPopover", children=[f.named("AXStaticText" if german else "AXHeading",
+                                                       "What's New"),
                 f.named("AXButton", "Check for Updates…"),
                 f.named("AXLink", "All release notes on GitHub")])
             def root():
                 toolbar = el("AXToolbar", children=[
-                    f.named("AXButton", sn.GIFT_CAPTION, press=toggle),
+                    f.named("AXButton", sn.GIFT_CAPTION, value=f.t(unread["value"]), press=toggle),
                     f.named("AXButton", "Send feedback")])
                 return el("AXWindow", children=[toolbar] + ([pop_el] if showing["open"] else []))
             pop = sn.open_gift(f.ax(), root)
@@ -598,6 +602,15 @@ def valued_cases():
             again = sn.open_gift(f.ax(), root)
             rows.append((f"an open dropdown is reused, not toggled shut, German={german}",
                          (again is pop, showing["presses"], showing["open"]), (True, 1, True)))
+            showing.update(open=False, presses=0)
+            unread["value"] = "New release notes"
+            try:
+                sn.open_gift(f.ax(), root)
+                got = "opened"
+            except sn.NavigationError:
+                got = "refused"
+            rows.append((f"an unread gift is never opened (it would mark notes read), German={german}",
+                         (got, showing["presses"]), ("refused", 0)))
     blocks.append(("Gift dropdown", gift_menu))
 
     def app_tabs(rows):

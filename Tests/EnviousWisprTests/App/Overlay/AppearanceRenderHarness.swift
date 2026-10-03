@@ -187,41 +187,67 @@ struct AppearanceRenderHarness {
       print("GERMAN Chime fit \(pairing.rawValue) card=\(chimeWidth) nameWidth=\(nameWidth) descriptionWidth=\(descriptionWidth) fullTextHeight=\(size.height) containsFullText=\(size.width <= descriptionWidth + 0.5)")
       rows.append(AnyView(text.frame(width: chimeWidth - 8)))
     }
-    // Literal, unreviewed German fixtures exercise App Settings' shared rows,
-    // including longer names and actionable relaunch copy. This is fit evidence,
-    // not a localized production page or a saved language preference change.
+    // App Settings' shared rows in the catalog's German (the same values the app ships),
+    // including the actionable relaunch copy. Fit evidence, not a saved language change.
+    let appKeys = [
+      "Appearance",
+      "Permissions",
+      "Privacy",
+      "Licenses",
+      "Theme",
+      "Choose how EnviousWispr looks.",
+      "Choose System to follow your Mac, or choose Light or Dark.",
+      "System",
+      "Light",
+      "Dark",
+      "Language",
+      "The language of the app interface.",
+      "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac.",
+      "System default",
+      "EnviousWispr uses the new language after it relaunches.",
+      "Relaunch to apply",
+      "Show app in Dock",
+      "Keep EnviousWispr in your Dock.",
+      "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays.",
+    ]
+    var de: [String: String] = [:]
+    for key in appKeys { de[key] = try german(key) }
     let appRows = VStack(alignment: .leading, spacing: 10) {
-      Text(verbatim: "App Settings: UNREVIEWED German fixtures").font(.stRowHelper)
+      Text(verbatim: "App Settings: catalog German").font(.stRowHelper)
       SettingsTabStrip(items: [
-        SettingsTabItem(id: AppSettingsTab.appearance, icon: "circle.lefthalf.filled", label: "Darstellung"),
-        SettingsTabItem(id: .permissions, icon: "hand.raised", label: "Berechtigungen"),
-        SettingsTabItem(id: .privacy, icon: "lock.shield", label: "Datenschutz"),
-        SettingsTabItem(id: .licenses, icon: "doc.text", label: "Lizenzen"),
+        SettingsTabItem(id: AppSettingsTab.appearance, icon: "circle.lefthalf.filled", label: LocalizedStringResource(stringLiteral: de["Appearance"]!)),
+        SettingsTabItem(id: .permissions, icon: "hand.raised", label: LocalizedStringResource(stringLiteral: de["Permissions"]!)),
+        SettingsTabItem(id: .privacy, icon: "lock.shield", label: LocalizedStringResource(stringLiteral: de["Privacy"]!)),
+        SettingsTabItem(id: .licenses, icon: "doc.text", label: LocalizedStringResource(stringLiteral: de["Licenses"]!)),
       ], selection: .constant(.appearance))
       BrandedSection {
         BrandedRow {
-          SettingsRow(icon: "circle.lefthalf.filled", resolvedTitle: "Erscheinungsbild",
-            resolvedShort: "Wähle, wie EnviousWispr aussieht.", resolvedHelp: "Darstellung wählen.") {
+          SettingsRow(icon: "circle.lefthalf.filled", resolvedTitle: de["Theme"]!,
+            resolvedShort: de["Choose how EnviousWispr looks."]!,
+            resolvedHelp: de["Choose System to follow your Mac, or choose Light or Dark."]!) {
             BrandedSegmentedPicker(options: [
-              ("System", nil, AppearancePreference.system), ("Hell", nil, .light), ("Dunkel", nil, .dark),
+              (de["System"]!, nil, AppearancePreference.system), (de["Light"]!, nil, .light),
+              (de["Dark"]!, nil, .dark),
             ], selection: .constant(.system)).fixedSize()
           }
         }
         BrandedRow {
-          SettingsRow(icon: "globe", resolvedTitle: "Sprache",
-            resolvedShort: "Die Sprache der Benutzeroberfläche.", resolvedHelp: "Gilt nach dem Neustart.") {
-            Picker("Sprache", selection: .constant("")) {
-              Text(verbatim: "Systemeinstellung").tag("")
+          SettingsRow(icon: "globe", resolvedTitle: de["Language"]!,
+            resolvedShort: de["The language of the app interface."]!,
+            resolvedHelp: de["This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."]!) {
+            Picker(de["Language"]!, selection: .constant("")) {
+              Text(verbatim: de["System default"]!).tag("")
             }.labelsHidden().fixedSize()
           }.rowStatus {
-            Text(verbatim: "EnviousWispr verwendet die neue Sprache nach dem Neustart.")
+            Text(verbatim: de["EnviousWispr uses the new language after it relaunches."]!)
               .font(.stRowHelper).fixedSize(horizontal: false, vertical: true)
-            SettingsActionButton(verbatimTitle: "Zum Anwenden neu starten", isEnabled: true) {}
+            SettingsActionButton(verbatimTitle: de["Relaunch to apply"]!, isEnabled: true) {}
           }
         }
         BrandedRow(showDivider: false) {
-          SettingsRow(icon: "dock.rectangle", resolvedTitle: "App im Dock anzeigen",
-            resolvedShort: "EnviousWispr im Dock behalten.", resolvedHelp: "Das Menüleistensymbol bleibt sichtbar.") {
+          SettingsRow(icon: "dock.rectangle", resolvedTitle: de["Show app in Dock"]!,
+            resolvedShort: de["Keep EnviousWispr in your Dock."]!,
+            resolvedHelp: de["When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."]!) {
             Toggle("", isOn: .constant(true)).toggleStyle(BrandedToggleStyle()).fixedSize()
           }
         }

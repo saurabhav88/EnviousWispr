@@ -1863,6 +1863,17 @@
         }
       }
     },
+    "Accessibility access granted" : {
+      "comment" : "Permissions settings: status when granted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen-Zugriff erlaubt"
+          }
+        }
+      }
+    },
     "Accessibility access required for paste" : {
       "localizations" : {
         "de" : {
@@ -2576,16 +2587,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erlaube den Mikrofonzugriff, damit EnviousWispr deine Stimme aufnehmen kann. Wurde der Zugriff abgelehnt, öffnet „Zugriff anfordern“ die Systemeinstellungen."
-          }
-        }
-      }
-    },
-    "Allowed" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erlaubt"
           }
         }
       }
@@ -9718,6 +9719,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofonzugriff verweigert"
+          }
+        }
+      }
+    },
+    "Microphone access granted" : {
+      "comment" : "Permissions settings: status when granted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonzugriff erlaubt"
           }
         }
       }

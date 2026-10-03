@@ -112,6 +112,7 @@ struct WhatsNewMenuView: View {
                 Text(entry.title)
                   .font(.stRowLabel.weight(.semibold))
                   .foregroundStyle(.stTextPrimary)
+                  .accessibilityAddTraits(.isHeader)
                 Text(entry.description)
                   .font(.stRowHelper)
                   .foregroundStyle(.stTextSecondary)
@@ -123,8 +124,9 @@ struct WhatsNewMenuView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.trailing, 8)
       }
-      // Fixed height so the links below never move; the bar stays visible so
-      // readers can tell more notes sit below the fold (founder, 2026-10-03).
+      // Fixed height so the links below never move (founder, 2026-10-03). `.visible`
+      // shows the bar unless the Mac's "Show scroll bars" setting hides it; the cut-off
+      // last note still shows there is more to read.
       .scrollIndicators(.visible)
       .frame(height: 320)
 
