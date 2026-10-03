@@ -391,12 +391,20 @@ def open_gift(ax, root_of, timeout=3.0):
         raise NavigationError("the gift toolbar does not contain exactly one Feedback control")
     opener = unique_control(ax, toolbar, GIFT_CAPTION)
     before = [e for e in ax.walk(root) if ax.role(e) == "AXPopover"]
-    ax.press(opener)
+    # An already-open gift dropdown is reused (pressing again would toggle it shut), so
+    # gift(True) then gift(False) can close what the first call opened.
+    existing = [p for p in before
+                if any(_labelled(ax, e, "What's New", role="AXStaticText") for e in ax.walk(p))]
+    if len(existing) > 1:
+        raise NavigationError("multiple gift popovers; refusing to choose")
+    if not existing:
+        ax.press(opener)
     found = {}
 
     def landed():
         pops = [e for e in ax.walk(root_of()) if ax.role(e) == "AXPopover"
-                and not any(ax.same(e, old) for old in before)]
+                and (any(ax.same(e, p) for p in existing)
+                     or not any(ax.same(e, old) for old in before))]
         if len(pops) != 1:
             return False
         pop = pops[0]

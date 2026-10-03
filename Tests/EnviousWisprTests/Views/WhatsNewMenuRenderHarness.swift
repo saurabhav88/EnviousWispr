@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 import Testing
@@ -25,18 +26,25 @@ struct WhatsNewMenuRenderHarness {
     let directory = RepoRoot.url.appending(path: "build/gift-render/run-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let defaults = try #require(TestDefaults.suite("ew.giftRender.\(UUID().uuidString)"))
+    defaults.set("0.0.0", forKey: WhatsNewConstants.lastSeenVersionDefaultsKey)
     let settings = SettingsManager(defaults: defaults)
     let coordinator = UpdateCoordinator(
       updaterController: nil, defaults: defaults, notifier: Notifier(), attendedCheck: {})
     let holder = UpdateCoordinatorHolder()
     holder.coordinator = coordinator
+    let readDefaults = try #require(TestDefaults.suite("ew.giftRenderRead.\(UUID().uuidString)"))
+    let readSettings = SettingsManager(defaults: readDefaults)
+    #expect(settings.hasUnreadWhatsNew && !readSettings.hasUnreadWhatsNew)
     let entries = WhatsNewMenuPresentation.entries()
     #expect(entries.map(\.description) == WhatsNewContent.entries
       .filter { $0.version == "2.5.2" }.map(\.description))
     for width in [750, 820, 1300] {
       for dark in [false, true] {
         let content = VStack(alignment: .trailing, spacing: 12) {
-          WhatsNewToolbarButton(showsCaption: width >= 900)
+          HStack(spacing: 12) {
+            WhatsNewToolbarButton().environment(readSettings)
+            WhatsNewToolbarButton()
+          }
           WhatsNewMenuView(coordinator: coordinator, entries: entries)
         }
         .environment(settings)

@@ -580,17 +580,24 @@ def valued_cases():
     def gift_menu(rows):
         for german in (False, True):
             f = FakeSettings(german=german)
-            showing = {"open": False}
+            showing = {"open": False, "presses": 0}
+            def toggle():
+                # A real toolbar button toggles: pressing it while open closes the dropdown.
+                showing["presses"] += 1
+                showing["open"] = not showing["open"]
+            pop_el = el("AXPopover", children=[f.named("AXStaticText", "What's New"),
+                f.named("AXButton", "Check for Updates…"),
+                f.named("AXLink", "All release notes on GitHub")])
             def root():
                 toolbar = el("AXToolbar", children=[
-                    f.named("AXButton", sn.GIFT_CAPTION, press=lambda: showing.update(open=True)),
+                    f.named("AXButton", sn.GIFT_CAPTION, press=toggle),
                     f.named("AXButton", "Send feedback")])
-                pop = el("AXPopover", children=[f.named("AXStaticText", "What's New"),
-                    f.named("AXButton", "Check for Updates…"),
-                    f.named("AXLink", "All release notes on GitHub")])
-                return el("AXWindow", children=[toolbar] + ([pop] if showing["open"] else []))
+                return el("AXWindow", children=[toolbar] + ([pop_el] if showing["open"] else []))
             pop = sn.open_gift(f.ax(), root)
             rows.append((f"gift dropdown observed, German={german}", pop["AXRole"], "AXPopover"))
+            again = sn.open_gift(f.ax(), root)
+            rows.append((f"an open dropdown is reused, not toggled shut, German={german}",
+                         (again is pop, showing["presses"], showing["open"]), (True, 1, True)))
     blocks.append(("Gift dropdown", gift_menu))
 
     def app_tabs(rows):

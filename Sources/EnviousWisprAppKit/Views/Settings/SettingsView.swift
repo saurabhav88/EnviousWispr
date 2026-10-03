@@ -31,20 +31,18 @@ struct UnifiedWindowView: View {
     // inset so they read as balanced, uniform cards (founder, 2026-07-03).
     // `NavigationStack` hosts the window toolbar (top bar) without imposing the
     // floating sidebar.
-    GeometryReader { window in
-      NavigationStack {
-        HStack(spacing: SettingsLayout.windowFrameInset) {
-          sidebarCard
-          detailCard
-        }
-        .padding(SettingsLayout.windowFrameInset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.stWindowBg)
-        // Keep the app name as the window title (Window menu / VoiceOver) but hide
-        // its titlebar text so it doesn't duplicate the centered wordmark (#1311).
-        .background(MainWindowTitleHider())
-        .toolbar { SettingsWindowToolbar(windowWidth: window.size.width) }
+    NavigationStack {
+      HStack(spacing: SettingsLayout.windowFrameInset) {
+        sidebarCard
+        detailCard
       }
+      .padding(SettingsLayout.windowFrameInset)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color.stWindowBg)
+      // Keep the app name as the window title (Window menu / VoiceOver) but hide
+      // its titlebar text so it doesn't duplicate the centered wordmark (#1311).
+      .background(MainWindowTitleHider())
+      .toolbar { SettingsWindowToolbar() }
     }
     .tint(.stAccentSolid)
     // `initial: true`: a request made before this window existed (the menu's
@@ -245,7 +243,6 @@ struct UnifiedWindowView: View {
 /// One toolbar owner shared by the shell and its offscreen layout harness.
 struct SettingsWindowToolbar: ToolbarContent {
   var appName: String = AppConstants.appName
-  var windowWidth: CGFloat = 1300
   // Literal render fixtures can exercise the existing German labels without
   // changing the process language or the user's catalog/defaults.
   var giftCaption: LocalizedStringResource = "What's New & Updates"
@@ -285,7 +282,7 @@ struct SettingsWindowToolbar: ToolbarContent {
           // #3153: feedback lives beside Record (founder, 2026-09-25). Its own group, so the
           // shared Liquid Glass capsule does not merge it into the record pill.
           ToolbarItem(placement: .primaryAction) {
-            WhatsNewToolbarButton(showsCaption: windowWidth >= 900, caption: giftCaption)
+            WhatsNewToolbarButton(caption: giftCaption)
           }
           .sharedBackgroundVisibility(.hidden)
           ToolbarSpacer(.fixed, placement: .primaryAction)
@@ -303,7 +300,7 @@ struct SettingsWindowToolbar: ToolbarContent {
             StatusBadge(textOverride: statusTextOverride)
           }
           ToolbarItem(placement: .primaryAction) {
-            WhatsNewToolbarButton(showsCaption: windowWidth >= 900, caption: giftCaption)
+            WhatsNewToolbarButton(caption: giftCaption)
           }
           ToolbarItem(placement: .primaryAction) {
             FeedbackToolbarButton()
