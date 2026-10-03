@@ -203,7 +203,7 @@ struct SettingsShellRenderHarness {
           .toolbar {
             SettingsWindowToolbar(
               appName: "EnviousWispr",
-              giftCaption: german ? LocalizedStringResource("Neues & Updates") : "What's New & Updates",
+              giftCaption: german ? LocalizedStringResource("Neuigkeiten & Updates") : "What's New & Updates",
               statusTextOverride: german ? "Modell wird geladen..." : nil,
               recordTitleOverride: german ? "Aufnehmen" : nil)
           }

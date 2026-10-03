@@ -17,7 +17,7 @@ GERMAN = {
     "Dictation Settings": "Diktiereinstellungen", "Keybinds": "Tastenkürzel",
     "Transcribe a File": "Datei transkribieren", "AI Polish": "KI-Feinschliff",
     "Dictionary": "Wörterbuch", "Snippets": "Textbausteine", "Permissions": "Berechtigungen",
-    "What's New & Updates": "Neues & Updates", "Send feedback": "Feedback senden",
+    "What's New & Updates": "Neuigkeiten & Updates", "Send feedback": "Feedback senden",
     "All release notes on GitHub": "Alle Versionshinweise auf GitHub",
     "Check for Updates…": "Nach Updates suchen…",
     "App Settings": "App-Einstellungen", "Privacy": "Datenschutz", "Licenses": "Lizenzen", "Check for Updates": "Nach Updates suchen",

@@ -21,12 +21,12 @@ struct WhatsNewToolbarButton: View {
   var body: some View {
     Button(action: openMenu) {
       WhatsNewGiftGlyph(isUnread: settings.hasUnreadWhatsNew)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .background(Color.stSectionBg, in: Capsule())
-      .overlay(Capsule().strokeBorder(Color.stDivider, lineWidth: 1).allowsHitTesting(false))
-      .contentShape(Rectangle())
-      .fixedSize()
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.stSectionBg, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.stDivider, lineWidth: 1).allowsHitTesting(false))
+        .contentShape(Rectangle())
+        .fixedSize()
     }
     .buttonStyle(.plain)
     .focused($buttonFocused)
@@ -123,6 +123,9 @@ struct WhatsNewMenuView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.trailing, 8)
       }
+      // Fixed height so the links below never move; the bar stays visible so
+      // readers can tell more notes sit below the fold (founder, 2026-10-03).
+      .scrollIndicators(.visible)
       .frame(height: 320)
 
       Divider()
