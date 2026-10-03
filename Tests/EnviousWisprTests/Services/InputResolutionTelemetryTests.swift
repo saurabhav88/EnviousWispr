@@ -61,7 +61,9 @@ struct InputResolutionTelemetryTests {
 
     // MARK: - #1851 the failing step and the Mac's status
 
-    @Test("a failed cold attempt emits the step, the signed status and its four-character form")
+    @Test(
+      "a failed cold attempt emits the step, the signed status and its four-character form",
+      .tags(.observabilityContract))
     func failedAttemptEmitsStepAndStatus() {
       let event = capture {
         TelemetryService.shared.audioInputResolution(
@@ -85,7 +87,9 @@ struct InputResolutionTelemetryTests {
       #expect(event?.stringProps["prepare_failed_os_status_fourcc"] == "stop")
     }
 
-    @Test("a negative status stays negative and an absent step or status is omitted")
+    @Test(
+      "a negative status stays negative and an absent step or status is omitted",
+      .tags(.observabilityContract))
     func absentFailureFieldsAreOmitted() {
       let negative = capture {
         TelemetryService.shared.audioInputResolution(
@@ -109,11 +113,22 @@ struct InputResolutionTelemetryTests {
       #expect(none?.stringProps.keys.contains("prepare_failed_os_status_fourcc") == false)
     }
 
-    @Test("the hook reads back exactly the keys the outgoing capture sends")
-    func hookKeysEqualOutgoingKeys() {
-      // The capture sends `inputResolutionProperties(...)`; the hook is derived
-      // from the same dictionary. Compare their key sets so a divergence between
-      // what a test reads and what leaves the Mac fails here.
+    @Test(
+      "the outgoing property list has exactly the expected keys and the hook preserves them",
+      .tags(.observabilityContract))
+    func outgoingKeysAreTheExpectedLiteralSet() {
+      // The expected set is a literal written from the event's documented
+      // properties, not read from the builder under test. This checks the
+      // builder's keys and the DEBUG hook's conversion; it does not observe
+      // the SDK's own delivery, which no seam exposes.
+      let expectedKeys: Set<String> = [
+        "default_present", "enumeration_outcome",
+        "input_device_count", "eligible_device_count",
+        "input_resolution_source", "selected_transport",
+        "bind_outcome", "prepare_outcome",
+        "prepare_failed_step", "prepare_failed_os_status",
+        "prepare_failed_os_status_fourcc",
+      ]
       let outgoing = TelemetryService.inputResolutionProperties(
         defaultPresent: true, enumerationOutcome: "succeeded", inputDeviceCount: 3,
         eligibleDeviceCount: 0, inputResolutionSource: "system_default",
@@ -135,14 +150,17 @@ struct InputResolutionTelemetryTests {
         hookKeys.formUnion(event.boolProps.keys)
       }
 
-      #expect(hookKeys == Set(outgoing.keys))
+      #expect(Set(outgoing.keys) == expectedKeys)
+      #expect(hookKeys == expectedKeys)
       // An explicit zero count is a real answer and rides as zero.
       #expect(outgoing["eligible_device_count"] as? Int == 0)
       #expect(event?.intProps["eligible_device_count"] == 0)
       #expect(outgoing["prepare_failed_os_status"] as? Int == 560_227_702)
     }
 
-    @Test("the property builder is the outgoing shape: signed Int, nil keys omitted")
+    @Test(
+      "the property builder is the outgoing shape: signed Int, nil keys omitted",
+      .tags(.observabilityContract))
     func builderIsTheOutgoingShape() {
       // The DEBUG hook and the PostHog capture both read this one builder, so a
       // test on it is a test on what leaves the Mac.

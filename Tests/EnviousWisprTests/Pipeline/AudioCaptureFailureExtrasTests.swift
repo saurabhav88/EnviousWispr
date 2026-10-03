@@ -104,7 +104,9 @@ struct AudioCaptureFailureExtrasTests {
 
   // MARK: - #1851 the Mac's own status at the failing step
 
-  @Test("a start failure carries the Mac's status and its four-character form")
+  @Test(
+    "a start failure carries the Mac's status and its four-character form",
+    .tags(.observabilityContract))
   func startFailureCarriesOSStatus() {
     // The kernel stores the thrown error as `any Error & StableSentryErrorIdentity`
     // (`RecordingSessionKernel` catch sites) and the sink hands THAT value to the
@@ -120,7 +122,9 @@ struct AudioCaptureFailureExtrasTests {
     #expect(extras["capture.os_status_fourcc"] as? String == "stop")
   }
 
-  @Test("a negative status is sent as a number with no four-character form")
+  @Test(
+    "a negative status is sent as a number with no four-character form",
+    .tags(.observabilityContract))
   func negativeStatusHasNoFourCC() {
     let extras = AudioCaptureFailureExtras.build(
       error: AudioError.formatCreationFailed(
@@ -131,7 +135,7 @@ struct AudioCaptureFailureExtrasTests {
     #expect(extras.keys.contains("capture.os_status_fourcc") == false)
   }
 
-  @Test("no status OMITS both keys: not zero, not NSNull")
+  @Test("no status OMITS both keys: not zero, not NSNull", .tags(.observabilityContract))
   func absentStatusOmitsKeys() {
     let withoutStatus = AudioCaptureFailureExtras.build(
       error: AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.converter"),

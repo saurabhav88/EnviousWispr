@@ -77,7 +77,9 @@ struct InputResolutionTelemetryReportingTests {
       #expect(event?.stringProps["prepare_outcome"] == "succeeded")
     }
 
-    @Test("the failing step and the Mac's status reach TelemetryService unchanged (#1851)")
+    @Test(
+      "the failing step and the Mac's status reach TelemetryService unchanged (#1851)",
+      .tags(.observabilityContract))
     func failureFieldsPassThrough() {
       var state = InputResolutionAttemptState()
       state.recordBind(succeeded: true)
@@ -99,7 +101,9 @@ struct InputResolutionTelemetryReportingTests {
       #expect(event?.stringProps["prepare_failed_os_status_fourcc"] == "stop")
     }
 
-    @Test("a successful attempt reports none of the failure fields (#1851)")
+    @Test(
+      "a successful attempt reports none of the failure fields (#1851)",
+      .tags(.observabilityContract))
     func successCarriesNoFailureFields() {
       let event = capture(
         projection(.systemDefault, bindSucceeded: true, prepareSucceeded: true, counts: nil))
