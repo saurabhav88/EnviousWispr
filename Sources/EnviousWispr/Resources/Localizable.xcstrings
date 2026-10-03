@@ -597,6 +597,7 @@
       }
     },
     "%@ · %@" : {
+      "comment" : "Microphone settings: Auto, then how the chosen microphone is connected.\nMicrophone settings: a microphone's name, then how it is connected.\nSpeech engine settings: heading naming the current engine, then its model. Shown in capitals.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -735,7 +736,7 @@
       }
     },
     "%@. %@" : {
-      "comment" : "Appearance settings, recording pill picker, VoiceOver: a design card. The first %@ is the design's name, the second one sentence about it.",
+      "comment" : "Recording Pill settings, style picker, VoiceOver: a design card. The first %@ is the design's name, the second one sentence about it.\nSettings sidebar, VoiceOver: a row's value. The first %@ is Selected or Not selected; the second says what is running on that page.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -800,6 +801,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld Min."
+          }
+        }
+      }
+    },
+    "%lld of %lld installed on this Mac" : {
+      "comment" : "Live Preview: actual installed and total language counts from the loaded macOS inventory.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld installed on this Mac"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld von %2$lld auf diesem Mac installiert"
           }
         }
       }
@@ -1199,6 +1217,17 @@
         }
       }
     },
+    "A compact pill with a dot and level meter." : {
+      "comment" : "Recording Pill settings: short line under the Capsule design's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine kompakte Kapsel mit Punkt und Pegelanzeige."
+          }
+        }
+      }
+    },
     "A dictation is running. Try again when it finishes." : {
       "comment" : "Transcribe a File: why the file was refused.",
       "localizations" : {
@@ -1253,8 +1282,19 @@
         }
       }
     },
+    "A slim rail that follows your volume." : {
+      "comment" : "Recording Pill settings: short line under the Level Rail design's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine schmale Leiste, die sich deiner Lautstärke anpasst."
+          }
+        }
+      }
+    },
     "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown." : {
-      "comment" : "Appearance settings: description of the Capsule recording pill style.",
+      "comment" : "Recording Pill settings: description of the Capsule recording pill style.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1286,7 +1326,7 @@
       }
     },
     "A wide panel that shows your words as you speak, growing a line at a time." : {
-      "comment" : "Appearance settings: description of the Reading Well recording pill style.",
+      "comment" : "Recording Pill settings: description of the Reading Well recording pill style.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1297,7 +1337,7 @@
       }
     },
     "A wider capsule with a live rainbow meter of your voice beside the timer." : {
-      "comment" : "Appearance settings: description of the Level Rail recording pill style.",
+      "comment" : "Recording Pill settings: description of the Level Rail recording pill style.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1729,12 +1769,34 @@
         }
       }
     },
+    "APPLIES TO BOTH ENGINES" : {
+      "comment" : "Speech engine settings: heading over settings that work the same on both engines, in capitals.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GILT FÜR BEIDE ENGINES"
+          }
+        }
+      }
+    },
     "AVAILABLE ON THIS MAC" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "AUF DIESEM MAC VERFÜGBAR"
+          }
+        }
+      }
+    },
+    "About %@" : {
+      "comment" : "Settings: accessibility name of the ? button beside a setting. %@ is the setting's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Infos zu %@"
           }
         }
       }
@@ -2395,7 +2457,7 @@
       }
     },
     "Air Glint" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2477,6 +2539,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle deine Kontakte stehen bereits in deiner Wortliste."
+          }
+        }
+      }
+    },
+    "Allow language suggestions to appear again." : {
+      "comment" : "Speech engine settings: short line under the Language suggestions row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachvorschläge wieder zulassen."
           }
         }
       }
@@ -3090,13 +3163,13 @@
         }
       }
     },
-    "Audio isn't capturing from %@. Try a different input under Settings > Microphone." : {
-      "comment" : "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Microphone is a place in this app.",
+    "Audio isn't capturing from %@. Try a different input under Settings > Dictation Settings > Microphone & Media." : {
+      "comment" : "Pill when a multi-input audio interface delivered only silence. %@ is the device name. Settings > Dictation Settings > Microphone & Media is a place in this app.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Über %@ wird kein Audio aufgenommen. Wähle unter Einstellungen > Mikrofon eine andere Eingabe."
+            "value" : "Über %@ wird kein Ton aufgenommen. Wähle unter Einstellungen > Diktateinstellungen > Mikrofon & Medien einen anderen Eingang."
           }
         }
       }
@@ -3124,6 +3197,7 @@
       }
     },
     "Auto" : {
+      "comment" : "Settings: prefix identifying automatic language mode.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3133,17 +3207,19 @@
         }
       }
     },
-    "Auto-Stop" : {
+    "Auto may skip inputs that are not microphones." : {
+      "comment" : "Microphone menu: Auto can divert from the macOS input when it is proven not to be a microphone. Never promise it always follows macOS.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auto-Stopp"
+            "value" : "Auto kann Eingänge überspringen, die keine Mikrofone sind."
           }
         }
       }
     },
     "Auto-copy to clipboard" : {
+      "comment" : "Clipboard settings: switch title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3328,7 +3404,7 @@
       }
     },
     "Barely-there tick." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3426,6 +3502,17 @@
         }
       }
     },
+    "Bluetooth" : {
+      "comment" : "Microphone settings: the microphone is connected over Bluetooth.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth"
+          }
+        }
+      }
+    },
     "Bluetooth mic detected" : {
       "comment" : "Title of the tip card shown when a Bluetooth microphone is the input.",
       "localizations" : {
@@ -3504,7 +3591,7 @@
       }
     },
     "Bottom" : {
-      "comment" : "Appearance settings, pill position: the bottom of the screen.",
+      "comment" : "Recording Pill settings, position on screen: the bottom of the screen.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3639,6 +3726,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "In macOS integriert"
+          }
+        }
+      }
+    },
+    "Built-in" : {
+      "comment" : "Microphone settings: the microphone is built into the Mac (or its audio jack).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integriert"
           }
         }
       }
@@ -3785,12 +3883,23 @@
       }
     },
     "Capsule" : {
-      "comment" : "Appearance settings: name of the original recording pill style.",
+      "comment" : "Recording Pill settings: name of the original recording pill style.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kapsel"
+          }
+        }
+      }
+    },
+    "Capsule and Level Rail show volume. Reading Well shows words and turns Live Preview on." : {
+      "comment" : "Recording Pill settings: explains Style. Capsule, Level Rail and Reading Well are the design names; Live Preview is a setting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapsel und Pegelanzeige zeigen die Lautstärke. Lesefeld zeigt Wörter und schaltet die Live-Vorschau ein."
           }
         }
       }
@@ -3829,11 +3938,23 @@
       }
     },
     "Change" : {
+      "comment" : "Settings: button that opens the other choices for a setting.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ändern"
+          }
+        }
+      }
+    },
+    "Change dictation language" : {
+      "comment" : "Speech engine settings: VoiceOver name of the Change button for the locked language.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiersprache ändern"
           }
         }
       }
@@ -3850,6 +3971,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktiersprache ändern: %1$@, %2$@"
+          }
+        }
+      }
+    },
+    "Change preview engine" : {
+      "comment" : "Live Preview settings: VoiceOver name of the Change button for the preview engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau-Engine ändern"
+          }
+        }
+      }
+    },
+    "Change speech engine" : {
+      "comment" : "Speech engine settings: VoiceOver name of the Change button for the engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptions-Engine ändern"
           }
         }
       }
@@ -3871,6 +4014,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geändert: %@."
+          }
+        }
+      }
+    },
+    "Changes apply to the next recording" : {
+      "comment" : "Speech engine settings: note beside the heading; a change made while recording applies next time.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen gelten ab der nächsten Aufnahme"
           }
         }
       }
@@ -3993,6 +4147,7 @@
       }
     },
     "Checking model status..." : {
+      "comment" : "Settings: a read-only model status check is running.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4068,6 +4223,17 @@
         }
       }
     },
+    "Chimes" : {
+      "comment" : "Dictation Settings: tab name for the start and stop sounds.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signaltöne"
+          }
+        }
+      }
+    },
     "Chinese" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -4086,6 +4252,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle „Keine Aktion“"
+          }
+        }
+      }
+    },
+    "Choose Top or Bottom for the recording pill." : {
+      "comment" : "Recording Pill settings: explains Position on screen. Top and Bottom are the two choices.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle „Oben“ oder „Unten“ für die Aufnahmeanzeige."
           }
         }
       }
@@ -4134,6 +4311,28 @@
         }
       }
     },
+    "Choose a language, or choose Automatic to clear the lock." : {
+      "comment" : "Speech engine settings: explains the locked language row's Change button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle eine Sprache oder „Automatisch“, um die feste Sprachwahl aufzuheben."
+          }
+        }
+      }
+    },
+    "Choose a microphone" : {
+      "comment" : "Microphone settings: shown when the current inputs provide no matching microphone name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon wählen"
+          }
+        }
+      }
+    },
     "Choose a snippets file" : {
       "comment" : "Snippets import: the title of the file picker.",
       "localizations" : {
@@ -4177,6 +4376,39 @@
         }
       }
     },
+    "Choose the language for dictation and preview." : {
+      "comment" : "Speech engine settings: short line under the locked language row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle die Sprache für Diktat und Vorschau."
+          }
+        }
+      }
+    },
+    "Choose the microphone used for recording." : {
+      "comment" : "Microphone settings: short line under the Input device row title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle das Mikrofon für die Aufnahme."
+          }
+        }
+      }
+    },
+    "Choose the socket your microphone is plugged into." : {
+      "comment" : "Microphone settings: short line under the input socket row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle den Anschluss, an dem dein Mikrofon steckt."
+          }
+        }
+      }
+    },
     "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary." : {
       "comment" : "Dictionary settings, Quick Add teaching card: step 3.",
       "localizations" : {
@@ -4188,13 +4420,24 @@
         }
       }
     },
-    "Choose your input source and readiness behavior." : {
-      "comment" : "Settings: the one-line description under a page title.",
+    "Choose which engine shows words while you speak." : {
+      "comment" : "Live Preview settings: short line under the Preview engine heading.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle deine Eingabequelle und die Mikrofonbereitschaft."
+            "value" : "Wähle die Engine, die Wörter beim Sprechen anzeigt."
+          }
+        }
+      }
+    },
+    "Choosing an engine does not start a download." : {
+      "comment" : "Live Preview settings: explains the preview engine choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wahl einer Engine startet keinen Download."
           }
         }
       }
@@ -4297,19 +4540,8 @@
         }
       }
     },
-    "Clean up and rewrite your dictation with AI." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lass dein Diktat mit KI nachbearbeiten und umformulieren."
-          }
-        }
-      }
-    },
     "Clean, airy glint." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4364,16 +4596,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Macht daraus einen gut lesbaren Text."
-          }
-        }
-      }
-    },
-    "Cleanup" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nachbearbeitung"
           }
         }
       }
@@ -4454,7 +4676,7 @@
       }
     },
     "Clipboard" : {
-      "comment" : "Settings sidebar: a page name.",
+      "comment" : "Clipboard settings: section heading, shown in capitals.\nDictation Settings: tab name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4497,7 +4719,7 @@
       }
     },
     "Cloud Pop" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4536,6 +4758,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Firmen-, Produkt- und App-Namen."
+          }
+        }
+      }
+    },
+    "Compare engines" : {
+      "comment" : "Live Preview settings, preview engine: learn more label.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Engines vergleichen"
           }
         }
       }
@@ -4635,17 +4868,6 @@
         }
       }
     },
-    "Convert spoken punctuation" : {
-      "comment" : "Speech engine settings, spoken punctuation: the toggle's name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesprochene Satzzeichen umwandeln"
-          }
-        }
-      }
-    },
     "Convincing AI that you said 'duck'..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
       "localizations" : {
@@ -4675,6 +4897,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kopiert. Zum Einfügen ⌘V drücken"
+          }
+        }
+      }
+    },
+    "Copies dictation when automatic pasting is skipped." : {
+      "comment" : "Clipboard settings: short line under Auto-copy to clipboard.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiert dein Diktat, wenn das automatische Einfügen übersprungen wird."
+          }
+        }
+      }
+    },
+    "Copies your dictation to the clipboard when automatic pasting is skipped. After an automatic paste, Restore clipboard after paste controls whether your earlier clipboard contents return." : {
+      "comment" : "Clipboard settings: explains Auto-copy to clipboard.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiert dein Diktat in die Zwischenablage, wenn das automatische Einfügen übersprungen wird. Nach dem automatischen Einfügen bestimmt „Zwischenablage nach dem Einfügen wiederherstellen“, ob der vorherige Inhalt zurückkehrt."
           }
         }
       }
@@ -5392,6 +5636,28 @@
         }
       }
     },
+    "Detects the language you speak. 25 European languages." : {
+      "comment" : "Speech engine settings: short line under Auto-detect language on the fast engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erkennt die gesprochene Sprache. 25 europäische Sprachen."
+          }
+        }
+      }
+    },
+    "Detects the language you speak. 99+ languages." : {
+      "comment" : "Speech engine settings: short line under Auto-detect language on the multilingual engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erkennt die gesprochene Sprache. 99+ Sprachen."
+          }
+        }
+      }
+    },
     "Dictation" : {
       "comment" : "History detail title for a row made by dictating. Also the default file name when saving it.",
       "localizations" : {
@@ -5399,6 +5665,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktat"
+          }
+        }
+      }
+    },
+    "Dictation Settings" : {
+      "comment" : "Settings sidebar: a page name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktateinstellungen"
           }
         }
       }
@@ -5555,12 +5832,23 @@
       }
     },
     "Dictionary" : {
-      "comment" : "Settings sidebar: a page name.",
+      "comment" : "Dictionary settings: section heading at the top of the page, shown in capitals.\nSettings sidebar: a page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wörterbuch"
+          }
+        }
+      }
+    },
+    "Dictionary enrichment in progress" : {
+      "comment" : "Settings sidebar, VoiceOver: Dictionary is still looking up words added in bulk.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wörterbuch wird erweitert"
           }
         }
       }
@@ -5713,17 +6001,6 @@
         }
       }
     },
-    "Download Model" : {
-      "comment" : "Speech engine settings, WhisperKit model: the current setup step.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell herunterladen"
-          }
-        }
-      }
-    },
     "Download Ollama" : {
       "comment" : "AI Polish, Ollama setup: opens the Ollama download page.",
       "localizations" : {
@@ -5746,16 +6023,6 @@
         }
       }
     },
-    "Download WhisperKit Model" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "WhisperKit-Modell herunterladen"
-          }
-        }
-      }
-    },
     "Download a Model" : {
       "comment" : "AI Polish, Ollama setup: the current step.",
       "localizations" : {
@@ -5763,6 +6030,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell herunterladen"
+          }
+        }
+      }
+    },
+    "Download a language from macOS to preview it." : {
+      "comment" : "Live Preview settings: short line under Install new languages.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade für die Vorschau ein Sprachpaket von macOS herunter."
           }
         }
       }
@@ -6053,12 +6331,12 @@
       }
     },
     "Dust Mote" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Staubflöckchen"
+            "value" : "Staub­flöckchen"
           }
         }
       }
@@ -6177,6 +6455,7 @@
       }
     },
     "Enable Dictionary" : {
+      "comment" : "Dictionary settings: the switch that turns Dictionary on or off.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6186,7 +6465,19 @@
         }
       }
     },
+    "Ends recording after you stop speaking." : {
+      "comment" : "Speech engine settings: short line under Stop recording on silence.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beendet die Aufnahme, wenn du aufhörst zu sprechen."
+          }
+        }
+      }
+    },
     "Engine" : {
+      "comment" : "Dictation Settings: tab name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6247,17 +6538,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr konnte den Namen dieses Modells nicht bei Ollama bestätigen. Versuche es gleich noch einmal."
-          }
-        }
-      }
-    },
-    "EnviousWispr is GPLv3 open source. The license and third-party notices." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousWispr ist quelloffen unter GPLv3. Lizenz und Hinweise zu Drittanbietern."
           }
         }
       }
@@ -6919,12 +7199,34 @@
         }
       }
     },
+    "Fits text to the spacing and capitals around your cursor." : {
+      "comment" : "Clipboard settings: short line under Smart insertion.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passt Abstände und Großschreibung an den Text um den Cursor an."
+          }
+        }
+      }
+    },
     "Fix Now" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jetzt beheben"
+          }
+        }
+      }
+    },
+    "For everyday English and European dictation" : {
+      "comment" : "Speech engine settings: short line under the fast engine's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für alltägliche Diktate auf Englisch und in europäischen Sprachen"
           }
         }
       }
@@ -6941,6 +7243,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sag zum Beispiel „%1$@ %2$@“, um den Textbaustein einzufügen."
+          }
+        }
+      }
+    },
+    "For other languages or the toughest audio" : {
+      "comment" : "Speech engine settings: short line under the multilingual engine's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für andere Sprachen oder besonders schwierige Aufnahmen"
           }
         }
       }
@@ -7029,6 +7342,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Globus-Taste freigeben. Einrichtungstipp."
+          }
+        }
+      }
+    },
+    "Frees memory when you are not dictating." : {
+      "comment" : "Speech engine settings: short line under the unload model row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gibt Speicher frei, wenn du nicht diktierst."
           }
         }
       }
@@ -7398,6 +7722,17 @@
         }
       }
     },
+    "Hear this chime without changing your choice." : {
+      "comment" : "Chimes settings: line above the chime cards. Each card's play button previews that chime without selecting it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hör dir diesen Signalton an, ohne deine Auswahl zu ändern."
+          }
+        }
+      }
+    },
     "Hebrew" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -7515,6 +7850,28 @@
         }
       }
     },
+    "How long a pause ends the recording." : {
+      "comment" : "Speech engine settings: short line under Pause duration.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie lange eine Pause dauern muss, um die Aufnahme zu beenden."
+          }
+        }
+      }
+    },
+    "How long the mic stays ready after recording." : {
+      "comment" : "Microphone settings: short line under the Microphone readiness row title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie lange das Mikrofon nach der Aufnahme bereit bleibt."
+          }
+        }
+      }
+    },
     "How long to wait after you stop speaking before ending the recording." : {
       "localizations" : {
         "de" : {
@@ -7525,24 +7882,13 @@
         }
       }
     },
-    "How the app looks, and the pill you see while dictating." : {
-      "comment" : "Settings: the one-line description under a page title.",
+    "How these work on this engine" : {
+      "comment" : "Speech engine settings: note beside the current engine's heading. The settings below are shared by both engines; their explanations describe the current one.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wie die App und die Aufnahmeanzeige beim Diktieren aussehen."
-          }
-        }
-      }
-    },
-    "How your dictation reaches the clipboard and the app you're in." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wie dein Diktat in die Zwischenablage und die aktive App gelangt."
+            "value" : "So funktionieren diese Einstellungen mit dieser Engine"
           }
         }
       }
@@ -7554,6 +7900,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ungarisch"
+          }
+        }
+      }
+    },
+    "IN USE" : {
+      "comment" : "Chimes settings: small badge on the chime that recordings use, in capitals.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IN VERWENDUNG"
+          }
+        }
+      }
+    },
+    "INPUT & BEHAVIOR" : {
+      "comment" : "Microphone settings: section heading above the microphone rows, shown in capitals.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EINGABE & VERHALTEN"
           }
         }
       }
@@ -7709,7 +8077,7 @@
       }
     },
     "Improve recognition with your words and vocabulary." : {
-      "comment" : "Settings: the one-line description under a page title.",
+      "comment" : "Dictionary settings: explains Enable Dictionary.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7725,6 +8093,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenig Zeit? Schritt überspringen"
+          }
+        }
+      }
+    },
+    "In use" : {
+      "comment" : "Microphone settings: capture is active on the displayed microphone, not merely selected or kept warm.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Verwendung"
           }
         }
       }
@@ -7989,6 +8368,28 @@
         }
       }
     },
+    "Keep current engine" : {
+      "comment" : "Speech engine settings: closes the engine choices without changing the engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Engine beibehalten"
+          }
+        }
+      }
+    },
+    "Keep current preview engine" : {
+      "comment" : "Live Preview settings: closes the preview engine choices without changing them.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Vorschau-Engine beibehalten"
+          }
+        }
+      }
+    },
     "Keep editing" : {
       "localizations" : {
         "de" : {
@@ -8026,6 +8427,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Aufnahme dauerhaft behalten, statt sie löschen zu lassen"
+          }
+        }
+      }
+    },
+    "Keeping your mic ready reduces Bluetooth startup delay." : {
+      "comment" : "Microphone settings: short line under the Bluetooth guide row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein bereites Mikrofon verkürzt die Startverzögerung bei Bluetooth."
           }
         }
       }
@@ -8432,17 +8844,6 @@
         }
       }
     },
-    "Learn more about engines" : {
-      "comment" : "Live Preview settings, preview engine: learn more label.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mehr über Engines erfahren"
-          }
-        }
-      }
-    },
     "Learn-only: %@'s word check couldn't download. Learned words are saved for later." : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.",
       "localizations" : {
@@ -8542,7 +8943,7 @@
       }
     },
     "Level Rail" : {
-      "comment" : "Appearance settings: name of the recording pill style with a voice level meter.",
+      "comment" : "Recording Pill settings: name of the recording pill style with a voice level meter.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8694,7 +9095,7 @@
       }
     },
     "Live Preview" : {
-      "comment" : "Live Preview settings: section header.\nSettings sidebar: a page name.",
+      "comment" : "Dictation Settings: tab name.\nLive Preview settings: section header.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8907,7 +9308,7 @@
       }
     },
     "Low Nod" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8918,7 +9319,7 @@
       }
     },
     "Low, warm, unhurried." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9038,17 +9439,6 @@
         }
       }
     },
-    "Manage app permissions and privacy settings." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "App-Berechtigungen und Datenschutzeinstellungen verwalten."
-          }
-        }
-      }
-    },
     "Maori" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -9102,6 +9492,7 @@
       }
     },
     "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence." : {
+      "comment" : "Clipboard settings: explains Smart insertion.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9166,16 +9557,6 @@
         }
       }
     },
-    "Memory" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Arbeitsspeicher"
-          }
-        }
-      }
-    },
     "Menu bar" : {
       "comment" : "Dictionary settings, Quick Add teaching card: label of the menu bar callout.",
       "localizations" : {
@@ -9199,12 +9580,23 @@
       }
     },
     "Microphone" : {
-      "comment" : "Settings sidebar: a page name.\nSetup permissions: title of the microphone permission row.",
+      "comment" : "Setup permissions: title of the microphone permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon"
+          }
+        }
+      }
+    },
+    "Microphone & Media" : {
+      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon & Medien"
           }
         }
       }
@@ -9373,16 +9765,6 @@
         }
       }
     },
-    "Model Setup" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell einrichten"
-          }
-        }
-      }
-    },
     "Model downloads are paused by Envious Labs" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch.",
       "localizations" : {
@@ -9410,6 +9792,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell ist bereit"
+          }
+        }
+      }
+    },
+    "Model not set up" : {
+      "comment" : "Settings: model files are not currently admitted.\nSpeech engine settings: row title when the multilingual engine's model is not downloaded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell nicht eingerichtet"
+          }
+        }
+      }
+    },
+    "Model ready" : {
+      "comment" : "Settings: model files are currently admitted on this Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell bereit"
           }
         }
       }
@@ -9519,7 +9923,7 @@
       }
     },
     "Muted Confirm" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9530,7 +9934,7 @@
       }
     },
     "Muted, compact tap." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10596,17 +11000,6 @@
         }
       }
     },
-    "OUTPUT" : {
-      "comment" : "Settings sidebar: group heading, in capitals.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AUSGABE"
-          }
-        }
-      }
-    },
     "Occitan" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -10619,7 +11012,7 @@
       }
     },
     "Off" : {
-      "comment" : "AI Polish provider status chip: AI Polish is off.\nLive Preview settings: status off label.\nMicrophone settings: readiness option; the microphone is released at once.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches.\nVoiceOver: the value of a switch that is off.",
+      "comment" : "AI Polish provider status chip: AI Polish is off.\nLive Preview settings: status off label.\nMicrophone settings: readiness option; the microphone is released at once.\nSettings: Live Preview is switched off.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches.\nVoiceOver: the value of a switch that is off.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11027,22 +11420,22 @@
         }
       }
     },
+    "Opens Dictation Settings, Live Preview." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet „Live-Vorschau“ in den Diktateinstellungen."
+          }
+        }
+      }
+    },
     "Opens Keybinds" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffnet die Einstellungen für Tastenkürzel"
-          }
-        }
-      }
-    },
-    "Opens the Live Preview settings page" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Öffnet die Einstellungen für die Live-Vorschau"
           }
         }
       }
@@ -11190,7 +11583,7 @@
       }
     },
     "Paper Tap" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11492,6 +11885,17 @@
         }
       }
     },
+    "Pick the input your microphone uses. The choice is remembered for this device." : {
+      "comment" : "Microphone settings: explains the input socket choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle den Eingang deines Mikrofons. Die Auswahl wird für dieses Gerät gespeichert."
+          }
+        }
+      }
+    },
     "Pick this for everyday English and European dictation." : {
       "comment" : "Speech engine settings, engine card: when to pick the fast engine.",
       "localizations" : {
@@ -11534,16 +11938,6 @@
         }
       }
     },
-    "Pill Position" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Position der Aufnahmeanzeige"
-          }
-        }
-      }
-    },
     "Pipeline benchmark complete" : {
       "comment" : "Settings > Diagnostics, speed test: the full-pipeline test finished.",
       "localizations" : {
@@ -11555,28 +11949,30 @@
         }
       }
     },
-    "Play a short sound when recording starts and stops." : {
-      "comment" : "Settings: the one-line description under a page title.",
+    "Play recording chimes" : {
+      "comment" : "Chimes settings: switch that plays a short sound when recording starts and stops.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Spiele beim Starten und Stoppen der Aufnahme einen kurzen Ton ab."
+            "value" : "Aufnahmesignaltöne abspielen"
           }
         }
       }
     },
-    "Play recording sounds" : {
+    "Plays a short chime when recording starts and stops." : {
+      "comment" : "Chimes settings: short line under Play recording chimes.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aufnahmetöne abspielen"
+            "value" : "Spielt beim Start und Ende der Aufnahme einen kurzen Signalton."
           }
         }
       }
     },
     "Plays a short sound when recording starts and stops. People nearby may hear it." : {
+      "comment" : "Chimes settings: explains Play recording chimes.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11681,6 +12077,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Portugiesisch"
+          }
+        }
+      }
+    },
+    "Position on screen" : {
+      "comment" : "Recording Pill settings: row title for where the recording pill appears.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position auf dem Bildschirm"
           }
         }
       }
@@ -11864,16 +12271,6 @@
         }
       }
     },
-    "Preview" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorschau"
-          }
-        }
-      }
-    },
     "Preview %@" : {
       "localizations" : {
         "de" : {
@@ -11896,6 +12293,7 @@
       }
     },
     "Preview is unavailable while a recording is in progress." : {
+      "comment" : "Chimes settings: why the play buttons are disabled while dictating.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12001,8 +12399,19 @@
         }
       }
     },
+    "Puts back what was on your clipboard before pasting." : {
+      "comment" : "Clipboard settings: short line under Restore clipboard after paste.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stellt den vorherigen Inhalt der Zwischenablage nach dem Einfügen wieder her."
+          }
+        }
+      }
+    },
     "Quick Add" : {
-      "comment" : "Your Words: a tab in the side rail, the feature that adds a selected word from any app.",
+      "comment" : "Clipboard settings: section heading for Quick Add, shown in capitals.\nYour Words: a tab in the side rail, the feature that adds a selected word from any app.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12055,6 +12464,27 @@
         }
       }
     },
+    "RECORDING CHIMES" : {
+      "comment" : "Chimes settings: section heading above the chime switch and cards, in capitals.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AUFNAHMESIGNALTÖNE"
+          }
+        }
+      }
+    },
+    "Re-check Fast model status" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellstatus von „Schnell“ erneut prüfen"
+          }
+        }
+      }
+    },
     "Re-check Ollama status" : {
       "localizations" : {
         "de" : {
@@ -12096,6 +12526,7 @@
       }
     },
     "Read selections through the clipboard" : {
+      "comment" : "Clipboard settings, Quick Add: switch title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12138,7 +12569,7 @@
       }
     },
     "Reading Well" : {
-      "comment" : "Appearance settings: name of the recording pill style that shows your words as you speak.",
+      "comment" : "Recording Pill settings: name of the recording pill style that shows your words as you speak.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12170,8 +12601,19 @@
         }
       }
     },
+    "Reads hidden selections and restores your clipboard." : {
+      "comment" : "Clipboard settings, Quick Add: short line under Read selections through the clipboard.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liest verborgene Auswahlen und stellt die Zwischenablage wieder her."
+          }
+        }
+      }
+    },
     "Ready" : {
-      "comment" : "Transcribe a File, Polish step: the line under an engine's name.",
+      "comment" : "Settings: the selected preview engine can run for the current language.\nTranscribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12342,6 +12784,7 @@
       }
     },
     "Recording Pill" : {
+      "comment" : "Dictation Settings: tab name for the floating pill shown while recording.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12732,6 +13175,16 @@
         }
       }
     },
+    "Reset suggestions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschläge zurücksetzen"
+          }
+        }
+      }
+    },
     "Reset to allow the app to suggest locking a detected language again." : {
       "localizations" : {
         "de" : {
@@ -12775,6 +13228,7 @@
       }
     },
     "Restore clipboard after paste" : {
+      "comment" : "Clipboard settings: switch title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12871,7 +13325,7 @@
       }
     },
     "Round Pebble" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12882,7 +13336,7 @@
       }
     },
     "Rounded, no edge." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12947,6 +13401,28 @@
         }
       }
     },
+    "Runs on this Mac. Nothing you say is sent anywhere." : {
+      "comment" : "Live Preview settings: note beside the Live Preview heading. Describes the on-screen preview only, not dictation or AI Polish.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Live-Vorschau läuft auf diesem Mac. Sie sendet nichts, was du sagst."
+          }
+        }
+      }
+    },
+    "Runs on your Mac after the model is set up." : {
+      "comment" : "Speech engine settings: short line under the model setup row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft auf deinem Mac, sobald das Modell eingerichtet ist."
+          }
+        }
+      }
+    },
     "Russian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -12991,7 +13467,7 @@
       }
     },
     "Same pitch both ways, plain." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13013,7 +13489,7 @@
       }
     },
     "Satin Shift" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13121,6 +13597,7 @@
       }
     },
     "Saves and restores whatever was on your clipboard before pasting your dictation." : {
+      "comment" : "Clipboard settings: explains Restore clipboard after paste.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13183,6 +13660,28 @@
         }
       }
     },
+    "Say a phrase followed by emoji to get its symbol." : {
+      "comment" : "Speech engine settings: short line under the spoken emoji row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag einen Ausdruck und danach „Emoji“, um das Symbol einzufügen."
+          }
+        }
+      }
+    },
+    "Say comma or new paragraph to insert it." : {
+      "comment" : "Speech engine settings: short line under the spoken punctuation row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag „comma“ oder „new paragraph“, um es einzufügen."
+          }
+        }
+      }
+    },
     "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it." : {
       "comment" : "Speech engine settings, spoken punctuation: description under the toggle.",
       "localizations" : {
@@ -13201,17 +13700,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sag dies"
-          }
-        }
-      }
-    },
-    "Say your keyword, then a snippet. The saved text lands for you." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sag dein Schlüsselwort und dann einen Textbaustein. Der gespeicherte Text wird eingefügt."
           }
         }
       }
@@ -13351,13 +13839,13 @@
         }
       }
     },
-    "See your words on screen while you are still speaking." : {
-      "comment" : "Settings: the one-line description under a page title.",
+    "See words before you finish your dictation." : {
+      "comment" : "Live Preview settings: short line under Show words while you speak.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sieh deine Wörter schon während des Sprechens auf dem Bildschirm."
+            "value" : "Sieh den Text schon während des Diktierens."
           }
         }
       }
@@ -13468,16 +13956,6 @@
         }
       }
     },
-    "Selected: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausgewählt: %@"
-          }
-        }
-      }
-    },
     "Selects %@ for AI polish" : {
       "localizations" : {
         "de" : {
@@ -13575,13 +14053,13 @@
         }
       }
     },
-    "Set the keybinds that start, stop, and cancel dictation." : {
-      "comment" : "Settings: the one-line description under a page title.",
+    "Set up model" : {
+      "comment" : "Speech engine settings: button that downloads the multilingual engine's model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lege Tastenkürzel zum Starten, Stoppen und Abbrechen von Diktaten fest."
+            "value" : "Modell einrichten"
           }
         }
       }
@@ -13770,7 +14248,18 @@
         }
       }
     },
-    "Show words while I speak" : {
+    "Show the Bluetooth reminder once per launch." : {
+      "comment" : "Microphone settings, Bluetooth guide: short line under Show Bluetooth tips.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth-Hinweis einmal pro App-Start anzeigen."
+          }
+        }
+      }
+    },
+    "Show words while you speak" : {
       "comment" : "Live Preview settings: toggle label.",
       "localizations" : {
         "de" : {
@@ -13808,6 +14297,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zeigt den Hinweis einmal pro Start. Diese Anleitung bleibt immer verfügbar."
+          }
+        }
+      }
+    },
+    "Shows words as you speak. Turns Live Preview on." : {
+      "comment" : "Recording Pill settings: short line under the Reading Well design's name. Live Preview is a setting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt Wörter beim Sprechen. Schaltet die Live-Vorschau ein."
           }
         }
       }
@@ -13909,7 +14409,7 @@
       }
     },
     "Slow fade, like a breath." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13920,6 +14420,7 @@
       }
     },
     "Smart insertion" : {
+      "comment" : "Clipboard settings: switch title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13930,7 +14431,7 @@
       }
     },
     "Smooth two-tone shift." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14025,7 +14526,7 @@
       }
     },
     "Soft Hush" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14036,7 +14537,7 @@
       }
     },
     "Soft filtered air, no tone." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14047,7 +14548,7 @@
       }
     },
     "Soft paper-like tap." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14069,6 +14570,7 @@
       }
     },
     "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back." : {
+      "comment" : "Clipboard settings, Quick Add: explains Read selections through the clipboard.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14117,17 +14619,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beim Lesen der Datei ist etwas schiefgegangen. Versuche es mit einer anderen."
-          }
-        }
-      }
-    },
-    "Sounds" : {
-      "comment" : "Settings sidebar: a page name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Töne"
           }
         }
       }
@@ -14185,16 +14676,6 @@
         }
       }
     },
-    "Speech Model" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachmodell"
-          }
-        }
-      }
-    },
     "Speech engine" : {
       "comment" : "Setup warm-up checklist item.",
       "localizations" : {
@@ -14224,6 +14705,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geschwindigkeit"
+          }
+        }
+      }
+    },
+    "Spoken punctuation" : {
+      "comment" : "Speech engine settings, spoken punctuation: the toggle's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesprochene Satzzeichen"
           }
         }
       }
@@ -14420,6 +14912,17 @@
         }
       }
     },
+    "Stops recording when the silence reaches your chosen pause duration." : {
+      "comment" : "Speech engine settings: explains Stop recording on silence.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beendet die Aufnahme nach einer Sprechpause der gewählten Dauer."
+          }
+        }
+      }
+    },
     "Strict" : {
       "localizations" : {
         "de" : {
@@ -14447,6 +14950,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Struktur"
+          }
+        }
+      }
+    },
+    "Style" : {
+      "comment" : "Recording Pill settings: row title above the recording pill designs.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stil"
           }
         }
       }
@@ -14545,6 +15059,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Systemstandard"
+          }
+        }
+      }
+    },
+    "TRANSCRIPTION ENGINE" : {
+      "comment" : "Speech engine settings: section heading above the engine summary, in capitals.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TRANSKRIPTIONS-ENGINE"
           }
         }
       }
@@ -15058,13 +15583,13 @@
         }
       }
     },
-    "That transcription engine isn't downloaded yet. Get it in Transcription settings." : {
+    "That transcription engine isn't downloaded yet. Get it under Settings > Dictation Settings > Engine." : {
       "comment" : "Transcribe a File: why the file was refused.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Transkriptions-Engine wurde noch nicht heruntergeladen. Lade sie in den Transkriptionseinstellungen herunter."
+            "value" : "Diese Transkriptions-Engine wurde noch nicht heruntergeladen. Du findest sie unter Einstellungen > Diktateinstellungen > Engine."
           }
         }
       }
@@ -15453,17 +15978,6 @@
         }
       }
     },
-    "The latest improvements and fixes in this release." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die neuesten Verbesserungen und Fehlerbehebungen dieser Version."
-          }
-        }
-      }
-    },
     "The model could not be removed. Please try again." : {
       "localizations" : {
         "de" : {
@@ -15595,6 +16109,17 @@
         }
       }
     },
+    "The preview stays on your Mac, disappears when recording ends, and does not change pasted text." : {
+      "comment" : "Live Preview settings: explains Show words while you speak.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Vorschau bleibt auf deinem Mac, verschwindet nach der Aufnahme und ändert den eingefügten Text nicht."
+          }
+        }
+      }
+    },
     "The privacy-first dictation app built for macOS." : {
       "localizations" : {
         "de" : {
@@ -15622,17 +16147,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Spracherkennung wurde nicht vollständig gestartet."
-          }
-        }
-      }
-    },
-    "The speech engine that turns your voice into text." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Spracherkennung, die Gesprochenes in Text umwandelt."
           }
         }
       }
@@ -15893,6 +16407,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das lässt sich nicht rückgängig machen."
+          }
+        }
+      }
+    },
+    "This changes dictation too, not just the preview." : {
+      "comment" : "Live Preview settings: hover text on the language button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ändert auch das Diktat, nicht nur die Vorschau."
           }
         }
       }
@@ -16207,22 +16732,12 @@
       }
     },
     "Tiny filtered-air pop." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein leises Ploppen wie ein Luftstoß durch einen Filter."
-          }
-        }
-      }
-    },
-    "Tip: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tipp: %@"
           }
         }
       }
@@ -16293,7 +16808,7 @@
       }
     },
     "Top" : {
-      "comment" : "Appearance settings, pill position: the top of the screen.",
+      "comment" : "Recording Pill settings, position on screen: the top of the screen.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16464,7 +16979,7 @@
       }
     },
     "Transcription" : {
-      "comment" : "Settings sidebar: a page name.\nTranscribe a File, Working page: a row label in the file summary. The transcription engine.\nTranscribe a File: a step name in the step bar.",
+      "comment" : "Transcribe a File, Working page: a row label in the file summary. The transcription engine.\nTranscribe a File: a step name in the step bar.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16480,27 +16995,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkription abgeschlossen"
-          }
-        }
-      }
-    },
-    "Transcription Engine" : {
-      "comment" : "Speech engine settings: section heading.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkriptions-Engine"
-          }
-        }
-      }
-    },
-    "Transcription Mode" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkriptionsmodus"
           }
         }
       }
@@ -16624,17 +17118,6 @@
         }
       }
     },
-    "Turn a recording you already have into clean text." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wandle eine vorhandene Aufnahme in bereinigten Text um."
-          }
-        }
-      }
-    },
     "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
       "comment" : "Setup notice when Apple Intelligence is off in System Settings.",
       "localizations" : {
@@ -16689,7 +17172,7 @@
       }
     },
     "Two close tones, gentle warmth." : {
-      "comment" : "Sounds settings: describes how a recording sound sounds.",
+      "comment" : "Chimes settings: describes how a recording chime sounds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16706,6 +17189,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zwei Transkriptions-Engines"
+          }
+        }
+      }
+    },
+    "USB" : {
+      "comment" : "Microphone settings: the microphone is connected over USB.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "USB"
           }
         }
       }
@@ -16733,7 +17227,7 @@
       }
     },
     "Unavailable while a removed model finishes clearing." : {
-      "comment" : "Appearance settings, recording pill picker: why a design is briefly unavailable.",
+      "comment" : "Recording Pill settings, style picker: why a design is briefly unavailable.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17014,6 +17508,17 @@
         }
       }
     },
+    "Use your words and vocabulary to improve recognition." : {
+      "comment" : "Dictionary settings: short line under Enable Dictionary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze deine Wörter und dein Vokabular für eine bessere Erkennung."
+          }
+        }
+      }
+    },
     "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26." : {
       "comment" : "Live Preview settings, preview engine: apple description.",
       "localizations" : {
@@ -17025,6 +17530,28 @@
         }
       }
     },
+    "Uses language packs supplied by macOS." : {
+      "comment" : "Live Preview settings: short line under the Apple preview engine's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendet Sprachpakete von macOS."
+          }
+        }
+      }
+    },
+    "Uses one downloaded model for supported languages." : {
+      "comment" : "Live Preview settings: short line under the Universal preview engine's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendet ein heruntergeladenes Modell für unterstützte Sprachen."
+          }
+        }
+      }
+    },
     "Uses your selected Ollama model, local or hosted" : {
       "comment" : "AI Polish: privacy line under the selected provider.",
       "localizations" : {
@@ -17032,17 +17559,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verwendet dein ausgewähltes Ollama-Modell, lokal oder gehostet"
-          }
-        }
-      }
-    },
-    "Using %@" : {
-      "comment" : "Microphone settings: the microphone in use with Auto. %@ is its name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verwendet %@"
           }
         }
       }
@@ -17133,7 +17649,7 @@
       }
     },
     "Velvet Hush" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17144,7 +17660,7 @@
       }
     },
     "Velvet Tap" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17505,6 +18021,28 @@
         }
       }
     },
+    "What music and video do while you dictate." : {
+      "comment" : "Microphone settings: short line under the Media during dictation row title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was beim Diktieren mit Musik und Videos passiert."
+          }
+        }
+      }
+    },
+    "What the floating pill shows while you record." : {
+      "comment" : "Recording Pill settings: short line under Style.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was die Aufnahmeanzeige während der Aufnahme zeigt."
+          }
+        }
+      }
+    },
     "What we recommend" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading.",
       "localizations" : {
@@ -17593,6 +18131,17 @@
         }
       }
     },
+    "Where the pill floats while you dictate." : {
+      "comment" : "Recording Pill settings: short line under Position on screen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wo die Aufnahmeanzeige beim Diktieren schwebt."
+          }
+        }
+      }
+    },
     "Which words to show" : {
       "localizations" : {
         "de" : {
@@ -17604,7 +18153,7 @@
       }
     },
     "Whisper Tick" : {
-      "comment" : "Sounds settings: a recording sound's name. A playful name; translate its feel, or keep it.",
+      "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17837,6 +18386,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Funktioniert, antwortet derzeit aber langsam."
+          }
+        }
+      }
+    },
+    "Works during recording with a selected language." : {
+      "comment" : "Speech engine settings: short line under Faster Transcription on the multilingual engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribiert schon während der Aufnahme, wenn du eine Sprache ausgewählt hast."
+          }
+        }
+      }
+    },
+    "Works during recording; may miss the last words." : {
+      "comment" : "Speech engine settings: short line under Faster Transcription on the fast engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribiert schon während der Aufnahme; die letzten Wörter können fehlen."
           }
         }
       }
@@ -18242,7 +18813,7 @@
       }
     },
     "Your engine cannot show words on this Mac." : {
-      "comment" : "Appearance settings, recording pill picker: why the word-showing pill designs are unavailable.",
+      "comment" : "Recording Pill settings, style picker: why the word-showing pill designs are unavailable.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18346,17 +18917,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine eigene Einrichtung"
-          }
-        }
-      }
-    },
-    "Your past dictations, searchable and ready to reuse." : {
-      "comment" : "Settings: the one-line description under a page title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine früheren Diktate: durchsuchbar und bereit zur Wiederverwendung."
           }
         }
       }
@@ -20610,7 +21170,7 @@
       }
     },
     "the quarterly numbers came in" : {
-      "comment" : "Appearance settings, recording pill picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence.",
+      "comment" : "Recording Pill settings, style picker: sample live words shown inside the pill preview. Lowercase, no final period, like words mid-sentence.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
