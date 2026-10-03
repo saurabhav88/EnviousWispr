@@ -183,6 +183,9 @@ scripts/lib/*
 !scripts/lib/xcode-test-run.sh
 !scripts/lib/ci-phase.sh
 !scripts/lib/mic-in-use.swift
+# #3400: the machine-wide claim on the shared dev app, read by build-dev-app.sh.
+!scripts/lib/dev-app-lock.py
+!scripts/lib/dev-app-lock-test.py
 # #3142: the single writer of the interface String Catalog, and its self-test.
 !scripts/lib/l10n-catalog-sync.sh
 !scripts/lib/l10n-catalog-sync-test.sh

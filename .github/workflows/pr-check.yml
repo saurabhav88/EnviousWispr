@@ -582,6 +582,15 @@ jobs:
           # been checked on this runner.
           bash scripts/lib/lane-verdict-test.sh
 
+      - name: Dev-app lock self-test (#3400)
+        run: |
+          set -euo pipefail
+          # The shared dev-app claim every build takes. Its test runs a private
+          # copy against a temp folder, so it touches no real lock, and needs
+          # only python3, ps and flock, which this Linux runner has. This step
+          # is the first Linux run of it; the suite was written on macOS.
+          python3 scripts/lib/dev-app-lock-test.py
+
       - name: Download-link lint (doorway tagging + on-site /#download)
         run: |
           set -euo pipefail
