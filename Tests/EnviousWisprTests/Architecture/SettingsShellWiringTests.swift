@@ -264,8 +264,8 @@ struct SettingsShellWiringTests {
         if let activity = ClipboardSettingsWiringTests.argument("activity", of: call) {
           wiring.standardActivity = activity
         }
-        if let glyph = ClipboardSettingsWiringTests.calls(named: "WhatsNewSidebarGlyph", in: call)
-          .first
+        if let glyph = ["WhatsNewSidebarGlyph", "WhatsNewGiftGlyph"]
+          .lazy.compactMap({ ClipboardSettingsWiringTests.calls(named: $0, in: call).first }).first
         {
           wiring.whatsNewUnread = ClipboardSettingsWiringTests.argument("isUnread", of: glyph) ?? ""
         }

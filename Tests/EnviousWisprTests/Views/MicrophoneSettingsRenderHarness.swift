@@ -9,7 +9,7 @@ import Testing
 /// Deliberately enabled instrument, not product UAT. The changed input row/picker are
 /// production views. Surrounding rows and open-menu appearance are LABELLED DRAFTS:
 /// no DictationRuntime, hardware listener, capture or actual native popup is driven.
-/// German is a labelled layout draft, pending catalogue integration by the owner.
+/// German uses literal catalog fixtures because Bundle.main is the English test host.
 @MainActor
 @Suite("Microphone render instrument (#3385)", .tags(.harnessContract))
 struct MicrophoneSettingsRenderHarness {
@@ -52,11 +52,19 @@ struct MicrophoneSettingsRenderHarness {
     .init(name: "always-warning", preferred: "", device: builtIn, token: "built_in", capture: .unknown, warning: true),
   ] }
 
+  static func matchedWidth(german: Bool) -> CGFloat {
+    [true, false].map { media in
+      NSHostingView(rootView: BrandedSegmentedPicker(
+        options: MicrophoneSettingsLayoutTests.choices(german: german, media: media),
+        selection: .constant(0), comfortable: true)).fittingSize.width
+    }.max() ?? 0
+  }
+
   static func page(_ scenario: Scenario, german: Bool) -> some View {
     let presentation = MicrophoneDevicePresentation.make(preferredUID: scenario.preferred,
       resolvedDevice: scenario.device, transportToken: scenario.token)
     return SettingsContentView {
-      Text(german ? "DEUTSCH LAYOUT DRAFT · Test picker copy stays English" : "PAGE DRAFT · Production input row/picker")
+      Text(german ? "DEUTSCH FIXTURES · Input device copy stays English" : "PAGE DRAFT · Production input row/picker")
         .font(.stHelper).foregroundStyle(Color.stTextSecondary)
       SettingsSectionHeading(resolvedTitle: german ? "EINGABE & VERHALTEN" : "INPUT & BEHAVIOR", icon: "mic") {
         Text(german ? "Änderungen gelten ab der nächsten Aufnahme" : "Changes apply to the next recording")
@@ -92,11 +100,10 @@ struct MicrophoneSettingsRenderHarness {
           SettingsRow(icon: "speaker.wave.2.fill", resolvedTitle: german ? "Medien während des Diktierens" : "Media during dictation",
             resolvedShort: german ? "Was mit Musik und anderen Tönen geschieht." : String(localized: DictationSettingsCopy.Microphone.mediaShort),
             resolvedHelp: "Draft surrounding row; production media probe/listener is not mounted.") {
-            BrandedSegmentedPicker(options: [
-              (german ? "Weiter" : "Continue", "play.fill", 0),
-              (german ? "Leiser" : "Lower", "speaker.wave.1", 1),
-              (german ? "Stumm" : "Mute", "speaker.slash", 2),
-              (german ? "Pause" : "Pause", "pause.circle", 3)], selection: .constant(0), comfortable: true)
+            BrandedSegmentedPicker(
+              options: MicrophoneSettingsLayoutTests.choices(german: german, media: true),
+              selection: .constant(0), comfortable: true)
+              .matchingSegmentedWidth(matchedWidth(german: german))
           }
         }
         BrandedRow {
@@ -104,10 +111,10 @@ struct MicrophoneSettingsRenderHarness {
             SettingsRow(icon: "timer", resolvedTitle: german ? "Mikrofonbereitschaft" : "Microphone readiness",
               resolvedShort: german ? "Wie lange das Mikrofon nach der Aufnahme bereit bleibt." : String(localized: DictationSettingsCopy.Microphone.readinessShort),
               resolvedHelp: String(localized: DictationSettingsCopy.Microphone.readinessHelp)) {
-              BrandedSegmentedPicker(options: [
-                (german ? "Aus" : "Off", nil, 0), ("10 sec", nil, 1), ("30 sec", nil, 2),
-                ("60 sec", nil, 3), (german ? "Immer" : "Always", nil, 4)],
+              BrandedSegmentedPicker(
+                options: MicrophoneSettingsLayoutTests.choices(german: german, media: false),
                 selection: .constant(scenario.warning ? 4 : 0), comfortable: true)
+                .matchingSegmentedWidth(matchedWidth(german: german))
             }
             if scenario.warning {
               InsetNotice(text: "Always keeps the microphone engine active. The macOS microphone indicator may stay visible and power use may increase.",

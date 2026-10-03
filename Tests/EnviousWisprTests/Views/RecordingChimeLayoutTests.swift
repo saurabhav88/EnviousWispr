@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 
 /// #3385: the twelve chime cards reflow to at most four columns. **When this fails, a narrow
-/// window loses the four-column overview or cuts off readable text, a wide one grows a fifth column, cards in
+/// window cuts off readable text, a wide one grows a fifth column, cards in
 /// a row come out different sizes, or picking a chime resizes its card and moves both buttons.**
 /// Production views hosted here: `RecordingChimeGrid` laying out the real `RecordingChimeCard`s,
 /// each wrapped only in a background probe that reports its frame.
@@ -24,7 +24,7 @@ struct RecordingChimeLayoutTests {
   /// two `SettingsLayout.contentH` margins.
   static let gridWidths: [CGFloat] = [380, 508, 578, 1058].map { $0 - 2 * SettingsLayout.contentH }
 
-  @Test("four columns at required widths, with a fallback below the supported window")
+  @Test("up to four columns, fewer when readable content needs the room")
   func columnCeiling() {
     for width in Self.gridWidths + [1400, 2400] {
       let columns = RecordingChimeGrid.columns(forWidth: width)
@@ -35,7 +35,7 @@ struct RecordingChimeLayoutTests {
       #expect(columns == 1 || card >= RecordingChimeGrid.minimumCardWidth, "\(width): \(card)")
     }
     #expect(RecordingChimeGrid.columns(forWidth: 1058 - 2 * SettingsLayout.contentH) == 4)
-    #expect(RecordingChimeGrid.columns(forWidth: 508 - 2 * SettingsLayout.contentH) == 4)
+    #expect(RecordingChimeGrid.columns(forWidth: 508 - 2 * SettingsLayout.contentH) == 2)
   }
 
   struct Frames: PreferenceKey {
@@ -48,7 +48,7 @@ struct RecordingChimeLayoutTests {
   @MainActor final class Box { var frames: [String: CGRect] = [:] }
 
   static func cardFrames(
-    width: CGFloat, selected: RecordingSoundPairing, previewEnabled: Bool = true
+    width: CGFloat, selected: RecordingSoundPairing, previewEnabled: Bool = true, german: Bool = false
   )
     -> [String: CGRect]
   {
@@ -57,7 +57,7 @@ struct RecordingChimeLayoutTests {
       ForEach(RecordingSoundPairing.allCases, id: \.self) { pairing in
         RecordingChimeCard(
           pairing: pairing, isSelected: pairing == selected, isPreviewEnabled: previewEnabled,
-          onSelect: {}, onPreview: {}
+          onSelect: {}, onPreview: {}, text: german ? Self.germanText(pairing) : nil
         )
         .background(
           GeometryReader { proxy in
@@ -182,4 +182,59 @@ struct RecordingChimeLayoutTests {
     print("ChimeToggle size=\(size)")
     #expect(size.width > 20 && size.width < 80 && size.height > 0)
   }
+
+  // The host's Bundle.main is English, so German catalog names/badge are literal fixtures.
+  static let germanNames = ["Staubflöckchen", "Samtflüstern", "Leises Okay", "Flüstertick",
+    "Runder Kiesel", "Papierklopfen", "Sanftes Säuseln", "Tiefes Nicken", "Wolkenplopp",
+    "Samttipp", "Satin-Schimmer", "Luftfunkeln"]
+
+  static func germanText(_ pairing: RecordingSoundPairing) -> RecordingChimeCard.TextContent {
+    let index = RecordingSoundPairing.allCases.firstIndex(of: pairing)!
+    return .init(name: germanNames[index], description: germanDescriptions[index], inUse: "IN VERWENDUNG")
+  }
+
+  static let germanDescriptions = [
+    "Leises, gefiltertes Rauschen ohne Tonhöhe.", "Zwei eng beieinanderliegende Töne, sanft und warm.",
+    "Gleiche Tonhöhe beim Starten und Stoppen, ganz schlicht.", "Ein kaum hörbares Ticken.",
+    "Rund und weich.", "Ein leises Klopfen wie auf Papier.", "Ein langsames Verklingen wie ein Atemzug.",
+    "Tief, warm und gemächlich.", "Ein leises Ploppen wie ein Luftstoß durch einen Filter.",
+    "Ein leises, kurzes Klopfen.", "Ein sanfter Wechsel zwischen zwei Tönen.",
+    "Ein klarer, luftiger Klang."]
+
+  @Test("columns leave room for the widest whole name beside Play and a one-line badge")
+  func localizedCardWidths() {
+    for german in [false, true] {
+      let names = german ? Self.germanNames : RecordingSoundPairing.allCases.map { RecordingChimeCatalog.name(for: $0) }
+      // Independent native measurements of the shipping 14pt semibold labels.
+      let font = NSFont.systemFont(ofSize: 14, weight: .semibold)
+      let widestName = names.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+      let badge = ((german ? "IN VERWENDUNG" : "IN USE") as NSString).size(withAttributes: [.font: font]).width
+      let required = max(widestName + 44 + 8, badge + 16 + 4 + 12 + 8)
+      for window: CGFloat in [750, 820, 1300] {
+        let width = AppearanceRenderHarness.pageWidth(window: window) - 2 * SettingsLayout.contentH
+        let columns = RecordingChimeGrid.columns(forWidth: width)
+        let cardWidth = (width - CGFloat(columns - 1) * 12) / CGFloat(columns)
+        print("Chime localized window=\(window) de=\(german) columns=\(columns) card=\(cardWidth) needed=\(required)")
+        #expect(cardWidth >= required, "whole names and badge need \(required), got \(cardWidth)")
+        let frames = Self.cardFrames(width: width, selected: .whisperTick, german: german)
+        #expect(frames.count == 12)
+        #expect(frames.values.allSatisfy { $0.width >= required && $0.maxX <= width + 0.5 })
+        #expect(Set(frames.values.map { ($0.minX * 2).rounded() }).count == columns)
+        for pairing in RecordingSoundPairing.allCases {
+          let view = RecordingChimeCard(pairing: pairing, isSelected: true, isPreviewEnabled: true,
+            onSelect: {}, onPreview: {}, text: german ? Self.germanText(pairing) : nil)
+          let footer = PillSettingsLayoutTests.fitting(view.footer, width: cardWidth)
+          #expect(footer.width <= cardWidth + 0.5)
+          let name = PillSettingsLayoutTests.fitting(view.cardName, width: cardWidth - 52)
+          let nameIdeal = NSHostingView(rootView: view.cardName).fittingSize
+          #expect(abs(name.height - nameIdeal.height) < 1, "every whole name fits beside Play")
+          let badgeSize = PillSettingsLayoutTests.fitting(view.inUseBadge, width: cardWidth - 8)
+          let badgeIdeal = NSHostingView(rootView: view.inUseBadge).fittingSize
+          #expect(abs(badgeSize.height - badgeIdeal.height) < 1, "badge stays on one line")
+          #expect(badgeSize.width <= cardWidth - 8 + 0.5)
+        }
+      }
+    }
+  }
+
 }

@@ -74,7 +74,8 @@ struct FeedbackOutboxTests {
     private var releaseWaiter: CheckedContinuation<Void, Never>?
 
     func enter() async {
-      if released { return }
+      // Keep the first waiter; concurrent extra sends must reach the HTTP recorder.
+      if released || entered { return }
       entered = true
       for waiter in enteredWaiters { waiter.resume() }
       enteredWaiters = []

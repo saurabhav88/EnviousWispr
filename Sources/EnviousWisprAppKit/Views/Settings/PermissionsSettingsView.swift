@@ -16,7 +16,9 @@ struct PermissionsSettingsView: View {
               help: "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings."
             ) {
               if permissions.hasMicrophonePermission {
-                allowedStatus
+                grantedStatus(
+                  LocalizedStringResource(
+                    "Microphone access granted", comment: "Permissions settings: status when granted."))
               } else {
                 SettingsActionButton(title: "Request Access", isEnabled: true, action: requestMicrophone)
               }
@@ -34,7 +36,9 @@ struct PermissionsSettingsView: View {
               help: "Allow Accessibility access so EnviousWispr can paste your dictation into other apps."
             ) {
               if permissions.hasAccessibilityPermission {
-                allowedStatus
+                grantedStatus(
+                  LocalizedStringResource(
+                    "Accessibility access granted", comment: "Permissions settings: status when granted."))
               } else {
                 SettingsActionButton(title: "Open System Settings", isEnabled: true) {
                   _ = permissions.requestAccessibilityAccess()
@@ -56,8 +60,9 @@ struct PermissionsSettingsView: View {
     }
   }
 
-  private var allowedStatus: some View {
-    Label("Allowed", systemImage: "checkmark.circle.fill")
+  /// Main's wording, kept word for word (founder, 2026-10-03).
+  private func grantedStatus(_ text: LocalizedStringResource) -> some View {
+    Label(text, systemImage: "checkmark.circle.fill")
       .font(.stRowHelper)
       .foregroundStyle(.stSuccess)
       .fixedSize()

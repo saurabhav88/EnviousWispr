@@ -31,15 +31,32 @@ struct RecordingChimeRenderHarness {
       "build/pr1-lane-d/chimes-render/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
 
   private static func render(
-    _ label: String, pageWidth: CGFloat, dark: Bool, playsChimes: Bool, dictating: Bool
+    _ label: String, pageWidth: CGFloat, dark: Bool, playsChimes: Bool, dictating: Bool, german: Bool = false
   ) throws -> URL {
-    let page = RecordingChimesContent(
-      playsChimes: .constant(playsChimes),
-      selected: .dustMote,
-      isDictationActive: dictating,
-      onSelect: { _ in },
-      onPreview: { _ in }
-    )
+    let page = Group {
+      if german {
+        // Literal German catalog fixtures: Bundle.main here belongs to the English test host.
+        // These are the production grid/cards, not proof of app-bundle localization.
+        SettingsContentView {
+          SettingsSectionHeading(resolvedTitle: "AUFNAHMESIGNALTÖNE · DE FIXTURES")
+          RecordingChimeGrid {
+            ForEach(RecordingSoundPairing.allCases, id: \.self) { pairing in
+              RecordingChimeCard(pairing: pairing, isSelected: pairing == .dustMote,
+                isPreviewEnabled: !dictating, onSelect: {}, onPreview: {},
+                text: RecordingChimeLayoutTests.germanText(pairing))
+            }
+          }
+        }
+      } else {
+        RecordingChimesContent(
+          playsChimes: .constant(playsChimes),
+          selected: .dustMote,
+          isDictationActive: dictating,
+          onSelect: { _ in },
+          onPreview: { _ in }
+        )
+      }
+    }
     // The app's Dictation tab host supplies the PR1 row density; render with it.
     .environment(\.settingsPR1Density, true)
     .frame(width: pageWidth)
@@ -90,10 +107,12 @@ struct RecordingChimeRenderHarness {
     var made: [URL] = []
     for (name, width) in widths {
       for dark in [false, true] {
-        made.append(
-          try Self.render(
-            "\(name)-on-idle-\(dark ? "dark" : "light")", pageWidth: width, dark: dark,
-            playsChimes: true, dictating: false))
+        for german in [false, true] {
+          made.append(
+            try Self.render(
+              "\(name)-on-idle-\(dark ? "dark" : "light")-\(german ? "de-fixtures" : "en")", pageWidth: width, dark: dark,
+              playsChimes: true, dictating: false, german: german))
+        }
       }
     }
     let defaultWidth = AppearanceRenderHarness.pageWidth(window: 820)
@@ -108,7 +127,7 @@ struct RecordingChimeRenderHarness {
           "default-820-on-dictating-\(scheme)", pageWidth: defaultWidth, dark: dark,
           playsChimes: true, dictating: true))
     }
-    #expect(made.count == 12, "rendered \(made.count) of 12 planned PNGs")
+    #expect(made.count == 20, "rendered \(made.count) of 20 planned PNGs")
     #expect(Set(made).count == made.count, "two renders wrote one file")
   }
 }

@@ -82,4 +82,80 @@ struct MicrophoneSettingsLayoutTests {
     #expect(abs(host.fittingSize.width - 260) < 1)
     #expect(host.fittingSize.height > 30)
   }
+
+  // Bundle.main in this test host is English. These literal German fixtures match the
+  // compiled app catalog, rather than pretending an environment locale localizes it.
+  static func choices(german: Bool, media: Bool) -> [(label: String, systemImage: String?, value: Int)] {
+    let labels = media
+      ? (german ? ["Weiterlaufen lassen", "Leiser", "Stummschalten", "Pausieren"]
+        : ["Continue", "Lower", "Mute", "Pause"])
+      : (german ? ["Aus", "10 Sek.", "30 Sek.", "60 Sek.", "Immer"]
+        : ["Off", "10 sec", "30 sec", "60 sec", "Always"])
+    let icons = ["play.fill", "speaker.wave.1", "speaker.slash", "pause.circle"]
+    return labels.enumerated().map { (label: $0.element, systemImage: media ? icons[$0.offset] : nil, value: $0.offset) }
+  }
+
+  @Test("every media and readiness segment stays inside the row in English and German")
+  func allSegmentsFit() throws {
+    for windowWidth: CGFloat in [750, 820, 1300] {
+      let rowWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+        - 2 * SettingsLayout.contentH - 2 * SettingsLayout.rowPaddingH
+      for german in [false, true] {
+        let mediaChoices = Self.choices(german: german, media: true)
+        let readinessChoices = Self.choices(german: german, media: false)
+        let mediaPicker = BrandedSegmentedPicker(options: mediaChoices, selection: .constant(0), comfortable: true)
+        let readinessPicker = BrandedSegmentedPicker(options: readinessChoices, selection: .constant(0), comfortable: true)
+        let matched = max(NSHostingView(rootView: mediaPicker).fittingSize.width,
+          NSHostingView(rootView: readinessPicker).fittingSize.width)
+        for media in [true, false] {
+          let options = media ? mediaChoices : readinessChoices
+          for selected in options.indices {
+            let picker = BrandedSegmentedPicker(options: options, selection: .constant(selected), comfortable: true)
+            let box = ClipboardSettingsLayoutTests.Box()
+            let row = SettingsRow(icon: "timer", resolvedTitle: "Microphone", resolvedShort: "Description", resolvedHelp: "Help") {
+              picker.content { index in
+                picker.segment(at: index).background(ClipboardSettingsLayoutTests.probe("segment-\(index)"))
+              }.matchingSegmentedWidth(matched)
+            }
+            .background(ClipboardSettingsLayoutTests.probe("row"))
+            .frame(width: rowWidth).fixedSize(horizontal: false, vertical: true)
+            .coordinateSpace(name: "row")
+            .onPreferenceChange(ClipboardSettingsLayoutTests.Frames.self) {
+              value in MainActor.assumeIsolated { box.frames = value }
+            }
+            let host = NSHostingView(rootView: AnyView(row))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: rowWidth, height: 400),
+              styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            let frame = try #require(box.frames["row"])
+            for index in options.indices {
+              let segment = try #require(box.frames["segment-\(index)"])
+              #expect(segment.minX >= frame.minX && segment.maxX <= frame.maxX + 0.5,
+                "window=\(windowWidth) de=\(german) media=\(media) choice=\(index): \(segment) outside \(frame)")
+              #expect(segment.minY >= frame.minY && segment.maxY <= frame.maxY + 0.5)
+              let natural = NSHostingView(rootView: picker.segment(at: index)).fittingSize
+              // AppKit fittingSize rounds a separate host to integral points; the
+              // Layout frame can be one point smaller. Containment above stays strict.
+              #expect(segment.width + 1 >= natural.width, "a whole label must fit")
+              #expect(abs(segment.height - natural.height) < 0.5, "a segment label must stay on one line")
+            }
+            window.contentView = nil
+          }
+        }
+      }
+    }
+  }
+
+
+  @Test("a narrow shared-width report does not pin a picker narrow after widening")
+  func sharedWidthCanGrow() {
+    let picker = BrandedSegmentedPicker(options: Self.choices(german: true, media: true),
+      selection: .constant(0), comfortable: true)
+    let ideal = NSHostingView(rootView: picker).fittingSize
+    let afterNarrow = NSHostingView(rootView: picker.matchingSegmentedWidth(375)).fittingSize
+    #expect(abs(ideal.width - afterNarrow.width) < 1)
+    #expect(ideal.height == afterNarrow.height)
+  }
+
 }

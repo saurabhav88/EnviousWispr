@@ -99,20 +99,17 @@ struct SettingsShellLayoutTests {
     print("SidebarRowHeights \(heights.sorted { $0.key < $1.key })")
   }
 
-  @Test("the compact gift keeps a visible icon-sized target and frees toolbar space")
-  func compactGiftFits() throws {
-    let defaults = try #require(TestDefaults.suite("ew.compactGift.\(UUID().uuidString)"))
+  @Test("the gift is an icon-sized target with its full name for hover and VoiceOver")
+  func iconOnlyGiftFits() throws {
+    let defaults = try #require(TestDefaults.suite("ew.iconGift.\(UUID().uuidString)"))
     let settings = SettingsManager(defaults: defaults)
     let holder = UpdateCoordinatorHolder()
-    func width(caption: Bool) -> CGFloat {
-      let host = NSHostingView(rootView: WhatsNewToolbarButton(showsCaption: caption)
-        .environment(settings).environment(holder))
-      return host.fittingSize.width
-    }
-    let compact = width(caption: false)
-    let expanded = width(caption: true)
-    #expect(compact >= 28 && compact <= 60)
-    #expect(expanded - compact >= 100)
+    let host = NSHostingView(rootView: WhatsNewToolbarButton()
+      .environment(settings).environment(holder))
+    let width = host.fittingSize.width
+    print("GiftButton width=\(width)")
+    // A caption beside the icon would add ~150pt; an icon-only pill is ~36pt.
+    #expect(width >= 28 && width <= 60)
   }
 
   /// Content widths inside the page margins for the shell's page widths.

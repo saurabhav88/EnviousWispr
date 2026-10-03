@@ -5,8 +5,9 @@ import SwiftUI
 
 /// C4 installs this immediately left of Feedback, retaining the shell's existing
 /// toolbar background and spacer treatment. Requires the shell's SettingsManager.
+/// Icon only at every window width (founder, 2026-10-03): the caption is the button's
+/// accessible name and tooltip, so the toolbar always has room for Feedback and Record.
 struct WhatsNewToolbarButton: View {
-  var showsCaption = true
   var caption: LocalizedStringResource = "What's New & Updates"
   @Environment(SettingsManager.self) private var settings
   @Environment(UpdateCoordinatorHolder.self) private var updates
@@ -19,30 +20,13 @@ struct WhatsNewToolbarButton: View {
 
   var body: some View {
     Button(action: openMenu) {
-      HStack(spacing: 6) {
-        Image(systemName: "gift")
-          .foregroundStyle(.stAccent)
-          .overlay(alignment: .topTrailing) {
-            if settings.hasUnreadWhatsNew {
-              Circle()
-                .fill(Color.stAccent)
-                .frame(width: 6, height: 6)
-                .offset(x: 3, y: -2)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
-            }
-          }
-        if showsCaption {
-          Text(caption)
-            .font(.stRowLabel)
-        }
-      }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .background(Color.stSectionBg, in: Capsule())
-      .overlay(Capsule().strokeBorder(Color.stDivider, lineWidth: 1).allowsHitTesting(false))
-      .contentShape(Rectangle())
-      .fixedSize()
+      WhatsNewGiftGlyph(isUnread: settings.hasUnreadWhatsNew)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.stSectionBg, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.stDivider, lineWidth: 1).allowsHitTesting(false))
+        .contentShape(Rectangle())
+        .fixedSize()
     }
     .buttonStyle(.plain)
     .focused($buttonFocused)
@@ -90,6 +74,8 @@ struct WhatsNewMenuView: View {
   let coordinator: UpdateCoordinator?
   let entries: [WhatsNewMenuPresentation.ReleaseEntry]
   let version: String
+  /// Height of the soft fade over the bottom of the notes area.
+  static let fadeHeight: CGFloat = 28
 
   init(
     coordinator: UpdateCoordinator?,
@@ -128,6 +114,7 @@ struct WhatsNewMenuView: View {
                 Text(entry.title)
                   .font(.stRowLabel.weight(.semibold))
                   .foregroundStyle(.stTextPrimary)
+                  .accessibilityAddTraits(.isHeader)
                 Text(entry.description)
                   .font(.stRowHelper)
                   .foregroundStyle(.stTextSecondary)
@@ -144,6 +131,21 @@ struct WhatsNewMenuView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.trailing, 8)
+        // Room to scroll the last note clear of the fade below.
+        .padding(.bottom, Self.fadeHeight)
+      }
+      // Fixed height so the links below never move (founder, 2026-10-03). `.visible`
+      // shows the bar unless the Mac's "Show scroll bars" setting hides it, so a soft
+      // fade at the bottom tells every reader more notes wait below.
+      .scrollIndicators(.visible)
+      .overlay(alignment: .bottom) {
+        LinearGradient(
+          colors: [Color.stSectionBg.opacity(0), Color.stSectionBg],
+          startPoint: .top, endPoint: .bottom
+        )
+        .frame(height: Self.fadeHeight)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
       }
       .frame(height: 320)
 
@@ -172,5 +174,47 @@ struct WhatsNewMenuView: View {
     .padding(18)
     .frame(width: 380)
     .background(Color.stSectionBg)
+  }
+}
+
+/// The gift icon: an animated rainbow while there are new release notes, plain accent
+/// purple otherwise (founder, 2026-10-03). Ported from main's retired
+/// `WhatsNewSidebarGlyph`, including its Reduce Motion handling.
+struct WhatsNewGiftGlyph: View {
+  let isUnread: Bool
+
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  private static let rainbowColors: [Color] = [
+    Color(red: 1.0, green: 0.165, blue: 0.251),
+    Color(red: 1.0, green: 0.549, blue: 0.0),
+    Color(red: 1.0, green: 0.843, blue: 0.0),
+    Color(red: 0.0, green: 0.98, blue: 0.604),
+    Color(red: 0.118, green: 0.565, blue: 1.0),
+    Color(red: 0.541, green: 0.169, blue: 0.886),
+  ]
+
+  var body: some View {
+    if isUnread {
+      TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : (1.0 / 30.0))) { context in
+        let t = context.date.timeIntervalSinceReferenceDate
+        let phase = reduceMotion ? 0.25 : (t.truncatingRemainder(dividingBy: 3.0) / 3.0)
+
+        LinearGradient(
+          colors: Self.rainbowColors,
+          startPoint: UnitPoint(x: phase - 1.0, y: 0.0),
+          endPoint: UnitPoint(x: phase, y: 1.0)
+        )
+        .mask(Image(systemName: "gift").font(.system(size: 15, weight: .semibold)))
+        .compositingGroup()
+      }
+      .frame(width: 18, height: 18)
+      .accessibilityHidden(true)
+    } else {
+      Image(systemName: "gift")
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(Color.stAccent)
+        .accessibilityHidden(true)
+    }
   }
 }
