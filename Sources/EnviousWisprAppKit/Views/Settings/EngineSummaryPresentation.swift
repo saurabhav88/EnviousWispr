@@ -61,8 +61,11 @@ struct EngineSummaryContent: View {
         }
         Text(short).font(.stRowHelper).foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
-        if let status { ProviderStatusChip(status: status, isHeadline: true) }
       }
+      Spacer(minLength: 8)
+      // Status on the same line, beside Change (founder, 2026-10-03: "this should be
+      // all 1 line"; mockup 08).
+      if let status { ProviderStatusChip(status: status, isHeadline: true) }
     }
     .accessibilityElement(children: .combine)
   }

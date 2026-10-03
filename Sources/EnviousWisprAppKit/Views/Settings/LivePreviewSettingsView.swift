@@ -581,7 +581,12 @@ struct LivePreviewSettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.leading, 4)
     }
-    if universal.unavailability != nil || universal.action != nil || universal.progress != nil {
+    // A downloaded Universal engine that is not in use shows no row here: its Remove
+    // lives on its card under Change (founder, 2026-10-03: "why are we showing remove
+    // universal when it's not selected").
+    if universal.unavailability != nil || universal.progress != nil
+      || (universal.action != nil && !Self.removeLivesOnCard(universal, usingApple: isUsingApple))
+    {
           VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 11) {
               SettingsRowIcon(systemName: "globe")
@@ -679,7 +684,28 @@ struct LivePreviewSettingsView: View {
         showPreviewEngineChoices = false
       },
       fillsHeight: true,
-      footer: { EmptyView() })
+      footer: {
+        if choice == .universal, Self.removeLivesOnCard(card, usingApple: isUsingApple),
+          let action = card.action
+        {
+          // A sibling of the selection button, never a child (see above).
+          SettingsActionButton(
+            verbatimTitle: Self.label(for: action), isEnabled: true,
+            emphasis: .quiet, shape: .roundedRect, size: .medium
+          ) {
+            perform(action)
+          }
+          .padding([.horizontal, .bottom], 16)
+        }
+      })
+  }
+
+  /// Whether the Universal engine's only action is Remove while Apple is in use, so the
+  /// button belongs on its card under Change rather than in the summary.
+  static func removeLivesOnCard(
+    _ universal: LivePreviewEnginePresentation.Card, usingApple: Bool
+  ) -> Bool {
+    usingApple && universal.action == .remove && universal.progress == nil
   }
 
   private static func label(for action: LivePreviewEnginePresentation.Action) -> String {
