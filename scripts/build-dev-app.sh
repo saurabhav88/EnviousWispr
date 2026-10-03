@@ -73,6 +73,22 @@ if ! security find-identity -p codesigning | grep -q "$DEV_CERT_NAME"; then
   exit 1
 fi
 
+# ─── Step 1b: Claim the shared dev app (#3400) ────────────────────────────────
+# Every worktree shares one dev app, and step 2 below quits whichever one is
+# running. The claim refuses while another live Claude/Codex session holds the
+# app, so a build can no longer quit a peer's app mid-UAT. A founder run (no
+# session ancestor) is never blocked. Exit 2 means the tool could not decide:
+# refuse rather than quit an app that may be in use.
+# EW_DEV_APP_LABEL is display text on the holder card only.
+DEV_APP_LOCK="$PROJECT_ROOT/scripts/lib/dev-app-lock.py"
+echo "==> Step 1b: Claiming the shared dev app..."
+if ! python3 "$DEV_APP_LOCK" claim --worktree "$PROJECT_ROOT" \
+    --label "${EW_DEV_APP_LABEL:-build-dev-app}"; then
+  echo "ERROR: the dev app is not free. Nothing was quit or built."
+  echo "       Check: python3 $DEV_APP_LOCK status"
+  exit 1
+fi
+
 # ─── Step 2: Stop ALL running dev EnviousWispr instances (any worktree) ───────
 # Only ONE dev EW runs at a time (founder decision 2026-07-01): quit every
 # running dev instance — main checkout or any worktree — before launching the
@@ -224,4 +240,9 @@ elif [ "$_launch_rc" -ne 0 ]; then
   exit 1
 fi
 # LAUNCH-HANDLER-END
+# Renew the claim: the idle clock should start when the app is up, not when a
+# long build began. A failure here changes nothing already done, so warn only.
+python3 "$DEV_APP_LOCK" claim --worktree "$PROJECT_ROOT" \
+  --label "${EW_DEV_APP_LABEL:-build-dev-app}" \
+  || echo "WARNING: could not renew the dev-app claim; check: python3 $DEV_APP_LOCK status"
 echo "==> EnviousWispr (dev) running ✓  ($APP_PATH)"
