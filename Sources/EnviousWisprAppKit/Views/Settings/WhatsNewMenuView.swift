@@ -74,6 +74,8 @@ struct WhatsNewMenuView: View {
   let coordinator: UpdateCoordinator?
   let entries: [WhatsNewMenuPresentation.ReleaseEntry]
   let version: String
+  /// Height of the soft fade over the bottom of the notes area.
+  static let fadeHeight: CGFloat = 28
 
   init(
     coordinator: UpdateCoordinator?,
@@ -123,11 +125,22 @@ struct WhatsNewMenuView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.trailing, 8)
+        // Room to scroll the last note clear of the fade below.
+        .padding(.bottom, Self.fadeHeight)
       }
       // Fixed height so the links below never move (founder, 2026-10-03). `.visible`
-      // shows the bar unless the Mac's "Show scroll bars" setting hides it; the cut-off
-      // last note still shows there is more to read.
+      // shows the bar unless the Mac's "Show scroll bars" setting hides it, so a soft
+      // fade at the bottom tells every reader more notes wait below.
       .scrollIndicators(.visible)
+      .overlay(alignment: .bottom) {
+        LinearGradient(
+          colors: [Color.stSectionBg.opacity(0), Color.stSectionBg],
+          startPoint: .top, endPoint: .bottom
+        )
+        .frame(height: Self.fadeHeight)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+      }
       .frame(height: 320)
 
       Divider()
