@@ -2546,17 +2546,6 @@
         }
       }
     },
-    "Allow language suggestions to appear again." : {
-      "comment" : "Speech engine settings: short line under the Language suggestions row.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachvorschläge wieder zulassen."
-          }
-        }
-      }
-    },
     "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings." : {
       "localizations" : {
         "de" : {
@@ -3389,17 +3378,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verfügbar"
-          }
-        }
-      }
-    },
-    "Available to download" : {
-      "comment" : "Live Preview language list: heading for languages that can be downloaded.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zum Laden verfügbar"
           }
         }
       }
@@ -8938,16 +8916,6 @@
         }
       }
     },
-    "Language suggestions" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachvorschläge"
-          }
-        }
-      }
-    },
     "Languages" : {
       "comment" : "Live Preview settings: packs header.\nSpeech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table.",
       "localizations" : {
@@ -11474,7 +11442,7 @@
       }
     },
     "On this Mac" : {
-      "comment" : "AI Polish provider list: group heading.\nLive Preview language list: heading for languages already installed.",
+      "comment" : "AI Polish provider list: group heading.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16524,39 +16492,6 @@
         }
       }
     },
-    "The preview detects your language as you speak." : {
-      "comment" : "Live Preview settings: universal auto.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Vorschau erkennt deine Sprache während des Sprechens."
-          }
-        }
-      }
-    },
-    "The preview is set to %@." : {
-      "comment" : "Live Preview settings: the preview's chosen language while it is paused. %@ is the language's name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Vorschau ist auf %@ eingestellt."
-          }
-        }
-      }
-    },
-    "The preview is set to detect your language as you speak." : {
-      "comment" : "Live Preview settings: universal auto paused.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Vorschau erkennt deine Sprache während des Sprechens automatisch."
-          }
-        }
-      }
-    },
     "The preview stays on your Mac, disappears when recording ends, and does not change pasted text." : {
       "comment" : "Live Preview settings: explains Show words while you speak.",
       "localizations" : {
@@ -18545,28 +18480,6 @@
         }
       }
     },
-    "What can I say?" : {
-      "comment" : "Speech engine settings, spoken punctuation: VoiceOver name of the help button.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Was kann ich sagen?"
-          }
-        }
-      }
-    },
-    "What does Faster Transcription change?" : {
-      "comment" : "Speech engine settings, Faster Transcription: VoiceOver name of the help button.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Was ändert „Schnellere Transkription“?"
-          }
-        }
-      }
-    },
     "What music and video do while you dictate." : {
       "comment" : "Microphone settings: short line under the Media during dictation row title.",
       "localizations" : {
@@ -19781,17 +19694,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Wortliste ist zu groß für eine einzelne Datei, die EnviousWispr wieder einlesen könnte. Es wurde nichts exportiert."
-          }
-        }
-      }
-    },
-    "Your words will appear in %@." : {
-      "comment" : "Live Preview settings: the preview's language. %@ is the language's name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Wörter erscheinen in %@."
           }
         }
       }
