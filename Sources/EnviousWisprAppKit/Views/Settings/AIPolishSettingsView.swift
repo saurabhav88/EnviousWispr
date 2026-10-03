@@ -338,6 +338,10 @@ enum OllamaModelPickerPresentation {
 struct AIPolishSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
+  @Environment(EGOneRuntime.self) private var egOne
+  @Environment(LocalPolishRuntimeSet.self) private var runtimes
+  @Environment(AIAvailabilityCoordinator.self) private var availability
+  @Environment(LLMModelDiscoveryCoordinator.self) private var discovery
 
   /// #2772 chunk 1: the setup editor's state, owned here and handed to both of its
   /// holes and to the lifecycle modifier. See `ProviderSetup.swift`.
@@ -350,7 +354,13 @@ struct AIPolishSettingsView: View {
       // ── AI Polish master switch (slide toggle, on its own card) ──
       BrandedSection {
         BrandedRow(showDivider: false) {
-          Toggle(
+          SettingsRow(
+            icon: "sparkles", title: LocalizedStringResource(
+              "settings.aiPolish.enable.title", defaultValue: "Enable AI Polish"),
+            short: "Automatically fix grammar, punctuation, and formatting.",
+            help: "Automatically fix grammar, punctuation, and formatting."
+          ) {
+            Toggle(
             isOn: Binding(
               get: { settings.llmProvider != .none },
               set: { isOn in
@@ -365,20 +375,14 @@ struct AIPolishSettingsView: View {
                 }
               }
             )
-          ) {
-            VStack(alignment: .leading, spacing: 3) {
-              Text(
-                LocalizedStringResource(
-                  "settings.aiPolish.enable.title",
-                  defaultValue: "Enable AI Polish"
-                )
-              )
-                .settingsRowTitle()
-              Text("Automatically fix grammar, punctuation, and formatting.")
-                .settingsReadingCopy()
+            ) {
+              Text(LocalizedStringResource(
+                "settings.aiPolish.enable.title", defaultValue: "Enable AI Polish"))
             }
+            .labelsHidden()
+            .toggleStyle(BrandedToggleStyle())
+            .fixedSize()
           }
-          .toggleStyle(BrandedToggleStyle())
         }
       }
 
@@ -386,11 +390,14 @@ struct AIPolishSettingsView: View {
       // the rail and the detail read as elevated cards, not dark-on-dark
       // nested boxes (#1286 polish pass). Same `llmProvider` setter.
       if settings.llmProvider != .none {
+        let snapshot = ProviderStatusSnapshot.capture(
+          model: setupModel, egOne: egOne, runtimes: runtimes,
+          availability: availability, discovery: discovery, setup: setup)
         HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
           ProviderRail(
             selection: Binding(
               get: { settings.llmProvider },
-              set: { settings.llmProvider = $0 }))
+              set: { settings.llmProvider = $0 }), snapshot: snapshot)
             .frame(width: PolishRailMetrics.railWidth, alignment: .leading)
           ProviderSetupSection(model: setupModel, part: .detail)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -406,6 +413,7 @@ struct AIPolishSettingsView: View {
         ProviderSetupSection(model: setupModel, part: .manageModels)
       }
     }
+    .environment(\.settingsPR1Density, true)
     .modifier(ProviderSetupLifecycle(model: setupModel))
   }
 }
@@ -462,6 +470,7 @@ enum S1ControlCopy {
 
   static let stylingLabel = String(
     localized: "Tone", comment: "AI Polish, S1-mini writing-style card: the tone setting's name.")
+  static let stylingShort = String(localized: "Choose how formal your text sounds.")
   static let stylingHint = String(
     localized:
       "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text.",
@@ -469,6 +478,7 @@ enum S1ControlCopy {
   static let structureLabel = String(
     localized: "Structure",
     comment: "AI Polish, S1-mini writing-style card: the structure setting's name.")
+  static let structureShort = String(localized: "Keep sentences or turn spoken items into lists.")
   static let structureHint = String(
     localized:
       "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences.",
@@ -478,6 +488,7 @@ enum S1ControlCopy {
   static let contextLabel = String(
     localized: "Context",
     comment: "AI Polish, S1-mini writing-style card: the context setting's name.")
+  static let contextShort = String(localized: "Format dictated greetings and sign-offs as email.")
   static let contextHint = String(
     localized:
       "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else.",

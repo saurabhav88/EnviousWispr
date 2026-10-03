@@ -11,7 +11,7 @@ import Testing
 struct WhatsNewMenuTests {
   @Test("Current release retains every entry in source order, with its original full descriptions")
   func currentRelease() {
-    let entries = WhatsNewMenuPresentation.entries()
+    let entries = WhatsNewMenuPresentation.entries(version: "2.5.2")
     #expect(
       entries.map(\.id) == [
         "privacy-controls", "word-check-memory", "help-before-feedback",
@@ -22,6 +22,27 @@ struct WhatsNewMenuTests {
     let original = WhatsNewContent.entries.filter { $0.version == "2.5.2" }
     #expect(entries.map(\.description) == original.map(\.description))
     #expect(WhatsNewMenuPresentation.entries(version: "no-such-release").isEmpty)
+  }
+
+  @Test("The settings announcement lists each move in the menu itself")
+  func moveAnnouncementBullets() throws {
+    let entry = try #require(WhatsNewMenuPresentation.entries().first)
+    #expect(entry.id == "settings-easier-to-find")
+    #expect(entry.version == "2.5.3")
+    // Written out here, not read from WhatsNewContent: dropping or changing a move must fail.
+    #expect(entry.bullets == [
+      "Transcription -> Dictation Settings > Engine",
+      "Microphone -> Dictation Settings > Microphone & Media",
+      "Live Preview -> Dictation Settings > Live Preview",
+      "Sounds -> Dictation Settings > Chimes",
+      "Clipboard -> Dictation Settings > Clipboard",
+      "Appearance recording pill controls -> Dictation Settings > Recording Pill",
+      "Appearance -> App Settings > Appearance",
+      "Permissions -> App Settings > Permissions",
+      "Permissions privacy controls -> App Settings > Privacy",
+      "Open Source Licenses -> App Settings > Licenses",
+      "What's New and Check for Updates -> the gift button, What's New & Updates",
+    ])
   }
 
   @Test("Existing full descriptions use their localized entry keys and English fallback")
@@ -44,12 +65,12 @@ struct WhatsNewMenuTests {
     let future = WhatsNewContent.Entry(
       id: "future-entry", icon: "gift", title: "Future", description: "Full English description",
       bullets: ["First point", "Second point"], version: "2.5.2")
-    let rows = WhatsNewMenuPresentation.entries(from: [known, future], bundle: bundle)
+    let rows = WhatsNewMenuPresentation.entries(from: [known, future], version: "2.5.2", bundle: bundle)
     #expect(rows.map(\.title) == ["Translated title", "Future"])
     #expect(
       rows.map(\.description) == ["Translated existing description", "Translated full description"])
     #expect(
-      WhatsNewMenuPresentation.entries(from: [future]).first?.description
+      WhatsNewMenuPresentation.entries(from: [future], version: "2.5.2").first?.description
         == "Full English description")
     // Bullets reach the menu, each localized by its own key with English fallback.
     #expect(rows.map(\.bullets) == [[], ["Translated first point", "Second point"]])
@@ -81,12 +102,12 @@ struct WhatsNewMenuTests {
     presentation.requestOpen()
     presentation.didOpen(settings: settings)
     #expect(settings.hasUnreadWhatsNew == false)
-    #expect(defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey) == "2.5.2")
+    #expect(defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey) == "2.5.3")
     presentation.dismiss()
     #expect(presentation.isPresented == false)
     presentation.requestOpen()
     presentation.didOpen(settings: settings)
-    #expect(settings.lastSeenWhatsNewVersion == "2.5.2")
+    #expect(settings.lastSeenWhatsNewVersion == "2.5.3")
   }
 
   @Test("Update copy states only what the availability service knows")

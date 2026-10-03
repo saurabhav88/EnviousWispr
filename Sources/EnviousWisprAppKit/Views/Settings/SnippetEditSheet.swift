@@ -3,13 +3,9 @@ import SwiftUI
 
 /// Add or edit one snippet (#628), to the approved design's sheet.
 ///
-/// The sheet carried a live preview card until #2631. It was the only element in this fixed
-/// 600pt frame with no height bound — its "You get" line rendered every line of the expansion
-/// on purpose, so a multi-paragraph snippet grew the card until Delete, Cancel and Save were
-/// off the bottom and Escape was the only way out. It also restated what sat one row above it:
-/// the keyword is already a pill beside the trigger input, and the expansion is already in the
-/// editor. Removed rather than bounded, and the space went to that editor, which is where a
-/// long snippet is actually written.
+/// #2631: an unbounded preview of the expansion pushed the footer outside this 600pt sheet.
+/// #3385 restores only the spoken keyword + trigger, in a bounded scroll area. The expansion
+/// stays in the flexible editor; errors are bounded too, so fill-ins and actions keep their space.
 struct SnippetEditSheet: View {
   @Environment(SnippetsCoordinator.self) private var coordinator
   @Environment(\.dismiss) private var dismiss
@@ -19,11 +15,16 @@ struct SnippetEditSheet: View {
   /// input must show the keyword as it was when the sheet opened, so it cannot change under the
   /// user mid-edit.
   let keyword: String
+  /// Nil for normal presentation. Layout tests attach non-sizing background probes to the
+  /// real controls and invoke the real Save action after load to render a refusal.
+  var layoutProbe: ((String) -> AnyView)? = nil
+  var onLoadedForTesting: ((() -> Void) -> Void)? = nil
 
   @State private var trigger = ""
   @State private var expansion = ""
   @State private var error: String?
   @State private var didLoad = false
+  @FocusState private var triggerFocused: Bool
 
   private var isEditing: Bool { draft.snippet != nil }
 
@@ -40,13 +41,19 @@ struct SnippetEditSheet: View {
 
       triggerField
       expansionField
+      SnippetSpeechPreview(keyword: keyword, trigger: trigger, layoutProbe: layoutProbe)
 
       footer
+        .background { layoutProbe?("footer") }
     }
     .padding(20)
     .frame(width: 480, height: 600)
     .background(Color.stPageBg)
-    .onAppear(perform: load)
+    .background { layoutProbe?("sheet") }
+    .onAppear {
+      load()
+      onLoadedForTesting?(save)
+    }
   }
 
   private func load() {
@@ -60,47 +67,56 @@ struct SnippetEditSheet: View {
 
   private var triggerField: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Snippet").settingsRowLabel()
+      SettingsRow(
+        icon: "text.word.spacing",
+        title: "Trigger",
+        short: SnippetsSettingsCopy.triggerShort,
+        help: "Matched word for word, and only after you say \u{201C}\(keyword)\u{201D}."
+      ) { EmptyView() }
       HStack(spacing: 8) {
-        // The keyword is shown, not editable here: it belongs to every snippet, so editing it
-        // in one snippet's sheet would silently change all of them.
+        // The opening keyword is shared by every snippet and is not editable here.
         Text(keyword)
           .font(.stRowLabel)
           .foregroundStyle(.stAccent)
+          .lineLimit(1)
           .padding(.horizontal, 12)
           .padding(.vertical, 6)
+          .frame(maxWidth: 130)
           .background(Color.stAccentLight, in: Capsule())
-          .overlay(Capsule().strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1))
+          .overlay(
+            Capsule().strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
+              .allowsHitTesting(false))
         TextField("my email address", text: $trigger)
-          .textFieldStyle(.roundedBorder)
+          .accessibilityLabel("Trigger")
+          .focused($triggerFocused)
+          .settingsFieldChrome(focused: $triggerFocused)
       }
-      Text("Matched word for word, and only after you say \u{201C}\(keyword)\u{201D}.")
-        .settingsHelperCopy()
     }
   }
 
   private var expansionField: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Expands to").settingsRowLabel()
+      SettingsRow(
+        icon: "doc.text",
+        title: "Text to paste",
+        short: SnippetsSettingsCopy.textShort,
+        help: SnippetsSettingsCopy.fillInHelp
+      ) { EmptyView() }
       // Takes every point the sheet has left rather than a fixed height. A snippet is routinely
       // a whole canned message, and the previous 110pt showed about four lines of one.
       TextEditor(text: $expansion)
         .font(.stBody)
+        .accessibilityLabel("Text to paste")
         .frame(minHeight: 110, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
         .padding(6)
         .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
           RoundedRectangle(cornerRadius: 8)
-            .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1))
+            .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
+            .allowsHitTesting(false))
+        .background { layoutProbe?("editor") }
       fillInButtons
-      Text(
-        """
-        A fill-in becomes the date, the time, or what you copied. Everything else is pasted as \
-        written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move \
-        it anywhere.
-        """
-      ).settingsHelperCopy()
     }
   }
 
@@ -112,7 +128,7 @@ struct SnippetEditSheet: View {
   /// looks like.
   ///
   /// **Appends rather than inserting at the caret**, because SwiftUI's `TextEditor` exposes no
-  /// selection binding on macOS 14. The helper copy above says so, because for someone editing an
+  /// selection binding on macOS 14. The Text to paste help says so, because for someone editing an
   /// existing template that is a real cost rather than a detail.
   ///
   /// A fixed-height row under a `TextEditor` that takes `maxHeight: .infinity`, so the editor
@@ -124,6 +140,7 @@ struct SnippetEditSheet: View {
         SettingsActionButton(verbatimTitle: Self.fillInTitle(for: placeholder), isEnabled: true) {
           expansion += placeholder.token
         }
+        .background { layoutProbe?("fillIn-\(placeholder.token)") }
       }
       Spacer(minLength: 0)
     }
@@ -155,22 +172,30 @@ struct SnippetEditSheet: View {
   private var footer: some View {
     VStack(alignment: .leading, spacing: 8) {
       if let error {
-        Text(error)
-          .font(.stHelper)
-          .foregroundStyle(.stError)
-          .fixedSize(horizontal: false, vertical: true)
+        ScrollView(.vertical) {
+          Text(error)
+            .font(.stRowHelper)
+            .foregroundStyle(.stError)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: 54)
+        .background { layoutProbe?("error") }
       }
       HStack(spacing: 8) {
         if let existing = draft.snippet {
           SettingsActionButton(title: "Delete", isEnabled: true, emphasis: .destructive) {
             if coordinator.delete(existing) { dismiss() } else { error = coordinator.errorMessage }
           }
+          .background { layoutProbe?("Delete") }
         }
         Spacer(minLength: 0)
         SettingsActionButton(
           title: "Cancel", isEnabled: true, emphasis: .outlined, shortcut: .cancelAction
         ) { dismiss() }
+        .background { layoutProbe?("Cancel") }
         SettingsActionButton(title: "Save", isEnabled: canSave, emphasis: .filled) { save() }
+          .background { layoutProbe?("Save") }
       }
     }
   }
@@ -192,5 +217,61 @@ struct SnippetEditSheet: View {
       // message has to be visible where the user is looking rather than behind it.
       error = coordinator.errorMessage
     }
+  }
+}
+
+/// Speech only, never the expansion (#2631). Long triggers scroll inside a fixed height.
+private struct SnippetSpeechPreview: View {
+  let keyword: String
+  let trigger: String
+  var layoutProbe: ((String) -> AnyView)? = nil
+  @State private var viewportHeight: CGFloat = 0
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      SettingsRowIcon(systemName: "mic")
+      ScrollView(.vertical) {
+        Text("You'll say \u{201C}\(keyword) \(trigger)\u{201D}")
+          .font(.stRowHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .textSelection(.enabled)
+          .background { layoutProbe?("previewText") }
+      }
+      .frame(height: viewportHeight)
+      .background { layoutProbe?("previewViewport") }
+      // Measure two complete lines with the SAME font as the speech. A point constant can
+      // reveal a fraction of a third line (#3385); the hidden sample never claims layout space.
+      .background(alignment: .topLeading) {
+        Text(verbatim: "Ag\nAg")
+          .font(.stRowHelper)
+          .fixedSize()
+          .background {
+            GeometryReader { geometry in
+              Color.clear.preference(key: SnippetPreviewHeightKey.self, value: geometry.size.height)
+            }
+          }
+          .hidden()
+          .accessibilityHidden(true)
+          .allowsHitTesting(false)
+      }
+      .onPreferenceChange(SnippetPreviewHeightKey.self) { height in
+        viewportHeight = height
+      }
+    }
+    .padding(10)
+    .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
+        .allowsHitTesting(false))
+  }
+}
+
+private struct SnippetPreviewHeightKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = max(value, nextValue())
   }
 }

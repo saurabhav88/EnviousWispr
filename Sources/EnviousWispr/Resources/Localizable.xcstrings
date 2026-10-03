@@ -1108,17 +1108,6 @@
         }
       }
     },
-    "1. Choose recording mode" : {
-      "comment" : "Keybinds settings: step 1 title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1. Aufnahmemodus wählen"
-          }
-        }
-      }
-    },
     "10 sec" : {
       "comment" : "Microphone settings: readiness option, 10 seconds.",
       "localizations" : {
@@ -1126,17 +1115,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "10 Sek."
-          }
-        }
-      }
-    },
-    "2. Recording keybind" : {
-      "comment" : "Keybinds settings: step 2 title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "2. Tastenkürzel für Aufnahme"
           }
         }
       }
@@ -2079,17 +2057,6 @@
         }
       }
     },
-    "Add a Word" : {
-      "comment" : "Keybinds settings: section heading for the add-a-word keybind, shown in capitals.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wort hinzufügen"
-          }
-        }
-      }
-    },
     "Add a mishearing (e.g. clawed)" : {
       "localizations" : {
         "de" : {
@@ -2118,6 +2085,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nichts hinzufügen"
+          }
+        }
+      }
+    },
+    "Add selected word to Dictionary" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markiertes Wort zum Wörterbuch hinzufügen"
           }
         }
       }
@@ -2196,7 +2173,6 @@
       }
     },
     "Add-a-word keybind" : {
-      "comment" : "Keybinds settings: the keybind that adds a selected word to Your Words.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3886,24 +3862,22 @@
         }
       }
     },
-    "Cancel Recording" : {
-      "comment" : "Keybinds settings: section heading, shown in capitals.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aufnahme abbrechen"
-          }
-        }
-      }
-    },
     "Cancel keybind" : {
-      "comment" : "Keybinds settings: the keybind that cancels a recording.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tastenkürzel zum Abbrechen"
+          }
+        }
+      }
+    },
+    "Cancel recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme abbrechen"
           }
         }
       }
@@ -3914,6 +3888,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird abgebrochen…"
+          }
+        }
+      }
+    },
+    "Cancels the current recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bricht die laufende Aufnahme ab."
           }
         }
       }
@@ -3995,6 +3979,36 @@
         }
       }
     },
+    "Change add-a-word keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel zum Hinzufügen eines Worts ändern"
+          }
+        }
+      }
+    },
+    "Change cancel keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel zum Abbrechen der Aufnahme ändern"
+          }
+        }
+      }
+    },
+    "Change copy last dictation keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel zum Kopieren des letzten Diktats ändern"
+          }
+        }
+      }
+    },
     "Change dictation language" : {
       "comment" : "Speech engine settings: VoiceOver name of the Change button for the locked language.",
       "localizations" : {
@@ -4022,6 +4036,16 @@
         }
       }
     },
+    "Change paste last dictation keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel zum Einfügen des letzten Diktats ändern"
+          }
+        }
+      }
+    },
     "Change preview engine" : {
       "comment" : "Live Preview settings: VoiceOver name of the Change button for the preview engine.",
       "localizations" : {
@@ -4029,6 +4053,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorschau-Engine ändern"
+          }
+        }
+      }
+    },
+    "Change recording keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel für die Aufnahme ändern"
           }
         }
       }
@@ -4389,6 +4423,16 @@
         }
       }
     },
+    "Choose a model on this Mac or hosted by Ollama." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Modell auf diesem Mac oder ein von Ollama gehostetes Modell."
+          }
+        }
+      }
+    },
     "Choose a snippets file" : {
       "comment" : "Snippets import: the title of the file picker.",
       "localizations" : {
@@ -4417,6 +4461,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lege fest, wie EnviousWispr aussieht."
+          }
+        }
+      }
+    },
+    "Choose how formal your text sounds." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lege fest, wie förmlich dein Text klingt."
+          }
+        }
+      }
+    },
+    "Choose short, distinctive words after the keyword." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle nach dem Schlüsselwort kurze, eindeutige Auslöser."
           }
         }
       }
@@ -4460,6 +4524,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle das Mikrofon für die Aufnahme."
+          }
+        }
+      }
+    },
+    "Choose the model used to polish your text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle das Modell, das deinen Text nachbearbeitet."
           }
         }
       }
@@ -4697,6 +4771,16 @@
         }
       }
     },
+    "Click Change to choose the keys you use." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf „Ändern“, um deine Tasten festzulegen."
+          }
+        }
+      }
+    },
     "Click the \"Press 🌐 key to\" menu" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 2. Quote the menu exactly as macOS labels it in this language.",
       "localizations" : {
@@ -4726,17 +4810,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Klicke zuerst in das Feld"
-          }
-        }
-      }
-    },
-    "Click to change" : {
-      "comment" : "Keybind field: the line under the keys, inviting a click to record new ones.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zum Ändern klicken"
           }
         }
       }
@@ -4989,6 +5062,16 @@
         }
       }
     },
+    "Copies your last dictation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiert dein letztes Diktat."
+          }
+        }
+      }
+    },
     "Copy cleaned" : {
       "comment" : "Export button: copy the cleaned text (shown in Marked Up view).",
       "localizations" : {
@@ -5022,7 +5105,6 @@
       }
     },
     "Copy last dictation" : {
-      "comment" : "Keybinds settings: the keybind that copies the last dictation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5044,7 +5126,6 @@
       }
     },
     "Copy last dictation keybind" : {
-      "comment" : "Keybinds settings: VoiceOver name of that keybind control.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6014,16 +6095,6 @@
         }
       }
     },
-    "Double-press to lock it on. Triple-press to cancel." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zweimal drücken, um die Aufnahme weiterlaufen zu lassen. Dreimal drücken, um sie abzubrechen."
-          }
-        }
-      }
-    },
     "Download" : {
       "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install.\nYour Words, Learn from: the self-learning dictionary row: button that downloads the correction model.",
       "localizations" : {
@@ -6791,16 +6862,6 @@
         }
       }
     },
-    "Expands to" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird zu"
-          }
-        }
-      }
-    },
     "Export" : {
       "localizations" : {
         "de" : {
@@ -7319,6 +7380,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Förmlich"
+          }
+        }
+      }
+    },
+    "Format dictated greetings and sign-offs as email." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktierte Anreden und Grußformeln für E-Mails formatieren."
           }
         }
       }
@@ -7893,12 +7964,12 @@
         }
       }
     },
-    "Hold the keybind to record. Release to stop." : {
+    "Hold the keybind to record. Release to stop. Double-press to lock it on. Triple-press to cancel." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Halte das Tastenkürzel zum Aufnehmen gedrückt. Lass es zum Stoppen los."
+            "value" : "Halte das Tastenkürzel zum Aufnehmen gedrückt. Lass es zum Stoppen los. Zweimal drücken, um die Aufnahme weiterlaufen zu lassen. Dreimal drücken, um sie abzubrechen."
           }
         }
       }
@@ -7909,6 +7980,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zum Diktieren gedrückt halten. Zum Transkribieren loslassen."
+          }
+        }
+      }
+    },
+    "Hold to talk, or press once to start and again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Sprechen gedrückt halten oder einmal zum Starten und noch einmal zum Stoppen drücken."
           }
         }
       }
@@ -7961,6 +8042,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartezeit nach dem Sprechen, bevor die Aufnahme endet."
+          }
+        }
+      }
+    },
+    "How snippets work" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So funktionieren Textbausteine"
           }
         }
       }
@@ -8503,6 +8594,16 @@
         }
       }
     },
+    "Keep sentences or turn spoken items into lists." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sätze beibehalten oder gesprochene Aufzählungen in Listen umwandeln."
+          }
+        }
+      }
+    },
     "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words." : {
       "comment" : "Microphone settings: explains microphone readiness.",
       "localizations" : {
@@ -8531,6 +8632,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein bereites Mikrofon verkürzt die Startverzögerung bei Bluetooth."
+          }
+        }
+      }
+    },
+    "Keeps cancelled dictations in History for 24 hours." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behält abgebrochene Diktate 24 Stunden lang im Verlauf."
           }
         }
       }
@@ -8859,17 +8970,6 @@
         }
       }
     },
-    "Last Dictation" : {
-      "comment" : "Keybinds settings: section heading for reusing the last dictation, shown in capitals.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Letztes Diktat"
-          }
-        }
-      }
-    },
     "Last copied" : {
       "comment" : "Snippets, edit: button that inserts whatever was last copied into the snippet text.",
       "localizations" : {
@@ -9082,6 +9182,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hell"
+          }
+        }
+      }
+    },
+    "Line breaks are kept, including in signatures." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeilenumbrüche bleiben erhalten, auch in Signaturen."
           }
         }
       }
@@ -9321,6 +9431,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Testbewertung aus dem UAT-Bereich wird geladen"
+          }
+        }
+      }
+    },
+    "Local and hosted models are listed separately. Prepare applies only to a local model used for dictation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale und gehostete Modelle werden getrennt aufgeführt. „Vorbereiten“ gilt nur für ein lokales Modell, das beim Diktieren verwendet wird."
           }
         }
       }
@@ -9941,6 +10061,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell: %1$@ · Kapazität: %2$@ Tokens"
+          }
+        }
+      }
+    },
+    "Models come from your provider account. Save your API key to discover them. Unavailable models cannot be selected." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Modelle kommen aus deinem Anbieterkonto. Speichere deinen API-Schlüssel, um sie zu finden. Nicht verfügbare Modelle können nicht ausgewählt werden."
           }
         }
       }
@@ -11387,6 +11517,16 @@
         }
       }
     },
+    "On-device polish on supported Macs with macOS 26+." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale KI-Nachbearbeitung auf unterstützten Macs mit macOS 26 oder neuer."
+          }
+        }
+      }
+    },
     "On-screen preview does not support this language yet." : {
       "comment" : "On-screen preview status: the dictation language is not supported by the preview.",
       "localizations" : {
@@ -11662,6 +11802,16 @@
         }
       }
     },
+    "Our model for cleaning up dictation on this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unser Modell zur Nachbearbeitung von Diktaten auf diesem Mac."
+          }
+        }
+      }
+    },
     "Our own model" : {
       "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.",
       "localizations" : {
@@ -11859,7 +12009,7 @@
       }
     },
     "Paste last dictation" : {
-      "comment" : "Keybinds settings: the keybind that pastes the last dictation again.\nMenu bar menu, VoiceOver: the icon beside Paste Last Dictation.",
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Paste Last Dictation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11881,7 +12031,6 @@
       }
     },
     "Paste last dictation keybind" : {
-      "comment" : "Keybinds settings: VoiceOver name of that keybind control.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11908,6 +12057,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Füge dein letztes Diktat ein"
+          }
+        }
+      }
+    },
+    "Paste the text you type over and over, by voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge Text, den du oft tippst, per Stimme ein"
           }
         }
       }
@@ -11949,6 +12108,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Füge deine Wörter ein, eines pro Zeile oder durch Kommas getrennt."
+          }
+        }
+      }
+    },
+    "Pastes your last dictation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügt dein letztes Diktat ein."
           }
         }
       }
@@ -12388,7 +12557,7 @@
       }
     },
     "Press keys..." : {
-      "comment" : "Keybind field: shown while it waits for the user to press the keys.",
+      "comment" : "Keybind field: shown while it waits for the user to press the keys.\nKeybind field: waiting for keys.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12566,7 +12735,6 @@
       }
     },
     "Push to Talk" : {
-      "comment" : "Keybinds settings: recording mode card; hold the key to record.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13046,12 +13214,21 @@
       }
     },
     "Recording keybind" : {
-      "comment" : "Keybinds settings: VoiceOver name of the recording keybind control.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tastenkürzel für Aufnahme"
+          }
+        }
+      }
+    },
+    "Recording mode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmemodus"
           }
         }
       }
@@ -13714,6 +13891,16 @@
         }
       }
     },
+    "Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichere eine E-Mail-Adresse, eine Signatur oder einen Link. Sprich dein Schlüsselwort und danach den Auslöser, und der gespeicherte Text erscheint an der Cursorposition. Sprichst du nur den Auslöser, bleibt dein Diktat unverändert."
+          }
+        }
+      }
+    },
     "Save as a text file" : {
       "localizations" : {
         "de" : {
@@ -13833,16 +14020,6 @@
         }
       }
     },
-    "Say" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sagen"
-          }
-        }
-      }
-    },
     "Say \"<phrase> emoji\" to get the glyph. Bare words never convert." : {
       "localizations" : {
         "de" : {
@@ -13893,6 +14070,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sag dies"
+          }
+        }
+      }
+    },
+    "Say this first, then your trigger. One word." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag zuerst dieses Wort, dann deinen Auslöser. Ein Wort."
           }
         }
       }
@@ -14073,6 +14260,16 @@
         }
       }
     },
+    "Select a misheard word, then press these keys." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markiere ein falsch erkanntes Wort und drücke dann diese Tasten."
+          }
+        }
+      }
+    },
     "Select an item from the sidebar to view it." : {
       "localizations" : {
         "de" : {
@@ -14210,6 +14407,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Absturzberichte senden"
+          }
+        }
+      }
+    },
+    "Sends text and dictation context to Anthropic." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet Text und Diktatkontext an Anthropic."
+          }
+        }
+      }
+    },
+    "Sends text and dictation context to Google." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet Text und Diktatkontext an Google."
+          }
+        }
+      }
+    },
+    "Sends text and dictation context to OpenAI." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet Text und Diktatkontext an OpenAI."
           }
         }
       }
@@ -14612,6 +14839,16 @@
         }
       }
     },
+    "Small, on this Mac, and happiest in English." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klein, läuft auf diesem Mac und arbeitet am besten auf Englisch."
+          }
+        }
+      }
+    },
     "Smart insertion" : {
       "comment" : "Clipboard settings: switch title.",
       "localizations" : {
@@ -14630,16 +14867,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein sanfter Wechsel zwischen zwei Tönen."
-          }
-        }
-      }
-    },
-    "Snippet" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Textbaustein"
           }
         }
       }
@@ -14929,6 +15156,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stacktraces und Diagnosedetails, die uns helfen, Abstürze und Fehler zu beheben."
+          }
+        }
+      }
+    },
+    "Start / stop recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme starten / stoppen"
           }
         }
       }
@@ -15401,6 +15638,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Text in die Zwischenablage kopiert"
+          }
+        }
+      }
+    },
+    "Text to paste" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einzufügender Text"
           }
         }
       }
@@ -17007,7 +17254,6 @@
       }
     },
     "Toggle" : {
-      "comment" : "Keybinds settings: recording mode card; press once to start and again to stop.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17056,17 +17302,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geduldsmodul wird trainiert..."
-          }
-        }
-      }
-    },
-    "Transcribe Keybind" : {
-      "comment" : "Keybinds settings: section heading, shown in capitals.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tastenkürzel zum Transkribieren"
           }
         }
       }
@@ -17248,6 +17483,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkripte"
+          }
+        }
+      }
+    },
+    "Trigger" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auslöser"
           }
         }
       }
@@ -17745,6 +17990,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeitungseinstellungen für Diktate verwenden"
+          }
+        }
+      }
+    },
+    "Use your Claude API key for cloud polish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze deinen Claude-API-Schlüssel für die Nachbearbeitung in der Cloud."
+          }
+        }
+      }
+    },
+    "Use your Gemini API key for cloud polish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze deinen Gemini-API-Schlüssel für die Nachbearbeitung in der Cloud."
+          }
+        }
+      }
+    },
+    "Use your OpenAI API key for cloud polish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze deinen OpenAI-API-Schlüssel für die Nachbearbeitung in der Cloud."
           }
         }
       }
@@ -18909,6 +19184,22 @@
         }
       }
     },
+    "You'll say “%@ %@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You'll say “%1$@ %2$@”"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du sagst „%@ %@“"
+          }
+        }
+      }
+    },
     "You're all set! Select a model above." : {
       "localizations" : {
         "de" : {
@@ -19152,6 +19443,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Mikrofon funktioniert. Wir haben nur nichts gehört.\nHalte %@ gedrückt und sag: Sag Oma, dass ich am Sonntag anrufe."
+          }
+        }
+      }
+    },
+    "Your models, local or hosted." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Modelle, lokal oder gehostet."
           }
         }
       }
@@ -21016,6 +21317,42 @@
         }
       }
     },
+    "keybinds.section.recording" : {
+      "comment" : "Keybinds page: section heading for the recording keys. Shown in capitals.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recording"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme"
+          }
+        }
+      }
+    },
+    "keybinds.section.shortcuts" : {
+      "comment" : "Keybinds page: section heading for paste, copy and add-a-word keys. Shown in capitals.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shortcuts"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurzbefehle"
+          }
+        }
+      }
+    },
     "language.picker.spellingAccessibility" : {
       "comment" : "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses.",
       "extractionState" : "extracted_with_value",
@@ -21470,16 +21807,6 @@
         }
       }
     },
-    "then your snippet, and it expands." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dann deinen Textbaustein, und er wird eingefügt."
-          }
-        }
-      }
-    },
     "transcribeFile.save.defaultName" : {
       "comment" : "Transcribe a File: the suggested file name when saving a transcript of an unnamed recording.",
       "extractionState" : "extracted_with_value",
@@ -21643,6 +21970,240 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏎"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings are easier to find"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen sind leichter zu finden"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings now puts related controls together, with shorter explanations and help beside each row. Keybinds, AI Polish and Snippets have a clearer layout too. Here is where each moved setting lives now:"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einstellungen fassen zusammengehörige Optionen jetzt zusammen, mit kürzeren Erklärungen und Hilfe neben jeder Zeile. Auch Tastenkürzel, KI-Nachbearbeitung und Textbausteine sind übersichtlicher. Hier findest du jede verschobene Einstellung jetzt:"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transcription -> Dictation Settings > Engine"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription -> Diktateinstellungen > Engine"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microphone -> Dictation Settings > Microphone & Media"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon -> Diktateinstellungen > Mikrofon & Medien"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live Preview -> Dictation Settings > Live Preview"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau -> Diktateinstellungen > Live-Vorschau"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.3" : {
+      "comment" : "Settings > What's New: point 4 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sounds -> Dictation Settings > Chimes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Töne -> Diktateinstellungen > Signaltöne"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.4" : {
+      "comment" : "Settings > What's New: point 5 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clipboard -> Dictation Settings > Clipboard"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenablage -> Diktateinstellungen > Zwischenablage"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.5" : {
+      "comment" : "Settings > What's New: point 6 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appearance recording pill controls -> Dictation Settings > Recording Pill"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optionen der Aufnahmeanzeige unter Erscheinungsbild -> Diktateinstellungen > Aufnahmeanzeige"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.6" : {
+      "comment" : "Settings > What's New: point 7 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appearance -> App Settings > Appearance"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erscheinungsbild -> App-Einstellungen > Erscheinungsbild"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.7" : {
+      "comment" : "Settings > What's New: point 8 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permissions -> App Settings > Permissions"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen -> App-Einstellungen > Berechtigungen"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.8" : {
+      "comment" : "Settings > What's New: point 9 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permissions privacy controls -> App Settings > Privacy"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutzoptionen unter Berechtigungen -> App-Einstellungen > Datenschutz"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.9" : {
+      "comment" : "Settings > What's New: point 10 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Source Licenses -> App Settings > Licenses"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open-Source-Lizenzen -> App-Einstellungen > Lizenzen"
+          }
+        }
+      }
+    },
+    "whatsNew.settings-easier-to-find.bullet.10" : {
+      "comment" : "Settings > What's New: point 11 of the list under one feature announcement (entry settings-easier-to-find).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What's New and Check for Updates -> the gift button, What's New & Updates"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuigkeiten und Nach Updates suchen -> die Geschenk-Schaltfläche „Neuigkeiten & Updates“"
           }
         }
       }

@@ -1,0 +1,192 @@
+import AppKit
+import EnviousWisprCore
+import EnviousWisprServices
+import SwiftUI
+import Testing
+
+@testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
+@testable import EnviousWisprLLM
+
+/// Renders the production rail and provider detail with isolated settings and key storage.
+/// No ProviderSetupLifecycle is mounted: no key read, probe, download or daemon watch runs.
+/// This instrument checks paint, not live clicks, navigation or provider readiness.
+/// TEST_RUNNER_EW_RENDER_AI_POLISH=1 scripts/xcode-test.sh --filter EnviousWisprTests/AIPolishRenderHarness
+@MainActor
+@Suite("AI Polish render harness", .tags(.harnessContract))
+struct AIPolishRenderHarness {
+  init() { _ = NSApplication.shared }
+
+  static let runDirectory = RepoRoot.sourceURL("build/pr3-polish/renders/run-\(UUID().uuidString)")
+
+  private static func render(_ name: String, width: CGFloat, dark: Bool, content: some View) throws {
+    let host = NSHostingView(rootView: AnyView(content.frame(width: width)
+      .environment(\.colorScheme, dark ? .dark : .light)))
+    host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    let ideal = host.fittingSize
+    try #require(ideal.height.isFinite && ideal.height > 0)
+    host.frame = NSRect(x: 0, y: 0, width: width, height: ideal.height)
+    let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.appearance = host.appearance
+    window.contentView = host
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+    host.cacheDisplay(in: host.bounds, to: bitmap)
+    let png = try #require(bitmap.representation(using: .png, properties: [:]))
+    try FileManager.default.createDirectory(at: runDirectory, withIntermediateDirectories: true)
+    let url = runDirectory.appending(path: "\(name)-\(dark ? "dark" : "light").png")
+    try png.write(to: url)
+    let decoded = try #require(NSBitmapImageRep(data: png))
+    #expect(decoded.pixelsWide > 0 && decoded.pixelsHigh > 0)
+    print("RENDERED AI Polish \(name): \(width)x\(ideal.height) -> \(url.path)")
+    window.contentView = nil
+  }
+
+  private static func detailPage(provider: LLMProvider, pageWidth: CGFloat, surface: ProviderSetupSurface = .dictation, keyFailure: String? = nil) throws -> AnyView {
+    let defaults = try #require(TestDefaults.suite("ew.aiPolishRender.\(UUID().uuidString)"))
+    let settings = SettingsManager(defaults: defaults)
+    settings.llmProvider = provider
+    settings.fileImportLLMProvider = provider
+    let keys = KeychainManager(backend: .legacyFiles,
+      legacyStore: FileLegacyKeyStore(storageDirectory: runDirectory.appending(path: "fixture-keys")))
+    let setup = SetupCoordinator(asrManager: RouterTestASRManager(),
+      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
+      preloadAction: {}, ollamaStatusProbe: { _ in })
+    let egOne = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)
+    let s1 = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil,
+      defaults: defaults, provider: .s1Mini)
+    let runtimes = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1)
+    let availability = AIAvailabilityCoordinator()
+    let discovery = LLMModelDiscoveryCoordinator(keychainManager: keys, cacheDefaults: defaults)
+    let model = ProviderSetupModel()
+    // Known absent without reading any store. A draft is never readiness evidence.
+    model.openAIKeySaved = false
+    model.geminiKeySaved = false
+    model.claudeKeySaved = false
+    if let keyFailure {
+      model.openAIKey = "render-fixture-unsaved-key"
+      model.keyStoreStatus = .failed(keyFailure)
+    }
+    let snapshot = ProviderStatusSnapshot.capture(model: model, egOne: egOne, runtimes: runtimes,
+      availability: availability, discovery: discovery, setup: setup)
+    return AnyView(VStack(alignment: .leading, spacing: 16) {
+      if surface == .dictation {
+      HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
+        ProviderRail(selection: .constant(provider), snapshot: snapshot)
+          .frame(width: PolishRailMetrics.railWidth)
+        ProviderSetupSection(model: model, part: .detail, surface: .dictation)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      } else {
+        ProviderSetupSection(model: model, part: .detail, surface: .fileImport)
+        if provider == .ollama {
+          ProviderSetupSection(model: model, part: .manageModels, surface: .fileImport)
+        }
+      }
+    }
+    .padding(.horizontal, SettingsLayout.contentH)
+    .padding(.vertical, 16)
+    .frame(width: pageWidth)
+    .background(Color.stPageBg)
+    .environment(settings).environment(setup).environment(egOne).environment(runtimes)
+    .environment(availability).environment(discovery).environment(\.keychainManager, keys))
+  }
+
+  @Test("Render each provider at 750, 820 and 1300pt, light and dark",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_AI_POLISH"] == "1"))
+  func productionDetails() throws {
+    for windowWidth: CGFloat in [750, 820, 1300] {
+      let pageWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+      for entry in PolishRailCatalog.all {
+        for dark in [false, true] {
+          try Self.render("\(entry.provider.rawValue)-\(Int(windowWidth))", width: pageWidth,
+            dark: dark, content: Self.detailPage(provider: entry.provider, pageWidth: pageWidth))
+        }
+      }
+    }
+  }
+  @Test("Render both file-import provider parts without their lifecycle",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_AI_POLISH"] == "1"))
+  func fileImportDetails() throws {
+    for windowWidth: CGFloat in [750, 820, 1300] {
+      let pageWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+      for entry in PolishRailCatalog.all {
+        for dark in [false, true] {
+          try Self.render("import-\(entry.provider.rawValue)-\(Int(windowWidth))", width: pageWidth,
+            dark: dark, content: Self.detailPage(provider: entry.provider, pageWidth: pageWidth, surface: .fileImport))
+        }
+      }
+    }
+  }
+
+  /// Literal stress text checks shared row wrapping, not catalog translation.
+  @Test("Render long German literal row fixtures at the actual narrow detail widths",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_AI_POLISH"] == "1"))
+  func germanRowFixtures() throws {
+    for windowWidth: CGFloat in [750, 820, 1300] {
+      let detailWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+        - 2 * SettingsLayout.contentH - PolishRailMetrics.railWidth - PolishRailMetrics.columnGap
+      for dark in [false, true] {
+        let fixture = BrandedSection {
+          BrandedRow {
+            SettingsRow(icon: "key", resolvedTitle: "Google Gemini API-Schlüssel",
+              resolvedShort: "Sendet Text und Diktierkontext an Google",
+              resolvedHelp: "Dieser Text ist eine längere deutsche Layoutprobe.") {
+                VStack(alignment: .leading, spacing: 8) {
+                  SecureField("API-Schlüssel", text: .constant(""))
+                  HStack { Button("Speichern") {}; Button("Löschen") {} }
+                }.frame(minWidth: 160)
+              }
+          }
+          BrandedRow {
+            SettingsRow(icon: "list.bullet", resolvedTitle: "Struktur",
+              resolvedShort: "Sätze beibehalten oder gesprochene Punkte als Liste ausgeben",
+              resolvedHelp: "Dieser Text ist eine längere deutsche Layoutprobe.") {
+                Picker("Struktur", selection: .constant(0)) {
+                  Text("Fließtext beibehalten").tag(0)
+                  Text("Aufzählungspunkte").tag(1)
+                }.labelsHidden()
+              }
+          }
+        }.environment(\.settingsPR1Density, true).background(Color.stPageBg)
+        try Self.render("german-literals-\(Int(windowWidth))", width: detailWidth, dark: dark, content: fixture)
+      }
+    }
+  }
+
+  /// Exercise a real failed file-store Save, scoped to a deliberately blocked fixture path.
+  /// The production message mapper supplies English; German is the existing catalog translation.
+  @Test("Render a real Save failure in English and long German, light and dark",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_AI_POLISH"] == "1"))
+  func saveFailureMessages() throws {
+    try FileManager.default.createDirectory(at: Self.runDirectory, withIntermediateDirectories: true)
+    let blockedDirectory = Self.runDirectory.appending(path: "blocked-save-directory")
+    try Data("This regular file deliberately prevents a fixture key directory.".utf8)
+      .write(to: blockedDirectory)
+    let keys = KeychainManager(backend: .legacyFiles,
+      legacyStore: FileLegacyKeyStore(storageDirectory: blockedDirectory))
+    let saveError: (any Error)?
+    do {
+      try keys.store(key: KeychainManager.openAIKeyID, value: "render-fixture-unsaved-key")
+      saveError = nil
+    } catch {
+      saveError = error
+    }
+    let failure = try #require(saveError, "the isolated fixture Save unexpectedly succeeded")
+    let english = AIPolishKeychainFailureMessage.text(for: failure, action: .save)
+    #expect(english == "Failed: Could not save the key. Try again, or restart the app.")
+    // Verbatim German for this same production sentence in origin/main's catalog (824a5ce1).
+    let german = "Fehlgeschlagen: Der Schlüssel konnte nicht gespeichert werden. Versuche es erneut oder starte die App neu."
+    for windowWidth: CGFloat in [750, 820, 1300] {
+      let pageWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+      for (language, message) in [("english", english), ("german", german)] {
+        for dark in [false, true] {
+          try Self.render("save-failure-\(language)-\(Int(windowWidth))", width: pageWidth,
+            dark: dark, content: Self.detailPage(provider: .openAI, pageWidth: pageWidth, keyFailure: message))
+        }
+      }
+    }
+  }
+
+}

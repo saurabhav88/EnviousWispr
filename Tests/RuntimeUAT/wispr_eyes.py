@@ -1222,98 +1222,84 @@ def check_ai_diagnostics():
         close_window()
         return {}
 
-    result = {}
-
-    # Read provider
-    result["provider"] = read("Provider")
-
-    # Read status — it's a static text near "Status:" label, not a control.
-    # Find "Status:" label, then look for the adjacent text.
+    ax = _ax()
+    original = None
     try:
-        status_label = _fuzzy_find_label("Status:")
-        if status_label:
-            sf = element_frame(status_label)
-            if sf:
-                # Status value is to the right of "Status:" on the same row
-                scx = sf["x"] + sf["width"]
-                scy = sf["y"] + sf["height"] / 2.0
-                best_txt, best_dist = None, 500.0
-                for el in find_all_elements(_app, role="AXStaticText"):
-                    txt = _txt(el)
-                    if not txt or txt == "Status:" or txt.startswith("On-device"):
-                        continue
-                    ef = element_frame(el)
-                    if not ef:
-                        continue
-                    # Must be to the right and on roughly the same row
-                    dx = ef["x"] - scx
-                    dy = abs(ef["y"] + ef["height"] / 2.0 - scy)
-                    if dx < -10 or dy > 20:
-                        continue
-                    dist = dx + dy * 10
-                    if dist < best_dist:
-                        best_dist, best_txt = dist, txt
-                if best_txt:
-                    result["status"] = best_txt
-                    print(f"AI Status = {best_txt}")
-    except Exception as e:
-        print(f"status read error: {e}")
+        selected = [name for name in _sn.POLISH_PROVIDERS
+                    if _sn.provider_selected(ax, _sn.provider_button(ax, _app, name)) is True]
+        if len(selected) != 1:
+            raise NavigationError("the selected AI Polish provider cannot be read")
+        if selected[0] not in ("Apple Intelligence", "EG-1", "S1-mini"):
+            # Only fixed-model providers come back exactly. Cloud providers re-pick their
+            # default model, and leaving Ollama can refill a cleared model or cancel its
+            # download (SettingsManager canonicalizeLLMModelForProvider, ProviderSetup).
+            raise NavigationError(
+                f"{selected[0]} is selected; switching providers for diagnostics could change "
+                "saved model state or interrupt Ollama work. Select Apple Intelligence by hand first")
+        original = selected[0]
+        _sn.select_provider(ax, lambda: _app, "Apple Intelligence")
+        result = {"provider": "Apple Intelligence"}
 
-    # Expand the Diagnostics disclosure group if present
-    try:
-        disc = _find_match(_app, "Diagnostics", "AXDisclosureTriangle")
-        if disc:
-            val = get_attr(disc, "AXValue")
-            if not val:  # collapsed (False or 0 or None)
-                perform_action(disc, "AXPress")
-                time.sleep(0.5)
-                print("Expanded Diagnostics disclosure group")
-            else:
-                print("Diagnostics disclosure group already expanded")
-        else:
-            print("No Diagnostics disclosure group found (debug mode off?)")
-    except Exception as e:
-        print(f"disclosure toggle error: {e}")
+        # Read the status beside Apple's refresh, outside the provider rail and sidebar.
+        refresh = _sn.find_button(ax, _app, "Check Apple Intelligence availability")
+        if refresh is None:
+            raise NavigationError("selected Apple detail has no availability control")
+        for ancestor in reversed(_sn._path_to(ax, _app, refresh)[:-1]):
+            texts = [el for el in ax.walk(ancestor) if ax.role(el) == "AXStaticText"]
+            if any(_sn._names_match(ax, el, "Status:") or _txt(el) in _ui_terms("Status:")
+                   for el in texts):
+                values = [_txt(el) for el in texts if _txt(el)
+                          and _txt(el) not in _ui_terms("Status:")]
+                result["status"] = values[0] if len(values) == 1 else None
+                break
 
-    # Read gate results from the Diagnostics disclosure group
-    gate_names = ["Build", "Runtime", "Eligibility", "Model Access", "Functional Probe"]
-    gates = {}
-    try:
-        all_texts = find_all_elements(_app, role="AXStaticText")
-        text_list = [(el, _txt(el), element_frame(el)) for el in all_texts]
-        for gn in gate_names:
-            for el, txt, frm in text_list:
-                if txt == gn and frm:
-                    # Find the summary text — next static text to the right on same row
-                    gy = frm["y"] + frm["height"] / 2.0
-                    gx = frm["x"] + frm["width"]
-                    best_summary, best_d = "", 999
-                    for _, t2, f2 in text_list:
-                        if not t2 or not f2 or t2 == gn:
-                            continue
-                        dy = abs(f2["y"] + f2["height"] / 2.0 - gy)
-                        dx = f2["x"] - gx
-                        if dy > 15 or dx < -5:
-                            continue
-                        d = dx + dy * 10
-                        if d < best_d:
-                            best_d, best_summary = d, t2
-                    gates[gn] = best_summary
+        disclosures = [el for el in _sn._content(ax, _app)
+                       if ax.role(el) == "AXDisclosureTriangle"
+                       and _sn._names_match(ax, el, "Diagnostics")]
+        disc = _sn._one(disclosures, "Apple Diagnostics")
+        result["gates"] = {}
+        result["copy_diagnostics_button"] = False
+        if disc is not None:
+            if not get_attr(disc, "AXValue"):
+                ax.press(disc)
+                _sn.wait_until(ax, lambda: bool(get_attr(disc, "AXValue")), 3.0,
+                               "Apple Diagnostics expanded")
+            # SwiftUI may expose the triangle and its expanded content as siblings.
+            # Stop at the first ancestor owning Copy Diagnostics, not at the whole page.
+            region = disc
+            for ancestor in reversed(_sn._path_to(ax, _app, disc)[:-1]):
+                if any(ax.role(el) == "AXButton" and _sn._names_match(ax, el, "Copy Diagnostics")
+                       for el in ax.walk(ancestor)):
+                    region = ancestor
                     break
-        result["gates"] = gates
-        for gn, summary in gates.items():
-            print(f"  Gate {gn}: {summary}")
-    except Exception as e:
-        print(f"gate read error: {e}")
-
-    # Check for Copy Diagnostics button
-    copy_btn = _find_match(_app, "Copy Diagnostics", "AXButton")
-    result["copy_diagnostics_button"] = copy_btn is not None
-    print(f"Copy Diagnostics button: {'found' if copy_btn else 'missing'}")
-
-    end_test()
-    close_window()
-    return result
+            texts = [(el, _txt(el), element_frame(el)) for el in ax.walk(region)
+                     if ax.role(el) == "AXStaticText"]
+            for name in ["Build", "Runtime", "Eligibility", "Model Access", "Functional Probe"]:
+                labels = [(el, frm) for el, txt, frm in texts if txt == name and frm]
+                if len(labels) != 1:
+                    continue
+                _, frm = labels[0]
+                summaries = [(abs(f["y"] - frm["y"]), f["x"], txt)
+                             for _, txt, f in texts if txt and txt != name and f
+                             and f["x"] >= frm["x"] + frm["width"] - 5
+                             and abs(f["y"] - frm["y"]) <= 15]
+                if summaries:
+                    result["gates"][name] = min(summaries)[2]
+            result["copy_diagnostics_button"] = any(
+                ax.role(el) == "AXButton" and _sn._names_match(ax, el, "Copy Diagnostics")
+                for el in ax.walk(region))
+        print(f"Apple diagnostics: {result}")
+        return result
+    except NavigationError as exc:
+        print(f"BLOCKED: {exc}")
+        return {"error": str(exc)}
+    finally:
+        try:
+            if original is not None:
+                _sn.select_provider(ax, lambda: _app, original)
+        finally:
+            end_test()
+            close_window()
 
 
 # ── High-Level Tasks (one call, no decisions) ─────────────────────────
@@ -1473,7 +1459,17 @@ def _scan_probes():
         if engine == "apple" and major < 26: return False
         return True
 
+    def polish_enabled():
+        try:
+            control = _content_switch("Enable AI Polish", prefix=True)
+        except NavigationError:
+            return None
+        state = _switch_state(control) if control is not None else None
+        return {"ON": True, "OFF": False}.get(state)
+
     def model_picker_shown():
+        enabled = polish_enabled()
+        if enabled is not True: return enabled
         provider = stored_or_none("llmProvider")
         if provider is None: return None
         return provider in ("openAI", "gemini", "claude", "ollama")
@@ -1535,6 +1531,7 @@ def _scan_probes():
         "parakeet_delivery_actions_shown": parakeet_delivery_actions_shown,
         "preview_language_shown": preview_language_shown,
         "model_picker_shown": model_picker_shown,
+        "polish_enabled": polish_enabled,
         "language_locked": language_locked,
         "vad_auto_stop": lambda: stored_or_none("vadAutoStop"),
         "multi_input_device": multi_input_device,
@@ -3372,6 +3369,50 @@ def record_with_fault(scenario_name, **kwargs):
     return run_scenario(scenario_name, **kwargs)
 
 
+def _pr3_diagnostics_cases():
+    """Offline wrapper control: selects Apple before reading and restores the saved tile;
+    refuses to leave a provider whose saved model state would not come back exactly."""
+    from settings_nav_fixtures import _window, _ax_plain, el, _f
+    rows = []
+    for start, lands in (("EG-1", True), ("EG-1", False), ("OpenAI", True), ("Ollama", True)):
+        chosen = {"name": start}
+        tiles = []
+        def select(name):
+            if lands or name == start:
+                chosen["name"] = name
+                for tile, provider in tiles:
+                    tile["AXValue"] = ("Selected" if name == provider else "Not selected") + ", Ready"
+        for name in ("Apple Intelligence", start):
+            tiles.append((el("AXButton", desc=name + ", on this Mac",
+                             value=("Selected" if name == start else "Not selected") + ", Ready",
+                             press=lambda n=name: select(n)), name))
+        detail = el("AXGroup", children=[
+            el("AXStaticText", value="Status:", frame=_f(10)),
+            el("AXStaticText", value="Available", frame=_f(10, x=500)),
+            el("AXButton", desc="Check Apple Intelligence availability")])
+        root = _window([el("AXGroup", children=[t for t, _ in tiles]), detail])
+        patch = {"connect": lambda: None, "begin_test": lambda *a: None,
+                 "end_test": lambda: None, "close_window": lambda: None,
+                 "nav": lambda *a: True, "_app": root, "_ax": _ax_plain,
+                 "get_attr": lambda e, k: e.get(k), "_ui_terms": lambda t: [t]}
+        keep = {k: globals()[k] for k in patch}
+        try:
+            globals().update(patch)
+            result = check_ai_diagnostics()
+            if start in ("OpenAI", "Ollama"):
+                rows.append((f"diagnostics refuses to leave {start} (its saved model state could change)",
+                             ("error" in result, chosen["name"]), (True, start)))
+                continue
+            rows.append((f"diagnostics selects Apple before status (lands={lands})",
+                         result.get("status") if lands else "error" in result,
+                         "Available" if lands else True))
+            rows.append((f"diagnostics restores the original provider (lands={lands})",
+                         chosen["name"], "EG-1"))
+        finally:
+            globals().update(keep)
+    return rows
+
+
 def _self_test():
     """Control for the harness contract - it protects the INSTRUMENT and says
     nothing about whether hands-free works (testing-philosophy.md
@@ -4141,9 +4182,13 @@ def _self_test():
          None, False),
         ("preview_language_shown", (), {"livePreviewEngine": "universal"}, None, None, True),
         ("preview_language_shown", (), None, None, None, None),
-        ("model_picker_shown", (), {"llmProvider": "openAI"}, None, None, True),
-        ("model_picker_shown", (), {"llmProvider": "appleIntelligence"}, None, None, False),
+        ("model_picker_shown", (sw("Enable AI Polish", 1),), {"llmProvider": "openAI"}, None, None, True),
+        ("model_picker_shown", (sw("Enable AI Polish", 1),), {"llmProvider": "appleIntelligence"}, None, None, False),
         ("model_picker_shown", (), None, None, None, None),
+        ("model_picker_shown", (sw("Enable AI Polish", 0),), {"llmProvider": "openAI"}, None, None, False),
+        ("polish_enabled", (sw("Enable AI Polish", 1),), {}, None, None, True),
+        ("polish_enabled", (sw("Enable AI Polish", 0),), {}, None, None, False),
+        ("polish_enabled", (), {}, None, None, None),
     ]
     import platform as _platform
     apple_now = int(_platform.mac_ver()[0].split(".")[0]) >= 26
@@ -4170,7 +4215,14 @@ def _self_test():
             print(f"  ok      {why}")
     wrap_rows_total += len(probe_results)
 
-    total = (guard_rows + len(banner_cases) + banner_rows_extra + file_rows
+    pr3_rows = _pr3_diagnostics_cases()
+    for why, got, want in pr3_rows:
+        if got != want:
+            failures.append(f"PR3: {why}: got {got!r}, want {want!r}")
+        else:
+            print(f"  ok      {why}")
+
+    total = (len(pr3_rows) + guard_rows + len(banner_cases) + banner_rows_extra + file_rows
              + len(window_cases) + entry_rows + find_rows + wrap_rows_total)
     if failures:
         for f in failures:

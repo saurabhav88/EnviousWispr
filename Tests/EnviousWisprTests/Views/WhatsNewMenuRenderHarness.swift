@@ -20,7 +20,7 @@ struct WhatsNewMenuRenderHarness {
   init() { _ = NSApplication.shared }
 
   @Test(
-    "Render original full release descriptions at 750, 820 and 1300pt in light and dark",
+    "Render the move announcement and release link at 750, 820 and 1300pt in light and dark",
     .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_WHATS_NEW"] == "1"))
   func renderMenu() throws {
     let directory = RepoRoot.url.appending(path: "build/gift-render/run-\(UUID().uuidString)")
@@ -37,7 +37,7 @@ struct WhatsNewMenuRenderHarness {
     #expect(settings.hasUnreadWhatsNew && !readSettings.hasUnreadWhatsNew)
     let entries = WhatsNewMenuPresentation.entries()
     #expect(entries.map(\.description) == WhatsNewContent.entries
-      .filter { $0.version == "2.5.2" }.map(\.description))
+      .filter { $0.version == "2.5.3" }.map(\.description))
     for width in [750, 820, 1300] {
       for dark in [false, true] {
         let content = VStack(alignment: .trailing, spacing: 12) {

@@ -394,9 +394,7 @@ struct HotkeyRecorderColors {
 /// Click to start recording, press a key combo to set, click again or press Escape to cancel.
 struct HotkeyRecorderView: View {
   /// Visual layout. `.compact` is the original inline label + small field row.
-  /// `.prominent` renders a large edit button with no inline label (the caller
-  /// supplies its own title column, mockup #26) — the key symbol reads big with a
-  /// "Click to change" affordance line and a reset link below when non-default.
+  /// `.prominent` shows keys and a separate Change control, with Reset below.
   enum Style {
     case compact
     case prominent
@@ -424,6 +422,9 @@ struct HotkeyRecorderView: View {
   let defaultKeyCode: UInt16
   let defaultModifiers: NSEvent.ModifierFlags
   let label: String
+  /// VoiceOver name for the `.prominent` Change button. The capture field keeps `label`,
+  /// main's existing name for it; nil means the button reads `label` too.
+  var changeAccessibilityLabel: String? = nil
   var colors: HotkeyRecorderColors = .system
   var style: Style = .compact
   /// #1987 — fires after a binding is ACCEPTED, so the owning surface can decide
@@ -436,6 +437,11 @@ struct HotkeyRecorderView: View {
   /// recorder used to write both halves first and tell the owner afterwards, so an owner could only
   /// object to a binding that was already saved and already registering.
   let validate: (ShortcutBinding) -> ShortcutRefusal?
+
+  /// Optional focus homes supplied by Settings' Globe guidance host. Applied to
+  /// the capture field itself, never the explanatory row or the Reset button.
+  var keyboardFocus: FocusState<Bool>.Binding? = nil
+  var accessibilityFocus: AccessibilityFocusState<Bool>.Binding? = nil
 
   // PR10 of #763: hotkey suspend/resume dispatch through DictationRuntime
   // façade; the shared HotkeyService is no longer accessible via the former root state.
@@ -521,50 +527,18 @@ struct HotkeyRecorderView: View {
     }
   }
 
-  // MARK: - Prominent (big edit button)
+  // MARK: - Prominent (keys and a separate Change target)
 
   private var prominentBody: some View {
     VStack(alignment: .trailing, spacing: 6) {
-      HStack(spacing: 12) {
-        Image(systemName: "keyboard")
-          .font(.system(size: 16, weight: .medium))
-          .foregroundStyle(.stAccent)
-          .accessibilityHidden(true)
-        Spacer(minLength: 0)
-        VStack(spacing: 2) {
-          if isRecording {
-            Text(
-              "Press keys...",
-              comment: "Keybind field: shown while it waits for the user to press the keys."
-            )
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(.stAccent)
-          } else {
-            Text(KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
-              .font(.system(size: 17, weight: .semibold))
-              .foregroundStyle(.stTextPrimary)
-            Text(
-              "Click to change",
-              comment:
-                "Keybind field: the line under the keys, inviting a click to record new ones."
-            )
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
-          }
-        }
-        Spacer(minLength: 0)
+      HStack(spacing: 8) {
+        prominentFieldWithFocus
+        SettingsActionButton(
+          title: "Change", isEnabled: true, size: .regular,
+          action: toggleRecording
+        )
+        .accessibilityLabel(changeAccessibilityLabel ?? label)
       }
-      .padding(.horizontal, 16)
-      .frame(maxWidth: .infinity, minHeight: 62)
-      .background(
-        isRecording ? Color.stAccentLight : Color.stPageBg,
-        in: RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
-          .strokeBorder(Color.stAccent, lineWidth: isRecording ? 2 : 1.5)
-      )
-      .modifier(keyCaptureBehavior)
 
       if let refusal {
         Text(Self.message(for: refusal))
@@ -589,6 +563,46 @@ struct HotkeyRecorderView: View {
             "Reset keybind to default",
             comment: "Keybind field, VoiceOver: puts this keybind back to its original keys."))
       }
+    }
+  }
+
+  private var prominentField: some View {
+    Text(
+      isRecording
+        ? String(localized: "Press keys...", comment: "Keybind field: waiting for keys.")
+        : KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
+    )
+    .font(.system(size: 15, weight: .semibold))
+    .foregroundStyle(isRecording ? Color.stAccent : Color.stTextPrimary)
+    .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+    .padding(.horizontal, 10)
+    .background(
+      isRecording ? Color.stAccentLight : Color.stPageBg,
+      in: RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
+        .strokeBorder(Color.stAccent, lineWidth: isRecording ? 2 : 1)
+        .allowsHitTesting(false)
+    )
+    .modifier(keyCaptureBehavior)
+    // A real focus target is required when Globe guidance returns keyboard focus.
+    .focusable()
+    .onKeyPress(.return) {
+      toggleRecording()
+      return .handled
+    }
+    .onKeyPress(.space) {
+      toggleRecording()
+      return .handled
+    }
+  }
+
+  @ViewBuilder private var prominentFieldWithFocus: some View {
+    if let keyboardFocus, let accessibilityFocus {
+      prominentField.focused(keyboardFocus).accessibilityFocused(accessibilityFocus)
+    } else {
+      prominentField
     }
   }
 
