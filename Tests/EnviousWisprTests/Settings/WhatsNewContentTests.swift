@@ -323,6 +323,18 @@ struct WhatsNewContentTests {
       "currentContentVersion is \(current) but no What's New entry ships for it")
   }
 
+  /// The gift menu shows ONLY `currentContentVersion` and the unread state compares against it,
+  /// so notes for a newer version without the bump would never be shown (whats-new-protocol.md
+  /// FACT: whats-new-grouping).
+  @Test("the newest entry version IS the current content version")
+  func newestGroupIsCurrentVersion() throws {
+    let newest = try #require(
+      WhatsNewContent.entries.map(\.version).max {
+        $0.compare($1, options: .numeric) == .orderedAscending
+      })
+    #expect(newest == WhatsNewConstants.currentContentVersion)
+  }
+
   // MARK: - Content sanity
 
   /// The title is now the ONLY header on the card, so an empty one leaves an entry
