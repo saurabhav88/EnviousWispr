@@ -1,5 +1,7 @@
 import Foundation
 import Testing
+import SwiftParser
+import SwiftSyntax
 
 @testable import EnviousWisprAppKit
 
@@ -141,9 +143,13 @@ struct LivePreviewSettingsCopyTests {
     let sourceURL = RepoRoot.url.appending(
       path: "Sources/EnviousWisprAppKit/Views/Settings/DictationSettingsCopy.swift")
     let source = try String(contentsOf: sourceURL, encoding: .utf8)
-    let start = try #require(source.range(of: "  enum Preview {"), "no enum Preview block")
-    let block = String(source[start.lowerBound...])
-    let declared = Self.staticLetNames(in: block)
+    // BASE_SHA control: the old slice continued to EOF and counted Pill and
+    // Clipboard's sibling keys. Parse the actual enum boundary instead.
+    let tree = Parser.parse(source: source)
+    let preview = try #require(tree.tokens(viewMode: .sourceAccurate).first {
+      $0.text == "Preview" && $0.parent?.is(EnumDeclSyntax.self) == true
+    }?.parent?.as(EnumDeclSyntax.self), "no enum Preview block")
+    let declared = Self.staticLetNames(in: preview.trimmedDescription)
     #expect(declared.count >= 11, "parsed \(declared.count) properties; the block has moved")
     let ownSource = try String(contentsOf: URL(filePath: #filePath), encoding: .utf8)
     let list = try #require(Self.allStringsLiteral(in: ownSource))

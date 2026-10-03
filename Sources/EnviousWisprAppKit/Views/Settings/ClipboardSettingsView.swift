@@ -16,6 +16,7 @@ struct ClipboardSettingsView: View {
     @Bindable var settings = settings
 
     SettingsContentView {
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       SettingsSectionHeading(
         resolvedTitle: String(localized: Copy.clipboardHeading).localizedUppercase
       ) {
@@ -70,6 +71,8 @@ struct ClipboardSettingsView: View {
         }
       }
 
+      }
+
       // **Its own section, not a fourth row above.** The Clipboard section carries the
       // frozen-per-recording footnote, and this setting has nothing to do with a recording: it
       // governs a shortcut, and a change to it applies to the very next press. Filing it under a
@@ -79,6 +82,7 @@ struct ClipboardSettingsView: View {
       // "Changes apply to the next recording" note (tracker B4). This section keeps
       // its own heading and no note, so the note still covers only the three rows
       // above, and Quick Add still applies on the next press.
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       SettingsSectionHeading(
         resolvedTitle: String(localized: Copy.quickAddHeading).localizedUppercase)
 
@@ -98,6 +102,8 @@ struct ClipboardSettingsView: View {
           }
         }
       }
+      }
     }
+    .environment(\.settingsPR1Density, true)
   }
 }

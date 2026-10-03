@@ -62,11 +62,12 @@ struct SettingsRowIcon: View {
 }
 
 /// A settings row that reads horizontally (icon, then title, then a trailing
-/// control) at ordinary widths, and drops the control BELOW the title at the
+/// control) at ordinary widths. Large controls drop BELOW the title at the
 /// app's declared 750pt minimum window width — where a multi-segment picker
 /// sized to its own content cannot share one line with the title and stay
 /// readable (Codex, PR #3007, live-reproduced by resizing the Microphone page
-/// to its minimum).
+/// to its minimum). #3385 founder carry-over: small switches remain trailing;
+/// their short line wraps instead of making sibling switches change position.
 ///
 /// The row's explanatory sentence lives behind the small "?" beside the
 /// title (`SettingsInfoButton`) rather than always rendering underneath it —
@@ -84,6 +85,22 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   let tooltip: String?
   let helpContent: HelpContent
   let control: Control
+  /// #3385 lane F places the microphone's honest "In use" cue here, immediately
+  /// after the short line. The slot is outside the control and its help button.
+  private var statusContent: AnyView? = nil
+  private var titleStatusContent: AnyView? = nil
+
+  func rowTitleStatus<Status: View>(@ViewBuilder _ status: () -> Status) -> Self {
+    var row = self
+    row.titleStatusContent = AnyView(status())
+    return row
+  }
+
+  func rowStatus<Status: View>(@ViewBuilder _ status: () -> Status) -> Self {
+    var row = self
+    row.statusContent = AnyView(status())
+    return row
+  }
   /// An action row (#3385, Live Preview's "Install new languages"): the whole
   /// row except its "?" is one button, so the target is the row rather than a
   /// small chevron, and the help stays a separate sibling control.
@@ -110,6 +127,7 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
               .font(.stRowHelper)
               .foregroundStyle(.stTextSecondary)
               .fixedSize(horizontal: false, vertical: true)
+            statusContent
           }
           Spacer(minLength: 8)
           control
@@ -128,24 +146,12 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   }
 
   private var standardRow: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(alignment: .center, spacing: 11) {
-        SettingsRowIcon(systemName: icon)
-        label
-        Spacer(minLength: 12)
-        control
-      }
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(alignment: .center, spacing: 11) {
-          SettingsRowIcon(systemName: icon)
-          label
-        }
-        // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
-        // spacing (11), so the control aligns under the LABEL rather than
-        // the icon.
-        control
-          .padding(.leading, 37)
-      }
+    SettingsRowControlLayout {
+      SettingsRowIcon(systemName: icon)
+      label
+      // A builder may supply zero or several roots. One container keeps the
+      // Layout's three slots stable instead of indexing SwiftUI's flattened roots.
+      VStack(alignment: .leading, spacing: 0) { control }
     }
   }
 
@@ -156,6 +162,7 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
           .font(.stRowLabel)
           .foregroundStyle(.stTextPrimary)
         SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
+        titleStatusContent
       }
       // Secondary, not the tertiary helper colour: tertiary measures 3.7:1
       // on the dark card, under the 4.5:1 a 14pt regular line needs (#3385).
@@ -163,7 +170,45 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
         .font(.stRowHelper)
         .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
+      statusContent
     }
+  }
+}
+
+/// Compact controls stay trailing while their text wraps (#3385 founder carry-over).
+/// A picker taking over half the remaining row still moves under the label: the
+/// #3007 narrow-window reason applies to those larger controls, not a switch.
+struct SettingsRowControlLayout: Layout {
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    dimensions(width: proposal.width, subviews: subviews).size
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let result = dimensions(width: bounds.width, subviews: subviews)
+    for (index, frame) in result.frames.enumerated() {
+      subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+        proposal: ProposedViewSize(frame.size))
+    }
+  }
+
+  private func dimensions(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+    let icon = subviews[0].sizeThatFits(.unspecified)
+    let control = subviews[2].sizeThatFits(.unspecified)
+    let idealLabel = subviews[1].sizeThatFits(.unspecified)
+    let width = width ?? icon.width + 11 + idealLabel.width + 12 + control.width
+    let labelStart = icon.width + 11
+    let available = max(0, width - labelStart)
+    let inline = control.width <= available / 2 || idealLabel.width + 12 + control.width <= available
+    let labelWidth = max(0, available - (inline ? control.width + 12 : 0))
+    let label = subviews[1].sizeThatFits(ProposedViewSize(width: labelWidth, height: nil))
+    let height = inline ? max(icon.height, label.height, control.height) : max(icon.height, label.height) + 10 + control.height
+    let frames = [
+      CGRect(x: 0, y: inline ? (height - icon.height) / 2 : 0, width: icon.width, height: icon.height),
+      CGRect(x: labelStart, y: inline ? (height - label.height) / 2 : 0, width: labelWidth, height: label.height),
+      CGRect(x: inline ? width - control.width : labelStart,
+        y: inline ? (height - control.height) / 2 : height - control.height, width: control.width, height: control.height),
+    ]
+    return (CGSize(width: width, height: height), frames)
   }
 }
 
@@ -395,6 +440,7 @@ struct SettingsSectionHeading<Trailing: View>: View {
       trailing
     }
     .padding(.leading, 4)
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
@@ -685,29 +731,22 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
         .buttonStyle(.plain)
         .padding(.leading, 4)
       } else {
-        ViewThatFits(in: .horizontal) {
-          HStack(alignment: .center, spacing: 12) {
-            summary
-            Spacer(minLength: 12)
-            changeButton
-          }
-          VStack(alignment: .leading, spacing: 10) {
-            summary
-            changeButton
-          }
+        HStack(alignment: .center, spacing: 12) {
+          summary.frame(maxWidth: .infinity, alignment: .leading)
+          changeButton.layoutPriority(1)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.stSectionBg)
-        .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-        .overlay(
-          RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-            .strokeBorder(Color.stDivider, lineWidth: 1)
-            .allowsHitTesting(false)
-        )
       }
       status
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(14)
+    .background(Color.stSectionBg)
+    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+        .allowsHitTesting(false)
+    )
     // Leading and full width in both states, so the status region does not
     // drift to the middle when the choices are narrower than the page.
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -742,7 +781,7 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
       SettingsActionButton(
         title: LocalizedStringResource(
           "Change", comment: "Settings: button that opens the other choices for a setting."),
-        isEnabled: true)
+        isEnabled: true, emphasis: .quiet, shape: .roundedRect, size: .medium)
     }
     .buttonStyle(.plain)
     .fixedSize()
@@ -1009,6 +1048,7 @@ enum SettingsCopy {
 
 /// Provides consistent row padding and an optional purple-tinted divider.
 struct BrandedRow<Content: View>: View {
+  @Environment(\.settingsPR1Density) private var compact
   let showDivider: Bool
   @ViewBuilder let content: Content
 
@@ -1022,7 +1062,7 @@ struct BrandedRow<Content: View>: View {
       content
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, SettingsLayout.rowPaddingH)
-        .padding(.vertical, SettingsLayout.rowPaddingV)
+        .padding(.vertical, compact ? SettingsPR1Layout.rowPaddingV : SettingsLayout.rowPaddingV)
 
       if showDivider {
         Divider()
@@ -1465,7 +1505,9 @@ struct WrappingHStack: Layout {
 /// gesture and had grown a visibly different shape for the same job on the page
 /// next door (#2136). Transcription passes neither new parameter, so its two
 /// cards must render exactly as before — asserted by a before/after capture in
-/// the #2154 Live UAT, not assumed.
+/// the #2154 Live UAT, not assumed. #3385 supersedes that visual shape only on
+/// Dictation Settings via `settingsPR1Density`; the default for other consumers
+/// retains the earlier presentation. Footer/selection target separation stays binding.
 ///
 /// **The footer sits OUTSIDE the selection button, and that is a correctness
 /// constraint rather than a layout preference.** Live Preview's own card
@@ -1483,6 +1525,7 @@ struct WrappingHStack: Layout {
 /// outer container would have quietly shrunk the hit target by a 16pt ring on a
 /// page this change is not about.
 struct EngineCard<Footer: View>: View {
+  @Environment(\.settingsPR1Density) private var compact
   let icon: String
   let title: String
   let tagline: String
@@ -1515,6 +1558,23 @@ struct EngineCard<Footer: View>: View {
     VStack(alignment: .leading, spacing: 0) {
       Button(action: onSelect) {
         VStack(alignment: .leading, spacing: 12) {
+          if compact {
+            HStack(alignment: .top) {
+              Image(systemName: icon)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(.stAccent)
+                .frame(width: 44, height: 44)
+                .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityHidden(true)
+              Spacer(minLength: 8)
+              if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                  .font(.system(size: 20, weight: .semibold))
+                  .foregroundStyle(Color.white, Color.stAccentSolid)
+              }
+            }
+            Text(title).settingsRowLabel()
+          } else {
           HStack(spacing: 10) {
             Image(systemName: icon)
               .font(.system(size: 18, weight: .semibold))
@@ -1534,6 +1594,7 @@ struct EngineCard<Footer: View>: View {
                 .frame(width: 20, height: 20)
             }
           }
+          }
 
           Text(tagline)
             .font(.stHelper)
@@ -1545,23 +1606,26 @@ struct EngineCard<Footer: View>: View {
           // read as a side-by-side comparison.
           if !specs.isEmpty {
             VStack(spacing: 0) {
+              if compact { Divider().overlay(Color.stDivider).padding(.bottom, 6) }
               ForEach(Array(specs.enumerated()), id: \.offset) { index, row in
-                if index != 0 {
+                if index != 0 && compact == false {
                   Divider().overlay(Color.stDivider)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                   Text(row.label)
                     .font(.stHelper)
-                    .foregroundStyle(.stTextTertiary)
-                  Spacer(minLength: 12)
+                    .foregroundStyle(compact ? Color.stTextSecondary : Color.stTextTertiary)
+                    .frame(width: compact ? 68 : nil, alignment: .leading)
+                  if compact == false { Spacer(minLength: 12) }
                   Text(row.value)
                     .font(.stHelper)
                     .fontWeight(.medium)
                     .foregroundStyle(.stTextBody)
-                    .multilineTextAlignment(.trailing)
+                    .multilineTextAlignment(compact ? .leading : .trailing)
+                    .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, compact ? 3 : 8)
               }
             }
           }
@@ -1954,7 +2018,7 @@ struct SettingsActionButton: View {
     .padding(.vertical, verticalPadding)
     .foregroundStyle(foreground)
     .background(fill, in: outline)
-    .overlay(outline.strokeBorder(border, lineWidth: 1))
+    .overlay(outline.strokeBorder(border, lineWidth: 1).allowsHitTesting(false))
     .contentShape(outline)
   }
 

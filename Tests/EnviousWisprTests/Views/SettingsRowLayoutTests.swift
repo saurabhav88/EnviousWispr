@@ -179,6 +179,33 @@ struct SettingsRowLayoutTests {
     }
   }
 
+  @Test("empty and multi-root control builders keep a stable layout")
+  func builderRoots() throws {
+    let empty = try Self.measure(width: Self.minimumWindowRowWidth) { _ in
+      SettingsRow(icon: "capsule", resolvedTitle: "Style", resolvedShort: "Choose the pill.",
+        resolvedHelp: "Help.") { EmptyView() }
+    }
+    #expect(empty.rowHeight > 0)
+    let many = try Self.measure(width: Self.minimumWindowRowWidth) { control in
+      SettingsRow(icon: "capsule", resolvedTitle: "Style", resolvedShort: "Choose the pill.",
+        resolvedHelp: "Help.") { Text("First"); control; Text("Last") }
+    }
+    #expect(many.rowHeight > 0)
+    #expect(many.control != nil)
+  }
+
+  @Test("the microphone status slot follows the short line and is outside the picker")
+  func statusSlot() throws {
+    let frame = try LivePreviewSettingsLayoutTests.frame(width: Self.minimumWindowRowWidth) { probe in
+      SettingsRow(icon: "waveform", resolvedTitle: "Input device", resolvedShort: "Short.",
+        resolvedHelp: "Help.") { Color.gray.frame(width: 260, height: 50) }
+        .rowStatus { Text("In use").font(.stRowHelper).background(probe) }
+    }
+    print("ROW-STATUS visible=true frame=\(frame)")
+    #expect(frame.minX >= 37 && frame.minY >= 30)
+    #expect(frame.maxX < Self.minimumWindowRowWidth)
+  }
+
   // MARK: - Harness
 
   struct Frames {

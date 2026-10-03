@@ -80,6 +80,20 @@ struct ClipboardSettingsLayoutTests {
     return (toggle, frame)
   }
 
+  @Test("the Clipboard recording note stays visible at the minimum width")
+  func recordingNoteVisible() throws {
+    let frame = try LivePreviewSettingsLayoutTests.frame(width: 460) { probe in
+      SettingsSectionHeading(resolvedTitle: "CLIPBOARD") {
+        Text(DictationSettingsCopy.Engine.nextRecordingNote).font(.stHelper)
+          .foregroundStyle(.stTextSecondary).fixedSize(horizontal: false, vertical: true)
+          .background(probe)
+      }
+    }
+    print("CLIPBOARD-NOTE visible=true frame=\(frame)")
+    #expect(frame.width > 150 && frame.height >= 17)
+    #expect(frame.minX >= 0 && frame.maxX <= 460)
+  }
+
   @Test("every switch stays the size of its track, inside its row, at every width")
   func switchesAreBounded() throws {
     for width in Self.rowWidths {
@@ -90,6 +104,7 @@ struct ClipboardSettingsLayoutTests {
         )
         #expect(measured.toggle.width > 20 && measured.toggle.width < 80, "\(measured.toggle)")
         #expect(measured.toggle.maxX <= width + 0.5, "the switch leaves its \(width)pt row")
+        #expect(abs(measured.toggle.maxX - width) < 1, "the switch dropped below the text")
       }
     }
   }

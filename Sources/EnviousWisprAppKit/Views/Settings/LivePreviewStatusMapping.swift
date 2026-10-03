@@ -173,6 +173,30 @@ enum LivePreviewStatusMapping {
         detail: LivePreviewSettingsCopy.statusCheckingDetail)
     }
 
+    // **`active` is KNOWN STALE while any install runs, so do not assert from
+    // it.** `LivePreviewPacksModel.install(tag:)` sets `installingTag`
+    // synchronously but only recomputes `active` when the install finishes,
+    // and `load()` refuses to run in between — so during a download this value
+    // still says "not downloaded" for a language that may be seconds from
+    // ready. The table row below already spins "Downloading", so the card
+    // asserting the opposite made one page disagree with itself, which is the
+    // defect this card exists to remove. Cloud review, PR #2169.
+    //
+    // Answers "checking" rather than guessing which language is downloading:
+    // the limb reports `installRequired(languageName:)` with no tag, so the
+    // page genuinely cannot tell whether the in-flight install is THIS
+    // language. Refusing to answer during a window where the input is stale by
+    // construction is the accurate claim, and it is the same refusal the
+    // unresolved case already makes.
+    // #3385: the old install refusal covered only a missing pack. A ready
+    // value is equally stale while load() is blocked, so apply the same reason
+    // before every resolved-language branch rather than certifying OS support.
+    guard !anInstallIsInFlight else {
+      return Summary(kind: .checking,
+        chip: ProviderStatus(label: LivePreviewSettingsCopy.statusCheckingLabel, tone: .unavailable),
+        detail: LivePreviewSettingsCopy.statusInstallInFlightDetail)
+    }
+
     switch active {
     case .ready:
       // **KNOWN LIMIT, recorded rather than papered over (#2164).** `.ready`
@@ -191,28 +215,6 @@ enum LivePreviewStatusMapping {
       // invented under an unattended session.
       return Self.activeSummary
     case .needsDownload(let name):
-      // **`active` is KNOWN STALE while any install runs, so do not assert from
-      // it.** `LivePreviewPacksModel.install(tag:)` sets `installingTag`
-      // synchronously but only recomputes `active` when the install finishes,
-      // and `load()` refuses to run in between — so during a download this value
-      // still says "not downloaded" for a language that may be seconds from
-      // ready. The table row below already spins "Downloading", so the card
-      // asserting the opposite made one page disagree with itself, which is the
-      // defect this card exists to remove. Cloud review, PR #2169.
-      //
-      // Answers "checking" rather than guessing which language is downloading:
-      // the limb reports `installRequired(languageName:)` with no tag, so the
-      // page genuinely cannot tell whether the in-flight install is THIS
-      // language. Refusing to answer during a window where the input is stale by
-      // construction is the accurate claim, and it is the same refusal the
-      // unresolved case already makes.
-      guard !anInstallIsInFlight else {
-        return Summary(
-          kind: .checking,
-          chip: ProviderStatus(
-            label: LivePreviewSettingsCopy.statusCheckingLabel, tone: .unavailable),
-          detail: LivePreviewSettingsCopy.statusInstallInFlightDetail)
-      }
       return Summary(
         kind: .needsLanguage(name: name),
         chip: ProviderStatus(

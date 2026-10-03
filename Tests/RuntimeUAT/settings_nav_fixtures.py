@@ -893,13 +893,13 @@ def scan_cases():
     got = run([_grouped("Pause duration", el("AXSlider", value=1.5, frame=_f(110)))], "slider",
               "Pause duration")
     rows.append(("the row's slider is read", got, ("OK", "slider:Pause duration=1.5")))
-    got = run([_grouped("Language suggestions", el("AXButton", desc="Reset", frame=_f(106)))],
+    got = run([_grouped("Auto-detect language", el("AXButton", desc="Reset", frame=_f(106)))],
               "rowbtn",
-              ("Language suggestions", "Reset"))
+              ("Auto-detect language", "Reset"))
     rows.append(("a row's own button is found inside its row", got[0], "OK"))
-    got = run([_grouped("Language suggestions", el("AXStaticText", value="x")),
+    got = run([_grouped("Auto-detect language", el("AXStaticText", value="x")),
                el("AXButton", desc="Reset", frame=_f(400))], "rowbtn",
-              ("Language suggestions", "Reset"))
+              ("Auto-detect language", "Reset"))
     rows.append(("a same-named button outside the row is not the row's (FAIL)",
                  (got[0], "0 AXButton" in got[1]), ("FAIL", True)))
 
@@ -1087,9 +1087,10 @@ INVENTORY = [
     ("1 engine cards (behind Change)", E, ("disclose", sn.ENGINE_DISCLOSURE)),
     ("1 WhisperKit model actions", E, ("one_of", sn.WHISPERKIT_ACTIONS)),
     ("1 WhisperKit re-check", E, ("button", "Re-check model status")),
+    ("1 Fast read-only re-check", E, ("button", "Re-check Fast model status")),
     ("1 Auto-detect language", E, ("toggle", "Auto-detect language")),
     ("1 Change (language)", E, ("button", "Change dictation language")),
-    ("1 Reset (Language suggestions)", E, ("rowbtn", ("Language suggestions", "Reset"))),
+    ("1 Reset (Language suggestions)", E, ("rowbtn", ("Auto-detect language", "Reset"))),
     ("1 Stop recording on silence", E, ("toggle", "Stop recording on silence")),
     ("1 Pause duration", E, ("slider", "Pause duration")),
     ("1 Parakeet delivery Cancel/Resume/Try Again", E, ("one_of", sn.PARAKEET_ACTIONS)),
@@ -1167,7 +1168,7 @@ def coverage_cases():
             "model_picker_shown", "multi_input_device", "parakeet_delivery_actions_shown",
             "pill_holds_words", "preview_language_shown", "preview_needs_language",
             "universal_engine_built", "vad_auto_stop", "whisperkit_actions_shown",
-            "whisperkit_recheck_shown"])),
+            "whisperkit_recheck_shown", "parakeet_selected"])),
     ]
 
 

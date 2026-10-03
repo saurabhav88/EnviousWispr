@@ -47,8 +47,8 @@ struct SettingsSummaryCardTests {
       for (name, frame) in frames {
         #expect(frame.minX >= -0.5 && frame.maxX <= width + 0.5, "\(name) at \(frame) in \(width)")
       }
-      // The status region starts at the card's leading edge in both states.
-      #expect(abs((frames["status"]?.minX ?? -1) - 0) < 0.5, "status at \(String(describing: frames["status"]))")
+      // The status region shares the summary surface's 14pt inset in both states.
+      #expect(abs((frames["status"]?.minX ?? -1) - 14) < 0.5, "status at \(String(describing: frames["status"]))")
     }
   }
 

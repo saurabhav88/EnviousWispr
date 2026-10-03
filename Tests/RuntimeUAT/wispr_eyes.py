@@ -1393,6 +1393,10 @@ def _scan_probes():
         except NavigationError:
             return None
 
+    def parakeet_selected():
+        backend = stored_or_none("selectedBackend")
+        return None if backend is None else backend == "parakeet"
+
     def language_section_visible():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
@@ -1508,6 +1512,7 @@ def _scan_probes():
         "language_section_visible": language_section_visible,
         "whisperkit_actions_shown": whisperkit_actions_shown,
         "whisperkit_recheck_shown": whisperkit_recheck_shown,
+        "parakeet_selected": parakeet_selected,
         "parakeet_delivery_actions_shown": parakeet_delivery_actions_shown,
         "preview_language_shown": preview_language_shown,
         "model_picker_shown": model_picker_shown,
@@ -4052,6 +4057,9 @@ def _self_test():
                                                        "coreaudio_device_input": n}]}]}
     WK, PK = {"selectedBackend": "whisperKit"}, {"selectedBackend": "parakeet"}
     probe_rows = [
+        ("parakeet_selected", (), PK, None, None, True),
+        ("parakeet_selected", (), WK, None, None, False),
+        ("parakeet_selected", (), None, None, None, None),
         ("language_section_visible", (), PK, None, None, True),
         ("language_section_visible", (btn("Remove Model"),), WK, None, None, True),
         ("language_section_visible", (btn("Set up model"),), WK, None, None, False),

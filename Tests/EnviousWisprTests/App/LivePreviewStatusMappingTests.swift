@@ -329,15 +329,18 @@ struct LivePreviewStatusMappingTests {
       summary(engine: .apple, active: .ready(tag: "de-DE", name: "German")).chip.tone == .ready)
   }
 
-  /// The deferral is scoped to the state whose input is stale. A resolved,
-  /// installed language stays reported as ready while an unrelated pack
-  /// downloads — otherwise every download would blank a working status.
-  @Test("A download elsewhere does not disturb an already-ready language")
-  func installInFlightDoesNotDisturbReady() {
+  /// Historical contract kept an installed language Ready during another pack's
+  /// install. #3385's current founder readiness requirement supersedes that:
+  /// load() is blocked, so even a previously-ready value must not certify now.
+  @Test("An install keeps even a previously-ready language Checking until it resolves again")
+  func installInFlightDefersReady() {
     let s = summary(
       engine: .apple, active: .ready(tag: "en-US", name: "English"),
       anInstallIsInFlight: true)
-    #expect(s.chip.tone == .ready)
+    #expect(s.kind == .checking)
+    #expect(s.chip.tone != .ready)
+    #expect(s.detail == LivePreviewSettingsCopy.statusInstallInFlightDetail)
+    #expect(summary(engine: .apple, active: .ready(tag: "en-US", name: "English")).chip.tone == .ready)
   }
 
   @Test("An unsupported language and an unsupported system are different answers")

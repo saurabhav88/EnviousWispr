@@ -12,6 +12,16 @@ import Testing
 struct EngineSettingsCopyTests {
   typealias Copy = DictationSettingsCopy.Engine
 
+  @Test("compact readiness and real installed pack counts keep honest words")
+  func summaryCopy() {
+    #expect(EngineSummaryCopy.ready == "Ready")
+    #expect(EngineSummaryCopy.off == "Off")
+    #expect(String(localized: EngineSummaryCopy.recheckFast) == "Re-check Fast model status")
+    #expect(EngineSummaryCopy.installedPacks(installed: 0, total: 0) == "0 of 0 installed on this Mac")
+    #expect(EngineSummaryCopy.installedPacks(installed: 1, total: 3) == "1 of 3 installed on this Mac")
+    #expect(EngineSummaryCopy.installedPacks(installed: 3, total: 3) == "3 of 3 installed on this Mac")
+  }
+
   @Test("headings, notes and the Change labels keep their English")
   func headings() {
     #expect(String(localized: Copy.sectionHeading) == "TRANSCRIPTION ENGINE")

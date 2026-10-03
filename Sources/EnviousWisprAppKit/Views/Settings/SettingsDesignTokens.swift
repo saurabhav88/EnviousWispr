@@ -176,3 +176,19 @@ enum SettingsLayout {
   static let windowCardRadius: CGFloat = 18
   static let windowFrameInset: CGFloat = 14
 }
+
+// #3385: density belongs to Dictation Settings, not every shared consumer.
+enum SettingsPR1Layout {
+  static let rowPaddingV: CGFloat = 10
+  static let headingGap: CGFloat = 8
+}
+
+private struct SettingsPR1DensityKey: EnvironmentKey {
+  static let defaultValue = false
+}
+extension EnvironmentValues {
+  var settingsPR1Density: Bool {
+    get { self[SettingsPR1DensityKey.self] }
+    set { self[SettingsPR1DensityKey.self] = newValue }
+  }
+}

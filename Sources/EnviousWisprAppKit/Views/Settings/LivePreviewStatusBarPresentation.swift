@@ -182,7 +182,7 @@ enum LivePreviewStatusBarPresentation {
     switch mode {
     case .auto:
       return Language(
-        name: LivePreviewSettingsCopy.languageAnyLanguage, provenance: autoProvenance)
+        name: LivePreviewSettingsCopy.languageAnyLanguage, provenance: "\(EngineSummaryCopy.auto) · \(autoProvenance)")
     case .locked(let code):
       return Language(
         name: LanguageCatalog.entry(for: code).displayName,
@@ -192,7 +192,7 @@ enum LivePreviewStatusBarPresentation {
 
   private static func provenance(for mode: LanguageMode) -> String {
     switch mode {
-    case .auto: return LivePreviewSettingsCopy.languageProvenanceFromMac
+    case .auto: return "\(EngineSummaryCopy.auto) · \(LivePreviewSettingsCopy.languageProvenanceFromMac)"
     case .locked: return LivePreviewSettingsCopy.languageProvenanceUserPicked
     }
   }

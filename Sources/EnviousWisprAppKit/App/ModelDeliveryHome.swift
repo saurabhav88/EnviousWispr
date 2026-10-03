@@ -121,6 +121,14 @@ final class ModelDeliveryHome {
     parakeetAdmittedObservers.append(observer)
   }
 
+  /// #3385: Settings re-checks the current marker and file stamps. Never trust
+  /// the admitted mirror: files may have been removed since it was published.
+  /// This read neither ensures availability nor takes an engine mutation claim.
+  func currentParakeetAdmission() async -> Bool {
+    guard let registration = parakeetRegistration else { return false }
+    return await controller.isAdmitted(registration)
+  }
+
   /// #996 phase D: whether Parakeet is admitted NOW, from the persisted marker,
   /// not the in-process mirror. A returning user's Parakeet was admitted in a
   /// previous process, and `parakeetState` stays `.notReady` until the first

@@ -21,6 +21,13 @@ struct SpeechEngineSettingsView: View {
   /// #3385: whether the two engine cards are open under the summary.
   @State private var showEngineChoices: Bool = false
 
+  init(choicesExpanded: Bool = false) {
+    _showEngineChoices = State(initialValue: choicesExpanded)
+  }
+  /// A fresh read-only admission result, invalidated while re-checking.
+  @State private var fastAdmission: Bool? = nil
+  @State private var fastAdmissionRequest: UInt64 = 0
+
   /// #1171 — shown ONLY when the user's selected engine differs from the active
   /// one because a switch is deferred while a dictation/recovery is in flight.
   /// Not-installed is covered by the download UI below; transient mid-load shows
@@ -171,6 +178,7 @@ struct SpeechEngineSettingsView: View {
       // place. The note beside this heading replaces the page-level banner:
       // One page-level notice instead of the footnote repeated under every
       // section: these settings freeze at recording start, stated once (#2).
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       SettingsSectionHeading(title: Copy.sectionHeading) {
         Text(Copy.nextRecordingNote)
           .font(.stHelper)
@@ -194,11 +202,14 @@ struct SpeechEngineSettingsView: View {
         showEngineChoices = false
       }
 
+      }
+
       // ── The current engine's group (#3385, founder Q5 Option A) ─────
       // Language and Faster Transcription stay with the engine they are
       // explained for. Each is still ONE stored value shared by both engines
       // (`languageMode`, `useStreamingASR`); only the explanations differ, so
       // the note says how they work here, never that they belong only here.
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       SettingsSectionHeading(resolvedTitle: currentEngineHeading, icon: currentEngineIcon) {
         Text(Copy.currentEngineNote)
           .font(.stHelper)
@@ -225,7 +236,23 @@ struct SpeechEngineSettingsView: View {
                   ? Copy.autoDetectFastShort : Copy.autoDetectMultilingualShort),
               resolvedHelp: languageSectionCopy
             ) {
-              Toggle("", isOn: Binding(
+              HStack(spacing: 10) {
+                // PR4 of #763 (#252): Reset language suggestions. Clears the
+                // three-strike state machine (dismissal counts, suppression set,
+                // last-shown lang) so the chip can surface fresh for previously
+                // dismissed/suppressed languages.
+                VStack(spacing: 2) {
+                  Button("Reset") { languageSuggestionPresenter.resetAllChipState() }
+                    .controlSize(.small)
+                    .font(.stHelper)
+                    .help(String(localized: Copy.suggestionsHelp))
+                    .accessibilityLabel("Reset")
+                  SettingsInfoButton(rowTitle: String(localized: Copy.suggestionsTitle),
+                    tooltip: String(localized: Copy.suggestionsHelp)) {
+                    SettingsHelpText(text: String(localized: Copy.suggestionsHelp))
+                  }
+                }
+                Toggle("", isOn: Binding(
                   get: { isAutoLanguage(settings.languageMode) },
                   set: { newValue in
                     settings.languageMode =
@@ -238,6 +265,7 @@ struct SpeechEngineSettingsView: View {
               .toggleStyle(BrandedToggleStyle())
               .fixedSize()
               .accessibilityLabel(Text(Copy.autoDetectTitle))
+              }
             }
           }
 
@@ -257,6 +285,7 @@ struct SpeechEngineSettingsView: View {
                     showLanguageLockSheet = true
                   }
                   .controlSize(.small)
+                  .font(.stHelper)
                   .accessibilityLabel(String(localized: Copy.changeLanguage))
                 }
                 // #1678: a lock can outlive the engine that could honour it.
@@ -284,23 +313,7 @@ struct SpeechEngineSettingsView: View {
               }
             }
           }
-          // PR4 of #763 (#252): Reset language suggestions. Clears the
-          // three-strike state machine (dismissal counts, suppression set,
-          // last-shown lang) so the chip can surface fresh for previously
-          // dismissed/suppressed languages.
-          BrandedRow {
-            SettingsRow(
-              icon: "lightbulb",
-              title: Copy.suggestionsTitle,
-              short: Copy.suggestionsShort,
-              help: Copy.suggestionsHelp
-            ) {
-              Button("Reset") {
-                languageSuggestionPresenter.resetAllChipState()
-              }
-              .controlSize(.small)
-            }
-          }
+
         }
 
         // ── Section 4: Transcription Mode ────────────────────────────────
@@ -344,10 +357,13 @@ struct SpeechEngineSettingsView: View {
         }
       }
 
+      }
+
       // ── Applies to both engines (#3385) ──────────────────────────────
       // Section 3: Auto-Stop, Section 5: Cleanup and Section 6: Memory
       // before #3385, gathered under one heading because none of them
       // behaves differently by engine.
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       SettingsSectionHeading(title: Copy.sharedHeading)
 
       BrandedSection {
@@ -479,7 +495,9 @@ struct SpeechEngineSettingsView: View {
           }
         }
       }
+      }
     }
+    .environment(\.settingsPR1Density, true)
     .onAppear {
       if settings.selectedBackend == .whisperKit {
         Task { await setup.whisperKitSetup.detectState() }
@@ -526,29 +544,23 @@ struct SpeechEngineSettingsView: View {
   }
 
   private var engineSummary: some View {
-    HStack(alignment: .center, spacing: 12) {
-      Image(systemName: currentEngineIcon)
-        .font(.system(size: 17, weight: .semibold))
-        .foregroundStyle(Color.stAccent)
-        .frame(width: 38, height: 38)
-        .background(
-          RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.stAccentLight)
-        )
-        .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-          Text(currentEngineName).settingsRowTitle()
-          Text(currentEngineModel)
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-        }
-        Text(isParakeet ? Copy.fastSummary : Copy.allLanguagesSummary)
-          .font(.stRowHelper)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-    .accessibilityElement(children: .combine)
+    EngineSummaryContent(icon: currentEngineIcon, name: currentEngineName,
+      model: currentEngineModel,
+      short: String(localized: isParakeet ? Copy.fastSummary : Copy.allLanguagesSummary))
+  }
+
+  private func recheckFastAdmission() async {
+    // Like the pack reload owner: an older answer must not replace a later
+    // re-check, even if the delivery mirror went through the same state again.
+    fastAdmissionRequest &+= 1
+    let request = fastAdmissionRequest
+    fastAdmission = nil
+    guard let modelDelivery else { return }
+    let state = modelDelivery.parakeetState
+    let admitted = await modelDelivery.currentParakeetAdmission()
+    guard Task.isCancelled == false, request == fastAdmissionRequest,
+      state == modelDelivery.parakeetState else { return }
+    fastAdmission = admitted
   }
 
   /// Everything that can need the user's attention about the model, kept on
@@ -564,8 +576,6 @@ struct SpeechEngineSettingsView: View {
 
     // ── Section 2: WhisperKit Model Setup (conditional) ───────────────
     if settings.selectedBackend == .whisperKit {
-      BrandedSection {
-        BrandedRow(showDivider: false) {
           VStack(alignment: .leading, spacing: 6) {
             whisperKitSetupContent
             // Inline, in the section the user is looking at — never an
@@ -583,19 +593,33 @@ struct SpeechEngineSettingsView: View {
               .fixedSize(horizontal: false, vertical: true)
             }
           }
+    }
+
+    if isParakeet, let modelDelivery {
+      HStack(spacing: 8) {
+        ProviderStatusChip(status: EngineSummaryPresentation.fastModelStatus(admitted: fastAdmission), isHeadline: true)
+        Spacer(minLength: 8)
+        Button {
+          Task { await recheckFastAdmission() }
+        } label: {
+          Image(systemName: "arrow.clockwise").settingsHoverQuiet()
         }
+        .buttonStyle(.borderless)
+        .disabled(fastAdmission == nil)
+        .help(String(localized: EngineSummaryCopy.recheckFast))
+        .accessibilityLabel(Text(EngineSummaryCopy.recheckFast))
       }
+      .task(id: modelDelivery.parakeetState) { await recheckFastAdmission() }
     }
 
     // ── Delivery row (#1348 Phase 2, D6 states 2/3/4/5/7/8/10/11): shows
     // ONLY while the Parakeet model download/repair is in a user-relevant
-    // state — invisible when admitted (D6: visible iff the user must act
-    // or wait). Same state stream onboarding renders; second renderer.
+    // state. #3385 founder supersedes D6's silent admitted presentation with
+    // a fresh read-only Model ready cue above; these action states stay intact.
+    // Same state stream onboarding renders; second renderer.
     if settings.selectedBackend == .parakeet, let modelDelivery,
       let row = parakeetDeliveryRow(modelDelivery.parakeetState)
     {
-      BrandedSection {
-        BrandedRow(showDivider: false) {
           HStack(alignment: .top, spacing: 11) {
             SettingsRowIcon(systemName: "arrow.down.circle")
             VStack(alignment: .leading, spacing: 4) {
@@ -611,18 +635,16 @@ struct SpeechEngineSettingsView: View {
             // colour as each other and as this app's disabled treatment, with
             // no hover to contradict it.
             if row.showsCancel {
-              SettingsActionButton(title: "Cancel", isEnabled: true) {
+              SettingsActionButton(title: "Cancel", isEnabled: true, emphasis: .quiet, shape: .roundedRect, size: .medium) {
                 modelDelivery.cancelParakeetDownload()
               }
             }
             if let action = row.actionLabel {
-              SettingsActionButton(verbatimTitle: action, isEnabled: true, emphasis: .filled) {
+              SettingsActionButton(verbatimTitle: action, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
                 modelDelivery.resumeParakeetDownload()
               }
             }
           }
-        }
-      }
     }
   }
 
@@ -824,6 +846,7 @@ struct SpeechEngineSettingsView: View {
         ProgressView()
           .controlSize(.small)
         Text("Checking model status...")
+          .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
       }
 
@@ -838,7 +861,7 @@ struct SpeechEngineSettingsView: View {
       ) {
         HStack {
           SettingsActionButton(
-            title: Copy.setUpModel, isEnabled: true, emphasis: .filled
+            title: Copy.setUpModel, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium
           ) {
             setup.whisperKitSetup.downloadModel()
           }
@@ -872,7 +895,7 @@ struct SpeechEngineSettingsView: View {
           Button {
             setup.whisperKitSetup.cancelDownload()
           } label: {
-            Text("Cancel").settingsHoverQuiet(tint: .stError)
+            Text("Cancel").font(.stHelper).settingsHoverQuiet(tint: .stError)
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
@@ -889,7 +912,7 @@ struct SpeechEngineSettingsView: View {
         Text("Download paused. Resume anytime.")
           .settingsReadingCopy()
         HStack {
-          SettingsActionButton(title: "Resume", isEnabled: true, emphasis: .filled) {
+          SettingsActionButton(title: "Resume", isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
             setup.whisperKitSetup.downloadModel()
           }
           whisperKitRefreshButton
@@ -931,6 +954,7 @@ struct SpeechEngineSettingsView: View {
                 warmInFlight: engineCoordinator?.status.warmInFlight),
               systemImage: "checkmark.circle.fill"
             )
+            .font(.stHelper)
             .foregroundStyle(.stSuccess)
           }
           Spacer()
@@ -954,7 +978,7 @@ struct SpeechEngineSettingsView: View {
             Button {
               setup.whisperKitSetup.removeModel()
             } label: {
-              Text("Remove Model").settingsHoverQuiet(tint: .stError)
+              Text("Remove Model").font(.stHelper).settingsHoverQuiet(tint: .stError)
             }
             .controlSize(.small)
             .buttonStyle(.borderless)
@@ -967,6 +991,7 @@ struct SpeechEngineSettingsView: View {
     case .error(let message):
       VStack(alignment: .leading, spacing: 8) {
         Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
+          .font(.stHelper)
           .foregroundStyle(.stWarning)
 
         Text(message)
@@ -978,6 +1003,7 @@ struct SpeechEngineSettingsView: View {
           Task { await setup.whisperKitSetup.detectState() }
         }
         .controlSize(.small)
+        .font(.stHelper)
       }
     }
   }

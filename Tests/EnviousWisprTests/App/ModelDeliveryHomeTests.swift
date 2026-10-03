@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import EnviousWisprCore
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
@@ -8,7 +9,7 @@ import Testing
 /// #1741 Chunk 6 — pins the gate-refusal contract for `ModelDeliveryHome`'s
 /// two Settings-row mutation sites (Parakeet Cancel/Resume).
 @MainActor
-@Suite("ModelDeliveryHome — engine mutation gate refusal")
+@Suite("ModelDeliveryHome — engine mutation gate refusal", .tags(.productOutcome))
 struct ModelDeliveryHomeTests {
 
   @Test(
@@ -310,6 +311,57 @@ struct ModelDeliveryHomeTests {
       manifestBundle: try Self.manifestBundle(),
       appSupportOverride: try Self.tempAppSupport())
     #expect(home.whisperPreviewHandle != nil)
+  }
+
+  static func writeFastAdmissionFixture(home: ModelDeliveryHome) throws ->
+    (manifest: DeliveryManifest, directory: URL, admission: CacheAdmission, marker: Data) {
+    let manifest = try DeliveryManifest.loadBundled(resource: "parakeet-delivery-manifest", bundle: Self.manifestBundle())
+    let metadata = try #require(home.whisperKitRegistration).metadataDirectory
+    let directory = ParakeetInstallLocation.directory(dataDirectory: metadata.deletingLastPathComponent())
+    let admission = CacheAdmission(manifest: manifest, installDirectory: directory, metadataDirectory: metadata)
+    // Sparse fixture files match stamps without allocating the real model's bytes.
+    var stamps: [CacheAdmission.AdmissionMarker.FileStamp] = []
+    for file in manifest.files {
+      let url = directory.appendingPathComponent(file.resolvedInstallPath)
+      try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try #require(FileManager.default.createFile(atPath: url.path, contents: Data()))
+      let handle = try FileHandle(forWritingTo: url)
+      try handle.truncate(atOffset: UInt64(file.sizeBytes)); try handle.close()
+      let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+      let mtime = try #require(attrs[.modificationDate] as? Date).timeIntervalSince1970
+      stamps.append(.init(path: file.resolvedInstallPath, sizeBytes: file.sizeBytes, mtime: mtime))
+    }
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    let marker = try JSONEncoder().encode(CacheAdmission.AdmissionMarker(
+      manifestDigest: manifest.manifestDigest, admittedAt: Date(), files: stamps))
+    try marker.write(to: admission.markerURL)
+    return (manifest, directory, admission, marker)
+  }
+
+  static func fastRenderFixture() throws -> (home: ModelDeliveryHome, directory: URL) {
+    let home = ModelDeliveryHome(engineMutationScope: .live(
+      tryBegin: { Issue.record("render attempted engine mutation"); return false },
+      end: { false }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try manifestBundle(), appSupportOverride: try tempAppSupport())
+    let fixture = try writeFastAdmissionFixture(home: home)
+    return (home, fixture.directory)
+  }
+
+  @Test("Settings admission re-check sees file removal and acquires no mutation claim")
+  func freshSettingsAdmission() async throws {
+    final class Box { var claims = 0 }
+    let box = Box()
+    let home = ModelDeliveryHome(engineMutationScope: .live(
+      tryBegin: { box.claims += 1; return false }, end: { false }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(), appSupportOverride: try Self.tempAppSupport())
+    #expect(await home.currentParakeetAdmission() == false)
+    let (manifest, directory, admission, marker) = try Self.writeFastAdmissionFixture(home: home)
+    #expect(await home.currentParakeetAdmission())
+    try FileManager.default.removeItem(at: directory.appendingPathComponent(try #require(manifest.files.first).resolvedInstallPath))
+    #expect(await home.currentParakeetAdmission() == false)
+    #expect(try Data(contentsOf: admission.markerURL) == marker, "a read changed the marker")
+    #expect(box.claims == 0, "a read attempted an engine mutation")
+    #expect(await home.controller.state(of: manifest.identity) == .notReady, "a read started delivery")
   }
 
   // MARK: - #2123: removal frees the disk, which means releasing first

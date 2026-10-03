@@ -11,21 +11,28 @@ struct DictationSettingsView: View {
   let packs: LivePreviewPacksModel
 
   var body: some View {
-    VStack(spacing: 0) {
-      SettingsTabStrip(
-        items: DictationTab.allCases.map {
-          SettingsTabItem(id: $0, icon: $0.icon, label: $0.label)
-        },
-        selection: $selection
-      )
-      .padding(.horizontal, SettingsLayout.contentH - 4)
-      .padding(.top, SettingsLayout.contentTop - 6)
+    GeometryReader { pane in
+      // A selected page can have a larger intrinsic width (Pill/Chimes). The
+      // tab strip belongs to the actual pane, so those children must not widen
+      // it and clip the last tab. Only the selected content is still mounted.
+      VStack(spacing: 0) {
+        SettingsTabStrip(
+          items: DictationTab.allCases.map {
+            SettingsTabItem(id: $0, icon: $0.icon, label: $0.label)
+          },
+          selection: $selection
+        )
+        .frame(width: max(0, pane.size.width - 2 * (SettingsLayout.contentH - 4)))
+        .padding(.horizontal, SettingsLayout.contentH - 4)
+        .padding(.top, SettingsLayout.contentTop - 6)
 
-      // Each tab keeps its own page's scroll view, so no outer one here.
-      tabContent
+        // Each tab keeps its own page's scroll view, so no outer one here.
+        tabContent.frame(width: pane.size.width)
+      }
+      .frame(width: pane.size.width, height: pane.size.height)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
+    .environment(\.settingsPR1Density, true)
   }
 
   @ViewBuilder

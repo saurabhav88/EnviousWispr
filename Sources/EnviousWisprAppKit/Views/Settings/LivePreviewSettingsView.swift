@@ -46,6 +46,11 @@ struct LivePreviewSettingsView: View {
   /// #3385: whether the two preview-engine cards are open under the summary.
   @State private var showPreviewEngineChoices: Bool = false
 
+  init(packs: LivePreviewPacksModel, choicesExpanded: Bool = false) {
+    self.packs = packs
+    _showPreviewEngineChoices = State(initialValue: choicesExpanded)
+  }
+
   /// #2436: the pack catalogue, opened by the Languages row or the bar's remedy.
   ///
   /// **One piece of state, not two, and that is the whole point.** This started as
@@ -124,8 +129,18 @@ struct LivePreviewSettingsView: View {
   /// The status card's answer. One call, so the chip and its detail line can
   /// never describe different states.
   private var status: LivePreviewStatusMapping.Summary {
+    previewStatus(isEnabled: isPreviewOn)
+  }
+
+  /// Capability for the selected engine even while the feature is switched off.
+  /// Same readiness owner, including language, install and stale guards.
+  private var engineReadiness: LivePreviewStatusMapping.Summary {
+    previewStatus(isEnabled: true)
+  }
+
+  private func previewStatus(isEnabled: Bool) -> LivePreviewStatusMapping.Summary {
     LivePreviewStatusMapping.summary(
-      isEnabled: isPreviewOn,
+      isEnabled: isEnabled,
       engine: settings.livePreviewEngine,
       appleSupported: isAppleSupported,
       universalExists: universalExists,
@@ -225,15 +240,18 @@ struct LivePreviewSettingsView: View {
     return SettingsContentView {
       // #3385: the privacy sentence belongs to the PREVIEW, so its short form is
       // this section's note and never a Dictation-wide or shared-component claim.
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       SettingsSectionHeading(resolvedTitle: LivePreviewSettingsCopy.sectionHeader.uppercased()) {
         Text(PreviewCopy.privacyNote)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
       }
       statusBar
+      }
       engineSection
       packsSection
     }
+    .environment(\.settingsPR1Density, true)
     // **Keyed on the language, not merely on appearance.**
     //
     // A plain `.task` runs once per appearance, and the dictation language can
@@ -343,6 +361,7 @@ struct LivePreviewSettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
               SettingsHelpText(text: String(localized: PreviewCopy.toggleHelp))
               SettingsHelpText(text: LivePreviewSettingsCopy.previewPrivacyFooter)
+              SettingsHelpText(text: bar.detail)
             }
           } control: {
             HStack(spacing: 12) {
@@ -419,12 +438,18 @@ struct LivePreviewSettingsView: View {
             }
           }
 
-          // What is happening right now: the mapping's chip and its one detail line.
-          HStack(alignment: .firstTextBaseline, spacing: 8) {
-            ProviderStatusChip(status: status.chip, isHeadline: true)
-            Text(bar.detail).settingsHelperCopy()
+          .rowTitleStatus {
+            ProviderStatusChip(status: EngineSummaryPresentation.previewStatus(status), isHeadline: true)
           }
-          .padding(.leading, 37)
+
+          // #3385 founder supersedes the always-visible detail hierarchy: Ready/Off
+          // stay compact; the full detail remains in help. Unhappy detail and remedies
+          // remain visible because the reason is what a returning user needs.
+          if EngineSummaryPresentation.showsDetail(status) {
+            Text(bar.detail).font(.stHelper).foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .padding(.leading, 37)
+          }
         }
       }
 
@@ -491,7 +516,7 @@ struct LivePreviewSettingsView: View {
       state: universalState)
     let selected = isUsingApple ? apple : universal
 
-    return VStack(alignment: .leading, spacing: 10) {
+    return VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       // The first link from a settings page to the Help Centre. The two
       // engines differ in OS floor, language coverage and download size, and
       // a card cannot carry that comparison without becoming the article.
@@ -540,24 +565,9 @@ struct LivePreviewSettingsView: View {
   }
 
   private func engineSummary(_ card: LivePreviewEnginePresentation.Card) -> some View {
-    HStack(alignment: .center, spacing: 12) {
-      Image(systemName: isUsingApple ? "apple.logo" : "globe")
-        .font(.system(size: 17, weight: .semibold))
-        .foregroundStyle(Color.stAccent)
-        .frame(width: 38, height: 38)
-        .background(
-          RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.stAccentLight)
-        )
-        .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(card.title).settingsRowTitle()
-        Text(isUsingApple ? PreviewCopy.appleSummary : PreviewCopy.universalSummary)
-          .font(.stRowHelper)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-    .accessibilityElement(children: .combine)
+    EngineSummaryContent(icon: isUsingApple ? "apple.logo" : "globe", name: card.title,
+      short: String(localized: isUsingApple ? PreviewCopy.appleSummary : PreviewCopy.universalSummary),
+      status: engineReadiness.kind == .active ? EngineSummaryPresentation.previewStatus(engineReadiness) : nil)
   }
 
   /// Reasons and actions, outside the disclosure. The selected engine's own
@@ -576,15 +586,13 @@ struct LivePreviewSettingsView: View {
         .padding(.leading, 4)
     }
     if universal.unavailability != nil || universal.action != nil || universal.progress != nil {
-      BrandedSection {
-        BrandedRow(showDivider: false) {
           VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 11) {
               SettingsRowIcon(systemName: "globe")
               VStack(alignment: .leading, spacing: 2) {
                 Text(universal.title).settingsRowLabel()
                 if let reason = universal.unavailability {
-                  Text(reason).settingsHelperCopy()
+                  Text(reason).font(.stHelper).foregroundStyle(.stTextSecondary).fixedSize(horizontal: false, vertical: true)
                 }
               }
               Spacer(minLength: 8)
@@ -604,7 +612,7 @@ struct LivePreviewSettingsView: View {
                 SettingsActionButton(
                   verbatimTitle: Self.label(for: action),
                   isEnabled: true,
-                  emphasis: action == .remove ? .outlined : .filled
+                  emphasis: action == .remove ? .quiet : .filled, shape: .roundedRect, size: .medium
                 ) {
                   perform(action)
                 }
@@ -615,8 +623,6 @@ struct LivePreviewSettingsView: View {
                 .padding(.leading, 37)
             }
           }
-        }
-      }
     }
   }
 
@@ -807,7 +813,17 @@ struct LivePreviewSettingsView: View {
   @ViewBuilder
   private var packsSection: some View {
     if showsApplePacks {
-      BrandedSection(verbatimHeader: LivePreviewSettingsCopy.packsHeader) {
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
+      SettingsSectionHeading(resolvedTitle: LivePreviewSettingsCopy.packsHeader.uppercased()) {
+        // #3385 B14 supersedes the 2026-08-26 count removal: a quiet heading
+        // note only from the currently loaded inventory, never a 7/54 guess.
+        if case .loaded(let inventory) = packs.state {
+          Text(EngineSummaryCopy.installedPacks(installed: inventory.filter(\.isInstalled).count, total: inventory.count))
+            .font(.stHelper).foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      BrandedSection {
         // **The ROW is the button, not a card containing one** (founder,
         // 2026-08-26). Everything here did one thing: the title named the action,
         // the paragraph explained it, and a separate `Browse` performed it — so
@@ -857,6 +873,7 @@ struct LivePreviewSettingsView: View {
         }
       }
     }
+      }
   }
 
 
@@ -915,6 +932,7 @@ struct LivePreviewLanguageMenuButton: View {
       .overlay(
         RoundedRectangle(cornerRadius: 8, style: .continuous)
           .strokeBorder(hovering ? Color.stAccent : Color.stDivider, lineWidth: 1)
+          .allowsHitTesting(false)
       )
       .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
