@@ -56,7 +56,7 @@ struct PrivacySettingsView: View {
                 .accessibilityLabel(PrivacySettingsCopy.metricsLabel)
             }
           }
-          BrandedRow(showDivider: false) {
+          BrandedRow {
             SettingsRow(
               icon: "exclamationmark.triangle", resolvedTitle: PrivacySettingsCopy.crashLabel,
               resolvedShort: PrivacySettingsCopy.crashShort,
@@ -90,21 +90,32 @@ struct PrivacySettingsView: View {
               }
             }
           }
-        }
-        BrandedSection {
+          // The mockup's third row of the same card (founder, 2026-10-03). Main's full
+          // promise and open-source line stay word for word behind "?".
           BrandedRow(showDivider: false) {
-            HStack(alignment: .top, spacing: 11) {
-              SettingsRowIcon(systemName: "lock.shield")
-              VStack(alignment: .leading, spacing: 6) {
-                Text("What we collect").settingsRowLabel()
-                Text(PrivacySettingsCopy.promise).settingsReadingCopy()
-                Text(PrivacySettingsCopy.openSource).settingsReadingCopy()
-                Link(destination: URL(string: PrivacySettingsCopy.learnMoreURL)!) {
-                  Label(PrivacySettingsCopy.learnMoreLabel, systemImage: "arrow.up.right")
-                    .font(.stRowHelper)
+            SettingsRow(
+              icon: "lock.shield", resolvedTitle: PrivacySettingsCopy.collectTitle,
+              resolvedShort: PrivacySettingsCopy.collectShort,
+              resolvedHelp: PrivacySettingsCopy.promise + " " + PrivacySettingsCopy.openSource
+            ) {
+              Link(destination: URL(string: PrivacySettingsCopy.learnMoreURL)!) {
+                HStack(spacing: 6) {
+                  Text(PrivacySettingsCopy.seeDetailsLabel)
+                  Image(systemName: "arrow.up.right")
                 }
-                .foregroundStyle(.stAccent)
+                .font(.stHelper.weight(.semibold))
+                .foregroundStyle(.stTextPrimary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                  RoundedRectangle(cornerRadius: 8).strokeBorder(Color.stInputBorder, lineWidth: 1)
+                    .allowsHitTesting(false))
+                .settingsHoverRow(cornerRadius: 8)
               }
+              .buttonStyle(.plain)
+              .fixedSize()
+              .accessibilityLabel(PrivacySettingsCopy.learnMoreLabel)
             }
           }
         }
@@ -128,6 +139,21 @@ enum PrivacySettingsCopy {
     String(
       localized: "EnviousWispr is open source, so you can check exactly what we send.",
       comment: "Permissions settings, Privacy: line before the link to the data help article.")
+  }
+  static var collectTitle: String {
+    String(localized: "What we collect", comment: "Permissions settings, Privacy: row title.")
+  }
+  /// Mockup wording for the row's short line (founder, 2026-10-03).
+  static var collectShort: String {
+    String(
+      localized:
+        "Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form.",
+      comment: "Permissions settings, Privacy: short line under What we collect.")
+  }
+  static var seeDetailsLabel: String {
+    String(
+      localized: "See details",
+      comment: "Permissions settings, Privacy: button that opens the What Data Is Collected help article.")
   }
   static var learnMoreLabel: String {
     String(

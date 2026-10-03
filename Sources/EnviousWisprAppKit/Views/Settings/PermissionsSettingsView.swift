@@ -60,12 +60,21 @@ struct PermissionsSettingsView: View {
     }
   }
 
-  /// Main's wording, kept word for word (founder, 2026-10-03).
+  /// The mockup's green "Allowed" pill (founder, 2026-10-03). VoiceOver keeps main's
+  /// full sentence, `text`, so the spoken status still names the permission.
   private func grantedStatus(_ text: LocalizedStringResource) -> some View {
-    Label(text, systemImage: "checkmark.circle.fill")
-      .font(.stRowHelper)
-      .foregroundStyle(.stSuccess)
-      .fixedSize()
+    HStack(spacing: 6) {
+      Circle().fill(Color.stSuccess).frame(width: 6, height: 6)
+      Text("Allowed", comment: "Permissions settings: the pill shown when a permission is granted.")
+    }
+    .font(.stHelper.weight(.semibold))
+    .foregroundStyle(.stSuccess)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 4)
+    .background(Capsule().fill(Color.stSuccess.opacity(0.14)))
+    .fixedSize()
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(Text(text))
   }
 
   private func requestMicrophone() {
