@@ -265,8 +265,6 @@ struct RecordingChimeCard: View {
         // Buttons; this hidden copy reserves exactly its naturally fitted size.
         footer.hidden()
       }
-        // Always laid out, shown only when selected, so picking a chime
-        // never resizes its card or moves either button.
         // Reserve the shared decorative row without putting it in a Button.
       // Four-point text insets preserve more room for long German names at
       // narrow columns; the play corner stays 44pt and the waveform inset 8pt.
@@ -313,30 +311,26 @@ struct RecordingChimeCard: View {
       .fixedSize(horizontal: false, vertical: true)
   }
 
+  /// The sound strip across the card, with the badge at its end only on the chosen chime
+  /// (mockup 10): an unchosen card's strip runs the full width (founder, 2026-10-03).
+  /// The badge is no taller than the strip, so picking a chime never resizes its card.
   var footer: some View {
     ViewThatFits(in: .horizontal) {
-      HStack(spacing: 4) {
+      HStack(spacing: 8) {
         RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
-          // 22 bars retain at least 2pt each; narrower than this crowds them.
-          .frame(minWidth: 44)
-        reservedBadge.fixedSize()
+          // 40 bars retain at least 1.5pt each; narrower than this crowds them.
+          .frame(minWidth: 60)
+        if isSelected { inUseBadge.fixedSize() }
       }
       VStack(alignment: .leading, spacing: 2) {
-        reservedBadge
+        if isSelected { inUseBadge }
         RecordingChimeWaveform(pairing: pairing, isSelected: isSelected)
       }
     }
-    .padding(.horizontal, 4)
-    .padding(.bottom, 4)
+    .padding(.horizontal, 10)
+    .padding(.bottom, 8)
     .accessibilityHidden(true)
     .allowsHitTesting(false)
-  }
-
-  private var reservedBadge: some View {
-    // Always laid out, shown only when selected, so picking a chime
-    // never resizes its card or moves either button.
-    inUseBadge
-      .opacity(isSelected ? 1 : 0)
   }
 
   var inUseBadge: some View {
