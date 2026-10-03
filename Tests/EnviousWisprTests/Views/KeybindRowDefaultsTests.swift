@@ -19,7 +19,7 @@ import Testing
 /// than detected. What survives here is what a constant cannot do for itself: pin the VALUES so
 /// changing one is a conscious act, and keep a literal from creeping back into a row.
 ///
-/// Swept over all THREE rows, not just the new one — an entity sweep finds wrong statements, a
+/// Swept over all five rows, not just the new one — an entity sweep finds wrong statements, a
 /// member sweep finds omissions, and the new row is the one its author is certain to have checked.
 @Suite("Keybind defaults have one owner (#2381)", .tags(.driftGuard))
 struct KeybindRowDefaultsTests {
@@ -63,9 +63,11 @@ struct KeybindRowDefaultsTests {
     // True by construction now. Pinned because "by construction" is a property of today's code, and
     // a future edit that re-inlines a number here would be silent.
     #expect(SettingsDefaultValues.toggleKeyCode == Int(ShortcutRole.record.defaultKeyCode))
-    #expect(SettingsDefaultValues.toggleModifiersRaw == ShortcutRole.record.defaultModifiers.rawValue)
+    #expect(
+      SettingsDefaultValues.toggleModifiersRaw == ShortcutRole.record.defaultModifiers.rawValue)
     #expect(SettingsDefaultValues.cancelKeyCode == Int(ShortcutRole.cancel.defaultKeyCode))
-    #expect(SettingsDefaultValues.cancelModifiersRaw == ShortcutRole.cancel.defaultModifiers.rawValue)
+    #expect(
+      SettingsDefaultValues.cancelModifiersRaw == ShortcutRole.cancel.defaultModifiers.rawValue)
     #expect(SettingsDefaultValues.quickAddKeyCode == Int(ShortcutRole.quickAdd.defaultKeyCode))
     #expect(
       SettingsDefaultValues.quickAddModifiersRaw == ShortcutRole.quickAdd.defaultModifiers.rawValue)
@@ -133,24 +135,32 @@ struct KeybindRowDefaultsTests {
     return CommentStripper().rewrite(parsed).description
   }
 
-  /// Each row's own source block, keyed by its accessibility label, comments already gone.
-  ///
-  /// Scoped per ROW rather than searched whole-file: a whole-file `contains` passes when a token
-  /// moves to the WRONG row, which is the defect that puts one shortcut's controls on another's.
-  private static func rowBlock(labelled label: String) throws -> String {
-    let blocks = try executableSource().components(separatedBy: "ProminentHotkeyRow(").dropFirst()
-    // The label is a literal, bare or as a `LocalizedStringResource` with a translator comment
-    // (#3142); either way it is the first string after `accessibilityLabel:`.
-    let pattern = #"accessibilityLabel:\s*(LocalizedStringResource\(\s*)?""# + label + #"""#
-    guard
-      let block = blocks.first(where: {
-        $0.range(of: pattern, options: .regularExpression) != nil
-      })
-    else {
-      Issue.record(Comment(rawValue: "no ProminentHotkeyRow labelled '\(label)'"))
-      return ""
+  /// Locate actual constructor calls by role, rather than splitting source at labels.
+  private final class RowFinder: SyntaxVisitor {
+    var rows: [FunctionCallExprSyntax] = []
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+      if node.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text
+        == "KeybindSettingsRow"
+      {
+        rows.append(node)
+      }
+      return .visitChildren
     }
-    return block
+  }
+
+  private static func rowBlock(role: String) throws -> String {
+    let finder = RowFinder(viewMode: .sourceAccurate)
+    finder.walk(Parser.parse(source: try executableSource()))
+    let matches = finder.rows.filter { call in
+      call.arguments.contains { argument in
+        argument.label?.text == "role"
+          && argument.expression.as(MemberAccessExprSyntax.self)?.declName.baseName.text == role
+      }
+    }
+    let row = try #require(
+      matches.count == 1 ? matches.first : nil,
+      "expected exactly one KeybindSettingsRow for \(role), found \(matches.count)")
+    return row.description
   }
 
   @Test("Every row binds its own setting, so no shortcut is edited from two rows")
@@ -158,13 +168,13 @@ struct KeybindRowDefaultsTests {
     // The one property the type system does not carry. A row's ROLE now decides its Reset default,
     // but nothing links that role to the settings binding beside it, so a row can still be given
     // `.quickAdd` and wired to `$settings.cancelKeyCode`.
-    for (label, role, setting) in [
-      ("Recording keybind", "record", "toggle"), ("Cancel keybind", "cancel", "cancel"),
-      ("Add-a-word keybind", "quickAdd", "quickAdd"),
-      ("Paste last dictation keybind", "pasteLast", "pasteLast"),
-      ("Copy last dictation keybind", "copyLast", "copyLast"),
+    for (role, setting) in [
+      ("record", "toggle"), ("cancel", "cancel"),
+      ("quickAdd", "quickAdd"),
+      ("pasteLast", "pasteLast"),
+      ("copyLast", "copyLast"),
     ] {
-      let block = try Self.rowBlock(labelled: label)
+      let block = try Self.rowBlock(role: role)
       #expect(block.contains("role: .\(role)"))
       #expect(block.contains("keyCode: $settings.\(setting)KeyCode"))
       #expect(block.contains("modifiers: $settings.\(setting)Modifiers"))
@@ -173,12 +183,18 @@ struct KeybindRowDefaultsTests {
 
   @Test("A comment cannot satisfy the row check")
   func commentsCannotSatisfyTheRowCheck() throws {
-    // The control for the parser above, asserted rather than assumed: the file HAS comments inside
-    // its rows, and none of them survives into what the check reads. Without this, a stripper that
-    // silently did nothing would look identical to one that works.
-    let block = try Self.rowBlock(labelled: "Add-a-word keybind")
-
-    #expect(!block.contains("//"))
+    let finder = RowFinder(viewMode: .sourceAccurate)
+    finder.walk(
+      Parser.parse(
+        source: """
+          // KeybindSettingsRow(role: .quickAdd)
+          /* KeybindSettingsRow(role: .cancel) */
+          KeybindSettingsRow(role: .record) // KeybindSettingsRow(role: .copyLast)
+          """))
+    let actual = try #require(finder.rows.count == 1 ? finder.rows.first : nil)
+    #expect(actual.arguments.first?.expression.trimmedDescription == ".record")
+    let block = try Self.rowBlock(role: "quickAdd")
+    #expect(block.contains("//") == false)
     #expect(block.contains("role: .quickAdd"), "the strip must not have eaten the code too")
   }
 }
@@ -192,12 +208,13 @@ struct KeybindRowDefaultsTests {
 /// match fails. The failure was loud, which is the only reason that draft cost minutes.
 private final class CommentStripper: SyntaxRewriter {
   private func withoutComments(_ trivia: Trivia) -> Trivia {
-    Trivia(pieces: trivia.filter { piece in
-      switch piece {
-      case .lineComment, .blockComment, .docLineComment, .docBlockComment: false
-      default: true
-      }
-    })
+    Trivia(
+      pieces: trivia.filter { piece in
+        switch piece {
+        case .lineComment, .blockComment, .docLineComment, .docBlockComment: false
+        default: true
+        }
+      })
   }
 
   override func visit(_ token: TokenSyntax) -> TokenSyntax {
