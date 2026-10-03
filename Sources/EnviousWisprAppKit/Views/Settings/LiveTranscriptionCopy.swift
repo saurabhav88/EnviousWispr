@@ -66,9 +66,6 @@ enum LiveTranscriptionCopy {
   static let toggleLabel = String(
     localized: "Faster Transcription",
     comment: "Speech engine settings, Faster Transcription: the toggle's name.")
-  static let helpButtonAccessibilityLabel = String(
-    localized: "What does Faster Transcription change?",
-    comment: "Speech engine settings, Faster Transcription: VoiceOver name of the help button.")
 
   /// Shown under the toggle only when WhisperKit is selected AND the language is
   /// Auto-detect, because streaming must commit to one language up front and a bad early

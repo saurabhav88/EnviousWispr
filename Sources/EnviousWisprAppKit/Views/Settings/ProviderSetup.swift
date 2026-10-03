@@ -394,17 +394,6 @@ struct ProviderSetupSection: View {
     }
   }
 
-  /// Writing the provider. An import write becomes an OVERRIDE, seeded first, per chunk 2:
-  /// a pick that equals dictation's engine is still a pick.
-  private func setProvider(_ newValue: LLMProvider) {
-    switch surface {
-    case .dictation: settings.llmProvider = newValue
-    case .fileImport:
-      settings.seedFileImportPolishModelsIfNeeded()
-      settings.fileImportLLMProvider = newValue
-    }
-  }
-
   /// Writing the cloud model. On the import surface this also creates the override, because
   /// editing the MODEL is choosing just as much as editing the provider is.
   private func setCloudModel(_ newValue: String) {

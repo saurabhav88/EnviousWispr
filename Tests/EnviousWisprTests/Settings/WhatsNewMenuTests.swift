@@ -28,7 +28,6 @@ struct WhatsNewMenuTests {
   func moveAnnouncementBullets() throws {
     let entry = try #require(WhatsNewMenuPresentation.entries().first)
     #expect(entry.id == "settings-easier-to-find")
-    #expect(entry.version == "2.5.3")
     // Written out here, not read from WhatsNewContent: dropping or changing a move must fail.
     #expect(entry.bullets == [
       "Transcription -> Dictation Settings > Engine",

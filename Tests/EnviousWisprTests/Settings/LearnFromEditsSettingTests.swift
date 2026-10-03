@@ -117,7 +117,7 @@ struct LearnFromEditsRowTests {
       #expect(p.action == action, "\(phase)")
     }
     // A total of zero bytes (size unknown yet) drops the count.
-    #expect(P.downloadingLine(fraction: 0, written: 0, total: 0) == "Downloading the correction model")
+    #expect(P.downloadingLine(written: 0, total: 0) == "Downloading the correction model")
     // The availability object routes each action to its bound closure.
     let availability = LearnFromEditsAvailability(presentation: P(selection: none, judge: .notInstalled))
     var fired: [String] = []

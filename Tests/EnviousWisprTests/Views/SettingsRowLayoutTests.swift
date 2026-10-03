@@ -77,8 +77,8 @@ struct SettingsRowLayoutTests {
     let oneLine = try Self.measure(width: width) { control in
       SettingsRow(
         icon: "waveform",
-        title: LocalizedStringResource(stringLiteral: "Input device"),
-        short: LocalizedStringResource(stringLiteral: "Short."),
+        resolvedTitle: "Input device",
+        resolvedShort: "Short.",
         helpContent: { Text(verbatim: "Structured help") }
       ) { control }
     }
@@ -86,8 +86,8 @@ struct SettingsRowLayoutTests {
     let wrapped = try Self.measure(width: width) { control in
       SettingsRow(
         icon: "waveform",
-        title: LocalizedStringResource(stringLiteral: "Input device"),
-        short: LocalizedStringResource(stringLiteral: long),
+        resolvedTitle: "Input device",
+        resolvedShort: long,
         helpContent: { Text(verbatim: "Structured help") }
       ) { control }
     }

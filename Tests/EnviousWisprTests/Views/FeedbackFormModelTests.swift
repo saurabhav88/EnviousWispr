@@ -68,7 +68,7 @@ struct FeedbackFormModelTests {
     #expect(model.diagnostics == .loading)
 
     await loader.answerNext(with: Self.first)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
 
     #expect(model.previewSnapshot == Self.first)
     #expect(model.decideSend(currentUsageMetrics: true) == .send(Self.first))
@@ -79,7 +79,7 @@ struct FeedbackFormModelTests {
     let (model, loader) = makeModel()
     model.open(usageMetrics: false)
     await loader.answerNext(with: Self.first)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
 
     #expect(model.includeDiagnostics == false)
     #expect(model.previewSnapshot == nil)
@@ -95,7 +95,7 @@ struct FeedbackFormModelTests {
     let (model, loader) = makeModel()
     model.open(usageMetrics: true)
     await loader.answerNext(with: nil)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
 
     #expect(model.diagnostics == .unavailable)
     #expect(model.includeDiagnostics == false)
@@ -116,7 +116,7 @@ struct FeedbackFormModelTests {
     model.setIncludeDiagnostics(false)
     #expect(model.decideSend(currentUsageMetrics: true) == .send(nil))
     loader.answerOldest(with: Self.first)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
   }
 
   @Test("A metrics flip while open resets the box to the new default and drops the old load")
@@ -130,7 +130,7 @@ struct FeedbackFormModelTests {
     // The first load finishes late: its bytes must not land.
     loader.answerOldest(with: Self.first)
     await loader.answerNext(with: Self.second)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
 
     model.setIncludeDiagnostics(true)
     #expect(model.previewSnapshot == Self.second)
@@ -139,7 +139,7 @@ struct FeedbackFormModelTests {
     #expect(model.includeDiagnostics == true)
     #expect(model.diagnostics == .loading)
     await loader.answerNext(with: Self.first)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
     #expect(model.previewSnapshot == Self.first)
   }
 
@@ -148,7 +148,7 @@ struct FeedbackFormModelTests {
     let (model, loader) = makeModel()
     model.open(usageMetrics: true)
     await loader.answerNext(with: Self.first)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
 
     // #require, not #expect: without the reset no second load ever starts, and the wait below
     // would hang the whole suite instead of failing this test.
@@ -156,7 +156,7 @@ struct FeedbackFormModelTests {
     #expect(model.includeDiagnostics == false)
     #expect(model.diagnostics == .loading)
     await loader.answerNext(with: Self.second)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
   }
 
   @Test("A load that finishes after the form closed changes nothing")
@@ -164,7 +164,7 @@ struct FeedbackFormModelTests {
     let (model, loader) = makeModel()
     model.open(usageMetrics: true)
     await loader.waitForArrival()
-    let pending = model.pendingLoad
+    let pending = model.loadTask
 
     model.formDidClose()
     loader.answerOldest(with: Self.first)
@@ -179,14 +179,14 @@ struct FeedbackFormModelTests {
     let (model, loader) = makeModel()
     model.open(usageMetrics: false)
     await loader.answerNext(with: Self.first)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
     model.setIncludeDiagnostics(true)
     model.formDidClose()
 
     model.open(usageMetrics: false)
     #expect(model.includeDiagnostics == false)
     await loader.answerNext(with: Self.second)
-    await model.pendingLoad?.value
+    await model.loadTask?.value
     #expect(model.previewSnapshot == nil)
   }
 }

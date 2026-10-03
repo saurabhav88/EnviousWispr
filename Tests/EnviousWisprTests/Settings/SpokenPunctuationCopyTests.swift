@@ -65,7 +65,6 @@ struct SpokenPunctuationCopyTests {
       [
         SpokenPunctuationCopy.toggleLabel,
         SpokenPunctuationCopy.toggleDescription,
-        SpokenPunctuationCopy.helpButtonAccessibilityLabel,
         SpokenPunctuationCopy.helpTitle,
         SpokenPunctuationCopy.helpSayColumn,
         SpokenPunctuationCopy.helpGetColumn,

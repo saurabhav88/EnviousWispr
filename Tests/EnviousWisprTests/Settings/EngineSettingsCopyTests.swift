@@ -44,7 +44,6 @@ struct EngineSettingsCopyTests {
       (Copy.autoDetectFastShort, "Detects the language you speak. 25 European languages."),
       (Copy.autoDetectMultilingualShort, "Detects the language you speak. 99+ languages."),
       (Copy.lockedLanguageShort, "Choose the language for dictation and preview."),
-      (Copy.suggestionsShort, "Allow language suggestions to appear again."),
       (Copy.fasterFastShort, "Works during recording; may miss the last words."),
       (Copy.fasterMultilingualShort, "Works during recording with a selected language."),
       (Copy.stopOnSilenceShort, "Ends recording after you stop speaking."),

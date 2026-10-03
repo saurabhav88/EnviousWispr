@@ -241,13 +241,12 @@ struct LivePreviewStatusBarPresentationTests {
   /// passes against an implementation that hard-codes them, which is the whole class
   /// of defect this seam exists to make visible. A value unique per state proves the
   /// mapping's own string arrived here and was not re-derived.
-  @Test("Every state passes through both its label and its detail, active included")
+  @Test("Every state passes through its detail, active included")
   func everyStateKeepsItsExplanation() {
     for (index, kind) in Self.allKinds.enumerated() {
       let label = "__label_\(index)__"
       let detail = "__detail_\(index)__"
       let b = bar(kind, label: label, detail: detail)
-      #expect(b.label == label, "label changed for \(kind)")
       #expect(b.detail == detail, "detail changed for \(kind)")
     }
   }

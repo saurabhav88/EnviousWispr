@@ -68,7 +68,7 @@ struct LargeNumberEnglishTests {
     let mb: Int64 = 1_048_576
     #expect(
       LearnFromEditsSettingsPresentation.downloadingLine(
-        fraction: 0.75, written: 1_500 * mb, total: 2_000 * mb)
+        written: 1_500 * mb, total: 2_000 * mb)
         == "Downloading the correction model (1500 of 2000 MB)")
   }
 }
