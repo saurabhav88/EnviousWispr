@@ -354,7 +354,12 @@ struct AIPolishSettingsView: View {
       // ── AI Polish master switch (slide toggle, on its own card) ──
       BrandedSection {
         BrandedRow(showDivider: false) {
-          Toggle(
+          SettingsRow(
+            icon: "sparkles", title: "Enable AI Polish",
+            short: "Fixes grammar, punctuation and formatting",
+            help: "Automatically fix grammar, punctuation, and formatting."
+          ) {
+            Toggle("Enable AI Polish",
             isOn: Binding(
               get: { settings.llmProvider != .none },
               set: { isOn in
@@ -369,20 +374,11 @@ struct AIPolishSettingsView: View {
                 }
               }
             )
-          ) {
-            VStack(alignment: .leading, spacing: 3) {
-              Text(
-                LocalizedStringResource(
-                  "settings.aiPolish.enable.title",
-                  defaultValue: "Enable AI Polish"
-                )
-              )
-                .settingsRowTitle()
-              Text("Automatically fix grammar, punctuation, and formatting.")
-                .settingsReadingCopy()
-            }
+            )
+            .labelsHidden()
+            .toggleStyle(BrandedToggleStyle())
+            .fixedSize()
           }
-          .toggleStyle(BrandedToggleStyle())
         }
       }
 
@@ -413,6 +409,7 @@ struct AIPolishSettingsView: View {
         ProviderSetupSection(model: setupModel, part: .manageModels)
       }
     }
+    .environment(\.settingsPR1Density, true)
     .modifier(ProviderSetupLifecycle(model: setupModel))
   }
 }
@@ -469,6 +466,7 @@ enum S1ControlCopy {
 
   static let stylingLabel = String(
     localized: "Tone", comment: "AI Polish, S1-mini writing-style card: the tone setting's name.")
+  static let stylingShort = String(localized: "Choose how formal your text sounds")
   static let stylingHint = String(
     localized:
       "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text.",
@@ -476,6 +474,7 @@ enum S1ControlCopy {
   static let structureLabel = String(
     localized: "Structure",
     comment: "AI Polish, S1-mini writing-style card: the structure setting's name.")
+  static let structureShort = String(localized: "Keep sentences or turn spoken items into lists")
   static let structureHint = String(
     localized:
       "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences.",
@@ -485,6 +484,7 @@ enum S1ControlCopy {
   static let contextLabel = String(
     localized: "Context",
     comment: "AI Polish, S1-mini writing-style card: the context setting's name.")
+  static let contextShort = String(localized: "Format dictated greetings and sign-offs as email")
   static let contextHint = String(
     localized:
       "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else.",

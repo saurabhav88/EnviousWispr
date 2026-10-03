@@ -304,6 +304,37 @@ enum ProviderSetupKeys {
 
 // MARK: - The editor
 
+/// Short explanations for the dictation Settings presentation. The full existing
+/// provider explanations remain available from the header's help button.
+enum ProviderCompactCopy {
+  static func short(for provider: LLMProvider) -> String {
+    switch provider {
+    case .egOne: return String(localized: "Our model for cleaning up dictation on this Mac")
+    case .s1Mini: return String(localized: "Small, on this Mac, and happiest in English")
+    case .appleIntelligence: return String(localized: "On-device polish on supported Macs with macOS 26+")
+    case .ollama: return String(localized: "Your models, local or hosted")
+    case .openAI: return String(localized: "Use your OpenAI API key for cloud polish")
+    case .gemini: return String(localized: "Use your Gemini API key for cloud polish")
+    case .claude: return String(localized: "Use your Claude API key for cloud polish")
+    case .none: return ""
+    }
+  }
+
+  static func keyShort(for provider: LLMProvider) -> String {
+    switch provider {
+    case .openAI: return String(localized: "Sends text and dictation context to OpenAI")
+    case .gemini: return String(localized: "Sends text and dictation context to Google")
+    case .claude: return String(localized: "Sends text and dictation context to Anthropic")
+    case .none, .egOne, .s1Mini, .appleIntelligence, .ollama: return ""
+    }
+  }
+
+  static let cloudModelShort = String(localized: "Choose the model used to polish your text")
+  static let cloudModelHelp = String(localized: "Models come from your provider account. Save your API key to discover them. Unavailable models cannot be selected.")
+  static let ollamaModelShort = String(localized: "Choose a model on this Mac or hosted by Ollama")
+  static let ollamaModelHelp = String(localized: "Local and hosted models are listed separately. Prepare applies only to a local model used for dictation.")
+}
+
 struct ProviderSetupSection: View {
   /// Which hole in the host's layout this instance fills. See the type's note: the two are
   /// not adjacent, so they cannot be one view.
@@ -318,6 +349,7 @@ struct ProviderSetupSection: View {
   /// Which screen's choice this instance edits. Defaults to dictation so every existing
   /// call site keeps its behaviour without restating it.
   var surface: ProviderSetupSurface = .dictation
+  @FocusState private var keyFieldFocused: Bool
 
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
@@ -501,20 +533,47 @@ struct ProviderSetupSection: View {
     }
   }
 
-  /// Rail + detail as the two-column master-detail from the approved mockup:
-  /// a fixed-width rail on the left, the selected engine's detail on the right.
-  /// Always side-by-side (no `HSplitView`, which clips under width pressure —
-  /// `hsplitview-never-compresses`); the detail column flexes for wider windows.
-  ///
-  /// At the settings window's 710pt minimum the usable content width is smaller
-  /// than the window (the ~200pt NavigationSplitView sidebar + divider and the
-  /// SettingsContentView horizontal padding come off the top), so the detail
-  /// column is compact but still functional there; it opens up as the window
-  /// widens. The rail is intentionally narrow to hand the detail as much of
-
+  /// Dictation uses compact rows; file transcription keeps its original cards.
+  /// Both presentations consume the same action, state and lifecycle owners.
   @ViewBuilder
   private var providerDetailPane: some View {
-    @Bindable var settings = settings
+    switch surface {
+    case .dictation:
+      compactProviderDetail
+    case .fileImport:
+      legacyProviderDetail
+    }
+  }
+
+  private var compactProviderDetail: some View {
+    BrandedSection {
+      BrandedRow {
+        SettingsRow(
+          icon: "sparkles", resolvedTitle: PolishRailCatalog.entry(for: provider)?.name ?? provider.displayName,
+          resolvedShort: ProviderCompactCopy.short(for: provider),
+          helpContent: { providerExplainer }, control: { EmptyView() }
+        )
+        .rowStatus { ProviderStatusChip(status: currentProviderStatus) }
+      }
+      BrandedRow {
+        providerSubConfig
+      }
+      if S1ControlCardVisibility.shows(provider: provider, effectiveModel: surfaceEffectiveModel) {
+        BrandedRow { s1ControlRows }
+      }
+      if showModelSection {
+        BrandedRow(showDivider: false) { modelSelectorRow }
+      }
+      BrandedRow(showDivider: false) {
+        FrozenPerRecordingFootnote(text: frozenSettingsFootnote)
+      }
+    }
+    .environment(\.settingsPR1Density, true)
+  }
+
+  /// Transcribe a File retains the original cards and explanation layout.
+  @ViewBuilder
+  private var legacyProviderDetail: some View {
     VStack(alignment: .leading, spacing: 14) {
       if let entry = PolishRailCatalog.entry(for: provider) {
         ProviderDetailHeader(entry: entry, status: currentProviderStatus)
@@ -641,12 +700,16 @@ struct ProviderSetupSection: View {
           destination: URL(string: "https://platform.openai.com/api-keys")!
         )
         .font(.stHelper)
+        .fixedSize(horizontal: false, vertical: surface == .dictation)
       } else if provider == .gemini {
         Link(
           "Get your free API key at aistudio.google.com",
           destination: URL(string: "https://aistudio.google.com/apikey")!
         )
         .font(.stHelper)
+        .fixedSize(horizontal: false, vertical: surface == .dictation)
+      } else if provider == .claude, surface == .dictation {
+        claudeKeyLink
       }
     }
     if provider == .ollama {
@@ -703,6 +766,31 @@ struct ProviderSetupSection: View {
   @ViewBuilder
   private var s1ControlRows: some View {
     @Bindable var settings = settings
+    if surface == .dictation {
+      VStack(alignment: .leading, spacing: 12) {
+        SettingsRow(icon: "textformat", resolvedTitle: S1ControlCopy.stylingLabel,
+          resolvedShort: S1ControlCopy.stylingShort, helpContent: {
+            Text(S1ControlCopy.intro(for: surface)).settingsReadingCopy()
+            Text(S1ControlCopy.stylingHint).settingsReadingCopy()
+          }, control: {
+            Picker(S1ControlCopy.stylingLabel, selection: $settings.s1MiniStyling) {
+              ForEach(S1Styling.allCases, id: \.self) { Text(S1ControlCopy.label(for: $0)).tag($0) }
+            }.labelsHidden().pickerStyle(.menu)
+          })
+        SettingsRow(icon: "list.bullet", resolvedTitle: S1ControlCopy.structureLabel,
+          resolvedShort: S1ControlCopy.structureShort, resolvedHelp: S1ControlCopy.structureHint) {
+            Picker(S1ControlCopy.structureLabel, selection: $settings.s1MiniStructure) {
+              ForEach(S1Structure.allCases, id: \.self) { Text(S1ControlCopy.label(for: $0)).tag($0) }
+            }.labelsHidden().pickerStyle(.menu)
+          }
+        SettingsRow(icon: "envelope", resolvedTitle: S1ControlCopy.contextLabel,
+          resolvedShort: S1ControlCopy.contextShort, resolvedHelp: S1ControlCopy.contextHint) {
+            Picker(S1ControlCopy.contextLabel, selection: $settings.s1MiniContext) {
+              ForEach(S1Context.allCases, id: \.self) { Text(S1ControlCopy.label(for: $0)).tag($0) }
+            }.labelsHidden().pickerStyle(.menu)
+          }
+      }
+    } else {
     VStack(alignment: .leading, spacing: 14) {
       Text(S1ControlCopy.intro(for: surface))
         .settingsReadingCopy()
@@ -731,77 +819,99 @@ struct ProviderSetupSection: View {
         Text(S1ControlCopy.contextHint).font(.stHelper).foregroundStyle(.stTextSecondary)
       }
     }
+    }
   }
 
   /// The model picker row (cloud + Ollama), lifted into the detail column.
   @ViewBuilder
   private var modelSelectorRow: some View {
-    @Bindable var settings = settings
-    HStack {
-      Picker("Model", selection: surfaceModelBinding) {
-        if surfaceDiscoveredModels.isEmpty
-          && !surfaceIsDiscovering
-        {
-          Text(
-            surfaceCloudModel.isEmpty
-              ? (provider == .ollama
-                ? String(
-                  localized: "No models found",
-                  comment: "AI Polish model picker: Ollama has no models downloaded.")
-                : String(
-                  localized: "Save API key to discover models",
-                  comment:
-                    "AI Polish model picker: a cloud provider's models appear after its key is saved."
-                ))
-              : surfaceCloudModel
-          )
-          .tag(surfaceCloudModel)
-        }
-
-        // #1914: models exist and none is armed. Without a row carrying the
-        // empty tag the Picker has no selection to render and simply draws
-        // blank, which reads as broken rather than as a state the user can act
-        // on. This is the settings-side half of the "no polish model selected"
-        // pill: the notice says it during dictation, this says it at rest.
-        //
-        // Mutually exclusive with the branch above, which already emits an
-        // empty-tagged row when discovery came back empty. Two rows sharing one
-        // tag would make the Picker's selection ambiguous.
-        if !surfaceDiscoveredModels.isEmpty && surfaceCloudModel.isEmpty {
-          Text("No model selected").tag("")
-        }
-
-        modelPickerSections
-      }
-
-      // #1914: warm-up is a LOCAL-memory operation, so for a hosted model the
-      // whole control is meaningless — its button would issue no request and its
-      // states can never be reached. Hiding it is honest; leaving a dead
-      // "Prepare Model" affordance on screen is the kind of control that teaches
-      // users the app is unreliable.
-      // #2772: DICTATION only, same rule as the bundled-engine probe. Warm-up loads a model
-      // into the daemon's memory and cancels any other model's pending warm-up, so an import
-      // page browsing Ollama models would evict the one dictation is about to use. The
-      // import's run loads its own model when it starts.
-      if surface == .dictation, provider == .ollama, !selectedOllamaModelIsRemote {
-        ollamaWarmupIndicator
-      } else if surfaceIsDiscovering {
-        ProgressView()
-          .controlSize(.small)
-      } else {
-        Button {
-          Task {
-            await llmDiscovery.validateKeyAndDiscoverModels(
-              provider: provider, settings: settings, surface: surface)
+    if surface == .dictation {
+      VStack(alignment: .leading, spacing: 8) {
+        SettingsRow(icon: "cpu", resolvedTitle: String(localized: "Model"),
+          resolvedShort: provider == .ollama ? ProviderCompactCopy.ollamaModelShort : ProviderCompactCopy.cloudModelShort,
+          resolvedHelp: provider == .ollama ? ProviderCompactCopy.ollamaModelHelp : ProviderCompactCopy.cloudModelHelp
+        ) {
+          VStack(alignment: .leading, spacing: 8) {
+            modelPicker.labelsHidden().frame(maxWidth: .infinity)
+            modelPickerActions
           }
-        } label: {
-          Image(systemName: "arrow.clockwise")
-            .settingsHoverQuiet()
+          .frame(minWidth: 160)
         }
-        .buttonStyle(.borderless)
-        .help("Refresh available models")
-        .accessibilityLabel("Refresh available models")
       }
+    } else {
+      HStack { modelPicker; modelPickerActions }
+    }
+  }
+
+  private var modelPicker: some View {
+    Picker("Model", selection: surfaceModelBinding) {
+      if surfaceDiscoveredModels.isEmpty
+        && !surfaceIsDiscovering
+      {
+        Text(
+          surfaceCloudModel.isEmpty
+            ? (provider == .ollama
+              ? String(
+                localized: "No models found",
+                comment: "AI Polish model picker: Ollama has no models downloaded.")
+              : String(
+                localized: "Save API key to discover models",
+                comment:
+                  "AI Polish model picker: a cloud provider's models appear after its key is saved."
+              ))
+            : surfaceCloudModel
+        )
+        .tag(surfaceCloudModel)
+      }
+
+      // #1914: models exist and none is armed. Without a row carrying the
+      // empty tag the Picker has no selection to render and simply draws
+      // blank, which reads as broken rather than as a state the user can act
+      // on. This is the settings-side half of the "no polish model selected"
+      // pill: the notice says it during dictation, this says it at rest.
+      //
+      // Mutually exclusive with the branch above, which already emits an
+      // empty-tagged row when discovery came back empty. Two rows sharing one
+      // tag would make the Picker's selection ambiguous.
+      if !surfaceDiscoveredModels.isEmpty && surfaceCloudModel.isEmpty {
+        Text("No model selected").tag("")
+      }
+
+      modelPickerSections
+    }
+
+  }
+
+  @ViewBuilder
+  private var modelPickerActions: some View {
+
+    // #1914: warm-up is a LOCAL-memory operation, so for a hosted model the
+    // whole control is meaningless — its button would issue no request and its
+    // states can never be reached. Hiding it is honest; leaving a dead
+    // "Prepare Model" affordance on screen is the kind of control that teaches
+    // users the app is unreliable.
+    // #2772: DICTATION only, same rule as the bundled-engine probe. Warm-up loads a model
+    // into the daemon's memory and cancels any other model's pending warm-up, so an import
+    // page browsing Ollama models would evict the one dictation is about to use. The
+    // import's run loads its own model when it starts.
+    if surface == .dictation, provider == .ollama, !selectedOllamaModelIsRemote {
+      ollamaWarmupIndicator
+    } else if surfaceIsDiscovering {
+      ProgressView()
+        .controlSize(.small)
+    } else {
+      Button {
+        Task {
+          await llmDiscovery.validateKeyAndDiscoverModels(
+            provider: provider, settings: settings, surface: surface)
+        }
+      } label: {
+        Image(systemName: "arrow.clockwise")
+          .settingsHoverQuiet()
+      }
+      .buttonStyle(.borderless)
+      .help("Refresh available models")
+      .accessibilityLabel("Refresh available models")
     }
   }
 
@@ -935,53 +1045,71 @@ struct ProviderSetupSection: View {
   @ViewBuilder
   private var apiKeyRow: some View {
     let descriptor = activeKeyDescriptor
-    VStack(alignment: .leading, spacing: 6) {
-      Text(descriptor.label)
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-      HStack(spacing: 8) {
-        SecureField(descriptor.placeholder, text: activeKeyBinding)
-          .textFieldStyle(.roundedBorder)
-          .accessibilityLabel(descriptor.accessibilityLabel)
-          .onChange(of: activeKeyBinding.wrappedValue) { _, _ in
-            dismissStaleFailureStatus()
+    if surface == .dictation {
+      VStack(alignment: .leading, spacing: 8) {
+        SettingsRow(icon: "key", resolvedTitle: descriptor.label,
+          resolvedShort: ProviderCompactCopy.keyShort(for: provider),
+          resolvedHelp: descriptor.privacySentence) {
+          VStack(alignment: .leading, spacing: 8) {
+            keyField.settingsFieldChrome(focused: $keyFieldFocused)
+            validationBadge
+            HStack(spacing: 8) { apiKeyActions }
           }
-
-        validationBadge
-
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Save", comment: "AI Polish: button that saves the API key."),
-          isEnabled: !activeKeyBinding.wrappedValue.isEmpty, emphasis: .filled
-        ) {
-          let provider = provider
-          let key = activeKeyBinding.wrappedValue
-          guard saveKey(key: key, keychainId: descriptor.keychainId) else { return }
-          setKeySaved(!key.isEmpty)
-          Task {
-            await llmDiscovery.validateKeyAndDiscoverModels(
-              provider: provider, settings: settings, surface: surface, source: .save)
-          }
-        }
-
-        // Save genuinely disables on an empty field and Clear destroys a stored
-        // key, and on this page the system styles drew both, plus the enabled
-        // Save, in the same grey. The red `foregroundStyle` on Clear was the
-        // only thing separating a destructive action from an inert one.
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Clear", comment: "AI Polish: button that deletes the saved API key."),
-          isEnabled: true, emphasis: .destructive
-        ) {
-          guard clearKey(keychainId: descriptor.keychainId) else { return }
-          activeKeyBinding.wrappedValue = ""
-          setKeySaved(false)
-          llmDiscovery.reset()
+          .frame(minWidth: 160)
         }
       }
+    } else {
+      VStack(alignment: .leading, spacing: 6) {
+        Text(descriptor.label).font(.stHelper).foregroundStyle(Color.stTextSecondary)
+        HStack(spacing: 8) { apiKeyField; validationBadge; apiKeyActions }
+        Text(descriptor.privacySentence).settingsReadingCopy()
+      }
+    }
+  }
 
-      Text(descriptor.privacySentence)
-        .settingsReadingCopy()
+  private var apiKeyField: some View { keyField.textFieldStyle(.roundedBorder) }
+
+  @ViewBuilder
+  private var keyField: some View {
+    let descriptor = activeKeyDescriptor
+    SecureField(descriptor.placeholder, text: activeKeyBinding)
+      .accessibilityLabel(descriptor.accessibilityLabel)
+      .onChange(of: activeKeyBinding.wrappedValue) { _, _ in
+        dismissStaleFailureStatus()
+      }
+  }
+
+  @ViewBuilder
+  private var apiKeyActions: some View {
+    let descriptor = activeKeyDescriptor
+    SettingsActionButton(
+      title: LocalizedStringResource(
+        "Save", comment: "AI Polish: button that saves the API key."),
+      isEnabled: !activeKeyBinding.wrappedValue.isEmpty, emphasis: .filled
+    ) {
+      let provider = provider
+      let key = activeKeyBinding.wrappedValue
+      guard saveKey(key: key, keychainId: descriptor.keychainId) else { return }
+      setKeySaved(!key.isEmpty)
+      Task {
+        await llmDiscovery.validateKeyAndDiscoverModels(
+          provider: provider, settings: settings, surface: surface, source: .save)
+      }
+    }
+
+    // Save genuinely disables on an empty field and Clear destroys a stored
+    // key, and on this page the system styles drew both, plus the enabled
+    // Save, in the same grey. The red `foregroundStyle` on Clear was the
+    // only thing separating a destructive action from an inert one.
+    SettingsActionButton(
+      title: LocalizedStringResource(
+        "Clear", comment: "AI Polish: button that deletes the saved API key."),
+      isEnabled: true, emphasis: .destructive
+    ) {
+      guard clearKey(keychainId: descriptor.keychainId) else { return }
+      activeKeyBinding.wrappedValue = ""
+      setKeySaved(false)
+      llmDiscovery.reset()
     }
   }
 
@@ -1238,12 +1366,17 @@ struct ProviderSetupSection: View {
       )
       .settingsReadingCopy()
 
-      Link(
-        "Get your Claude API key",
-        destination: URL(string: "https://platform.claude.com/settings/keys")!
-      )
-      .font(.stHelper)
+      if surface == .fileImport { claudeKeyLink }
     }
+  }
+
+  private var claudeKeyLink: some View {
+    Link(
+      "Get your Claude API key",
+      destination: URL(string: "https://platform.claude.com/settings/keys")!
+    )
+    .font(.stHelper)
+    .fixedSize(horizontal: false, vertical: surface == .dictation)
   }
 
   @ViewBuilder
@@ -1260,7 +1393,7 @@ struct ProviderSetupSection: View {
       .settingsReadingCopy()
 
       Text(
-        "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed."
+        "Requires macOS 26 or later. On earlier versions, Apple Intelligence polish is skipped. Your text still gets the usual cleanup."
       )
       .settingsReadingCopy()
     }
@@ -1545,20 +1678,13 @@ struct ProviderSetupSection: View {
   private var appleIntelligenceStatus: some View {
     // The "no internet or API key" pitch lives in the "Why use Apple
     // Intelligence" card now (#1286); this card is just the status row.
-    HStack {
-      Text("Status:")
-      Spacer()
-      aiStatusLabel
-      Button {
-        aiAvailability.debouncedCheck()
-      } label: {
-        Image(systemName: "arrow.clockwise")
-          .settingsHoverQuiet()
+    if surface == .dictation {
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 8) { appleStatusControls.fixedSize() }
+        VStack(alignment: .leading, spacing: 8) { appleStatusControls }
       }
-      .buttonStyle(.borderless)
-      .disabled(aiAvailability.isChecking)
-      .help("Check Apple Intelligence availability")
-      .accessibilityLabel("Check Apple Intelligence availability")
+    } else {
+      HStack { appleStatusControls }
     }
 
     // Which Apple on-device model is running, and its live shared capacity
@@ -1596,6 +1722,24 @@ struct ProviderSetupSection: View {
         aiDebugSection(report: report)
       }
     #endif
+  }
+
+  @ViewBuilder
+  private var appleStatusControls: some View {
+
+    Text("Status:")
+    if surface == .fileImport { Spacer() }
+    aiStatusLabel
+    Button {
+      aiAvailability.debouncedCheck()
+    } label: {
+      Image(systemName: "arrow.clockwise")
+        .settingsHoverQuiet()
+    }
+    .buttonStyle(.borderless)
+    .disabled(aiAvailability.isChecking)
+    .help("Check Apple Intelligence availability")
+    .accessibilityLabel("Check Apple Intelligence availability")
   }
 
   @ViewBuilder
