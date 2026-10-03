@@ -639,8 +639,19 @@ def _item_names(ax, title, name):
     return t.startswith(prefix) and t[len(prefix):].strip().lower() in _lowered(ax, TRANSPORT_BADGES)
 
 
+# The control's own list of choices: an AXPopover of AXButtons since founder 2026-10-03 (the
+# mockup's menu); a native AXMenu of AXMenuItems before. Both are read the same way.
+_MENU_ROLES = ("AXMenu", "AXPopover")
+_ITEM_ROLES = ("AXMenuItem", "AXButton")
+
+
 def _own_menu(ax, control):
-    return next((k for k in (ax.children(control) or []) if ax.role(k) == "AXMenu"), None)
+    return next((k for k in (ax.children(control) or []) if ax.role(k) in _MENU_ROLES), None)
+
+
+def _item_title(ax, item):
+    """An item's title: a menu item's AXTitle, or a popover button's name."""
+    return ax.text(item, "AXTitle") or next(iter(ax.label_names(item)), "")
 
 
 def _open_menu(ax, root_of, timeout, cancel):
@@ -656,7 +667,7 @@ def _open_menu(ax, root_of, timeout, cancel):
     wait_until(ax, lambda: _own_menu(ax, input_control(ax, root_of())) is not None, timeout,
                "the input menu open")
     menu = _own_menu(ax, input_control(ax, root_of()))
-    return menu, [i for i in ax.walk(menu) if ax.role(i) == "AXMenuItem"]
+    return menu, [i for i in ax.walk(menu) if ax.role(i) in _ITEM_ROLES]
 
 
 def _menu_titles(ax, root_of, timeout, cancel):
@@ -667,7 +678,7 @@ def _menu_titles(ax, root_of, timeout, cancel):
                               "cancel was given to close it again")
     menu, items = _open_menu(ax, root_of, timeout, cancel)
     try:
-        return [ax.text(i, "AXTitle") for i in items]
+        return [_item_title(ax, i) for i in items]
     finally:
         cancel(menu)
         wait_until(ax, lambda: _own_menu(ax, input_control(ax, root_of())) is None, timeout,
@@ -753,14 +764,14 @@ def select_input(ax, root_of, read_uid, auto, name=None, uid=None, timeout=5.0, 
     menu, items = _open_menu(ax, root_of, timeout, cancel)
     if auto:
         autos = _lowered(ax, ["Auto"])
-        hits = [i for i in items if ax.text(i, "AXTitle").lower() in autos]
+        hits = [i for i in items if _item_title(ax, i).lower() in autos]
     else:
-        hits = [i for i in items if _item_names(ax, ax.text(i, "AXTitle"), name)]
+        hits = [i for i in items if _item_names(ax, _item_title(ax, i), name)]
     if len(hits) != 1:
         if cancel is not None:
             cancel(menu)
         raise NavigationError(f"refusing: {len(hits)} menu items match "
-                              f"{'Auto' if auto else name!r} in {[ax.text(i, 'AXTitle') for i in items]}")
+                              f"{'Auto' if auto else name!r} in {[_item_title(ax, i) for i in items]}")
     ax.press(hits[0])
     result = {}
 
