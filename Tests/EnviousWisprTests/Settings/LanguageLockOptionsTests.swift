@@ -320,7 +320,7 @@ struct LanguageLockOptionsTests {
       return
     }
     // Claim an installed pack for a language the fast engine does NOT claim.
-    let unclaimed = LanguageCatalog.sortedByEnglishName
+    let unclaimed = LanguageCatalog.all
       .map(\.code).first { !parakeet.contains($0) }
     guard let unclaimed else {
       Issue.record("expected at least one catalogue code outside Parakeet's set")
@@ -351,7 +351,7 @@ struct LanguageLockOptionsTests {
   /// exists to prevent, one step later. This fails the build instead.
   @Test("Every pack-tag alias resolves to a code the catalogue actually carries")
   func aliasesResolveToRealCatalogueCodes() {
-    let catalogue = Set(LanguageCatalog.sortedByEnglishName.map(\.code))
+    let catalogue = Set(LanguageCatalog.all.map(\.code))
     #expect(catalogue.count > 50, "control: the catalogue was found and parsed")
     for (packSubtag, catalogueCode) in LanguageLockOptions.packTagAliases {
       #expect(

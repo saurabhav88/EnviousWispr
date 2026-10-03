@@ -374,15 +374,6 @@ struct RecordingPillPreviewTile: View {
   /// silently cropping a pill.
   static let maxMagnification: CGFloat = 1.4
 
-  /// What this design's pill measures ON THE CARD, after its own scale.
-  ///
-  /// Kept as a function rather than read off the rendered view because a test
-  /// can hold the RELATION — the widest design fills the box, the others are
-  /// proportionally narrower — without hosting anything.
-  static func thumbnailWidth(for design: RecordingPillDesign) -> CGFloat {
-    design.width * scale(for: design, inWidth: thumbnailSize.width)
-  }
-
   /// What the pill inside the tile is shown SAYING.
   ///
   /// **Keyed off `canHoldWords`, so the panel names no design.** A design added

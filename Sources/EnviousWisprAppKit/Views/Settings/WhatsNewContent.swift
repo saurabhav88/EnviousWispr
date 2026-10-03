@@ -2192,25 +2192,4 @@ enum WhatsNewContent {
     ),
   ]
 
-  /// All distinct versions in the entries, sorted newest first.
-  static var versions: [String] {
-    let unique = Set(entries.map(\.version))
-    return unique.sorted { lhs, rhs in
-      lhs.compare(rhs, options: .numeric) == .orderedDescending
-    }
-  }
-
-  /// Entries grouped by version (newest first). Within a version, entries render in
-  /// SOURCE ORDER: the author controls the sequence by where they place the `Entry`
-  /// in `entries`.
-  ///
-  /// There is no category tier. Each entry is its own titled card, so this order IS
-  /// the hierarchy the user reads, in the app and in the generated GitHub release
-  /// notes alike. Nothing re-sorts or groups it. Author each version
-  /// headline-feature-first: the first entry is that release's pitch.
-  static var entriesByVersion: [(version: String, entries: [Entry])] {
-    versions.map { version in
-      (version, entries.filter { $0.version == version })
-    }
-  }
 }

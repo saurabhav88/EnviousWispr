@@ -425,57 +425,6 @@ enum LivePreviewSettingsCopy {
       "Live Preview settings: language provenance detected. A caption under the language: where it came from."
   )
 
-  /// **The universal engine follows a LOCK, and only auto-detects on Auto.**
-  /// `WhisperPreviewEngineResolver` maps `.locked(code)` straight through to the
-  /// recognizer and only `.auto` becomes nil. An earlier draft of this page hid
-  /// the language control entirely on that engine, and the help article claimed
-  /// it always detects for itself — both wrong in the same direction, and the
-  /// user they stranded is the one locked to the wrong language with no way to
-  /// see or change it from here. Cloud/local review r7.
-  static func universalLocked(_ name: String) -> String {
-    String(
-      localized: "Your words will appear in \(name).",
-      comment: "Live Preview settings: the preview's language. %@ is the language's name.")
-  }
-  static let universalAuto = String(
-    localized: "The preview detects your language as you speak.",
-    comment: "Live Preview settings: universal auto.")
-
-  /// **Paused variants. The row must DESCRIBE the configuration, never promise
-  /// output, whenever the engine is refused.**
-  ///
-  /// `WhisperPreviewEngineResolver` returns `.blocked(.heartIsStreaming)` before
-  /// it asks anything else, so with Faster Transcription streaming the universal
-  /// preview will not run at all. The hero card reports that correctly. The row
-  /// below it did not: it went on saying "Your words will appear in German" and
-  /// "The preview detects your language as you speak" while nothing would appear
-  /// and nothing was being detected, so one page stated a fact and denied it a
-  /// few points lower. Cloud review r8.
-  ///
-  /// The split is present tense versus configuration. "Will appear" and
-  /// "detects" are claims about what is happening NOW and only the resolver can
-  /// license them; "is set to" is a claim about what the user chose, which stays
-  /// true while paused and is exactly what the row exists to show — a user
-  /// locked to the wrong language needs to SEE that lock most when the preview
-  /// is not running to reveal it.
-  ///
-  /// Scoped to the universal engine deliberately. Apple's route cannot be
-  /// blocked this way (`LivePreviewPacksModel` documents that refusal as
-  /// unreachable for it), so `activeReady` keeps its promise and must not be
-  /// "fixed" to match. Ref: live-preview.md RULE:
-  /// the-status-card-may-only-claim-what-its-inputs-prove.
-  static func universalLockedPaused(_ name: String) -> String {
-    String(
-      localized: "The preview is set to \(name).",
-      comment:
-        "Live Preview settings: the preview's chosen language while it is paused. %@ is the language's name."
-    )
-  }
-  static let universalAutoPaused =
-    String(
-      localized: "The preview is set to detect your language as you speak.",
-      comment: "Live Preview settings: universal auto paused.")
-
   /// Says the consequence out loud. Picking a language here is not a
   /// preview-only setting: it sets the DICTATION language, on a different page.
   /// A button that silently edits another page's setting is how a user loses

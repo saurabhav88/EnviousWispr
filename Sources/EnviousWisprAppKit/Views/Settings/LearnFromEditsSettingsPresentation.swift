@@ -95,9 +95,9 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .download
-    case (.unavailable, .downloading(let fraction, let written, let total)):
+    case (.unavailable, .downloading(_, let written, let total)):
       isEnabled = false
-      secondaryLine = Self.downloadingLine(fraction: fraction, written: written, total: total)
+      secondaryLine = Self.downloadingLine(written: written, total: total)
       action = .cancel
     case (.unavailable, .verifying):
       isEnabled = false
@@ -204,7 +204,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
     }
   }
 
-  static func downloadingLine(fraction: Double, written: Int64, total: Int64) -> String {
+  static func downloadingLine(written: Int64, total: Int64) -> String {
     guard total > 0 else {
       return String(
         localized: "Downloading the correction model",

@@ -103,11 +103,6 @@ struct LivePreviewSettingsEnglishTests {
     #expect(LivePreviewSettingsCopy.languageProvenanceUserPicked == "you picked this")
     #expect(LivePreviewSettingsCopy.languageProvenanceDetected == "no language pinned")
     #expect(
-      LivePreviewSettingsCopy.universalAuto == "The preview detects your language as you speak.")
-    #expect(
-      LivePreviewSettingsCopy.universalAutoPaused
-        == "The preview is set to detect your language as you speak.")
-    #expect(
       LivePreviewSettingsCopy.pickerAppleCaveat
         == "This changes dictation too, not just the preview. On Automatic, dictation follows what you speak, but the preview must pick one language up front and uses your Mac's."
     )
@@ -120,10 +115,6 @@ struct LivePreviewSettingsEnglishTests {
         == "German isn't downloaded yet. Open Settings to download it.")
     #expect(
       LivePreviewSettingsCopy.statusNeedsLanguageLabel("German") == "German isn't downloaded yet")
-    #expect(
-      LivePreviewSettingsCopy.universalLocked("German") == "Your words will appear in German.")
-    #expect(
-      LivePreviewSettingsCopy.universalLockedPaused("German") == "The preview is set to German.")
   }
 
   @Test("every preview-engine entry keeps its English")
@@ -154,9 +145,4 @@ struct LivePreviewSettingsEnglishTests {
         == "This version of EnviousWispr cannot run that preview engine.")
   }
 
-  @Test("the language list keeps its two group headings")
-  func packGroups() {
-    #expect(LivePreviewPackPresentation.installedGroupTitle == "On this Mac")
-    #expect(LivePreviewPackPresentation.availableGroupTitle == "Available to download")
-  }
 }

@@ -24,7 +24,6 @@ struct WhatsNewMenuPresentation {
     let description: String
     /// Sub-points under the description (#2484), localized like the rest.
     let bullets: [String]
-    let version: String
   }
 
   static func entries(
@@ -36,7 +35,7 @@ struct WhatsNewMenuPresentation {
       let display = WhatsNewLocalizedDisplay(entry, bundle: bundle)
       return ReleaseEntry(
         id: entry.id, icon: entry.icon, title: display.title, description: display.description,
-        bullets: display.bullets, version: entry.version)
+        bullets: display.bullets)
     }
   }
 

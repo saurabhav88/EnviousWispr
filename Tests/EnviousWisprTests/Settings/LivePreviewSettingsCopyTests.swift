@@ -77,10 +77,6 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.pickerAppleCaveat,
       LivePreviewSettingsCopy.pickerUniversalCaveat,
       LivePreviewSettingsCopy.catalogNothingToInstall,
-      LivePreviewSettingsCopy.universalAuto,
-      // r8: paused variants, which must describe rather than promise.
-      LivePreviewSettingsCopy.universalLockedPaused("German"),
-      LivePreviewSettingsCopy.universalAutoPaused,
       LivePreviewCopy.needsNewerMacOS,
       LivePreviewCopy.languageUnsupported,
       LivePreviewCopy.notReady,
@@ -449,19 +445,4 @@ struct LivePreviewSettingsCopyTests {
   // Deleted by #2436 with the universal language row it guarded; see
   // LivePreviewStatusMappingTests for why the replacement is stronger.
 
-  /// The paused strings must still NAME the language, because the row exists so a
-  /// user locked to the wrong one can see it. Silencing the row while paused would
-  /// hide the setting exactly when the preview is not running to reveal it.
-  @Test("Paused copy still names the configured language and claims no output")
-  func pausedCopyDescribesWithoutPromising() {
-    let paused = LivePreviewSettingsCopy.universalLockedPaused("German")
-    #expect(paused.contains("German"), "the paused label must still name the lock: \(paused)")
-    for promise in ["will appear", "detects your language"] {
-      for string in [paused, LivePreviewSettingsCopy.universalAutoPaused] {
-        #expect(
-          !string.lowercased().contains(promise),
-          "paused copy must not promise output: \(string)")
-      }
-    }
-  }
 }

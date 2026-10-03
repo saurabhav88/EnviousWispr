@@ -123,14 +123,8 @@ enum LanguageCatalog {
     return Entry(code: code, nativeName: code.uppercased(), verbatimEnglishName: code.uppercased())
   }
 
-  /// Every accepted Whisper language, sorted alphabetically by English name.
-  static let sortedByEnglishName: [Entry] = all.sorted { lhs, rhs in
-    lhs.englishName.localizedCaseInsensitiveCompare(rhs.englishName) == .orderedAscending
-  }
-
   /// Every accepted Whisper language in the order the picker shows it: by the name the screen
-  /// shows, compared in the interface language, with the code breaking a tie. In English this is
-  /// exactly `sortedByEnglishName` (#3142).
+  /// shows, compared in the interface language, with the code breaking a tie (#3142).
   static let sortedForDisplay: [Entry] = all.sorted { lhs, rhs in
     switch lhs.displayName.compare(
       rhs.displayName, options: [.caseInsensitive], range: nil, locale: displayLocale)
@@ -148,7 +142,7 @@ enum LanguageCatalog {
   }
 
   /// Every language accepted by the Whisper path. Order here is not
-  /// significant; the UI sorts via `sortedByEnglishName`.
+  /// significant; the UI sorts via `sortedForDisplay`.
   static let all: [Entry] = [
     Entry(
       code: "af", nativeName: "Afrikaans",

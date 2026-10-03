@@ -228,7 +228,8 @@ struct RecordingPillTileTests {
   /// literal instead of derived.
   @Test("no pill overflows its thumbnail", arguments: RecordingPillDesign.allCases)
   func noPillOverflowsItsThumbnail(design: RecordingPillDesign) {
-    let drawn = RecordingPillPreviewTile.thumbnailWidth(for: design)
+    let drawn = design.width * RecordingPillPreviewTile.scale(
+      for: design, inWidth: RecordingPillPreviewTile.thumbnailSize.width)
     let box = RecordingPillPreviewTile.thumbnailSize.width
 
     #expect(drawn > 0, "\(design) scaled to \(drawn), so nothing is drawn")
@@ -267,12 +268,14 @@ struct RecordingPillTileTests {
     let widest = RecordingPillDesign.allCases.max(by: { $0.width < $1.width })
     let widestDesign = try! #require(widest, "no designs, so the row has no subject")
 
+    let drawn = widestDesign.width * RecordingPillPreviewTile.scale(
+      for: widestDesign, inWidth: RecordingPillPreviewTile.thumbnailSize.width)
     #expect(
       abs(
-        RecordingPillPreviewTile.thumbnailWidth(for: widestDesign)
+        drawn
           - RecordingPillPreviewTile.thumbnailSize.width) < 0.01,
       """
-      the widest design draws \(RecordingPillPreviewTile.thumbnailWidth(for: widestDesign)) \
+      the widest design draws \(drawn) \
       into a \(RecordingPillPreviewTile.thumbnailSize.width) box. It should fill it: if it \
       does not, every other preview is smaller than it needed to be.
       """)

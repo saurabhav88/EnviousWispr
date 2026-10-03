@@ -301,19 +301,6 @@ extension SettingsRow where HelpContent == SettingsHelpText {
 }
 
 extension SettingsRow {
-  /// Help that needs more than one paragraph (a table, a list, a link).
-  init(
-    icon: String,
-    title: LocalizedStringResource,
-    short: LocalizedStringResource,
-    @ViewBuilder helpContent: () -> HelpContent,
-    @ViewBuilder control: () -> Control
-  ) {
-    self.init(
-      icon: icon, resolvedTitle: String(localized: title), resolvedShort: String(localized: short),
-      helpContent: helpContent, control: control)
-  }
-
   /// Structured help under a name that is already translated (a copy owner that
   /// resolves its own string). Never pass an untranslated literal here.
   init(
@@ -960,14 +947,6 @@ extension BrandedSection where Footer == EmptyView {
     self.footer = EmptyView()
   }
 
-  init(
-    verbatimHeader: String,
-    @ViewBuilder content: () -> Content
-  ) {
-    self.header = verbatimHeader
-    self.content = content()
-    self.footer = EmptyView()
-  }
 }
 
 // MARK: - Branded Panel (header-inside-card)
@@ -1422,47 +1401,6 @@ extension View {
       fixedSize(horizontal: true, vertical: false)
     } else {
       self
-    }
-  }
-}
-
-// MARK: - Branded Status Row
-
-/// Green checkmark / red X status indicator for permission-style rows.
-struct BrandedStatusRow: View {
-  let isGranted: Bool
-  /// Typed so a caller's literals are extracted into the catalog (#3142).
-  let grantedText: LocalizedStringResource
-  let deniedText: LocalizedStringResource
-  var helperText: LocalizedStringResource? = nil
-  var actionLabel: LocalizedStringResource? = nil
-  var action: (() -> Void)? = nil
-
-  var body: some View {
-    HStack {
-      Image(systemName: isGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
-        .foregroundStyle(isGranted ? Color.stToggleOn : .stError)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(isGranted ? grantedText : deniedText)
-        if let helperText, !isGranted {
-          Text(helperText)
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-        }
-      }
-
-      Spacer()
-
-      if !isGranted, let actionLabel, let action {
-        // The whole Permissions page is two of these rows, so this button is
-        // that page's only control -- and the persona it exists for is someone
-        // who came here because dictation stopped working. On the system style
-        // it rendered as grey text beside a red X, which is a poor thing for
-        // "Open System Settings" to look like.
-        SettingsActionButton(
-          title: actionLabel, isEnabled: true, emphasis: .filled, action: action)
-      }
     }
   }
 }
