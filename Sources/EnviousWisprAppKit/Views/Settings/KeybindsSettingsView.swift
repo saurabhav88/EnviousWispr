@@ -2,396 +2,146 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// Global hotkey configuration, laid out as a short setup flow (mockup #26):
-/// pick a recording mode from two selectable cards, set the record key, then the
-/// cancel key. The mode cards mirror the transcription-engine cards so the two
-/// selectors read as one family; the hotkeys render as big edit buttons.
+/// Two compact sections; shortcut persistence and capture remain with their existing owners.
 struct KeybindsSettingsView: View {
   @Environment(SettingsManager.self) private var settings
-  @State private var showGlobeGuidance = false
-  /// Where keyboard and VoiceOver focus must return when the guidance closes.
-  @AccessibilityFocusState private var guidanceReturnFocus: Bool
-  @FocusState private var recordingKeybindFocused: Bool
-
-  /// Single dismissal path: closing the guidance ALWAYS returns focus to the
-  /// control the user was operating, whichever way it was closed.
-  private func dismissGlobeGuidance() {
-    showGlobeGuidance = false
-    recordingKeybindFocused = true
-    guidanceReturnFocus = true
-  }
 
   var body: some View {
     @Bindable var settings = settings
-
     SettingsContentView {
-      // ── Transcribe keybind ───────────────────────────────────────────
-      VStack(alignment: .leading, spacing: 10) {
-        eyebrow(
-          LocalizedStringResource(
-            "Transcribe Keybind", comment: "Keybinds settings: section heading, shown in capitals.")
-        )
-
-        VStack(alignment: .leading, spacing: 16) {
-          // Step 1 — recording mode as two selectable cards.
-          VStack(alignment: .leading, spacing: 12) {
-            stepLabel(
-              LocalizedStringResource(
-                "1. Choose recording mode", comment: "Keybinds settings: step 1 title."))
-
-            LazyVGrid(
-              columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-              spacing: 12
-            ) {
-              RecordingModeCard(
-                icon: "hand.tap.fill",
-                title: LocalizedStringResource(
-                  "Push to Talk",
-                  comment: "Keybinds settings: recording mode card; hold the key to record."),
-                description: "Hold the keybind to record. Release to stop.",
-                isSelected: settings.isPushToTalk
-              ) {
-                settings.recordingMode = .pushToTalk
-              }
-              RecordingModeCard(
-                icon: "arrow.triangle.2.circlepath",
-                title: LocalizedStringResource(
-                  "Toggle",
-                  comment:
-                    "Keybinds settings: recording mode card; press once to start and again to stop."
-                ),
-                description: "Press once to start recording. Press again to stop.",
-                isSelected: !settings.isPushToTalk
-              ) {
-                settings.recordingMode = .toggle
-              }
-            }
-
-            // Contextual tip: the multi-press gestures only exist in push-to-talk
-            // mode, so it shows there and stays parity with the shipped copy.
-            if settings.isPushToTalk {
-              InsetNotice(
-                text: "Double-press to lock it on. Triple-press to cancel."
-              )
-            }
-          }
-
-          Divider().overlay(Color.stDivider)
-
-          // Step 2 — the record key as a big edit button.
-          ProminentHotkeyRow(
-            title: LocalizedStringResource(
-              "2. Recording keybind", comment: "Keybinds settings: step 2 title."),
-            description: "This keybind starts and stops recording.",
-            keyCode: $settings.toggleKeyCode,
-            modifiers: $settings.toggleModifiers,
-            role: .record,
-            accessibilityLabel: LocalizedStringResource(
-              "Recording keybind",
-              comment: "Keybinds settings: VoiceOver name of the recording keybind control."),
-            onBindingAccepted: { code, _ in
-              // The claim is owned by SettingsManager, not by this view: onboarding
-              // has a separate completion handler and would otherwise show the same
-              // explanation a second time.
-              if settings.claimGlobeKeyGuidancePresentation(for: code) {
-                showGlobeGuidance = true
-              }
-            }
-          )
-          // `.focusable()` is load-bearing, not belt-and-braces (#1987): the
-          // keybind surface is a plain view with `onTapGesture`, deliberately not
-          // a `Button`, so that a Button does not swallow the key events being
-          // recorded. A non-focusable view accepts no keyboard focus, so binding
-          // `@FocusState` to it alone would set a flag nothing honours and leave a
-          // keyboard user stranded after the popover closed.
-          .focusable()
-          .focused($recordingKeybindFocused)
-          .accessibilityFocused($guidanceReturnFocus)
-          .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
-            GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
-              // ONE dismissal path for both "Got it" and Escape (#1987). Relying on
-              // AppKit's implicit Escape handling left focus wherever the popover
-              // had taken it, which strands a keyboard or VoiceOver user: every
-              // unit test still passed while the RSI persona this feature exists
-              // for could be forced back to the pointer.
-              .onExitCommand(perform: dismissGlobeGuidance)
-          }
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(SettingsCardSurface())
-      }
-
-      // ── Cancel recording ─────────────────────────────────────────────
-      VStack(alignment: .leading, spacing: 10) {
-        eyebrow(
-          LocalizedStringResource(
-            "Cancel Recording", comment: "Keybinds settings: section heading, shown in capitals."))
-
-        VStack(alignment: .leading, spacing: 14) {
-          ProminentHotkeyRow(
-            title: LocalizedStringResource(
-              "Cancel keybind", comment: "Keybinds settings: the keybind that cancels a recording."),
-            // Conditional, because with Escape Recovery on the old sentence is
-            // simply false — and a settings screen describing the opposite of
-            // what the app does is worse than one saying nothing.
-            // Deliberately NOT conditional on the live setting. The value
-            // that decides what this key does is the one FROZEN when the
-            // recording started, so a description that tracks the toggle is
-            // wrong for the only reader who can see both at once: someone
-            // flipping it while a recording runs.
-            description:
-              "Press to cancel the current recording. Escape Recovery below applies from the next recording you start.",
-            keyCode: $settings.cancelKeyCode,
-            modifiers: $settings.cancelModifiers,
-            role: .cancel,
-            accessibilityLabel: LocalizedStringResource(
-              "Cancel keybind", comment: "Keybinds settings: the keybind that cancels a recording.")
-          )
-
-          Divider().opacity(0.6)
-
-          // Founder-authored copy (plan §3.7), reproduced exactly. Three
-          // constraints it keeps, each from a real finding: "your cancel
-          // shortcut, Escape by default" and never a bare "Escape", because the
-          // key is user-configurable; no mention of recording length, because no
-          // length is refused; and "stays in History for 24 hours", never a
-          // promise about a Mac that is powered off, because nothing deletes
-          // files while the app is not running.
-          Toggle(isOn: $settings.escapeRecoveryEnabled) {
-            VStack(alignment: .leading, spacing: 4) {
-              // `stRowLabel`, not `stRowTitle`: the tokens reserve the title for
-              // one-per-section subjects, and this card's subject is already the
-              // "Cancel Recording" eyebrow above.
-              Text("Escape Recovery")
-                .font(.stRowLabel)
-                .foregroundStyle(.stTextPrimary)
-              Text(
-                """
-                When you use your cancel keybind, Escape by default, EnviousWispr keeps the \
-                dictation instead of discarding it. It finishes transcribing and polishing, then \
-                offers to paste it. Another recording cannot start until that finishes, the same \
-                as after any dictation. AI polish runs as usual, which uses your own API key when \
-                configured. The audio is deleted once the text is saved; the text stays in \
-                History for 24 hours unless you Keep it. The Cancel button still discards \
-                immediately.
-                """
-              )
-              // `stBody` at PRIMARY colour: the tokens define this as
-              // reading-copy, and this is the one paragraph explaining what
-              // changed about their cancel key. That mattered when the feature
-              // was opt in; it matters MORE now that it ships on (2026-09-01),
-              // because a user arrives here having never chosen it. Quieting it
-              // would be a legibility choice made against the only disclosure.
-              .font(.stBody)
-              .foregroundStyle(.stTextPrimary)
-              .fixedSize(horizontal: false, vertical: true)
-            }
-          }
-          .toggleStyle(.switch)
-          .accessibilityLabel("Escape Recovery")
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(SettingsCardSurface())
-      }
-
-      // ── Quick Add (#2381) ────────────────────────────────────────────
-      VStack(alignment: .leading, spacing: 10) {
-        eyebrow(
-          LocalizedStringResource(
-            "Add a Word",
-            comment:
-              "Keybinds settings: section heading for the add-a-word keybind, shown in capitals."))
-
-        VStack(alignment: .leading, spacing: 14) {
-          ProminentHotkeyRow(
-            title: LocalizedStringResource(
-              "Add-a-word keybind",
-              comment: "Keybinds settings: the keybind that adds a selected word to Your Words."),
-            // Says what the user DOES and what they get, in that order, and names
-            // the one place it will not work rather than letting them discover it.
-            // Terminals are out of scope because a highlight drawn by a terminal
-            // program is not a selection anything outside it can read — a fact
-            // about the terminal, not a limitation we chose, and one a user who
-            // dictates into a terminal will otherwise hit and assume is a bug.
-            description:
-              "Select a misheard word anywhere, then press this to add it to Your Words. Terminal windows do not share their selection, so it will not work there.",
-            keyCode: $settings.quickAddKeyCode,
-            modifiers: $settings.quickAddModifiers,
-            role: .quickAdd,
-            accessibilityLabel: LocalizedStringResource(
-              "Add-a-word keybind",
-              comment: "Keybinds settings: the keybind that adds a selected word to Your Words.")
-          )
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(SettingsCardSurface())
-      }
-
-      // ── Reuse the last dictation (#3106) ─────────────────────────────
-      VStack(alignment: .leading, spacing: 10) {
-        eyebrow(
-          LocalizedStringResource(
-            "Last Dictation",
-            comment:
-              "Keybinds settings: section heading for reusing the last dictation, shown in capitals."
-          ))
-
-        VStack(alignment: .leading, spacing: 14) {
-          ProminentHotkeyRow(
-            title: LocalizedStringResource(
-              "Paste last dictation",
-              comment: "Keybinds settings: the keybind that pastes the last dictation again."),
-            description: "Paste the last thing you dictated",
-            keyCode: $settings.pasteLastKeyCode,
-            modifiers: $settings.pasteLastModifiers,
-            role: .pasteLast,
-            accessibilityLabel: LocalizedStringResource(
-              "Paste last dictation keybind",
-              comment: "Keybinds settings: VoiceOver name of that keybind control.")
-          )
-          Divider().overlay(Color.stDivider)
-          ProminentHotkeyRow(
-            title: LocalizedStringResource(
-              "Copy last dictation",
-              comment: "Keybinds settings: the keybind that copies the last dictation."),
-            description: "Copy the last thing you dictated",
-            keyCode: $settings.copyLastKeyCode,
-            modifiers: $settings.copyLastModifiers,
-            role: .copyLast,
-            accessibilityLabel: LocalizedStringResource(
-              "Copy last dictation keybind",
-              comment: "Keybinds settings: VoiceOver name of that keybind control.")
-          )
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(SettingsCardSurface())
-      }
-    }
-  }
-
-  // MARK: - Small text helpers
-
-  /// The purple uppercase section eyebrow that sits above a card. Matches
-  /// `BrandedSection`'s header treatment so this page reads with the rest.
-  private func eyebrow(_ text: LocalizedStringResource) -> some View {
-    Text(String(localized: text).uppercased())
-      .font(.stSectionHeader)
-      .tracking(0.6)
-      .foregroundStyle(.stAccent)
-      .padding(.leading, 4)
-  }
-
-  /// A numbered step title inside the transcribe card.
-  private func stepLabel(_ text: LocalizedStringResource) -> some View {
-    Text(text)
-      .font(.stRowTitle)
-      .foregroundStyle(.stTextPrimary)
-  }
-}
-
-// MARK: - Card surface
-
-/// The standard setting-card surface (fill, radius, hairline border) as a
-/// modifier so this page's hand-built cards match `BrandedSection` exactly.
-private struct SettingsCardSurface: ViewModifier {
-  func body(content: Content) -> some View {
-    content
-      .background(Color.stSectionBg)
-      .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-      .overlay(
-        RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-          .strokeBorder(Color.stDivider, lineWidth: 1)
-      )
-  }
-}
-
-// MARK: - Recording mode card
-
-/// One selectable recording-mode option: a lavender icon tile, a check/radio
-/// badge, a title, and a two-line description, laid out as a square card. The
-/// selected card carries the accent border and a filled accent check badge.
-/// Mirrors the transcription-engine cards so the two selectors read as a family.
-private struct RecordingModeCard: View {
-  let icon: String
-  /// Typed so the callers' literals are extracted into the catalog (#3142).
-  let title: LocalizedStringResource
-  let description: LocalizedStringResource
-  let isSelected: Bool
-  let onSelect: () -> Void
-
-  var body: some View {
-    Button(action: onSelect) {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack(alignment: .top) {
-          Image(systemName: icon)
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(.stAccent)
-            .frame(width: 44, height: 44)
-            .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(
-              RoundedRectangle(cornerRadius: 11)
-                .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
+      SettingsSectionHeading(title: "Recording")
+      BrandedSection {
+        BrandedRow {
+          SettingsRow(
+            icon: "hand.tap", title: KeybindsSettingsCopy.modeTitle,
+            short: KeybindsSettingsCopy.modeShort,
+            help: settings.isPushToTalk
+              ? KeybindsSettingsCopy.pushToTalkHelp : KeybindsSettingsCopy.toggleHelp
+          ) {
+            BrandedSegmentedPicker(
+              options: [
+                (String(localized: "Push to Talk"), nil, RecordingMode.pushToTalk),
+                (String(localized: "Toggle"), nil, RecordingMode.toggle),
+              ], selection: $settings.recordingMode
             )
-            .accessibilityHidden(true)
-          Spacer(minLength: 8)
-          if isSelected {
-            Image(systemName: "checkmark.circle.fill")
-              .font(.system(size: 20, weight: .semibold))
-              .foregroundStyle(Color.white, Color.stAccentSolid)
-          } else {
-            Circle()
-              .strokeBorder(Color.stDivider, lineWidth: 1.5)
-              .frame(width: 20, height: 20)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityLabel(Text(KeybindsSettingsCopy.modeTitle))
           }
         }
-
-        VStack(alignment: .leading, spacing: 4) {
-          Text(title)
-            .font(.stRowTitle)
-            .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
-          Text(description)
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .fixedSize(horizontal: false, vertical: true)
+        BrandedRow {
+          KeybindSettingsRow(
+            icon: "mic", title: KeybindsSettingsCopy.recordTitle,
+            short: KeybindsSettingsCopy.recordShort, help: KeybindsSettingsCopy.recordHelp,
+            keyCode: $settings.toggleKeyCode,
+            modifiers: $settings.toggleModifiers, role: .record,
+            accessibilityLabel: "Change recording keybind"
+          )
+        }
+        BrandedRow {
+          KeybindSettingsRow(
+            icon: "xmark", title: KeybindsSettingsCopy.cancelTitle,
+            short: KeybindsSettingsCopy.cancelShort, help: KeybindsSettingsCopy.cancelHelp,
+            keyCode: $settings.cancelKeyCode,
+            modifiers: $settings.cancelModifiers, role: .cancel,
+            accessibilityLabel: "Change cancel keybind"
+          )
+        }
+        BrandedRow(showDivider: false) {
+          SettingsRow(
+            icon: "arrow.uturn.backward", title: KeybindsSettingsCopy.recoveryTitle,
+            short: KeybindsSettingsCopy.recoveryShort, help: KeybindsSettingsCopy.recoveryHelp
+          ) {
+            Toggle("", isOn: $settings.escapeRecoveryEnabled)
+              .labelsHidden()
+              .toggleStyle(BrandedToggleStyle())
+              .fixedSize()
+              .accessibilityLabel(Text(KeybindsSettingsCopy.recoveryTitle))
+          }
         }
       }
-      .padding(16)
-      .frame(maxWidth: .infinity, alignment: .topLeading)
-      .background(Color.stSectionBg)
-      .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-      .overlay(
-        RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-          .strokeBorder(
-            isSelected ? Color.stAccent : Color.stDivider,
-            lineWidth: isSelected ? 2 : 1)
-      )
-      // Inside the label, where the padding and `background` already are, so the
-      // tint cannot outgrow the region the `Button` responds on.
-      .settingsHoverCard(
-        cornerRadius: SettingsLayout.sectionRadius, isSelected: isSelected)
+      SettingsSectionHeading(title: "Shortcuts")
+      BrandedSection {
+        BrandedRow {
+          KeybindSettingsRow(
+            icon: "character.book.closed", title: KeybindsSettingsCopy.addTitle,
+            short: KeybindsSettingsCopy.addShort, help: KeybindsSettingsCopy.addHelp,
+            keyCode: $settings.quickAddKeyCode,
+            modifiers: $settings.quickAddModifiers, role: .quickAdd,
+            accessibilityLabel: "Change add-a-word keybind"
+          )
+        }
+        BrandedRow {
+          KeybindSettingsRow(
+            icon: "clipboard", title: KeybindsSettingsCopy.pasteTitle,
+            short: KeybindsSettingsCopy.pasteShort, help: KeybindsSettingsCopy.pasteHelp,
+            keyCode: $settings.pasteLastKeyCode,
+            modifiers: $settings.pasteLastModifiers, role: .pasteLast,
+            accessibilityLabel: "Change paste last dictation keybind"
+          )
+        }
+        BrandedRow(showDivider: false) {
+          KeybindSettingsRow(
+            icon: "doc.on.doc", title: KeybindsSettingsCopy.copyTitle,
+            short: KeybindsSettingsCopy.copyShort, help: KeybindsSettingsCopy.copyHelp,
+            keyCode: $settings.copyLastKeyCode,
+            modifiers: $settings.copyLastModifiers, role: .copyLast,
+            accessibilityLabel: "Change copy last dictation keybind"
+          )
+        }
+      }
     }
-    .buttonStyle(.plain)
-    .animation(.easeInOut(duration: 0.15), value: isSelected)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(Text(title))
-    .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
-    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    .environment(\.settingsPR1Density, true)
   }
 }
 
-// MARK: - Prominent hotkey row
+/// Localized copy shared by the page and its row help.
+enum KeybindsSettingsCopy {
+  static let modeTitle: LocalizedStringResource = "Recording mode"
+  static let modeShort: LocalizedStringResource =
+    "Hold to talk, or press once to start and again to stop"
+  static let pushToTalkHelp: LocalizedStringResource =
+    "Hold the keybind to record. Release to stop. Double-press to lock it on. Triple-press to cancel."
+  static let toggleHelp: LocalizedStringResource =
+    "Press once to start recording. Press again to stop."
+  static let recordTitle: LocalizedStringResource = "Start / stop recording"
+  static let recordShort: LocalizedStringResource = "Click Change to choose the keys you use"
+  static let recordHelp: LocalizedStringResource = "This keybind starts and stops recording."
+  static let cancelTitle: LocalizedStringResource = "Cancel recording"
+  static let cancelShort: LocalizedStringResource = "Cancels the current recording"
+  // The setting is frozen at recording start, so the help never tracks the live toggle.
+  static let cancelHelp: LocalizedStringResource =
+    "Press to cancel the current recording. Escape Recovery below applies from the next recording you start."
+  static let recoveryTitle: LocalizedStringResource = "Escape Recovery"
+  static let recoveryShort: LocalizedStringResource =
+    "Keeps cancelled dictations in History for 24 hours"
+  // Preserve the full disclosure: configurable cancel key, processing, API use and retention.
+  static let recoveryHelp: LocalizedStringResource = """
+    When you use your cancel keybind, Escape by default, EnviousWispr keeps the \
+    dictation instead of discarding it. It finishes transcribing and polishing, then \
+    offers to paste it. Another recording cannot start until that finishes, the same \
+    as after any dictation. AI polish runs as usual, which uses your own API key when \
+    configured. The audio is deleted once the text is saved; the text stays in \
+    History for 24 hours unless you Keep it. The Cancel button still discards \
+    immediately.
+    """
+  static let addTitle: LocalizedStringResource = "Add selected word to Dictionary"
+  static let addShort: LocalizedStringResource = "Select a misheard word, then press these keys"
+  static let addHelp: LocalizedStringResource =
+    "Select a misheard word anywhere, then press this to add it to Your Words. Terminal windows do not share their selection, so it will not work there."
+  static let pasteTitle: LocalizedStringResource = "Paste last dictation"
+  static let pasteShort: LocalizedStringResource = "Pastes your last dictation"
+  static let pasteHelp: LocalizedStringResource = "Paste the last thing you dictated"
+  static let copyTitle: LocalizedStringResource = "Copy last dictation"
+  static let copyShort: LocalizedStringResource = "Copies your last dictation"
+  static let copyHelp: LocalizedStringResource = "Copy the last thing you dictated"
+}
 
-/// A hotkey control laid out as the mockup's two-column row: a title and
-/// description on the left, a big edit button on the right that shows the current
-/// key with a "Click to change" affordance.
-private struct ProminentHotkeyRow: View {
-  /// Typed so the callers' literals are extracted into the catalog (#3142).
+/// Role owns Reset defaults; warnings remain visible below the short line.
+private struct KeybindSettingsRow: View {
+  let icon: String
   let title: LocalizedStringResource
-  let description: LocalizedStringResource
+  let short: LocalizedStringResource
+  let help: LocalizedStringResource
   @Binding var keyCode: UInt16
   @Binding var modifiers: NSEvent.ModifierFlags
   /// Which shortcut this row edits. **The row derives its Reset default from this rather than being
@@ -410,68 +160,68 @@ private struct ProminentHotkeyRow: View {
 
   @Environment(SettingsManager.self) private var settings
   @Environment(DictationRuntime.self) private var dictationRuntime
+  @State private var showGlobeGuidance = false
+  @AccessibilityFocusState private var guidanceReturnFocus: Bool
+  @FocusState private var recordingKeybindFocused: Bool
+
+  private var defaultKeyCode: UInt16 { role.defaultKeyCode }
+  private var defaultModifiers: NSEvent.ModifierFlags { role.defaultModifiers }
 
   /// "Not active: the recording keybind (Right ⌘) uses these keys. Choose another."
   ///
   /// Cancel listens only while recording, so a row it displaces still works the rest of the time
   /// (registration gives the chord back when Cancel disarms); the sentence says exactly that.
   static func notActiveMessage(taker: ShortcutRole, bindings: ShortcutBindings) -> String {
-    guard case .keyboard(let keyCode, let modifiers) = bindings[taker] else { return "" }
-    let keys = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
-    return KeybindConflictCopy.notActive(taker: taker, keys: keys)
+    guard case .keyboard(let code, let modifiers) = bindings[taker] else { return "" }
+    return KeybindConflictCopy.notActive(
+      taker: taker,
+      keys: KeySymbols.format(keyCode: code, modifiers: modifiers))
   }
 
-  private var defaultKeyCode: UInt16 { role.defaultKeyCode }
-  private var defaultModifiers: NSEvent.ModifierFlags { role.defaultModifiers }
-  /// #1987 — nil on rows that are not the recording keybind, so only the toggle
-  /// row can ever present the Globe guidance.
-  var onBindingAccepted: ((UInt16, NSEvent.ModifierFlags) -> Void)?
+  private func dismissGlobeGuidance() {
+    showGlobeGuidance = false
+    recordingKeybindFocused = true
+    guidanceReturnFocus = true
+  }
 
   var body: some View {
-    HStack(alignment: .center, spacing: 16) {
-      VStack(alignment: .leading, spacing: 4) {
-        Text(title)
-          .font(.stRowTitle)
-          .foregroundStyle(.stTextPrimary)
-        Text(description)
-          .settingsReadingCopy()
-        // #3106: a binding a MORE severe shortcut has taken (a user may move Record onto a key this
-        // one needs) keeps working for that shortcut and stops working for this one. Said here, on
-        // the row that stopped, naming who took it, rather than leaving a keybind on screen that
-        // silently does nothing. Founder-approved 2026-09-22 after a web-grounded council
-        // (GPT and Gemini both chose "the higher shortcut wins, the lower row says so").
-        if let taker = ShortcutMatcher.displacingRole(of: role, in: settings.shortcutBindings) {
-          Text(Self.notActiveMessage(taker: taker, bindings: settings.shortcutBindings))
-            .font(.stHelper)
-            .foregroundStyle(.stAccent)
-        } else if dictationRuntime.isCurrentBindingConflicted(role) {
-          // #3273: the internal-conflict check above cannot see this — it only compares our own
-          // 5 roles' bindings against each other and never asks Carbon. This is the OS-level case:
-          // Carbon refused this exact saved binding with -9878. The warning reports that refusal;
-          // it does not identify what holds the keys (issue #3266).
-          Text(
-            ExternalConflictCopy.notWorking(
-              role: role, keys: KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
-          )
-          .font(.stHelper)
-          .foregroundStyle(.stAccent)
-        }
-      }
-      Spacer(minLength: 12)
+    SettingsRow(icon: icon, title: title, short: short, help: help) {
       HotkeyRecorderView(
-        keyCode: $keyCode,
-        modifiers: $modifiers,
-        defaultKeyCode: defaultKeyCode,
-        defaultModifiers: defaultModifiers,
-        label: String(localized: accessibilityLabel),
-        style: .prominent,
-        onBindingAccepted: { code, mods in onBindingAccepted?(code, mods) },
-        // Asked against every other row's CURRENT binding, read at the moment of the capture.
+        keyCode: $keyCode, modifiers: $modifiers,
+        defaultKeyCode: defaultKeyCode, defaultModifiers: defaultModifiers,
+        label: String(localized: accessibilityLabel), style: .prominent,
+        onBindingAccepted: { code, _ in
+          if role == .record, settings.claimGlobeKeyGuidancePresentation(for: code) {
+            showGlobeGuidance = true
+          }
+        },
         validate: { [role, settings] proposed in
           ShortcutMatcher.refusal(assigning: proposed, to: role, in: settings.shortcutBindings)
-        }
+        },
+        keyboardFocus: $recordingKeybindFocused,
+        accessibilityFocus: $guidanceReturnFocus
       )
-      .frame(width: 260)
+      .frame(width: 230)
+      .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
+        GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
+          .onExitCommand(perform: dismissGlobeGuidance)
+      }
+    }
+    .rowStatus {
+      if let taker = ShortcutMatcher.displacingRole(of: role, in: settings.shortcutBindings) {
+        Text(Self.notActiveMessage(taker: taker, bindings: settings.shortcutBindings))
+          .font(.stRowHelper).foregroundStyle(.stAccent)
+          .fixedSize(horizontal: false, vertical: true)
+      } else if dictationRuntime.isCurrentBindingConflicted(role) {
+        // Internal displacement cannot see Carbon's refusal of the saved chord.
+        Text(
+          ExternalConflictCopy.notWorking(
+            role: role,
+            keys: KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
+        )
+        .font(.stRowHelper).foregroundStyle(.stAccent)
+        .fixedSize(horizontal: false, vertical: true)
+      }
     }
   }
 }
