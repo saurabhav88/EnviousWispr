@@ -435,17 +435,28 @@ struct SettingsTabStrip<Tab: Hashable>: View {
         }
         .focused($focusedTab, equals: item.id)
         .id(item.id)
-        .overlay(alignment: .trailing) {
-          if item.id != items.last?.id {
+        .anchorPreference(key: SettingsTabBoundsKey.self, value: .bounds) { [$0] }
+      }
+    }
+    .overlayPreferenceValue(SettingsTabBoundsKey.self) { anchors in
+      GeometryReader { proxy in
+        let frames = anchors.map { proxy[$0] }
+        ForEach(frames.indices, id: \.self) { index in
+          let frame = frames[index]
+          // #3385 review 1: only measured neighbours on the same row share
+          // a separator. Array order alone also decorates a wrapped row end.
+          if index + 1 < frames.count,
+            abs(frames[index + 1].minY - frame.minY) < 0.5
+          {
             Rectangle()
               .fill(Color.stDivider)
-              .frame(width: 1)
-              .padding(.vertical, 13)
-              .allowsHitTesting(false)
-              .accessibilityHidden(true)
+              .frame(width: 1, height: max(0, frame.height - 26))
+              .position(x: frame.maxX - 0.5, y: frame.midY)
           }
         }
       }
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
     }
     // Its natural row count owns the height, never the flexible page below.
     .fixedSize(horizontal: false, vertical: true)
@@ -457,6 +468,14 @@ struct SettingsTabStrip<Tab: Hashable>: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+  }
+}
+
+private struct SettingsTabBoundsKey: PreferenceKey {
+  static var defaultValue: [Anchor<CGRect>] { [] }
+
+  static func reduce(value: inout [Anchor<CGRect>], nextValue: () -> [Anchor<CGRect>]) {
+    value.append(contentsOf: nextValue())
   }
 }
 

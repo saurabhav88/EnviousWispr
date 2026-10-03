@@ -86,6 +86,55 @@ struct SettingsTabStripLayoutTests {
     }
   }
 
+  @Test("separators appear only inside rows, never at row starts or endings")
+  func separatorsStayInsideRows() throws {
+    // Independent expected boundaries: three plus three at the narrow widths;
+    // all six on one row at 1300. No production neighbour predicate is copied.
+    for (window, width): (Int, CGFloat) in [(750, 468), (820, 538), (1300, 1018)] {
+      let interior: Set<DictationTab> = window == 1300
+        ? [.engine, .microphone, .livePreview, .pill, .chimes]
+        : [.engine, .microphone, .pill, .chimes]
+      let starts: [DictationTab] = window == 1300 ? [.engine] : [.engine, .pill]
+      for german in [false, true] {
+        let measured = try Self.measure(width: width, german: german)
+        for dark in [false, true] {
+          let rep = try Self.paint(width: width, selected: .engine, german: german, dark: dark)
+          let control = try Self.paintContainer(width: width, height: measured.height, dark: dark)
+          let scale = CGFloat(rep.pixelsWide) / width
+          for tab in DictationTab.allCases {
+            let frame = try #require(measured.frames[tab])
+            let x = frame.maxX - 0.5
+            // 15pt is inside the separator but above glyph/text. The control
+            // paints only the unchanged container, so its curved edge cannot
+            // be mistaken for a separator (different y samples could do that).
+            let painted = try Self.pixelDifference(rep, control: control,
+              x: x, y: frame.minY + 15, scale: scale)
+            #expect((painted > 0.01) == interior.contains(tab),
+              "window=\(window) German-DRAFT=\(german) dark=\(dark) trailing \(tab) difference=\(painted)")
+            print("SEPARATOR window=\(window) strip=\(width) German-DRAFT=\(german) dark=\(dark) tab=\(tab) frame=\(frame) interior=\(interior.contains(tab)) paintDelta=\(painted)")
+          }
+          for tab in starts {
+            let frame = try #require(measured.frames[tab])
+            #expect(abs(frame.minX) < 0.5, "row start must be at the strip edge")
+            let painted = try Self.pixelDifference(rep, control: control,
+              x: frame.minX + 0.5, y: frame.minY + 15, scale: scale)
+            #expect(painted < 0.01, "row start \(tab) has separator paint: \(painted)")
+            print("SEPARATOR-ROW-START window=\(window) German-DRAFT=\(german) dark=\(dark) tab=\(tab) frame=\(frame) paintDelta=\(painted)")
+          }
+        }
+      }
+    }
+  }
+
+  static func pixelDifference(
+    _ rep: NSBitmapImageRep, control: NSBitmapImageRep, x: CGFloat, y: CGFloat, scale: CGFloat
+  ) throws -> CGFloat {
+    let sample = try #require(rep.colorAt(x: Int(x * scale), y: Int(y * scale))?.usingColorSpace(.deviceRGB))
+    let reference = try #require(control.colorAt(x: Int(x * scale), y: Int(y * scale))?.usingColorSpace(.deviceRGB))
+    return max(abs(sample.redComponent - reference.redComponent),
+      abs(sample.greenComponent - reference.greenComponent), abs(sample.blueComponent - reference.blueComponent))
+  }
+
   struct Measurement { let frames: [DictationTab: CGRect]; let ideals: [CGSize]; let height: CGFloat }
   final class Box { var frames: [DictationTab: CGRect] = [:] }
   struct FramesKey: PreferenceKey {
@@ -127,12 +176,32 @@ struct SettingsTabStripLayoutTests {
     return Measurement(frames: box.frames, ideals: ideals, height: height)
   }
 
-  static func paint(width: CGFloat, selected: DictationTab) throws -> NSBitmapImageRep {
-    let root = SettingsTabStrip(items: items(german: false), selection: .constant(selected))
-      .frame(width: width).environment(\.colorScheme, .light)
+  static func paint(
+    width: CGFloat, selected: DictationTab, german: Bool = false, dark: Bool = false
+  ) throws -> NSBitmapImageRep {
+    let root = SettingsTabStrip(items: items(german: german), selection: .constant(selected))
+      .frame(width: width).environment(\.colorScheme, dark ? .dark : .light)
+    return try bitmap(root, dark: dark)
+  }
+
+  /// Same native card paint, without tabs/separators. An independent empty
+  /// control, never the production row predicate or a disabled assertion.
+  static func paintContainer(width: CGFloat, height: CGFloat, dark: Bool) throws -> NSBitmapImageRep {
+    let root = Color.stSectionBg
+      .frame(width: width, height: height)
+      .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .strokeBorder(Color.stDivider, lineWidth: 1)
+      }
+      .environment(\.colorScheme, dark ? .dark : .light)
+    return try bitmap(root, dark: dark)
+  }
+
+  static func bitmap<Content: View>(_ root: Content, dark: Bool) throws -> NSBitmapImageRep {
     let host = NSHostingView(rootView: root)
-    host.appearance = NSAppearance(named: .aqua)
-    host.frame = CGRect(x: 0, y: 0, width: width, height: host.fittingSize.height)
+    host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    host.frame = CGRect(origin: .zero, size: host.fittingSize)
     let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
     window.appearance = host.appearance
     window.contentView = host
