@@ -1065,7 +1065,7 @@ struct InsetNotice: View {
     .padding(.horizontal, 12)
     .padding(.vertical, 10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: 9))
+    .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 9))
     .overlay(
       RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1)
     )
@@ -1294,7 +1294,7 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
       }
     }
     .padding(3)
-    .background(Color.stPageBg)
+    .background(Color.stInputBg)
     .clipShape(RoundedRectangle(cornerRadius: 10))
     .overlay(
       RoundedRectangle(cornerRadius: 10)

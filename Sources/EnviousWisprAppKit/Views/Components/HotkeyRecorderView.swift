@@ -577,12 +577,14 @@ struct HotkeyRecorderView: View {
     .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
     .padding(.horizontal, 10)
     .background(
-      isRecording ? Color.stAccentLight : Color.stPageBg,
+      isRecording ? Color.stAccentLight : Color.stInputBg,
       in: RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
     )
     .overlay(
+      // Idle: the quiet control border, so a resting field does not look mid-edit.
       RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
-        .strokeBorder(Color.stAccent, lineWidth: isRecording ? 2 : 1)
+        .strokeBorder(
+          isRecording ? Color.stAccent : Color.stInputBorder, lineWidth: isRecording ? 2 : 1)
         .allowsHitTesting(false)
     )
     .modifier(keyCaptureBehavior)

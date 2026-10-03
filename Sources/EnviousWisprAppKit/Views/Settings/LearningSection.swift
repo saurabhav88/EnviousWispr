@@ -319,16 +319,15 @@ struct LearningSection: View {
     }
   }
 
-  /// The recessed card each feature sits in. `stPageBg` is the page surface,
-  /// which reads as inset against the panel's `stSectionBg` in both themes —
-  /// the same pairing the search field on the Your Words tab uses.
+  /// The card each feature sits in, in the shared control fill `stInputBg`, the
+  /// same fill the search field on the Your Words tab uses (founder, 2026-10-03).
   private func learnCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
     content()
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .fill(Color.stPageBg)
+          .fill(Color.stInputBg)
       )
       .overlay(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
