@@ -395,6 +395,37 @@ def main():
         check("an unfinished ancestor walk is not a founder run",
               rc == 2 and "did not reach pid 1" in out, out)
 
+        print("session process names seen in practice")
+        # Each fake ps reports every pid as a child of pid 1 with one comm, so
+        # the tool's own parent is the only candidate. Real AGENT_NAMES.
+        for label, comm, want in [
+            ("interactive", "claude", "claude"),
+            ("daemon-hosted session", "claude bg-spare", "claude"),
+            ("daemon pty host", "claude bg-pty-host", "claude"),
+            ("native installer path",
+             "/Users/x/.local/share/claude/versions/2.1.288", "claude"),
+            ("codex CLI binary",
+             "/usr/local/lib/node_modules/@openai/codex/vendor/codex/codex", "codex"),
+            ("desktop app is not a CLI session",
+             "/Applications/Claude.app/Contents/MacOS/Claude", None),
+            ("a shell is not a session", "/bin/zsh", None),
+        ]:
+            name_ps = os.path.join(tmp, f"name-ps-{abs(hash(comm))}")
+            with open(name_ps, "w") as f:
+                f.write(f'#!/bin/sh\necho "1 Thu Jan  1 00:00:00 1970 S {comm}"\n')
+            os.chmod(name_ps, 0o755)
+            n_lock = os.path.join(tmp, f"lock-n-{abs(hash(comm))}")
+            n_tool = make_copy(tmp, f"n-{abs(hash(comm))}.py", [
+                ('LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")',
+                 f"LOCK_DIR = {n_lock!r}"),
+                ('PS = "/bin/ps"', f"PS = {name_ps!r}")])
+            rc, out = run_tool(n_tool, "claim", "--label", "n")
+            if want:
+                ok = rc == 0 and f"claimed by {want} session" in out
+            else:
+                ok = rc == 0 and "founder run" in out
+            check(f"{label} ({comm!r}) -> {want or 'founder run'}", ok, out)
+
         print("live tool targets the real lock")
         live_src = open(TOOL).read()
         check("live LOCK_DIR is the shared cache path",

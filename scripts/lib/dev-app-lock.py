@@ -16,7 +16,7 @@ Exit status: 0 done, 3 held by someone else (the holder card is printed),
 2 could not decide (fail closed: treat the app as busy and say why).
 
 WHO THE HOLDER IS. The nearest ancestor process named `claude` or `codex` is
-the session. Its pid plus start time is the identity, because pids are
+the session (see `agent_kind` for the name forms seen in practice). Its pid plus start time is the identity, because pids are
 recycled and a start time is not. The holder stays the holder after the
 command that claimed exits, for as long as that session process lives.
 
@@ -51,6 +51,7 @@ import fcntl
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import time
@@ -120,14 +121,40 @@ def find_session():
         ppid, started, comm = info
         if ppid < 1 or ppid == pid:
             raise Undecided(f"invalid parent pid {ppid} for pid {pid}")
-        name = os.path.basename(comm)
-        if name in AGENT_NAMES:
-            return {"kind": name, "pid": pid, "started": started}
+        kind = agent_kind(comm)
+        if kind is not None:
+            return {"kind": kind, "pid": pid, "started": started}
         pid, seen = ppid, seen + 1
     if pid != 1:
         # The walk stopped before reaching pid 1 (launchd/init): the chain was
         # not fully read, so "no session" is unproven and must not skip the lock.
         raise Undecided("ancestor chain did not reach pid 1")
+    return None
+
+
+# The native installer runs Claude Code from a version-named file, e.g.
+# ~/.local/share/claude/versions/2.1.288. Launched through the `claude`
+# symlink, ps shows `claude`; launched by full path it can show this path.
+CLAUDE_VERSION_PATH = re.compile(r"/claude/versions/[^/\s]+$")
+
+
+def agent_kind(comm):
+    """`claude`/`codex` when this ps `comm` is a session process, else None.
+
+    Measured on this Mac 2026-10-03: interactive sessions show `claude`;
+    daemon-hosted sessions rewrite their title to `claude bg-spare` (the
+    session itself; its tool shells are its children) and their host to
+    `claude bg-pty-host`. Matching only the exact name `claude` missed the
+    daemon form, which turned an agent run into a founder run that skips the
+    lock. So the FIRST WORD's basename is what counts. A path with spaces
+    (`/Applications/Claude.app/...`) fails closed toward "not a session".
+    """
+    first = comm.split()[0] if comm.split() else ""
+    name = os.path.basename(first)
+    if name in AGENT_NAMES:
+        return name
+    if "claude" in AGENT_NAMES and CLAUDE_VERSION_PATH.search(comm):
+        return "claude"
     return None
 
 
