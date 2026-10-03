@@ -9,7 +9,7 @@ import Testing
 @MainActor
 @Suite("What's New menu", .tags(.productOutcome))
 struct WhatsNewMenuTests {
-  @Test("Current release retains every entry in source order, with compact descriptions")
+  @Test("Current release retains every entry in source order, with its original full descriptions")
   func currentRelease() {
     let entries = WhatsNewMenuPresentation.entries()
     #expect(
@@ -19,14 +19,12 @@ struct WhatsNewMenuTests {
         "paste-to-starting-chrome-window", "longer-undo-for-learned-words",
         "self-learning-skips-punctuation",
       ])
-    #expect(
-      entries.first?.description
-        == "Choose usage metrics and crash reports in App Settings > Privacy. Feedback lets you choose diagnostics."
-    )
+    let original = WhatsNewContent.entries.filter { $0.version == "2.5.2" }
+    #expect(entries.map(\.description) == original.map(\.description))
     #expect(WhatsNewMenuPresentation.entries(version: "no-such-release").isEmpty)
   }
 
-  @Test("Compact and full fallback copy both use localized entry keys")
+  @Test("Existing full descriptions use their localized entry keys and English fallback")
   func localizedCopyAndFallback() throws {
     let root = FileManager.default.temporaryDirectory.appending(path: "ew-gift-\(UUID()).bundle")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -34,7 +32,7 @@ struct WhatsNewMenuTests {
     try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
     let table = [
       "whatsNew.privacy-controls.title": "Translated title",
-      "whatsNew.privacy-controls.compactDescription": "Translated compact description",
+      "whatsNew.privacy-controls.description": "Translated existing description",
       "whatsNew.future-entry.description": "Translated full description",
     ]
     let data = try PropertyListSerialization.data(
@@ -48,7 +46,7 @@ struct WhatsNewMenuTests {
     let rows = WhatsNewMenuPresentation.entries(from: [known, future], bundle: bundle)
     #expect(rows.map(\.title) == ["Translated title", "Future"])
     #expect(
-      rows.map(\.description) == ["Translated compact description", "Translated full description"])
+      rows.map(\.description) == ["Translated existing description", "Translated full description"])
     #expect(
       WhatsNewMenuPresentation.entries(from: [future]).first?.description
         == "Full English description")

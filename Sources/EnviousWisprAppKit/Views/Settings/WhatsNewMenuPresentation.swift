@@ -32,15 +32,8 @@ struct WhatsNewMenuPresentation {
   ) -> [ReleaseEntry] {
     source.filter { $0.version == version }.map { entry in
       let display = WhatsNewLocalizedDisplay(entry, bundle: bundle)
-      let description: String
-      if let compact = compactDescriptions[entry.id] {
-        description = bundle.localizedString(
-          forKey: "whatsNew.\(entry.id).compactDescription", value: compact, table: nil)
-      } else {
-        description = display.description
-      }
       return ReleaseEntry(
-        id: entry.id, icon: entry.icon, title: display.title, description: description,
+        id: entry.id, icon: entry.icon, title: display.title, description: display.description,
         version: entry.version)
     }
   }
@@ -80,26 +73,7 @@ struct WhatsNewMenuPresentation {
 
   static let releasesURL = URL(string: "https://github.com/saurabhav88/EnviousWispr/releases")!
 
-  /// Separate display copy. Historical release literals remain the release-notes
-  /// renderer's source of truth; future entries use their full localized copy.
-  static let compactDescriptions: [String: String] = [
-    "privacy-controls":
-      "Choose usage metrics and crash reports in App Settings > Privacy. Feedback lets you choose diagnostics.",
-    "word-check-memory":
-      "Word check loads when needed and normally leaves memory after about 10 minutes without use.",
-    "help-before-feedback":
-      "Press Send to see help articles, or send your message as written. Supported Apple Intelligence can mark parts solved.",
-    "keybind-conflict-warning":
-      "Keybinds shows a warning when macOS refuses a shortcut. Choose another combination.",
-    "clipboard-restored-in-chrome":
-      "Your clipboard comes back after dictation into Chromium browsers and ChatGPT.",
-    "paste-to-starting-chrome-window":
-      "Dictation returns to the Chrome window where you started. If it closed, your words stay on the clipboard.",
-    "longer-undo-for-learned-words":
-      "Undo stays for 4 seconds when Self-Learning saves a word. A bar shows the time left.",
-    "self-learning-skips-punctuation":
-      "Self-Learning skips punctuation-only edits and is more cautious with unfinished edits.",
-  ]
+
 }
 
 // MARK: - Localized display

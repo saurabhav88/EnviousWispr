@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
+import EnviousWisprServices
 
 @testable import EnviousWisprAppKit
 
@@ -96,6 +97,22 @@ struct SettingsShellLayoutTests {
     let shortest = try #require(heights.values.min())
     #expect(heights.values.allSatisfy { $0 >= shortest })
     print("SidebarRowHeights \(heights.sorted { $0.key < $1.key })")
+  }
+
+  @Test("the compact gift keeps a visible icon-sized target and frees toolbar space")
+  func compactGiftFits() throws {
+    let defaults = try #require(TestDefaults.suite("ew.compactGift.\(UUID().uuidString)"))
+    let settings = SettingsManager(defaults: defaults)
+    let holder = UpdateCoordinatorHolder()
+    func width(caption: Bool) -> CGFloat {
+      let host = NSHostingView(rootView: WhatsNewToolbarButton(showsCaption: caption)
+        .environment(settings).environment(holder))
+      return host.fittingSize.width
+    }
+    let compact = width(caption: false)
+    let expanded = width(caption: true)
+    #expect(compact >= 28 && compact <= 60)
+    #expect(expanded - compact >= 100)
   }
 
   /// Content widths inside the page margins for the shell's page widths.

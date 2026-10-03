@@ -6,6 +6,8 @@ import SwiftUI
 /// C4 installs this immediately left of Feedback, retaining the shell's existing
 /// toolbar background and spacer treatment. Requires the shell's SettingsManager.
 struct WhatsNewToolbarButton: View {
+  var showsCaption = true
+  var caption: LocalizedStringResource = "What's New & Updates"
   @Environment(SettingsManager.self) private var settings
   @Environment(UpdateCoordinatorHolder.self) private var updates
   @State private var presentation = WhatsNewMenuPresentation()
@@ -30,8 +32,10 @@ struct WhatsNewToolbarButton: View {
                 .allowsHitTesting(false)
             }
           }
-        Text("What's New & Updates")
-          .font(.stRowLabel)
+        if showsCaption {
+          Text(caption)
+            .font(.stRowLabel)
+        }
       }
       .padding(.horizontal, 10)
       .padding(.vertical, 6)
@@ -43,7 +47,8 @@ struct WhatsNewToolbarButton: View {
     .buttonStyle(.plain)
     .focused($buttonFocused)
     .accessibilityFocused($accessibilityFocused)
-    .accessibilityLabel(Text("What's New & Updates"))
+    .accessibilityLabel(Text(caption))
+    .help(Text(caption))
     .accessibilityValue(
       settings.hasUnreadWhatsNew ? Text("New release notes") : Text("No new release notes")
     )

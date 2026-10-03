@@ -191,6 +191,7 @@ struct SettingsShellRenderHarness {
     #expect(recording.kernelDriver.kernelForTesting.testForceTransition(to: .arming))
     #expect(recording.pipelineState == .loadingModel)
     for width in [750, 820, 1300] {
+      for german in [false, true] {
       for dark in [false, true] {
         let content = NavigationStack {
           HStack(spacing: SettingsLayout.windowFrameInset) {
@@ -199,7 +200,13 @@ struct SettingsShellRenderHarness {
           }
           .padding(SettingsLayout.windowFrameInset)
           .background(Color.stWindowBg)
-          .toolbar { SettingsWindowToolbar(appName: "EnviousWispr") }
+          .toolbar {
+            SettingsWindowToolbar(
+              appName: "EnviousWispr", windowWidth: CGFloat(width),
+              giftCaption: german ? LocalizedStringResource("Neues & Updates") : "What's New & Updates",
+              statusTextOverride: german ? "Modell wird geladen..." : nil,
+              recordTitleOverride: german ? "Aufnehmen" : nil)
+          }
         }
         .environment(settings).environment(holder).environment(recording).environment(runtime)
         .frame(width: CGFloat(width), height: 600)
@@ -218,10 +225,11 @@ struct SettingsShellRenderHarness {
         frame.cacheDisplay(in: frame.bounds, to: bitmap)
         let png = try #require(bitmap.representation(using: .png, properties: [:]))
         try FileManager.default.createDirectory(at: Self.runDirectory, withIntermediateDirectories: true)
-        let url = Self.runDirectory.appending(path: "shell-toolbar-\(width)-\(dark ? "dark" : "light").png")
+        let url = Self.runDirectory.appending(path: "shell-toolbar-\(width)-\(german ? "de" : "en")-\(dark ? "dark" : "light").png")
         try png.write(to: url)
         print("RENDERED whole toolbar -> \(url.path)")
         window.contentView = nil
+      }
       }
     }
   }
