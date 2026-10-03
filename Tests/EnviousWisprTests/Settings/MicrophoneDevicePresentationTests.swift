@@ -19,6 +19,8 @@ struct MicrophoneDevicePresentationTests {
       preferredUID: "", resolvedDevice: Self.builtIn, transportToken: "built_in")
     #expect(p.isAutomatic == true)
     #expect(p.deviceName == "MacBook Pro Microphone")
+    #expect(p.deviceUID == "BuiltInMicrophoneDevice")
+    #expect(p.deviceIcon == "mic")
     #expect(p.transportBadge == "Built-in")
   }
 
@@ -28,7 +30,17 @@ struct MicrophoneDevicePresentationTests {
       preferredUID: Self.usb.uid, resolvedDevice: Self.usb, transportToken: "usb")
     #expect(p.isAutomatic == false)
     #expect(p.deviceName == "Scarlett 2i2")
+    #expect(p.deviceUID == "AppleUSBAudioEngine:Focusrite:Scarlett")
+    #expect(p.deviceIcon == "cable.connector")
     #expect(p.transportBadge == "USB")
+  }
+
+  @Test("selectable titles retain the name and known transport grammar")
+  @MainActor
+  func optionTitlesAreUnchanged() {
+    #expect(MicrophoneDevicePicker.optionTitle(for: Self.usb, transportToken: "usb") == "Scarlett 2i2 · USB")
+    #expect(MicrophoneDevicePicker.optionTitle(for: Self.builtIn, transportToken: "built_in") == "MacBook Pro Microphone · Built-in")
+    #expect(MicrophoneDevicePicker.optionTitle(for: Self.usb, transportToken: "unknown") == "Scarlett 2i2")
   }
 
   @Test("the three named transports map to their badges")
@@ -47,7 +59,13 @@ struct MicrophoneDevicePresentationTests {
     let p = MicrophoneDevicePresentation.make(
       preferredUID: "", resolvedDevice: Self.builtIn, transportToken: token)
     #expect(p.transportBadge == nil)
+    #expect(p.deviceIcon == "mic")
     #expect(p.deviceName == "MacBook Pro Microphone", "the name does not depend on the badge")
+  }
+
+  @Test("Bluetooth denotes a connection, never a guessed headphone or device model")
+  func bluetoothIconIsTransportOnly() {
+    #expect(MicrophoneDevicePresentation.deviceIcon(for: "bluetooth") == "dot.radiowaves.left.and.right")
   }
 
   @Test("an unresolved saved microphone borrows no other device's name or badge")
@@ -56,6 +74,8 @@ struct MicrophoneDevicePresentationTests {
       preferredUID: "Some:Unplugged:UID", resolvedDevice: Self.builtIn, transportToken: "built_in")
     #expect(p.isAutomatic == false, "the saved preference is kept")
     #expect(p.deviceName == nil)
+    #expect(p.deviceUID == nil)
+    #expect(p.deviceIcon == "mic")
     #expect(p.transportBadge == nil)
   }
 
@@ -65,6 +85,8 @@ struct MicrophoneDevicePresentationTests {
       let p = MicrophoneDevicePresentation.make(
         preferredUID: preferred, resolvedDevice: nil, transportToken: "usb")
       #expect(p.deviceName == nil)
+    #expect(p.deviceUID == nil)
+    #expect(p.deviceIcon == "mic")
       #expect(p.transportBadge == nil)
       #expect(p.isAutomatic == preferred.isEmpty)
     }

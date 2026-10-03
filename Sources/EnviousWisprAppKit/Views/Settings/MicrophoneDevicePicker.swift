@@ -13,22 +13,51 @@ struct MicrophoneDevicePicker: View {
   let devices: [AudioInputDevice]
   let presentation: MicrophoneDevicePresentation
   let transportTokens: [UInt32: String]
+  var capturePresentation: MicrophoneCapturePresentation = .unknown
 
   var body: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      microphoneMenu
+      if capturePresentation.isInUse(displayedUID: presentation.deviceUID) {
+        HStack(spacing: 5) {
+          Circle().fill(Color.stSuccess).frame(width: 6, height: 6)
+            .accessibilityHidden(true)
+          // The semantic green marks the dot; the standard text token stays readable
+          // on the light card too, without changing the shared status palette.
+          Text(MicrophoneChoiceCopy.inUse).font(.stHelper).foregroundStyle(Color.stTextSecondary)
+        }
+      }
+    }
+  }
+
+  private var microphoneMenu: some View {
     Menu {
       Picker(selection: $selection) {
-        Text("Auto").tag("")
+        Label {
+          Text("Auto")
+        } icon: {
+          Image(systemName: "arrow.triangle.2.circlepath").accessibilityHidden(true)
+        }.tag("")
         ForEach(devices) { device in
-          Text(optionTitle(for: device)).tag(device.uid)
+          Label {
+            Text(Self.optionTitle(for: device, transportToken: transportTokens[device.id]))
+          } icon: {
+            Image(systemName: MicrophoneDevicePresentation.deviceIcon(for: transportTokens[device.id]))
+              .accessibilityHidden(true)
+          }.tag(device.uid)
         }
       } label: {
         Text(DictationSettingsCopy.Microphone.inputDeviceTitle)
       }
       .pickerStyle(.inline)
       .labelsHidden()
+      Divider()
+      // Outside the Picker: explanation is never a selectable device or a new UID tag.
+      Text(MicrophoneChoiceCopy.autoExplanation)
+        .disabled(true)
     } label: {
       HStack(spacing: 10) {
-        Image(systemName: "mic")
+        Image(systemName: presentation.deviceIcon)
           .font(.system(size: 14, weight: .medium))
           .foregroundStyle(Color.stAccent)
           .accessibilityHidden(true)
@@ -96,8 +125,8 @@ struct MicrophoneDevicePicker: View {
         "Microphone settings: shown when the current inputs provide no matching microphone name.")
   }
 
-  private func optionTitle(for device: AudioInputDevice) -> String {
-    guard let badge = MicrophoneDevicePresentation.transportBadge(for: transportTokens[device.id])
+  static func optionTitle(for device: AudioInputDevice, transportToken: String?) -> String {
+    guard let badge = MicrophoneDevicePresentation.transportBadge(for: transportToken)
     else { return device.name }
     return String(
       localized: "\(device.name) · \(badge)",

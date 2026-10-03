@@ -13,6 +13,8 @@ import Foundation
 struct MicrophoneDevicePresentation: Equatable {
   let isAutomatic: Bool
   let deviceName: String?
+  let deviceUID: String?
+  let deviceIcon: String
   let transportBadge: String?
 
   static func make(
@@ -29,7 +31,19 @@ struct MicrophoneDevicePresentation: Equatable {
     return Self(
       isAutomatic: isAutomatic,
       deviceName: device?.name,
+      deviceUID: device?.uid,
+      deviceIcon: device == nil ? "mic" : deviceIcon(for: transportToken),
       transportBadge: device == nil ? nil : transportBadge(for: transportToken))
+  }
+
+  /// Transport evidence supports a connection icon, not a guessed device model.
+  /// Built-in also includes an audio jack, so it must not imply a laptop microphone.
+  static func deviceIcon(for token: String?) -> String {
+    switch token {
+    case "usb": return "cable.connector"
+    case "bluetooth": return "dot.radiowaves.left.and.right"
+    default: return "mic"
+    }
   }
 
   /// The three transports the picker names, from `AudioDeviceEnumerator`'s

@@ -24,6 +24,7 @@ import SwiftUI
 struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
+  @Environment(\.microphoneCapturePresentation) private var capturePresentation
 
   /// `SettingsRowIcon`'s fixed width (26) plus the row's own leading spacing
   /// (11), so helper text under a row's icon+label aligns under the LABEL
@@ -88,7 +89,7 @@ struct AudioSettingsView: View {
       // lives once here rather than inside each card. #3385: it is the
       // heading's note now, as on the Engine tab, instead of a tip line at the
       // bottom (which replaced a boxed banner at the top, mockup 2026-09-16).
-      SettingsSectionHeading(title: DictationSettingsCopy.Microphone.sectionHeading) {
+      SettingsSectionHeading(title: DictationSettingsCopy.Microphone.sectionHeading, icon: "mic") {
         Text(DictationSettingsCopy.Engine.nextRecordingNote)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
@@ -114,7 +115,8 @@ struct AudioSettingsView: View {
                 selection: inputDeviceSelection,
                 devices: audioDeviceList.availableInputDevices,
                 presentation: devicePresentation,
-                transportTokens: transportTokens)
+                transportTokens: transportTokens,
+                capturePresentation: capturePresentation)
             }
 
             if let device = multiInputDevice {

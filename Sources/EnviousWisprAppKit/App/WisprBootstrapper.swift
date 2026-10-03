@@ -2405,6 +2405,11 @@ private struct MainWindowRoot: View {
       // set names them instead.
       .environment(b.localPolishRuntimes)
       .environment(b.audioDeviceList)
+      // Read the existing capture home while SwiftUI tracks this body. No subscription,
+      // second state owner or capture command; the diagnostic UID survives stop.
+      .environment(\.microphoneCapturePresentation, MicrophoneCapturePresentation(
+        isCapturing: b.liveRecordingState.audioCapture.isCapturing,
+        boundDeviceUID: b.liveRecordingState.audioCapture.zeroSignalDiscriminatorDevice?.deviceUID))
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
       .environment(b.vocabularyPackManager)
