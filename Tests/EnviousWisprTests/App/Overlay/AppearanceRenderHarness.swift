@@ -69,7 +69,7 @@ struct AppearanceRenderHarness {
   /// Render one page at one width and scheme to a PNG; returns the PNG's URL after proving it
   /// decodes to a nonzero bitmap.
   ///
-  /// The page header is suppressed explicitly (the shell injects it, not the page), the Pill
+  /// Pages have no header (#3385, which removed the shell's header injection), the Pill
   /// page gets a harmless navigation closure, and Appearance's language and relaunch are never
   /// touched: the page only READS the preference and relaunches on a user's confirmation.
   @discardableResult
@@ -86,7 +86,6 @@ struct AppearanceRenderHarness {
     let root = content
       .environment(settings)
       .environment(pill)
-      .environment(\.settingsPageSection, nil)
       .environment(\.settingsNavigate, { _ in })
       .frame(width: pageWidth)
 

@@ -40,7 +40,6 @@ struct RecordingChimeRenderHarness {
       onSelect: { _ in },
       onPreview: { _ in }
     )
-    .environment(\.settingsPageSection, nil)
     .frame(width: pageWidth)
 
     let host = NSHostingView(rootView: AnyView(page))

@@ -11,7 +11,7 @@ import Testing
 @Suite("Settings shell English", .tags(.productOutcome))
 struct SettingsShellEnglishTests {
 
-  @Test("every Settings page keeps its sidebar name and description")
+  @Test("every Settings page keeps its sidebar name")
   func pages() {
     #expect(SettingsSection.history.label == "History")
     #expect(SettingsSection.whatsNew.label == "What's New")
@@ -25,35 +25,8 @@ struct SettingsShellEnglishTests {
     #expect(SettingsSection.permissions.label == "Permissions")
     #expect(SettingsSection.checkForUpdates.label == "Check for Updates")
     #expect(SettingsSection.openSourceLicenses.label == "Open Source Licenses")
-    #expect(
-      SettingsSection.history.subtitle == "Your past dictations, searchable and ready to reuse.")
-    #expect(
-      SettingsSection.whatsNew.subtitle == "The latest improvements and fixes in this release.")
-    #expect(
-      SettingsSection.appearance.subtitle
-        == "How the app looks, and the pill you see while dictating.")
-    // #3385: the tabs introduce the page; no header paragraph.
-    #expect(SettingsSection.dictation.subtitle == "")
-    #expect(
-      SettingsSection.transcribeFile.subtitle
-        == "Turn a recording you already have into clean text.")
-    #expect(
-      SettingsSection.keybinds.subtitle
-        == "Set the keybinds that start, stop, and cancel dictation.")
-    #expect(SettingsSection.aiPolish.subtitle == "Clean up and rewrite your dictation with AI.")
-    #expect(
-      SettingsSection.wordCorrection.subtitle
-        == "Improve recognition with your words and vocabulary.")
-    #expect(
-      SettingsSection.snippets.subtitle
-        == "Say your keyword, then a snippet. The saved text lands for you.")
-    #expect(
-      SettingsSection.permissions.subtitle
-        == "Manage app permissions and privacy settings.")
-    #expect(SettingsSection.checkForUpdates.subtitle == "")
-    #expect(
-      SettingsSection.openSourceLicenses.subtitle
-        == "EnviousWispr is GPLv3 open source. The license and third-party notices.")
+    // #3385: the per-page description lines went with the page headers (tracker A5);
+    // Dictionary's moved to its Enable row's "?" (`dictionaryHeading`).
     #expect(SettingsGroup.allCases.map(\.rawValue) == ["APP", "RECORD", "PROCESS", "SYSTEM"])
     #expect(SettingsGroup.allCases.map(\.heading) == SettingsGroup.allCases.map(\.rawValue))
     #expect(SettingsGroup.record.sections == [.dictation, .keybinds, .transcribeFile])
@@ -67,6 +40,36 @@ struct SettingsShellEnglishTests {
         "Engine", "Microphone & Media", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
       ])
     #expect(SettingsCopy.notSelectedValue == "Not selected")
+  }
+
+  /// #3385: the Dictionary page's heading row replaced its banner. The "?" keeps the sentence
+  /// the page header showed under "Dictionary", typed here from the pre-#3385 source.
+  @Test("the Dictionary heading row keeps its approved English")
+  func dictionaryHeading() {
+    typealias Copy = SettingsShellCopy.Dictionary
+    #expect(String(localized: Copy.heading) == "Dictionary")
+    #expect(String(localized: Copy.enableTitle) == "Enable Dictionary")
+    #expect(String(localized: Copy.enableShort) == "Use your words and vocabulary to improve recognition.")
+    #expect(String(localized: Copy.enableHelp) == "Improve recognition with your words and vocabulary.")
+    #expect(String(localized: Copy.enableShort).count <= 60)
+  }
+
+  /// #3385: a sidebar row says whether it is selected AND what is running there, from one
+  /// activity value, so a Dictionary dot is never announced as a file import.
+  @Test("a sidebar row's spoken value covers all six states")
+  func sidebarValues() {
+    typealias Copy = SettingsShellCopy
+    let cases: [(Bool, Copy.SidebarActivity, String)] = [
+      (false, .none, "Not selected"),
+      (true, .none, "Selected"),
+      (false, .dictionaryEnrichment, "Not selected. Dictionary enrichment in progress"),
+      (true, .dictionaryEnrichment, "Selected. Dictionary enrichment in progress"),
+      (false, .fileImport, "Not selected. Importing in progress"),
+      (true, .fileImport, "Selected. Importing in progress"),
+    ]
+    for (selected, activity, english) in cases {
+      #expect(Copy.sidebarValue(isSelected: selected, activity: activity) == english)
+    }
   }
 
   @Test("the shared notices and the spoken selected value keep their English")

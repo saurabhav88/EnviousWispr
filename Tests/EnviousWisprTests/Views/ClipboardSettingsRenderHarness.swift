@@ -9,8 +9,8 @@ import Testing
 ///
 /// **Harness Contract. An instrument, not a test of the product**, and NOT a substitute for
 /// Live UAT: no window chrome, no accessibility tree, no clipboard, no running app. It draws the
-/// production `ClipboardSettingsView` with an isolated `SettingsManager` and the page header
-/// suppressed, at the shell's page widths, light and dark, with the switch values each render
+/// production `ClipboardSettingsView` with an isolated `SettingsManager` (pages have no header
+/// since #3385), at the shell's page widths, light and dark, with the switch values each render
 /// names. Those values are fixtures, not claims about shipping defaults.
 ///
 /// **Gated OFF by default**, so CI never renders and no geometry is frozen. Run it deliberately:
@@ -48,7 +48,6 @@ struct ClipboardSettingsRenderHarness {
 
     let page = ClipboardSettingsView()
       .environment(settings)
-      .environment(\.settingsPageSection, nil)
       .frame(width: pageWidth)
     let host = NSHostingView(rootView: AnyView(page))
     host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)

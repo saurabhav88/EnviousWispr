@@ -116,7 +116,6 @@ struct ClipboardSettingsLayoutTests {
       suite.removePersistentDomain(forName: name)
       let page = ClipboardSettingsView()
         .environment(SettingsManager(defaults: suite))
-        .environment(\.settingsPageSection, nil)
         .frame(width: pageWidth)
       let host = NSHostingView(rootView: AnyView(page))
       return host.fittingSize.height

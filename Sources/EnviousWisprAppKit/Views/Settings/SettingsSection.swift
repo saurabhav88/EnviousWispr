@@ -1,19 +1,5 @@
 import SwiftUI
 
-/// The section a settings page belongs to, set by `UnifiedWindowView` on each
-/// page's content so `SettingsContentView` can render the page-header card as
-/// its first item without every page wiring it up by hand.
-private struct SettingsPageSectionKey: EnvironmentKey {
-  static let defaultValue: SettingsSection? = nil
-}
-
-extension EnvironmentValues {
-  var settingsPageSection: SettingsSection? {
-    get { self[SettingsPageSectionKey.self] }
-    set { self[SettingsPageSectionKey.self] = newValue }
-  }
-}
-
 /// A way for a page to send the user to ANOTHER page.
 ///
 /// **Added for the Appearance page's link to Live Preview** (#2446). Picking the
@@ -22,6 +8,8 @@ extension EnvironmentValues {
 /// binding down through `AppearanceSettingsView` into a panel would put window
 /// navigation in the signature of every view in between; the environment is where
 /// this window already keeps `settingsPageSection`, one level up.
+/// (#3385: the page-header environment value is gone with the page headers;
+/// this key is set by `UnifiedWindowView.page` for every page.)
 ///
 /// Defaults to a no-op rather than to `nil`, so a preview or a test that hosts a
 /// panel on its own gets a dead link instead of a crash.
@@ -104,67 +92,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .openSourceLicenses: return "doc.text.magnifyingglass"
     #if DEBUG
       case .diagnostics: return "ladybug"
-    #endif
-    }
-  }
-
-  /// One-line orientation shown under the title in each page's header.
-  var subtitle: String {
-    switch self {
-    case .history:
-      return String(
-        localized: "Your past dictations, searchable and ready to reuse.",
-        comment: "Settings: the one-line description under a page title.")
-    case .whatsNew:
-      return String(
-        localized: "The latest improvements and fixes in this release.",
-        comment: "Settings: the one-line description under a page title.")
-    // #2376: widened from "in light and dark" when the recording-pill picker
-    // joined this page. The old line described one section rather than the page.
-    case .appearance:
-      return String(
-        localized: "How the app looks, and the pill you see while dictating.",
-        comment: "Settings: the one-line description under a page title.")
-    // #3385: no header paragraph; the tabs say what the page holds, and the
-    // page header itself goes away in this same change.
-    case .dictation: return ""
-    // #2648. Says what the user gets, not what the feature is: eight of thirteen
-    // competitors accept a file and the three r/macapps requests were a walk, a
-    // lecture and a meeting.
-    case .transcribeFile:
-      return String(
-        localized: "Turn a recording you already have into clean text.",
-        comment: "Settings: the one-line description under a page title.")
-    case .keybinds:
-      return String(
-        localized: "Set the keybinds that start, stop, and cancel dictation.",
-        comment: "Settings: the one-line description under a page title.")
-    case .aiPolish:
-      return String(
-        localized: "Clean up and rewrite your dictation with AI.",
-        comment: "Settings: the one-line description under a page title.")
-    case .wordCorrection:
-      return String(
-        localized: "Improve recognition with your words and vocabulary.",
-        comment: "Settings: the one-line description under a page title.")
-    case .snippets:
-      return String(
-        localized: "Say your keyword, then a snippet. The saved text lands for you.",
-        comment: "Settings: the one-line description under a page title.")
-    case .permissions:
-      return String(
-        localized: "Manage app permissions and privacy settings.",
-        comment: "Settings: the one-line description under a page title.")
-    case .checkForUpdates: return ""
-    case .openSourceLicenses:
-      return String(
-        localized: "EnviousWispr is GPLv3 open source. The license and third-party notices.",
-        comment: "Settings: the one-line description under a page title.")
-    #if DEBUG
-      case .diagnostics:
-        return String(
-          localized: "Logs, benchmarks, and debug tools.",
-          comment: "Settings: the one-line description under a page title.")
     #endif
     }
   }

@@ -120,6 +120,9 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
 /// container: `SettingsContentView` puts its whole page (header included)
 /// inside ONE `ScrollView`, and the founder's ask here is the opposite — the
 /// banner and the tab list never move, only the selected tab's content does.
+/// (#3385: the banner is now `DictionarySettingsHeading`, the DICTIONARY heading
+/// and the Enable Dictionary row; it stays fixed above the rail the same way, and
+/// `SettingsContentView` no longer carries a page header.)
 /// Internal type name is unchanged from the pre-redesign `YourWordsView`
 /// (#2493 explicitly scopes the terminology pass to user-facing copy, not
 /// Swift symbols).
@@ -139,7 +142,8 @@ struct YourWordsView: View {
     @Bindable var settings = settings
 
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-      dictionaryBanner(settings: $settings)
+      // #3385: the banner became the shared heading and row (tracker A5).
+      DictionarySettingsHeading(isEnabled: $settings.wordCorrectionEnabled)
 
       HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
         DictionaryTabRail(selection: $selectedTab)
@@ -234,69 +238,6 @@ struct YourWordsView: View {
         )
       }
     }
-  }
-
-  /// The fixed top banner: icon tile + title + description + the master
-  /// on/off switch, merged into one bar per the founder's mockup feedback on
-  /// #2491/#2492 (was a separate title card, a button row, and a toggle card
-  /// stacked as three pieces).
-  @ViewBuilder
-  private func dictionaryBanner(settings: Bindable<SettingsManager>) -> some View {
-    HStack(spacing: 14) {
-      Image(systemName: "textformat.abc")
-        .font(.system(size: 21, weight: .medium))
-        .foregroundStyle(.stAccent)
-        .frame(width: 46, height: 46)
-        .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-          RoundedRectangle(cornerRadius: 12)
-            .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
-        )
-        .accessibilityHidden(true)
-
-      // .frame(maxWidth: .infinity): claims the HStack's remaining width so
-      // the title row's Spacer below has room to push the toggle to the
-      // banner's trailing edge, rather than the two hugging each other.
-      VStack(alignment: .leading, spacing: 6) {
-        HStack(spacing: 12) {
-          Text("Dictionary")
-            .font(.system(size: 22, weight: .semibold))
-            .foregroundStyle(.stTextPrimary)
-
-          Spacer(minLength: 8)
-
-          // .fixedSize(): BrandedToggleStyle's internal Spacer otherwise
-          // claims whatever width this HStack hands it, which here would be
-          // the banner's entire remaining row rather than the toggle's own
-          // label-gap-track shape (#2492 review r1).
-          Toggle(isOn: settings.wordCorrectionEnabled) {
-            Text("Enable Dictionary").settingsRowLabel()
-          }
-          .toggleStyle(BrandedToggleStyle())
-          .fixedSize()
-        }
-
-        // One line, guaranteed: at the app's 750pt minimum window this row
-        // has ~460pt after the sidebar and the icon tile, which the fuller
-        // sentence used to overflow. Reads `SettingsSection.wordCorrection`'s
-        // subtitle rather than a second literal — every other settings page's
-        // description lives there (rendered by `SettingsPageHeader`); this
-        // banner is Dictionary's own header, so it reads the same source
-        // instead of forking a duplicate string.
-        Text(SettingsSection.wordCorrection.subtitle)
-          .settingsReadingCopy()
-          .lineLimit(1)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stSectionBg)
-    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-        .strokeBorder(Color.stDivider, lineWidth: 1)
-    )
   }
 
   @ViewBuilder

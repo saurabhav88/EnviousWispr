@@ -46,53 +46,6 @@ extension View {
   }
 }
 
-// MARK: - Per-page header
-
-/// The header that introduces each settings page: a lavender icon tile, the
-/// page title, and a one-line subtitle. Rendered as its OWN card (same surface
-/// and radius as the setting cards) so it lives inside the content area with the
-/// options and never blends into the top bar (founder decision, 2026-07-03,
-/// Option B). Injected as the first card of `SettingsContentView`.
-struct SettingsPageHeader: View {
-  let icon: String
-  let title: String
-  let subtitle: String
-
-  var body: some View {
-    HStack(spacing: 14) {
-      Image(systemName: icon)
-        .font(.system(size: 21, weight: .medium))
-        .foregroundStyle(.stAccent)
-        .frame(width: 46, height: 46)
-        .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-          RoundedRectangle(cornerRadius: 12)
-            .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
-        )
-        .accessibilityHidden(true)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title)
-          .font(.system(size: 22, weight: .semibold))
-          .foregroundStyle(.stTextPrimary)
-        if !subtitle.isEmpty {
-          Text(subtitle).settingsReadingCopy()
-        }
-      }
-
-      Spacer(minLength: 0)
-    }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stSectionBg)
-    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-        .strokeBorder(Color.stDivider, lineWidth: 1)
-    )
-  }
-}
-
 // MARK: - Row leading icon
 
 /// The brand-accent leading glyph for a settings row (mockup #4). Fixed width so
@@ -690,21 +643,14 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
 // MARK: - Settings Content Container
 
 /// Replaces `Form { }.formStyle(.grouped)` with a branded ScrollView layout.
-/// When the environment carries a `settingsPageSection`, the page-header card is
-/// rendered as the first item so it scrolls with the setting cards (Option B).
+/// #3385: no page header any more (tracker A5); the page's first section
+/// heading, or its tab strip, is the first thing in it.
 struct SettingsContentView<Content: View>: View {
-  @Environment(\.settingsPageSection) private var pageSection
   @ViewBuilder let content: Content
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-        if let pageSection {
-          SettingsPageHeader(
-            icon: pageSection.icon,
-            title: pageSection.label,
-            subtitle: pageSection.subtitle)
-        }
         content
       }
       .padding(.top, SettingsLayout.contentTop)

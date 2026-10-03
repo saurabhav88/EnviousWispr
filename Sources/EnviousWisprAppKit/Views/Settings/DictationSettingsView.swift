@@ -23,9 +23,6 @@ struct DictationSettingsView: View {
 
       // Each tab keeps its own page's scroll view, so no outer one here.
       tabContent
-        // The tabs replace the page-header card; the header path itself is
-        // removed for every page later in #3385.
-        .environment(\.settingsPageSection, nil)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
