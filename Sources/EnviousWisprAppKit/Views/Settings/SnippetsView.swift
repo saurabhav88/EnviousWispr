@@ -368,8 +368,8 @@ enum SnippetsSettingsCopy {
   static let keywordShort: LocalizedStringResource = "Say this first, then your trigger. One word."
   static let keywordHelp: LocalizedStringResource =
     "A snippet only fires when you say this word first. Say the trigger on its own and your dictation is left alone."
-  static let triggerShort: LocalizedStringResource = "Choose short, distinctive words after the keyword"
-  static let textShort: LocalizedStringResource = "Line breaks are kept, including in signatures"
+  static let triggerShort: LocalizedStringResource = "Choose short, distinctive words after the keyword."
+  static let textShort: LocalizedStringResource = "Line breaks are kept, including in signatures."
   static let fillInHelp: LocalizedStringResource =
     "A fill-in becomes the date, the time, or what you copied. Everything else is pasted as written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move it anywhere."
 }

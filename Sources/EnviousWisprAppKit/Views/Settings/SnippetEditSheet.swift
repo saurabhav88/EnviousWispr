@@ -15,6 +15,10 @@ struct SnippetEditSheet: View {
   /// input must show the keyword as it was when the sheet opened, so it cannot change under the
   /// user mid-edit.
   let keyword: String
+  /// Nil for normal presentation. Layout tests attach non-sizing background probes to the
+  /// real controls and invoke the real Save action after load to render a refusal.
+  var layoutProbe: ((String) -> AnyView)? = nil
+  var onLoadedForTesting: ((() -> Void) -> Void)? = nil
 
   @State private var trigger = ""
   @State private var expansion = ""
@@ -37,14 +41,19 @@ struct SnippetEditSheet: View {
 
       triggerField
       expansionField
-      SnippetSpeechPreview(keyword: keyword, trigger: trigger)
+      SnippetSpeechPreview(keyword: keyword, trigger: trigger, layoutProbe: layoutProbe)
 
       footer
+        .background { layoutProbe?("footer") }
     }
     .padding(20)
     .frame(width: 480, height: 600)
     .background(Color.stPageBg)
-    .onAppear(perform: load)
+    .background { layoutProbe?("sheet") }
+    .onAppear {
+      load()
+      onLoadedForTesting?(save)
+    }
   }
 
   private func load() {
@@ -106,6 +115,7 @@ struct SnippetEditSheet: View {
           RoundedRectangle(cornerRadius: 8)
             .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
             .allowsHitTesting(false))
+        .background { layoutProbe?("editor") }
       fillInButtons
     }
   }
@@ -130,6 +140,7 @@ struct SnippetEditSheet: View {
         SettingsActionButton(verbatimTitle: Self.fillInTitle(for: placeholder), isEnabled: true) {
           expansion += placeholder.token
         }
+        .background { layoutProbe?("fillIn-\(placeholder.token)") }
       }
       Spacer(minLength: 0)
     }
@@ -169,18 +180,22 @@ struct SnippetEditSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(height: 54)
+        .background { layoutProbe?("error") }
       }
       HStack(spacing: 8) {
         if let existing = draft.snippet {
           SettingsActionButton(title: "Delete", isEnabled: true, emphasis: .destructive) {
             if coordinator.delete(existing) { dismiss() } else { error = coordinator.errorMessage }
           }
+          .background { layoutProbe?("Delete") }
         }
         Spacer(minLength: 0)
         SettingsActionButton(
           title: "Cancel", isEnabled: true, emphasis: .outlined, shortcut: .cancelAction
         ) { dismiss() }
+        .background { layoutProbe?("Cancel") }
         SettingsActionButton(title: "Save", isEnabled: canSave, emphasis: .filled) { save() }
+          .background { layoutProbe?("Save") }
       }
     }
   }
@@ -209,6 +224,8 @@ struct SnippetEditSheet: View {
 private struct SnippetSpeechPreview: View {
   let keyword: String
   let trigger: String
+  var layoutProbe: ((String) -> AnyView)? = nil
+  @State private var viewportHeight: CGFloat = 0
 
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
@@ -220,8 +237,28 @@ private struct SnippetSpeechPreview: View {
           .fixedSize(horizontal: false, vertical: true)
           .frame(maxWidth: .infinity, alignment: .leading)
           .textSelection(.enabled)
+          .background { layoutProbe?("previewText") }
       }
-      .frame(height: 40)
+      .frame(height: viewportHeight)
+      .background { layoutProbe?("previewViewport") }
+      // Measure two complete lines with the SAME font as the speech. A point constant can
+      // reveal a fraction of a third line (#3385); the hidden sample never claims layout space.
+      .background(alignment: .topLeading) {
+        Text(verbatim: "Ag\nAg")
+          .font(.stRowHelper)
+          .fixedSize()
+          .background {
+            GeometryReader { geometry in
+              Color.clear.preference(key: SnippetPreviewHeightKey.self, value: geometry.size.height)
+            }
+          }
+          .hidden()
+          .accessibilityHidden(true)
+          .allowsHitTesting(false)
+      }
+      .onPreferenceChange(SnippetPreviewHeightKey.self) { height in
+        viewportHeight = height
+      }
     }
     .padding(10)
     .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
@@ -229,5 +266,12 @@ private struct SnippetSpeechPreview: View {
       RoundedRectangle(cornerRadius: 10)
         .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
         .allowsHitTesting(false))
+  }
+}
+
+private struct SnippetPreviewHeightKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = max(value, nextValue())
   }
 }
