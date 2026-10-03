@@ -525,9 +525,11 @@ def phase_own_window(expected):
     w.close_window()
 
 
-def bring_settings_forward(page):
-    """Open Settings on `page` and make OUR app frontmost with a real click on its sidebar."""
-    w.nav(page)
+def bring_settings_forward(page, tab=None):
+    """Open Settings on `page` (and `tab`, #3385) and make OUR app frontmost with a real click
+    on its sidebar."""
+    if not w.nav(page, tab):
+        return False
     point = None
     if wait_for("a visible point on our Settings window",
                 lambda: visible_point_in_sidebar(None) is not None, deadline=5.0):
@@ -804,7 +806,7 @@ def restore_keybind_state():
 
 def restore_toggle():
     from ui_helpers import find_all_elements, get_attr
-    w.nav("Clipboard")
+    w.nav("Dictation Settings", "Clipboard")   # #3385: Clipboard is a Dictation Settings tab
     for el in find_all_elements(w._app, role="AXCheckBox"):
         if get_attr(el, "AXDescription") == "Restore clipboard after paste":
             return el

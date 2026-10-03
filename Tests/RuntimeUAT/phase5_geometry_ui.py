@@ -6,7 +6,8 @@ captured one design and the read-back made it look verified. Codex ruled that
 defaults read-back is not evidence and that the picker's own selection must be
 seen to change.
 
-So this taps Phase 4's grouped Appearance control the way a user would, confirms
+So this taps Phase 4's grouped pill control (on Dictation Settings > Recording Pill since
+#3385; it was on Appearance) the way a user would, confirms
 the selection moved by re-reading the AX tree, closes Settings, and only then
 starts a fresh recording — the design is read once per fresh recording and held.
 
@@ -156,22 +157,26 @@ def main():
 
     # **The window has to EXIST before any of this means anything.** Nothing here
     # opened Settings, and every check below silently assumed someone had.
-    require(w.tap("Appearance"), "could not reach the Appearance section")
-    require(await_idle(), "the app never went idle after opening Appearance")
+    # #3385: the pill's position and design controls moved from Appearance to
+    # Dictation Settings > Recording Pill; Appearance keeps theme, Dock and language.
+    require(w.nav("Dictation Settings", "Recording Pill"),
+            "could not reach Dictation Settings > Recording Pill")
+    require(await_idle(), "the app never went idle after opening Recording Pill")
 
     tree = ui_text()
-    appearance_open = "RECORDING PILL" in tree
+    appearance_open = "RECORDING PILL" in tree   # the tab's section heading
     report["picker"]["appearance_open"] = appearance_open
 
     # **POSITIVE CONTROL on the same capture**, required by uat-testing.md
     # FACT: uat-gotchas. Without it, "the panel is not on screen" and "the reader
     # is broken" are the same observation — which is exactly the confusion that
     # produced a confident wrong diagnosis on this branch.
-    report["picker"]["reader_alive"] = "PILL POSITION" in tree
+    # #3385: the old "PILL POSITION" panel header is now the "Position on screen" row.
+    report["picker"]["reader_alive"] = "Position on screen" in tree
     require(
         report["picker"]["reader_alive"],
         "the AX reader returned nothing recognisable — instrument failure, not a product result")
-    require(appearance_open, "Appearance did not open — the Recording Pill panel is not on screen")
+    require(appearance_open, "Recording Pill did not open — its section is not on screen")
 
     # **The greyed-reason rows are GONE, not renamed.** They asserted a sentence
     # the panel no longer renders in either Live Preview state: the presence half
@@ -287,7 +292,7 @@ def main():
     # Both directions, so neither half can pass vacuously: the link was present
     # above with the words design live, and must be gone now that a wordless one
     # is. A run where the taps did nothing fails HERE rather than reporting green.
-    w.tap("Appearance")
+    w.nav("Dictation Settings", "Recording Pill")   # re-read the tab after the taps (#3385)
     after = ui_text()
     report["picker"]["configure_link_gone_after_wordless"] = CONFIGURE_LINK not in after
     # Every tap that had to land is named here, so a run where the picker was

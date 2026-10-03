@@ -1033,10 +1033,13 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # documented `ASRManager.loadModel()` path was never exercised. A scenario
     # that passes without touching its subject is the vacuity this branch exists
     # to close, so the check belongs here until the runner enforces metadata.
-    backend = subprocess.run(
-        ["defaults", "read", SHARED_DOMAIN, "selectedBackend"],
-        capture_output=True, text=True)
-    active = backend.stdout.strip() if backend.returncode == 0 else "parakeet"
+    # #3385: through the shared-setting owner, which refuses an unreadable value instead
+    # of guessing Parakeet (an unset key is still Parakeet, the shipped default).
+    import settings_nav
+    try:
+        active = _read_setting("selectedBackend")
+    except settings_nav.PreferenceError as e:
+        return invalid(f"the active backend could not be read: {e}")
     if active != "parakeet":
         return invalid(
             f"active backend is {active!r}, but this scenario documents "
@@ -1476,7 +1479,6 @@ def _read_asr_recovery_outcome(start_pos: int, timeout_s: float = 10.0) -> Optio
 # independently of the app itself; that failure mode no longer exists.
 
 
-_DEV_BUNDLE_ID = "com.enviouswispr.app.dev"
 _WRITING_STYLE_BUTTON_LABELS = {
     "formal": "Formal — Professional tone, proper grammar",
     "standard": "Standard — Clean up grammar and punctuation",
@@ -1484,16 +1486,50 @@ _WRITING_STYLE_BUTTON_LABELS = {
 }
 
 
-def _read_setting(key: str) -> Optional[str]:
-    """Read a UserDefaults value from the dev app's domain."""
-    try:
-        out = subprocess.check_output(
-            ["defaults", "read", _DEV_BUNDLE_ID, key],
-            text=True, stderr=subprocess.DEVNULL,
-        ).strip()
-        return out
-    except subprocess.CalledProcessError:
-        return None
+def _press_engine_card(eyes, label: str) -> None:
+    """Open "Change speech engine" on Dictation Settings > Engine and press `label`'s card.
+
+    For A9, whose point is that the press is REFUSED mid-recording: it presses without
+    requiring the summary to change. The press goes through the same scoped lookup as
+    `wispr_eyes.choose_engine` (`settings_nav`), never a whole-app tap.
+    """
+    ax = eyes._ax()
+    root = eyes._app
+    sn = eyes._sn
+    cards = sn.content_controls(ax, root, label)
+    if not cards:
+        change = sn.content_controls(ax, root, sn.CHANGE_ENGINE)
+        if len(change) != 1:
+            raise RuntimeError(f"{len(change)} {sn.CHANGE_ENGINE!r} buttons; refusing to choose")
+        ax.press(change[0])
+        sn.wait_until(ax, lambda: len(sn.content_controls(ax, eyes._app, label)) == 1, 3.0,
+                      "the engine choices open")
+        cards = sn.content_controls(ax, eyes._app, label)
+    if len(cards) != 1:
+        raise RuntimeError(f"{len(cards)} {label!r} engine cards; refusing to choose")
+    ax.press(cards[0])
+
+
+def _read_setting(key: str):
+    """The value the app uses for a stored setting (#3385).
+
+    Both builds keep settings in the SHARED domain `com.enviouswispr.app`
+    (`SettingsDefaults.swift`); `com.enviouswispr.app.dev` holds only pre-#923
+    leftovers, so reading it read a value the app ignores. `settings_nav.stored`
+    owns how each key is read and raises `PreferenceError` instead of guessing:
+    a scenario that cannot read the original refuses to change it.
+    """
+    from ptt_binding import read_domain
+    import settings_nav
+    return settings_nav.stored(read_domain, key)
+
+
+def _press_switch(eyes, label: str) -> None:
+    """Press the one content switch named `label` (never a whole-app fuzzy tap)."""
+    el = eyes._content_switch(label)
+    if el is None:
+        raise RuntimeError(f"no {label!r} switch on the current Settings page")
+    eyes.perform_action(el, "AXPress")
 
 
 @scenario(
@@ -1512,7 +1548,7 @@ def A6_settings_storm(**_) -> dict:
     """User behavior: dictation in progress, user opens Settings and
     flips heart-side toggles whose live-sync runs *during* an active
     recording — `wordCorrectionEnabled` (Dictionary tab) and
-    `fillerRemovalEnabled` (Transcription tab). These two flow through
+    `fillerRemovalEnabled` (Dictation Settings > Engine since #3385). These two flow through
     `PipelineSettingsSync` and modify the streaming-time inline post-
     process; the negative control on this scenario specifically names
     `wordCorrectionEnabled live-sync from PipelineSettingsSync`.
@@ -1534,9 +1570,15 @@ def A6_settings_storm(**_) -> dict:
     eyes = _import_wispr_eyes()
     eyes.connect()
 
-    # Capture pre-state so we can restore after the storm.
-    pre_word_correction = _read_setting("wordCorrectionEnabled")  # "0"/"1"/None
-    pre_filler_removal = _read_setting("fillerRemovalEnabled")
+    # Capture pre-state so we can restore after the storm. An unreadable original
+    # refuses the scenario before anything is flipped.
+    import settings_nav
+    try:
+        pre_word_correction = _read_setting("wordCorrectionEnabled")
+        pre_filler_removal = _read_setting("fillerRemovalEnabled")
+    except settings_nav.PreferenceError as e:
+        return {"terminal": False, "reason": f"refused before any change: {e}",
+                "state": query_state()}
 
     if not _start_recording_locked():
         return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
@@ -1545,16 +1587,17 @@ def A6_settings_storm(**_) -> dict:
         # Storm 1: flip wordCorrectionEnabled twice on the Dictionary tab.
         eyes.nav("Dictionary")
         time.sleep(0.4)
-        eyes.tap("Enable Dictionary")
+        _press_switch(eyes, "Enable Dictionary")
         time.sleep(0.25)
-        eyes.tap("Enable Dictionary")
+        _press_switch(eyes, "Enable Dictionary")
         time.sleep(0.25)
-        # Storm 2: flip fillerRemovalEnabled twice on the Transcription tab.
-        eyes.nav("Transcription")
+        # Storm 2: flip fillerRemovalEnabled twice on Dictation Settings > Engine
+        # (the Transcription page's controls, #3385).
+        eyes.nav("Dictation Settings", "Engine")
         time.sleep(0.4)
-        eyes.tap("Remove filler words (um, uh, hmm...)")
+        _press_switch(eyes, "Remove filler words (um, uh, hmm...)")
         time.sleep(0.25)
-        eyes.tap("Remove filler words (um, uh, hmm...)")
+        _press_switch(eyes, "Remove filler words (um, uh, hmm...)")
         time.sleep(0.25)
         # Continue recording briefly after the storm so the streaming
         # path sees both states with audio still flowing.
@@ -1566,16 +1609,16 @@ def A6_settings_storm(**_) -> dict:
 
     # Restore pre-state so successive runs do not accumulate. The toggles
     # were each flipped twice during the storm so they should already
-    # match pre-state, but read defaults to confirm and re-flip if not.
+    # match pre-state, but read the stored settings to confirm and re-flip if not.
     eyes.nav("Dictionary")
     time.sleep(0.4)
-    if (_read_setting("wordCorrectionEnabled") or "0") != (pre_word_correction or "0"):
-        eyes.tap("Enable Dictionary")
+    if _read_setting("wordCorrectionEnabled") != pre_word_correction:
+        _press_switch(eyes, "Enable Dictionary")
         time.sleep(0.3)
-    eyes.nav("Transcription")
+    eyes.nav("Dictation Settings", "Engine")
     time.sleep(0.4)
-    if (_read_setting("fillerRemovalEnabled") or "0") != (pre_filler_removal or "0"):
-        eyes.tap("Remove filler words (um, uh, hmm...)")
+    if _read_setting("fillerRemovalEnabled") != pre_filler_removal:
+        _press_switch(eyes, "Remove filler words (um, uh, hmm...)")
         time.sleep(0.3)
 
     restored = {
@@ -1698,7 +1741,8 @@ def A8b_cancel_during_whisperkit_load(**_) -> dict:
 )
 def A9_backend_switch_mid_record(**_) -> dict:
     """User behavior: dictation in progress with audio flowing, user
-    opens Settings → Transcription and taps the OTHER engine button.
+    opens Settings → Dictation Settings → Engine, opens "Change speech engine"
+    and taps the OTHER engine card (#3385: the cards sit behind Change).
     The PipelineSettingsSync guard at line 90 must drop the switch
     silently (logs 'Backend switch blocked'), the active recording
     must finalize on the original backend, and `query_state` must
@@ -1723,7 +1767,12 @@ def A9_backend_switch_mid_record(**_) -> dict:
     # Pre-state: assert idle, capture starting backend.
     if "idle" not in _active_state():
         _stop_recording_locked(settle_s=2.0)
-    pre_backend = _read_setting("selectedBackend") or "parakeet"
+    import settings_nav
+    try:
+        pre_backend = _read_setting("selectedBackend")   # "parakeet" | "whisperKit"
+    except settings_nav.PreferenceError as e:
+        return {"terminal": False, "reason": f"refused before any change: {e}",
+                "state": query_state()}
     target_button_for_switch_attempt = (
         "All Languages" if pre_backend.lower() == "parakeet" else "Fast"
     )
@@ -1737,16 +1786,18 @@ def A9_backend_switch_mid_record(**_) -> dict:
     pipeline_state_during = ""
     pipeline_state_after_settle = ""
     # Hold the switched state long enough for a human to actually
-    # perceive the visual flip in the Transcription tab. Without this
+    # perceive the visual flip on the Engine tab. Without this
     # dwell the buttons toggle and toggle back in <1s — the test passes
     # in the data but a watching reviewer can't visually confirm it.
     display_dwell_seconds = 3.0
     with _TTSAudio():
         time.sleep(0.5)  # let audio flow into the active backend
-        eyes.nav("Transcription")
+        eyes.nav("Dictation Settings", "Engine")
         time.sleep(0.4)
-        # Attempt the switch — should be blocked by the guard.
-        eyes.tap(target_button_for_switch_attempt)
+        # Attempt the switch — should be blocked by the guard. #3385: the cards are behind
+        # "Change speech engine"; `_press_engine_card` opens THAT Change and
+        # presses the card without requiring the switch to land (the guard may refuse it).
+        _press_engine_card(eyes, target_button_for_switch_attempt)
         time.sleep(0.3)
         # Snapshot which PIPELINE is actually doing the work. The
         # `backend=` field in query_state mirrors UserDefaults, which
@@ -1760,11 +1811,12 @@ def A9_backend_switch_mid_record(**_) -> dict:
     pipeline_state_after_settle = query_state()
     terminated = assert_terminated(timeout_s=10.0)
 
-    # Restore: tap the original engine button so UserDefaults matches reality.
-    eyes.nav("Transcription")
+    # Restore: re-open Change and choose the original engine so UserDefaults matches reality.
+    # `choose_engine` proves the choice landed (choices closed, summary names it).
+    eyes.nav("Dictation Settings", "Engine")
     time.sleep(0.4)
-    if (_read_setting("selectedBackend") or "").lower() != pre_backend.lower():
-        eyes.tap(target_button_for_restore)
+    if _read_setting("selectedBackend") != pre_backend:
+        eyes.choose_engine(target_button_for_restore)
         time.sleep(0.4)
 
     recovery = _assert_dictation_recovers()

@@ -215,7 +215,7 @@ THEN recording is cancelled
 
 ## Escape Recovery ON (#2087)
 
-Every scenario in this section requires **Settings → Shortcuts → Escape
+Every scenario in this section requires **Settings → Keybinds → Escape
 Recovery** switched ON, which is the shipped default, so a fresh install needs no
 setup here. Do NOT "restore" it to OFF afterwards — that instruction belonged to
 the old default and following it now leaves the machine in a non-default state
