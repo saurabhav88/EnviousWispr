@@ -218,7 +218,8 @@ def _ui_terms(text):
     """*text* plus what the app shows for it in each shipped language, English first."""
     terms = [text]
     for table in _ui_tables():
-        shown = table.get(text)
+        shown = table.get({"Send feedback": "feedback.title",
+                           "Send feedback: your message is waiting": "feedback.help.waiting"}.get(text, text))
         if isinstance(shown, str) and shown not in terms:
             terms.append(shown)
     return terms
@@ -607,6 +608,24 @@ def nav(page, tab=None):
         return False
     shown = f" (tab {route.shown_tab})" if route.shown_tab and tab is None else ""
     print(f"Navigated to {page}" + (f" > {tab}" if tab else "") + shown)
+    return True
+
+
+def gift(opened=True):
+    """Reach What's New & Updates by its toolbar caption; observe the dropdown.
+    Closing uses the popover's AXCancel and observes disappearance. Never checks for updates.
+    """
+    _ensure_connected()
+    try:
+        popover = _sn.open_gift(_ax(), lambda: _app)
+        if not opened:
+            perform_action(popover, "AXCancel")
+            _sn.wait_until(_ax(), lambda: not any(
+                _ax().same(e, popover) for e in _ax().walk(_app)), 3.0,
+                "the What's New dropdown closing")
+    except NavigationError as e:
+        print(f"gift FAILED: {e}")
+        return False
     return True
 
 def menu():
@@ -1557,7 +1576,7 @@ def _cycle_switch(label, before):
 
 
 def scan(toggle=False):
-    """Full Settings scan: every PR1 page and each Dictation Settings tab, from the manifest in
+    """Full Settings scan: every release page and each Dictation/App Settings tab, from the manifest in
     `settings_nav.SCAN` (#3385), read by `settings_nav.scan_surface`. One row per surface: OK,
     FAIL or BLOCKED. A required control that is absent, unreadable or ambiguous FAILs; a
     state-dependent one is N/A only when its condition is known false, and BLOCKED when it
@@ -1602,6 +1621,14 @@ def scan(toggle=False):
             t0 = time.time()
             ok = nav("Dictation Settings")
             results.append(("Dictation Settings (remembered tab)", "OK" if ok else "BLOCKED",
+                            time.time() - t0, []))
+            t0 = time.time()
+            ok = nav("App Settings")
+            results.append(("App Settings (remembered tab)", "OK" if ok else "BLOCKED",
+                            time.time() - t0, []))
+            t0 = time.time()
+            ok = gift(opened=False)
+            results.append(("What's New & Updates", "OK" if ok else "BLOCKED",
                             time.time() - t0, []))
     finally:
         total = time.time() - t_total
@@ -3754,7 +3781,7 @@ def _self_test():
     global _pid, _TABLES, _app
     _saved_pid, _saved_tables, _saved_app = _pid, _TABLES, _app
     _pid, _TABLES = -1, (-1, [{"Selected": "Ausgewählt", "Fast": "Schnell",
-                               "Transcription": "Transkription"}])
+                               "Transcription": "Transkription", "feedback.title": "Feedback senden"}])
     _de_tree = _el("AXApplication", children=[_el("AXWindow", children=[
         _el("AXButton", title="Transkription"),
         _el("AXButton", value="Ausgewählt", desc="Schnell"),
@@ -3772,6 +3799,8 @@ def _self_test():
          _is_selected(_de_tree["AXChildren"][0]["AXChildren"][2]), False),
         ("NEGATIVE CONTROL: a name the table does not translate is not found",
          _find_match(_de_tree, "All Languages", "AXButton", exact=True) is not None, False),
+        ("stable-key Feedback matches its translated caption",
+         _ui_terms("Send feedback"), ["Send feedback", "Feedback senden"]),
         ("English still matches alongside the translation",
          _ui_terms("Fast"), ["Fast", "Schnell"]),
         ("a card is named by its whole label", _names_card("Schnell", "Schnell"), True),

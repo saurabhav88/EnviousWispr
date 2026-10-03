@@ -56,7 +56,7 @@ struct SettingsShellLayoutTests {
   }
 
   static func row(
-    _ section: SettingsSection, selected: Bool, activity: SettingsShellCopy.SidebarActivity = .none
+    _ section: SettingsPage, selected: Bool, activity: SettingsShellCopy.SidebarActivity = .none
   ) -> some View {
     SidebarNavRow(label: section.label, isSelected: selected, activity: activity) {
       Image(systemName: section.icon).font(.system(size: 15, weight: .medium))
@@ -69,7 +69,7 @@ struct SettingsShellLayoutTests {
   )
   func sidebarRows() throws {
     var heights: [String: CGFloat] = [:]
-    for section in SettingsSection.allCases {
+    for section in SettingsPage.allCases {
       let variants: [(String, Bool, SettingsShellCopy.SidebarActivity)] = [
         ("rest", false, .none), ("selected", true, .none),
         ("busy", false, .fileImport), ("selectedBusy", true, .dictionaryEnrichment),

@@ -188,7 +188,7 @@ struct TranscriptDetailView: View {
             PasteService.simulatePaste()
           }
         } else {
-          navigationCoordinator.request(.permissions)
+          navigationCoordinator.request(.appSettings(.permissions))
         }
       } label: {
         Label(EscapeRecoveryRowPresentation.pasteLabel, systemImage: "arrow.right.doc.on.clipboard")

@@ -230,16 +230,6 @@ final class UpdateCoordinator {
     }
   }
 
-  /// Issue #958: user-initiated attended check from the Settings "Check for
-  /// Updates" row (§3D). Mirrors the menu wrapper
-  /// (`SparkleUpdateController.openUpdateCheckFromMenu`) but tags the source
-  /// `"settings"`. Shows Sparkle's own check UI ("Checking… / up to date /
-  /// update available").
-  func checkForUpdatesFromSettings() {
-    lastInstallSource = "settings"
-    updaterController?.checkForUpdates(nil)
-  }
-
   /// #3385: assign attribution only when this click can begin a new session.
   /// Still forward an active-session click so Sparkle can bring its UI forward.
   func checkForUpdatesFromWhatsNew(

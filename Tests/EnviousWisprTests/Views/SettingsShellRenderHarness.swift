@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 import Testing
+import EnviousWisprCore
+@testable import EnviousWisprServices
+@testable import EnviousWisprPipeline
+@testable import EnviousWisprStorage
 
 @testable import EnviousWisprAppKit
 
@@ -65,7 +69,7 @@ struct SettingsShellRenderHarness {
   }
 
   static func row(
-    _ section: SettingsSection, selected: Bool,
+    _ section: SettingsPage, selected: Bool,
     activity: SettingsShellCopy.SidebarActivity = .none, hover: Bool? = nil
   ) -> some View {
     SidebarNavRow(
@@ -81,6 +85,7 @@ struct SettingsShellRenderHarness {
   /// The PR1 sidebar column: four groups, Dictation Settings selected, Dictionary busy.
   static var sidebarColumn: some View {
     VStack(alignment: .leading, spacing: 2) {
+      row(.history, selected: false)
       ForEach(Array(SettingsGroup.allCases.enumerated()), id: \.offset) { index, group in
         if index > 0 { Divider().padding(.vertical, 6) }
         Text(group.heading)
@@ -89,7 +94,7 @@ struct SettingsShellRenderHarness {
         ForEach(group.sections) { section in
           row(
             section, selected: section == .dictation,
-            activity: section == .wordCorrection ? .dictionaryEnrichment : .none)
+            activity: section == .dictionary ? .dictionaryEnrichment : .none)
         }
       }
     }
@@ -102,8 +107,8 @@ struct SettingsShellRenderHarness {
     VStack(alignment: .leading, spacing: 6) {
       row(.history, selected: false)
       row(.dictation, selected: true)
-      row(.wordCorrection, selected: false, activity: .dictionaryEnrichment)
-      row(.wordCorrection, selected: true, activity: .dictionaryEnrichment)
+      row(.dictionary, selected: false, activity: .dictionaryEnrichment)
+      row(.dictionary, selected: true, activity: .dictionaryEnrichment)
       row(.transcribeFile, selected: false, activity: .fileImport)
       row(.transcribeFile, selected: true, activity: .fileImport)
       row(.keybinds, selected: false, hover: true)
@@ -166,4 +171,60 @@ struct SettingsShellRenderHarness {
     #expect(made.count == 18, "rendered \(made.count) of 18 planned PNGs")
     #expect(Set(made).count == made.count, "two renders wrote one file")
   }
+  #if DEBUG
+  @Test("render the whole production toolbar with an active status at every window width",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_SETTINGS_SHELL"] == "1"))
+  func renderToolbar() throws {
+    let defaults = try #require(TestDefaults.suite("ew.shellToolbar.\(UUID().uuidString)"))
+    let settings = SettingsManager(defaults: defaults)
+    let audio = RouterTestAudioCapture()
+    let asr = RouterTestASRManager()
+    let store = TranscriptStore(directory: Self.runDirectory.appending(path: "fixture-history"))
+    let recording = LiveRecordingState(
+      kernelDriver: DictationRuntimeFixtures.makeParakeetDriver(audioCapture: audio, asrManager: asr, store: store),
+      whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(audioCapture: audio, store: store),
+      audioCapture: audio, asrManager: asr)
+    let runtime = DictationSettingsRenderHarness.idleRuntime(
+      settings: settings, audio: audio, asr: asr, recording: recording, store: store)
+    let holder = UpdateCoordinatorHolder()
+    // Force paint only. No capture, hotkey, provider probe or update check starts.
+    #expect(recording.kernelDriver.kernelForTesting.testForceTransition(to: .arming))
+    #expect(recording.pipelineState == .loadingModel)
+    for width in [750, 820, 1300] {
+      for dark in [false, true] {
+        let content = NavigationStack {
+          HStack(spacing: SettingsLayout.windowFrameInset) {
+            Self.sidebarColumn.frame(width: 200)
+            Color.stPageBg
+          }
+          .padding(SettingsLayout.windowFrameInset)
+          .background(Color.stWindowBg)
+          .toolbar { SettingsWindowToolbar(appName: "EnviousWispr") }
+        }
+        .environment(settings).environment(holder).environment(recording).environment(runtime)
+        .frame(width: CGFloat(width), height: 600)
+        let host = NSHostingView(rootView: content)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 600),
+          styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.title = "EnviousWispr"
+        window.titleVisibility = .hidden
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let frame = try #require(window.contentView?.superview)
+        frame.layoutSubtreeIfNeeded()
+        let bitmap = try #require(frame.bitmapImageRepForCachingDisplay(in: frame.bounds))
+        frame.cacheDisplay(in: frame.bounds, to: bitmap)
+        let png = try #require(bitmap.representation(using: .png, properties: [:]))
+        try FileManager.default.createDirectory(at: Self.runDirectory, withIntermediateDirectories: true)
+        let url = Self.runDirectory.appending(path: "shell-toolbar-\(width)-\(dark ? "dark" : "light").png")
+        try png.write(to: url)
+        print("RENDERED whole toolbar -> \(url.path)")
+        window.contentView = nil
+      }
+    }
+  }
+  #endif
+
 }

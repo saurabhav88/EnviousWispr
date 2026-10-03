@@ -28,4 +28,21 @@ struct AppSettingsNavigationTests {
     host.selection = .privacy
     #expect(remembered == .privacy)
   }
+  @Test("App Settings destinations override and remember each tab independently", arguments: AppSettingsTab.allCases)
+  func destinations(tab: AppSettingsTab) {
+    var state = SettingsNavigationState()
+    #expect(state.appSettingsTab == .appearance)
+    state.apply(.dictation(.chimes))
+    state.apply(.appSettings(.privacy))
+    state.apply(.appSettings(tab))
+    #expect(state.selectedPage == .appSettings)
+    #expect(state.appSettingsTab == tab)
+    state.selectSidebar(.history)
+    state.selectSidebar(.appSettings)
+    #expect(state.appSettingsTab == tab)
+    state.selectSidebar(.dictation)
+    #expect(state.dictationTab == .chimes)
+    #expect(SettingsDestination.appSettings(tab).page == .appSettings)
+  }
+
 }
