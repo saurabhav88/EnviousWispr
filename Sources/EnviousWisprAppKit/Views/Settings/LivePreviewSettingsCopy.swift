@@ -17,7 +17,7 @@ enum LivePreviewSettingsCopy {
   /// **The feature's name, settled 2026-08-18.**
   ///
   /// This said "On-screen Preview" while the sidebar and page title said
-  /// "Live Preview" (`SettingsSection.swift`), so the page called itself two
+  /// "Live Preview" (`SettingsPage.swift`), so the page called itself two
   /// things. The older draft gave up the word "live" to avoid colliding with the
   /// "Live transcription" setting, which is the confusion #1988 was filed about
   /// — but the nav had already taken the word back, in the two most visible

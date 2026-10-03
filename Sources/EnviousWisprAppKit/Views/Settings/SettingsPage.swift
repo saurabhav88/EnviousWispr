@@ -1,0 +1,207 @@
+import SwiftUI
+
+/// A way for a page to send the user to ANOTHER page.
+///
+/// **Added for the Appearance page's link to Live Preview** (#2446). Picking the
+/// pill that shows words switches Live Preview on, and the user then needs
+/// somewhere to configure it — which lives on a different page. Threading a
+/// binding down through `AppearanceSettingsView` into a panel would put window
+/// navigation in the signature of every view in between; the environment is where
+/// this window already keeps `settingsPageSection`, one level up.
+/// (#3385: the page-header environment value is gone with the page headers;
+/// this key is set by `UnifiedWindowView.page` for every page.)
+///
+/// Defaults to a no-op rather than to `nil`, so a preview or a test that hosts a
+/// panel on its own gets a dead link instead of a crash.
+private struct SettingsNavigateKey: EnvironmentKey {
+  static let defaultValue: @MainActor (SettingsDestination) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+  var settingsNavigate: @MainActor (SettingsDestination) -> Void {
+    get { self[SettingsNavigateKey.self] }
+    set { self[SettingsNavigateKey.self] = newValue }
+  }
+}
+
+/// The final sidebar pages. History is ungrouped; Diagnostics is development only.
+enum SettingsPage: String, CaseIterable, Identifiable {
+  case history
+  case dictation
+  case keybinds
+  case transcribeFile
+  case aiPolish
+  case dictionary
+  case snippets
+  case appSettings
+  #if DEBUG
+    case diagnostics
+  #endif
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .history: String(localized: "History")
+    case .dictation: String(localized: "Dictation Settings")
+    case .keybinds: String(localized: "Keybinds")
+    case .transcribeFile: String(localized: "Transcribe a File")
+    case .aiPolish: String(localized: "AI Polish")
+    case .dictionary: String(localized: "Dictionary")
+    case .snippets: String(localized: "Snippets")
+    case .appSettings: String(localized: "App Settings")
+    #if DEBUG
+      case .diagnostics: "Diagnostics"
+    #endif
+    }
+  }
+
+  var icon: String {
+    switch self {
+    case .history: "clock.arrow.circlepath"
+    case .dictation: "waveform"
+    case .keybinds: "keyboard"
+    case .transcribeFile: "waveform.badge.plus"
+    case .aiPolish: "sparkles"
+    case .dictionary: "textformat.abc"
+    case .snippets: "curlybraces"
+    case .appSettings: "gearshape"
+    #if DEBUG
+      case .diagnostics: "ladybug"
+    #endif
+    }
+  }
+
+  var group: SettingsGroup? {
+    switch self {
+    case .history: nil
+    case .dictation, .keybinds, .transcribeFile: .record
+    case .aiPolish, .dictionary, .snippets: .process
+    case .appSettings: .system
+    #if DEBUG
+      case .diagnostics: .system
+    #endif
+    }
+  }
+}
+
+enum SettingsGroup: String, CaseIterable {
+  case record = "RECORD"
+  case process = "PROCESS"
+  case system = "SYSTEM"
+
+  var sections: [SettingsPage] {
+    SettingsPage.allCases.filter { $0.group == self }
+  }
+
+  var heading: String {
+    switch self {
+    case .record: String(localized: "RECORD")
+    case .process: String(localized: "PROCESS")
+    case .system: String(localized: "SYSTEM")
+    }
+  }
+}
+
+/// The six tabs of Dictation Settings (#3385). The identity is stable; the
+/// visible names are the founder's 2026-10-02 decisions.
+enum DictationTab: String, CaseIterable, Hashable, Identifiable {
+  case engine
+  case microphone
+  case livePreview
+  case pill
+  case chimes
+  case clipboard
+
+  var id: Self { self }
+
+  var label: LocalizedStringResource {
+    switch self {
+    case .engine:
+      return LocalizedStringResource("Engine", comment: "Dictation Settings: tab name.")
+    case .microphone:
+      return LocalizedStringResource(
+        "Microphone & Media",
+        comment: "Dictation Settings: tab name for the microphone and what other audio does.")
+    case .livePreview:
+      return LocalizedStringResource("Live Preview", comment: "Dictation Settings: tab name.")
+    case .pill:
+      return LocalizedStringResource(
+        "Recording Pill",
+        comment: "Dictation Settings: tab name for the floating pill shown while recording.")
+    case .chimes:
+      return LocalizedStringResource(
+        "Chimes", comment: "Dictation Settings: tab name for the start and stop sounds.")
+    case .clipboard:
+      return LocalizedStringResource("Clipboard", comment: "Dictation Settings: tab name.")
+    }
+  }
+
+  var icon: String {
+    switch self {
+    case .engine: return "waveform"
+    case .microphone: return "mic"
+    case .livePreview: return "text.viewfinder"
+    case .pill: return "capsule"
+    case .chimes: return "bell.and.waveform"
+    case .clipboard: return "clipboard"
+    }
+  }
+}
+
+/// Where a request to open Settings lands: a page, and for Dictation Settings
+/// the tab. A tab that does not belong to its page cannot be written down.
+/// "Check for Updates" is an action, never a place, so it has no case.
+enum SettingsDestination: Equatable {
+  case history
+  case dictation(DictationTab)
+  case keybinds
+  case transcribeFile
+  case aiPolish
+  case dictionary
+  case snippets
+  case appSettings(AppSettingsTab)
+  #if DEBUG
+    case diagnostics
+  #endif
+
+  var page: SettingsPage {
+    switch self {
+    case .history: .history
+    case .dictation: .dictation
+    case .keybinds: .keybinds
+    case .transcribeFile: .transcribeFile
+    case .aiPolish: .aiPolish
+    case .dictionary: .dictionary
+    case .snippets: .snippets
+    case .appSettings: .appSettings
+    #if DEBUG
+      case .diagnostics: .diagnostics
+    #endif
+    }
+  }
+}
+
+/// Window-life selection, never persisted. Sidebar returns remember each page's tab;
+/// an explicit destination overrides that page's remembered tab.
+struct SettingsNavigationState: Equatable {
+  var selectedPage: SettingsPage = .history
+  var dictationTab: DictationTab = .engine
+  var appSettingsTab: AppSettingsTab = .appearance
+
+  mutating func selectSidebar(_ page: SettingsPage) {
+    selectedPage = page
+  }
+
+  mutating func apply(_ destination: SettingsDestination) {
+    selectedPage = destination.page
+    switch destination {
+    case .dictation(let tab): dictationTab = tab
+    case .appSettings(let tab): appSettingsTab = tab
+    case .history, .keybinds, .transcribeFile, .aiPolish, .dictionary, .snippets: break
+    #if DEBUG
+      case .diagnostics: break
+    #endif
+    }
+  }
+}

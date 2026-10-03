@@ -101,3 +101,37 @@ struct WhatsNewMenuPresentation {
       "Self-Learning skips punctuation-only edits and is more cautious with unfinished edits.",
   ]
 }
+
+// MARK: - Localized display
+
+/// What the What's New screen shows for one entry (#3142): each field looked up in the String
+/// Catalog under `whatsNew.<id>.title`, `.description` and `.bullet.<n>`, the keys
+/// `scripts/ci/render-release-notes.py --catalog-seed-json` gives it and the catalog sync
+/// writes. The entry's own English is the fallback for every field, so an entry with no
+/// translation reads exactly as written. `WhatsNewContent` keeps its direct English literals:
+/// the GitHub release notes parse that source text, and identity stays on the entry.
+struct WhatsNewLocalizedDisplay: Equatable {
+  let title: String
+  let description: String
+  let bullets: [String]
+
+  init(_ entry: WhatsNewContent.Entry, bundle: Bundle = .main) {
+    let keys = Self.keys(for: entry)
+    title = bundle.localizedString(forKey: keys.title, value: entry.title, table: nil)
+    description = bundle.localizedString(
+      forKey: keys.description, value: entry.description, table: nil)
+    bullets = zip(keys.bullets, entry.bullets).map { key, english in
+      bundle.localizedString(forKey: key, value: english, table: nil)
+    }
+  }
+
+  static func keys(for entry: WhatsNewContent.Entry) -> (
+    title: String, description: String, bullets: [String]
+  ) {
+    let base = "whatsNew.\(entry.id)"
+    return (
+      "\(base).title", "\(base).description",
+      entry.bullets.indices.map { "\(base).bullet.\($0)" }
+    )
+  }
+}

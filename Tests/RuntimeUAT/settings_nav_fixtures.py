@@ -17,7 +17,10 @@ GERMAN = {
     "Dictation Settings": "Diktiereinstellungen", "Keybinds": "Tastenkürzel",
     "Transcribe a File": "Datei transkribieren", "AI Polish": "KI-Feinschliff",
     "Dictionary": "Wörterbuch", "Snippets": "Textbausteine", "Permissions": "Berechtigungen",
-    "Open Source Licenses": "Open-Source-Lizenzen", "Check for Updates": "Nach Updates suchen",
+    "What's New & Updates": "Neues & Updates", "Send feedback": "Feedback senden",
+    "All release notes on GitHub": "Alle Versionshinweise auf GitHub",
+    "Check for Updates…": "Nach Updates suchen…",
+    "App Settings": "App-Einstellungen", "Privacy": "Datenschutz", "Licenses": "Lizenzen", "Check for Updates": "Nach Updates suchen",
     "Engine": "Engine", "Microphone & Media": "Mikrofon & Medien", "Live Preview": "Live-Vorschau",
     "Recording Pill": "Aufnahmeanzeige", "Chimes": "Signaltöne", "Clipboard": "Zwischenablage",
     "Input device": "Eingabegerät", "Choose a microphone": "Mikrofon auswählen",
@@ -38,6 +41,7 @@ class FakeSettings:
         self.open = open_
         self.page = "History"
         self.remembered_tab = "Engine"
+        self.app_tab = "Appearance"
         self.strip_width = strip_width
         self.tab_width = tab_width
         self.strip_group = strip_group     # row groups under the wrapping group
@@ -78,7 +82,7 @@ class FakeSettings:
             return False
         if self.tab_selection == "two":
             return tab in (self.remembered_tab, "Engine")
-        return tab == self.remembered_tab
+        return tab == (self.app_tab if self.page == "App Settings" else self.remembered_tab)
 
     def named(self, role, english, value="", frame=None, press=None):
         if self.description_only:
@@ -101,7 +105,8 @@ class FakeSettings:
 
     def _select_tab(self, tab):
         def change():
-            self.remembered_tab = tab
+            if self.page == "App Settings": self.app_tab = tab
+            else: self.remembered_tab = tab
         return self._act(f"tab:{tab}", change)
 
     # ---- tree ---------------------------------------------------------------
@@ -120,9 +125,6 @@ class FakeSettings:
             activity = "Dictionary enrichment in progress" if page == "Dictionary" else None
             rows.append(self.named("AXButton", page, value=self.sel(page == self.page, activity),
                                    press=self._select_page(page)))
-            if page == "Snippets":
-                rows.append(self.named("AXButton", "Check for Updates",
-                                       value=self.sel(False), press=self._act("update", lambda: None)))
         if self.duplicate_sidebar_label:
             rows.append(self.named("AXButton", self.duplicate_sidebar_label, value=self.sel(False)))
         return el("AXScrollArea", children=[el("AXGroup", children=rows)],
@@ -134,11 +136,11 @@ class FakeSettings:
         # lookup would press these.
         kids.append(self.named("AXButton", "Dictionary", value=""))
         kids.append(self.named("AXButton", "Engine", value=""))
-        if self.page == "Dictation Settings":
+        if self.page in sn.TABS:
             tabs = []
             per_row = max(1, int(self.strip_width // self.tab_width))
-            row_count = (len(sn.TABS["Dictation Settings"]) + per_row - 1) // per_row
-            for i, tab in enumerate(sn.TABS["Dictation Settings"]):
+            row_count = (len(sn.TABS[self.page]) + per_row - 1) // per_row
+            for i, tab in enumerate(sn.TABS[self.page]):
                 x = 320 + (i % per_row) * self.tab_width + self.tab_dx
                 y = 120 + (i // per_row) * 52
                 tabs.append(self.named("AXButton", tab, value=self.sel(self._tab_selected(tab)),
@@ -428,7 +430,16 @@ def raising_cases():
         f = FakeSettings(open_=False)
         _nav(f, "History")
 
+    def app_refuses(page="App Settings", tab="Privacy", **kwargs):
+        f = FakeSettings(**kwargs)
+        _nav(f, page, tab)
+
     return [
+        ("App tab selection must land", lambda: app_refuses(press_lands=False), sn.NavigationError),
+        ("App wrapped tabs must be visible", lambda: app_refuses(clip_height=52, strip_width=240), sn.NavigationError),
+        ("App content cannot replace a sidebar row", lambda: app_refuses(duplicate_sidebar_label="App Settings"), sn.NavigationError),
+        ("removed standalone Permissions is refused", lambda: sn.validate_route("Permissions"), sn.RouteError),
+        ("removed standalone Appearance is refused", lambda: sn.validate_route("Appearance"), sn.RouteError),
         ("no selected tab is never a success with an unknown tab", no_tab_selected,
          sn.NavigationError),
         ("two selected tabs fail the remembered route", two_tabs_selected_remembered,
@@ -566,6 +577,35 @@ def valued_cases():
 
     blocks.append(('Remembered parent: no tab keeps the remembered tab; explicit tab overrides it', block_5))
 
+    def gift_menu(rows):
+        for german in (False, True):
+            f = FakeSettings(german=german)
+            showing = {"open": False}
+            def root():
+                toolbar = el("AXToolbar", children=[
+                    f.named("AXButton", sn.GIFT_CAPTION, press=lambda: showing.update(open=True)),
+                    f.named("AXButton", "Send feedback")])
+                pop = el("AXPopover", children=[f.named("AXStaticText", "What's New"),
+                    f.named("AXButton", "Check for Updates…"),
+                    f.named("AXLink", "All release notes on GitHub")])
+                return el("AXWindow", children=[toolbar] + ([pop] if showing["open"] else []))
+            pop = sn.open_gift(f.ax(), root)
+            rows.append((f"gift dropdown observed, German={german}", pop["AXRole"], "AXPopover"))
+    blocks.append(("Gift dropdown", gift_menu))
+
+    def app_tabs(rows):
+        for german in (False, True):
+            f = FakeSettings(german=german)
+            for tab in ("Appearance", "Permissions", "Privacy", "Licenses"):
+                route = _nav(f, "App Settings", tab)
+                rows.append((f"App Settings {tab}, German={german}", route.shown_tab, tab))
+            _nav(f, "History")
+            rows.append(("App sidebar return remembers Licenses", _nav(f, "App Settings").shown_tab, "Licenses"))
+            rows.append(("App explicit override", _nav(f, "App Settings", "Privacy").shown_tab, "Privacy"))
+            _nav(f, "Dictation Settings", "Chimes")
+            rows.append(("App and Dictation remember independently", _nav(f, "App Settings").shown_tab, "Privacy"))
+    blocks.append(("App Settings tabs", app_tabs))
+
     def block_6(rows):
         f = FakeSettings()
         for tab in sn.TABS["Dictation Settings"]:
@@ -599,8 +639,8 @@ def valued_cases():
     def block_8(rows):
         # A closed window with an opener opens it first.
         f = FakeSettings(open_=False)
-        _nav(f, "Permissions", open_settings=lambda: setattr(f, "open", True))
-        rows.append(("a closed window is opened, then the page selected", f.page, "Permissions"))
+        _nav(f, "App Settings", "Permissions", open_settings=lambda: setattr(f, "open", True))
+        rows.append(("a closed window is opened, then the page selected", f.page, "App Settings"))
 
     blocks.append(('A closed window with an opener opens it first', block_8))
 
@@ -743,7 +783,7 @@ def valued_cases():
             ("the scan covers 16 release surfaces",
              len(sn.SCAN), 16),
             ("every Dictation tab is scanned explicitly",
-             sorted(t for p, t, _ in sn.SCAN if t), sorted(sn.TABS["Dictation Settings"])),
+             sorted(t for p, t, _ in sn.SCAN if p == "Dictation Settings" and t), sorted(sn.TABS["Dictation Settings"])),
             ("every release page is scanned",
              sorted({p for p, _, _ in sn.SCAN}), sorted(sn.PAGES)),
         ]
@@ -1235,3 +1275,7 @@ def _capture_before_routing():
         if "'-s'" not in apply_:
             problems.append(f"{os.path.basename(path)}: apply does not do the switching")
     return problems
+
+
+if __name__ == "__main__":
+    raise SystemExit(sn._self_test())

@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 
 /// Issue #958 — unit tests for `UpdateCoordinator.checkForUpdatesProactively`
-/// (cooldown gate + auto-checks guard) and `checkForUpdatesFromSettings`
+/// (cooldown gate + auto-checks guard) and `checkForUpdatesFromWhatsNew`
 /// (source tagging).
 ///
 /// `SPUUpdater` is not test-constructible (`init NS_UNAVAILABLE`), so the
@@ -48,7 +48,7 @@ struct UpdateCoordinatorProactiveCheckTests {
 
   private func makeCoordinator() -> UpdateCoordinator {
     // No real Sparkle controller; the proactive path uses the injected probe,
-    // and `checkForUpdatesFromSettings` is a no-op call against a nil updater
+    // and `checkForUpdatesFromWhatsNew` is a no-op call against a nil updater
     // (we only assert the source tag it sets). Ephemeral defaults so the
     // once-per-version notification marker never leaks across tests.
     UpdateCoordinator(updaterController: nil, defaults: ephemeralDefaults())

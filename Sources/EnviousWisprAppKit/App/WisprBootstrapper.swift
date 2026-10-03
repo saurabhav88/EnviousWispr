@@ -1565,7 +1565,7 @@ package final class WisprBootstrapper {
     // chords are wired here, and installing `onPasteLast` / `onCopyLast` is what lets the hotkey
     // service register them at all.
     let openPermissionsWindow: @MainActor () -> Void = {
-      navigationCoordinator.request(.permissions)
+      navigationCoordinator.request(.appSettings(.permissions))
       appWindowCoordinator.showWindow()
     }
     let lastDictationAction = LastDictationAction.live(

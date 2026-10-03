@@ -13,23 +13,26 @@ struct SettingsShellEnglishTests {
 
   @Test("every Settings page keeps its sidebar name")
   func pages() {
-    #expect(SettingsSection.history.label == "History")
-    #expect(SettingsSection.whatsNew.label == "What's New")
-    #expect(SettingsSection.appearance.label == "Appearance")
-    #expect(SettingsSection.dictation.label == "Dictation Settings")
-    #expect(SettingsSection.transcribeFile.label == "Transcribe a File")
-    #expect(SettingsSection.keybinds.label == "Keybinds")
-    #expect(SettingsSection.aiPolish.label == "AI Polish")
-    #expect(SettingsSection.wordCorrection.label == "Dictionary")
-    #expect(SettingsSection.snippets.label == "Snippets")
-    #expect(SettingsSection.permissions.label == "Permissions")
-    #expect(SettingsSection.checkForUpdates.label == "Check for Updates")
-    #expect(SettingsSection.openSourceLicenses.label == "Open Source Licenses")
+    #expect(SettingsPage.history.label == "History")
+    #expect(SettingsPage.appSettings.label == "App Settings")
+    #expect(SettingsPage.history.group == nil)
+    #expect(SettingsPage.dictation.label == "Dictation Settings")
+    #expect(SettingsPage.transcribeFile.label == "Transcribe a File")
+    #expect(SettingsPage.keybinds.label == "Keybinds")
+    #expect(SettingsPage.aiPolish.label == "AI Polish")
+    #expect(SettingsPage.dictionary.label == "Dictionary")
+    #expect(SettingsPage.snippets.label == "Snippets")
     // #3385: the per-page description lines went with the page headers (tracker A5);
     // Dictionary's moved to its Enable row's "?" (`dictionaryHeading`).
-    #expect(SettingsGroup.allCases.map(\.rawValue) == ["APP", "RECORD", "PROCESS", "SYSTEM"])
+    #expect(SettingsGroup.allCases.map(\.rawValue) == ["RECORD", "PROCESS", "SYSTEM"])
     #expect(SettingsGroup.allCases.map(\.heading) == SettingsGroup.allCases.map(\.rawValue))
     #expect(SettingsGroup.record.sections == [.dictation, .keybinds, .transcribeFile])
+    #expect(SettingsGroup.process.sections == [.aiPolish, .dictionary, .snippets])
+    #if DEBUG
+      #expect(SettingsGroup.system.sections == [.appSettings, .diagnostics])
+    #else
+      #expect(SettingsGroup.system.sections == [.appSettings])
+    #endif
   }
 
   /// #3385: the six Dictation Settings tabs, in order, with the founder's 2026-10-02 names.
