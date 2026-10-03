@@ -35,7 +35,7 @@ struct OpenSourceLicensesView: View {
           }
           BrandedRow(showDivider: false) {
             SettingsRow(
-              icon: "doc.on.doc", title: "Third-party notices",
+              icon: "doc.on.doc", title: "Third-Party Notices",
               short: "Licenses for the tools EnviousWispr uses.",
               help: "Read the notices for WhisperKit, FluidAudio, Silero VAD, Sparkle and other components."
             ) {
