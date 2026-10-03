@@ -309,29 +309,29 @@ enum ProviderSetupKeys {
 enum ProviderCompactCopy {
   static func short(for provider: LLMProvider) -> String {
     switch provider {
-    case .egOne: return String(localized: "Our model for cleaning up dictation on this Mac")
-    case .s1Mini: return String(localized: "Small, on this Mac, and happiest in English")
-    case .appleIntelligence: return String(localized: "On-device polish on supported Macs with macOS 26+")
-    case .ollama: return String(localized: "Your models, local or hosted")
-    case .openAI: return String(localized: "Use your OpenAI API key for cloud polish")
-    case .gemini: return String(localized: "Use your Gemini API key for cloud polish")
-    case .claude: return String(localized: "Use your Claude API key for cloud polish")
+    case .egOne: return String(localized: "Our model for cleaning up dictation on this Mac.")
+    case .s1Mini: return String(localized: "Small, on this Mac, and happiest in English.")
+    case .appleIntelligence: return String(localized: "On-device polish on supported Macs with macOS 26+.")
+    case .ollama: return String(localized: "Your models, local or hosted.")
+    case .openAI: return String(localized: "Use your OpenAI API key for cloud polish.")
+    case .gemini: return String(localized: "Use your Gemini API key for cloud polish.")
+    case .claude: return String(localized: "Use your Claude API key for cloud polish.")
     case .none: return ""
     }
   }
 
   static func keyShort(for provider: LLMProvider) -> String {
     switch provider {
-    case .openAI: return String(localized: "Sends text and dictation context to OpenAI")
-    case .gemini: return String(localized: "Sends text and dictation context to Google")
-    case .claude: return String(localized: "Sends text and dictation context to Anthropic")
+    case .openAI: return String(localized: "Sends text and dictation context to OpenAI.")
+    case .gemini: return String(localized: "Sends text and dictation context to Google.")
+    case .claude: return String(localized: "Sends text and dictation context to Anthropic.")
     case .none, .egOne, .s1Mini, .appleIntelligence, .ollama: return ""
     }
   }
 
-  static let cloudModelShort = String(localized: "Choose the model used to polish your text")
+  static let cloudModelShort = String(localized: "Choose the model used to polish your text.")
   static let cloudModelHelp = String(localized: "Models come from your provider account. Save your API key to discover them. Unavailable models cannot be selected.")
-  static let ollamaModelShort = String(localized: "Choose a model on this Mac or hosted by Ollama")
+  static let ollamaModelShort = String(localized: "Choose a model on this Mac or hosted by Ollama.")
   static let ollamaModelHelp = String(localized: "Local and hosted models are listed separately. Prepare applies only to a local model used for dictation.")
 }
 
@@ -566,6 +566,7 @@ struct ProviderSetupSection: View {
       }
       BrandedRow(showDivider: false) {
         FrozenPerRecordingFootnote(text: frozenSettingsFootnote)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
     .environment(\.settingsPR1Density, true)
@@ -695,17 +696,19 @@ struct ProviderSetupSection: View {
       }
       apiKeyRow
       if provider == .openAI {
-        Link(
-          "Get your free API key at platform.openai.com",
-          destination: URL(string: "https://platform.openai.com/api-keys")!
-        )
+        Link(destination: URL(string: "https://platform.openai.com/api-keys")!
+        ) {
+          Text("Get your free API key at platform.openai.com")
+            .fixedSize(horizontal: false, vertical: surface == .dictation)
+        }
         .font(.stHelper)
         .fixedSize(horizontal: false, vertical: surface == .dictation)
       } else if provider == .gemini {
-        Link(
-          "Get your free API key at aistudio.google.com",
-          destination: URL(string: "https://aistudio.google.com/apikey")!
-        )
+        Link(destination: URL(string: "https://aistudio.google.com/apikey")!
+        ) {
+          Text("Get your free API key at aistudio.google.com")
+            .fixedSize(horizontal: false, vertical: surface == .dictation)
+        }
         .font(.stHelper)
         .fixedSize(horizontal: false, vertical: surface == .dictation)
       } else if provider == .claude, surface == .dictation {
@@ -831,11 +834,11 @@ struct ProviderSetupSection: View {
           resolvedShort: provider == .ollama ? ProviderCompactCopy.ollamaModelShort : ProviderCompactCopy.cloudModelShort,
           resolvedHelp: provider == .ollama ? ProviderCompactCopy.ollamaModelHelp : ProviderCompactCopy.cloudModelHelp
         ) {
-          VStack(alignment: .leading, spacing: 8) {
-            modelPicker.labelsHidden().frame(maxWidth: .infinity)
-            modelPickerActions
+          HStack(spacing: 8) {
+            modelPicker.labelsHidden().frame(minWidth: 0, maxWidth: .infinity)
+            modelPickerActions.fixedSize()
           }
-          .frame(minWidth: 160)
+          .frame(width: 160)
         }
       }
     } else {
@@ -1054,11 +1057,13 @@ struct ProviderSetupSection: View {
             keyField
               .focused($keyFieldFocused)
               .settingsFieldChrome(focused: $keyFieldFocused)
-            validationBadge
             HStack(spacing: 8) { apiKeyActions }
           }
           .frame(minWidth: 160)
         }
+        validationBadge
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.leading, 37)
       }
     } else {
       VStack(alignment: .leading, spacing: 6) {
@@ -1395,7 +1400,7 @@ struct ProviderSetupSection: View {
       .settingsReadingCopy()
 
       Text(
-        "Requires macOS 26 or later. On earlier versions, Apple Intelligence polish is skipped. Your text still gets the usual cleanup."
+        "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed."
       )
       .settingsReadingCopy()
     }

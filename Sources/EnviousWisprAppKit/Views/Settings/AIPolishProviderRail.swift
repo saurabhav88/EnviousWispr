@@ -406,7 +406,7 @@ enum PolishRailCatalog {
     PolishRailProvider(
       provider: .ollama, name: LLMProvider.ollama.displayName,
       tagline: String(
-        localized: "Your models, local or hosted",
+        localized: "Any open model, local or hosted",
         comment: "AI Polish provider list: description under a provider name. Ollama."),
       group: .yourOwnSetup, recommended: false),
     PolishRailProvider(

@@ -23,10 +23,10 @@ struct S1ControlCopyTests {
 
   @Test("compact style descriptions keep the approved short copy")
   func shortCopy() {
-    #expect(S1ControlCopy.stylingShort == "Choose how formal your text sounds")
-    #expect(S1ControlCopy.structureShort == "Keep sentences or turn spoken items into lists")
-    #expect(S1ControlCopy.contextShort == "Format dictated greetings and sign-offs as email")
-    #expect(ProviderCompactCopy.short(for: .appleIntelligence) == "On-device polish on supported Macs with macOS 26+")
+    #expect(S1ControlCopy.stylingShort == "Choose how formal your text sounds.")
+    #expect(S1ControlCopy.structureShort == "Keep sentences or turn spoken items into lists.")
+    #expect(S1ControlCopy.contextShort == "Format dictated greetings and sign-offs as email.")
+    #expect(ProviderCompactCopy.short(for: .appleIntelligence) == "On-device polish on supported Macs with macOS 26+.")
     for provider in LLMProvider.allCases {
       #expect(ProviderCompactCopy.short(for: provider).count <= 60)
       #expect(ProviderCompactCopy.keyShort(for: provider).count <= 60)

@@ -165,7 +165,7 @@ struct PolishRailCatalogTests {
   func ollamaRowCopyIsExact() throws {
     let ollama = try #require(PolishRailCatalog.entry(for: .ollama))
     #expect(ollama.name == "Ollama")
-    #expect(ollama.tagline == "Your models, local or hosted")
+    #expect(ollama.tagline == "Any open model, local or hosted")
     #expect(ollama.group == .yourOwnSetup)
     #expect(ollama.recommended == false)
     // The old name is gone. "Local" was a claim, not a label, and it stopped

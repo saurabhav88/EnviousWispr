@@ -43,7 +43,7 @@ struct AIPolishRenderHarness {
     window.contentView = nil
   }
 
-  private static func detailPage(provider: LLMProvider, pageWidth: CGFloat, surface: ProviderSetupSurface = .dictation) throws -> AnyView {
+  private static func detailPage(provider: LLMProvider, pageWidth: CGFloat, surface: ProviderSetupSurface = .dictation, keyFailure: String? = nil) throws -> AnyView {
     let defaults = try #require(TestDefaults.suite("ew.aiPolishRender.\(UUID().uuidString)"))
     let settings = SettingsManager(defaults: defaults)
     settings.llmProvider = provider
@@ -64,6 +64,10 @@ struct AIPolishRenderHarness {
     model.openAIKeySaved = false
     model.geminiKeySaved = false
     model.claudeKeySaved = false
+    if let keyFailure {
+      model.openAIKey = "render-fixture-unsaved-key"
+      model.keyStoreStatus = .failed(keyFailure)
+    }
     let snapshot = ProviderStatusSnapshot.capture(model: model, egOne: egOne, runtimes: runtimes,
       availability: availability, discovery: discovery, setup: setup)
     return AnyView(VStack(alignment: .leading, spacing: 16) {
@@ -147,6 +151,40 @@ struct AIPolishRenderHarness {
           }
         }.environment(\.settingsPR1Density, true).background(Color.stPageBg)
         try Self.render("german-literals-\(Int(windowWidth))", width: detailWidth, dark: dark, content: fixture)
+      }
+    }
+  }
+
+  /// Exercise a real failed file-store Save, scoped to a deliberately blocked fixture path.
+  /// The production message mapper supplies English; German is the existing catalog translation.
+  @Test("Render a real Save failure in English and long German, light and dark",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_AI_POLISH"] == "1"))
+  func saveFailureMessages() throws {
+    try FileManager.default.createDirectory(at: Self.runDirectory, withIntermediateDirectories: true)
+    let blockedDirectory = Self.runDirectory.appending(path: "blocked-save-directory")
+    try Data("This regular file deliberately prevents a fixture key directory.".utf8)
+      .write(to: blockedDirectory)
+    let keys = KeychainManager(backend: .legacyFiles,
+      legacyStore: FileLegacyKeyStore(storageDirectory: blockedDirectory))
+    let saveError: (any Error)?
+    do {
+      try keys.store(key: KeychainManager.openAIKeyID, value: "render-fixture-unsaved-key")
+      saveError = nil
+    } catch {
+      saveError = error
+    }
+    let failure = try #require(saveError, "the isolated fixture Save unexpectedly succeeded")
+    let english = AIPolishKeychainFailureMessage.text(for: failure, action: .save)
+    #expect(english == "Failed: Could not save the key. Try again, or restart the app.")
+    // Verbatim German for this same production sentence in origin/main's catalog (824a5ce1).
+    let german = "Fehlgeschlagen: Der Schlüssel konnte nicht gespeichert werden. Versuche es erneut oder starte die App neu."
+    for windowWidth: CGFloat in [750, 820, 1300] {
+      let pageWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+      for (language, message) in [("english", english), ("german", german)] {
+        for dark in [false, true] {
+          try Self.render("save-failure-\(language)-\(Int(windowWidth))", width: pageWidth,
+            dark: dark, content: Self.detailPage(provider: .openAI, pageWidth: pageWidth, keyFailure: message))
+        }
       }
     }
   }

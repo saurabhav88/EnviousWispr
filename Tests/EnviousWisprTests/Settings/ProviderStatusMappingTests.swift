@@ -1,6 +1,8 @@
+import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
@@ -65,16 +67,35 @@ struct ProviderStatusMappingTests {
 
   @Test("A draft cannot make an absent saved key usable")
   @MainActor
-  func absentSavedKeyIgnoresDraft() {
+  func absentSavedKeyIgnoresDraft() throws {
+    let defaults = try #require(TestDefaults.suite("ew.rail.\(UUID().uuidString)"))
     let model = ProviderSetupModel()
     model.openAIKey = "unsaved-test-draft"
     model.openAIKeySaved = false
-    let snapshot = ProviderStatusSnapshot(
-      egOneInstall: .notInstalled, egOneHealth: .red(reason: "download_required"),
-      s1MiniInstall: .notInstalled, s1MiniHealth: .red(reason: "download_required"),
-      appleStatus: nil, validationProvider: .openAI, cloudValidation: .valid,
-      openAIKeySaved: model.openAIKeySaved, geminiKeySaved: nil, claudeKeySaved: nil,
-      ollamaSetup: .notInstalled)
+
+    let keys = KeychainManager(
+      backend: .legacyFiles,
+      legacyStore: FileLegacyKeyStore(
+        storageDirectory: FileManager.default.temporaryDirectory
+          .appendingPathComponent(UUID().uuidString)))
+    let setup = SetupCoordinator(
+      asrManager: RouterTestASRManager(),
+      whisperKitSetup: WhisperKitSetupService(
+        engineMutationScope: .alwaysAllowedForTesting),
+      preloadAction: {}, ollamaStatusProbe: { _ in })
+    let egOne = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)
+    let s1 = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      defaults: defaults, provider: .s1Mini)
+    let snapshot = ProviderStatusSnapshot.capture(
+      model: model, egOne: egOne,
+      runtimes: LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1),
+      availability: AIAvailabilityCoordinator(),
+      discovery: LLMModelDiscoveryCoordinator(
+        keychainManager: keys, cacheDefaults: defaults),
+      setup: setup)
+
     #expect(snapshot.status(for: .openAI).label == "Key needed")
   }
 
