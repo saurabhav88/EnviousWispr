@@ -55,12 +55,11 @@ def make_copy(tmp, name, rewrites):
     return path
 
 
-def base_rewrites(lock_dir, agents='("bash",)', idle="15 * 60", ps='"/bin/ps"'):
+def base_rewrites(lock_dir, agents='("bash",)', ps='"/bin/ps"'):
     return [
         ('LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")',
          f"LOCK_DIR = {lock_dir!r}"),
         ('AGENT_NAMES = ("claude", "codex")', f"AGENT_NAMES = {agents}"),
-        ("IDLE_SECONDS = 15 * 60", f"IDLE_SECONDS = {idle}"),
         ('PS = "/bin/ps"', f"PS = {ps}"),
     ]
 
@@ -68,13 +67,15 @@ def base_rewrites(lock_dir, agents='("bash",)', idle="15 * 60", ps='"/bin/ps"'):
 class Session:
     """A bash process that runs tool commands, then idles until killed."""
 
-    def __init__(self, tmp, tool, commands, start_gate=None):
+    def __init__(self, tmp, tool, commands, start_gate=None, step_sleep=0):
         self.dir = tempfile.mkdtemp(dir=tmp)
         lines = []
         if start_gate:
             # Busy-wait on a file so many sessions fire at nearly the same moment.
             lines.append(f'while [ ! -e "{start_gate}" ]; do :; done')
         for i, cmd in enumerate(commands):
+            if step_sleep and i:
+                lines.append(f"sleep {step_sleep}")
             lines.append(f'"{sys.executable}" "{tool}" {cmd} > "{self.dir}/out{i}" 2>&1; '
                          f'echo $? > "{self.dir}/rc{i}"')
         # `exec`, not `sleep & wait`: a SIGKILLed bash orphans a background
@@ -107,6 +108,13 @@ class Session:
             self.proc.wait()
 
 
+def blocked_dir(tmp):
+    """A path under a regular FILE, so the lock folder cannot be created."""
+    path = os.path.join(tmp, "a-file")
+    open(path, "a").close()
+    return path
+
+
 def run_tool(tool, *args):
     """Run the copy directly from this test (no bash session ancestor)."""
     p = subprocess.run([sys.executable, tool, *args], capture_output=True, text=True)
@@ -119,6 +127,7 @@ def card(lock_dir):
         return None
     with open(path) as f:
         return json.load(f)
+
 
 
 def main():
@@ -166,42 +175,85 @@ def main():
         check("status names the holder", rc == 0 and "held by bash session pid "
               f"{winner.proc.pid}" in out, out)
 
-        print("stale: holder session exited")
+        print("no idle timer: a quiet live holder keeps the app")
+        # Back-date the card by a day. With no timer, only exit or release
+        # may end a hold, so a quiet live holder still wins.
+        aged = dict(card(lock), claimed_at=c["claimed_at"] - 86400,
+                    reminded_at=c["reminded_at"] - 86400)
+        with open(os.path.join(lock, "holder.json"), "w") as f:
+            json.dump(aged, f)
+        quiet = Session(tmp, tool, ["claim --label quiet"])
+        quiet.wait_done()
+        check("a day-old hold by a live session is still BUSY", quiet.rc() == 3,
+              quiet.out())
+
+        print("holder session exited")
         for s in crowd:
             s.kill()
         again = Session(tmp, tool, ["claim --label first", "claim --label second",
                                     "release", "status"])
         again.wait_done()
         check("next claim takes over from the exited holder",
-              again.rc(0) == 0 and "took over (its session has exited" in again.out(0),
+              again.rc(0) == 0 and "took over (holder session exited" in again.out(0),
               again.out(0))
-        check("a second claim by the same session renews",
-              again.rc(1) == 0 and "renewed" in again.out(1), again.out(1))
+        check("a second claim by the same session is 'already yours'",
+              again.rc(1) == 0 and "already yours" in again.out(1), again.out(1))
         check("the holder can release", again.rc(2) == 0 and "released" in again.out(2),
               again.out(2))
         check("the lock is free after release", card(lock) is None)
         check("status says free", "free" in again.out(3), again.out(3))
 
-        print("stale: holder idle")
-        lock2 = os.path.join(tmp, "lock2")
-        idle_tool = make_copy(tmp, "idle.py", base_rewrites(lock2, idle="1"))
-        holder = Session(tmp, idle_tool, ["claim --label idle"])
+        print("reminder for the holder only")
+        lock7 = os.path.join(tmp, "lock7")
+        rem_tool = make_copy(tmp, "rem.py", base_rewrites(lock7) + [
+            ("REMIND_SECONDS = 30 * 60", "REMIND_SECONDS = 1")])
+        holder = Session(tmp, rem_tool, ["claim --label rem", "remind --event PostToolUse"])
         holder.wait_done()
-        check("idle holder claimed", holder.rc() == 0, holder.out())
-        early = Session(tmp, idle_tool, ["claim --label early"])
-        early.wait_done()
-        check("a claim inside the idle window is refused", early.rc() == 3, early.out())
-        time.sleep(1.5)
-        later = Session(tmp, idle_tool, ["claim --label later"])
-        later.wait_done()
-        check("a claim after the idle window takes over",
-              later.rc() == 0 and "no claim for over" in later.out(), later.out())
+        check("no reminder before the interval",
+              holder.rc(1) == 0 and holder.out(1) == "", holder.out(1))
+        holder.kill()
+        # One session: claim, wait past the interval, remind (expect one),
+        # wait again, remind from a prompt hook (expect one, with that event).
+        h = Session(tmp, rem_tool, ["claim --label rem2", "remind --event PostToolUse",
+                                    "remind --event UserPromptSubmit"], step_sleep=1.2)
+        h.wait_done()
+        out1 = h.out(1)
+        try:
+            msg = json.loads(out1)
+            ctx = msg["hookSpecificOutput"]["additionalContext"]
+            ev = msg["hookSpecificOutput"]["hookEventName"]
+        except Exception:
+            ctx, ev = "", ""
+        check("after the interval the holder gets one reminder",
+              h.rc(1) == 0 and "holds the shared dev app" in ctx and ev == "PostToolUse",
+              out1)
+        check("the reminder names the release command", "release" in ctx, ctx)
+        check("the reminder carries the hook's own event name",
+              '"hookEventName": "UserPromptSubmit"' in h.out(2), h.out(2))
+        # Back-date the reminder so a non-holder WOULD be due if it counted.
+        aged = dict(card(lock7), reminded_at=time.time() - 3600)
+        with open(os.path.join(lock7, "holder.json"), "w") as f:
+            json.dump(aged, f)
+        rival = Session(tmp, rem_tool, ["remind --event PostToolUse"])
+        rival.wait_done()
+        check("a non-holder never gets a reminder",
+              rival.rc() == 0 and rival.out() == "", rival.out())
+        rc, out = run_tool(make_copy(tmp, "t2.py", base_rewrites(
+            os.path.join(tmp, "nolock"))), "remind")
+        check("remind with nobody holding exits 0 silently", rc == 0 and out == "", out)
+        rc, out = run_tool(make_copy(tmp, "t3.py", base_rewrites(
+            os.path.join(blocked_dir(tmp), "lock"))), "remind")
+        check("remind never fails, even on a broken lock folder", rc == 0, out)
+        with open(os.path.join(lock7, "holder.json"), "w") as f:
+            f.write("{not json")
+        rc, out = run_tool(rem_tool, "remind")
+        check("remind never fails on a broken card", rc == 0 and out == "", out)
 
         print("founder run (no Claude or Codex ancestor)")
         lock3 = os.path.join(tmp, "lock3")
         held_tool = make_copy(tmp, "held.py", base_rewrites(lock3))
-        h = Session(tmp, held_tool, ["claim --label held"])
-        h.wait_done()
+        hs = Session(tmp, held_tool, ["claim --label held"])
+        hs.wait_done()
         before = card(lock3)
         founder_tool = make_copy(tmp, "founder.py",
                                  base_rewrites(lock3, agents='("no-such-agent",)'))
@@ -209,7 +261,6 @@ def main():
         check("a founder run is never blocked", rc == 0, out)
         check("a founder run names the holder", "heads-up" in out, out)
         check("a founder run writes nothing", card(lock3) == before)
-
         with open(os.path.join(lock3, "holder.json"), "w") as f:
             f.write("{not json")
         rc, out = run_tool(founder_tool, "claim")
@@ -224,14 +275,13 @@ def main():
         live = Session(tmp, reuse_tool, [])
         time.sleep(0.3)
         os.makedirs(lock5)
-        fake = dict(before, pid=live.proc.pid, started="Thu Jan  1 00:00:00 1970",
-                    last_action_at=time.time(), claimed_at=time.time())
+        fake = dict(before, pid=live.proc.pid, started="Thu Jan  1 00:00:00 1970")
         with open(os.path.join(lock5, "holder.json"), "w") as f:
             json.dump(fake, f)
         s2 = Session(tmp, reuse_tool, ["claim --label reuse"])
         s2.wait_done()
         check("a live pid with a different start time is not the holder",
-              s2.rc() == 0 and "took over (its session has exited" in s2.out(),
+              s2.rc() == 0 and "took over (holder session exited" in s2.out(),
               s2.out())
 
         print("fail closed")
@@ -258,15 +308,15 @@ def main():
         lock4 = os.path.join(tmp, "lock4")
         os.makedirs(lock4)
         with open(os.path.join(lock4, "holder.json"), "w") as f:
-            json.dump({"version": 1, "pid": 1}, f)
+            # Otherwise valid, so only the version check can refuse it.
+            json.dump(dict(before, version=2), f)
         v_tool = make_copy(tmp, "v.py", base_rewrites(lock4))
         s = Session(tmp, v_tool, ["claim"])
         s.wait_done()
-        # Version 1 is a real older format (local-time `started`), so this row
-        # is also the mixed-checkout case: an older card is never reclaimed.
         check("an older card version is refused, not overwritten",
-              s.rc() == 2 and json.load(open(os.path.join(lock4, "holder.json")))
-              ["version"] == 1, s.out())
+              s.rc() == 2 and "version 2" in s.out() and
+              json.load(open(os.path.join(lock4, "holder.json")))["version"] == 2,
+              s.out())
         with open(os.path.join(lock4, "holder.json"), "w") as f:
             f.write("{not json")
         s = Session(tmp, v_tool, ["claim"])
@@ -279,20 +329,34 @@ def main():
         check("a card with a wrong-typed field is refused, not a traceback",
               s.rc() == 2 and "cannot decide" in s.out()
               and "Traceback" not in s.out(), s.out())
-        blocked = os.path.join(tmp, "not-a-dir")
-        open(blocked, "w").close()
-        b_tool = make_copy(tmp, "b.py", base_rewrites(os.path.join(blocked, "lock")))
+        b_tool = make_copy(tmp, "b.py", base_rewrites(
+            os.path.join(blocked_dir(tmp), "lock")))
         rc, out = run_tool(b_tool, "status")
         check("a lock folder that cannot be made is refused, not a traceback",
               rc == 2 and "cannot decide" in out and "Traceback" not in out, out)
 
+        # A ps whose parent chain never reaches pid 1 (each pid reports pid+1
+        # as its parent): the 64-step walk ends unfinished, which must be
+        # "cannot decide", never "no session found" (a founder run).
+        endless_ps = os.path.join(tmp, "endless-ps")
+        with open(endless_ps, "w") as f:
+            f.write('#!/bin/sh\nfor a; do p=$a; done\n'
+                    'echo "$((p+1)) Thu Jan  1 00:00:00 1970 sh"\n')
+        os.chmod(endless_ps, 0o755)
+        e_tool = make_copy(tmp, "e.py", base_rewrites(
+            os.path.join(tmp, "lock6"), agents='("no-such-agent",)',
+            ps=repr(endless_ps)))
+        rc, out = run_tool(e_tool, "claim")
+        check("an unfinished ancestor walk is not a founder run",
+              rc == 2 and "did not reach pid 1" in out, out)
+
         print("live tool targets the real lock")
-        live = open(TOOL).read()
+        live_src = open(TOOL).read()
         check("live LOCK_DIR is the shared cache path",
               'LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")'
-              in live)
+              in live_src)
         check("live AGENT_NAMES are claude and codex",
-              'AGENT_NAMES = ("claude", "codex")' in live)
+              'AGENT_NAMES = ("claude", "codex")' in live_src)
     finally:
         for s in SESSIONS:
             s.kill()

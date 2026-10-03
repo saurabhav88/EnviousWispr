@@ -3,14 +3,14 @@
 
 Every worktree's dev build is `com.enviouswispr.app.dev`, and only one runs at
 a time (`build-dev-app.sh` step 2 quits every other one). Before this tool,
-ownership was settled by broadcast chat between sessions plus process probes
-that cannot prove ownership (`code-tooling.md` FACT:
-process-and-agent-occupancy-probes-are-unreliable). This file is the one owner
-of a machine-wide claim that every checkout reads.
+ownership was settled by claim and release messages broadcast to every live
+session, each costing every peer a turn. This file is the one owner of a
+machine-wide claim that every checkout reads instead.
 
     dev-app-lock.py status
     dev-app-lock.py claim   [--label TEXT] [--worktree PATH]
     dev-app-lock.py release
+    dev-app-lock.py remind  --event NAME   (Claude Code hook; always exit 0)
 
 Exit status: 0 done, 3 held by someone else (the holder card is printed),
 2 could not decide (fail closed: treat the app as busy and say why).
@@ -20,10 +20,15 @@ the session. Its pid plus start time is the identity, because pids are
 recycled and a start time is not. The holder stays the holder after the
 command that claimed exits, for as long as that session process lives.
 
-WHEN A HOLD ENDS. `release`, the holder session process exiting, or
-IDLE_SECONDS with no claim from the holder (each claim renews it). A process
-check that fails is "cannot tell", never "gone": treating it as gone is how a
-live holder loses the app.
+WHEN A HOLD ENDS. Only two ways: the holder runs `release`, or the holder
+session process exits. There is deliberately no idle timer (founder
+2026-10-03): sessions release by rule when their dev-app work is done
+(`tools-and-apps.md` RULE: peer-occupancy-procedure), and a timer would let a
+peer quit an app that is mid-test. If holds turn out to be forgotten, the
+timer is the next step, not the first. `remind` nudges the holder session
+every REMIND_SECONDS so a forgotten hold is noticed by its own session. A
+process check that fails is "cannot tell", never "gone": treating it as gone
+is how a live holder loses the app.
 
 NO SESSION FOUND. A run with no `claude`/`codex` ancestor is the founder by
 hand. The founder is never blocked (`tools-and-apps.md` RULE:
@@ -33,8 +38,8 @@ writes nothing and only prints who holds the app, if anyone.
 WHY flock AND NOT mkdir. Every read and write of the holder card happens under
 an exclusive `flock` on one small file, held for milliseconds. The kernel
 drops that lock when its process dies, so a crash can never leave it stuck,
-and taking over a stale hold needs no separate "is the old lock still the one
-I judged" step, which is where `mkdir` reclaim schemes race.
+and taking over an exited holder's card needs no separate "is the old lock
+still the one I judged" step, which is where `mkdir` reclaim schemes race.
 
 `scripts/` is tracked, so every checkout has its own copy of this file at its
 own commit, all sharing one directory. A card whose `version` this copy does
@@ -51,11 +56,11 @@ import sys
 import time
 import uuid
 
-# 2: `started` is UTC (round-1 TZ fix); a v1 card holds local time.
-VERSION = 2
+# 2: `started` is UTC; 3: no idle timer, `reminded_at` replaces `last_action_at`.
+VERSION = 3
 LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")
 AGENT_NAMES = ("claude", "codex")
-IDLE_SECONDS = 15 * 60
+REMIND_SECONDS = 30 * 60
 PS = "/bin/ps"
 
 EXIT_OK = 0
@@ -129,13 +134,11 @@ def holder_alive(card):
 
 
 def describe(card, now):
-    idle = int(now - card["last_action_at"])
     held = int(now - card["claimed_at"])
     return (f"{card['kind']} session pid {card['pid']}, "
             f"label \"{card.get('label') or '-'}\", "
             f"worktree {card.get('worktree') or '-'}, "
-            f"held {held // 60}m{held % 60:02d}s, "
-            f"last claim {idle // 60}m{idle % 60:02d}s ago")
+            f"held {held // 60}m{held % 60:02d}s")
 
 
 class Store:
@@ -176,7 +179,7 @@ class Store:
         for key in ("kind", "started", "nonce"):
             if not isinstance(card.get(key), str) or not card[key]:
                 raise Undecided(f"holder card {self.card_path} has an invalid {key}")
-        for key in ("claimed_at", "last_action_at"):
+        for key in ("claimed_at", "reminded_at"):
             value = card.get(key)
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise Undecided(f"holder card {self.card_path} has an invalid {key}")
@@ -196,15 +199,6 @@ class Store:
             pass
 
 
-def stale_reason(card, now):
-    """Why a hold has ended on its own, or None while it stands."""
-    if not holder_alive(card):
-        return "its session has exited"
-    if now - card["last_action_at"] > IDLE_SECONDS:
-        return f"no claim for over {IDLE_SECONDS // 60} minutes"
-    return None
-
-
 def same_session(card, me):
     return me is not None and card["pid"] == me["pid"] \
         and card["started"] == me["started"]
@@ -217,11 +211,11 @@ def cmd_status(_args):
         if card is None:
             print("dev-app-lock: free")
             return EXIT_OK
-        reason = stale_reason(card, now)
-    if reason:
-        print(f"dev-app-lock: free ({reason}; last holder: {describe(card, now)})")
-    else:
+        alive = holder_alive(card)
+    if alive:
         print(f"dev-app-lock: held by {describe(card, now)}")
+    else:
+        print(f"dev-app-lock: free (holder session exited; was {describe(card, now)})")
     return EXIT_OK
 
 
@@ -243,21 +237,18 @@ def cmd_claim(args):
             print(f"dev-app-lock: heads-up unavailable ({type(e).__name__})")
         return EXIT_OK
     with Store() as store:
-        # Read the clock AFTER the mutex: a claimer that waited (or was
-        # suspended) must not write a last-claim time that is already old.
         now = time.time()
         card = store.read()
+        if card is not None and same_session(card, me):
+            print(f"dev-app-lock: already yours ({describe(card, now)})")
+            return EXIT_OK
         note = "claimed"
         if card is not None:
-            if same_session(card, me):
-                note = "renewed"
-            else:
-                reason = stale_reason(card, now)
-                if reason is None:
-                    print(f"dev-app-lock: BUSY. Held by {describe(card, now)}. "
-                          "Wait and re-run `status`, or ask that session.")
-                    return EXIT_HELD
-                note = f"took over ({reason}; was {describe(card, now)})"
+            if holder_alive(card):
+                print(f"dev-app-lock: BUSY. Held by {describe(card, now)}. "
+                      "Wait and re-run `status`, or ask that session.")
+                return EXIT_HELD
+            note = f"took over (holder session exited; was {describe(card, now)})"
         new = {
             "version": VERSION,
             "kind": me["kind"],
@@ -265,9 +256,9 @@ def cmd_claim(args):
             "started": me["started"],
             "label": args.label,
             "worktree": args.worktree,
-            "claimed_at": card["claimed_at"] if note == "renewed" else now,
-            "last_action_at": now,
-            "nonce": card["nonce"] if note == "renewed" else uuid.uuid4().hex,
+            "claimed_at": now,
+            "reminded_at": now,
+            "nonce": uuid.uuid4().hex,
         }
         store.write(new)
     print(f"dev-app-lock: {note} by {describe(new, now)}")
@@ -290,6 +281,44 @@ def cmd_release(_args):
     return EXIT_OK
 
 
+def cmd_remind(args):
+    """Claude Code hook: nudge the HOLDER session every REMIND_SECONDS.
+
+    Runs on every tool call and prompt of every session, so it must be cheap
+    and must never fail a session. With no card (nobody holds the app, the
+    normal case) it returns before running ps. Non-holders get nothing.
+    """
+    try:
+        card_path = os.path.join(LOCK_DIR, "holder.json")
+        if not os.path.exists(card_path):
+            return EXIT_OK
+        now = time.time()
+        with open(card_path) as f:
+            peek = json.load(f)
+        if now - peek.get("reminded_at", now) < REMIND_SECONDS:
+            return EXIT_OK
+        me = find_session()
+        if me is None or not same_session(peek, me):
+            return EXIT_OK
+        with Store() as store:
+            now = time.time()
+            card = store.read()
+            if card is None or not same_session(card, me) \
+                    or now - card["reminded_at"] < REMIND_SECONDS:
+                return EXIT_OK
+            card["reminded_at"] = now
+            store.write(card)
+        text = (f"Reminder: this session holds the shared dev app "
+                f"({describe(card, now)}). If your dev-app work is done, run "
+                f"`python3 {os.path.abspath(__file__)} release` now; otherwise "
+                "ignore this.")
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": args.event, "additionalContext": text}}))
+    except Exception:
+        pass
+    return EXIT_OK
+
+
 def default_worktree():
     out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                          capture_output=True, text=True)
@@ -304,20 +333,22 @@ def main(argv):
     claim.add_argument("--label", default="")
     claim.add_argument("--worktree", default=None)
     sub.add_parser("release")
+    remind = sub.add_parser("remind")
+    remind.add_argument("--event", default="PostToolUse")
     args = parser.parse_args(argv)
     try:
         if args.command == "claim" and args.worktree is None:
             args.worktree = default_worktree()
-        return {"status": cmd_status, "claim": cmd_claim,
-                "release": cmd_release}[args.command](args)
+        return {"status": cmd_status, "claim": cmd_claim, "release": cmd_release,
+                "remind": cmd_remind}[args.command](args)
     except (Undecided, OSError, KeyError, TypeError, ValueError,
             OverflowError, RecursionError) as e:
         # OSError: the lock folder cannot be made or opened (a Codex sandbox
         # that blocks writes outside the worktree lands here). KeyError and
         # TypeError: a card of the right version with missing or wrong fields.
+        # ValueError/OverflowError: a ps line or timestamp that does not parse.
         # All of them are "could not decide", never a traceback a caller
-        # might read as a different exit code. ValueError/OverflowError: a ps
-        # line or timestamp that does not parse.
+        # might read as a different exit code.
         print(f"dev-app-lock: cannot decide, treating the app as busy: "
               f"{type(e).__name__}: {e}", file=sys.stderr)
         return EXIT_UNDECIDED
