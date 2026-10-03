@@ -51,7 +51,8 @@ import sys
 import time
 import uuid
 
-VERSION = 1
+# 2: `started` is UTC (round-1 TZ fix); a v1 card holds local time.
+VERSION = 2
 LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")
 AGENT_NAMES = ("claude", "codex")
 IDLE_SECONDS = 15 * 60
@@ -108,14 +109,16 @@ def find_session():
             # turn an agent run into a founder run, which skips the lock.
             raise Undecided(f"ancestor pid {pid} exited while finding the session")
         ppid, started, comm = info
+        if ppid < 1 or ppid == pid:
+            raise Undecided(f"invalid parent pid {ppid} for pid {pid}")
         name = os.path.basename(comm)
         if name in AGENT_NAMES:
             return {"kind": name, "pid": pid, "started": started}
         pid, seen = ppid, seen + 1
-    if pid > 1:
-        # Ran out of steps before reaching launchd: the chain was not fully
-        # read, so "no session" is unproven and must not skip the lock.
-        raise Undecided("ancestor chain longer than 64 processes")
+    if pid != 1:
+        # The walk stopped before reaching pid 1 (launchd/init): the chain was
+        # not fully read, so "no session" is unproven and must not skip the lock.
+        raise Undecided("ancestor chain did not reach pid 1")
     return None
 
 
@@ -240,6 +243,9 @@ def cmd_claim(args):
             print(f"dev-app-lock: heads-up unavailable ({type(e).__name__})")
         return EXIT_OK
     with Store() as store:
+        # Read the clock AFTER the mutex: a claimer that waited (or was
+        # suspended) must not write a last-claim time that is already old.
+        now = time.time()
         card = store.read()
         note = "claimed"
         if card is not None:

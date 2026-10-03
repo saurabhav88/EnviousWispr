@@ -258,13 +258,15 @@ def main():
         lock4 = os.path.join(tmp, "lock4")
         os.makedirs(lock4)
         with open(os.path.join(lock4, "holder.json"), "w") as f:
-            json.dump({"version": 99, "pid": 1}, f)
+            json.dump({"version": 1, "pid": 1}, f)
         v_tool = make_copy(tmp, "v.py", base_rewrites(lock4))
         s = Session(tmp, v_tool, ["claim"])
         s.wait_done()
-        check("an unknown card version is refused, not overwritten",
+        # Version 1 is a real older format (local-time `started`), so this row
+        # is also the mixed-checkout case: an older card is never reclaimed.
+        check("an older card version is refused, not overwritten",
               s.rc() == 2 and json.load(open(os.path.join(lock4, "holder.json")))
-              ["version"] == 99, s.out())
+              ["version"] == 1, s.out())
         with open(os.path.join(lock4, "holder.json"), "w") as f:
             f.write("{not json")
         s = Session(tmp, v_tool, ["claim"])
