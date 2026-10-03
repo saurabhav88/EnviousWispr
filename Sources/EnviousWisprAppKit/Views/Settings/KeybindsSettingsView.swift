@@ -9,7 +9,9 @@ struct KeybindsSettingsView: View {
   var body: some View {
     @Bindable var settings = settings
     SettingsContentView {
-      SettingsSectionHeading(title: "Recording")
+      SettingsSectionHeading(resolvedTitle: String(
+        localized: "keybinds.section.recording", defaultValue: "Recording",
+        comment: "Keybinds page: section heading for the recording keys. Shown in capitals.").localizedUppercase)
       BrandedSection {
         BrandedRow {
           SettingsRow(
@@ -59,7 +61,9 @@ struct KeybindsSettingsView: View {
           }
         }
       }
-      SettingsSectionHeading(title: "Shortcuts")
+      SettingsSectionHeading(resolvedTitle: String(
+        localized: "keybinds.section.shortcuts", defaultValue: "Shortcuts",
+        comment: "Keybinds page: section heading for paste, copy and add-a-word keys. Shown in capitals.").localizedUppercase)
       BrandedSection {
         BrandedRow {
           KeybindSettingsRow(
@@ -98,22 +102,22 @@ struct KeybindsSettingsView: View {
 enum KeybindsSettingsCopy {
   static let modeTitle: LocalizedStringResource = "Recording mode"
   static let modeShort: LocalizedStringResource =
-    "Hold to talk, or press once to start and again to stop"
+    "Hold to talk, or press once to start and again to stop."
   static let pushToTalkHelp: LocalizedStringResource =
     "Hold the keybind to record. Release to stop. Double-press to lock it on. Triple-press to cancel."
   static let toggleHelp: LocalizedStringResource =
     "Press once to start recording. Press again to stop."
   static let recordTitle: LocalizedStringResource = "Start / stop recording"
-  static let recordShort: LocalizedStringResource = "Click Change to choose the keys you use"
+  static let recordShort: LocalizedStringResource = "Click Change to choose the keys you use."
   static let recordHelp: LocalizedStringResource = "This keybind starts and stops recording."
   static let cancelTitle: LocalizedStringResource = "Cancel recording"
-  static let cancelShort: LocalizedStringResource = "Cancels the current recording"
+  static let cancelShort: LocalizedStringResource = "Cancels the current recording."
   // The setting is frozen at recording start, so the help never tracks the live toggle.
   static let cancelHelp: LocalizedStringResource =
     "Press to cancel the current recording. Escape Recovery below applies from the next recording you start."
   static let recoveryTitle: LocalizedStringResource = "Escape Recovery"
   static let recoveryShort: LocalizedStringResource =
-    "Keeps cancelled dictations in History for 24 hours"
+    "Keeps cancelled dictations in History for 24 hours."
   // Preserve the full disclosure: configurable cancel key, processing, API use and retention.
   static let recoveryHelp: LocalizedStringResource = """
     When you use your cancel keybind, Escape by default, EnviousWispr keeps the \
@@ -125,15 +129,15 @@ enum KeybindsSettingsCopy {
     immediately.
     """
   static let addTitle: LocalizedStringResource = "Add selected word to Dictionary"
-  static let addShort: LocalizedStringResource = "Select a misheard word, then press these keys"
+  static let addShort: LocalizedStringResource = "Select a misheard word, then press these keys."
   static let addHelp: LocalizedStringResource =
     "Select a misheard word anywhere, then press this to add it to Your Words. Terminal windows do not share their selection, so it will not work there."
   static let pasteTitle: LocalizedStringResource = "Paste last dictation"
-  static let pasteShort: LocalizedStringResource = "Pastes your last dictation"
-  static let pasteHelp: LocalizedStringResource = "Paste the last thing you dictated"
+  static let pasteShort: LocalizedStringResource = "Pastes your last dictation."
+  static let pasteHelp: LocalizedStringResource = "Paste the last thing you dictated."
   static let copyTitle: LocalizedStringResource = "Copy last dictation"
-  static let copyShort: LocalizedStringResource = "Copies your last dictation"
-  static let copyHelp: LocalizedStringResource = "Copy the last thing you dictated"
+  static let copyShort: LocalizedStringResource = "Copies your last dictation."
+  static let copyHelp: LocalizedStringResource = "Copy the last thing you dictated."
 }
 
 /// Role owns Reset defaults; warnings remain visible below the short line.
