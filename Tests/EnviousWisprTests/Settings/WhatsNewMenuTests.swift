@@ -98,6 +98,18 @@ struct WhatsNewMenuTests {
     let update = UpdateAvailabilityService.AvailableUpdate(
       versionString: "2503", displayVersion: "2.5.3", isCriticalUpdate: false)
     #expect(WhatsNewMenuPresentation.updateStatus(.available(update)) == .available("2.5.3"))
+    #expect(
+      WhatsNewMenuPresentation.updateStatus(nil).text
+        == String(localized: "Update status unavailable"))
+    #expect(
+      WhatsNewMenuPresentation.updateStatus(UpdateAvailabilityService.UpdateState.none).text
+        == String(localized: "Check for updates"))
+    #expect(
+      WhatsNewMenuPresentation.updateStatus(.resolving).text
+        == String(localized: "Opening update…"))
+    #expect(
+      WhatsNewMenuPresentation.updateStatus(.available(update)).text
+        == String(localized: "Version \("2.5.3") is available"))
     #expect(WhatsNewMenuPresentation.UpdateStatus.unavailable.canCheck == false)
     #expect(WhatsNewMenuPresentation.UpdateStatus.opening.canCheck == false)
     #expect(WhatsNewMenuPresentation.UpdateStatus.checkPrompt.canCheck == true)

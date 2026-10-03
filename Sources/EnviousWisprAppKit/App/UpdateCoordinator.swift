@@ -240,10 +240,16 @@ final class UpdateCoordinator {
     updaterController?.checkForUpdates(nil)
   }
 
-  /// #3385: the Settings gift dropdown's attended check. Attribution must be
-  /// assigned before Sparkle can synchronously call its presentation delegate.
-  func checkForUpdatesFromWhatsNew() {
-    lastInstallSource = "whats_new_menu"
+  /// #3385: assign attribution only when this click can begin a new session.
+  /// Still forward an active-session click so Sparkle can bring its UI forward.
+  func checkForUpdatesFromWhatsNew(
+    probe: (any ProactiveUpdaterProbe)? = nil
+  ) {
+    let updater: (any ProactiveUpdaterProbe)? =
+      probe ?? updaterController?.updater
+    if updater?.sessionInProgress != true {
+      lastInstallSource = "whats_new_menu"
+    }
     attendedCheck()
   }
 

@@ -29,6 +29,25 @@ struct UpdateAttributionTests {
     #expect(coordinator.lastInstallSource == "whats_new_menu")
   }
 
+  @Test("Gift click during an active session preserves its source and still forwards once")
+  func activeSessionPreservesSource() throws {
+    let defaults = try #require(TestDefaults.suite("ew.attribution.\(UUID().uuidString)"))
+    let probe = UpdateCoordinatorProactiveCheckTests.FakeProactiveUpdater(sessionInProgress: true)
+    var sources: [String?] = []
+    var coordinator: UpdateCoordinator!
+    coordinator = UpdateCoordinator(
+      updaterController: nil, defaults: defaults, notifier: Notifier(),
+      attendedCheck: { sources.append(coordinator.lastInstallSource) })
+    defer { coordinator = nil }
+    coordinator.lastInstallSource = "sparkle_default"
+
+    coordinator.checkForUpdatesFromWhatsNew(probe: probe)
+
+    #expect(sources == ["sparkle_default"])
+    #expect(coordinator.lastInstallSource == "sparkle_default")
+    #expect(probe.backgroundCheckCount == 0)
+  }
+
   @Test(
     "User-initiated Sparkle presentation preserves every explicit entry point",
     arguments: ["whats_new_menu", "menu", "banner", "settings"])
