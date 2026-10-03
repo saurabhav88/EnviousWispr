@@ -1,4 +1,5 @@
 import Foundation
+import SwiftParser
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -16,7 +17,7 @@ import Testing
 // 2. It is FROZEN per recording. Changing it mid-dictation must not touch the
 //    dictation in flight, so live settings sync must do nothing for this key.
 @MainActor
-@Suite("Smart insertion setting routing")
+@Suite("Smart insertion setting routing", .tags(.driftGuard))
 struct SmartInsertionSettingRoutingTests {
 
   private static let clipboardViewPath =
@@ -28,11 +29,20 @@ struct SmartInsertionSettingRoutingTests {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.clipboardViewPath), encoding: .utf8)
 
-    let labels = source.components(separatedBy: "Text(\"Smart insertion\")").count - 1
-    #expect(labels == 1, "expected exactly one Smart insertion label, found \(labels)")
+    // #3385: this counted the literal `Text("Smart insertion")`, which the shared row
+    // replaced with the `DictationSettingsCopy.Clipboard.smartInsertionTitle` resource.
+    // The protection is the same and now parsed: exactly one row titled Smart insertion,
+    // holding the page's only switch bound to the setting.
+    let rows = ClipboardSettingsWiringTests.rows(in: Parser.parse(source: source))
+    let titled = rows.filter { $0.title == "Copy.smartInsertionTitle" }
+    #expect(titled.count == 1, "expected exactly one Smart insertion row, found \(titled.count)")
+    #expect(titled.first?.toggles == 1, "the Smart insertion row holds \(titled.first?.toggles ?? 0) switches")
+    #expect(titled.first?.binding == "$settings.smartInsertion", "bound to \(titled.first?.binding ?? "nothing")")
 
-    let bindings = source.components(separatedBy: "$settings.smartInsertion").count - 1
-    #expect(bindings == 1, "expected exactly one binding, found \(bindings)")
+    // Every switch on the page, inside a shared row or not.
+    let bound = ClipboardSettingsWiringTests.allToggleBindings(in: Parser.parse(source: source))
+      .filter { $0 == "$settings.smartInsertion" }
+    #expect(bound.count == 1, "expected exactly one switch bound to the setting, found \(bound.count)")
 
     // The plan ships ONE switch at first release. Any of these would be a
     // sub-toggle surface the founder explicitly ruled out.

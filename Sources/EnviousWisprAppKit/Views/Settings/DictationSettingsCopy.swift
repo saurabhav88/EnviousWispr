@@ -297,4 +297,51 @@ enum DictationSettingsCopy {
       "IN USE",
       comment: "Chimes settings: small badge on the chime that recordings use, in capitals.")
   }
+
+  /// The Clipboard tab (#3385). Titles and headings keep their existing keys; the
+  /// Restore, Smart insertion and Quick Add explanations are the sentences the page
+  /// showed before, now behind "?".
+  enum Clipboard {
+    static let autoCopyTitle = LocalizedStringResource(
+      "Auto-copy to clipboard", comment: "Clipboard settings: switch title.")
+    static let autoCopyShort = LocalizedStringResource(
+      "Keeps your latest dictation on the clipboard.",
+      comment: "Clipboard settings: short line under Auto-copy to clipboard.")
+    static let autoCopyHelp = LocalizedStringResource(
+      "Copies your dictation to the clipboard after it finishes.",
+      comment: "Clipboard settings: explains Auto-copy to clipboard.")
+
+    static let restoreTitle = LocalizedStringResource(
+      "Restore clipboard after paste", comment: "Clipboard settings: switch title.")
+    static let restoreShort = LocalizedStringResource(
+      "Puts back what was on your clipboard before dictation.",
+      comment: "Clipboard settings: short line under Restore clipboard after paste.")
+    static let restoreHelp = LocalizedStringResource(
+      "Saves and restores whatever was on your clipboard before pasting your dictation.",
+      comment: "Clipboard settings: explains Restore clipboard after paste.")
+
+    static let smartInsertionTitle = LocalizedStringResource(
+      "Smart insertion", comment: "Clipboard settings: switch title.")
+    static let smartInsertionShort = LocalizedStringResource(
+      "Fits text to the spacing and capitals around your cursor.",
+      comment: "Clipboard settings: short line under Smart insertion.")
+    static let smartInsertionHelp = LocalizedStringResource(
+      "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence.",
+      comment: "Clipboard settings: explains Smart insertion.")
+
+    static let quickAddTitle = LocalizedStringResource(
+      "Read selections through the clipboard",
+      comment: "Clipboard settings, Quick Add: switch title.")
+    static let quickAddShort = LocalizedStringResource(
+      "Reads hidden selections and restores your clipboard.",
+      comment: "Clipboard settings, Quick Add: short line under Read selections through the clipboard.")
+    static let quickAddHelp = LocalizedStringResource(
+      "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back.",
+      comment: "Clipboard settings, Quick Add: explains Read selections through the clipboard.")
+
+    static let clipboardHeading = LocalizedStringResource(
+      "Clipboard", comment: "Clipboard settings: section heading, shown in capitals.")
+    static let quickAddHeading = LocalizedStringResource(
+      "Quick Add", comment: "Clipboard settings: section heading for Quick Add, shown in capitals.")
+  }
 }

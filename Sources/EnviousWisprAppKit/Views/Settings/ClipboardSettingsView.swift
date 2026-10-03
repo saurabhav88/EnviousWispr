@@ -2,55 +2,72 @@ import EnviousWisprServices
 import SwiftUI
 
 /// Clipboard behavior settings.
+///
+/// #3385 (Clipboard tab): every switch is a shared row (title, short line, "?"),
+/// in two headed sections. The first three settings are snapshotted per
+/// recording, so the Clipboard heading carries the next-recording note; Quick
+/// Add is read on its next press and sits under its own heading, outside that note.
 struct ClipboardSettingsView: View {
   @Environment(SettingsManager.self) private var settings
+
+  private typealias Copy = DictationSettingsCopy.Clipboard
 
   var body: some View {
     @Bindable var settings = settings
 
     SettingsContentView {
-      BrandedSection(header: "Clipboard") {
+      SettingsSectionHeading(
+        resolvedTitle: String(localized: Copy.clipboardHeading).localizedUppercase
+      ) {
+        Text(DictationSettingsCopy.Engine.nextRecordingNote)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      BrandedSection {
         BrandedRow {
-          Toggle(isOn: $settings.autoCopyToClipboard) {
-            HStack(spacing: 11) {
-              SettingsRowIcon(systemName: "doc.on.clipboard")
-              Text("Auto-copy to clipboard").settingsRowLabel()
-            }
+          SettingsRow(
+            icon: "doc.on.clipboard",
+            title: Copy.autoCopyTitle,
+            short: Copy.autoCopyShort,
+            help: Copy.autoCopyHelp
+          ) {
+            Toggle("", isOn: $settings.autoCopyToClipboard)
+              .labelsHidden()
+              .toggleStyle(BrandedToggleStyle())
+              .fixedSize()
+              .accessibilityLabel(Text(Copy.autoCopyTitle))
           }
-          .toggleStyle(BrandedToggleStyle())
         }
         BrandedRow {
-          HStack(alignment: .top, spacing: 11) {
-            SettingsRowIcon(systemName: "arrow.uturn.backward")
-            VStack(alignment: .leading, spacing: 4) {
-              Toggle(isOn: $settings.restoreClipboardAfterPaste) {
-                Text("Restore clipboard after paste").settingsRowLabel()
-              }
+          SettingsRow(
+            icon: "arrow.uturn.backward",
+            title: Copy.restoreTitle,
+            short: Copy.restoreShort,
+            help: Copy.restoreHelp
+          ) {
+            Toggle("", isOn: $settings.restoreClipboardAfterPaste)
+              .labelsHidden()
               .toggleStyle(BrandedToggleStyle())
-              Text(
-                "Saves and restores whatever was on your clipboard before pasting your dictation."
-              )
-              .settingsReadingCopy()
-            }
+              .fixedSize()
+              .accessibilityLabel(Text(Copy.restoreTitle))
           }
         }
         BrandedRow(showDivider: false) {
-          HStack(alignment: .top, spacing: 11) {
-            SettingsRowIcon(systemName: "text.cursor")
-            VStack(alignment: .leading, spacing: 4) {
-              Toggle(isOn: $settings.smartInsertion) {
-                Text("Smart insertion").settingsRowLabel()
-              }
+          SettingsRow(
+            icon: "text.cursor",
+            title: Copy.smartInsertionTitle,
+            short: Copy.smartInsertionShort,
+            help: Copy.smartInsertionHelp
+          ) {
+            Toggle("", isOn: $settings.smartInsertion)
+              .labelsHidden()
               .toggleStyle(BrandedToggleStyle())
-              Text(
-                "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence."
-              )
-              .settingsReadingCopy()
-            }
+              .fixedSize()
+              .accessibilityLabel(Text(Copy.smartInsertionTitle))
           }
         }
-      } footer: {
-        FrozenPerRecordingFootnote()
       }
 
       // **Its own section, not a fourth row above.** The Clipboard section carries the
@@ -58,20 +75,26 @@ struct ClipboardSettingsView: View {
       // governs a shortcut, and a change to it applies to the very next press. Filing it under a
       // footnote saying otherwise would be a false claim about the one row a user is most likely to
       // read carefully, since it is the row that says we touch their clipboard.
-      BrandedSection(header: "Quick Add") {
+      // #3385: the frozen-per-recording footnote is now the Clipboard heading's
+      // "Changes apply to the next recording" note (tracker B4). This section keeps
+      // its own heading and no note, so the note still covers only the three rows
+      // above, and Quick Add still applies on the next press.
+      SettingsSectionHeading(
+        resolvedTitle: String(localized: Copy.quickAddHeading).localizedUppercase)
+
+      BrandedSection {
         BrandedRow(showDivider: false) {
-          HStack(alignment: .top, spacing: 11) {
-            SettingsRowIcon(systemName: "text.viewfinder")
-            VStack(alignment: .leading, spacing: 4) {
-              Toggle(isOn: $settings.quickAddClipboardFallback) {
-                Text("Read selections through the clipboard").settingsRowLabel()
-              }
+          SettingsRow(
+            icon: "text.viewfinder",
+            title: Copy.quickAddTitle,
+            short: Copy.quickAddShort,
+            help: Copy.quickAddHelp
+          ) {
+            Toggle("", isOn: $settings.quickAddClipboardFallback)
+              .labelsHidden()
               .toggleStyle(BrandedToggleStyle())
-              Text(
-                "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back."
-              )
-              .settingsReadingCopy()
-            }
+              .fixedSize()
+              .accessibilityLabel(Text(Copy.quickAddTitle))
           }
         }
       }
