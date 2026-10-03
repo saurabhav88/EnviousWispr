@@ -42,6 +42,14 @@ struct SettingsShellEnglishTests {
     #expect(SettingsCopy.notSelectedValue == "Not selected")
   }
 
+  @Test("App Settings tabs keep their names and order")
+  func appTabs() {
+    #expect(AppSettingsTab.allCases.map { String(localized: $0.label) }
+      == ["Appearance", "Permissions", "Privacy", "Licenses"])
+    #expect(AppSettingsTab.allCases.map(\.icon)
+      == ["circle.lefthalf.filled", "hand.raised", "lock.shield", "doc.text"])
+  }
+
   /// #3385: the Dictionary page's heading row replaced its banner. The "?" keeps the sentence
   /// the page header showed under "Dictionary", typed here from the pre-#3385 source.
   @Test("the Dictionary heading row keeps its approved English")

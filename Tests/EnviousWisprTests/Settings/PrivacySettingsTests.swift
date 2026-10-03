@@ -80,6 +80,8 @@ struct PrivacySettingsTests {
 
   @Test("The Privacy words are the founder-approved English")
   func copy() {
+    #expect(PrivacySettingsCopy.metricsShort == "Help us catch broken updates.")
+    #expect(PrivacySettingsCopy.crashShort == "Help us fix crashes and errors.")
     #expect(PrivacySettingsCopy.metricsLabel == "Share usage metrics")
     #expect(
       PrivacySettingsCopy.metricsHelp
@@ -88,12 +90,12 @@ struct PrivacySettingsTests {
     #expect(PrivacySettingsCopy.crashHelp == "Stack traces and diagnostic details to help us fix crashes and errors.")
     #expect(
       PrivacySettingsCopy.promise
-        == "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are what you type into the feedback form, once you click Send."
+        == "We receive metadata only, never your audio, transcripts, polished text, prompts or surrounding document text. We never collect your history, snippets, dictionary words, API keys or screen text. Feedback text reaches us only when you press Send. Pressing Send also sends your message text through enviouswispr.com to TypeSafe to suggest a help section, even if you choose “Yes, that helped” and nothing reaches Sentry. Your optional reply email reaches us via Sentry only when you choose to send feedback. We do not store the TypeSafe help-suggestion message."
     )
     #expect(
       PrivacySettingsCopy.openSource
         == "EnviousWispr is open source, so you can check exactly what we send.")
-    #expect(PrivacySettingsCopy.learnMoreLabel == "See what we collect")
+    #expect(PrivacySettingsCopy.learnMoreLabel == "See details")
     #expect(PrivacySettingsCopy.learnMoreURL == "https://enviouswispr.com/help/what-data-is-collected/")
     #expect(PrivacySettingsCopy.restartNotice == "Takes effect when EnviousWispr restarts")
     #expect(PrivacySettingsCopy.restartAction == "Restart now")

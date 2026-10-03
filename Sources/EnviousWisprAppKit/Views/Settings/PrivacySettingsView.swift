@@ -1,8 +1,7 @@
 import EnviousWisprServices
 import SwiftUI
 
-/// Privacy controls and safe restart behavior, embedded in Permissions until App Settings.
-/// The host owns scrolling; this section adds no scroll container.
+/// Privacy controls and safe restart behavior in App Settings.
 struct PrivacySettingsView: View {
   @Environment(SettingsManager.self) private var settings
   /// Optional so a view harness can render the page without the dictation pipeline; the app
@@ -40,69 +39,72 @@ struct PrivacySettingsView: View {
 
   var body: some View {
     @Bindable var settings = settings
-    BrandedSection(header: "Privacy") {
-      // The promise is stated once for the section, so each switch says only what it sends.
-      BrandedRow {
-        HStack(alignment: .top, spacing: 11) {
-          SettingsRowIcon(systemName: "lock.shield")
-          VStack(alignment: .leading, spacing: 6) {
-            Text(PrivacySettingsCopy.promise)
-              .settingsReadingCopy()
-            Text(PrivacySettingsCopy.openSource)
-              .settingsReadingCopy()
-            Link(destination: URL(string: PrivacySettingsCopy.learnMoreURL)!) {
-              HStack(spacing: 4) {
-                Text(PrivacySettingsCopy.learnMoreLabel)
-                Image(systemName: "arrow.up.right")
-              }
-              .font(.stHelper)
+    SettingsContentView {
+      VStack(alignment: .leading, spacing: 10) {
+        SettingsSectionHeading(title: "PRIVACY")
+        BrandedSection {
+          BrandedRow {
+            SettingsRow(
+              icon: "chart.bar", resolvedTitle: PrivacySettingsCopy.metricsLabel,
+              resolvedShort: PrivacySettingsCopy.metricsShort,
+              resolvedHelp: PrivacySettingsCopy.metricsHelp
+            ) {
+              Toggle("", isOn: $settings.shareUsageMetrics)
+                .labelsHidden()
+                .toggleStyle(BrandedToggleStyle())
+                .fixedSize()
+                .accessibilityLabel(PrivacySettingsCopy.metricsLabel)
             }
-            .foregroundStyle(.stAccent)
           }
-        }
-      }
-      BrandedRow {
-        HStack(alignment: .top, spacing: 11) {
-          SettingsRowIcon(systemName: "chart.bar")
-          VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: $settings.shareUsageMetrics) {
-              Text(PrivacySettingsCopy.metricsLabel).settingsRowLabel()
+          BrandedRow(showDivider: false) {
+            SettingsRow(
+              icon: "exclamationmark.triangle", resolvedTitle: PrivacySettingsCopy.crashLabel,
+              resolvedShort: PrivacySettingsCopy.crashShort,
+              resolvedHelp: PrivacySettingsCopy.crashHelp
+            ) {
+              Toggle("", isOn: $settings.sendCrashReports)
+                .labelsHidden()
+                .toggleStyle(BrandedToggleStyle())
+                .fixedSize()
+                .accessibilityLabel(PrivacySettingsCopy.crashLabel)
             }
-            .toggleStyle(BrandedToggleStyle())
-            Text(PrivacySettingsCopy.metricsHelp)
-              .settingsReadingCopy()
-          }
-        }
-      }
-      BrandedRow(showDivider: false) {
-        HStack(alignment: .top, spacing: 11) {
-          SettingsRowIcon(systemName: "exclamationmark.triangle")
-          VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: $settings.sendCrashReports) {
-              Text(PrivacySettingsCopy.crashLabel).settingsRowLabel()
-            }
-            .toggleStyle(BrandedToggleStyle())
-            Text(PrivacySettingsCopy.crashHelp)
-              .settingsReadingCopy()
-            if Self.needsRestart(
-              stored: settings.sendCrashReports,
-              launched: ObservabilityBootstrap.launchedCrashReports)
-            {
-              HStack(spacing: 12) {
-                Text(PrivacySettingsCopy.restartNotice)
-                  .font(.stHelper)
-                  .foregroundStyle(.stTextSecondary)
-                  .fixedSize(horizontal: false, vertical: true)
-                Button {
-                  Self.restartNow(isBusy: { isBusy }) {
-                    AppRelauncher.relaunchWhenSafe(stillBusy: $0)
+            .rowStatus {
+              if Self.needsRestart(
+                stored: settings.sendCrashReports,
+                launched: ObservabilityBootstrap.launchedCrashReports)
+              {
+                VStack(alignment: .leading, spacing: 8) {
+                  Text(PrivacySettingsCopy.restartNotice)
+                    .font(.stRowHelper)
+                    .foregroundStyle(.stTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                  SettingsActionButton(
+                    verbatimTitle: PrivacySettingsCopy.restartAction, isEnabled: !isBusy
+                  ) {
+                    Self.restartNow(isBusy: { isBusy }) {
+                      AppRelauncher.relaunchWhenSafe(stillBusy: $0)
+                    }
                   }
-                } label: {
-                  Text(PrivacySettingsCopy.restartAction)
                 }
-                .disabled(isBusy)
+                .padding(.top, 4)
               }
-              .padding(.top, 4)
+            }
+          }
+        }
+        BrandedSection {
+          BrandedRow(showDivider: false) {
+            HStack(alignment: .top, spacing: 11) {
+              SettingsRowIcon(systemName: "lock.shield")
+              VStack(alignment: .leading, spacing: 6) {
+                Text("What we collect").settingsRowLabel()
+                Text(PrivacySettingsCopy.promise).settingsReadingCopy()
+                Text(PrivacySettingsCopy.openSource).settingsReadingCopy()
+                Link(destination: URL(string: PrivacySettingsCopy.learnMoreURL)!) {
+                  Label(PrivacySettingsCopy.learnMoreLabel, systemImage: "arrow.up.right")
+                    .font(.stRowHelper)
+                }
+                .foregroundStyle(.stAccent)
+              }
             }
           }
         }
@@ -119,7 +121,7 @@ enum PrivacySettingsCopy {
   static var promise: String {
     String(
       localized:
-        "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are what you type into the feedback form, once you click Send.",
+        "We receive metadata only, never your audio, transcripts, polished text, prompts or surrounding document text. We never collect your history, snippets, dictionary words, API keys or screen text. Feedback text reaches us only when you press Send. Pressing Send also sends your message text through enviouswispr.com to TypeSafe to suggest a help section, even if you choose “Yes, that helped” and nothing reaches Sentry. Your optional reply email reaches us via Sentry only when you choose to send feedback. We do not store the TypeSafe help-suggestion message.",
       comment: "Permissions settings, Privacy: the section's privacy promise, above both switches.")
   }
   static var openSource: String {
@@ -129,11 +131,17 @@ enum PrivacySettingsCopy {
   }
   static var learnMoreLabel: String {
     String(
-      localized: "See what we collect",
+      localized: "See details",
       comment: "Permissions settings, Privacy: link to the What Data Is Collected help article.")
   }
   static var metricsLabel: String {
     String(localized: "Share usage metrics", comment: "Permissions settings, Privacy: switch label.")
+  }
+  static var metricsShort: String {
+    String(localized: "Help us catch broken updates.")
+  }
+  static var crashShort: String {
+    String(localized: "Help us fix crashes and errors.")
   }
   static var metricsHelp: String {
     String(

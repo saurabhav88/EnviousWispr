@@ -4,21 +4,40 @@ enum LicenseDocument: String, CaseIterable, Identifiable {
   case license = "GPL-3.0 License"
   case notices = "Third-Party Notices"
   var id: String { rawValue }
+  var title: LocalizedStringResource {
+    switch self {
+    case .license: "GPL-3.0 License"
+    case .notices: "Third-Party Notices"
+    }
+  }
 }
 
-/// The existing inline license reader; its host owns the document picker and section.
+/// Selectable bundled text, presented by the Licenses tab in an item-driven sheet.
 struct LicenseDocumentReader: View {
   let document: LicenseDocument
+  @Environment(\.dismiss) private var dismiss
 
   static let unavailableMessage: LocalizedStringResource =
     "License information isn't available in this build."
 
   var body: some View {
-    if let text = Self.contents(of: document) {
-      documentText(text)
-    } else {
-      unavailableText
+    VStack(alignment: .leading, spacing: 16) {
+      Text(document.title).settingsRowTitle()
+      if let text = Self.contents(of: document) {
+        documentText(text)
+      } else {
+        unavailableText
+      }
+      HStack {
+        Spacer()
+        SettingsActionButton(title: "Done", isEnabled: true, shortcut: .cancelAction) {
+          dismiss()
+        }
+      }
     }
+    .padding(24)
+    .frame(minWidth: 400, idealWidth: 560, minHeight: 300, idealHeight: 520)
+    .background(Color.stPageBg)
   }
 
   static func contents(of document: LicenseDocument) -> String? {

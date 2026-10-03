@@ -1,58 +1,75 @@
 import EnviousWisprServices
 import SwiftUI
 
-/// Microphone and Accessibility permission status, and the two privacy switches (#3269).
+/// Microphone and Accessibility status. Privacy has its own App Settings tab.
 struct PermissionsSettingsView: View {
   @Environment(PermissionsService.self) private var permissions
+
   var body: some View {
     SettingsContentView {
-      BrandedSection(header: "Microphone") {
-        BrandedRow(showDivider: false) {
-          BrandedStatusRow(
-            isGranted: permissions.hasMicrophonePermission,
-            grantedText: LocalizedStringResource(
-              "Microphone access granted", comment: "Permissions settings: status when granted."),
-            deniedText: LocalizedStringResource(
-              "Microphone access denied", comment: "Permissions settings: status when denied."),
-            actionLabel: LocalizedStringResource(
-              "Request Access",
-              comment: "Permissions settings: button that asks macOS for microphone access."),
-            action: {
-              Task {
-                // #2549: `requestMicrophoneAccess()` is a guaranteed no-op once
-                // already denied — Apple never re-shows the system dialog after
-                // an explicit deny. This shared method sends the user to System
-                // Settings instead when that is the case.
-                await permissions.requestMicrophoneAccessOrOpenSettings()
+      VStack(alignment: .leading, spacing: 10) {
+        SettingsSectionHeading(title: "PERMISSIONS")
+        BrandedSection {
+          BrandedRow {
+            SettingsRow(
+              icon: "mic", title: "Microphone", short: "Needed to record your voice.",
+              help: "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings."
+            ) {
+              if permissions.hasMicrophonePermission {
+                allowedStatus
+              } else {
+                SettingsActionButton(title: "Request Access", isEnabled: true, action: requestMicrophone)
               }
             }
-          )
-        }
-      }
-
-      BrandedSection(header: "Accessibility") {
-        BrandedRow(showDivider: false) {
-          BrandedStatusRow(
-            isGranted: permissions.hasAccessibilityPermission,
-            grantedText: LocalizedStringResource(
-              "Accessibility access granted", comment: "Permissions settings: status when granted."),
-            deniedText: LocalizedStringResource(
-              "Accessibility access required for paste",
-              comment:
-                "Permissions settings: status when missing; pasting text needs Accessibility access."
-            ),
-            helperText: "After rebuilding the app you may need to re-grant this permission.",
-            actionLabel: LocalizedStringResource(
-              "Open System Settings",
-              comment: "Permissions settings: button that opens macOS System Settings."),
-            action: {
-              _ = permissions.requestAccessibilityAccess()
+            .rowStatus {
+              if !permissions.hasMicrophonePermission {
+                Text("Microphone access denied").settingsHelperCopy()
+              }
             }
-          )
+          }
+          BrandedRow(showDivider: false) {
+            SettingsRow(
+              icon: "hand.raised", title: "Accessibility",
+              short: "Needed to paste text into other apps.",
+              help: "Allow Accessibility access so EnviousWispr can paste your dictation into other apps."
+            ) {
+              if permissions.hasAccessibilityPermission {
+                allowedStatus
+              } else {
+                SettingsActionButton(title: "Open System Settings", isEnabled: true) {
+                  _ = permissions.requestAccessibilityAccess()
+                }
+              }
+            }
+            .rowStatus {
+              if !permissions.hasAccessibilityPermission {
+                Text("Accessibility access required for paste").settingsHelperCopy()
+                Text("After rebuilding the app you may need to re-grant this permission.")
+                  .font(.stRowHelper)
+                  .foregroundStyle(.stTextSecondary)
+                  .fixedSize(horizontal: false, vertical: true)
+              }
+            }
+          }
         }
       }
+    }
+  }
 
-      PrivacySettingsView()
+  private var allowedStatus: some View {
+    Label("Allowed", systemImage: "checkmark.circle.fill")
+      .font(.stRowHelper)
+      .foregroundStyle(.stSuccess)
+      .fixedSize()
+  }
+
+  private func requestMicrophone() {
+    Task {
+      // #2549: `requestMicrophoneAccess()` is a guaranteed no-op once
+      // already denied — Apple never re-shows the system dialog after
+      // an explicit deny. This shared method sends the user to System
+      // Settings instead when that is the case.
+      await permissions.requestMicrophoneAccessOrOpenSettings()
     }
   }
 }
