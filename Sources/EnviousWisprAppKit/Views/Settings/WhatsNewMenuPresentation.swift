@@ -45,14 +45,16 @@ struct WhatsNewMenuPresentation {
     case available(String)
     case opening
 
-    /// The line under the menu title: news only. The idle prompt and the unknown state
-    /// show nothing, since "Check for Updates…" sits at the bottom (founder, 2026-10-03).
+    /// The line under the menu title. The idle prompt shows nothing, since "Check for
+    /// Updates…" sits at the bottom (founder, 2026-10-03); news and main's "unavailable"
+    /// explanation for the disabled button still show.
     var headline: String? {
       switch self {
       case .available(let version):
         String(localized: "Version \(version) is available")
       case .opening: String(localized: "Opening update…")
-      case .unavailable, .checkPrompt: nil
+      case .unavailable: String(localized: "Update status unavailable")
+      case .checkPrompt: nil
       }
     }
 

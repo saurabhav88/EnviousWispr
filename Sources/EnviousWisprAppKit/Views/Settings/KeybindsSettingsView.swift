@@ -212,7 +212,7 @@ private struct KeybindSettingsRow: View {
         keyboardFocus: $recordingKeybindFocused,
         accessibilityFocus: $guidanceReturnFocus
       )
-      .frame(width: 230)
+      .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
       .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
         GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
           .onExitCommand(perform: dismissGlobeGuidance)

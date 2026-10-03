@@ -119,8 +119,11 @@ struct WhatsNewMenuTests {
     let update = UpdateAvailabilityService.AvailableUpdate(
       versionString: "2503", displayVersion: "2.5.3", isCriticalUpdate: false)
     #expect(WhatsNewMenuPresentation.updateStatus(.available(update)) == .available("2.5.3"))
-    // Only news shows under the title; the idle prompt repeated the bottom button.
-    #expect(WhatsNewMenuPresentation.updateStatus(nil).headline == nil)
+    // The idle prompt repeated the bottom button and is gone; the reason the button is
+    // disabled still shows.
+    #expect(
+      WhatsNewMenuPresentation.updateStatus(nil).headline
+        == String(localized: "Update status unavailable"))
     #expect(
       WhatsNewMenuPresentation.updateStatus(UpdateAvailabilityService.UpdateState.none).headline
         == nil)

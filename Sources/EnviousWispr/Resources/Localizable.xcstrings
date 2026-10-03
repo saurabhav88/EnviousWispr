@@ -17742,6 +17742,16 @@
         }
       }
     },
+    "Update status unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update-Status nicht verfügbar"
+          }
+        }
+      }
+    },
     "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it." : {
       "comment" : "Setup notice on Macs older than macOS 26.",
       "localizations" : {
