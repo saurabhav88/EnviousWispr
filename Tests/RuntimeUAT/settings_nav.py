@@ -1366,11 +1366,11 @@ def _scan_snippet_sheet(ax, label, hooks):
     try:
         sheet = sheets()[0]
         snippet_edit_controls(ax, sheet)
-        for name in ("Cancel", "Save"):
+        for name in ("Cancel", "Add snippet"):
             if _one([e for e in ax.walk(sheet) if ax.role(e) == "AXButton"
                      and _names_match(ax, e, name)], f"snippet {name}") is None:
                 raise ControlError(f"snippet sheet has no {name}")
-        return "OK", "snippet_sheet:Trigger, Text to paste, Cancel, Save (nothing saved)"
+        return "OK", "snippet_sheet:Trigger, Text to paste, Cancel, Add snippet (nothing saved)"
     finally:
         try:
             open_sheets = sheets()

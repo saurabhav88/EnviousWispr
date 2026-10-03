@@ -35,9 +35,21 @@ struct SnippetEditSheet: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text(isEditing ? "Edit snippet" : "New snippet")
-        .font(.system(size: 22, weight: .semibold))
-        .foregroundStyle(.stTextPrimary)
+      // Mockup 15 (founder, 2026-10-03): the braces tile, the title, a rule under them.
+      VStack(alignment: .leading, spacing: 14) {
+        HStack(spacing: 12) {
+          Image(systemName: "curlybraces")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.stAccent)
+            .frame(width: 34, height: 34)
+            .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 9))
+            .accessibilityHidden(true)
+          Text(isEditing ? "Edit snippet" : "New snippet")
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(.stTextPrimary)
+        }
+        Divider().overlay(Color.stDivider)
+      }
 
       triggerField
       expansionField
@@ -73,24 +85,23 @@ struct SnippetEditSheet: View {
         short: SnippetsSettingsCopy.triggerShort,
         help: "Matched word for word, and only after you say \u{201C}\(keyword)\u{201D}."
       ) { EmptyView() }
+      // One field with the keyword inline as its prefix (mockup 15). The keyword is shared
+      // by every snippet and is not editable here.
       HStack(spacing: 8) {
-        // The opening keyword is shared by every snippet and is not editable here.
         Text(keyword)
-          .font(.stRowLabel)
+          .font(.stBody.weight(.semibold))
           .foregroundStyle(.stAccent)
           .lineLimit(1)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 6)
-          .frame(maxWidth: 130)
-          .background(Color.stAccentLight, in: Capsule())
-          .overlay(
-            Capsule().strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
-              .allowsHitTesting(false))
-        TextField("my email address", text: $trigger)
+          .frame(maxWidth: 130, alignment: .leading)
+          .fixedSize()
+          .accessibilityHidden(true)
+        TextField(Self.triggerPlaceholder, text: $trigger)
           .accessibilityLabel("Trigger")
           .focused($triggerFocused)
-          .settingsFieldChrome(focused: $triggerFocused)
       }
+      .settingsFieldChrome(focused: $triggerFocused)
+      .contentShape(Rectangle())
+      .onTapGesture { triggerFocused = true }
     }
   }
 
@@ -110,7 +121,19 @@ struct SnippetEditSheet: View {
         .frame(minHeight: 110, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
         .padding(6)
-        .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 8))
+        // TextEditor has no placeholder; the mockup's sample shows until the user types.
+        .overlay(alignment: .topLeading) {
+          if expansion.isEmpty {
+            Text(verbatim: "john.doe@example.com")
+              .font(.stBody)
+              .foregroundStyle(.stTextTertiary)
+              .padding(.horizontal, 11)
+              .padding(.vertical, 6)
+              .allowsHitTesting(false)
+              .accessibilityHidden(true)
+          }
+        }
+        .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
           RoundedRectangle(cornerRadius: 8)
             .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
@@ -167,10 +190,14 @@ struct SnippetEditSheet: View {
     }
   }
 
+  /// The trigger field's placeholder, also shown in the speech preview until a trigger is typed.
+  static var triggerPlaceholder: String { String(localized: "my email address") }
+
   // MARK: - Footer
 
   private var footer: some View {
     VStack(alignment: .leading, spacing: 8) {
+      Divider().overlay(Color.stDivider)
       if let error {
         ScrollView(.vertical) {
           Text(error)
@@ -191,10 +218,15 @@ struct SnippetEditSheet: View {
         }
         Spacer(minLength: 0)
         SettingsActionButton(
-          title: "Cancel", isEnabled: true, emphasis: .outlined, shortcut: .cancelAction
+          title: "Cancel", isEnabled: true, emphasis: .outlined, shape: .roundedRect,
+          size: .medium, shortcut: .cancelAction
         ) { dismiss() }
         .background { layoutProbe?("Cancel") }
-        SettingsActionButton(title: "Save", isEnabled: canSave, emphasis: .filled) { save() }
+        // A new snippet's confirm says what it does (mockup 15); an edit keeps Save.
+        SettingsActionButton(
+          title: isEditing ? "Save" : "Add snippet", isEnabled: canSave, emphasis: .filled,
+          shape: .roundedRect, size: .medium
+        ) { save() }
           .background { layoutProbe?("Save") }
       }
     }
@@ -227,11 +259,18 @@ private struct SnippetSpeechPreview: View {
   var layoutProbe: ((String) -> AnyView)? = nil
   @State private var viewportHeight: CGFloat = 0
 
+  private var shownTrigger: String {
+    let typed = trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+    return typed.isEmpty ? SnippetEditSheet.triggerPlaceholder : typed
+  }
+
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
       SettingsRowIcon(systemName: "mic")
       ScrollView(.vertical) {
-        Text("You'll say \u{201C}\(keyword) \(trigger)\u{201D}")
+        // Until a trigger is typed, the field's placeholder stands in, so the line never ends
+        // in a stray space ("You'll say "insert "", #3385 audit).
+        Text("You'll say \u{201C}\(keyword) \(shownTrigger)\u{201D}")
           .font(.stRowHelper)
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)

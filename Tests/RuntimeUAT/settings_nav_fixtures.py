@@ -1329,14 +1329,15 @@ def pr3_cases():
                      sn.keybind_control(ax, root, label) is field, True))
         rows.append((f"PR3 {german}: Reset stays inside the recorder row",
                      sn.keybind_control(ax, root, label, reset=True) is reset, True))
-        rows.append((f"PR3 {german}: scan finds field and separate Change",
-                     sn.scan_control(ax, root, "keybind", label, {})[0], "OK"))
+        # Founder 2026-10-03: the field is the one target; a separate Change is a regression.
+        rows.append((f"PR3 {german}: a separate Change beside the field fails",
+                     sn.scan_control(ax, root, "keybind", label, {})[0], "FAIL"))
         group["AXChildren"].remove(reset)
         rows.append((f"PR3 {german}: absent own Reset never borrows another row's",
                      sn.keybind_control(ax, root, label, reset=True), None))
         group["AXChildren"].remove(action)
-        rows.append((f"PR3 {german}: missing Change fails even with a field",
-                     sn.scan_control(ax, root, "keybind", label, {})[0], "FAIL"))
+        rows.append((f"PR3 {german}: the field alone is the keybind control",
+                     sn.scan_control(ax, root, "keybind", label, {})[0], "OK"))
         # SwiftUI may flatten recorder rows into one container; only the band separates them.
         flat_reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(65))
         next_info = el("AXButton", desc=tr("About %@").replace("%@", "Copy last dictation"),
@@ -1388,7 +1389,7 @@ def pr3_cases():
         return _window([el("AXButton", desc="Add snippet", press=opener)] + ([
             el("AXSheet", children=[el("AXTextField", desc="Trigger"),
                 el("AXTextArea", desc="Text to paste"), el("AXButton", desc="Cancel", press=cancel),
-                el("AXButton", desc="Save")])] if state["open"] else []))
+                el("AXButton", desc="Add snippet")])] if state["open"] else []))
     ax = _ax_plain()
     result = sn.scan_control(ax, root_of(), "snippet_sheet", "Add snippet", {"root_of": root_of})
     rows.append(("PR3: snippet scan reads the new draft then cancels", result[0], "OK"))

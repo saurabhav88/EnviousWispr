@@ -38,6 +38,12 @@ struct SnippetsView: View {
     .onChange(of: coordinator.keyword) { _, keyword in
       if !keywordFocused { keywordField = keyword }
     }
+    // The page behind an open sheet dims, as in mockup 15 (founder, 2026-10-03).
+    .overlay {
+      if sheetRoute != nil {
+        Color.black.opacity(0.4).allowsHitTesting(false).accessibilityHidden(true)
+      }
+    }
     .sheet(item: $sheetRoute) { route in
       switch route {
       case .edit(let draft):
