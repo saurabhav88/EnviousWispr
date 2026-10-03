@@ -1682,7 +1682,9 @@ struct EngineCard<Footer: View>: View {
                   Text(row.label)
                     .font(.stHelper)
                     .foregroundStyle(compact ? Color.stTextSecondary : Color.stTextTertiary)
-                    .frame(width: compact ? 68 : nil, alignment: .leading)
+                    // 82pt holds "Languages" at 14pt; wraps between words rather than clipping.
+                    .frame(width: compact ? 82 : nil, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                   if compact == false { Spacer(minLength: 12) }
                   Text(row.value)
                     .font(.stHelper)
