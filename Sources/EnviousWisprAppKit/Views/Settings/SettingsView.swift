@@ -42,58 +42,7 @@ struct UnifiedWindowView: View {
       // Keep the app name as the window title (Window menu / VoiceOver) but hide
       // its titlebar text so it doesn't duplicate the centered wordmark (#1311).
       .background(MainWindowTitleHider())
-      .toolbar {
-        // macOS 26 wraps each toolbar item in a Liquid Glass capsule; hide it on
-        // the principal item so the centered wordmark sits flush on the bar with
-        // no grey oval behind it. Below macOS 26 there is no such capsule, so the
-        // plain item is used. `sharedBackgroundVisibility` returns ToolbarContent,
-        // so it attaches to the item, not to the label view.
-        if #available(macOS 26.0, *) {
-          ToolbarItem(placement: .principal) { wordmarkToolbarLabel }
-            .sharedBackgroundVisibility(.hidden)
-        } else {
-          ToolbarItem(placement: .principal) { wordmarkToolbarLabel }
-        }
-        // Active-phase cue (loading / transcribing / polishing), invisible at
-        // rest. Placed trailing next to the record button (not centered, which
-        // would collide with the principal wordmark) so pages without the
-        // History status row still explain why the record button is disabled.
-        // macOS 26 gives adjacent items in one placement a SHARED Liquid Glass
-        // capsule and packs them flush, so the record button's gradient pill was
-        // drawn over the status badge and covered its words. `ToolbarSpacer` is
-        // the documented way to split the run into separate groups. Both items
-        // paint their own pill, so both hide the system capsule for the same
-        // reason the principal wordmark does. Below macOS 26 there is no shared
-        // capsule and no spacer API, so the pair stays as it was.
-        if #available(macOS 26.0, *) {
-          ToolbarItem(placement: .primaryAction) {
-            StatusBadge()
-          }
-          .sharedBackgroundVisibility(.hidden)
-          ToolbarSpacer(.fixed, placement: .primaryAction)
-          // #3153: feedback lives beside Record (founder, 2026-09-25). Its own group, so the
-          // shared Liquid Glass capsule does not merge it into the record pill.
-          ToolbarItem(placement: .primaryAction) {
-            FeedbackToolbarButton()
-          }
-          .sharedBackgroundVisibility(.hidden)
-          ToolbarSpacer(.fixed, placement: .primaryAction)
-          ToolbarItem(placement: .primaryAction) {
-            RecordButton()
-          }
-          .sharedBackgroundVisibility(.hidden)
-        } else {
-          ToolbarItem(placement: .primaryAction) {
-            StatusBadge()
-          }
-          ToolbarItem(placement: .primaryAction) {
-            FeedbackToolbarButton()
-          }
-          ToolbarItem(placement: .primaryAction) {
-            RecordButton()
-          }
-        }
-      }
+      .toolbar { SettingsWindowToolbar() }
     }
     .tint(.stAccentSolid)
     // `initial: true`: a request made before this window existed (the menu's
@@ -141,14 +90,13 @@ struct UnifiedWindowView: View {
       // can't render a gradient and greys out when the window is inactive.
       ScrollView {
         VStack(alignment: .leading, spacing: 2) {
+          sidebarRow(.history)
           ForEach(Array(SettingsGroup.allCases.enumerated()), id: \.element) { index, group in
-            if index != 0 {
-              Divider()
-                .overlay(Color.stDivider)
-                .padding(.horizontal, 4)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
-            }
+            Divider()
+              .overlay(Color.stDivider)
+              .padding(.horizontal, 4)
+              .padding(.top, 10)
+              .padding(.bottom, 6)
             Text(group.heading)
               .font(.stSectionHeader)
               .tracking(0.6)
@@ -210,10 +158,6 @@ struct UnifiedWindowView: View {
     case .history:
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
-    case .whatsNew:
-      page { WhatsNewSettingsView() }
-    case .appearance:
-      page { AppearanceSettingsView() }
     case .dictation:
       page {
         DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
@@ -224,18 +168,12 @@ struct UnifiedWindowView: View {
       page { KeybindsSettingsView() }
     case .aiPolish:
       page { AIPolishSettingsView() }
-    case .wordCorrection:
+    case .dictionary:
       page { YourWordsView() }
     case .snippets:
       page { SnippetsView() }
-    case .permissions:
-      page { PermissionsSettingsView() }
-    case .checkForUpdates:
-      // Issue #958: D1 action row never selects this case (no `.tag`), but the
-      // exhaustive switch requires an arm.
-      EmptyView()
-    case .openSourceLicenses:
-      page { OpenSourceLicensesView() }
+    case .appSettings:
+      page { AppSettingsView(selection: $navigationState.appSettingsTab) }
     #if DEBUG
       case .diagnostics:
         page { DiagnosticsSettingsView() }
@@ -243,40 +181,17 @@ struct UnifiedWindowView: View {
     }
   }
 
-  /// One sidebar row. `checkForUpdates` fires its action and never selects
-  /// (#958); `whatsNew` carries the animated unread glyph; everything else is a
-  /// standard nav row that selects its page through `navigationState`.
-  @ViewBuilder
-  private func sidebarRow(_ section: SettingsSection) -> some View {
-    if section == .checkForUpdates {
-      SidebarNavRow(label: section.label, isSelected: false) {
-        Image(systemName: section.icon)
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(.stAccent)
-      } action: {
-        updateCoordinatorHolder.coordinator?.checkForUpdatesFromSettings()
-      }
-    } else if section == .whatsNew {
-      let selected = navigationState.selectedPage == section
-      SidebarNavRow(label: section.label, isSelected: selected) {
-        WhatsNewSidebarGlyph(
-          isUnread: settings.hasUnreadWhatsNew,
-          restColor: selected ? .white : .stAccent)
-      } action: {
-        navigationState.selectSidebar(section)
-      }
-    } else {
-      let selected = navigationState.selectedPage == section
-      SidebarNavRow(
-        label: section.label, isSelected: selected,
-        activity: sidebarActivity(section)
-      ) {
-        Image(systemName: section.icon)
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(selected ? .white : .stAccent)
-      } action: {
-        navigationState.selectSidebar(section)
-      }
+  /// Every sidebar row selects a page; updates live in the toolbar dropdown.
+  private func sidebarRow(_ section: SettingsPage) -> some View {
+    let selected = navigationState.selectedPage == section
+    return SidebarNavRow(
+      label: section.label, isSelected: selected, activity: sidebarActivity(section)
+    ) {
+      Image(systemName: section.icon)
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(selected ? .white : .stAccent)
+    } action: {
+      navigationState.selectSidebar(section)
     }
   }
 
@@ -287,8 +202,8 @@ struct UnifiedWindowView: View {
   /// `pendingEnrichmentCount` (observable in-memory), never the total's mere
   /// presence — same reasoning as the progress card (Codex Chunk 2 review
   /// finding 5).
-  private func yourWordsEnrichmentBadgeVisible(for section: SettingsSection) -> Bool {
-    section == .wordCorrection && customWordsCoordinator.pendingEnrichmentCount > 0
+  private func yourWordsEnrichmentBadgeVisible(for section: SettingsPage) -> Bool {
+    section == .dictionary && customWordsCoordinator.pendingEnrichmentCount > 0
   }
 
   /// Which sidebar rows carry the "something is running here" dot.
@@ -304,24 +219,10 @@ struct UnifiedWindowView: View {
   /// thing is running, so the dot and its spoken value come from this one answer. Before,
   /// the Dictionary dot was announced as "Importing in progress". File import reads
   /// `isRunning`, which Stop clears at the press, never the engine claim it still holds.
-  private func sidebarActivity(_ section: SettingsSection) -> SettingsShellCopy.SidebarActivity {
+  private func sidebarActivity(_ section: SettingsPage) -> SettingsShellCopy.SidebarActivity {
     if section == .transcribeFile && fileImportCoordinator.isRunning { return .fileImport }
     if yourWordsEnrichmentBadgeVisible(for: section) { return .dictionaryEnrichment }
     return .none
-  }
-
-  /// The centered top-bar identity: the brand mark plus the app wordmark. Held
-  /// as a property so the toolbar can wrap it in either the glass-hidden or the
-  /// plain `ToolbarItem` depending on the OS, without duplicating the label.
-  private var wordmarkToolbarLabel: some View {
-    HStack(spacing: 7) {
-      WisprLogoMark()
-        .frame(width: 16, height: 16)
-      Text(AppConstants.appName)
-        .font(.system(size: 13, weight: .semibold))
-        .foregroundStyle(.stTextPrimary)
-    }
-    .fixedSize()
   }
 
   /// Tags a page's content with its section so `SettingsContentView` renders the
@@ -336,4 +237,92 @@ struct UnifiedWindowView: View {
       // be supplied without threading a binding through every page.
       .environment(\.settingsNavigate) { navigationState.apply($0) }
   }
+}
+
+
+/// One toolbar owner shared by the shell and its offscreen layout harness.
+struct SettingsWindowToolbar: ToolbarContent {
+  var appName: String = AppConstants.appName
+  // Literal render fixtures can exercise the existing German labels without
+  // changing the process language or the user's catalog/defaults.
+  var giftCaption: LocalizedStringResource = "What's New & Updates"
+  var statusTextOverride: String? = nil
+  var recordTitleOverride: String? = nil
+
+  var body: some ToolbarContent {
+
+        // macOS 26 wraps each toolbar item in a Liquid Glass capsule; hide it on
+        // the principal item so the centered wordmark sits flush on the bar with
+        // no grey oval behind it. Below macOS 26 there is no such capsule, so the
+        // plain item is used. `sharedBackgroundVisibility` returns ToolbarContent,
+        // so it attaches to the item, not to the label view.
+        if #available(macOS 26.0, *) {
+          ToolbarItem(placement: .principal) { wordmarkToolbarLabel }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+          ToolbarItem(placement: .principal) { wordmarkToolbarLabel }
+        }
+        // Active-phase cue (loading / transcribing / polishing), invisible at
+        // rest. Placed trailing next to the record button (not centered, which
+        // would collide with the principal wordmark) so pages without the
+        // History status row still explain why the record button is disabled.
+        // macOS 26 gives adjacent items in one placement a SHARED Liquid Glass
+        // capsule and packs them flush, so the record button's gradient pill was
+        // drawn over the status badge and covered its words. `ToolbarSpacer` is
+        // the documented way to split the run into separate groups. Both items
+        // paint their own pill, so both hide the system capsule for the same
+        // reason the principal wordmark does. Below macOS 26 there is no shared
+        // capsule and no spacer API, so the pair stays as it was.
+        if #available(macOS 26.0, *) {
+          ToolbarItem(placement: .primaryAction) {
+            StatusBadge(textOverride: statusTextOverride)
+          }
+          .sharedBackgroundVisibility(.hidden)
+          ToolbarSpacer(.fixed, placement: .primaryAction)
+          // #3153: feedback lives beside Record (founder, 2026-09-25). Its own group, so the
+          // shared Liquid Glass capsule does not merge it into the record pill.
+          ToolbarItem(placement: .primaryAction) {
+            WhatsNewToolbarButton(caption: giftCaption)
+          }
+          .sharedBackgroundVisibility(.hidden)
+          ToolbarSpacer(.fixed, placement: .primaryAction)
+          ToolbarItem(placement: .primaryAction) {
+            FeedbackToolbarButton()
+          }
+          .sharedBackgroundVisibility(.hidden)
+          ToolbarSpacer(.fixed, placement: .primaryAction)
+          ToolbarItem(placement: .primaryAction) {
+            RecordButton(titleOverride: recordTitleOverride)
+          }
+          .sharedBackgroundVisibility(.hidden)
+        } else {
+          ToolbarItem(placement: .primaryAction) {
+            StatusBadge(textOverride: statusTextOverride)
+          }
+          ToolbarItem(placement: .primaryAction) {
+            WhatsNewToolbarButton(caption: giftCaption)
+          }
+          ToolbarItem(placement: .primaryAction) {
+            FeedbackToolbarButton()
+          }
+          ToolbarItem(placement: .primaryAction) {
+            RecordButton(titleOverride: recordTitleOverride)
+          }
+        }
+        }
+
+  /// The centered top-bar identity: the brand mark plus the app wordmark. Held
+  /// as a property so the toolbar can wrap it in either the glass-hidden or the
+  /// plain `ToolbarItem` depending on the OS, without duplicating the label.
+  private var wordmarkToolbarLabel: some View {
+    HStack(spacing: 7) {
+      WisprLogoMark()
+        .frame(width: 16, height: 16)
+      Text(appName)
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(.stTextPrimary)
+    }
+    .fixedSize()
+  }
+
 }

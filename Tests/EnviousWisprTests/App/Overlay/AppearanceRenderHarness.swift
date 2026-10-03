@@ -31,7 +31,7 @@ import Testing
 ///     TEST_RUNNER_EW_RENDER_APPEARANCE=1 scripts/xcode-test.sh \
 ///       --filter EnviousWisprTests/AppearanceRenderHarness
 ///
-/// PNGs land in a fresh `build/pr1-lane-d/appearance-render/run-*/` directory per run. A skipped receipt is not a passed
+/// PNGs land in a fresh `build/pr2-c2/appearance-render/run-*/` directory per run. A skipped receipt is not a passed
 /// receipt: when this row is skipped it has proven nothing at all.
 @MainActor
 @Suite(.tags(.harnessContract))
@@ -47,9 +47,8 @@ struct AppearanceRenderHarness {
     return (settings, PillAppearanceModel(settings: settings, capability: { capability }))
   }
 
-  /// The two production pages this harness draws (#3385: the pill controls moved from
-  /// Appearance to the Recording Pill tab, so both are rendered).
-  enum Page: String { case appearance, pill }
+  /// All four App Settings pages, both readers, and retained PR1 Recording Pill coverage.
+  enum Page: String { case appearance, permissions, privacy, licenses, licenseReader, noticesReader, pill }
 
   /// The page host's width for a window width, with the current shell: the window minus three
   /// `SettingsLayout.windowFrameInset` gutters and the 200pt sidebar. 750 gives 508, the 820
@@ -64,7 +63,7 @@ struct AppearanceRenderHarness {
 
   /// One fresh directory per run, so a PNG left by an earlier run can never pass as this one's.
   static let runDirectory = RepoRoot.url.appending(
-    path: "build/pr1-lane-d/appearance-render/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
+    path: "build/pr2-c2/appearance-render/run-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
 
   /// Render one page at one width and scheme to a PNG; returns the PNG's URL after proving it
   /// decodes to a nonzero bitmap.
@@ -80,10 +79,19 @@ struct AppearanceRenderHarness {
     let (settings, pill) = model(capability)
     let content: AnyView =
       switch page {
-      case .appearance: AnyView(AppearanceSettingsView())
+      case .appearance: AnyView(AppSettingsView(selection: .constant(.appearance)).frame(height: 650))
+      case .permissions: AnyView(AppSettingsView(selection: .constant(.permissions)).frame(height: 650))
+      case .privacy: AnyView(AppSettingsView(selection: .constant(.privacy)).frame(height: 850))
+      case .licenses: AnyView(AppSettingsView(selection: .constant(.licenses)).frame(height: 650))
+      case .licenseReader: AnyView(LicenseDocumentReader(document: .license))
+      case .noticesReader: AnyView(LicenseDocumentReader(document: .notices))
       case .pill: AnyView(PillSettingsView().environment(\.settingsPR1Density, true))
       }
+    let permissions = PermissionsService(
+      accessibilityReader: { false }, microphoneReader: { .denied },
+      openMicrophoneSettings: { _ in })
     let root = content
+      .environment(permissions)
       .environment(settings)
       .environment(pill)
       .environment(\.settingsNavigate, { _ in })
@@ -113,7 +121,7 @@ struct AppearanceRenderHarness {
 
     try FileManager.default.createDirectory(at: runDirectory, withIntermediateDirectories: true)
     let url = runDirectory.appending(path: "\(page.rawValue)-\(label).png")
-    #expect(!FileManager.default.fileExists(atPath: url.path), "\(url.lastPathComponent) rendered twice")
+    #expect(FileManager.default.fileExists(atPath: url.path) == false, "\(url.lastPathComponent) rendered twice")
     try png.write(to: url)
 
     let decoded = try #require(
@@ -179,12 +187,79 @@ struct AppearanceRenderHarness {
       print("GERMAN Chime fit \(pairing.rawValue) card=\(chimeWidth) nameWidth=\(nameWidth) descriptionWidth=\(descriptionWidth) fullTextHeight=\(size.height) containsFullText=\(size.width <= descriptionWidth + 0.5)")
       rows.append(AnyView(text.frame(width: chimeWidth - 8)))
     }
+    // App Settings' shared rows in the catalog's German (the same values the app ships),
+    // including the actionable relaunch copy. Fit evidence, not a saved language change.
+    let appKeys = [
+      "Appearance",
+      "Permissions",
+      "Privacy",
+      "Licenses",
+      "Theme",
+      "Choose how EnviousWispr looks.",
+      "Choose System to follow your Mac, or choose Light or Dark.",
+      "System",
+      "Light",
+      "Dark",
+      "Language",
+      "The language of the app interface.",
+      "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac.",
+      "System default",
+      "EnviousWispr uses the new language after it relaunches.",
+      "Relaunch to apply",
+      "Show app in Dock",
+      "Keep EnviousWispr in your Dock.",
+      "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays.",
+    ]
+    var de: [String: String] = [:]
+    for key in appKeys { de[key] = try german(key) }
+    let appRows = VStack(alignment: .leading, spacing: 10) {
+      Text(verbatim: "App Settings: catalog German").font(.stRowHelper)
+      SettingsTabStrip(items: [
+        SettingsTabItem(id: AppSettingsTab.appearance, icon: "circle.lefthalf.filled", label: LocalizedStringResource(stringLiteral: de["Appearance"]!)),
+        SettingsTabItem(id: .permissions, icon: "hand.raised", label: LocalizedStringResource(stringLiteral: de["Permissions"]!)),
+        SettingsTabItem(id: .privacy, icon: "lock.shield", label: LocalizedStringResource(stringLiteral: de["Privacy"]!)),
+        SettingsTabItem(id: .licenses, icon: "doc.text", label: LocalizedStringResource(stringLiteral: de["Licenses"]!)),
+      ], selection: .constant(.appearance))
+      BrandedSection {
+        BrandedRow {
+          SettingsRow(icon: "circle.lefthalf.filled", resolvedTitle: de["Theme"]!,
+            resolvedShort: de["Choose how EnviousWispr looks."]!,
+            resolvedHelp: de["Choose System to follow your Mac, or choose Light or Dark."]!) {
+            BrandedSegmentedPicker(options: [
+              (de["System"]!, nil, AppearancePreference.system), (de["Light"]!, nil, .light),
+              (de["Dark"]!, nil, .dark),
+            ], selection: .constant(.system)).fixedSize()
+          }
+        }
+        BrandedRow {
+          SettingsRow(icon: "globe", resolvedTitle: de["Language"]!,
+            resolvedShort: de["The language of the app interface."]!,
+            resolvedHelp: de["This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."]!) {
+            Picker(de["Language"]!, selection: .constant("")) {
+              Text(verbatim: de["System default"]!).tag("")
+            }.labelsHidden().fixedSize()
+          }.rowStatus {
+            Text(verbatim: de["EnviousWispr uses the new language after it relaunches."]!)
+              .font(.stRowHelper).fixedSize(horizontal: false, vertical: true)
+            SettingsActionButton(verbatimTitle: de["Relaunch to apply"]!, isEnabled: true) {}
+          }
+        }
+        BrandedRow(showDivider: false) {
+          SettingsRow(icon: "dock.rectangle", resolvedTitle: de["Show app in Dock"]!,
+            resolvedShort: de["Keep EnviousWispr in your Dock."]!,
+            resolvedHelp: de["When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."]!) {
+            Toggle("", isOn: .constant(true)).toggleStyle(BrandedToggleStyle()).fixedSize()
+          }
+        }
+      }
+    }.frame(width: pageWidth - 32)
+    rows.append(AnyView(appRows))
     // This sheet is deliberately labelled fit evidence, not a German page render.
     let sheet = VStack(alignment: .leading, spacing: 12) {
       Text(verbatim: "German text fit: source-catalog values + UNREVIEWED Pill drafts")
         .font(.stRowHelper)
       ForEach(rows.indices, id: \.self) { rows[$0] }
-    }.padding(16).frame(width: 508).background(Color.stPageBg)
+    }.padding(16).frame(width: pageWidth).background(Color.stPageBg)
     let host = NSHostingView(rootView: AnyView(sheet))
     host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     host.frame = NSRect(origin: .zero, size: host.fittingSize)
@@ -213,8 +288,9 @@ struct AppearanceRenderHarness {
     ]
     #expect(widths.map(\.1).prefix(3) == [508, 578, 1058], "the shell's page widths moved")
     var made: [URL] = []
-    for page in [Page.appearance, .pill] {
+    for page in [Page.appearance, .permissions, .privacy, .licenses, .licenseReader, .noticesReader, .pill] {
       for (name, width) in widths {
+        if (page == .licenseReader || page == .noticesReader) && width < 400 { continue }
         for dark in [false, true] {
           made.append(
             try Self.render(page, label: "\(name)-\(dark ? "dark" : "light")", pageWidth: width, dark: dark))
@@ -235,7 +311,7 @@ struct AppearanceRenderHarness {
     for width in [CGFloat(750), 820, 1300] {
       for dark in [false, true] { try Self.germanFitChecks(pageWidth: Self.pageWidth(window: width), dark: dark) }
     }
-    #expect(made.count == 19, "rendered \(made.count) of 19 planned PNGs")
+    #expect(made.count == 55, "rendered \(made.count) of 55 planned PNGs")
     #expect(Set(made).count == made.count, "two renders wrote one file")
   }
 }

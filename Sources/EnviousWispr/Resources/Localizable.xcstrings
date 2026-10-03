@@ -1347,6 +1347,16 @@
         }
       }
     },
+    "ABOUT" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "INFO"
+          }
+        }
+      }
+    },
     "AI POLISH · OPTIONAL" : {
       "localizations" : {
         "de" : {
@@ -1358,7 +1368,6 @@
       }
     },
     "AI Polish" : {
-      "comment" : "Settings sidebar: a page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1758,13 +1767,12 @@
         }
       }
     },
-    "APP" : {
-      "comment" : "Settings sidebar: group heading, in capitals.",
+    "APPEARANCE" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "APP"
+            "value" : "ERSCHEINUNGSBILD"
           }
         }
       }
@@ -1867,7 +1875,6 @@
       }
     },
     "Accessibility access required for paste" : {
-      "comment" : "Permissions settings: status when missing; pasting text needs Accessibility access.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2533,12 +2540,32 @@
         }
       }
     },
+    "All release notes on GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Versionshinweise auf GitHub"
+          }
+        }
+      }
+    },
     "All your contacts are already in your word list." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle deine Kontakte stehen bereits in deiner Wortliste."
+          }
+        }
+      }
+    },
+    "Allow Accessibility access so EnviousWispr can paste your dictation into other apps." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube den Zugriff auf Bedienungshilfen, damit EnviousWispr dein Diktat in andere Apps einfügen kann."
           }
         }
       }
@@ -2550,6 +2577,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprachvorschläge wieder zulassen."
+          }
+        }
+      }
+    },
+    "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube den Mikrofonzugriff, damit EnviousWispr deine Stimme aufnehmen kann. Wurde der Zugriff abgelehnt, öffnet „Zugriff anfordern“ die Systemeinstellungen."
           }
         }
       }
@@ -2826,8 +2863,18 @@
         }
       }
     },
+    "App Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Einstellungen"
+          }
+        }
+      }
+    },
     "Appearance" : {
-      "comment" : "Menu bar menu, VoiceOver: the icon beside Appearance.\nMenu bar menu: the submenu for light or dark appearance.\nSettings sidebar: a page name.",
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Appearance.\nMenu bar menu: the submenu for light or dark appearance.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4071,17 +4118,6 @@
         }
       }
     },
-    "Check for Updates" : {
-      "comment" : "Settings sidebar: a page name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nach Updates suchen"
-          }
-        }
-      }
-    },
     "Check for Updates…" : {
       "comment" : "Menu bar menu: checks for a new version.",
       "localizations" : {
@@ -4099,6 +4135,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bei jedem Start von EnviousWispr nach neuen Kontakten suchen. Standardmäßig deaktiviert."
+          }
+        }
+      }
+    },
+    "Check for updates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Updates suchen"
           }
         }
       }
@@ -4256,6 +4302,16 @@
         }
       }
     },
+    "Choose System to follow your Mac, or choose Light or Dark." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle „System“, um deinem Mac zu folgen, oder wähle „Hell“ oder „Dunkel“."
+          }
+        }
+      }
+    },
     "Choose Top or Bottom for the recording pill." : {
       "comment" : "Recording Pill settings: explains Position on screen. Top and Bottom are the two choices.",
       "localizations" : {
@@ -4351,6 +4407,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auswählen und sichern"
+          }
+        }
+      }
+    },
+    "Choose how EnviousWispr looks." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lege fest, wie EnviousWispr aussieht."
           }
         }
       }
@@ -5359,7 +5425,7 @@
       }
     },
     "Dark" : {
-      "comment" : "Appearance settings: dark theme option.\nMenu bar menu: Appearance submenu: dark appearance.",
+      "comment" : "Menu bar menu: Appearance submenu: dark appearance.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5670,7 +5736,6 @@
       }
     },
     "Dictation Settings" : {
-      "comment" : "Settings sidebar: a page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5832,7 +5897,7 @@
       }
     },
     "Dictionary" : {
-      "comment" : "Dictionary settings: section heading at the top of the page, shown in capitals.\nSettings sidebar: a page name.",
+      "comment" : "Dictionary settings: section heading at the top of the page, shown in capitals.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5913,26 +5978,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird zur Nachbearbeitung aufgeteilt"
-          }
-        }
-      }
-    },
-    "Dock" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dock"
-          }
-        }
-      }
-    },
-    "Document" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dokument"
           }
         }
       }
@@ -6631,7 +6676,6 @@
       }
     },
     "EnviousWispr uses the new language after it relaunches." : {
-      "comment" : "Appearance settings, Language: shown after the language is changed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6648,6 +6692,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr-Wörterdatei"
+          }
+        }
+      }
+    },
+    "EnviousWispr · GPLv3" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr · GPLv3"
           }
         }
       }
@@ -7389,6 +7443,16 @@
         }
       }
     },
+    "GPL-3.0 License" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPL-3.0-Lizenz"
+          }
+        }
+      }
+    },
     "Galician" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -7744,6 +7808,26 @@
         }
       }
     },
+    "Help us catch broken updates." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilf uns, fehlerhafte Updates zu erkennen."
+          }
+        }
+      }
+    },
+    "Help us fix crashes and errors." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilf uns, Abstürze und Fehler zu beheben."
+          }
+        }
+      }
+    },
     "High" : {
       "comment" : "Settings slider: label at the high end.",
       "localizations" : {
@@ -7778,7 +7862,6 @@
       }
     },
     "History" : {
-      "comment" : "Settings sidebar: a page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8368,6 +8451,16 @@
         }
       }
     },
+    "Keep EnviousWispr in your Dock." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr im Dock behalten."
+          }
+        }
+      }
+    },
     "Keep current engine" : {
       "comment" : "Speech engine settings: closes the engine choices without changing the engine.",
       "localizations" : {
@@ -8573,7 +8666,6 @@
       }
     },
     "Keybinds" : {
-      "comment" : "Settings sidebar: a page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8963,8 +9055,28 @@
         }
       }
     },
+    "Licenses" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lizenzen"
+          }
+        }
+      }
+    },
+    "Licenses for the tools EnviousWispr uses." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lizenzen der Werkzeuge, die EnviousWispr nutzt."
+          }
+        }
+      }
+    },
     "Light" : {
-      "comment" : "Appearance settings: light theme option.\nMenu bar menu: Appearance submenu: light appearance.",
+      "comment" : "Menu bar menu: Appearance submenu: light appearance.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9602,7 +9714,6 @@
       }
     },
     "Microphone access denied" : {
-      "comment" : "Permissions settings: status when denied.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9976,6 +10087,26 @@
         }
       }
     },
+    "Needed to paste text into other apps." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nötig, um Text in andere Apps einzufügen."
+          }
+        }
+      }
+    },
+    "Needed to record your voice." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nötig, um deine Stimme aufzunehmen."
+          }
+        }
+      }
+    },
     "Needs a download" : {
       "comment" : "Live Preview settings: status needs download label.",
       "localizations" : {
@@ -10071,6 +10202,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird nie überschrieben."
+          }
+        }
+      }
+    },
+    "New release notes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Versionshinweise"
           }
         }
       }
@@ -10359,6 +10500,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Modelle gefunden"
+          }
+        }
+      }
+    },
+    "No new release notes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine neuen Versionshinweise"
           }
         }
       }
@@ -11343,19 +11494,7 @@
         }
       }
     },
-    "Open Source Licenses" : {
-      "comment" : "Settings sidebar: a page name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open-Source-Lizenzen"
-          }
-        }
-      }
-    },
     "Open System Settings" : {
-      "comment" : "Permissions settings: button that opens macOS System Settings.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11383,6 +11522,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei öffnen"
+          }
+        }
+      }
+    },
+    "Open source under the GNU GPL version 3." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Source unter der GNU GPL Version 3."
           }
         }
       }
@@ -11416,6 +11565,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Nachbearbeitung mit OpenAI sendet deinen transkribierten Text, den Namen der aktiven App und deine hinzugefügten eigenen Wörter, aber niemals Audio. EnviousWispr sendet außerdem store: false, um den Anbieter anzuweisen, Anfrage und Antwort nicht zu speichern."
+          }
+        }
+      }
+    },
+    "Opening update…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update wird geöffnet…"
           }
         }
       }
@@ -11525,6 +11684,16 @@
         }
       }
     },
+    "PERMISSIONS" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BERECHTIGUNGEN"
+          }
+        }
+      }
+    },
     "POWER USER?" : {
       "localizations" : {
         "de" : {
@@ -11535,8 +11704,17 @@
         }
       }
     },
+    "PRIVACY" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DATENSCHUTZ"
+          }
+        }
+      }
+    },
     "PROCESS" : {
-      "comment" : "Settings sidebar: group heading, in capitals.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11842,7 +12020,6 @@
       }
     },
     "Permissions" : {
-      "comment" : "Settings sidebar: a page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12454,7 +12631,6 @@
       }
     },
     "RECORD" : {
-      "comment" : "Settings sidebar: group heading, in capitals.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12532,6 +12708,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auswahl über die Zwischenablage lesen"
+          }
+        }
+      }
+    },
+    "Read the GNU General Public License for EnviousWispr." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lies die GNU General Public License für EnviousWispr."
+          }
+        }
+      }
+    },
+    "Read the notices for WhisperKit, FluidAudio, Silero VAD, Sparkle and other components." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lies die Hinweise zu WhisperKit, FluidAudio, Silero VAD, Sparkle und weiteren Komponenten."
           }
         }
       }
@@ -12978,7 +13174,6 @@
       }
     },
     "Relaunch to apply" : {
-      "comment" : "Appearance settings, Language: button that quits and reopens the app.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13124,7 +13319,6 @@
       }
     },
     "Request Access" : {
-      "comment" : "Permissions settings: button that asks macOS for microphone access.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13445,7 +13639,6 @@
       }
     },
     "SYSTEM" : {
-      "comment" : "Settings sidebar: group heading, in capitals.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14452,7 +14645,6 @@
       }
     },
     "Snippets" : {
-      "comment" : "Settings sidebar: a page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15042,7 +15234,7 @@
       }
     },
     "System" : {
-      "comment" : "Appearance settings: theme option that follows macOS.\nMenu bar menu: Appearance submenu: follow the system appearance.",
+      "comment" : "Menu bar menu: Appearance submenu: follow the system appearance.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15053,7 +15245,6 @@
       }
     },
     "System default" : {
-      "comment" : "Appearance settings, Language: follow the language macOS uses.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15967,6 +16158,16 @@
         }
       }
     },
+    "The language of the app interface." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Sprache der App-Oberfläche."
+          }
+        }
+      }
+    },
     "The last dictation is still transcribing. Restart the app, then try again." : {
       "comment" : "Transcribe a File: why the file was refused.",
       "localizations" : {
@@ -16229,6 +16430,16 @@
         }
       }
     },
+    "Theme" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Design"
+          }
+        }
+      }
+    },
     "There are no snippets to export yet." : {
       "comment" : "Snippets, export: notice when the list is empty.",
       "localizations" : {
@@ -16320,6 +16531,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sie sind weiterhin auf deinem Mac gespeichert. Nichts wurde geändert oder gelöscht, und EnviousWispr wird sie nicht überschreiben. Starte die App neu und sag uns Bescheid, falls das wieder passiert."
+          }
+        }
+      }
+    },
+    "Third-Party Notices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweise zu Drittanbietern"
           }
         }
       }
@@ -16440,6 +16661,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das ändert auch das Diktieren, nicht nur die Vorschau. Bei „Automatisch“ erkennt diese Engine die Sprache während des Sprechens."
+          }
+        }
+      }
+    },
+    "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Sprache ändert sich nur in EnviousWispr. Sie gilt nach einem Neustart der App. „Systemstandard“ übernimmt die Sprache deines Macs."
           }
         }
       }
@@ -16841,7 +17072,7 @@
       }
     },
     "Transcribe a File" : {
-      "comment" : "Menu bar menu, VoiceOver: the icon beside Transcribe a File.\nSettings sidebar: a page name.",
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Transcribe a File.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17389,6 +17620,16 @@
         }
       }
     },
+    "Update status unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update-Status nicht verfügbar"
+          }
+        }
+      }
+    },
     "Update your Mac to macOS 26 to unlock free, on-device Apple Intelligence polish. Dictation works fully right now without it." : {
       "comment" : "Setup notice on Macs older than macOS 26.",
       "localizations" : {
@@ -17724,6 +17965,16 @@
         }
       }
     },
+    "Version %@ is available" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %@ ist verfügbar"
+          }
+        }
+      }
+    },
     "Version %@ is ready. Click to restart." : {
       "localizations" : {
         "de" : {
@@ -17762,6 +18013,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anzeigen"
+          }
+        }
+      }
+    },
+    "View license" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lizenz ansehen"
+          }
+        }
+      }
+    },
+    "View notices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweise ansehen"
           }
         }
       }
@@ -18043,6 +18314,16 @@
         }
       }
     },
+    "What we collect" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was wir erfassen"
+          }
+        }
+      }
+    },
     "What we recommend" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading.",
       "localizations" : {
@@ -18055,12 +18336,21 @@
       }
     },
     "What's New" : {
-      "comment" : "Settings sidebar: a page name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neuigkeiten"
+          }
+        }
+      }
+    },
+    "What's New & Updates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuigkeiten & Updates"
           }
         }
       }
@@ -21343,16 +21633,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“ aktualisiert"
-          }
-        }
-      }
-    },
-    "•" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "•"
           }
         }
       }

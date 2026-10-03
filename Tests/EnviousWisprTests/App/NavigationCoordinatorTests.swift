@@ -17,8 +17,8 @@ struct NavigationCoordinatorTests {
   @Test("request sets pending destination")
   func requestSetsPendingDestination() {
     let coordinator = NavigationCoordinator()
-    coordinator.request(.permissions)
-    #expect(coordinator.pendingDestination == .permissions)
+    coordinator.request(.appSettings(.permissions))
+    #expect(coordinator.pendingDestination == .appSettings(.permissions))
   }
 
   @Test("consume clears pending destination")
@@ -33,8 +33,8 @@ struct NavigationCoordinatorTests {
   func requestReplacesPriorUnconsumed() {
     let coordinator = NavigationCoordinator()
     coordinator.request(.dictation(.engine))
-    coordinator.request(.permissions)
-    #expect(coordinator.pendingDestination == .permissions)
+    coordinator.request(.appSettings(.permissions))
+    #expect(coordinator.pendingDestination == .appSettings(.permissions))
   }
 
   @Test("consume when nil is a no-op")

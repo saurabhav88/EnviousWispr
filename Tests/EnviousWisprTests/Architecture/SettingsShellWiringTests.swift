@@ -6,7 +6,7 @@ import Testing
 /// #3385: the Settings window's frame after page headers went away. The header mechanism is
 /// gone from code; Dictionary's Enable switch keeps its one binding in its new heading row; every
 /// page still gets the window's navigation action; the sidebar's dot comes from the right source
-/// for each page; Check for Updates still acts without selecting; a selected row rests flat and
+/// for each page; updates live in the toolbar; a selected row rests flat and
 /// glows only under the pointer. Read with SwiftParser: comments and strings cannot satisfy it.
 /// A drift guard: real hover, presses and VoiceOver are final Live UAT.
 @Suite("Settings shell wiring (#3385)", .tags(.driftGuard))
@@ -31,7 +31,7 @@ struct SettingsShellWiringTests {
 
   // MARK: - Header mechanism
 
-  @Test("no code names the page-header mechanism, and SettingsSection has no subtitle")
+  @Test("no code names the page-header mechanism, and SettingsPage has no subtitle")
   func headerMechanismIsGone() throws {
     var hits: [String] = []
     for directory in ["Sources", "Tests"] {
@@ -48,14 +48,14 @@ struct SettingsShellWiringTests {
     }
     #expect(hits.isEmpty, "header mechanism still named in code: \(hits)")
 
-    let section = try Self.parse("\(Self.settingsDir)/SettingsSection.swift")
+    let section = try Self.parse("\(Self.settingsDir)/SettingsPage.swift")
     let enumDecl = try #require(
       section.statements.compactMap { $0.item.as(EnumDeclSyntax.self) }
-        .first { $0.name.text == "SettingsSection" })
+        .first { $0.name.text == "SettingsPage" })
     let members = enumDecl.memberBlock.members.compactMap { $0.decl.as(VariableDeclSyntax.self) }
       .flatMap { $0.bindings.map { $0.pattern.trimmedDescription } }
     #expect(members.contains("label") && members.contains("icon"), "read \(members)")
-    #expect(!members.contains("subtitle"), "SettingsSection.subtitle is back")
+    #expect(!members.contains("subtitle"), "SettingsPage.subtitle is back")
   }
 
   @Test("a header name in a comment or a string is not code, a real one is")
@@ -264,8 +264,8 @@ struct SettingsShellWiringTests {
         if let activity = ClipboardSettingsWiringTests.argument("activity", of: call) {
           wiring.standardActivity = activity
         }
-        if let glyph = ClipboardSettingsWiringTests.calls(named: "WhatsNewSidebarGlyph", in: call)
-          .first
+        if let glyph = ["WhatsNewSidebarGlyph", "WhatsNewGiftGlyph"]
+          .lazy.compactMap({ ClipboardSettingsWiringTests.calls(named: $0, in: call).first }).first
         {
           wiring.whatsNewUnread = ClipboardSettingsWiringTests.argument("isUnread", of: glyph) ?? ""
         }
@@ -297,12 +297,10 @@ struct SettingsShellWiringTests {
     let wiring = Self.shellWiring(in: try Self.parse("\(Self.settingsDir)/SettingsView.swift"))
     #expect(
       wiring.hosts == [
-        ".history -> HistoryContentView", ".whatsNew -> page WhatsNewSettingsView",
-        ".appearance -> page AppearanceSettingsView", ".dictation -> page DictationSettingsView",
+        ".history -> HistoryContentView", ".dictation -> page DictationSettingsView",
         ".transcribeFile -> page TranscribeFileView", ".keybinds -> page KeybindsSettingsView",
-        ".aiPolish -> page AIPolishSettingsView", ".wordCorrection -> page YourWordsView",
-        ".snippets -> page SnippetsView", ".permissions -> page PermissionsSettingsView",
-        ".checkForUpdates -> EmptyView", ".openSourceLicenses -> page OpenSourceLicensesView",
+        ".aiPolish -> page AIPolishSettingsView", ".dictionary -> page YourWordsView",
+        ".snippets -> page SnippetsView", ".appSettings -> page AppSettingsView",
         ".diagnostics -> page DiagnosticsSettingsView",
       ], "\(wiring.hosts)")
     #expect(
@@ -315,11 +313,15 @@ struct SettingsShellWiringTests {
       ], "\(wiring.activity)")
     #expect(
       wiring.enrichmentSource
-        == "section == .wordCorrection && customWordsCoordinator.pendingEnrichmentCount > 0")
+        == "section == .dictionary && customWordsCoordinator.pendingEnrichmentCount > 0")
     #expect(
-      wiring.updateAction == ["updateCoordinatorHolder.coordinator?.checkForUpdatesFromSettings()"])
-    #expect(wiring.updateSelected == "false")
-    #expect(wiring.whatsNewUnread == "settings.hasUnreadWhatsNew")
+      wiring.updateAction.isEmpty)
+    #expect(wiring.updateSelected.isEmpty)
+    #expect(wiring.whatsNewUnread.isEmpty)
+    let tree = try Self.parse("\(Self.settingsDir)/SettingsView.swift")
+    #expect(ClipboardSettingsWiringTests.calls(named: "WhatsNewToolbarButton", in: tree).count == 2)
+    let appHost = try #require(ClipboardSettingsWiringTests.calls(named: "AppSettingsView", in: tree).first)
+    #expect(ClipboardSettingsWiringTests.argument("selection", of: appHost) == "$navigationState.appSettingsTab")
     #expect(wiring.standardActivity == "sidebarActivity(section)")
     #expect(wiring.bannerInsideScroll == false, "the update banner moved into the scrolling list")
     #expect(wiring.hoverOverrideUses == 0, "production passes the render-only hover override")
@@ -334,7 +336,7 @@ struct SettingsShellWiringTests {
             ScrollView { UpdateAvailableBanner(update: u) }
             page { WhatsNewSettingsView() }
           }
-          private func sidebarRow(_ section: SettingsSection) -> some View {
+          private func sidebarRow(_ section: SettingsPage) -> some View {
             SidebarNavRow(label: section.label, isSelected: true, hoverOverride: true) {
               Image(systemName: "x")
             } action: {
@@ -342,7 +344,7 @@ struct SettingsShellWiringTests {
               updateCoordinatorHolder.coordinator?.checkForUpdatesFromSettings()
             }
           }
-          private func sidebarActivity(_ section: SettingsSection) -> SidebarActivity {
+          private func sidebarActivity(_ section: SettingsPage) -> SidebarActivity {
             if section == .transcribeFile && fileImportCoordinator.isRunning { return .dictionaryEnrichment }
             return .none
           }
@@ -352,14 +354,14 @@ struct SettingsShellWiringTests {
           @ViewBuilder private var detailContent: some View {
             switch navigationState.selectedPage {
             case .whatsNew: page { WhatsNewSettingsView() }
-            case .wordCorrection: YourWordsView()
+            case .dictionary: YourWordsView()
             }
           }
         }
         """)
     let wiring = Self.shellWiring(in: fixture)
     #expect(wiring.pageCalls == 2)
-    #expect(wiring.hosts == [".whatsNew -> page WhatsNewSettingsView", ".wordCorrection -> YourWordsView"])
+    #expect(wiring.hosts == [".whatsNew -> page WhatsNewSettingsView", ".dictionary -> YourWordsView"])
     #expect(wiring.navigationInjection.isEmpty)
     #expect(
       wiring.activity == [

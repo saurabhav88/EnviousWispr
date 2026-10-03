@@ -45,28 +45,20 @@ struct SettingsDestinationTests {
   func standaloneDestinationKeepsTheTab() {
     var state = SettingsNavigationState()
     state.apply(.dictation(.livePreview))
-    state.apply(.permissions)
-    #expect(state.selectedPage == .permissions)
+    state.apply(.appSettings(.permissions))
+    #expect(state.selectedPage == .appSettings)
     #expect(state.dictationTab == .livePreview)
-  }
-
-  @Test("the Check for Updates row never becomes the page on screen")
-  func actionRowIsRefused() {
-    var state = SettingsNavigationState()
-    state.selectSidebar(.snippets)
-    state.selectSidebar(.checkForUpdates)
-    #expect(state.selectedPage == .snippets)
   }
 
   /// Every destination names its page; written out case by case so a new destination that
   /// maps to the wrong page cannot pass by sharing a default.
   @Test("every destination lands on its own page")
   func destinationPages() {
-    let expected: [(SettingsDestination, SettingsSection)] = [
-      (.history, .history), (.whatsNew, .whatsNew), (.appearance, .appearance),
+    let expected: [(SettingsDestination, SettingsPage)] = [
+      (.history, .history),
       (.keybinds, .keybinds), (.transcribeFile, .transcribeFile), (.aiPolish, .aiPolish),
-      (.wordCorrection, .wordCorrection), (.snippets, .snippets),
-      (.permissions, .permissions), (.openSourceLicenses, .openSourceLicenses),
+      (.dictionary, .dictionary), (.snippets, .snippets),
+      (.appSettings(.appearance), .appSettings),
     ]
     for (destination, page) in expected {
       #expect(destination.page == page, "\(destination) landed on \(destination.page)")
@@ -132,17 +124,17 @@ struct SettingsDestinationTests {
     }
   }
 
-  @Test("the sidebar has twelve release rows, and Dictation Settings is in RECORD")
+  @Test("the sidebar has eight release rows, and Dictation Settings is in RECORD")
   func sidebarRows() {
-    let release = SettingsSection.allCases.filter {
+    let release = SettingsPage.allCases.filter {
       #if DEBUG
         return $0 != .diagnostics
       #else
         return true
       #endif
     }
-    #expect(release.count == 12)
-    #expect(SettingsSection.dictation.group == .record)
+    #expect(release.count == 8)
+    #expect(SettingsPage.dictation.group == .record)
   }
 
   @Test("each Dictation tab has its own icon")

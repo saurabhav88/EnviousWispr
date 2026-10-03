@@ -320,7 +320,7 @@ struct LivePreviewSettingsView: View {
   /// Replaces the hero card, its status column and the toggle row. Those three said
   /// the same sentence three times before the page said anything: the page header
   /// already carries "See your words on screen while you are still speaking"
-  /// (`SettingsSection.swift:92`), the hero repeated it, and the toggle repeated the
+  /// (`SettingsPage.swift:92`), the hero repeated it, and the toggle repeated the
   /// hero. Founder, 2026-08-25: "the current live preview page is just information
   /// overload."
   ///

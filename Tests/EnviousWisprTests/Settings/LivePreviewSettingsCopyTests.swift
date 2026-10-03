@@ -369,7 +369,7 @@ struct LivePreviewSettingsCopyTests {
   /// This used to ban the substring outright, because two adjacent settings both
   /// calling themselves live is the confusion #1988 was filed about. The nav had
   /// already taken the word back — the sidebar label and page title said "Live
-  /// Preview" and live in `SettingsSection.swift`, where this test cannot see
+  /// Preview" and live in `SettingsPage.swift`, where this test cannot see
   /// them — so the ban held only over the strings nobody read, while the page
   /// called itself two different things (#2154).
   ///

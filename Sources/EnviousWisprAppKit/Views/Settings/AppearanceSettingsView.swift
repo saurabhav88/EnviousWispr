@@ -2,25 +2,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// Window appearance preference. Mirrors the menu-bar Appearance submenu — both
-/// bind `settings.appearancePreference`, so they stay in sync.
-///
-/// The three modes render as selectable preview cards (System / Light / Dark),
-/// each with a miniature window preview, so the choice reads at a glance. The
-/// cards flow in an adaptive grid: three across when the detail pane is wide,
-/// reflowing to two then one as the window narrows.
-///
-/// **The cards are a ROW rather than a column, and carry no description (#2435,
-/// founder).** They cost 191 points of height each and the page below them is now
-/// three pill pictures; laid out horizontally they cost 90. The picture is the
-/// explanation for Light and Dark. (#3385 moved the pill pictures and Pill
-/// Position to Dictation Settings > Recording Pill; the row layout stays.)
-///
-/// **What that trades away, so nobody restores it by accident: the `System`
-/// card's split thumbnail cannot say that it FOLLOWS the Mac.** Keeping a short
-/// caption and renaming `System` to `Auto` were both offered and both declined
-/// in favour of the shorter page (founder, 2026-08-26). The card's meaning now
-/// rests on its title. This is the accepted trade, not an oversight.
+/// App appearance and interface language. Both theme surfaces bind the same preference.
 struct AppearanceSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   /// Optional so a view harness can render the page without the dictation pipeline; the app
@@ -48,311 +30,84 @@ struct AppearanceSettingsView: View {
       systemPreferences: AppLanguagePreference.systemPreferences) != Self.launchLanguage
   }
 
-  /// 270, not the 210 this grid used while the cards were vertical (#2435). A
-  /// selected `System` row is 108 of thumbnail, 22 of icon, its title, an 18
-  /// point check, four gaps and the padding. At 210 the title or the check
-  /// compresses at narrow multi-column widths, silently.
-  private let columns = [GridItem(.adaptive(minimum: 270, maximum: .infinity), spacing: 12)]
-
   var body: some View {
     @Bindable var settings = settings
-
     SettingsContentView {
-      // No section eyebrow or restated description here: the page-header card
-      // already introduces the page (founder, 2026-07-03). #2376 revised that
-      // header when the pill picker arrived, and #2435 shortened it again when the
-      // cards below stopped describing themselves — the subtitle in
-      // `SettingsSection` is the one sentence this page gets.
-      LazyVGrid(columns: columns, spacing: 12) {
-        ForEach(AppearancePreference.allCases, id: \.self) { preference in
-          AppearanceCard(
-            preference: preference,
-            isSelected: settings.appearancePreference == preference
-          ) {
-            settings.appearancePreference = preference
-          }
-        }
-      }
-
-      // #2480: the Dock icon. The menu bar icon has no switch (founder, 2026-09-24),
-      // so the helper says it always stays: turning this off can never leave the
-      // app unreachable.
-      BrandedPanel(icon: "dock.rectangle", header: "Dock") {
-        Toggle(isOn: $settings.showInDock) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Show app in Dock").settingsRowLabel()
-            Text(
-              "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."
-            )
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-          }
-        }
-        .toggleStyle(BrandedToggleStyle())
-      }
-
-      // #3142 Phase 5B (founder request, 2026-09-25): the interface language, for this app
-      // only. The list is what the bundle ships, each named in its own language; macOS applies
-      // the choice at launch, hence the relaunch, which waits while work is in flight (`isBusy`).
-      BrandedPanel(icon: "globe", header: "Language") {
-        VStack(alignment: .leading, spacing: 10) {
-          Picker("Language", selection: $language) {
-            Text(
-              "System default",
-              comment: "Appearance settings, Language: follow the language macOS uses.")
-            .tag("")
-            ForEach(AppLanguagePreference.live.languages, id: \.self) { code in
-              Text(verbatim: AppLanguagePreference.name(of: code)).tag(code)
+      VStack(alignment: .leading, spacing: 10) {
+        SettingsSectionHeading(title: "APPEARANCE")
+        BrandedSection {
+          BrandedRow {
+            SettingsRow(
+              icon: "circle.lefthalf.filled", title: "Theme",
+              short: "Choose how EnviousWispr looks.",
+              help: "Choose System to follow your Mac, or choose Light or Dark."
+            ) {
+              BrandedSegmentedPicker(
+                options: [
+                  (String(localized: "System"), nil, AppearancePreference.system),
+                  (String(localized: "Light"), nil, AppearancePreference.light),
+                  (String(localized: "Dark"), nil, AppearancePreference.dark),
+                ], selection: $settings.appearancePreference
+              )
+              .fixedSize()
+              .accessibilityLabel("Theme")
             }
           }
-          .labelsHidden()
-          .tint(.stAccent)
-          .controlSize(.large)
-          .frame(maxWidth: 220, alignment: .leading)
-          .onChange(of: language) { _, code in
-            AppLanguagePreference.live.choose(code.isEmpty ? nil : code)
-          }
-
-          if needsRelaunch {
-            HStack(spacing: 12) {
-              Text(
-                "EnviousWispr uses the new language after it relaunches.",
-                comment: "Appearance settings, Language: shown after the language is changed.")
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-              .fixedSize(horizontal: false, vertical: true)
-              Button {
-                guard !isBusy else { return }
-                AppRelauncher.relaunchWhenSafe { isBusy }
-              } label: {
-                Text(
-                  "Relaunch to apply",
-                  comment: "Appearance settings, Language: button that quits and reopens the app.")
+          // #3142 Phase 5B: macOS applies this app-only language at launch. The
+          // saved choice initializes the picker on every return to this tab.
+          BrandedRow {
+            SettingsRow(
+              icon: "globe", title: "Language",
+              short: "The language of the app interface.",
+              help: "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."
+            ) {
+              Picker("Language", selection: $language) {
+                Text("System default").tag("")
+                ForEach(AppLanguagePreference.live.languages, id: \.self) { code in
+                  Text(verbatim: AppLanguagePreference.name(of: code)).tag(code)
+                }
               }
-              .disabled(isBusy)
+              .labelsHidden()
+              .accessibilityLabel("Language")
+              .tint(.stAccent)
+              .controlSize(.large)
+              .fixedSize()
+              .onChange(of: language) { _, code in
+                AppLanguagePreference.live.choose(code.isEmpty ? nil : code)
+              }
+            }
+            .rowStatus {
+              if needsRelaunch {
+                VStack(alignment: .leading, spacing: 8) {
+                  Text("EnviousWispr uses the new language after it relaunches.")
+                    .font(.stRowHelper)
+                    .foregroundStyle(.stTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                  SettingsActionButton(title: "Relaunch to apply", isEnabled: !isBusy) {
+                    guard !isBusy else { return }
+                    AppRelauncher.relaunchWhenSafe { isBusy }
+                  }
+                }
+              }
+            }
+          }
+          // #2480: the menu bar icon always stays, so hiding the Dock icon
+          // cannot leave the app unreachable.
+          BrandedRow(showDivider: false) {
+            SettingsRow(
+              icon: "dock.rectangle", title: "Show app in Dock",
+              short: "Keep EnviousWispr in your Dock.",
+              help: "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."
+            ) {
+              Toggle("", isOn: $settings.showInDock)
+                .labelsHidden()
+                .toggleStyle(BrandedToggleStyle())
+                .fixedSize()
+                .accessibilityLabel("Show app in Dock")
             }
           }
         }
       }
     }
-  }
-}
-
-// MARK: - Appearance card
-
-/// One selectable appearance option: mini window preview beside its icon and
-/// title. The selected card carries an accent border and a filled accent check
-/// badge.
-private struct AppearanceCard: View {
-  let preference: AppearancePreference
-  let isSelected: Bool
-  let onSelect: () -> Void
-
-  /// The thumbnail's authored size, kept as the size it is DRAWN at and then
-  /// scaled whole (#2435).
-  ///
-  /// **Scaled rather than re-laid-out, because `MiniWindow`'s parts are fixed
-  /// points** — a 15 point title bar and a 44 point sidebar. Handing it a 108
-  /// point frame would make the sidebar 41% of the window instead of 22%, so the
-  /// preview would stop looking like this app.
-  private static let thumbnailSize = CGSize(width: 200, height: 116)
-  private static let thumbnailScale: CGFloat = 0.54
-
-  var body: some View {
-    Button(action: onSelect) {
-      HStack(spacing: 12) {
-        AppearancePreviewThumbnail(preference: preference)
-          .frame(width: Self.thumbnailSize.width, height: Self.thumbnailSize.height)
-          .scaleEffect(Self.thumbnailScale)
-          .frame(
-            width: Self.thumbnailSize.width * Self.thumbnailScale,
-            height: Self.thumbnailSize.height * Self.thumbnailScale)
-
-        Image(systemName: iconName)
-          .font(.system(size: 16, weight: .medium))
-          .foregroundStyle(isSelected ? .stAccent : .stTextSecondary)
-          .frame(width: 22, alignment: .center)
-        Text(title)
-          .font(.stRowTitle)
-          .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
-
-        Spacer(minLength: 0)
-
-        if isSelected {
-          Image(systemName: "checkmark.circle.fill")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(Color.white, Color.stAccent)
-        }
-      }
-      .padding(12)
-      // Before `.buttonStyle(.plain)`: the `Spacer` above is otherwise dead space
-      // rather than part of the hit target.
-      .contentShape(Rectangle())
-      .background(Color.stSectionBg)
-      .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-      .overlay(
-        RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-          .strokeBorder(
-            isSelected ? Color.stAccent : Color.stDivider,
-            lineWidth: isSelected ? 2 : 1)
-      )
-      // Three cards that look like labelled previews and behave like radio
-      // buttons. Nothing at rest distinguishes the two unselected ones from
-      // decoration.
-      .settingsHoverCard(
-        cornerRadius: SettingsLayout.sectionRadius, isSelected: isSelected)
-    }
-    .buttonStyle(.plain)
-    .animation(.easeInOut(duration: 0.15), value: isSelected)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(title)
-    .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
-    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-  }
-
-  private var iconName: String {
-    switch preference {
-    case .system: return "circle.lefthalf.filled"
-    case .light: return "sun.max.fill"
-    case .dark: return "moon.fill"
-    }
-  }
-
-  private var title: String {
-    switch preference {
-    case .system:
-      return String(
-        localized: "System", comment: "Appearance settings: theme option that follows macOS.")
-    case .light:
-      return String(localized: "Light", comment: "Appearance settings: light theme option.")
-    case .dark: return String(localized: "Dark", comment: "Appearance settings: dark theme option.")
-    }
-  }
-}
-
-// MARK: - Mini window preview
-
-/// A miniature stand-in for the app window used inside an appearance card. Its
-/// colours are fixed (not the live `st*` tokens) so a Light preview always looks
-/// light and a Dark preview always looks dark regardless of the current mode.
-/// `.system` overlays the dark palette on a bottom-right diagonal, the standard
-/// "auto" split.
-private struct AppearancePreviewThumbnail: View {
-  let preference: AppearancePreference
-
-  var body: some View {
-    switch preference {
-    case .light:
-      MiniWindow(palette: .light)
-    case .dark:
-      MiniWindow(palette: .dark)
-    case .system:
-      ZStack {
-        MiniWindow(palette: .light)
-        MiniWindow(palette: .dark)
-          .clipShape(DiagonalDarkHalf())
-        // Hairline seam so the two halves read as a deliberate split.
-        DiagonalSeam()
-          .stroke(Color.white.opacity(0.25), lineWidth: 1)
-      }
-    }
-  }
-}
-
-/// Fixed colour set for a mini window preview in one mode.
-private struct MiniWindowPalette {
-  let background: Color
-  let sidebar: Color
-  let bar: Color
-  let barStrong: Color
-  let accent: Color
-
-  static let light = MiniWindowPalette(
-    background: Color(red: 0.973, green: 0.961, blue: 1.0),
-    sidebar: Color(red: 0.910, green: 0.886, blue: 0.961),
-    bar: Color(red: 0.835, green: 0.820, blue: 0.886),
-    barStrong: Color(red: 0.722, green: 0.702, blue: 0.784),
-    accent: Color(red: 0.486, green: 0.227, blue: 0.929))
-
-  static let dark = MiniWindowPalette(
-    background: Color(red: 0.075, green: 0.063, blue: 0.098),
-    sidebar: Color(red: 0.102, green: 0.086, blue: 0.137),
-    bar: Color(red: 0.216, green: 0.192, blue: 0.278),
-    barStrong: Color(red: 0.290, green: 0.263, blue: 0.376),
-    accent: Color(red: 0.655, green: 0.545, blue: 0.980))
-}
-
-private struct MiniWindow: View {
-  let palette: MiniWindowPalette
-
-  var body: some View {
-    ZStack {
-      palette.background
-
-      VStack(spacing: 0) {
-        // Title bar with traffic lights.
-        HStack(spacing: 3) {
-          Circle().fill(Color(red: 1.0, green: 0.373, blue: 0.341)).frame(width: 4, height: 4)
-          Circle().fill(Color(red: 0.996, green: 0.737, blue: 0.180)).frame(width: 4, height: 4)
-          Circle().fill(Color(red: 0.157, green: 0.784, blue: 0.251)).frame(width: 4, height: 4)
-          Spacer()
-        }
-        .padding(.horizontal, 7)
-        .frame(height: 15)
-
-        HStack(spacing: 0) {
-          // Sidebar with a selected accent pill + a few nav bars.
-          VStack(alignment: .leading, spacing: 5) {
-            RoundedRectangle(cornerRadius: 2).fill(palette.accent)
-              .frame(width: 26, height: 6)
-            RoundedRectangle(cornerRadius: 2).fill(palette.bar).frame(width: 22, height: 5)
-            RoundedRectangle(cornerRadius: 2).fill(palette.bar).frame(width: 24, height: 5)
-            RoundedRectangle(cornerRadius: 2).fill(palette.bar).frame(width: 20, height: 5)
-            Spacer(minLength: 0)
-          }
-          .padding(7)
-          .frame(width: 44)
-          .frame(maxHeight: .infinity)
-          .background(palette.sidebar)
-
-          // Content bars.
-          VStack(alignment: .leading, spacing: 6) {
-            RoundedRectangle(cornerRadius: 2).fill(palette.barStrong).frame(width: 40, height: 6)
-            RoundedRectangle(cornerRadius: 2).fill(palette.bar)
-              .frame(maxWidth: .infinity).frame(height: 5)
-            RoundedRectangle(cornerRadius: 2).fill(palette.bar)
-              .frame(maxWidth: .infinity).frame(height: 5)
-            RoundedRectangle(cornerRadius: 2).fill(palette.bar).frame(width: 60, height: 5)
-            Spacer(minLength: 0)
-          }
-          .padding(8)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        }
-      }
-    }
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-  }
-}
-
-/// Bottom-right triangle used to clip the dark half of the System preview.
-private struct DiagonalDarkHalf: Shape {
-  func path(in rect: CGRect) -> Path {
-    var p = Path()
-    p.move(to: CGPoint(x: rect.maxX, y: rect.minY))
-    p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-    p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-    p.closeSubpath()
-    return p
-  }
-}
-
-/// The split line from top-right to bottom-left corner.
-private struct DiagonalSeam: Shape {
-  func path(in rect: CGRect) -> Path {
-    var p = Path()
-    p.move(to: CGPoint(x: rect.maxX, y: rect.minY))
-    p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-    return p
   }
 }

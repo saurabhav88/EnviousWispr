@@ -17,13 +17,13 @@ struct PrivacySettingsTests {
       (true, true, false), (false, false, false), (true, false, true), (false, true, true),
     ])
   func needsRestart(stored: Bool, launched: Bool, expected: Bool) {
-    #expect(PermissionsSettingsView.needsRestart(stored: stored, launched: launched) == expected)
+    #expect(PrivacySettingsView.needsRestart(stored: stored, launched: launched) == expected)
   }
 
   @Test("Before launch has run there is nothing to restart for")
   func noLaunchNoNotice() {
-    #expect(PermissionsSettingsView.needsRestart(stored: true, launched: nil) == false)
-    #expect(PermissionsSettingsView.needsRestart(stored: false, launched: nil) == false)
+    #expect(PrivacySettingsView.needsRestart(stored: true, launched: nil) == false)
+    #expect(PrivacySettingsView.needsRestart(stored: false, launched: nil) == false)
   }
 
   /// The notice reads the stored switch each time the page draws, so flipping back hides it and
@@ -37,23 +37,23 @@ struct PrivacySettingsTests {
 
     settings.sendCrashReports = false
     #expect(
-      PermissionsSettingsView.needsRestart(stored: settings.sendCrashReports, launched: launched)
+      PrivacySettingsView.needsRestart(stored: settings.sendCrashReports, launched: launched)
         == true)
     settings.sendCrashReports = true
     #expect(
-      PermissionsSettingsView.needsRestart(stored: settings.sendCrashReports, launched: launched)
+      PrivacySettingsView.needsRestart(stored: settings.sendCrashReports, launched: launched)
         == false)
     settings.sendCrashReports = false
     let reopened = SettingsManager(defaults: suite)
     #expect(
-      PermissionsSettingsView.needsRestart(stored: reopened.sendCrashReports, launched: launched)
+      PrivacySettingsView.needsRestart(stored: reopened.sendCrashReports, launched: launched)
         == true)
   }
 
   @Test("Restart now does nothing while work is in flight")
   func busyRefuses() {
     var handedOff = 0
-    let didHandOff = PermissionsSettingsView.restartNow(isBusy: { true }) { _ in handedOff += 1 }
+    let didHandOff = PrivacySettingsView.restartNow(isBusy: { true }) { _ in handedOff += 1 }
     #expect(didHandOff == false)
     #expect(handedOff == 0)
   }
@@ -62,7 +62,7 @@ struct PrivacySettingsTests {
   func idleHandsOffALiveCheck() throws {
     var busy = false
     var received: [@MainActor () -> Bool] = []
-    let didHandOff = PermissionsSettingsView.restartNow(isBusy: { busy }) { received.append($0) }
+    let didHandOff = PrivacySettingsView.restartNow(isBusy: { busy }) { received.append($0) }
 
     #expect(didHandOff == true)
     #expect(received.count == 1)
@@ -80,6 +80,8 @@ struct PrivacySettingsTests {
 
   @Test("The Privacy words are the founder-approved English")
   func copy() {
+    #expect(PrivacySettingsCopy.metricsShort == "Help us catch broken updates.")
+    #expect(PrivacySettingsCopy.crashShort == "Help us fix crashes and errors.")
     #expect(PrivacySettingsCopy.metricsLabel == "Share usage metrics")
     #expect(
       PrivacySettingsCopy.metricsHelp

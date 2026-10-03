@@ -310,6 +310,7 @@ struct AudioLevelBar: View {
 /// the only in-window phase cue on pages without the History status row, so the
 /// toolbar keeps it alongside the record button.
 struct StatusBadge: View {
+  var textOverride: String? = nil
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
 
@@ -347,7 +348,7 @@ struct StatusBadge: View {
   private func progressLabel(_ text: String) -> some View {
     pill {
       ProgressView().controlSize(.small)
-      Text(text).foregroundStyle(.secondary)
+      Text(textOverride ?? text).foregroundStyle(.secondary)
     }
   }
 
@@ -386,6 +387,7 @@ struct MainWindowTitleHider: NSViewRepresentable {
 
 /// Record/stop button in the toolbar.
 struct RecordButton: View {
+  var titleOverride: String? = nil
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
   // PR10 of #763: toggle dispatches through DictationRuntime façade.
@@ -402,8 +404,14 @@ struct RecordButton: View {
       HStack(spacing: 6) {
         Image(systemName: recording ? "stop.fill" : "mic.fill")
           .font(.system(size: 11, weight: .semibold))
-        Text(recording ? "Stop" : "Record")
-          .font(.system(size: 13, weight: .semibold))
+        Group {
+          if let titleOverride {
+            Text(verbatim: titleOverride)
+          } else {
+            Text(recording ? "Stop" : "Record")
+          }
+        }
+        .font(.system(size: 13, weight: .semibold))
       }
       .foregroundStyle(.white)
       .padding(.horizontal, 13)

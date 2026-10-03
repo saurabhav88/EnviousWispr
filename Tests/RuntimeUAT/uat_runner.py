@@ -1299,8 +1299,7 @@ def test_settings_tab_switch(ctx):
         raise AssertionError("Settings window did not appear")
 
     # #3385: every route must land; a partial set of clicks is a failure.
-    routes = [("AI Polish", None), ("Permissions", None), ("Dictation Settings", "Engine"),
-              ("Dictation Settings", "Clipboard"), ("Keybinds", None)]
+    routes = [(p, t) for p in settings_nav.PAGES for t in settings_nav.TABS.get(p, (None,))]
     activate_app(ctx.pid)
     for page, tab in routes:
         try:
@@ -1308,6 +1307,15 @@ def test_settings_tab_switch(ctx):
         except settings_nav.NavigationError as e:
             raise AssertionError(f"{page} > {tab}: {e}") from None
         ctx.log(f"Landed on {route!r}")
+    ax = settings_nav.AX(get_attr=get_attr,
+                         children=lambda el: list(get_attr(el, "AXChildren") or []),
+                         press=lambda el: perform_action(el, "AXPress"))
+    root_of = lambda: get_ax_app(ctx.pid)
+    popover = settings_nav.open_gift(ax, root_of)
+    perform_action(popover, "AXCancel")
+    settings_nav.wait_until(ax, lambda: not any(ax.same(e, popover) for e in ax.walk(root_of())),
+                            3.0, "the gift dropdown closing")
+    ctx.log("What's New & Updates opened and closed")
 
 
 # --- Suite: clipboard ---

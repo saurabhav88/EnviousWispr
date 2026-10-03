@@ -18,21 +18,21 @@ import time
 
 # ── Route table ────────────────────────────────────────────────────────────
 
-# The PR1 sidebar, in order. "Check for Updates" is a row that ACTS and never selects a page.
+# Final release sidebar. Updates are in a toolbar popover, never a page.
 PAGES = (
-    "History", "What's New", "Appearance",
-    "Dictation Settings", "Keybinds", "Transcribe a File",
-    "AI Polish", "Dictionary", "Snippets",
-    "Permissions", "Open Source Licenses",
+    "History", "Dictation Settings", "Keybinds", "Transcribe a File",
+    "AI Polish", "Dictionary", "Snippets", "App Settings",
 )
-DEBUG_PAGES = ("Diagnostics",)          # only in a DEBUG build
-ACTION_ROWS = ("Check for Updates",)
+DEBUG_PAGES = ("Diagnostics",)
+ACTION_ROWS = ()
+GIFT_CAPTION = "What's New & Updates"
 TABS = {
     "Dictation Settings": (
         "Engine", "Microphone & Media", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
     ),
+    "App Settings": ("Appearance", "Permissions", "Privacy", "Licenses"),
 }
-SIDEBAR_LABELS = PAGES + ACTION_ROWS    # what must all be present to recognise the sidebar
+SIDEBAR_LABELS = PAGES
 
 
 class RouteError(ValueError):
@@ -373,6 +373,65 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
     wait_until(ax, lambda: current_tab(ax, visible_buttons()[0], page) == tab, timeout,
                f"exactly tab {tab!r} selected")
     return Route(page, tab, tab)
+
+
+def _gift_heading(ax, el):
+    """The dropdown's "What's New" title; SwiftUI exposes it as AXHeading (it is a header)."""
+    return (ax.role(el) in ("AXHeading", "AXStaticText")
+            and _labelled(ax, el, "What's New", role=None))
+
+
+def open_gift(ax, root_of, timeout=3.0):
+    """Open the toolbar gift and require its OWN popover heading and both footer actions.
+    Never checks for updates or follows the release link. Returns the presented popover.
+    """
+    root = root_of()
+    toolbars = [e for e in ax.walk(root) if ax.role(e) == "AXToolbar"
+                and any(_labelled(ax, c, GIFT_CAPTION) for c in ax.walk(e))]
+    if len(toolbars) != 1:
+        raise NavigationError(f"{len(toolbars)} toolbars contain the gift caption; refusing to choose")
+    toolbar = toolbars[0]
+    feedback = [e for e in ax.walk(toolbar) if any(_labelled(ax, e, label) for label in
+                ("Send feedback", "Send feedback: your message is waiting"))]
+    if len(feedback) != 1:
+        raise NavigationError("the gift toolbar does not contain exactly one Feedback control")
+    opener = unique_control(ax, toolbar, GIFT_CAPTION)
+    before = [e for e in ax.walk(root) if ax.role(e) == "AXPopover"]
+    # An already-open gift dropdown is reused (pressing again would toggle it shut), so
+    # gift(True) then gift(False) can close what the first call opened.
+    existing = [p for p in before
+                if any(_gift_heading(ax, e) for e in ax.walk(p))]
+    if len(existing) > 1:
+        raise NavigationError("multiple gift popovers; refusing to choose")
+    if not existing:
+        # Opening marks the notes read in the app's real saved settings, and nothing
+        # here can put the unread state back, so an unread gift is never opened.
+        if ax.text(opener, "AXValue") not in ax.terms("No new release notes"):
+            raise NavigationError(
+                "the gift has unread release notes; opening it would mark them read. "
+                "Open it by hand first, or run with isolated settings")
+        ax.press(opener)
+    found = {}
+
+    def landed():
+        pops = [e for e in ax.walk(root_of()) if ax.role(e) == "AXPopover"
+                and (any(ax.same(e, p) for p in existing)
+                     or not any(ax.same(e, old) for old in before))]
+        if len(pops) != 1:
+            return False
+        pop = pops[0]
+        if not any(_gift_heading(ax, e) for e in ax.walk(pop)):
+            return False
+        unique_control(ax, pop, "Check for Updates…")
+        links = [e for e in ax.walk(pop) if ax.role(e) in ("AXLink", "AXButton")
+                 and _labelled(ax, e, "All release notes on GitHub", role=None)]
+        if len(links) != 1:
+            return False
+        found["popover"] = pop
+        return True
+
+    wait_until(ax, landed, timeout, "the What's New dropdown and its footer")
+    return found["popover"]
 
 
 # ── Engine choices (Dictation Settings > Engine) ───────────────────────────
@@ -774,8 +833,7 @@ DICTIONARY_SECTIONS = ("Your Words", "Vocabulary Packs", "Learn from...", "Quick
 
 SCAN = [
     ("History", None, [("named", "Search history", None)]),
-    ("What's New", None, []),
-    ("Appearance", None, [
+    ("App Settings", "Appearance", [
         ("button", "System", None), ("button", "Light", None), ("button", "Dark", None),
         ("toggle^", "Show app in Dock", None),
     ]),
@@ -845,10 +903,13 @@ SCAN = [
         ("section", ("Quick Add", "named", "Highlight a word"), None),
     ]),
     ("Snippets", None, [("button", "Add snippet", None), ("button", "Import", None)]),
-    ("Permissions", None, [
+    ("App Settings", "Privacy", [
         ("toggle", "Share usage metrics", None), ("toggle", "Send crash reports", None),
     ]),
-    ("Open Source Licenses", None, [("named", "GPL-3.0 License", None)]),
+    ("App Settings", "Permissions", [("named", "Microphone", None),
+                                          ("named", "Accessibility", None)]),
+    ("App Settings", "Licenses", [("button", "View license", None),
+                                      ("button", "View notices", None)]),
 ]
 SCAN_DEBUG = [
     ("Diagnostics", None, [

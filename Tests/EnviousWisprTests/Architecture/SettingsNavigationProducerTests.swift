@@ -9,7 +9,7 @@ import Testing
 /// page moves; there is no second producer guard.
 ///
 /// Each route is found by its OWNER (the closure argument, binding or property it lives in),
-/// so a `.request(.permissions)` added somewhere else cannot stand in for a route that lost its
+/// so a `.request(.appSettings(.permissions))` added somewhere else cannot stand in for a route that lost its
 /// own. A missing or doubled route fails by name.
 @Suite("Settings navigation producers (#3385)", .tags(.driftGuard))
 struct SettingsNavigationProducerTests {
@@ -29,17 +29,17 @@ struct SettingsNavigationProducerTests {
       owner: "label:openTranscribeFile", argument: ".transcribeFile"),
     Route(
       "3 shared permissions window", file: app + "WisprBootstrapper.swift", callee: "request",
-      owner: "binding:openPermissionsWindow", argument: ".permissions"),
+      owner: "binding:openPermissionsWindow", argument: ".appSettings(.permissions)"),
     Route(
       "5 Bluetooth card", file: app + "BluetoothAwarenessWiring.swift", callee: "request",
       owner: "label:openMicrophoneSettings", argument: ".dictation(.microphone)"),
     Route(
       "6 Accessibility banner Fix Now",
       file: views + "Components/AccessibilityWarningBanner.swift", callee: "request",
-      owner: "button:Fix Now", argument: ".permissions"),
+      owner: "button:Fix Now", argument: ".appSettings(.permissions)"),
     Route(
       "7 History Paste with Accessibility denied", file: views + "Main/TranscriptDetailView.swift",
-      callee: "request", owner: "else:permissions.accessibilityGranted", argument: ".permissions"),
+      callee: "request", owner: "else:permissions.accessibilityGranted", argument: ".appSettings(.permissions)"),
     Route(
       "8 Quick Add shortcut callout", file: views + "Settings/QuickAddTeachingSection.swift",
       callee: "navigate", owner: "var:shortcutCallout", argument: ".keybinds"),
@@ -98,7 +98,7 @@ struct SettingsNavigationProducerTests {
   func extractorIgnoresUnownedCalls() {
     let fixture = """
       func wire() {
-        let other = { coordinator.request(.permissions) }
+        let other = { coordinator.request(.appSettings(.permissions)) }
         actions(openSettings: { coordinator.request(.dictation(.engine)) })
       }
       """
@@ -114,9 +114,9 @@ struct SettingsNavigationProducerTests {
   func extractorReadsEveryOwnerKind() {
     let fixture = """
       var bar: some View {
-        Button("Fix Now") { coordinator.request(.permissions) }
+        Button("Fix Now") { coordinator.request(.appSettings(.permissions)) }
         Button {
-          if granted { paste() } else { coordinator.request(.permissions) }
+          if granted { paste() } else { coordinator.request(.appSettings(.permissions)) }
         } label: { Text("x") }
       }
       """

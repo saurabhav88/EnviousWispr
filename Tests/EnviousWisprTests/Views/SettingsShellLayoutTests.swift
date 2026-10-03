@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
+import EnviousWisprServices
 
 @testable import EnviousWisprAppKit
 
@@ -56,7 +57,7 @@ struct SettingsShellLayoutTests {
   }
 
   static func row(
-    _ section: SettingsSection, selected: Bool, activity: SettingsShellCopy.SidebarActivity = .none
+    _ section: SettingsPage, selected: Bool, activity: SettingsShellCopy.SidebarActivity = .none
   ) -> some View {
     SidebarNavRow(label: section.label, isSelected: selected, activity: activity) {
       Image(systemName: section.icon).font(.system(size: 15, weight: .medium))
@@ -69,7 +70,7 @@ struct SettingsShellLayoutTests {
   )
   func sidebarRows() throws {
     var heights: [String: CGFloat] = [:]
-    for section in SettingsSection.allCases {
+    for section in SettingsPage.allCases {
       let variants: [(String, Bool, SettingsShellCopy.SidebarActivity)] = [
         ("rest", false, .none), ("selected", true, .none),
         ("busy", false, .fileImport), ("selectedBusy", true, .dictionaryEnrichment),
@@ -96,6 +97,19 @@ struct SettingsShellLayoutTests {
     let shortest = try #require(heights.values.min())
     #expect(heights.values.allSatisfy { $0 >= shortest })
     print("SidebarRowHeights \(heights.sorted { $0.key < $1.key })")
+  }
+
+  @Test("the gift is an icon-sized target with its full name for hover and VoiceOver")
+  func iconOnlyGiftFits() throws {
+    let defaults = try #require(TestDefaults.suite("ew.iconGift.\(UUID().uuidString)"))
+    let settings = SettingsManager(defaults: defaults)
+    let holder = UpdateCoordinatorHolder()
+    let host = NSHostingView(rootView: WhatsNewToolbarButton()
+      .environment(settings).environment(holder))
+    let width = host.fittingSize.width
+    print("GiftButton width=\(width)")
+    // A caption beside the icon would add ~150pt; an icon-only pill is ~36pt.
+    #expect(width >= 28 && width <= 60)
   }
 
   /// Content widths inside the page margins for the shell's page widths.

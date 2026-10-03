@@ -7,78 +7,73 @@ import SwiftUI
 /// build variant — dev, release, and the test target — not only a signed
 /// release DMG. #1487.
 struct OpenSourceLicensesView: View {
-  private enum Document: String, CaseIterable, Identifiable {
-    case license = "GPL-3.0 License"
-    case notices = "Third-Party Notices"
-    var id: String { rawValue }
-  }
-
-  @State private var selected: Document = .license
+  @State private var selected: LicenseDocument?
+  @State private var opener: LicenseDocument?
+  @FocusState private var focusedDocument: LicenseDocument?
+  @State private var isMounted = false
+  @State private var restoreKeyboard = false
+  @State private var restoreAccessibility = false
+  @AccessibilityFocusState private var accessibilityDocument: LicenseDocument?
 
   var body: some View {
     SettingsContentView {
-      Picker("Document", selection: $selected) {
-        ForEach(Document.allCases) { doc in
-          Text(doc.rawValue).tag(doc)
-        }
-      }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-
-      BrandedSection {
-        BrandedRow(showDivider: false) {
-          Group {
-            switch selected {
-            case .license: licenseText
-            case .notices: noticesText
+      VStack(alignment: .leading, spacing: 10) {
+        SettingsSectionHeading(title: "ABOUT")
+        BrandedSection {
+          BrandedRow {
+            SettingsRow(
+              icon: "doc.text", title: "EnviousWispr · GPLv3",
+              short: "Open source under the GNU GPL version 3.",
+              help: "Read the GNU General Public License for EnviousWispr."
+            ) {
+              SettingsActionButton(title: "View license", isEnabled: true) {
+                open(.license)
+              }
+              .focused($focusedDocument, equals: .license)
+              .accessibilityFocused($accessibilityDocument, equals: .license)
+            }
+          }
+          BrandedRow(showDivider: false) {
+            SettingsRow(
+              icon: "doc.on.doc", title: "Third-Party Notices",
+              short: "Licenses for the tools EnviousWispr uses.",
+              help: "Read the notices for WhisperKit, FluidAudio, Silero VAD, Sparkle and other components."
+            ) {
+              SettingsActionButton(title: "View notices", isEnabled: true) {
+                open(.notices)
+              }
+              .focused($focusedDocument, equals: .notices)
+              .accessibilityFocused($accessibilityDocument, equals: .notices)
             }
           }
         }
       }
     }
-  }
-
-  @ViewBuilder
-  private var licenseText: some View {
-    if let text = Self.contents(of: "GPL-3.0", extension: "txt") {
-      documentText(text)
-    } else {
-      unavailableText
+    .sheet(item: $selected, onDismiss: restoreFocus) { document in
+      LicenseDocumentReader(document: document)
+    }
+    .onAppear { isMounted = true }
+    .onDisappear {
+      isMounted = false
+      restoreKeyboard = false
+      restoreAccessibility = false
     }
   }
 
-  @ViewBuilder
-  private var noticesText: some View {
-    if let text = Self.contents(of: "THIRD-PARTY-NOTICES", extension: "txt") {
-      documentText(text)
-    } else {
-      unavailableText
+  private func open(_ document: LicenseDocument) {
+    restoreKeyboard = focusedDocument == document
+    restoreAccessibility = accessibilityDocument == document
+    opener = document
+    selected = document
+  }
+
+  private func restoreFocus() {
+    defer {
+      restoreKeyboard = false
+      restoreAccessibility = false
     }
-  }
-
-  private func documentText(_ text: String) -> some View {
-    ScrollView {
-      Text(text)
-        .font(.system(.footnote, design: .monospaced))
-        .foregroundStyle(.stTextSecondary)
-        .textSelection(.enabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
-    }
-    .frame(maxHeight: 420)
-  }
-
-  private var unavailableText: some View {
-    Text("License information isn't available in this build.")
-      .settingsReadingCopy()
-  }
-
-  /// Reads a bundled text resource. Live-only file I/O against a resource this
-  /// module ships with every build; failure here means a genuinely broken
-  /// bundle, not a normal runtime condition, so it degrades to a plain message
-  /// rather than crashing (limb, not heart).
-  private static func contents(of name: String, extension ext: String) -> String? {
-    guard let url = Bundle.module.url(forResource: name, withExtension: ext) else { return nil }
-    return try? String(contentsOf: url, encoding: .utf8)
+    guard isMounted else { return }
+    if restoreKeyboard { focusedDocument = opener }
+    if restoreAccessibility { accessibilityDocument = opener }
   }
 }

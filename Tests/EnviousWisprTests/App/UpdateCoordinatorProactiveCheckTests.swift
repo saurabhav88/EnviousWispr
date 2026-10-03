@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 
 /// Issue #958 — unit tests for `UpdateCoordinator.checkForUpdatesProactively`
-/// (cooldown gate + auto-checks guard) and `checkForUpdatesFromSettings`
+/// (cooldown gate + auto-checks guard) and `checkForUpdatesFromWhatsNew`
 /// (source tagging).
 ///
 /// `SPUUpdater` is not test-constructible (`init NS_UNAVAILABLE`), so the
@@ -15,7 +15,7 @@ import Testing
 /// `UpdateCoordinator` is built with `updaterController: nil`; the probe
 /// override supplies the updater for the proactive path.
 @MainActor
-@Suite("UpdateCoordinator proactive checks", .serialized)
+@Suite("UpdateCoordinator proactive checks", .serialized, .tags(.productOutcome))
 struct UpdateCoordinatorProactiveCheckTests {
 
   /// Fake satisfying the narrow `ProactiveUpdaterProbe` seam.
@@ -48,7 +48,7 @@ struct UpdateCoordinatorProactiveCheckTests {
 
   private func makeCoordinator() -> UpdateCoordinator {
     // No real Sparkle controller; the proactive path uses the injected probe,
-    // and `checkForUpdatesFromSettings` is a no-op call against a nil updater
+    // and `checkForUpdatesFromWhatsNew` is a no-op call against a nil updater
     // (we only assert the source tag it sets). Ephemeral defaults so the
     // once-per-version notification marker never leaks across tests.
     UpdateCoordinator(updaterController: nil, defaults: ephemeralDefaults())
@@ -210,14 +210,14 @@ struct UpdateCoordinatorProactiveCheckTests {
     #expect(fired == false)
   }
 
-  // MARK: - Settings attended check source tag
+  // MARK: - Gift attended check source tag
 
-  @Test("checkForUpdatesFromSettings tags the install source 'settings'")
-  func settingsCheckTagsSource() {
+  @Test("checkForUpdatesFromWhatsNew tags the install source 'whats_new_menu'")
+  func whatsNewCheckTagsSource() {
     let coordinator = makeCoordinator()
     #expect(coordinator.lastInstallSource == nil, "Precondition: no source yet.")
-    coordinator.checkForUpdatesFromSettings()
-    #expect(coordinator.lastInstallSource == "settings")
+    coordinator.checkForUpdatesFromWhatsNew()
+    #expect(coordinator.lastInstallSource == "whats_new_menu")
   }
 
   // MARK: - Telemetry (DEBUG-only testEventHook seam)

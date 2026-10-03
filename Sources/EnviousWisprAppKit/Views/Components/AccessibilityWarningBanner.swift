@@ -22,7 +22,7 @@ struct AccessibilityWarningBanner: View {
       Spacer()
 
       Button("Fix Now") {
-        navigationCoordinator.request(.permissions)
+        navigationCoordinator.request(.appSettings(.permissions))
       }
       .buttonStyle(.borderedProminent)
       .tint(.orange)
