@@ -585,9 +585,11 @@ struct HotkeyRecorderView: View {
           .accessibilityHidden(true)
       }
     }
-    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+    // Padding INSIDE the width, so the field is exactly `fieldWidth` and never pokes past
+    // the card's edge.
     .padding(.leading, 12)
     .padding(.trailing, 6)
+    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
     .settingsHoverRow(cornerRadius: Style.prominent.fieldRadius, isEnabled: !isRecording)
     .background(
       isRecording ? Color.stAccentLight : Color.stInputBg,

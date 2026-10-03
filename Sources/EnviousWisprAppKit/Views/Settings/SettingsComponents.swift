@@ -88,6 +88,9 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   /// #3385 lane F places the microphone's honest "In use" cue here, immediately
   /// after the short line. The slot is outside the control and its help button.
   private var statusContent: AnyView? = nil
+  /// A short state on the title's own line, after "?" (mockup 08's "Ready"; founder,
+  /// 2026-10-03: a status on a third line read as clutter).
+  private var titleStatusContent: AnyView? = nil
   private var supplementaryControl: AnyView? = nil
   private var supplementaryControlBelowWidth: CGFloat = 0
 
@@ -104,6 +107,12 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   func rowStatus<Status: View>(@ViewBuilder _ status: () -> Status) -> Self {
     var row = self
     row.statusContent = AnyView(status())
+    return row
+  }
+
+  func rowTitleStatus<Status: View>(@ViewBuilder _ status: () -> Status) -> Self {
+    var row = self
+    row.titleStatusContent = AnyView(status())
     return row
   }
   /// An action row (#3385, Live Preview's "Install new languages"): the whole
@@ -168,6 +177,7 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
           .font(.stRowLabel)
           .foregroundStyle(.stTextPrimary)
         SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
+        titleStatusContent
       }
       // Secondary, not the tertiary helper colour: tertiary measures 3.7:1
       // on the dark card, under the 4.5:1 a 14pt regular line needs (#3385).

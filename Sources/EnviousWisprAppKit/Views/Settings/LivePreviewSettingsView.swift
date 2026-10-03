@@ -404,7 +404,7 @@ struct LivePreviewSettingsView: View {
               .accessibilityLabel(LivePreviewSettingsCopy.toggleLabel)
           }
 
-          .rowStatus {
+          .rowTitleStatus {
             ProviderStatusChip(status: EngineSummaryPresentation.previewStatus(status), isHeadline: true)
           }
           .rowSupplementaryControl(belowWidth: 502) {
@@ -581,11 +581,11 @@ struct LivePreviewSettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.leading, 4)
     }
-    // A downloaded Universal engine that is not in use shows no row here: its Remove
-    // lives on its card under Change (founder, 2026-10-03: "why are we showing remove
-    // universal when it's not selected").
+    // A downloaded Universal engine whose only action is Remove shows no row here: its
+    // Remove lives on its card under Change, so the engine stays one line (founder,
+    // 2026-10-03: "why are we showing remove universal... This should be all 1 line").
     if universal.unavailability != nil || universal.progress != nil
-      || (universal.action != nil && !Self.removeLivesOnCard(universal, usingApple: isUsingApple))
+      || (universal.action != nil && !Self.removeLivesOnCard(universal))
     {
           VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 11) {
@@ -685,7 +685,7 @@ struct LivePreviewSettingsView: View {
       },
       fillsHeight: true,
       footer: {
-        if choice == .universal, Self.removeLivesOnCard(card, usingApple: isUsingApple),
+        if choice == .universal, Self.removeLivesOnCard(card),
           let action = card.action
         {
           // A sibling of the selection button, never a child (see above).
@@ -700,12 +700,12 @@ struct LivePreviewSettingsView: View {
       })
   }
 
-  /// Whether the Universal engine's only action is Remove while Apple is in use, so the
-  /// button belongs on its card under Change rather than in the summary.
-  static func removeLivesOnCard(
-    _ universal: LivePreviewEnginePresentation.Card, usingApple: Bool
-  ) -> Bool {
-    usingApple && universal.action == .remove && universal.progress == nil
+  /// Whether the Universal engine's only action is Remove, so the button belongs on its
+  /// card under Change rather than on a second line under the summary.
+  static func removeLivesOnCard(_ universal: LivePreviewEnginePresentation.Card) -> Bool {
+    // Whichever engine is in use: a separate Universal/Remove line under the summary
+    // was the second line the founder asked to remove (2026-10-03).
+    universal.action == .remove && universal.progress == nil
   }
 
   private static func label(for action: LivePreviewEnginePresentation.Action) -> String {
