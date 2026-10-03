@@ -90,12 +90,12 @@ struct PrivacySettingsTests {
     #expect(PrivacySettingsCopy.crashHelp == "Stack traces and diagnostic details to help us fix crashes and errors.")
     #expect(
       PrivacySettingsCopy.promise
-        == "Usage metrics and crash reports describe the app, never your audio, transcripts or the text you dictate. Pressing Send in Feedback may send your message through our website to find help. If you choose to send a report, it includes your message, app and macOS versions, and any email or diagnostics you add."
+        == "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are what you type into the feedback form, once you click Send."
     )
     #expect(
       PrivacySettingsCopy.openSource
         == "EnviousWispr is open source, so you can check exactly what we send.")
-    #expect(PrivacySettingsCopy.learnMoreLabel == "See details")
+    #expect(PrivacySettingsCopy.learnMoreLabel == "See what we collect")
     #expect(PrivacySettingsCopy.learnMoreURL == "https://enviouswispr.com/help/what-data-is-collected/")
     #expect(PrivacySettingsCopy.restartNotice == "Takes effect when EnviousWispr restarts")
     #expect(PrivacySettingsCopy.restartAction == "Restart now")

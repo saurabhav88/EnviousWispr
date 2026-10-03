@@ -121,7 +121,7 @@ enum PrivacySettingsCopy {
   static var promise: String {
     String(
       localized:
-        "Usage metrics and crash reports describe the app, never your audio, transcripts or the text you dictate. Pressing Send in Feedback may send your message through our website to find help. If you choose to send a report, it includes your message, app and macOS versions, and any email or diagnostics you add.",
+        "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are what you type into the feedback form, once you click Send.",
       comment: "Permissions settings, Privacy: the section's privacy promise, above both switches.")
   }
   static var openSource: String {
@@ -131,7 +131,7 @@ enum PrivacySettingsCopy {
   }
   static var learnMoreLabel: String {
     String(
-      localized: "See details",
+      localized: "See what we collect",
       comment: "Permissions settings, Privacy: link to the What Data Is Collected help article.")
   }
   static var metricsLabel: String {
