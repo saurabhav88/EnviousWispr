@@ -77,6 +77,38 @@ struct InputResolutionTelemetryReportingTests {
       #expect(event?.stringProps["prepare_outcome"] == "succeeded")
     }
 
+    @Test("the failing step and the Mac's status reach TelemetryService unchanged (#1851)")
+    func failureFieldsPassThrough() {
+      var state = InputResolutionAttemptState()
+      state.recordBind(succeeded: true)
+      state.recordFailure(
+        of: .formatCreationFailed(
+          source: "HALDeviceInputSource.prepare.start", osStatus: 1_937_010_544))
+      let attempt = InputResolutionAttemptTelemetry(
+        state.finalized(
+          resolution: InputDeviceResolution(
+            outcome: .selected(42, source: .systemDefault), defaultPresent: true,
+            enumerationOutcome: .notAttempted, inputDeviceCount: nil, eligibleDeviceCount: nil,
+            selectedTransport: nil)))
+
+      let event = capture(attempt)
+
+      #expect(event?.stringProps["prepare_outcome"] == "failed")
+      #expect(event?.stringProps["prepare_failed_step"] == "HALDeviceInputSource.prepare.start")
+      #expect(event?.intProps["prepare_failed_os_status"] == 1_937_010_544)
+      #expect(event?.stringProps["prepare_failed_os_status_fourcc"] == "stop")
+    }
+
+    @Test("a successful attempt reports none of the failure fields (#1851)")
+    func successCarriesNoFailureFields() {
+      let event = capture(
+        projection(.systemDefault, bindSucceeded: true, prepareSucceeded: true, counts: nil))
+
+      #expect(event?.stringProps.keys.contains("prepare_failed_step") == false)
+      #expect(event?.intProps.keys.contains("prepare_failed_os_status") == false)
+      #expect(event?.stringProps.keys.contains("prepare_failed_os_status_fourcc") == false)
+    }
+
     @Test("the mapper does not invent counts for a not-attempted enumeration")
     func doesNotInventCounts() {
       let event = capture(

@@ -3012,40 +3012,97 @@ public final class TelemetryService {
     inputResolutionSource: String?,
     selectedTransport: String?,
     bindOutcome: String,
-    prepareOutcome: String
+    prepareOutcome: String,
+    prepareFailedStep: String? = nil,
+    prepareFailedOSStatus: Int? = nil,
+    prepareFailedOSStatusFourCC: String? = nil
   ) {
+    // #1851: ONE builder produces the whole outgoing property list. The PostHog
+    // capture below sends exactly this dictionary, and the DEBUG hook is read
+    // back from the same dictionary, so the shape a test reads is the shape
+    // that leaves the Mac.
+    let props = Self.inputResolutionProperties(
+      defaultPresent: defaultPresent, enumerationOutcome: enumerationOutcome,
+      inputDeviceCount: inputDeviceCount, eligibleDeviceCount: eligibleDeviceCount,
+      inputResolutionSource: inputResolutionSource, selectedTransport: selectedTransport,
+      bindOutcome: bindOutcome, prepareOutcome: prepareOutcome,
+      prepareFailedStep: prepareFailedStep, prepareFailedOSStatus: prepareFailedOSStatus,
+      prepareFailedOSStatusFourCC: prepareFailedOSStatusFourCC)
     #if DEBUG
-      var hookStrings: [String: String] = [
-        "enumeration_outcome": enumerationOutcome,
-        "bind_outcome": bindOutcome,
-        "prepare_outcome": prepareOutcome,
-      ]
-      if let s = inputResolutionSource { hookStrings["input_resolution_source"] = s }
-      if let t = selectedTransport { hookStrings["selected_transport"] = t }
+      var hookStrings: [String: String] = [:]
       var hookInts: [String: Int] = [:]
-      if let c = inputDeviceCount { hookInts["input_device_count"] = c }
-      if let c = eligibleDeviceCount { hookInts["eligible_device_count"] = c }
+      var hookBools: [String: Bool] = [:]
+      for (key, value) in props {
+        // `Bool` first: a boolean must never be read back as the Int 0 or 1.
+        if let flag = value as? Bool {
+          hookBools[key] = flag
+        } else if let number = value as? Int {
+          hookInts[key] = number
+        } else if let text = value as? String {
+          hookStrings[key] = text
+        }
+      }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "audio.input_resolution",
           stringProps: hookStrings,
           intProps: hookInts,
-          boolProps: ["default_present": defaultPresent]
+          boolProps: hookBools
         ))
     #endif
+    PostHogSDK.shared.capture("audio.input_resolution", properties: props)
+  }
+
+  /// The complete `audio.input_resolution` property list (#1714, #1851).
+  /// Optional values are omitted when nil because nil means NOT KNOWN; an
+  /// explicit zero is a real answer and rides as zero.
+  static func inputResolutionProperties(
+    defaultPresent: Bool,
+    enumerationOutcome: String,
+    inputDeviceCount: Int?,
+    eligibleDeviceCount: Int?,
+    inputResolutionSource: String?,
+    selectedTransport: String?,
+    bindOutcome: String,
+    prepareOutcome: String,
+    prepareFailedStep: String?,
+    prepareFailedOSStatus: Int?,
+    prepareFailedOSStatusFourCC: String?
+  ) -> [String: Any] {
     var props: [String: Any] = [
       "default_present": defaultPresent,
       "enumeration_outcome": enumerationOutcome,
       "bind_outcome": bindOutcome,
       "prepare_outcome": prepareOutcome,
     ]
-    // Omitted when nil because nil means NOT KNOWN. An explicit zero is a real
-    // answer and must ride as zero.
     if let c = inputDeviceCount { props["input_device_count"] = c }
     if let c = eligibleDeviceCount { props["eligible_device_count"] = c }
     if let s = inputResolutionSource { props["input_resolution_source"] = s }
     if let t = selectedTransport { props["selected_transport"] = t }
-    PostHogSDK.shared.capture("audio.input_resolution", properties: props)
+    props.merge(
+      inputResolutionFailureProperties(
+        step: prepareFailedStep, osStatus: prepareFailedOSStatus,
+        fourCC: prepareFailedOSStatusFourCC)
+    ) { _, new in new }
+    return props
+  }
+
+  /// #1851: the failure properties of a cold microphone attempt that did not
+  /// finish, for `audio.input_resolution`. Every key is omitted when its value
+  /// is not known: nil means NOT KNOWN, never zero and never a default.
+  /// `prepare_failed_step` is a producer-controlled label (a fixed HAL or
+  /// resolver step name), not a promise of the `String` type; an empty or
+  /// `"unknown"` step is left out rather than sent. The status is the signed
+  /// `OSStatus` as an `Int` (a negative value stays negative); the four-character
+  /// form rides separately and only when all four bytes print.
+  static func inputResolutionFailureProperties(
+    step: String?, osStatus: Int?, fourCC: String?
+  ) -> [String: Any] {
+    var props: [String: Any] = [:]
+    if let step, !step.isEmpty, step != "unknown" { props["prepare_failed_step"] = step }
+    if let osStatus { props["prepare_failed_os_status"] = osStatus }
+    if let fourCC, !fourCC.isEmpty { props["prepare_failed_os_status_fourcc"] = fourCC }
+    return props
   }
 
   // MARK: - Errors

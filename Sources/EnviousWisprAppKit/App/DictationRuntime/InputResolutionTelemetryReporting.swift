@@ -44,7 +44,10 @@ enum InputResolutionTelemetryReporting {
       inputResolutionSource: attempt.inputResolutionSource,
       selectedTransport: attempt.selectedTransport,
       bindOutcome: attempt.bindOutcome,
-      prepareOutcome: attempt.prepareOutcome
+      prepareOutcome: attempt.prepareOutcome,
+      prepareFailedStep: attempt.prepareFailedStep,
+      prepareFailedOSStatus: attempt.prepareFailedOSStatus,
+      prepareFailedOSStatusFourCC: attempt.prepareFailedOSStatusFourCC
     )
   }
 }

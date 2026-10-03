@@ -435,6 +435,11 @@ enum InputPrepareOutcome: String, Sendable, Equatable {
 struct InputResolutionAttemptState: Sendable {
   private(set) var bindOutcome: InputBindOutcome = .notAttempted
   private var prepareReachedTheEnd = false
+  /// #1851: the first setup step that failed and the status its call returned.
+  /// First failure wins: a later cleanup error never replaces the cause. Both
+  /// stay nil on success, and `osStatus` stays nil when the step has none.
+  private(set) var failedStep: String?
+  private(set) var failedOSStatus: OSStatus?
 
   /// `failed` until every fallible step has run AND the device was bound.
   var prepareOutcome: InputPrepareOutcome {
@@ -451,9 +456,24 @@ struct InputResolutionAttemptState: Sendable {
     prepareReachedTheEnd = true
   }
 
+  /// #1851: record the failing step from the error that is about to be thrown,
+  /// so the thrown error and this record cannot disagree. A step the error does
+  /// not name (nil or the default `"unknown"`) records nothing: the field stays
+  /// absent rather than carrying an invented value.
+  mutating func recordFailure(of error: AudioError) {
+    guard failedStep == nil, let step = error.diagnosticSource, step != "unknown" else { return }
+    failedStep = step
+    failedOSStatus = error.diagnosticOSStatus
+  }
+
   func finalized(resolution: InputDeviceResolution) -> FinalizedInputResolutionAttempt {
-    FinalizedInputResolutionAttempt(
-      resolution: resolution, bindOutcome: bindOutcome, prepareOutcome: prepareOutcome)
+    // A prepare that reached the end has no failure to report, whatever was
+    // recorded on an earlier step.
+    let failed = prepareOutcome == .failed
+    return FinalizedInputResolutionAttempt(
+      resolution: resolution, bindOutcome: bindOutcome, prepareOutcome: prepareOutcome,
+      failedStep: failed ? failedStep : nil,
+      failedOSStatus: failed ? failedOSStatus : nil)
   }
 }
 
@@ -467,6 +487,21 @@ struct FinalizedInputResolutionAttempt: Sendable {
   let resolution: InputDeviceResolution
   let bindOutcome: InputBindOutcome
   let prepareOutcome: InputPrepareOutcome
+  /// #1851: nil unless `prepareOutcome == .failed` AND the failing step is named.
+  let failedStep: String?
+  let failedOSStatus: OSStatus?
+
+  init(
+    resolution: InputDeviceResolution, bindOutcome: InputBindOutcome,
+    prepareOutcome: InputPrepareOutcome, failedStep: String? = nil,
+    failedOSStatus: OSStatus? = nil
+  ) {
+    self.resolution = resolution
+    self.bindOutcome = bindOutcome
+    self.prepareOutcome = prepareOutcome
+    self.failedStep = failedStep
+    self.failedOSStatus = failedOSStatus
+  }
 }
 
 /// One finalised cold attempt, projected for telemetry (#1714).
@@ -488,6 +523,14 @@ package struct InputResolutionAttemptTelemetry: Sendable, Equatable {
   package let selectedTransport: String?
   package let bindOutcome: String
   package let prepareOutcome: String
+  /// #1851: the failing setup step (a fixed producer label), nil unless the cold
+  /// attempt failed in a named step. Nil means NOT KNOWN, never a default.
+  package let prepareFailedStep: String?
+  /// #1851: the Mac's `OSStatus` for that step as a signed `Int`, nil when the
+  /// step has none. Never flattened to zero.
+  package let prepareFailedOSStatus: Int?
+  /// #1851: the four-character form of that status when all four bytes print.
+  package let prepareFailedOSStatusFourCC: String?
 
   /// Internal: only this module constructs one.
   init(_ attempt: FinalizedInputResolutionAttempt) {
@@ -499,5 +542,10 @@ package struct InputResolutionAttemptTelemetry: Sendable, Equatable {
     self.selectedTransport = attempt.resolution.selectedTransport
     self.bindOutcome = attempt.bindOutcome.rawValue
     self.prepareOutcome = attempt.prepareOutcome.rawValue
+    self.prepareFailedStep = attempt.failedStep
+    self.prepareFailedOSStatus = attempt.failedOSStatus.map { Int($0) }
+    self.prepareFailedOSStatusFourCC = attempt.failedOSStatus.flatMap {
+      AudioStatusFormatting.fourCharacterCode($0)
+    }
   }
 }

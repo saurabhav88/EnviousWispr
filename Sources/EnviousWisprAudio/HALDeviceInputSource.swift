@@ -676,6 +676,17 @@ final class HALDeviceInputSource: AudioInputSource {
       onInputResolutionAttemptFinalized?(attemptState.finalized(resolution: resolution))
     }
 
+    // #1851: the ONE place a setup failure is constructed. It builds the error
+    // that is thrown, records the same step and status into the attempt record
+    // the `defer` above finalises, and returns that same value, so the thrown
+    // error (Sentry) and the record (PostHog) cannot disagree. `status` is the
+    // `OSStatus` the failing call returned; pass nil for a step with none.
+    func setupFailure(_ step: String, _ status: OSStatus? = nil) -> AudioError {
+      let error = AudioError.formatCreationFailed(source: step, osStatus: status)
+      attemptState.recordFailure(of: error)
+      return error
+    }
+
     // Exhaustive on purpose: a `?? .noBuiltInMicrophoneFound` fallback here
     // would be a second, unreachable error authority that could go wrong
     // silently. The resolver already decided which error is truthful.
@@ -686,6 +697,7 @@ final class HALDeviceInputSource: AudioInputSource {
       deviceID = id
       selectedSource = source
     case .failed(let error):
+      attemptState.recordFailure(of: error)
       throw error
     }
     onLifecycleSignal?("hal_find_device_completed")
@@ -699,13 +711,17 @@ final class HALDeviceInputSource: AudioInputSource {
       componentFlagsMask: 0
     )
     guard let component = AudioComponentFindNext(nil, &desc) else {
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.find_component")
+      throw setupFailure("HALDeviceInputSource.prepare.find_component")
     }
 
     var unit: AudioUnit?
     var status = AudioComponentInstanceNew(component, &unit)
     guard status == noErr, let unit else {
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.instance_new")
+      // The guard also fails on a nil unit with `noErr`: a successful call is
+      // never named as the failure, so a zero status travels as nil.
+      throw setupFailure(
+        "HALDeviceInputSource.prepare.instance_new",
+        AudioStatusFormatting.failingStatus(status))
     }
 
     // Enable input on element 1, disable output on element 0 — input-only.
@@ -715,7 +731,7 @@ final class HALDeviceInputSource: AudioInputSource {
       &enableIO, UInt32(MemoryLayout<UInt32>.size))
     guard status == noErr else {
       AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.enable_input")
+      throw setupFailure("HALDeviceInputSource.prepare.enable_input", status)
     }
     var disableIO: UInt32 = 0
     status = AudioUnitSetProperty(
@@ -723,7 +739,7 @@ final class HALDeviceInputSource: AudioInputSource {
       &disableIO, UInt32(MemoryLayout<UInt32>.size))
     guard status == noErr else {
       AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.disable_output")
+      throw setupFailure("HALDeviceInputSource.prepare.disable_output", status)
     }
 
     // Pin the device — this is the whole point: any device, no aggregate.
@@ -741,7 +757,7 @@ final class HALDeviceInputSource: AudioInputSource {
     attemptState.recordBind(succeeded: bindOK)
     guard bindOK else {
       AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.set_device")
+      throw setupFailure("HALDeviceInputSource.prepare.set_device", status)
     }
 
     // #2664: the bound device's identity and channel count, read into LOCALS
@@ -772,8 +788,7 @@ final class HALDeviceInputSource: AudioInputSource {
     // Bose, whose Bluetooth profile happens to already be 16kHz).
     guard let nativeASBD = Self.queryNativeStreamFormat(deviceID: deviceID) else {
       AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(
-        source: "HALDeviceInputSource.prepare.query_native_format")
+      throw setupFailure("HALDeviceInputSource.prepare.query_native_format")
     }
     guard
       let nativeFormat = AVAudioFormat(
@@ -781,11 +796,11 @@ final class HALDeviceInputSource: AudioInputSource {
         interleaved: false)
     else {
       AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.native_format")
+      throw setupFailure("HALDeviceInputSource.prepare.native_format")
     }
     guard let converter = AVAudioConverter(from: nativeFormat, to: Self.targetFormat) else {
       AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.converter")
+      throw setupFailure("HALDeviceInputSource.prepare.converter")
     }
 
     // Client format on the input element's OUTPUT scope — what our render
@@ -796,7 +811,7 @@ final class HALDeviceInputSource: AudioInputSource {
       &clientFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
     guard status == noErr else {
       AudioComponentInstanceDispose(unit)
-      throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.stream_format")
+      throw setupFailure("HALDeviceInputSource.prepare.stream_format", status)
     }
 
     // #2664: the ONE capture change. With a mono client format AUHAL takes
@@ -870,12 +885,12 @@ final class HALDeviceInputSource: AudioInputSource {
     // `self` untouched (still a fresh, never-prepared instance) so a caller
     // that retries `prepare()` or calls `teardownUnit()` never double-releases
     // state this attempt never actually committed.
-    func failPrepare(_ source: String) -> Error {
+    func failPrepare(_ source: String, _ status: OSStatus? = nil) -> Error {
       unmanaged.release()
       scratch[0].mData?.deallocate()
       scratch.unsafeMutablePointer.deallocate()
       AudioComponentInstanceDispose(unit)
-      return AudioError.formatCreationFailed(source: source)
+      return setupFailure(source, status)
     }
 
     var callbackStruct = AURenderCallbackStruct(
@@ -886,20 +901,23 @@ final class HALDeviceInputSource: AudioInputSource {
       unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0,
       &callbackStruct, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
     guard status == noErr else {
-      throw failPrepare("HALDeviceInputSource.prepare.set_callback")
+      throw failPrepare("HALDeviceInputSource.prepare.set_callback", status)
     }
 
     status = AudioUnitInitialize(unit)
     guard status == noErr else {
-      throw failPrepare("HALDeviceInputSource.prepare.initialize")
+      throw failPrepare("HALDeviceInputSource.prepare.initialize", status)
     }
     onLifecycleSignal?("hal_configure_completed")
 
     onLifecycleSignal?("hal_start_entered")
     status = AudioOutputUnitStart(unit)
     guard status == noErr else {
+      // `status` is the Mac's answer to "start the microphone", the one number
+      // #1851 exists to keep. The cleanup call below returns its own result,
+      // which is discarded and never replaces it.
       AudioUnitUninitialize(unit)
-      throw failPrepare("HALDeviceInputSource.prepare.start")
+      throw failPrepare("HALDeviceInputSource.prepare.start", status)
     }
     onLifecycleSignal?("hal_start_completed")
 
