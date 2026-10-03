@@ -422,6 +422,9 @@ struct HotkeyRecorderView: View {
   let defaultKeyCode: UInt16
   let defaultModifiers: NSEvent.ModifierFlags
   let label: String
+  /// VoiceOver name for the `.prominent` Change button. The capture field keeps `label`,
+  /// main's existing name for it; nil means the button reads `label` too.
+  var changeAccessibilityLabel: String? = nil
   var colors: HotkeyRecorderColors = .system
   var style: Style = .compact
   /// #1987 — fires after a binding is ACCEPTED, so the owning surface can decide
@@ -534,7 +537,7 @@ struct HotkeyRecorderView: View {
           title: "Change", isEnabled: true, size: .regular,
           action: toggleRecording
         )
-        .accessibilityLabel(label)
+        .accessibilityLabel(changeAccessibilityLabel ?? label)
       }
 
       if let refusal {

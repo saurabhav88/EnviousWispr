@@ -29,10 +29,20 @@ struct WhatsNewMenuTests {
     let entry = try #require(WhatsNewMenuPresentation.entries().first)
     #expect(entry.id == "settings-easier-to-find")
     #expect(entry.version == "2.5.3")
-    let source = try #require(WhatsNewContent.entries.first { $0.id == "settings-easier-to-find" })
-    #expect(!source.bullets.isEmpty)
-    #expect(entry.bullets == source.bullets)
-    #expect(entry.bullets.contains("Transcription -> Dictation Settings > Engine"))
+    // Written out here, not read from WhatsNewContent: dropping or changing a move must fail.
+    #expect(entry.bullets == [
+      "Transcription -> Dictation Settings > Engine",
+      "Microphone -> Dictation Settings > Microphone & Media",
+      "Live Preview -> Dictation Settings > Live Preview",
+      "Sounds -> Dictation Settings > Chimes",
+      "Clipboard -> Dictation Settings > Clipboard",
+      "Appearance recording pill controls -> Dictation Settings > Recording Pill",
+      "Appearance -> App Settings > Appearance",
+      "Permissions -> App Settings > Permissions",
+      "Permissions privacy controls -> App Settings > Privacy",
+      "Open Source Licenses -> App Settings > Licenses",
+      "What's New and Check for Updates -> the gift button, What's New & Updates",
+    ])
   }
 
   @Test("Existing full descriptions use their localized entry keys and English fallback")

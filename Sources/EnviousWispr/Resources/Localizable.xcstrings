@@ -2172,6 +2172,16 @@
         }
       }
     },
+    "Add-a-word keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel zum Hinzufügen eines Worts"
+          }
+        }
+      }
+    },
     "Added %@ names" : {
       "comment" : "Your Words, import from Contacts: result after adding names: %@ is the number of names, never 1.",
       "localizations" : {
@@ -3852,6 +3862,16 @@
         }
       }
     },
+    "Cancel keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel zum Abbrechen"
+          }
+        }
+      }
+    },
     "Cancel recording" : {
       "localizations" : {
         "de" : {
@@ -5101,6 +5121,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Tastenkürzel für „Letztes Diktat kopieren“ (%@) funktioniert nicht. macOS meldet, dass diese Tastenkombination bereits vergeben ist. Wähle eine andere."
+          }
+        }
+      }
+    },
+    "Copy last dictation keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel zum Kopieren des letzten Diktats"
           }
         }
       }
@@ -12000,6 +12030,16 @@
         }
       }
     },
+    "Paste last dictation keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel zum Einfügen des letzten Diktats"
+          }
+        }
+      }
+    },
     "Paste snippets" : {
       "comment" : "Snippets, import snippets: method card title.\nSnippets, import snippets: sheet title, pasting a list.",
       "localizations" : {
@@ -13169,6 +13209,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahme unterbrochen. Wörter könnten fehlen."
+          }
+        }
+      }
+    },
+    "Recording keybind" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel für Aufnahme"
           }
         }
       }

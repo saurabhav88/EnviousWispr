@@ -168,6 +168,17 @@ private struct KeybindSettingsRow: View {
   @AccessibilityFocusState private var guidanceReturnFocus: Bool
   @FocusState private var recordingKeybindFocused: Bool
 
+  /// The capture field's VoiceOver name, word for word as on main (founder, 2026-10-03).
+  private var captureLabel: String {
+    switch role {
+    case .record: return String(localized: "Recording keybind")
+    case .cancel: return String(localized: "Cancel keybind")
+    case .quickAdd: return String(localized: "Add-a-word keybind")
+    case .pasteLast: return String(localized: "Paste last dictation keybind")
+    case .copyLast: return String(localized: "Copy last dictation keybind")
+    }
+  }
+
   private var defaultKeyCode: UInt16 { role.defaultKeyCode }
   private var defaultModifiers: NSEvent.ModifierFlags { role.defaultModifiers }
 
@@ -193,7 +204,8 @@ private struct KeybindSettingsRow: View {
       HotkeyRecorderView(
         keyCode: $keyCode, modifiers: $modifiers,
         defaultKeyCode: defaultKeyCode, defaultModifiers: defaultModifiers,
-        label: String(localized: accessibilityLabel), style: .prominent,
+        label: captureLabel, changeAccessibilityLabel: String(localized: accessibilityLabel),
+        style: .prominent,
         onBindingAccepted: { code, _ in
           if role == .record, settings.claimGlobeKeyGuidancePresentation(for: code) {
             showGlobeGuidance = true

@@ -542,7 +542,7 @@ def bring_settings_forward(page, tab=None):
 def _self_test():
     """No app attachment, key event, device or clipboard access."""
     from settings_nav_fixtures import _window, _ax_plain, _info, _f, el
-    field = el("AXButton", desc=PASTE_BOX, value="⌃⌘ V", frame=_f(30))
+    field = el("AXButton", desc="Paste last dictation keybind", value="⌃⌘ V", frame=_f(30))
     reset = el("AXButton", desc="Reset keybind to default", frame=_f(60))
     root = _window([el("AXGroup", children=[_info("Paste last dictation", 20), field,
                      el("AXButton", desc=PASTE_BOX, frame=_f(30, x=500)), reset])])

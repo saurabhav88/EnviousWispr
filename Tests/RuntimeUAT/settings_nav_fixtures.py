@@ -1304,6 +1304,7 @@ def pr3_cases():
     for german in (False, True):
         translations = {
             "Change paste last dictation keybind": "Tastenkürzel zum Einfügen ändern",
+            "Paste last dictation keybind": "Tastenkürzel zum Einfügen des letzten Diktats",
             "Paste last dictation": "Letztes Diktat einfügen",
             "Reset keybind to default": "Tastenkürzel zurücksetzen",
             "About %@": "Über %@", "Apple Intelligence": "Apple Intelligence",
@@ -1315,7 +1316,7 @@ def pr3_cases():
         tr = lambda text: translations.get(text, text)
         label = "Change paste last dictation keybind"
         title = "Paste last dictation"
-        field = el("AXButton", desc=tr(label), value="⌃⌘ V", frame=_f(30))
+        field = el("AXButton", desc=tr("Paste last dictation keybind"), value="⌃⌘ V", frame=_f(30))
         action = el("AXButton", desc=tr(label), frame=_f(30, x=500))
         reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(65))
         other_reset = el("AXButton", desc=tr("Reset keybind to default"), frame=_f(66))

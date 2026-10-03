@@ -837,6 +837,14 @@ KEYBINDS = {
     "Change paste last dictation keybind": "Paste last dictation",
     "Change copy last dictation keybind": "Copy last dictation",
 }
+# The capture field keeps main's VoiceOver name; only the separate Change button says "Change ...".
+KEYBIND_FIELDS = {
+    "Change recording keybind": "Recording keybind",
+    "Change cancel keybind": "Cancel keybind",
+    "Change add-a-word keybind": "Add-a-word keybind",
+    "Change paste last dictation keybind": "Paste last dictation keybind",
+    "Change copy last dictation keybind": "Copy last dictation keybind",
+}
 POLISH_PROVIDERS = ("EG-1", "S1-mini", "Apple Intelligence", "Ollama", "OpenAI",
                     "Google Gemini", "Claude")
 
@@ -1146,8 +1154,9 @@ def read_row_single(ax, root, title, role, label=None):
 
 
 def keybind_control(ax, root, label, reset=False):
-    """Read ONLY this recorder row. Field and Change share a label; only the field has a
-    readable AXValue. Reset is optional and belongs to this same row, never nearest by y."""
+    """Read ONLY this recorder row. `label` names the row's Change button; the field carries
+    main's name (KEYBIND_FIELDS) and a readable AXValue. Reset is optional and belongs to this
+    same row, never nearest by y."""
     if label not in KEYBINDS:
         raise ControlError(f"unknown keybind {label!r}")
     if reset:
@@ -1158,7 +1167,7 @@ def keybind_control(ax, root, label, reset=False):
         return _one(resets, f"Reset for {label!r}")
     info, buttons = row_controls(ax, root, KEYBINDS[label],
                                  lambda e: ax.role(e) == "AXButton"
-                                 and _names_match(ax, e, label))
+                                 and _names_match(ax, e, KEYBIND_FIELDS[label]))
     if info is None:
         return None
     fields = [b for b in buttons if ax.text(b, "AXValue")]
