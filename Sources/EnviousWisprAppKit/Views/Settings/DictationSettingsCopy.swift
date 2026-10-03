@@ -267,4 +267,34 @@ enum DictationSettingsCopy {
       }
     }
   }
+
+  /// The Chimes tab (#3385). The twelve chime names and descriptions, "Preview"
+  /// and its VoiceOver template stay with `RecordingChimeCatalog` and the card.
+  enum Chimes {
+    static let sectionHeading = LocalizedStringResource(
+      "RECORDING CHIMES",
+      comment: "Chimes settings: section heading above the chime switch and cards, in capitals.")
+    static let toggleTitle = LocalizedStringResource(
+      "Play recording chimes",
+      comment: "Chimes settings: switch that plays a short sound when recording starts and stops.")
+    static let toggleShort = LocalizedStringResource(
+      "Plays a short chime when recording starts and stops.",
+      comment: "Chimes settings: short line under Play recording chimes.")
+    /// The sentence the page showed before #3385, unchanged; it is the "?" now.
+    static let toggleHelp = LocalizedStringResource(
+      "Plays a short sound when recording starts and stops. People nearby may hear it.",
+      comment: "Chimes settings: explains Play recording chimes.")
+    static let previewExplanation = LocalizedStringResource(
+      "Hear this chime without changing your choice.",
+      comment:
+        "Chimes settings: line above the chime cards. Each card's play button previews that chime without selecting it."
+    )
+    /// Unchanged sentence; now also shown under the explanation while Preview is off.
+    static let previewUnavailable = LocalizedStringResource(
+      "Preview is unavailable while a recording is in progress.",
+      comment: "Chimes settings: why the play buttons are disabled while dictating.")
+    static let inUse = LocalizedStringResource(
+      "IN USE",
+      comment: "Chimes settings: small badge on the chime that recordings use, in capitals.")
+  }
 }
