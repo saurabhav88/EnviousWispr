@@ -116,11 +116,14 @@ struct RecordingPillAppearancePanel: View {
           Button {
             navigate(.dictation(.livePreview))
           } label: {
+            // The hover padding sits INSIDE the label and carries the hit shape, so the
+            // painted hover area is also the clickable area.
             Text("Configure Live Preview")
               .foregroundStyle(Color.stAccent)
+              .settingsHoverQuiet()
+              .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
-          .settingsHoverQuiet()
           .accessibilityHint("Opens Dictation Settings, Live Preview.")
         }
       }
