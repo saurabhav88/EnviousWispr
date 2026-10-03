@@ -324,8 +324,7 @@ struct WhatsNewContentTests {
   }
 
   /// The gift menu shows ONLY `currentContentVersion` and the unread state compares against it,
-  /// so notes for a newer version without the bump would never be shown (whats-new-protocol.md
-  /// FACT: whats-new-grouping).
+  /// so notes for a newer version without the bump would never be shown.
   @Test("the newest entry version IS the current content version")
   func newestGroupIsCurrentVersion() throws {
     let newest = try #require(
