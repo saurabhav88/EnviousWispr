@@ -757,6 +757,14 @@ struct KernelFinalizationWiring {
     // paste prefs, map `PasteDeliveryResult` -> `KernelDeliveryOutcome`, emit
     // the paste-completion event only on a real delivered paste
     // on a real delivered paste.
+    // #3437: the Smart Insertion seams, bundled once so dictation and the Escape Recovery Undo
+    // delivery run the same computation.
+    let insertionSeams = InsertionSeams(
+      readCaretContext: readCaretContext, focusedElementInTargetApp: focusedElementInTargetApp,
+      isRetryTargetUsable: isRetryTargetUsable,
+      recoveredIsInRecordedWindow: recoveredIsInRecordedWindow,
+      seamCasingOracle: seamCasingOracle, releaseOracleLease: releaseOracleLease,
+      resolveLanguage: resolveLanguage, currentTime: currentTime)
     deliver = { text, disposition in
       let pasteStart = CFAbsoluteTimeGetCurrent()
       let config = context.config
@@ -793,18 +801,6 @@ struct KernelFinalizationWiring {
         // until someone queries it and finds a hole shaped like this feature.
         deliveryOutcome = .suppressed
       } else if config?.autoPasteToActiveApp == true {
-        // ONE cumulative terminal-resolution budget for this whole delivery,
-        // created here and reused by every commit-boundary revalidation. A fresh
-        // budget per route would let the total the user waits for grow with the
-        // number of routes tried, which is the bound it exists to keep.
-        let terminalBudget = TerminalResolutionBudget()
-
-        // Read the caret ONCE, only when the frozen setting allows it and we
-        // actually have a target. `readCaretContext` fails open, so a nil result
-        // simply means no candidate.
-        // The specific terminal refusal, so a wrong-case report can be diagnosed
-        // from the log instead of guessed at. Names and shapes only.
-        var terminalRefusal: TerminalContextRefusal?
         // #1980: if the record-start capture failed, retry once here, scoped
         // directly to the app the user was dictating into (`context.targetApp`'s
         // pid) — never the earlier system-wide query, which can answer for a
@@ -812,76 +808,22 @@ struct KernelFinalizationWiring {
         // request built below (and `caretContextOutcome`'s `no_target` check)
         // both observe the recovered element too, not just this read.
         //
-        // #3437: the retry itself lives in `retryDeliveryTarget`, shared with the
-        // Escape Recovery Undo delivery so both resolve a held target the same way.
-        var caretCaptureRetried = false
-        var caretCaptureRetryMs: Double?
-        let caretContext: PasteService.CaretContext? = {
-          guard config?.smartInsertion == true else { return nil }
-          if context.targetElement == nil {
-            let retry = Self.retryDeliveryTarget(
-              app: context.targetApp, recordedWindow: context.targetWindow,
-              currentTime: currentTime,
-              focusedElementInTargetApp: focusedElementInTargetApp,
-              isRetryTargetUsable: isRetryTargetUsable,
-              recoveredIsInRecordedWindow: recoveredIsInRecordedWindow)
-            caretCaptureRetried = retry.retried
-            caretCaptureRetryMs = retry.queryMs
-            if let recovered = retry.element { context.targetElement = recovered }
-          }
-          guard let element = context.targetElement else { return nil }
-          return readCaretContext(element, terminalBudget, { terminalRefusal = $0 })
-        }()
+        // #3437: the retry (`retryDeliveryTarget`), the caret read (`readInsertionCaret`) and the
+        // repair (`repairInsertion`) are shared with the Escape Recovery Undo delivery, so both
+        // resolve a target and repair the text the same way. Dictation calls the two halves itself
+        // so its outcome stamps keep their place between them.
+        let caret = Self.readInsertionCaret(
+          smartInsertion: config?.smartInsertion == true, targetApp: context.targetApp,
+          targetElement: context.targetElement, targetWindow: context.targetWindow,
+          seams: insertionSeams)
+        context.targetElement = caret.targetElement
+        let terminalBudget = caret.terminalBudget
+        let terminalRefusal = caret.terminalRefusal
+        let caretContext = caret.caretContext
+        let caretCaptureRetried = caret.retried
+        let caretCaptureRetryMs = caret.retryMs
         outcome.caretCaptureRetried = caretCaptureRetried
         outcome.caretCaptureRetryMs = caretCaptureRetryMs
-
-        // ONE call to the repair, which is the sole owner of the trailing-space
-        // rule. Even with no context it returns today's payload, so Pipeline
-        // never recreates that rule and the two can never drift apart.
-        // The oracle reaches a separate spelling-service process, so this is the
-        // one place on the paste path with an unbounded cross-process call. AX
-        // reads here are already capped by `AXUIElementSetMessagingTimeout`
-        // (0.5s); `NSSpellChecker` has no equivalent knob, so the call is bounded
-        // here instead — stricter than the 0.5s we already accept.
-        //
-        // `withOffActorOrderedDeadline`, not bare `withDeadline`: on timeout the
-        // runtime must be latched BEFORE paste resumes, so a later dictation can
-        // never race an abandoned call against AppKit's one shared spell
-        // checker. The OFF-ACTOR sibling, because this timeout handler touches
-        // only lock-guarded state and the main-actor timer could not fire at all
-        // while the main actor was blocked (#1946).
-        // #628. A take that expanded a snippet takes the LEGACY payload: `repair` with no caret
-        // context returns exactly that, so refusing the context here is the whole bypass and
-        // needs no new branch inside the repair.
-        //
-        // The cost is real and was accepted at Gate 2 (plan §14.4): this take loses the
-        // join-up that makes a half-typed sentence and a dictated ending read as one person's
-        // writing. It is the safe answer for v1 because the repair owns seam spacing, seam
-        // capitalisation and cross-seam de-duplication, any of which would silently edit a
-        // saved email address, and "exactly as written" is the promise the feature is FOR.
-        // Teaching the repair to treat a resolved expansion as an opaque region is filed as
-        // the follow-up.
-        let snippetFired = context.snippetExpansionFired
-        let repairContext: CursorInsertionRepair.CaretText? =
-          snippetFired ? nil : caretContext.map {
-          CursorInsertionRepair.CaretText(
-            left: $0.leftWindow, right: $0.rightWindow,
-            // Read, not derived. This was `leftWindow.utf16.count ==
-            // selectionLocation`, which is exact for a real caret and vacuous
-            // for a terminal — both values come from the same string there, so
-            // EVERY screen-derived context claimed to reach the start, wrapped
-            // ones included. Each source now states the fact it alone knows.
-            leftReachesDocumentStart: $0.leftReachesDocumentStart,
-            // The narrow policy fact the repair needs. A screen-derived line is
-            // ONE rendered row, so a payload carrying a line break is refused
-            // rather than reasoned about — in a terminal a newline can submit
-            // the command.
-            isScreenDerived: $0.isScreenDerived,
-            // #2258: a space anywhere in a browser's address bar blocks
-            // pressing Enter to navigate. Services already did the AX work;
-            // this is the same policy-fact-only handoff as `isScreenDerived`.
-            isURLBarField: $0.isBrowserAddressBar)
-        }
 
         // Resolved from positive evidence, NOT read off the result.
         //
@@ -898,133 +840,15 @@ struct KernelFinalizationWiring {
         let lockedLanguageCode: String? = context.config?.lockedLanguageCode
         let engineDetectsLanguage = adapter.capabilities.supportsLanguageDetection
         let engineReportedLanguage = adapter.lastResult?.language
-        // The caret windows we already read. A short mid-sentence continuation
-        // cannot always be identified on its own, and that is exactly the
-        // insertion this feature exists for.
-        let surroundingText = caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? ""
-        let protectedSpellings = context.protectedSpellings
-
-        // #1921: language resolution now runs INSIDE this deadline. It used to
-        // run above it, unbounded, on the paste path — a claim an earlier
-        // revision of the plan asserted was already true and was not.
-        //
-        // One gate arbitrates both stages, because "which stage timed out" now
-        // decides whether `SeamCasingOracleRuntime` may be disabled, and a
-        // plain flag cannot answer it safely: cancellation here is best-effort
-        // and cannot preempt a running operation, so the timeout can look, see
-        // the language stage, decline to disable, and the un-preempted operation
-        // can then enter the oracle anyway.
-        let gate = LanguageRepairDeadlineGate()
-        // The timeout path's frozen evidence. It cannot ride the operation's
-        // return value, because on timeout the operation's value is discarded;
-        // and `onTimeout` is `@Sendable`, so it cannot write to a captured
-        // `var`. #1946 widened this from the resolution alone to the whole
-        // snapshot — the gate froze it atomically, so carrying anything less
-        // would reintroduce the two-source problem the gate exists to remove.
-        let timedOutSnapshot =
-          OSAllocatedUnfairLock<LanguageRepairDeadlineGate.Snapshot?>(initialState: nil)
-
-        let deadlineResult = await withOffActorOrderedDeadline(
-          seconds: 0.100,
-          operation: {
-            let resolution = resolveLanguage(
-              lockedLanguageCode, engineDetectsLanguage, engineReportedLanguage,
-              text, surroundingText)
-            guard gate.beginRepair(resolution) else {
-              // The deadline already claimed the phase, so repair must not
-              // start. This return value is discarded by the deadline's own
-              // single-claim rule; it exists to leave the closure, not to be read.
-              // #1946: named for the DEADLINE, not the oracle — nothing here has
-              // consulted one, and the old `.oracleTimedOut` asserted otherwise.
-              // #2258: deliberately plain, never URL-bar-aware — see
-              // `CursorInsertionRepair.legacyPayload`'s own doc comment for why.
-              return (
-                CursorInsertionRepair.legacyOnly(text: text, reason: .repairDeadlineMissed),
-                resolution
-              )
-            }
-            // The oracle asks the gate before every consultation, which both
-            // tells the timeout a genuinely stuck oracle from repair stalling
-            // before it ever got there, and refuses the call outright once the
-            // deadline has fired. `repair` has early exits and does spacing work
-            // first, so "repair started" is not "the oracle is running"
-            // (integration review); and cancellation cannot preempt a blocked
-            // thread, so without the refusal an un-preempted repair would still
-            // enter the real oracle after the timeout gave up (integration
-            // review round 2). Every refusal keeps the capital.
-            // `CursorInsertionRepair` stays unaware of the deadline: it remains
-            // a pure function of the oracle it is handed.
-            // Taken HERE, below resolution, because the oracle is per-language
-            // now and the language is not known any earlier. A ready snapshot
-            // holds a lease; `defer` releases it on every exit including the
-            // discarded-on-timeout one, since the deadline cannot preempt this
-            // closure and it always runs to completion.
-            let oracleSnapshot = await seamCasingOracle(resolution.language)
-            // Its OWN duration, because the phase cannot separate the fetch from
-            // repair's own work — both sit in `.repair(oracleTouched: false)`.
-            // This used to be a main-actor hop that cost exactly as long as the
-            // main thread happened to be occupied, 1:1 (measured 2026-08-10,
-            // issue-1946-artifacts/2026-08-10-hop-vs-pool.out). The production
-            // default stopped hopping in #1946, so the mark now measures the
-            // runtime's own lock-guarded fetch. It stays because an injected
-            // test closure can still stall here.
-            gate.mark(.oracleFetched)
-            // Release ONLY IF a lease was actually taken. `snapshot(for:)` leases
-            // on a ready answer and not on a refusal, so an unconditional release
-            // is not merely harmless bookkeeping: leases carry no identity, so an
-            // unmatched release decrements whichever decision currently holds the
-            // count, and the drain may then start preparing while that decision is
-            // still inside the shared spell checker — precisely the race the lease
-            // exists to close. Grounded review r3, MED.
-            let holdsOracleLease = oracleSnapshot.isAvailable
-            defer {
-              // Called directly, not queued onto the main actor (#1946 chunk 2).
-              // The queued form released the lease only once the main actor was
-              // next free, so a blocked main actor held the next language's
-              // preparation behind a decision that had already finished.
-              if holdsOracleLease { releaseOracleLease() }
-            }
-            let gatedOracle = oracleSnapshot.authorized(
-              by: { label in gate.beginOracleUse(label) },
-              didFinish: { token in gate.completeOracleUse(token) })
-            let repaired = CursorInsertionRepair.repair(
-              text: text,
-              context: repairContext,
-              protectedWords: protectedSpellings,
-              language: resolution.language,
-              oracle: gatedOracle)
-            // Immediately after repair returns and before this closure does, so
-            // the window in which a FINISHED oracle still looks stuck is as
-            // small as the runtime allows.
-            gate.completeRepair()
-            return (repaired, resolution)
-          },
-          onTimeout: {
-            // One atomic freeze; everything the timeout reports comes from it.
-            // Synchronous by contract (`TaskTimeout.swift:159-165`): this is one
-            // lock take and adds no suspension point.
-            let timeout = gate.timeOut()
-            timedOutSnapshot.withLock { $0 = timeout }
-            // Only a genuinely RUNNING oracle. A language-stage stall must not
-            // disable an unrelated healthy component for the rest of the
-            // process, and neither must one that had already succeeded.
-            if timeout.shouldDisableOracle { SeamCasingOracleRuntime.disableAfterTimeout() }
-          }
-        )
-
-        let casingSnapshot = timedOutSnapshot.withLock { $0 }
-        let payloads =
-          deadlineResult?.0
-          ?? CursorInsertionRepair.legacyOnly(
-            text: text,
-            // #1946: the reason is now READ from what the gate froze, never
-            // assumed. `oracle_timed_out` is reserved for a consultation that
-            // genuinely began; every other stall says so. Reading a stale
-            // `.oracleTimedOut` here is what made three causal theories
-            // indistinguishable in the field.
-            reason: casingSnapshot?.phase == .repairAfterOracle
-              ? .oracleTimedOut : .repairDeadlineMissed)
-        let resolution = deadlineResult?.1 ?? casingSnapshot?.resolution
+        let repair = await Self.repairInsertion(
+          text: text, caretContext: caretContext, snippetFired: context.snippetExpansionFired,
+          lockedLanguageCode: lockedLanguageCode, engineDetectsLanguage: engineDetectsLanguage,
+          engineReportedLanguage: engineReportedLanguage,
+          protectedSpellings: context.protectedSpellings, seams: insertionSeams)
+        let gate = repair.gate
+        let casingSnapshot = repair.casingSnapshot
+        let payloads = repair.payloads
+        let resolution = repair.resolution
 
         // Why this dictation was or was not repaired, recorded before delivery
         // so it survives every route outcome. Names and shapes only (#1785 §8).
@@ -1322,6 +1146,275 @@ struct KernelFinalizationWiring {
     sleepTicks = { ticks in
       try? await Task.sleep(for: .seconds(Double(ticks) * Self.tickDurationSeconds))
     }
+  }
+
+  /// #3437: the seams Smart Insertion reads through. Dictation passes its injected ones; the Escape
+  /// Recovery Undo delivery passes the live defaults.
+  struct InsertionSeams {
+    let readCaretContext:
+      @MainActor (AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?) ->
+        PasteService.CaretContext?
+    let focusedElementInTargetApp: @MainActor (pid_t) -> AXUIElement?
+    let isRetryTargetUsable: @MainActor (AXUIElement) -> Bool
+    let recoveredIsInRecordedWindow: @MainActor (AXUIElement, AXUIElement) -> Bool
+    let seamCasingOracle: @Sendable (String?) async -> SeamCasingOracle
+    let releaseOracleLease: @Sendable () -> Void
+    let resolveLanguage:
+      @Sendable (String?, Bool, String?, String, String) -> DictationLanguageResolver.Resolution
+    let currentTime: @MainActor () -> TimeInterval
+  }
+
+  /// The caret half of Smart Insertion: the field to insert into (the captured one, or the
+  /// delivery-time retry's), whether the retry was attempted and how long its query took, the
+  /// caret context, a terminal refusal, and the ONE terminal-resolution budget the delivery shares.
+  struct InsertionCaret {
+    let targetElement: AXUIElement?
+    let retried: Bool
+    let retryMs: Double?
+    let caretContext: PasteService.CaretContext?
+    let terminalRefusal: TerminalContextRefusal?
+    let terminalBudget: TerminalResolutionBudget
+  }
+
+  /// The repair half of Smart Insertion: the payloads, the language resolution, the timeout's
+  /// frozen snapshot (nil when the deadline did not fire) and the gate, which the caller still
+  /// reads for healthy-delivery timing.
+  struct InsertionRepair {
+    let payloads: CursorInsertionRepair.PreparedPayloads
+    let resolution: DictationLanguageResolver.Resolution?
+    let casingSnapshot: LanguageRepairDeadlineGate.Snapshot?
+    let gate: LanguageRepairDeadlineGate
+  }
+
+  /// #3437: the caret half of Smart Insertion, shared by the dictation delivery and the Escape
+  /// Recovery Undo delivery.
+  static func readInsertionCaret(
+    smartInsertion: Bool, targetApp: NSRunningApplication?, targetElement: AXUIElement?,
+    targetWindow: AXUIElement?, seams: InsertionSeams
+  ) -> InsertionCaret {
+    // ONE cumulative terminal-resolution budget for this whole delivery,
+    // created here and reused by every commit-boundary revalidation. A fresh
+    // budget per route would let the total the user waits for grow with the
+    // number of routes tried, which is the bound it exists to keep.
+    let terminalBudget = TerminalResolutionBudget()
+
+    // Read the caret ONCE, only when the frozen setting allows it and we
+    // actually have a target. `readCaretContext` fails open, so a nil result
+    // simply means no candidate.
+    // The specific terminal refusal, so a wrong-case report can be diagnosed
+    // from the log instead of guessed at. Names and shapes only.
+    var terminalRefusal: TerminalContextRefusal?
+    var element = targetElement
+    var retried = false
+    var retryMs: Double?
+    let caretContext: PasteService.CaretContext? = {
+      guard smartInsertion else { return nil }
+      if element == nil {
+        let retry = retryDeliveryTarget(
+          app: targetApp, recordedWindow: targetWindow,
+          currentTime: seams.currentTime,
+          focusedElementInTargetApp: seams.focusedElementInTargetApp,
+          isRetryTargetUsable: seams.isRetryTargetUsable,
+          recoveredIsInRecordedWindow: seams.recoveredIsInRecordedWindow)
+        retried = retry.retried
+        retryMs = retry.queryMs
+        if let recovered = retry.element { element = recovered }
+      }
+      guard let element else { return nil }
+      return seams.readCaretContext(element, terminalBudget, { terminalRefusal = $0 })
+    }()
+    return InsertionCaret(
+      targetElement: element, retried: retried, retryMs: retryMs, caretContext: caretContext,
+      terminalRefusal: terminalRefusal, terminalBudget: terminalBudget)
+  }
+
+  /// #3437: the repair half of Smart Insertion, shared by the dictation delivery and the Escape
+  /// Recovery Undo delivery.
+  static func repairInsertion(
+    text: String, caretContext: PasteService.CaretContext?, snippetFired: Bool,
+    lockedLanguageCode: String?, engineDetectsLanguage: Bool, engineReportedLanguage: String?,
+    protectedSpellings: Set<String>, seams: InsertionSeams
+  ) async -> InsertionRepair {
+    // ONE call to the repair, which is the sole owner of the trailing-space
+    // rule. Even with no context it returns today's payload, so Pipeline
+    // never recreates that rule and the two can never drift apart.
+    // The oracle reaches a separate spelling-service process, so this is the
+    // one place on the paste path with an unbounded cross-process call. AX
+    // reads here are already capped by `AXUIElementSetMessagingTimeout`
+    // (0.5s); `NSSpellChecker` has no equivalent knob, so the call is bounded
+    // here instead — stricter than the 0.5s we already accept.
+    //
+    // `withOffActorOrderedDeadline`, not bare `withDeadline`: on timeout the
+    // runtime must be latched BEFORE paste resumes, so a later dictation can
+    // never race an abandoned call against AppKit's one shared spell
+    // checker. The OFF-ACTOR sibling, because this timeout handler touches
+    // only lock-guarded state and the main-actor timer could not fire at all
+    // while the main actor was blocked (#1946).
+    // #628. A take that expanded a snippet takes the LEGACY payload: `repair` with no caret
+    // context returns exactly that, so refusing the context here is the whole bypass and
+    // needs no new branch inside the repair.
+    //
+    // The cost is real and was accepted at Gate 2 (plan §14.4): this take loses the
+    // join-up that makes a half-typed sentence and a dictated ending read as one person's
+    // writing. It is the safe answer for v1 because the repair owns seam spacing, seam
+    // capitalisation and cross-seam de-duplication, any of which would silently edit a
+    // saved email address, and "exactly as written" is the promise the feature is FOR.
+    // Teaching the repair to treat a resolved expansion as an opaque region is filed as
+    // the follow-up.
+    let repairContext: CursorInsertionRepair.CaretText? =
+      snippetFired ? nil : caretContext.map {
+      CursorInsertionRepair.CaretText(
+        left: $0.leftWindow, right: $0.rightWindow,
+        // Read, not derived. This was `leftWindow.utf16.count ==
+        // selectionLocation`, which is exact for a real caret and vacuous
+        // for a terminal — both values come from the same string there, so
+        // EVERY screen-derived context claimed to reach the start, wrapped
+        // ones included. Each source now states the fact it alone knows.
+        leftReachesDocumentStart: $0.leftReachesDocumentStart,
+        // The narrow policy fact the repair needs. A screen-derived line is
+        // ONE rendered row, so a payload carrying a line break is refused
+        // rather than reasoned about — in a terminal a newline can submit
+        // the command.
+        isScreenDerived: $0.isScreenDerived,
+        // #2258: a space anywhere in a browser's address bar blocks
+        // pressing Enter to navigate. Services already did the AX work;
+        // this is the same policy-fact-only handoff as `isScreenDerived`.
+        isURLBarField: $0.isBrowserAddressBar)
+    }
+
+    // The caret windows we already read. A short mid-sentence continuation
+    // cannot always be identified on its own, and that is exactly the
+    // insertion this feature exists for.
+    let surroundingText = caretContext.map { $0.leftWindow + " " + $0.rightWindow } ?? ""
+
+    // #1921: language resolution now runs INSIDE this deadline. It used to
+    // run above it, unbounded, on the paste path — a claim an earlier
+    // revision of the plan asserted was already true and was not.
+    //
+    // One gate arbitrates both stages, because "which stage timed out" now
+    // decides whether `SeamCasingOracleRuntime` may be disabled, and a
+    // plain flag cannot answer it safely: cancellation here is best-effort
+    // and cannot preempt a running operation, so the timeout can look, see
+    // the language stage, decline to disable, and the un-preempted operation
+    // can then enter the oracle anyway.
+    // #3437: the `@Sendable` seams, bound to locals so the deadline operation captures them and
+    // not the whole seam bundle, which also carries `@MainActor` closures.
+    let resolveLanguage = seams.resolveLanguage
+    let seamCasingOracle = seams.seamCasingOracle
+    let releaseOracleLease = seams.releaseOracleLease
+    let gate = LanguageRepairDeadlineGate()
+    // The timeout path's frozen evidence. It cannot ride the operation's
+    // return value, because on timeout the operation's value is discarded;
+    // and `onTimeout` is `@Sendable`, so it cannot write to a captured
+    // `var`. #1946 widened this from the resolution alone to the whole
+    // snapshot — the gate froze it atomically, so carrying anything less
+    // would reintroduce the two-source problem the gate exists to remove.
+    let timedOutSnapshot =
+      OSAllocatedUnfairLock<LanguageRepairDeadlineGate.Snapshot?>(initialState: nil)
+
+    let deadlineResult = await withOffActorOrderedDeadline(
+      seconds: 0.100,
+      operation: {
+        let resolution = resolveLanguage(
+          lockedLanguageCode, engineDetectsLanguage, engineReportedLanguage,
+          text, surroundingText)
+        guard gate.beginRepair(resolution) else {
+          // The deadline already claimed the phase, so repair must not
+          // start. This return value is discarded by the deadline's own
+          // single-claim rule; it exists to leave the closure, not to be read.
+          // #1946: named for the DEADLINE, not the oracle — nothing here has
+          // consulted one, and the old `.oracleTimedOut` asserted otherwise.
+          // #2258: deliberately plain, never URL-bar-aware — see
+          // `CursorInsertionRepair.legacyPayload`'s own doc comment for why.
+          return (
+            CursorInsertionRepair.legacyOnly(text: text, reason: .repairDeadlineMissed),
+            resolution
+          )
+        }
+        // The oracle asks the gate before every consultation, which both
+        // tells the timeout a genuinely stuck oracle from repair stalling
+        // before it ever got there, and refuses the call outright once the
+        // deadline has fired. `repair` has early exits and does spacing work
+        // first, so "repair started" is not "the oracle is running"
+        // (integration review); and cancellation cannot preempt a blocked
+        // thread, so without the refusal an un-preempted repair would still
+        // enter the real oracle after the timeout gave up (integration
+        // review round 2). Every refusal keeps the capital.
+        // `CursorInsertionRepair` stays unaware of the deadline: it remains
+        // a pure function of the oracle it is handed.
+        // Taken HERE, below resolution, because the oracle is per-language
+        // now and the language is not known any earlier. A ready snapshot
+        // holds a lease; `defer` releases it on every exit including the
+        // discarded-on-timeout one, since the deadline cannot preempt this
+        // closure and it always runs to completion.
+        let oracleSnapshot = await seamCasingOracle(resolution.language)
+        // Its OWN duration, because the phase cannot separate the fetch from
+        // repair's own work — both sit in `.repair(oracleTouched: false)`.
+        // This used to be a main-actor hop that cost exactly as long as the
+        // main thread happened to be occupied, 1:1 (measured 2026-08-10,
+        // issue-1946-artifacts/2026-08-10-hop-vs-pool.out). The production
+        // default stopped hopping in #1946, so the mark now measures the
+        // runtime's own lock-guarded fetch. It stays because an injected
+        // test closure can still stall here.
+        gate.mark(.oracleFetched)
+        // Release ONLY IF a lease was actually taken. `snapshot(for:)` leases
+        // on a ready answer and not on a refusal, so an unconditional release
+        // is not merely harmless bookkeeping: leases carry no identity, so an
+        // unmatched release decrements whichever decision currently holds the
+        // count, and the drain may then start preparing while that decision is
+        // still inside the shared spell checker — precisely the race the lease
+        // exists to close. Grounded review r3, MED.
+        let holdsOracleLease = oracleSnapshot.isAvailable
+        defer {
+          // Called directly, not queued onto the main actor (#1946 chunk 2).
+          // The queued form released the lease only once the main actor was
+          // next free, so a blocked main actor held the next language's
+          // preparation behind a decision that had already finished.
+          if holdsOracleLease { releaseOracleLease() }
+        }
+        let gatedOracle = oracleSnapshot.authorized(
+          by: { label in gate.beginOracleUse(label) },
+          didFinish: { token in gate.completeOracleUse(token) })
+        let repaired = CursorInsertionRepair.repair(
+          text: text,
+          context: repairContext,
+          protectedWords: protectedSpellings,
+          language: resolution.language,
+          oracle: gatedOracle)
+        // Immediately after repair returns and before this closure does, so
+        // the window in which a FINISHED oracle still looks stuck is as
+        // small as the runtime allows.
+        gate.completeRepair()
+        return (repaired, resolution)
+      },
+      onTimeout: {
+        // One atomic freeze; everything the timeout reports comes from it.
+        // Synchronous by contract (`TaskTimeout.swift:159-165`): this is one
+        // lock take and adds no suspension point.
+        let timeout = gate.timeOut()
+        timedOutSnapshot.withLock { $0 = timeout }
+        // Only a genuinely RUNNING oracle. A language-stage stall must not
+        // disable an unrelated healthy component for the rest of the
+        // process, and neither must one that had already succeeded.
+        if timeout.shouldDisableOracle { SeamCasingOracleRuntime.disableAfterTimeout() }
+      }
+    )
+
+    let casingSnapshot = timedOutSnapshot.withLock { $0 }
+    let payloads =
+      deadlineResult?.0
+      ?? CursorInsertionRepair.legacyOnly(
+        text: text,
+        // #1946: the reason is now READ from what the gate froze, never
+        // assumed. `oracle_timed_out` is reserved for a consultation that
+        // genuinely began; every other stall says so. Reading a stale
+        // `.oracleTimedOut` here is what made three causal theories
+        // indistinguishable in the field.
+        reason: casingSnapshot?.phase == .repairAfterOracle
+          ? .oracleTimedOut : .repairDeadlineMissed)
+    let resolution = deadlineResult?.1 ?? casingSnapshot?.resolution
+    return InsertionRepair(
+      payloads: payloads, resolution: resolution, casingSnapshot: casingSnapshot, gate: gate)
   }
 
   /// What `retryDeliveryTarget` found: the adopted field (nil when nothing usable was recovered),
