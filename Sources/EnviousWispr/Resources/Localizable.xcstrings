@@ -1530,83 +1530,6 @@
         }
       }
     },
-    "AI cleanup skipped: %@ did not answer in time. Your original text was pasted unchanged." : {
-      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: %@ hat nicht rechtzeitig geantwortet. Dein Originaltext wurde unverändert eingefügt."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish." : {
-      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Ollama läuft nicht. Starte es unter Einstellungen → KI-Nachbearbeitung."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: no %@ API key set yet. Add one in Settings." : {
-      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Für %@ ist noch kein API-Schlüssel hinterlegt. Füge ihn in den Einstellungen hinzu."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: no polish model is selected. Pick one in Settings." : {
-      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Kein Modell für die Nachbearbeitung ausgewählt. Wähle eines in den Einstellungen."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish." : {
-      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Kein Modell für die Nachbearbeitung ausgewählt. Wähle eines unter Einstellungen → KI-Nachbearbeitung."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish." : {
-      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Das gewählte Ollama-Modell ist nicht installiert. Lade es herunter oder wähle ein anderes unter Einstellungen → KI-Nachbearbeitung."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings." : {
-      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Dieses Diktat ist zu lang für das gewählte Modell. Versuche ein kürzeres Diktat oder wähle ein größeres Modell in den Einstellungen."
-          }
-        }
-      }
-    },
     "AI polish failed: %@" : {
       "comment" : "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system.",
       "localizations" : {
@@ -1618,13 +1541,13 @@
         }
       }
     },
-    "AI polish failed: %@ blocked this text. Your original was pasted unchanged." : {
+    "AI polish failed: %@ blocked this text. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat diesen Text blockiert. Dein Originaltext wurde unverändert eingefügt."
+            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat diesen Text blockiert. Ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -1640,13 +1563,13 @@
         }
       }
     },
-    "AI polish failed: %@ ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation." : {
-      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is. EnviousWispr is the app name; keep it.",
+    "AI polish failed: %@ ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat die Antwort vor Abschluss der Nachbearbeitung beendet. EnviousWispr hat stattdessen deinen vollständigen Originaltext behalten. Falls das wiederholt passiert, wähle ein anderes Modell oder diktiere kürzer."
+            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat die Antwort vor Abschluss der Nachbearbeitung beendet. Ohne KI-Nachbearbeitung eingefügt. Falls das wiederholt passiert, wähle ein anderes Modell oder diktiere kürzer."
           }
         }
       }
@@ -1734,24 +1657,24 @@
         }
       }
     },
-    "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged." : {
+    "AI polish failed: a configuration problem stopped it. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Nachbearbeitung wegen eines Konfigurationsproblems fehlgeschlagen. Dein Originaltext wurde unverändert eingefügt."
+            "value" : "KI-Nachbearbeitung wegen eines Konfigurationsproblems fehlgeschlagen. Ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
     },
-    "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged." : {
+    "AI polish failed: an unexpected error stopped it. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Nachbearbeitung wegen eines unerwarteten Fehlers fehlgeschlagen. Dein Originaltext wurde unverändert eingefügt."
+            "value" : "KI-Nachbearbeitung wegen eines unerwarteten Fehlers fehlgeschlagen. Ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -1862,6 +1785,83 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung muss eingerichtet werden"
+          }
+        }
+      }
+    },
+    "AI polish skipped: %@ did not answer in time. Pasted without AI polish." : {
+      "comment" : "Dictation notice: AI polish was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: %@ hat nicht rechtzeitig geantwortet. Ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
+    "AI polish skipped: Ollama isn't running. Start it in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Ollama läuft nicht. Starte es unter Einstellungen → KI-Nachbearbeitung."
+          }
+        }
+      }
+    },
+    "AI polish skipped: no %@ API key set yet. Add one in Settings." : {
+      "comment" : "Dictation notice: AI polish was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Für %@ ist noch kein API-Schlüssel hinterlegt. Füge ihn in den Einstellungen hinzu."
+          }
+        }
+      }
+    },
+    "AI polish skipped: no polish model is selected. Pick one in Settings." : {
+      "comment" : "Dictation notice: AI polish was skipped, not broken; the original text was used.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Kein Modell für die Nachbearbeitung ausgewählt. Wähle eines in den Einstellungen."
+          }
+        }
+      }
+    },
+    "AI polish skipped: no polish model selected. Pick one in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Kein Modell für die Nachbearbeitung ausgewählt. Wähle eines unter Einstellungen → KI-Nachbearbeitung."
+          }
+        }
+      }
+    },
+    "AI polish skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Das gewählte Ollama-Modell ist nicht installiert. Lade es herunter oder wähle ein anderes unter Einstellungen → KI-Nachbearbeitung."
+          }
+        }
+      }
+    },
+    "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings." : {
+      "comment" : "Dictation notice: AI polish was skipped, not broken; the original text was used.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Dieses Diktat ist zu lang für das gewählte Modell. Versuche ein kürzeres Diktat oder wähle ein größeres Modell in den Einstellungen."
           }
         }
       }
@@ -6163,12 +6163,12 @@
         }
       }
     },
-    "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time." : {
+    "Dictation still works. Without a key, text is pasted without AI polish." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Diktieren funktioniert weiterhin. Ohne Schlüssel erhältst du statt der Nachbearbeitung aber jedes Mal den unbearbeiteten Text."
+            "value" : "Das Diktieren funktioniert weiterhin. Ohne Schlüssel wird Text ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -12612,6 +12612,17 @@
         }
       }
     },
+    "Pasted without AI polish." : {
+      "comment" : "Pill: AI polish failed, so the unpolished text was pasted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
     "Pastes your last dictation." : {
       "localizations" : {
         "de" : {
@@ -12826,17 +12837,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Polnisch"
-          }
-        }
-      }
-    },
-    "Polish failed. Using raw text." : {
-      "comment" : "Pill: AI polish failed, so the unpolished text was pasted.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nachbearbeitung fehlgeschlagen. Unbearbeiteter Text wird verwendet."
           }
         }
       }

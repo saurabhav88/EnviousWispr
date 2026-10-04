@@ -140,7 +140,7 @@ struct PipelineStateChangePlannerTests {
     )
   )
   func completeSkippedPolishSuppressesWarning() {
-    // A real skip reason's composed notice ("AI cleanup skipped: no OpenAI API
+    // A real skip reason's composed notice ("AI polish skipped: no OpenAI API
     // key set yet. ...") must NOT schedule the hard-failure overlay.
     let skipNotice = PolishFailureReason.apiKeyMissing.notice(provider: .openAI)
     let plan = PipelineStateChangePlanner.plan(

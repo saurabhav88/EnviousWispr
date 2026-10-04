@@ -45,7 +45,7 @@ struct PolishFailureReasonTests {
   // MARK: - Lead-in (skipped vs failed)
 
   @Test(
-    "not-really-broken reasons lead with 'AI cleanup skipped:'",
+    "not-really-broken reasons lead with 'AI polish skipped:'",
     arguments: [
       PolishFailureReason.apiKeyMissing,
       PolishFailureReason.apiKeyUnreadable,
@@ -54,7 +54,7 @@ struct PolishFailureReasonTests {
     ])
   func skippedLeadIn(reason: PolishFailureReason) {
     #expect(reason.leadIn == .skipped)
-    #expect(reason.composedMessage(provider: .openAI).hasPrefix("AI cleanup skipped: "))
+    #expect(reason.composedMessage(provider: .openAI).hasPrefix("AI polish skipped: "))
   }
 
   @Test(
@@ -102,7 +102,7 @@ struct PolishFailureReasonTests {
   @Test("missing-key message uses the skipped lead-in and points to Settings")
   func apiKeyMissingCopy() {
     let msg = PolishFailureReason.apiKeyMissing.composedMessage(provider: .gemini)
-    #expect(msg == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
+    #expect(msg == "AI polish skipped: no Gemini API key set yet. Add one in Settings.")
   }
 
   @Test("Gemini rate-or-quota copy names BOTH (Gemini cannot split them)")
@@ -177,20 +177,20 @@ struct PolishFailureReasonTests {
   @Test("the generic fallback lines read cleanly after their lead-in (no restated lead-in)")
   func genericFallbackCopyTightened() {
     // Founder-approved tightening (2026-06-22): these three compose without
-    // repeating the lead-in (no "AI cleanup skipped: AI cleanup took too long").
+    // repeating the lead-in (no "AI polish skipped: AI cleanup took too long").
     #expect(
       PolishFailureReason.timedOut.composedMessage(provider: .openAI)
-        == "AI cleanup skipped: OpenAI did not answer in time. Your original text was pasted unchanged."
+        == "AI polish skipped: OpenAI did not answer in time. Pasted without AI polish."
     )
     // #2884: the generic badRequest sentence now belongs to the non-cloud arms
     // only; the cloud copy is pinned per provider in `badRequestNamesTheProvider`.
     #expect(
       PolishFailureReason.badRequest.composedMessage(provider: .ollama)
-        == "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged."
+        == "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
     )
     #expect(
       PolishFailureReason.unknown.composedMessage(provider: .openAI)
-        == "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        == "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
     )
   }
 
@@ -218,7 +218,7 @@ struct PolishFailureReasonTests {
   func badRequestStaysGenericOffCloud(provider: LLMProvider) {
     #expect(
       PolishFailureReason.badRequest.composedMessage(provider: provider)
-        == "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged."
+        == "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
     )
   }
 
@@ -228,7 +228,7 @@ struct PolishFailureReasonTests {
   func englishNoticeOpensWithItsTone() {
     for reason in PolishFailureReason.allCases {
       for provider in LLMProvider.allCases {
-        let opening = reason.leadIn == .skipped ? "AI cleanup skipped: " : "AI polish failed: "
+        let opening = reason.leadIn == .skipped ? "AI polish skipped: " : "AI polish failed: "
         #expect(
           reason.composedMessage(provider: provider).hasPrefix(opening), "\(reason) \(provider)")
       }
@@ -445,7 +445,7 @@ struct PolishFailureReasonTests {
     }
   }
 
-  /// Five reasons tell the user "AI cleanup skipped" — nothing is broken. Exactly two
+  /// Five reasons tell the user "AI polish skipped" — nothing is broken. Exactly two
   /// of them still page us, and both are OURS despite the reassuring copy:
   ///   - `timedOut` — the deadline it blew is a budget WE chose, so a spike means our
   ///     budget shrank or our prompt ballooned.
@@ -579,7 +579,7 @@ struct PolishFailureReasonTests {
       #expect(
         PolishFailureReason.outputTruncated.composedMessage(provider: provider)
           == "AI polish failed: \(name) ended the response before cleanup finished. "
-          + "EnviousWispr kept your complete original text instead. "
+          + "Pasted without AI polish. "
           + "If this keeps happening, choose another model or use a shorter dictation.")
     }
   }
@@ -599,67 +599,67 @@ struct PolishFailureReasonTests {
     [(PolishFailureReason, LLMProvider, PolishFailureReason.LeadIn, String)] = [
       (
         .apiKeyMissing, .openAI, .skipped,
-        "AI cleanup skipped: no OpenAI API key set yet. Add one in Settings."
+        "AI polish skipped: no OpenAI API key set yet. Add one in Settings."
       ),
       (
         .apiKeyMissing, .gemini, .skipped,
-        "AI cleanup skipped: no Gemini API key set yet. Add one in Settings."
+        "AI polish skipped: no Gemini API key set yet. Add one in Settings."
       ),
       (
         .apiKeyMissing, .claude, .skipped,
-        "AI cleanup skipped: no Claude API key set yet. Add one in Settings."
+        "AI polish skipped: no Claude API key set yet. Add one in Settings."
       ),
       (
         .apiKeyMissing, .ollama, .skipped,
-        "AI cleanup skipped: no Ollama API key set yet. Add one in Settings."
+        "AI polish skipped: no Ollama API key set yet. Add one in Settings."
       ),
       (
         .apiKeyMissing, .appleIntelligence, .skipped,
-        "AI cleanup skipped: no Apple Intelligence API key set yet. Add one in Settings."
+        "AI polish skipped: no Apple Intelligence API key set yet. Add one in Settings."
       ),
       (
         .apiKeyMissing, .egOne, .skipped,
-        "AI cleanup skipped: no EG-1 API key set yet. Add one in Settings."
+        "AI polish skipped: no EG-1 API key set yet. Add one in Settings."
       ),
       (
         .apiKeyMissing, .s1Mini, .skipped,
-        "AI cleanup skipped: no S1-mini API key set yet. Add one in Settings."
+        "AI polish skipped: no S1-mini API key set yet. Add one in Settings."
       ),
       (
         .apiKeyMissing, .none, .skipped,
-        "AI cleanup skipped: no None API key set yet. Add one in Settings."
+        "AI polish skipped: no None API key set yet. Add one in Settings."
       ),
       (
         .apiKeyUnreadable, .openAI, .skipped,
-        "AI cleanup skipped: no OpenAI API key set yet. Add one in Settings."
+        "AI polish skipped: no OpenAI API key set yet. Add one in Settings."
       ),
       (
         .apiKeyUnreadable, .gemini, .skipped,
-        "AI cleanup skipped: no Gemini API key set yet. Add one in Settings."
+        "AI polish skipped: no Gemini API key set yet. Add one in Settings."
       ),
       (
         .apiKeyUnreadable, .claude, .skipped,
-        "AI cleanup skipped: no Claude API key set yet. Add one in Settings."
+        "AI polish skipped: no Claude API key set yet. Add one in Settings."
       ),
       (
         .apiKeyUnreadable, .ollama, .skipped,
-        "AI cleanup skipped: no Ollama API key set yet. Add one in Settings."
+        "AI polish skipped: no Ollama API key set yet. Add one in Settings."
       ),
       (
         .apiKeyUnreadable, .appleIntelligence, .skipped,
-        "AI cleanup skipped: no Apple Intelligence API key set yet. Add one in Settings."
+        "AI polish skipped: no Apple Intelligence API key set yet. Add one in Settings."
       ),
       (
         .apiKeyUnreadable, .egOne, .skipped,
-        "AI cleanup skipped: no EG-1 API key set yet. Add one in Settings."
+        "AI polish skipped: no EG-1 API key set yet. Add one in Settings."
       ),
       (
         .apiKeyUnreadable, .s1Mini, .skipped,
-        "AI cleanup skipped: no S1-mini API key set yet. Add one in Settings."
+        "AI polish skipped: no S1-mini API key set yet. Add one in Settings."
       ),
       (
         .apiKeyUnreadable, .none, .skipped,
-        "AI cleanup skipped: no None API key set yet. Add one in Settings."
+        "AI polish skipped: no None API key set yet. Add one in Settings."
       ),
       (
         .apiKeyRejected, .openAI, .failed,
@@ -855,99 +855,99 @@ struct PolishFailureReasonTests {
       ),
       (
         .noModelSelected, .openAI, .skipped,
-        "AI cleanup skipped: no polish model is selected. Pick one in Settings."
+        "AI polish skipped: no polish model is selected. Pick one in Settings."
       ),
       (
         .noModelSelected, .gemini, .skipped,
-        "AI cleanup skipped: no polish model is selected. Pick one in Settings."
+        "AI polish skipped: no polish model is selected. Pick one in Settings."
       ),
       (
         .noModelSelected, .claude, .skipped,
-        "AI cleanup skipped: no polish model is selected. Pick one in Settings."
+        "AI polish skipped: no polish model is selected. Pick one in Settings."
       ),
       (
         .noModelSelected, .ollama, .skipped,
-        "AI cleanup skipped: no polish model is selected. Pick one in Settings."
+        "AI polish skipped: no polish model is selected. Pick one in Settings."
       ),
       (
         .noModelSelected, .appleIntelligence, .skipped,
-        "AI cleanup skipped: no polish model is selected. Pick one in Settings."
+        "AI polish skipped: no polish model is selected. Pick one in Settings."
       ),
       (
         .noModelSelected, .egOne, .skipped,
-        "AI cleanup skipped: no polish model is selected. Pick one in Settings."
+        "AI polish skipped: no polish model is selected. Pick one in Settings."
       ),
       (
         .noModelSelected, .s1Mini, .skipped,
-        "AI cleanup skipped: no polish model is selected. Pick one in Settings."
+        "AI polish skipped: no polish model is selected. Pick one in Settings."
       ),
       (
         .noModelSelected, .none, .skipped,
-        "AI cleanup skipped: no polish model is selected. Pick one in Settings."
+        "AI polish skipped: no polish model is selected. Pick one in Settings."
       ),
       (
         .inputTooLong, .openAI, .skipped,
-        "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+        "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
       ),
       (
         .inputTooLong, .gemini, .skipped,
-        "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+        "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
       ),
       (
         .inputTooLong, .claude, .skipped,
-        "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+        "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
       ),
       (
         .inputTooLong, .ollama, .skipped,
-        "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+        "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
       ),
       (
         .inputTooLong, .appleIntelligence, .skipped,
-        "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+        "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
       ),
       (
         .inputTooLong, .egOne, .skipped,
-        "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+        "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
       ),
       (
         .inputTooLong, .s1Mini, .skipped,
-        "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+        "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
       ),
       (
         .inputTooLong, .none, .skipped,
-        "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
+        "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings."
       ),
       (
         .contentBlocked, .openAI, .failed,
-        "AI polish failed: OpenAI blocked this text. Your original was pasted unchanged."
+        "AI polish failed: OpenAI blocked this text. Pasted without AI polish."
       ),
       (
         .contentBlocked, .gemini, .failed,
-        "AI polish failed: Gemini blocked this text. Your original was pasted unchanged."
+        "AI polish failed: Gemini blocked this text. Pasted without AI polish."
       ),
       (
         .contentBlocked, .claude, .failed,
-        "AI polish failed: Claude blocked this text. Your original was pasted unchanged."
+        "AI polish failed: Claude blocked this text. Pasted without AI polish."
       ),
       (
         .contentBlocked, .ollama, .failed,
-        "AI polish failed: Ollama blocked this text. Your original was pasted unchanged."
+        "AI polish failed: Ollama blocked this text. Pasted without AI polish."
       ),
       (
         .contentBlocked, .appleIntelligence, .failed,
-        "AI polish failed: Apple Intelligence blocked this text. Your original was pasted unchanged."
+        "AI polish failed: Apple Intelligence blocked this text. Pasted without AI polish."
       ),
       (
         .contentBlocked, .egOne, .failed,
-        "AI polish failed: EG-1 blocked this text. Your original was pasted unchanged."
+        "AI polish failed: EG-1 blocked this text. Pasted without AI polish."
       ),
       (
         .contentBlocked, .s1Mini, .failed,
-        "AI polish failed: S1-mini blocked this text. Your original was pasted unchanged."
+        "AI polish failed: S1-mini blocked this text. Pasted without AI polish."
       ),
       (
         .contentBlocked, .none, .failed,
-        "AI polish failed: None blocked this text. Your original was pasted unchanged."
+        "AI polish failed: None blocked this text. Pasted without AI polish."
       ),
       (
         .providerUnreachable, .openAI, .failed,
@@ -1027,23 +1027,23 @@ struct PolishFailureReasonTests {
       ),
       (
         .badRequest, .ollama, .failed,
-        "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged."
+        "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
       ),
       (
         .badRequest, .appleIntelligence, .failed,
-        "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged."
+        "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
       ),
       (
         .badRequest, .egOne, .failed,
-        "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged."
+        "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
       ),
       (
         .badRequest, .s1Mini, .failed,
-        "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged."
+        "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
       ),
       (
         .badRequest, .none, .failed,
-        "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged."
+        "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
       ),
       (
         .emptyResponse, .openAI, .failed,
@@ -1079,99 +1079,99 @@ struct PolishFailureReasonTests {
       ),
       (
         .timedOut, .openAI, .skipped,
-        "AI cleanup skipped: OpenAI did not answer in time. Your original text was pasted unchanged."
+        "AI polish skipped: OpenAI did not answer in time. Pasted without AI polish."
       ),
       (
         .timedOut, .gemini, .skipped,
-        "AI cleanup skipped: Gemini did not answer in time. Your original text was pasted unchanged."
+        "AI polish skipped: Gemini did not answer in time. Pasted without AI polish."
       ),
       (
         .timedOut, .claude, .skipped,
-        "AI cleanup skipped: Claude did not answer in time. Your original text was pasted unchanged."
+        "AI polish skipped: Claude did not answer in time. Pasted without AI polish."
       ),
       (
         .timedOut, .ollama, .skipped,
-        "AI cleanup skipped: Ollama did not answer in time. Your original text was pasted unchanged."
+        "AI polish skipped: Ollama did not answer in time. Pasted without AI polish."
       ),
       (
         .timedOut, .appleIntelligence, .skipped,
-        "AI cleanup skipped: Apple Intelligence did not answer in time. Your original text was pasted unchanged."
+        "AI polish skipped: Apple Intelligence did not answer in time. Pasted without AI polish."
       ),
       (
         .timedOut, .egOne, .skipped,
-        "AI cleanup skipped: EG-1 did not answer in time. Your original text was pasted unchanged."
+        "AI polish skipped: EG-1 did not answer in time. Pasted without AI polish."
       ),
       (
         .timedOut, .s1Mini, .skipped,
-        "AI cleanup skipped: S1-mini did not answer in time. Your original text was pasted unchanged."
+        "AI polish skipped: S1-mini did not answer in time. Pasted without AI polish."
       ),
       (
         .timedOut, .none, .skipped,
-        "AI cleanup skipped: None did not answer in time. Your original text was pasted unchanged."
+        "AI polish skipped: None did not answer in time. Pasted without AI polish."
       ),
       (
         .outputTruncated, .openAI, .failed,
-        "AI polish failed: OpenAI ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: OpenAI ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .gemini, .failed,
-        "AI polish failed: Gemini ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: Gemini ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .claude, .failed,
-        "AI polish failed: Claude ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: Claude ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .ollama, .failed,
-        "AI polish failed: Ollama ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: Ollama ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .appleIntelligence, .failed,
-        "AI polish failed: Apple Intelligence ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: Apple Intelligence ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .egOne, .failed,
-        "AI polish failed: EG-1 ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: EG-1 ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .s1Mini, .failed,
-        "AI polish failed: S1-mini ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: S1-mini ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .none, .failed,
-        "AI polish failed: None ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: None ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .unknown, .openAI, .failed,
-        "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
       ),
       (
         .unknown, .gemini, .failed,
-        "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
       ),
       (
         .unknown, .claude, .failed,
-        "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
       ),
       (
         .unknown, .ollama, .failed,
-        "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
       ),
       (
         .unknown, .appleIntelligence, .failed,
-        "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
       ),
       (
         .unknown, .egOne, .failed,
-        "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
       ),
       (
         .unknown, .s1Mini, .failed,
-        "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
       ),
       (
         .unknown, .none, .failed,
-        "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
       ),
     ]
 
@@ -1197,16 +1197,16 @@ struct PolishFailureReasonTests {
   func preflightNoticesKeepTheirEnglish() {
     #expect(
       PolishFailureReason.modelUnavailable.ollamaPreflightSkipMessage
-        == "AI cleanup skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish."
+        == "AI polish skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish."
     )
     #expect(PolishFailureReason.modelUnavailable.ollamaPreflightSkipNotice?.leadIn == .skipped)
     #expect(
       PolishFailureReason.noModelSelected.ollamaPreflightSkipMessage
-        == "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish.")
+        == "AI polish skipped: no polish model selected. Pick one in Settings → AI Polish.")
     #expect(PolishFailureReason.noModelSelected.ollamaPreflightSkipNotice?.leadIn == .skipped)
     #expect(
       PolishFailureReason.providerUnreachable.ollamaPreflightSkipMessage
-        == "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish.")
+        == "AI polish skipped: Ollama isn't running. Start it in Settings → AI Polish.")
     #expect(PolishFailureReason.providerUnreachable.ollamaPreflightSkipNotice?.leadIn == .skipped)
     let others = PolishFailureReason.allCases.filter {
       ![.providerUnreachable, .modelUnavailable, .noModelSelected].contains($0)

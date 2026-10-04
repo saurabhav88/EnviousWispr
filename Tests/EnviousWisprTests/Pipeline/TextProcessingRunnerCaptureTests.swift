@@ -216,7 +216,7 @@ struct TextProcessingRunnerCaptureTests {
 
     // The notice the user reads is untouched by the downgrade.
     #expect(
-      result.polishError == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
+      result.polishError == "AI polish skipped: no Gemini API key set yet. Add one in Settings.")
     #expect(result.polishNotice?.leadIn == .skipped)
     #expect(spy.calls.isEmpty)
     #expect(records.calls.count == 1)
@@ -348,7 +348,7 @@ struct TextProcessingRunnerCaptureTests {
 
     // Same sentence the no-key user reads; a different fingerprint for us.
     #expect(
-      result.polishError == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
+      result.polishError == "AI polish skipped: no Gemini API key set yet. Add one in Settings.")
     #expect(result.polishNotice?.leadIn == .skipped)
     #expect(spy.calls.count == 1)
     #expect(spy.calls.first?.fingerprintDetail == "api_key_unreadable")
@@ -470,7 +470,7 @@ struct TextProcessingRunnerCaptureTests {
     #expect(spy.calls.count == 1)
     #expect(spy.calls.first?.tags["polish.error_case"] == "timed_out")
     #expect(spy.calls.first?.tags["polish.is_timeout"] == "true")
-    #expect(result.polishError?.hasPrefix("AI cleanup skipped:") == true)
+    #expect(result.polishError?.hasPrefix("AI polish skipped:") == true)
     #expect(result.polishNotice?.leadIn == .skipped)
     // #1446: `is_timeout` reaches the durable record too, not only the alert.
     #expect(records.calls.count == 1)
@@ -757,7 +757,7 @@ struct TextProcessingRunnerCaptureTests {
     #expect(
       result.polishError
         == "AI polish failed: Gemini ended the response before cleanup finished. "
-        + "EnviousWispr kept your complete original text instead. If this keeps happening, "
+        + "Pasted without AI polish. If this keeps happening, "
         + "choose another model or use a shorter dictation.")
     // Exactly one durable count with the right attribution; zero alerts.
     #expect(spy.calls.isEmpty)

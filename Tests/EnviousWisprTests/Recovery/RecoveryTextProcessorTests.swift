@@ -186,7 +186,7 @@ struct RecoveryTextProcessorTests {
     // #1446: `.apiKeyUnreadable` reuses `.apiKeyMissing`'s copy verbatim, so the
     // split is invisible to the user even on the recovery path.
     #expect(
-      outcome.polishError == "AI cleanup skipped: no OpenAI API key set yet. Add one in Settings.")
+      outcome.polishError == "AI polish skipped: no OpenAI API key set yet. Add one in Settings.")
   }
 
   /// #945 / #1446: recovery must emit NO polish telemetry — a live-only metric.

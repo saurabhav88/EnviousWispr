@@ -378,7 +378,7 @@ struct OllamaReadinessGateTests {
 
     #expect(
       result.polishError
-        == "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish.")
+        == "AI polish skipped: Ollama isn't running. Start it in Settings → AI Polish.")
     // The completion planner must read this as a skip, not a hard failure —
     // the "Polish failed" overlay is keyed off the notice's typed tone (#3142).
     #expect(result.polishNotice?.leadIn == .skipped)
@@ -397,7 +397,7 @@ struct OllamaReadinessGateTests {
 
     #expect(
       result.polishError
-        == "AI cleanup skipped: the selected Ollama model isn't installed. "
+        == "AI polish skipped: the selected Ollama model isn't installed. "
         + "Download it or pick another in Settings → AI Polish."
     )
     #expect(result.polishNotice?.leadIn == .skipped)
@@ -418,9 +418,9 @@ struct OllamaReadinessGateTests {
 
     #expect(
       result.polishError
-        == "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish.")
-    // Skip tone, not failure tone: the completion planner keys the "Polish
-    // failed. Using raw text." overlay off this exact predicate, and declining
+        == "AI polish skipped: no polish model selected. Pick one in Settings → AI Polish.")
+    // Skip tone, not failure tone: the completion planner keys the "Pasted
+    // without AI polish." overlay off this exact predicate, and declining
     // to choose a model for the user is not a breakage to apologise for.
     #expect(result.polishNotice?.leadIn == .skipped)
     // "while still pasting the raw output" — the heart is untouched. The

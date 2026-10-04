@@ -143,7 +143,7 @@ import Testing
     #expect(
       DictationNarrator.copy(for: .modelNotDownloaded(engineLabel: "Parakeet"))
         == "Parakeet isn't downloaded yet. Open Settings to download it.")
-    #expect(DictationNarrator.copy(for: .polishFailed) == "Polish failed. Using raw text.")
+    #expect(DictationNarrator.copy(for: .polishFailed) == "Pasted without AI polish.")
     #expect(
       DictationNarrator.copy(
         for: .historySaveFailed(reason: HistorySaveErrorClass.fullDisk.userMessage))
@@ -253,8 +253,8 @@ import Testing
     }
   }
 
-  /// The two founder cleanups: no banned em/en dash, no literal `--`, and the
-  /// second clause capitalizes (a true two-sentence form).
+  /// The founder cleanups: no banned em/en dash and no literal `--`. The polish
+  /// warning is one sentence since #3438 ("Pasted without AI polish.").
   @Test("the cleaned-up warning sentences drop the dash and double-hyphen")
   func cleanedWarningSentencesAreClean() {
     let cleaned = [
@@ -265,7 +265,7 @@ import Testing
       #expect(!copy.contains("\u{2014}") && !copy.contains("\u{2013}"), "\(copy) has a dash")
       #expect(!copy.contains(" -- "), "\(copy) has a literal double-hyphen")
     }
-    #expect(DictationNarrator.copy(for: .polishFailed).contains(". Using"))
+    #expect(DictationNarrator.copy(for: .polishFailed) == "Pasted without AI polish.")
   }
 
   // MARK: - In-panel recording notices (E3, #1567)
@@ -295,7 +295,7 @@ import Testing
       (.processing(phase: .transcribing), "Processing transcription"),
       (.clipboardFallback, "Text copied to clipboard"),
       (.accessibilityToast, "Accessibility permission needed for auto-paste"),
-      (.warning(reason: .polishFailed), "Warning: Polish failed. Using raw text."),
+      (.warning(reason: .polishFailed), "Warning: Pasted without AI polish."),
       (.error(reason: .prepareFailed), "Error: Audio capture error. Try again."),
       (.interruption(reason: .deviceRemoved), "Interruption: Microphone disconnected."),
       (.passiveChip(payload: chip), "Detected Spanish"),

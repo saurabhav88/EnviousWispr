@@ -610,7 +610,7 @@ private var cloudRows: some View {
   if savedKeyIsEmptyForCurrentProvider {
     PolishBand(
       text:
-        "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
+        "Dictation still works. Without a key, text is pasted without AI polish.",
       systemImage: "exclamationmark.triangle")
   }
   // #2772 chunk 3, plan §7: the Keychain would not answer. Saying "you have no key"

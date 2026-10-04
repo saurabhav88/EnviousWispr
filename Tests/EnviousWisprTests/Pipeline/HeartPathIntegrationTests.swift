@@ -183,7 +183,7 @@ struct HeartPathIntegrationTests {
     // surfaced the raw error description, so this mapping was never covered.
     #expect(
       result.outcome.polishError
-        == "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
+        == "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
     )
     #expect(pasteSink.pastedTexts == ["hello world this is a test "])
   }
@@ -238,7 +238,7 @@ struct HeartPathIntegrationTests {
     // own user-facing copy, distinct from the generic failure message above.
     #expect(
       result.outcome.polishError
-        == "AI cleanup skipped: OpenAI did not answer in time. Your original text was pasted unchanged."
+        == "AI polish skipped: OpenAI did not answer in time. Pasted without AI polish."
     )
     #expect(pasteSink.pastedTexts == ["hello world this is a test "])
   }

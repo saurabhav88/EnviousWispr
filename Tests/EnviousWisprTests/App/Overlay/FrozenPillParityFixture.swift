@@ -171,15 +171,19 @@ enum FrozenPillParity {
       announcement: FrozenAnnouncement(
         text: "Accessibility permission needed for auto-paste", isHighPriority: true)),
 
+    // Notice and announcement text re-frozen 2026-10-04 (#3438): the founder approved
+    // replacing "Polish failed. Using raw text." with "Pasted without AI polish.", a
+    // deliberate copy change, so the oracle carries the new sentence. Every other value in
+    // this row is the original capture.
     FrozenRow(
       label: "warning.polishFailed", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
-        kind: "notification", text: "Polish failed. Using raw text.", secondary: nil,
+        kind: "notification", text: "Pasted without AI polish.", secondary: nil,
         severity: "warning", isMultiline: false, actionLabel: nil, actionCase: nil),
       width: .fixed(280), fixedHeight: 44,
       expiry: .after(seconds: 2.5, pausesOnHover: false),
       announcement: FrozenAnnouncement(
-        text: "Warning: Polish failed. Using raw text.", isHighPriority: false)),
+        text: "Warning: Pasted without AI polish.", isHighPriority: false)),
 
     FrozenRow(
       label: "error.asrFailed", hasDefinition: true, contentTag: "notice",

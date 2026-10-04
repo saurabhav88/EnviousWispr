@@ -12,7 +12,7 @@ enum PipelineStateSideEffect: Equatable, Sendable {
   /// non-complete transition — mirrors the former root-state file behavior.
   case cancelPendingWarning
 
-  /// Schedule the "Polish failed. Using raw text." warning 400 ms after
+  /// Schedule the "Pasted without AI polish." warning 400 ms after
   /// completion. Emitted ONLY on `.complete` when a polish error was recorded
   /// AND the paste did not fall back to clipboard-only.
   case schedulePolishFailedWarning
@@ -166,12 +166,12 @@ enum PipelineStateChangePlanner {
         resolvedOverlayIntent = .clipboardFallback
       } else if let polishNotice = lastPolishNotice {
         resolvedOverlayIntent = pipelineOverlayIntent
-        // #945: a "skipped" notice (no key yet, too long, timed out) is not a
-        // hard failure — the in-window banner shows the actionable
-        // "AI cleanup skipped: ..." message, but the transient
-        // "Polish failed. Using raw text." overlay would contradict it, so
-        // suppress it for skips. Real failures (and the unchanged Apple
-        // Intelligence / legacy strings) still schedule the warning.
+        // #945: skipped notices did not schedule the former hard-failure pill,
+        // which incorrectly described intentional skips as failures.
+        // #3438 preserves that suppression policy while changing the pill's
+        // wording to "Pasted without AI polish." Real failures (and the
+        // unchanged Apple Intelligence / legacy strings) still schedule the
+        // warning.
         // #3142: decided by the notice's typed tone, never by its text, which
         // is translated and need not start with the translated lead-in.
         // #1167: a history-save failure takes the single post-completion

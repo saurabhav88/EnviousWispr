@@ -33,7 +33,7 @@ public enum PolishFailureTelemetryChannel: Sendable, Equatable {
 /// that downstream code needs for that failure:
 ///   - `telemetryTag` — the low-cardinality Sentry reason tag.
 ///   - `leadIn` — whether the on-screen notice reads "AI polish failed:" (a real
-///     error) or "AI cleanup skipped:" (not-really-broken: no key yet, too long,
+///     error) or "AI polish skipped:" (not-really-broken: no key yet, too long,
 ///     timed out).
 ///   - `message(provider:)` — the actionable, self-contained user sentence.
 ///   - `composedMessage(provider:)` — `<leadIn> <message>`, the full notice.
@@ -111,7 +111,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   case unknown
 
   /// Whether the on-screen notice reports a real error ("AI polish failed: ...") or a
-  /// not-really-broken skip ("AI cleanup skipped: ..."). The words themselves live in each
+  /// not-really-broken skip ("AI polish skipped: ..."). The words themselves live in each
   /// notice's whole sentence (#3142); this is the tone the completion planner reads.
   public enum LeadIn: Sendable, Equatable {
     case failed
@@ -272,9 +272,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       // (#1446), and a shared arm cannot drift the way two arms can.
       return String(
         localized:
-          "AI cleanup skipped: no \(name) API key set yet. Add one in Settings.",
+          "AI polish skipped: no \(name) API key set yet. Add one in Settings.",
         comment:
-          "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+          "Dictation notice: AI polish was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
       )
     // #1914: Ollama 401 means the user is signed out and 403 means the selected
     // model requires a subscription. Local Ollama has no authentication layer,
@@ -342,19 +342,19 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     case .noModelSelected:
       return String(
         localized:
-          "AI cleanup skipped: no polish model is selected. Pick one in Settings.",
-        comment: "Dictation notice: AI cleanup was skipped, not broken; the original text was used."
+          "AI polish skipped: no polish model is selected. Pick one in Settings.",
+        comment: "Dictation notice: AI polish was skipped, not broken; the original text was used."
       )
     case .inputTooLong:
       return String(
         localized:
-          "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings.",
-        comment: "Dictation notice: AI cleanup was skipped, not broken; the original text was used."
+          "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings.",
+        comment: "Dictation notice: AI polish was skipped, not broken; the original text was used."
       )
     case .contentBlocked:
       return String(
         localized:
-          "AI polish failed: \(name) blocked this text. Your original was pasted unchanged.",
+          "AI polish failed: \(name) blocked this text. Pasted without AI polish.",
         comment:
           "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
       )
@@ -395,7 +395,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
         return String(
           localized:
-            "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged.",
+            "AI polish failed: a configuration problem stopped it. Pasted without AI polish.",
           comment: "Dictation notice: AI polish failed and the original text was used.")
       }
     case .emptyResponse:
@@ -414,21 +414,21 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     case .timedOut:
       return String(
         localized:
-          "AI cleanup skipped: \(name) did not answer in time. Your original text was pasted unchanged.",
+          "AI polish skipped: \(name) did not answer in time. Pasted without AI polish.",
         comment:
-          "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
+          "Dictation notice: AI polish was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
       )
     case .unknown:
       return String(
         localized:
-          "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged.",
+          "AI polish failed: an unexpected error stopped it. Pasted without AI polish.",
         comment: "Dictation notice: AI polish failed and the original text was used.")
     case .outputTruncated:
       return String(
         localized:
-          "AI polish failed: \(name) ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation.",
+          "AI polish failed: \(name) ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation.",
         comment:
-          "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is. EnviousWispr is the app name; keep it."
+          "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
       )
     }
   }
@@ -445,9 +445,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     switch self {
     case .providerUnreachable:
       return String(
-        localized: "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish.",
+        localized: "AI polish skipped: Ollama isn't running. Start it in Settings → AI Polish.",
         comment:
-          "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+          "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
       )
     case .modelUnavailable:
       // #1914: was "no model is installed in Ollama", which is false whenever
@@ -456,16 +456,16 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       // selection, which now has its own arm below.
       return String(
         localized:
-          "AI cleanup skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish.",
+          "AI polish skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish.",
         comment:
-          "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+          "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
       )
     case .noModelSelected:
       return String(
         localized:
-          "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish.",
+          "AI polish skipped: no polish model selected. Pick one in Settings → AI Polish.",
         comment:
-          "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
+          "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page."
       )
     default:
       return nil
