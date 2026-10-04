@@ -110,7 +110,8 @@ struct AIPolishProviderPicker: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
         RoundedRectangle(cornerRadius: PolishSectionLayout.cardRadius, style: .continuous)
-          .fill(Color.stAccent.opacity(0.08))
+          // The input fill every Settings dropdown wears (#3445), so the card reads as one.
+          .fill(Color.stInputBg)
       )
       .overlay(
         RoundedRectangle(cornerRadius: PolishSectionLayout.cardRadius, style: .continuous)
