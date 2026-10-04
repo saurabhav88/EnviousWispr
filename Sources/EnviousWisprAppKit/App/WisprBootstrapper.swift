@@ -101,6 +101,8 @@ package final class WisprBootstrapper {
   let llmDiscovery: LLMModelDiscoveryCoordinator
   /// #3438: which cloud keys are saved, for surfaces other than the AI Polish editor.
   let savedKeyPresence: SavedKeyPresence
+  /// #3438: which AI polish setup warnings may show.
+  let polishSetupMonitor: PolishSetupMonitor
   let vocabularyPackManager: VocabularyPackManager
 
   /// Quick Add (#2381), as ONE slot rather than four.
@@ -1065,6 +1067,9 @@ package final class WisprBootstrapper {
     // #1480: late-binding bridge so this early-assigned onChange closure can
     // forward setting-change facts to the (later-constructed) presenter.
     let bluetoothAwarenessPresenterHolder = BluetoothAwarenessPresenterHolder()
+    // #3438: the same late binding for the setup-warning monitor, built further down. Its
+    // configuration and eligibility move here, synchronously, never only by later observation.
+    let polishSetupMonitorHolder = PolishSetupMonitorHolder()
     // #3289 §8b: the same late binding for the idle-memory observer, built further down; a usage
     // metrics change restarts its idle stretch.
     weak var idleMemoryObserverForSettings: IdleMemoryObserver?
@@ -1073,12 +1078,17 @@ package final class WisprBootstrapper {
       [
         weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
         bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
-        weak learnFromEdits, weak appWindowCoordinator
+        weak learnFromEdits, weak appWindowCoordinator, polishSetupMonitorHolder
       ] key
       in
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
       if key == .shareUsageMetrics { idleMemoryObserverForSettings?.usageMetricsChanged() }
+      switch key {
+      case .llmProvider, .llmModel, .ollamaModel, .onboardingState:
+        polishSetupMonitorHolder.monitor?.configurationOrEligibilityChanged()
+      default: break
+      }
       // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
       // throws/awaits into the setter path).
       settingsChangeTelemetry?.handle(key)
@@ -2103,6 +2113,22 @@ package final class WisprBootstrapper {
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
+    let polishSetupMonitor = PolishSetupMonitor(
+      readInputs: {
+        [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
+        PolishSetupInputs.live(
+          settings: settings, localPolishRuntimes: localPolishRuntimes,
+          aiAvailability: aiAvailability, setup: setup, llmDiscovery: llmDiscovery,
+          savedKeyPresence: savedKeyPresence)
+      },
+      ollamaRefresh: OllamaOffPageRefresh(
+        requestOnce: { [weak setup] in setup?.requestOffPageOllamaRefresh() },
+        cancel: { [weak setup] in setup?.cancelOffPageOllamaRefresh() }))
+    self.polishSetupMonitor = polishSetupMonitor
+    polishSetupMonitorHolder.monitor = polishSetupMonitor
+    savedKeyPresence.onChange = { [weak polishSetupMonitor] in
+      polishSetupMonitor?.configurationOrEligibilityChanged()
+    }
     self.savedKeyPresence = savedKeyPresence
     self.vocabularyPackManager = vocabularyPackManager
     // #2381. Built from three collaborators this root already holds; it adds no new dependency of
@@ -2283,6 +2309,8 @@ package final class WisprBootstrapper {
     appWindowCoordinator.finishLaunch()
     // #2381.
     quickAdd.install()
+    // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not.
+    polishSetupMonitor.start()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
     // "recovering" pill. Strict limb, single-flight, one attempt per orphan.
     Task { await recoveryCoordinator.scanAndRecover() }
@@ -2315,6 +2343,8 @@ package final class WisprBootstrapper {
 
   package func applicationDidBecomeActive() {
     appLifecycleCoordinator.runDidBecomeActive()
+    // #3438: after the pane-scoped probe above, so a visible watch is never doubled.
+    polishSetupMonitor.applicationDidBecomeActive()
     // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }
@@ -2328,6 +2358,8 @@ package final class WisprBootstrapper {
     // a Cocoa quit concludes no take, so this is the only path that restores
     // the volume for a quit mid-dictation.
     dictationRuntime.otherAudioHold.finishForTermination()
+    // #3438: stop observing before the owners it reads are torn down.
+    polishSetupMonitor.stop()
     // #3269: best effort; the process may exit first, and every outbox write is atomic anyway.
     Task { await FeedbackReporter.stopDelivery() }
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
@@ -2424,6 +2456,7 @@ private struct MainWindowRoot: View {
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
       .environment(b.savedKeyPresence)
+      .environment(b.polishSetupMonitor)
       .environment(b.vocabularyPackManager)
       // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
       .environment(b.learnFromEdits.availability)
@@ -2478,6 +2511,7 @@ private struct OnboardingWindowRoot: View {
     .environment(b.aiAvailability)
     .environment(b.llmDiscovery)
     .environment(b.savedKeyPresence)
+    .environment(b.polishSetupMonitor)
     .environment(\.asrManager, b.asrManager)
     .environment(\.activeEngine, b.activeEngine)
     .environment(\.keychainManager, b.keychainManager)

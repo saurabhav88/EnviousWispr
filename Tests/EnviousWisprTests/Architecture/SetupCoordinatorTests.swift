@@ -190,6 +190,58 @@ struct SetupCoordinatorTests {
     )
   }
 
+  // MARK: - #3438: the one off-page probe for the setup warnings
+
+  @Test("the off-page probe runs once for a never-observed state, coalescing a second request")
+  func offPageOllamaRefresh() async {
+    let gate = ProbeGate()
+    let coord = makeCoordinator(ollamaStatusProbe: { trigger in await gate.park(trigger) })
+    // The `.detecting` launch default was never observed, so it is probed.
+    #expect(coord.ollamaSetup.lastCommitAt == nil)
+    let first = coord.requestOffPageOllamaRefresh()
+    #expect(first != nil)
+    #expect(await gate.waitForArrivals(1), "the probe never started")
+    // A second activation while the first probe is in flight does not start another.
+    #expect(coord.requestOffPageOllamaRefresh() == nil)
+    await gate.open()
+    // The subject's own task: done means the slot was released too.
+    await first?.value
+    #expect(await gate.triggers == ["app_active"])
+    // Released: a later activation may probe again.
+    let again = coord.requestOffPageOllamaRefresh()
+    #expect(again != nil)
+    again?.cancel()
+  }
+
+  @Test("a visible watch takes over from a queued or running off-page probe")
+  func visibleWatchTakesOver() async {
+    let gate = ProbeGate()
+    let coord = makeCoordinator(ollamaStatusProbe: { trigger in await gate.park(trigger) })
+    // A watch already running: the request does nothing at all.
+    coord.startOllamaStatusWatch()
+    coord.requestOffPageOllamaRefresh()
+    coord.stopOllamaStatusWatch()
+
+    // Requested first, then a pane starts watching before the probe runs: it stands down.
+    let queued = coord.requestOffPageOllamaRefresh()
+    coord.startOllamaStatusWatch()
+    await queued?.value
+    coord.stopOllamaStatusWatch()
+    #expect(await gate.triggers.isEmpty)
+    await gate.open()
+  }
+
+  @Test("a cancelled off-page probe never runs")
+  func offPageOllamaRefreshCancelled() async {
+    let gate = ProbeGate()
+    let coord = makeCoordinator(ollamaStatusProbe: { trigger in await gate.park(trigger) })
+    let task = coord.requestOffPageOllamaRefresh()
+    coord.cancelOffPageOllamaRefresh()
+    await task?.value
+    #expect(await gate.triggers.isEmpty)
+    await gate.open()
+  }
+
   @Test("cleanup() also cancels migration/preload tasks")
   func cleanupCancelsMigrationAndPreloadTasks() async {
     let fakeASR = FakeASRManager(backend: .whisperKit)
@@ -412,4 +464,55 @@ private final class FakeASRManager: ASRManagerInterface {
   }
   func cancelIdleTimer() { fatalError("not used in SetupCoordinatorTests") }
   func cancelInFlightLoad() { fatalError("not used in SetupCoordinatorTests") }
+}
+
+/// #3438: a probe fake that publishes its arrival in the same actor step as parking and waits
+/// for the test to open it. Each arrival wait has its own deadline, which only fails that one
+/// waiter and releases parked probes, so a failed test neither hangs nor strands a probe.
+private actor ProbeGate {
+  private(set) var triggers: [String] = []
+  private var opened = false
+  private var parked: [CheckedContinuation<Void, Never>] = []
+  private var arrivalWaiters: [UInt64: (count: Int, continuation: CheckedContinuation<Bool, Never>)] =
+    [:]
+  private var nextWaiter: UInt64 = 0
+
+  func park(_ trigger: String) async {
+    triggers.append(trigger)
+    for (id, waiter) in arrivalWaiters where waiter.count <= triggers.count {
+      arrivalWaiters[id] = nil
+      waiter.continuation.resume(returning: true)
+    }
+    if !opened { await withCheckedContinuation { parked.append($0) } }
+  }
+
+  func open() {
+    opened = true
+    let waiting = parked
+    parked = []
+    waiting.forEach { $0.resume() }
+  }
+
+  func waitForArrivals(_ count: Int, deadlineMs: Int = 2000) async -> Bool {
+    if triggers.count >= count { return true }
+    nextWaiter &+= 1
+    let id = nextWaiter
+    let timer = Task { [weak self] in
+      do {
+        // deadline-fallback: release only when the deadline expires.
+        try await Task.sleep(for: .milliseconds(deadlineMs))
+      } catch {
+        return
+      }
+      await self?.expire(id)
+    }
+    defer { timer.cancel() }
+    return await withCheckedContinuation { arrivalWaiters[id] = (count, $0) }
+  }
+
+  private func expire(_ id: UInt64) {
+    guard let waiter = arrivalWaiters.removeValue(forKey: id) else { return }
+    waiter.continuation.resume(returning: false)
+    open()
+  }
 }

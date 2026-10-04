@@ -28,6 +28,10 @@ final class SavedKeyPresence {
   ]
   private(set) var revisions: [LLMProvider: UInt64] = [.openAI: 0, .gemini: 0, .claude: 0]
 
+  /// Told synchronously after every change here, so a reader whose configuration includes the
+  /// credential revision never misses one between two observations (#3438 monitor).
+  @ObservationIgnored var onChange: (@MainActor () -> Void)?
+
   func state(for provider: LLMProvider) -> SavedKeyState {
     states[provider] ?? .absent
   }
@@ -46,6 +50,7 @@ final class SavedKeyPresence {
   func recordRead(_ state: SavedKeyState, for provider: LLMProvider) {
     guard Self.cloudProviders.contains(provider) else { return }
     states[provider] = state
+    onChange?()
   }
 
   /// A save succeeded: the key is present and is a new credential.
@@ -68,5 +73,6 @@ final class SavedKeyPresence {
     guard Self.cloudProviders.contains(provider) else { return }
     revisions[provider, default: 0] &+= 1
     states[provider] = state
+    onChange?()
   }
 }

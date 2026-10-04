@@ -29,6 +29,10 @@ final class SetupCoordinator {
   private var ollamaStatusPollTask: Task<Void, Never>?
   @ObservationIgnored
   private var ollamaActivationProbeTask: Task<Void, Never>?
+  /// #3438: the one off-page probe on app activation, for the setup warnings when dictation
+  /// uses Ollama and no pane is watching. At most one in flight.
+  @ObservationIgnored
+  private var ollamaOffPageProbeTask: Task<Void, Never>?
 
   private let asrManager: any ASRManagerInterface
   private let preloadAction: @MainActor () async -> Void
@@ -99,6 +103,8 @@ final class SetupCoordinator {
   /// cancels-before-restart, mirroring `startPreloadObservation()`'s own
   /// precedent for the sibling WhisperKit observer.
   func startOllamaStatusWatch() {
+    // #3438: the visible watch owns Ollama status from here; an off-page probe stands down.
+    cancelOffPageOllamaRefresh()
     ollamaStatusPollTask?.cancel()
     ollamaStatusPollTask = Task { [weak self] in
       while !Task.isCancelled {
@@ -136,14 +142,52 @@ final class SetupCoordinator {
     }
   }
 
+  /// #3438: one silent Ollama probe on app activation for the setup warnings, when no pane is
+  /// watching. Off-page, the service keeps its last value, which goes stale when the person
+  /// starts or quits Ollama outside the app. Never while a pane's watch runs (its own
+  /// activation probe covers that), never twice at once, never during a pull or a probe
+  /// already in flight. The `.detecting` launch default was never observed, so it is probed.
+  /// Returns the probe's task, for a caller (a test) that must know when it has finished and
+  /// released its slot; nil when nothing was started.
+  @discardableResult
+  func requestOffPageOllamaRefresh() -> Task<Void, Never>? {
+    guard ollamaStatusPollTask == nil, ollamaOffPageProbeTask == nil else { return nil }
+    let neverObserved = ollamaSetup.lastCommitAt == nil
+    guard ollamaSetup.setupState.allowsSilentBackgroundRefresh || neverObserved else { return nil }
+    let task = Task { [weak self] in
+      // `Task.cancel()` only sets a flag; a closure cancelled before entry
+      // still runs until its first cancellation check. This is that check.
+      guard !Task.isCancelled, let self else { return }
+      // A pane may have started watching between the request and now.
+      guard self.ollamaStatusPollTask == nil else {
+        self.ollamaOffPageProbeTask = nil
+        return
+      }
+      await self.ollamaStatusProbe("app_active")
+      // A cancelled probe was already replaced or cleared by its canceller; only the live one
+      // releases the slot.
+      guard !Task.isCancelled else { return }
+      self.ollamaOffPageProbeTask = nil
+    }
+    ollamaOffPageProbeTask = task
+    return task
+  }
+
+  func cancelOffPageOllamaRefresh() {
+    ollamaOffPageProbeTask?.cancel()
+    ollamaOffPageProbeTask = nil
+  }
+
   /// Cancel every task this coordinator owns: the Ollama poll, the Ollama
-  /// activation probe, the WhisperKit preload observer, and the WhisperKit
-  /// migration task.
+  /// activation probe, the off-page probe, the WhisperKit preload observer, and the
+  /// WhisperKit migration task.
   func cleanup() {
     ollamaStatusPollTask?.cancel()
     ollamaStatusPollTask = nil
     ollamaActivationProbeTask?.cancel()
     ollamaActivationProbeTask = nil
+    ollamaOffPageProbeTask?.cancel()
+    ollamaOffPageProbeTask = nil
     whisperKitPreloadTask?.cancel()
     whisperKitPreloadTask = nil
     whisperKitMigrationTask?.cancel()

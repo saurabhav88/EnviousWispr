@@ -158,11 +158,22 @@ public final class OllamaSetupService {
 
   // MARK: - Public State
 
-  public private(set) var setupState: OllamaSetupState = .detecting
+  public private(set) var setupState: OllamaSetupState = .detecting {
+    didSet { lastCommitAt = .now }
+  }
   public private(set) var pullProgress: Double = 0
   public private(set) var pullStatusText: String = ""
   public private(set) var currentPullingModel: String?
-  public private(set) var downloadedModels: [OllamaDownloadedModel] = []
+  public private(set) var downloadedModels: [OllamaDownloadedModel] = [] {
+    didSet { lastCommitAt = .now }
+  }
+
+  /// #3438: when `setupState` or `downloadedModels` was last committed, on the monotonic clock.
+  /// A content-free receipt of freshness, comparable with when another producer (a dictation)
+  /// observed Ollama: nil means nothing was ever observed (the `.detecting` default is not an
+  /// observation). Every writer is covered because it is set in the two properties' `didSet`,
+  /// not at the 23 assignment sites.
+  @ObservationIgnored public private(set) var lastCommitAt: ContinuousClock.Instant?
   public private(set) var warmupState: OllamaWarmupState = .idle
 
   /// #1956: what Ollama's own cloud endpoint last told us, and whether we have
