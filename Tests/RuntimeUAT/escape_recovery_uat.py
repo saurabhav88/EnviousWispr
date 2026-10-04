@@ -597,9 +597,13 @@ def dictate_then_cancel(base):
     subprocess.run(["afplay", clip], timeout=60, check=True)
     si.hold_key("lctrl", 0.12)
     if not wait_for("the session to reach a terminal",
-                    lambda: "dictation_terminal" in log_since(base), deadline=60.0):
+                    lambda: "dictation_terminal" in log_since(base)
+                    or not evidence_is_current(base, log_length()), deadline=60.0):
         ensure_stopped(base, "the cancel did not conclude the session")
         return "no-terminal"
+    # A rotation hides the terminal line in the previous file: name the instrument fault rather
+    # than reporting a take that never concluded.
+    require_current(base, "the take")
     return "ok"
 
 
