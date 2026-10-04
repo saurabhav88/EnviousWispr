@@ -53,24 +53,29 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   /// #3423: the system-wide keyboard-focus answer, and how many times it was read.
   var keyboardFocus: KeyboardFocusRead = .unreadable
   private(set) var keyboardFocusReads = 0
-  func keyboardFocusRead(admit: @MainActor (AXUIElement) -> Bool) -> KeyboardFocusRead {
-    guard admit(AXUIElementCreateSystemWide()) else { return .unreadable }
+  func keyboardFocusRead(budget: PasteLandingPrepareBudget?) -> KeyboardFocusRead {
+    if let budget,
+      !budget.admit(
+        AXUIElementCreateSystemWide(), cappedAt: PasteService.keyboardFocusReadCapSeconds)
+    {
+      return .unreadable
+    }
     keyboardFocusReads += 1
     return keyboardFocus
   }
   func destinationActivity(
     pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
-    admit: @MainActor (AXUIElement) -> Bool
+    budget: PasteLandingPrepareBudget?
   ) -> DestinationActivity {
     DestinationActivityEvaluator.evaluate(
       pid: pid, capturedElement: capturedElement, mode: mode, front: { self.frontmost },
-      focus: { self.keyboardFocusRead(admit: admit) })
+      focus: { self.keyboardFocusRead(budget: budget) })
   }
-  func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
+  func destinationSwitchToken(pid: pid_t, budget: PasteLandingPrepareBudget?)
     -> DestinationSwitchToken
   {
     DestinationActivityEvaluator.switchToken(
-      pid: pid, front: { self.frontmost }, focus: { self.keyboardFocusRead(admit: admit) })
+      pid: pid, front: { self.frontmost }, focus: { self.keyboardFocusRead(budget: budget) })
   }
   /// Runs on every subrole read: a test advances the clock here to spend time INSIDE the read.
   var onSubroleRead: (() -> Void)?

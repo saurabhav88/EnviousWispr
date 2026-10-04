@@ -109,22 +109,22 @@ private final class CaptureAX: PastedRegionAXOperations {
     .element(AXUIElementCreateApplication(pid + 10_000))
   }
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool { true }
-  func keyboardFocusRead(admit: @MainActor (AXUIElement) -> Bool) -> KeyboardFocusRead {
+  func keyboardFocusRead(budget: PasteLandingPrepareBudget?) -> KeyboardFocusRead {
     .unreadable
   }
   func destinationActivity(
     pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
-    admit: @MainActor (AXUIElement) -> Bool
+    budget: PasteLandingPrepareBudget?
   ) -> DestinationActivity {
     DestinationActivityEvaluator.evaluate(
       pid: pid, capturedElement: capturedElement, mode: mode, front: { 42 },
-      focus: { self.keyboardFocusRead(admit: admit) })
+      focus: { self.keyboardFocusRead(budget: budget) })
   }
-  func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
+  func destinationSwitchToken(pid: pid_t, budget: PasteLandingPrepareBudget?)
     -> DestinationSwitchToken
   {
     DestinationActivityEvaluator.switchToken(
-      pid: pid, front: { 42 }, focus: { self.keyboardFocusRead(admit: admit) })
+      pid: pid, front: { 42 }, focus: { self.keyboardFocusRead(budget: budget) })
   }
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome { .subrole(nil) }
   func supportsManualAccessibility(_ application: AXUIElement) -> Bool? { manual }

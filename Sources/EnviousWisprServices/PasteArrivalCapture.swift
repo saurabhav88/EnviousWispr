@@ -59,13 +59,19 @@ package final class PasteLandingPrepareBudget {
   /// Whether the next Accessibility call on `handle` may run. Installs the remaining time on that
   /// exact handle first.
   package func admit(_ handle: AXUIElement) -> Bool {
+    admit(handle, cappedAt: .infinity)
+  }
+
+  /// `admit(_:)` for a call whose own bound is shorter than the budget (#3423, the system-wide
+  /// keyboard-focus read): installs the remaining time or `cap`, whichever is less.
+  package func admit(_ handle: AXUIElement, cappedAt cap: Double) -> Bool {
     guard refusal == nil else { return false }
     let remainingMs = totalMs - elapsedMs
     guard remainingMs > 0 else {
       refusal = .exhausted
       return false
     }
-    guard ax.setMessagingTimeout(handle, seconds: Double(remainingMs) / 1000) else {
+    guard ax.setMessagingTimeout(handle, seconds: min(cap, Double(remainingMs) / 1000)) else {
       refusal = .timeoutNotInstalled
       return false
     }
@@ -466,7 +472,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     guard observedTiers.contains(context.tier) else { return nil }
     let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
     let application = ax.applicationElement(pid: context.pid)
-    let switchTokenBefore = ax.destinationSwitchToken(pid: context.pid, admit: budget.admit)
+    let switchTokenBefore = ax.destinationSwitchToken(pid: context.pid, budget: budget)
     let manualAX: Bool? =
       budget.admit(application) ? ax.supportsManualAccessibility(application) : nil
 
@@ -631,7 +637,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       manualAccessibilityAttempts < Self.maxManualAccessibilityAttempts,
       ax.isTrusted(), ax.isProcessRunning(context.pid),
       ax.destinationActivity(
-        pid: context.pid, capturedElement: nil, mode: .full, admit: { _ in true }) != .notActive,
+        pid: context.pid, capturedElement: nil, mode: .full, budget: nil) != .notActive,
       ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
     else { return }
     manualAccessibilityAttempts += 1
@@ -752,7 +758,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     // Whole-app causes first: every check below only asks whether a comparison can be trusted, and
     // must not hide that the app quit, lost the front, or took back our permission.
     if !ax.isProcessRunning(context.pid) { return .inconclusive(.appTerminated) }
-    if ax.destinationSwitchToken(pid: context.pid, admit: { _ in true }) != switchTokenBefore {
+    if ax.destinationSwitchToken(pid: context.pid, budget: nil) != switchTokenBefore {
       return .inconclusive(.appSwitched)
     }
     if case .permissionLost = attempt { return .cannotRead(.permissionLost) }

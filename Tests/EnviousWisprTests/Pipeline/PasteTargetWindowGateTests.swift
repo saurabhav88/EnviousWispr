@@ -430,10 +430,8 @@ struct PasteTargetWindowGateWiringTests {
     #expect(finals.count == 2)
     for final in finals {
       // The front path keeps a local front read after the omnibox re-check; only the owner path
-      // reads the focus, and it is the last AX step.
-      #expect(
-        final.node.arguments.trimmedDescription.contains(
-          "mode: gate.ownerPath ? .full : .frontOnly"))
+      // reads the focus, and it is the last AX step (`PasteActivationAdmissionTests` runs it).
+      #expect(final.node.arguments.trimmedDescription.contains("finalDestinationActivity("))
     }
     let omnibox = calls.found.filter {
       $0.callee == "PasteService.freshFocusedElement"
@@ -445,6 +443,28 @@ struct PasteTargetWindowGateWiringTests {
     #expect(omnibox.allSatisfy { !Self.onElseOf("isChromiumOmnibox", $0.node) })
   }
 
+  @Test("Control: the owner-path ordering check fails on a fixture whose omnibox read ignores it")
+  func orderingCheckCatchesABrokenFixture() throws {
+    let broken = """
+      let ok: Bool =
+        if gate.refusal != nil {
+          true
+        } else if isChromiumOmnibox {
+          PasteService.freshFocusedElement(
+            matching: element, messagingTimeout: remainingGateSeconds(gate.budget)) != nil
+        } else if gate.ownerPath {
+          true
+        } else {
+          true
+        }
+      """
+    let calls = Calls()
+    calls.walk(Parser.parse(source: broken))
+    let omnibox = calls.found.filter { $0.callee == "PasteService.freshFocusedElement" }
+    try #require(omnibox.count == 1)
+    #expect(!Self.onElseOf("gate.ownerPath", omnibox[0].node))
+  }
+
   @Test(
     "Activation asks the owner question once before raising, and its poll stays front-only (#3423)")
   func activationAdmission() throws {
@@ -453,7 +473,7 @@ struct PasteTargetWindowGateWiringTests {
     let firstIssue = try #require(
       calls.found.filter { $0.callee == "issue" }.map(\.node.position).min())
     let admissions = activity.filter {
-      $0.node.arguments.trimmedDescription.contains("admit: stepBudget().admit")
+      $0.node.arguments.trimmedDescription.contains("budget: stepBudget()")
     }
     try #require(admissions.count == 1)
     #expect(admissions[0].node.arguments.trimmedDescription.contains("mode: .full"))

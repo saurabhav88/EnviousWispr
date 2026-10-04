@@ -198,6 +198,15 @@ final class KernelSessionContext {
     case unreadable
   }
 
+  /// Whether a focus owner other than the front app may become the paste target (#3423): a running
+  /// regular or accessory application. A prohibited-policy process (a helper, an XPC or service
+  /// host) never does, nor a terminated one.
+  nonisolated static func isEligibleOwner(
+    activationPolicy: NSApplication.ActivationPolicy, isTerminated: Bool
+  ) -> Bool {
+    !isTerminated && (activationPolicy == .regular || activationPolicy == .accessory)
+  }
+
   /// This recording's `FocusOwnerState`; nil before the first record start.
   var focusOwnerState: FocusOwnerState?
 
@@ -223,7 +232,8 @@ final class KernelSessionContext {
       NSRunningApplication(processIdentifier: $0)
     },
     isEligibleOwner: (NSRunningApplication) -> Bool = {
-      !$0.isTerminated && ($0.activationPolicy == .regular || $0.activationPolicy == .accessory)
+      KernelSessionContext.isEligibleOwner(
+        activationPolicy: $0.activationPolicy, isTerminated: $0.isTerminated)
     },
     ownPID: pid_t = ProcessInfo.processInfo.processIdentifier
   ) -> String? {

@@ -388,37 +388,57 @@ public enum PasteService {
     }
   }
 
+  /// The bound on one keyboard-focus read on the paste, landing and learning paths (#3423 plan
+  /// section 2.5, "AX read cost": at most 0.25 s, less when the caller's budget has less left).
+  package static let keyboardFocusReadCapSeconds: Double = 0.25
+
   /// One uncached system-wide `AXFocusedUIElement` read and the pid that owns the answer (#3423).
   /// The system-wide read follows the KEYBOARD focus, which a non-activating launcher panel takes
   /// without changing the front application; a per-application focused element cannot answer
   /// this, because it survives an app switch.
   ///
   /// **The bound is process-wide, so it is put back.** A messaging timeout on the system-wide
-  /// handle sets the default for every Accessibility call this process makes (`AXUIElement.h`), and
-  /// `admit` (a `PasteLandingPrepareBudget`) installs its remaining time on the handle it is given.
-  /// Every exit after the first install therefore resets the default with `0`. Nothing else in the
+  /// handle sets the default for every Accessibility call this process makes (`AXUIElement.h`).
+  /// Every exit after the trust check therefore resets the default with `0`. Nothing else in the
   /// app sets the system-wide timeout, so the default is what was there before.
   ///
-  /// - Parameter bound: installed before `admit`, which may only shorten it. Nil leaves the default
-  ///   (record start, which has always made this read unbounded).
+  /// - Parameters:
+  ///   - cap: the read's bound; nil reads unbounded (record start, which has always been).
+  ///   - admit: asked with the system-wide handle and `cap`; it installs `min(cap, what its budget
+  ///     has left)` and says whether the read may run. Nil installs `cap` itself.
+  ///   - onFailure: told the call's error when the read answered no element or failed, after the
+  ///     call (record start's diagnostic line).
   @MainActor
   package static func readKeyboardFocus(
-    bound: Double?, admit: @MainActor (AXUIElement) -> Bool,
+    cap: Double?, admit: (@MainActor (AXUIElement, Double) -> Bool)?,
+    onFailure: ((AXError) -> Void)? = nil,
     operations: KeyboardFocusOperations = .live
   ) -> KeyboardFocusRead {
     guard operations.isTrusted() else { return .unreadable }
     let systemWide = operations.systemWide()
     defer { _ = operations.setMessagingTimeout(systemWide, 0) }
-    if let bound, !operations.setMessagingTimeout(systemWide, bound) { return .unreadable }
-    guard admit(systemWide) else { return .unreadable }
+    if let cap {
+      let admitted =
+        admit.map { $0(systemWide, cap) } ?? operations.setMessagingTimeout(systemWide, cap)
+      guard admitted else { return .unreadable }
+    }
     let (error, value) = operations.copyFocusedElement(systemWide)
     // The same mapping as `PasteService.focusedElement`: `.noValue` is the ordinary "nothing is
-    // focused" answer, and a successful call with nothing usable is an absence, not a failure.
-    if isUnfocusedResponse(error) { return .noElement }
-    guard error == .success else { return .unreadable }
-    guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return .noElement }
-    let element = value as! AXUIElement
-    guard let owner = operations.ownerPID(element) else { return .ownerUnreadable(element: element) }
+    // focused" answer, and a successful call with no value is an absence. A value that is not an
+    // element confirms nothing, so it is unreadable, never "nothing focused".
+    let element: AXUIElement
+    if isUnfocusedResponse(error) || (error == .success && value == nil) {
+      onFailure?(error)
+      return .noElement
+    } else if error == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() {
+      element = value as! AXUIElement
+    } else {
+      onFailure?(error)
+      return .unreadable
+    }
+    guard let owner = operations.ownerPID(element), owner > 0 else {
+      return .ownerUnreadable(element: element)
+    }
     return .focused(element: element, ownerPID: owner)
   }
 
@@ -437,7 +457,16 @@ public enum PasteService {
       }
       return .unreadable
     }
-    let read = readKeyboardFocus(bound: nil, admit: { _ in true })
+    let read = readKeyboardFocus(
+      cap: nil, admit: nil,
+      onFailure: { error in
+        Task {
+          await AppLogger.shared.log(
+            "AXDiag capture: systemWide focus FAILED err=\(error.rawValue)",
+            level: .info, category: "AXDiag"
+          )
+        }
+      })
     let element: AXUIElement
     let owner: pid_t?
     switch read {
@@ -448,12 +477,6 @@ public enum PasteService {
       element = focused
       owner = nil
     case .noElement, .unreadable:
-      Task {
-        await AppLogger.shared.log(
-          "AXDiag capture: systemWide focus FAILED read=\(read.logLabel)",
-          level: .info, category: "AXDiag"
-        )
-      }
       return read
     }
     AXUIElementSetAttributeValue(

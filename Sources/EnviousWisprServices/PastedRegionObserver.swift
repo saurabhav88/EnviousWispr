@@ -630,9 +630,10 @@ package protocol PastedRegionAXOperations: AnyObject {
   func focusedElement(pid: pid_t) -> PastedRegionFocus
   /// Whether the bound was installed; a read behind a failed install is unbounded.
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool
-  /// #3423: one uncached system-wide `AXFocusedUIElement` read and the pid that owns the answer.
-  /// The system-wide handle is passed to `admit` first; a refusal answers `.unreadable` with no call.
-  func keyboardFocusRead(admit: @MainActor (AXUIElement) -> Bool) -> KeyboardFocusRead
+  /// #3423: one uncached system-wide `AXFocusedUIElement` read and the pid that owns the answer,
+  /// bounded by `PasteService.keyboardFocusReadCapSeconds` or what `budget` has left, whichever is
+  /// less; a spent budget answers `.unreadable` with no call. Nil: the cap alone.
+  func keyboardFocusRead(budget: PasteLandingPrepareBudget?) -> KeyboardFocusRead
   /// #3423: whether `pid` is where keyboard input goes now. The ONE answer to that question: there
   /// is no raw front-pid read on this seam, because the front application is not always the owner
   /// of the keyboard focus (a non-activating launcher panel takes the focus and leaves the front
@@ -640,11 +641,11 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// when `pid` is not the front app. See `DestinationActivityEvaluator`.
   func destinationActivity(
     pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
-    admit: @MainActor (AXUIElement) -> Bool
+    budget: PasteLandingPrepareBudget?
   ) -> DestinationActivity
   /// #3423: an opaque snapshot for "did the active destination change between two moments".
   /// Equal tokens mean no switch.
-  func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
+  func destinationSwitchToken(pid: pid_t, budget: PasteLandingPrepareBudget?)
     -> DestinationSwitchToken
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome
   /// Nil when the attribute names could not be read: "could not tell" is not "unsupported".
@@ -1476,7 +1477,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // means front or the keyboard-focus owner (#3423).
     guard
       ax.destinationActivity(
-        pid: pid, capturedElement: nil, mode: .full, admit: { _ in true }) != .notActive
+        pid: pid, capturedElement: nil, mode: .full, budget: nil) != .notActive
     else { return .destinationMismatch }
     let application = ax.applicationElement(pid: pid)
     // A read behind a failed bound is unbounded: refuse rather than hang.
@@ -1854,7 +1855,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
     if checkIdentity {
       guard
         ax.destinationActivity(
-          pid: target.pid, capturedElement: nil, mode: .full, admit: { _ in true })
+          pid: target.pid, capturedElement: nil, mode: .full, budget: nil)
           != .notActive
       else {
         end(.focusChanged)
@@ -2322,8 +2323,7 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     return DestinationActivityEvaluator.activeApplications(
       front: front,
       focus: {
-        PasteService.readKeyboardFocus(
-          bound: PasteService.axMessagingTimeoutSeconds, admit: { _ in true })
+        PasteService.readKeyboardFocus(cap: PasteService.keyboardFocusReadCapSeconds, admit: nil)
       },
       application: { pid in
         NSRunningApplication(processIdentifier: pid).map {
@@ -2332,26 +2332,31 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
       })
   }
 
-  /// One bounded system-wide read (`PasteService.readKeyboardFocus`), at most the usual 0.5 s,
-  /// shortened by `admit`.
-  package func keyboardFocusRead(admit: @MainActor (AXUIElement) -> Bool) -> KeyboardFocusRead {
-    PasteService.readKeyboardFocus(bound: PasteService.axMessagingTimeoutSeconds, admit: admit)
+  /// One bounded system-wide read (`PasteService.readKeyboardFocus`): at most
+  /// `keyboardFocusReadCapSeconds`, less when `budget` has less left; a spent budget reads nothing.
+  package func keyboardFocusRead(budget: PasteLandingPrepareBudget?) -> KeyboardFocusRead {
+    var admit: (@MainActor (AXUIElement, Double) -> Bool)?
+    if let budget {
+      admit = { handle, cap in budget.admit(handle, cappedAt: cap) }
+    }
+    return PasteService.readKeyboardFocus(
+      cap: PasteService.keyboardFocusReadCapSeconds, admit: admit)
   }
 
   package func destinationActivity(
     pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
-    admit: @MainActor (AXUIElement) -> Bool
+    budget: PasteLandingPrepareBudget?
   ) -> DestinationActivity {
     DestinationActivityEvaluator.evaluate(
       pid: pid, capturedElement: capturedElement, mode: mode, front: Self.frontPID,
-      focus: { self.keyboardFocusRead(admit: admit) })
+      focus: { self.keyboardFocusRead(budget: budget) })
   }
 
-  package func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
+  package func destinationSwitchToken(pid: pid_t, budget: PasteLandingPrepareBudget?)
     -> DestinationSwitchToken
   {
     DestinationActivityEvaluator.switchToken(
-      pid: pid, front: Self.frontPID, focus: { self.keyboardFocusRead(admit: admit) })
+      pid: pid, front: Self.frontPID, focus: { self.keyboardFocusRead(budget: budget) })
   }
 
   package func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome {

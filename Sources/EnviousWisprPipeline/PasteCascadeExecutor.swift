@@ -495,6 +495,9 @@ internal final class PasteCascadeExecutor {
   /// live defaults (#3423), so a test can script what the destination checks read.
   private let landingAX: any PastedRegionAXOperations
   private let landingScheduler: any PastedRegionScheduling
+  /// #3423: replaces `raiseAndActivate`'s live raise and activation in a test, so `activate` can
+  /// be driven without moving the developer's windows. Nil in production.
+  private let activationEffect: (@MainActor (NSRunningApplication) -> Void)?
 
   /// Prepares and arms the observation for one key-paste tier, immediately before its write.
   ///
@@ -603,13 +606,15 @@ internal final class PasteCascadeExecutor {
     pasteboard: NSPasteboard, policy: PasteDeliveryPolicy,
     onRetained: RetainedHandler? = nil,
     landingAX: any PastedRegionAXOperations = LivePastedRegionAXOperations(),
-    landingScheduler: any PastedRegionScheduling = TaskPastedRegionScheduler()
+    landingScheduler: any PastedRegionScheduling = TaskPastedRegionScheduler(),
+    activationEffect: (@MainActor (NSRunningApplication) -> Void)? = nil
   ) {
     self.pasteboard = pasteboard
     self.policy = policy
     self.onRetained = onRetained
     self.landingAX = landingAX
     self.landingScheduler = landingScheduler
+    self.activationEffect = activationEffect
   }
 
   /// #3106 PR B: the landing check a COMMITTED key paste hands its one clipboard cleanup, or nil
@@ -1028,9 +1033,7 @@ internal final class PasteCascadeExecutor {
         let dispatchRefusal =
           gate.refusal
           ?? Self.appFrontRefusal(
-            landingAX.destinationActivity(
-              pid: app.processIdentifier, capturedElement: request.targetElement,
-              mode: gate.ownerPath ? .full : .frontOnly, admit: gate.budget.admit),
+            finalDestinationActivity(app: app, element: request.targetElement, gate: gate),
             ownerPathOnly: gate.ownerPath)
         if let windowRefusal = dispatchRefusal {
           // #3121: same shape as the omnibox refusal below: `.cgEvent` is NOT recorded as
@@ -1156,9 +1159,7 @@ internal final class PasteCascadeExecutor {
         let dispatchRefusal =
           gate.refusal
           ?? Self.appFrontRefusal(
-            landingAX.destinationActivity(
-              pid: app.processIdentifier, capturedElement: request.targetElement,
-              mode: gate.ownerPath ? .full : .frontOnly, admit: gate.budget.admit),
+            finalDestinationActivity(app: app, element: request.targetElement, gate: gate),
             ownerPathOnly: gate.ownerPath)
         if let windowRefusal = dispatchRefusal {
           // #3121: nothing was written and `.appleScript` is not recorded as attempted.
@@ -1560,8 +1561,12 @@ internal final class PasteCascadeExecutor {
     }
   }
 
+  /// What the dispatch gate decided (#3121), and whether the destination passed as the confirmed
+  /// keyboard-focus owner rather than the front app (#3423).
+  typealias DispatchGate = (refusal: String?, budget: PasteLandingPrepareBudget, ownerPath: Bool)
+
   /// What one activation achieved (#3121).
-  private struct Activation {
+  struct Activation {
     /// The app came frontmost.
     let activated: Bool
     /// The captured field's window, resolved once inside this activation's deadline.
@@ -1579,7 +1584,7 @@ internal final class PasteCascadeExecutor {
   /// The deadline is wall-clock and includes Accessibility time: every AX call gets at most what
   /// remains of it, capped at the usual 0.5 s, and is skipped when nothing remains. `target` is
   /// passed when an earlier tier already resolved it, so a delivery reads the window once.
-  private func activate(
+  func activate(
     _ app: NSRunningApplication, element: AXUIElement?, recordedWindow: AXUIElement?,
     target known: PasteTargetWindow?, tier1BoundTheTarget: Bool
   ) async -> Activation {
@@ -1602,7 +1607,7 @@ internal final class PasteCascadeExecutor {
     // could close the panel. One admission read; the dispatch gate re-reads before the key event.
     // Every other answer runs today's loop unchanged.
     if landingAX.destinationActivity(
-      pid: pid, capturedElement: element, mode: .full, admit: stepBudget().admit)
+      pid: pid, capturedElement: element, mode: .full, budget: stepBudget())
       == .focusOwner(elementConfirmed: true)
     {
       Task {
@@ -1624,7 +1629,7 @@ internal final class PasteCascadeExecutor {
       // `.frontOnly`: the poll never reads the keyboard focus (#3423).
       appFront =
         landingAX.destinationActivity(
-          pid: pid, capturedElement: element, mode: .frontOnly, admit: { _ in false }) == .frontApp
+          pid: pid, capturedElement: element, mode: .frontOnly, budget: nil) == .frontApp
       if appFront {
         let latest = PasteTargetWindowGate.refusal(
           target: target, element: element, pid: pid, ax: landingAX, admit: stepBudget().admit)
@@ -1653,6 +1658,10 @@ internal final class PasteCascadeExecutor {
   private func raiseAndActivate(
     _ app: NSRunningApplication, target: PasteTargetWindow, remainingMs: () -> Int
   ) {
+    if let activationEffect {
+      activationEffect(app)
+      return
+    }
     let raise: AXUIElement?
     switch target {
     case .window(let window), .recordedWindow(let window): raise = window
@@ -1669,6 +1678,18 @@ internal final class PasteCascadeExecutor {
     app.activate()
   }
 
+  /// The last destination read before a Tier 2 or 2b key event (#3423), after the omnibox
+  /// re-check. Front path: a local front read, no AX call, so the omnibox read stays the last AX
+  /// step. Owner path: ONE fresh focus read that confirms both the owner and the captured field,
+  /// and is itself the last AX step.
+  func finalDestinationActivity(
+    app: NSRunningApplication, element: AXUIElement?, gate: DispatchGate
+  ) -> DestinationActivity {
+    landingAX.destinationActivity(
+      pid: app.processIdentifier, capturedElement: element,
+      mode: gate.ownerPath ? .full : .frontOnly, budget: gate.budget)
+  }
+
   /// The bound for one activation AX call given what remains of its deadline: at most the usual
   /// 0.5 s, nil when nothing remains (the call is skipped).
   static func activationCallSeconds(_ remainingMs: Int) -> Double? {
@@ -1679,15 +1700,15 @@ internal final class PasteCascadeExecutor {
   /// The last check before a key paste is dispatched (#3121 R2-1): the target app is frontmost AND
   /// `PasteTargetWindowGate` passes. Its own cumulative 0.5 s budget, which the Chromium omnibox
   /// re-check that follows it shares (`remainingGateSeconds`). Nil means dispatch may proceed.
-  private func dispatchGate(
+  func dispatchGate(
     app: NSRunningApplication, target: PasteTargetWindow, element: AXUIElement?,
     tier1BoundTheTarget: Bool, takeID: String?, bundleId: String
-  ) -> (refusal: String?, budget: PasteLandingPrepareBudget, ownerPath: Bool) {
+  ) -> DispatchGate {
     let budget = PasteLandingPrepareBudget(scheduler: landingScheduler, ax: landingAX)
     defer { restoreCapturedTimeout(element, tier1BoundTheTarget: tier1BoundTheTarget) }
     if let notFront = Self.appFrontRefusal(
       landingAX.destinationActivity(
-        pid: app.processIdentifier, capturedElement: element, mode: .full, admit: budget.admit),
+        pid: app.processIdentifier, capturedElement: element, mode: .full, budget: budget),
       ownerPathOnly: false)
     {
       return (notFront, budget, false)
@@ -1704,7 +1725,7 @@ internal final class PasteCascadeExecutor {
     // `ownerPath` (#3423): the destination passed as the confirmed focus owner, not as the front
     // app, so the caller's last check must be a fresh owner read rather than a front read.
     let last = landingAX.destinationActivity(
-      pid: app.processIdentifier, capturedElement: element, mode: .full, admit: budget.admit)
+      pid: app.processIdentifier, capturedElement: element, mode: .full, budget: budget)
     return (
       Self.appFrontRefusal(last, ownerPathOnly: false), budget,
       last == .focusOwner(elementConfirmed: true)

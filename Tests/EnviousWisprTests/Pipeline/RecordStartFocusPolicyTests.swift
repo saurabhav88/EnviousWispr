@@ -109,20 +109,46 @@ struct RecordStartFocusPolicyTests {
     #expect(asked == [front.processIdentifier])
   }
 
-  @Test("the live eligibility rule accepts regular and accessory apps only")
-  func liveEligibility() throws {
-    let context = KernelSessionContext()
-    let (front, _) = try apps()
-    let running = NSWorkspace.shared.runningApplications.filter { !$0.isTerminated }
-    for app in running.prefix(20) where app.processIdentifier != front.processIdentifier {
-      context.recordStartTarget(
-        front: front, focus: .focused(element: field, ownerPID: app.processIdentifier),
-        trusted: true, captureWindow: { _ in nil }, ownerApplication: { _ in app },
-        ownPID: -2)
-      let eligible = app.activationPolicy == .regular || app.activationPolicy == .accessory
+  @Test("only a running regular or accessory application may become the target")
+  func eligibilityTable() {
+    let table: [(NSApplication.ActivationPolicy, Bool, Bool)] = [
+      (.regular, false, true), (.accessory, false, true), (.prohibited, false, false),
+      (.regular, true, false), (.accessory, true, false), (.prohibited, true, false),
+    ]
+    for (policy, terminated, eligible) in table {
       #expect(
-        context.focusOwnerState == (eligible ? .disagree : .disagreeKeptFront),
-        "\(app.bundleIdentifier ?? "?") policy \(app.activationPolicy.rawValue)")
+        KernelSessionContext.isEligibleOwner(activationPolicy: policy, isTerminated: terminated)
+          == eligible, "policy \(policy.rawValue) terminated \(terminated)")
     }
+  }
+
+  @Test("a Gecko field owned by a helper process keeps the browser as the target and its policy")
+  func helperOwnedGeckoFieldKeepsTheBrowser() throws {
+    let (front, owner) = try apps()
+    // The front app stands in for Firefox; the owner for its content process (prohibited policy).
+    let (context, _) = record(
+      front: front, focus: .focused(element: field, ownerPID: owner.processIdentifier),
+      owner: owner, eligible: false)
+    #expect(context.focusOwnerState == .disagreeKeptFront)
+    #expect(context.targetApp?.bundleIdentifier == front.bundleIdentifier)
+    #expect(
+      PasteDeliveryPolicy.skipsDirectWrite(bundleID: "org.mozilla.firefox"),
+      "the bundle-keyed Gecko policy still keys on the kept front app")
+  }
+
+  /// Launchers whose panels take the focus without becoming front, as named in #3423.
+  static let launcherBundleIDs: Set<String> = [
+    "com.raycast.macos", "com.runningwithcrayons.Alfred", "com.apple.Spotlight",
+    "at.obdev.LaunchBar",
+  ]
+
+  @Test("no bundle-keyed paste or landing policy names a launcher, so substitution adds none")
+  func noPolicyNamesALauncher() {
+    let policyBundles =
+      PasteDeliveryPolicy.directWriteSkippedBundleIDs
+      .union(PasteLandingPolicy.slowRevealDeadlinesMs.keys)
+      .union(PasteLandingPolicy.excludedRoutes.map(\.bundleID))
+    #expect(policyBundles.count >= 3, "the tables were read")
+    #expect(policyBundles.isDisjoint(with: Self.launcherBundleIDs))
   }
 }
