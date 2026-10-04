@@ -228,7 +228,12 @@ final class PolishSetupMonitor {
   /// Whether `provider` would be fully set up if chosen now, from the same live facts. For the
   /// leave dialog's "Go back to" offer; it changes no warning memory.
   func readiness(for provider: LLMProvider) -> PolishSetupReadiness {
-    PolishSetupReadiness.evaluate(provider: provider, facts: readInputs().facts)
+    let facts = readInputs().facts
+    // The same evidence and freshness rules as the warnings themselves: a key a dictation
+    // proved rejected is not offered as a way back.
+    return withCloudTakeObservation(
+      PolishSetupReadiness.evaluate(provider: provider, facts: facts), provider: provider,
+      facts: facts)
   }
 
   /// The episode a surface is showing now, for it to hand back with the person's answer.
@@ -447,12 +452,36 @@ final class PolishSetupMonitor {
     return true
   }
 
+  /// `readiness` for `provider`, with what dictations learned about its saved key applied when
+  /// that is the newest answer about THAT key (same provider and credential revision, newer
+  /// than the key check's verdict). Used by the warnings and by every other readiness question
+  /// (the leave dialog's way back), so the two can never disagree.
+  private func withCloudTakeObservation(
+    _ readiness: PolishSetupReadiness, provider: LLMProvider, facts: PolishSetupFacts
+  ) -> PolishSetupReadiness {
+    guard Self.usesCloudKey(provider), let take = cloudKeyTakeObservation,
+      take.provider == provider,
+      take.credentialRevision == facts.credentialRevisions[provider],
+      Self.cloudVerdictAt(facts, provider: provider).map({ $0 < take.observedAt }) ?? true
+    else { return readiness }
+    switch (take.rejected, readiness) {
+    case (true, .noProblem), (true, .unknown):
+      // The provider rejected this key during a dictation (no Settings visit needed).
+      return .problem(.cloudKeyRejected(provider))
+    case (false, .problem(.cloudKeyRejected(provider))):
+      // A dictation polished with this key after the check rejected it.
+      return .noProblem
+    default:
+      return readiness
+    }
+  }
+
   /// When the key check answered (accepted or rejected) about the key saved now; nil when it
   /// has not, or answered about an older key.
   private static func cloudVerdictAt(
     _ facts: PolishSetupFacts, provider: LLMProvider
   ) -> ContinuousClock.Instant? {
-    guard let verdict = facts.cloudVerdict, verdict.provider == provider,
+    guard let verdict = facts.cloudVerdicts[provider], verdict.provider == provider,
       verdict.credentialRevision == facts.credentialRevisions[provider]
     else { return nil }
     switch verdict.result {
@@ -581,25 +610,8 @@ final class PolishSetupMonitor {
       // A take that polished is repair evidence, newer than the service's last word.
       readiness = take.problem.map { .problem($0) } ?? .noProblem
     }
-    let provider = inputs.configuration.provider
-    if Self.usesCloudKey(provider), let take = cloudKeyTakeObservation,
-      take.provider == provider,
-      take.credentialRevision == inputs.configuration.credentialRevision,
-      Self.cloudVerdictAt(inputs.facts, provider: provider).map({ $0 < take.observedAt }) ?? true
-    {
-      // The newest answer about this key came from a dictation's own request, not from the
-      // key check: it decides.
-      switch (take.rejected, readiness) {
-      case (true, .noProblem), (true, .unknown):
-        // The provider rejected this key during a dictation (no Settings visit needed).
-        readiness = .problem(.cloudKeyRejected(provider))
-      case (false, .problem(.cloudKeyRejected(provider))):
-        // A dictation polished with this key after the check rejected it.
-        readiness = .noProblem
-      default:
-        break
-      }
-    }
+    readiness = withCloudTakeObservation(
+      readiness, provider: inputs.configuration.provider, facts: inputs.facts)
     var next = episodes
     next.reconcile(
       readiness: readiness, configuration: inputs.configuration, eligible: eligible)
@@ -670,7 +682,7 @@ extension PolishSetupInputs {
         geminiKeySaved: savedKeyPresence.savedFlag(for: .gemini),
         claudeKeySaved: savedKeyPresence.savedFlag(for: .claude),
         savedKeyPresence: savedKeyPresence,
-        cloudVerdict: llmDiscovery.cloudVerdict,
+        cloudVerdicts: llmDiscovery.cloudVerdicts,
         ollamaModel: settings.ollamaModel),
       ollamaLastCommitAt: setup.ollamaSetup.lastCommitAt)
   }

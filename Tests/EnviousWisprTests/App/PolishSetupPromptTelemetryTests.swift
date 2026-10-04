@@ -116,7 +116,7 @@ import Testing
             s1MiniInstall: .installed(version: "1"), s1MiniHealth: .green,
             appleStatus: .available, appleFailureReasons: [], appleIsChecking: false,
             validationProvider: nil, cloudValidation: .idle,
-            credentialRevisions: [.openAI: 1], cloudVerdict: nil,
+            credentialRevisions: [.openAI: 1], cloudVerdicts: [:],
             openAIKeySaved: openAIKeySaved, geminiKeySaved: true, claudeKeySaved: true,
             ollamaSetup: .ready, ollamaModel: .installed),
           ollamaLastCommitAt: nil)

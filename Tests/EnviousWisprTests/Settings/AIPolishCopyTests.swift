@@ -29,7 +29,7 @@ struct AIPolishCopyTests {
         egOneInstall: install, egOneHealth: health, s1MiniInstall: install,
         s1MiniHealth: health, appleStatus: apple, appleFailureReasons: [],
         appleIsChecking: appleChecking,
-        validationProvider: provider, cloudValidation: cloud, credentialRevisions: [:], cloudVerdict: nil,
+        validationProvider: provider, cloudValidation: cloud, credentialRevisions: [:], cloudVerdicts: [:],
         openAIKeySaved: keySaved, geminiKeySaved: keySaved, claudeKeySaved: keySaved,
         ollamaSetup: ollama, ollamaModel: .installed)
     )?.label

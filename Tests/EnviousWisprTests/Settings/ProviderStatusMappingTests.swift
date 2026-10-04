@@ -39,7 +39,7 @@ struct ProviderStatusMappingTests {
         s1MiniInstall: s1MiniInstall, s1MiniHealth: s1MiniHealth,
         appleStatus: appleStatus, appleFailureReasons: [], appleIsChecking: appleIsChecking,
         validationProvider: validationProvider ?? provider,
-        cloudValidation: cloudValidation, credentialRevisions: [:], cloudVerdict: nil,
+        cloudValidation: cloudValidation, credentialRevisions: [:], cloudVerdicts: [:],
         openAIKeySaved: cloudKeySaved, geminiKeySaved: cloudKeySaved,
         claudeKeySaved: cloudKeySaved,
         ollamaSetup: ollamaSetup, ollamaModel: .installed))

@@ -117,7 +117,9 @@ struct PolishSetupFacts {
   /// The typed key verdict, read only when its provider and credential revision match the
   /// current ones. `.invalid(String)` above also carries network and provider failures and is
   /// never evidence of a rejected key.
-  let cloudVerdict: PolishCloudVerdict?
+  /// The key check's verdicts, one per provider (#3438), each judged against that provider's
+  /// current credential revision.
+  let cloudVerdicts: [LLMProvider: PolishCloudVerdict]
   /// The CONFIRMED saved-key read per cloud provider: true present, false absent, nil when the
   /// Keychain read failed or has not answered.
   let openAIKeySaved: Bool?
@@ -164,7 +166,7 @@ extension PolishSetupFacts {
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState,
     openAIKeySaved: Bool?, geminiKeySaved: Bool?, claudeKeySaved: Bool?,
     savedKeyPresence: SavedKeyPresence,
-    cloudVerdict: PolishCloudVerdict?,
+    cloudVerdicts: [LLMProvider: PolishCloudVerdict],
     ollamaModel: String
   ) -> PolishSetupFacts {
     PolishSetupFacts(
@@ -177,7 +179,7 @@ extension PolishSetupFacts {
       appleIsChecking: aiAvailability.isChecking,
       validationProvider: validationProvider,
       cloudValidation: cloudValidation,
-      credentialRevisions: savedKeyPresence.revisions, cloudVerdict: cloudVerdict,
+      credentialRevisions: savedKeyPresence.revisions, cloudVerdicts: cloudVerdicts,
       openAIKeySaved: openAIKeySaved, geminiKeySaved: geminiKeySaved,
       claudeKeySaved: claudeKeySaved,
       ollamaSetup: setup.ollamaSetup.setupState,
@@ -322,7 +324,7 @@ enum PolishSetupReadiness: Equatable {
     case .absent:
       return .problem(.cloudKeyMissing(provider))
     case .present:
-      guard let verdict = facts.cloudVerdict,
+      guard let verdict = facts.cloudVerdicts[provider],
         verdict.provider == provider,
         facts.credentialRevisions[provider] == verdict.credentialRevision
       else {

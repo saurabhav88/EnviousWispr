@@ -27,14 +27,15 @@ struct PolishSetupMonitorTests {
     openAIKeySaved: Bool? = true,
     ollamaSetup: OllamaSetupState = .ready,
     appleStatus: AIAvailabilityStatus? = .available,
-    appleFailureReasons: [AIFailureReason] = []
+    appleFailureReasons: [AIFailureReason] = [],
+    openAIRevision: UInt64 = 1
   ) -> PolishSetupFacts {
     PolishSetupFacts(
       egOneInstall: egOneInstall, egOneHealth: .green,
       s1MiniInstall: .installed(version: "1"), s1MiniHealth: .green,
       appleStatus: appleStatus, appleFailureReasons: appleFailureReasons, appleIsChecking: false,
       validationProvider: nil, cloudValidation: .idle,
-      credentialRevisions: [.openAI: 1], cloudVerdict: nil,
+      credentialRevisions: [.openAI: openAIRevision], cloudVerdicts: [:],
       openAIKeySaved: openAIKeySaved, geminiKeySaved: true, claudeKeySaved: true,
       ollamaSetup: ollamaSetup, ollamaModel: .installed)
   }
@@ -466,7 +467,8 @@ extension PolishSetupMonitorTests {
       appleStatus: facts.appleStatus, appleFailureReasons: facts.appleFailureReasons,
       appleIsChecking: facts.appleIsChecking, validationProvider: facts.validationProvider,
       cloudValidation: facts.cloudValidation, credentialRevisions: facts.credentialRevisions,
-      cloudVerdict: verdict, openAIKeySaved: facts.openAIKeySaved,
+      cloudVerdicts: verdict.map { [$0.provider: $0] } ?? [:],
+      openAIKeySaved: facts.openAIKeySaved,
       geminiKeySaved: facts.geminiKeySaved, claudeKeySaved: facts.claudeKeySaved,
       ollamaSetup: facts.ollamaSetup, ollamaModel: facts.ollamaModel)
   }
@@ -527,7 +529,7 @@ extension PolishSetupMonitorTests {
         s1MiniInstall: verdictFacts.s1MiniInstall, s1MiniHealth: verdictFacts.s1MiniHealth,
         appleStatus: verdictFacts.appleStatus, appleFailureReasons: [], appleIsChecking: false,
         validationProvider: nil, cloudValidation: .idle,
-        credentialRevisions: [.openAI: 1, .gemini: 1], cloudVerdict: nil,
+        credentialRevisions: [.openAI: 1, .gemini: 1], cloudVerdicts: [:],
         openAIKeySaved: true, geminiKeySaved: true, claudeKeySaved: true,
         ollamaSetup: .ready, ollamaModel: .installed),
       PolishCloudVerdict(provider: .gemini, credentialRevision: 1, result: .rejected))
@@ -679,7 +681,9 @@ extension PolishSetupMonitorTests {
         monitor.freezeTakeContext(), id: "take-3", evidence: .cloudKeyRejected,
         tag: .cloudKeyRejected, at: start.advanced(by: .seconds(2))))
     #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
-    // A new key starts clean.
+    // A new key starts clean (the saved key's revision moves in the facts and the
+    // configuration together, as `SavedKeyPresence` moves both in the app).
+    world.facts = Self.facts(openAIKeySaved: true, openAIRevision: 2)
     world.configuration = PolishSetupConfiguration(
       provider: .openAI, model: "gpt-test", credentialRevision: 2)
     #expect(monitor.eligibleProblem == nil)
@@ -848,8 +852,30 @@ extension PolishSetupMonitorTests {
     #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
     #expect(monitor.currentEpisode != before, "a new configuration is a new episode")
     // A new key.
+    world.facts = Self.facts(openAIKeySaved: true, openAIRevision: 2)
     world.configuration = PolishSetupConfiguration(
       provider: .openAI, model: "gpt-other", credentialRevision: 2)
     #expect(monitor.eligibleProblem == nil)
+  }
+
+  @Test("a key a dictation proved rejected is never offered as the way back")
+  func goBackHonorsDictationEvidence() throws {
+    let world = World()
+    world.facts = Self.facts(openAIKeySaved: true)
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), evidence: .cloudKeyRejected, tag: .cloudKeyRejected))
+    // The person picks EG-1, which is not downloaded, then tries to leave AI Polish.
+    world.facts = Self.facts(egOneInstall: .notInstalled, openAIKeySaved: true)
+    world.configuration = Self.egOne
+    #expect(monitor.readiness(for: .openAI) == .problem(.cloudKeyRejected(.openAI)))
+    let request = try #require(
+      PolishSetupLeaveGuard.request(
+        for: .sidebar(.history), from: .aiPolish, monitor: monitor, previousProvider: .openAI,
+        currentProvider: .egOne, keyNotSaved: false))
+    #expect(request.goBackProvider == nil, "offered a way back to a key known to be rejected")
   }
 }

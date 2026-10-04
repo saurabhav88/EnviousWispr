@@ -335,7 +335,7 @@ struct SavedKeyPresenceTests {
     #expect(discovery.isDiscoveringModels == false)
   }
 
-  @Test("reset and a provider change drop the typed verdict")
+  @Test("another surface's provider or a reset changes what is shown, not a saved key's verdict")
   func resetDropsTheVerdict() async throws {
     let keychain = Self.fixtureKeychain()
     try keychain.store(key: KeychainManager.openAIKeyID, value: "test-not-a-real-key")
@@ -345,14 +345,34 @@ struct SavedKeyPresenceTests {
       throw LLMError.invalidAPIKey
     }
     #expect(discovery.cloudVerdict?.result == .rejected)
+    // Transcribe a File shows Gemini: what is SHOWN is Gemini's (nothing yet)...
     discovery.loadCachedModels(for: .gemini, settings: Self.settings(), surface: .dictation)
     #expect(discovery.cloudVerdict == nil)
+    // ...but dictation's OpenAI key is still known to be rejected (#3438 final review).
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected)
+    #expect(
+      PolishSetupReadiness.evaluate(
+        provider: .openAI,
+        facts: PolishSetupFacts(
+          egOneInstall: .installed(version: "1"), egOneHealth: .green,
+          s1MiniInstall: .installed(version: "1"), s1MiniHealth: .green,
+          appleStatus: .available, appleFailureReasons: [], appleIsChecking: false,
+          validationProvider: discovery.stateProvider,
+          cloudValidation: discovery.keyValidationState,
+          credentialRevisions: presence.revisions, cloudVerdicts: discovery.cloudVerdicts,
+          openAIKeySaved: true, geminiKeySaved: true, claudeKeySaved: true,
+          ollamaSetup: .ready, ollamaModel: .installed))
+        == .problem(.cloudKeyRejected(.openAI)))
 
     let again = await check(.openAI, presence: presence, keychain: keychain) { _, _ in
       throw LLMError.invalidAPIKey
     }
     again.reset()
-    #expect(again.cloudVerdict == nil)
+    #expect(again.cloudVerdict == nil, "a reset shows no verdict")
+    #expect(again.cloudVerdicts[.openAI]?.result == .rejected, "a reset forgot a key's verdict")
+    // Only a NEW key ends it (its revision moves).
+    presence.recordSaved(.openAI)
+    #expect(again.cloudVerdicts[.openAI]?.credentialRevision != presence.revision(for: .openAI))
   }
 
   @Test("the readiness answer follows the verdict only for the key saved now")
@@ -373,7 +393,7 @@ struct SavedKeyPresenceTests {
           appleStatus: .available, appleFailureReasons: [], appleIsChecking: false,
           validationProvider: discovery.stateProvider,
           cloudValidation: discovery.keyValidationState,
-          credentialRevisions: presence.revisions, cloudVerdict: discovery.cloudVerdict,
+          credentialRevisions: presence.revisions, cloudVerdicts: discovery.cloudVerdicts,
           openAIKeySaved: presence.savedFlag(for: .openAI), geminiKeySaved: true,
           claudeKeySaved: true, ollamaSetup: .ready, ollamaModel: .installed))
     }

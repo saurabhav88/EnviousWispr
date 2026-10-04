@@ -121,7 +121,7 @@ enum FileImportPolishGate {
         geminiKeySaved: provider == .gemini ? saved : nil,
         claudeKeySaved: provider == .claude ? saved : nil,
         savedKeyPresence: savedKeyPresence,
-        cloudVerdict: llmDiscovery.cloudVerdict,
+        cloudVerdicts: llmDiscovery.cloudVerdicts,
         // The import's own OLLAMA field, never the effective model, and present in the
         // daemon's own list, not merely remembered. See `ollamaModelIsArmed(_:downloaded:)`.
         ollamaModel: importOllamaModel),

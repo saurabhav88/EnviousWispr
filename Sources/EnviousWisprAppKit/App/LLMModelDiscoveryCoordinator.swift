@@ -15,7 +15,16 @@ final class LLMModelDiscoveryCoordinator {
   /// `.invalid(String)` carries a rejected key, no network and provider errors alike; only the
   /// `.invalidAPIKey` catch below publishes `.rejected`. Cloud providers only, and only when a
   /// presence owner was injected.
-  private(set) var cloudVerdict: PolishCloudVerdict?
+  ///
+  /// ONE PER PROVIDER, each tied to its own credential revision: a verdict about dictation's
+  /// key must survive another surface (Transcribe a File) checking a different provider, and a
+  /// replaced or cleared key already stops counting through its revision. Only a pending
+  /// `.checking` entry is dropped when its request is dismissed.
+  private(set) var cloudVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
+
+  /// The verdict about the provider this coordinator's catalog and validation state describe,
+  /// for the surfaces that show that provider.
+  var cloudVerdict: PolishCloudVerdict? { stateProvider.flatMap { cloudVerdicts[$0] } }
 
   /// #2772 chunk 3: WHICH provider `discoveredModels` and `keyValidationState` describe,
   /// or `nil` when nothing has been loaded or validated.
@@ -36,7 +45,6 @@ final class LLMModelDiscoveryCoordinator {
       guard stateProvider != oldValue else { return }
       discoveredModels = []
       keyValidationState = .idle
-      cloudVerdict = nil
     }
   }
 
@@ -122,7 +130,7 @@ final class LLMModelDiscoveryCoordinator {
     discoveryGeneration += 1
     isDiscoveringModels = false
     if keyValidationState == .validating { keyValidationState = .idle }
-    if cloudVerdict?.result == .checking { cloudVerdict = nil }
+    cloudVerdicts = cloudVerdicts.filter { $0.value.result != .checking }
   }
 
   /// Reset discovery state (used when switching providers or clearing keys).
@@ -134,7 +142,6 @@ final class LLMModelDiscoveryCoordinator {
     stateProvider = nil
     discoveredModels = []
     keyValidationState = .idle
-    cloudVerdict = nil
   }
 
   /// Validate an API key and discover available models for the given provider.
@@ -169,7 +176,7 @@ final class LLMModelDiscoveryCoordinator {
     // or clear while it runs moves the revision, and nothing this request learned about the
     // old key may then publish (#3438).
     let revisionAtStart = credentialRevision(for: provider)
-    cloudVerdict = revisionAtStart.map {
+    cloudVerdicts[provider] = revisionAtStart.map {
       PolishCloudVerdict(provider: provider, credentialRevision: $0, result: .checking)
     }
     // Lowered by whoever raised it, and only if nothing newer has raised it since. An
@@ -198,7 +205,7 @@ final class LLMModelDiscoveryCoordinator {
         // `api_key.validation_completed` event (#1173). A missing or unreadable key is a
         // presence fact (`SavedKeyPresence`), never a typed rejection.
         keyValidationState = .invalid(Self.noKeyMessage)
-        cloudVerdict = nil
+        cloudVerdicts[provider] = nil
         return
       }
       apiKey = key
@@ -276,14 +283,14 @@ final class LLMModelDiscoveryCoordinator {
     guard credentialRevision(for: provider) != revisionAtStart else { return true }
     isDiscoveringModels = false
     if keyValidationState == .validating { keyValidationState = .idle }
-    if cloudVerdict?.result == .checking { cloudVerdict = nil }
+    if cloudVerdicts[provider]?.result == .checking { cloudVerdicts[provider] = nil }
     return false
   }
 
   private func publishVerdict(
     _ result: PolishCloudVerdict.Result, provider: LLMProvider, revision: UInt64?
   ) {
-    cloudVerdict = revision.map {
+    cloudVerdicts[provider] = revision.map {
       PolishCloudVerdict(provider: provider, credentialRevision: $0, result: result)
     }
   }

@@ -38,7 +38,7 @@ struct FileImportPolishGateTests {
         appleStatus: appleStatus, appleFailureReasons: [], appleIsChecking: false,
         // The verdict passed in is about the provider under test, as the live composer
         // arranges it.
-        validationProvider: provider, cloudValidation: keyValidation, credentialRevisions: [:], cloudVerdict: nil,
+        validationProvider: provider, cloudValidation: keyValidation, credentialRevisions: [:], cloudVerdicts: [:],
         openAIKeySaved: savedKey.asSavedFlag, geminiKeySaved: savedKey.asSavedFlag,
         claudeKeySaved: savedKey.asSavedFlag,
         ollamaSetup: ollamaSetup, ollamaModel: ollamaModelIsArmed ? .installed : .notInstalled),

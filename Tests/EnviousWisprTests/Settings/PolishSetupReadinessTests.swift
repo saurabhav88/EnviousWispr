@@ -33,7 +33,8 @@ struct PolishSetupReadinessTests {
       appleStatus: appleStatus, appleFailureReasons: appleFailureReasons,
       appleIsChecking: appleIsChecking,
       validationProvider: .openAI, cloudValidation: cloudValidation,
-      credentialRevisions: credentialRevisions, cloudVerdict: cloudVerdict,
+      credentialRevisions: credentialRevisions,
+      cloudVerdicts: cloudVerdict.map { [$0.provider: $0] } ?? [:],
       openAIKeySaved: openAIKeySaved, geminiKeySaved: geminiKeySaved,
       claudeKeySaved: claudeKeySaved,
       ollamaSetup: ollamaSetup, ollamaModel: ollamaModel)

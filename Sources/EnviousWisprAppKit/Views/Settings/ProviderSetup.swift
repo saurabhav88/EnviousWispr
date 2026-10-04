@@ -461,7 +461,7 @@ private var statusFacts: PolishSetupFacts {
     openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,
     claudeKeySaved: model.claudeKeySaved,
     savedKeyPresence: savedKeyPresence,
-    cloudVerdict: llmDiscovery.cloudVerdict,
+    cloudVerdicts: llmDiscovery.cloudVerdicts,
     ollamaModel: surfaceOllamaModel)
 }
 
