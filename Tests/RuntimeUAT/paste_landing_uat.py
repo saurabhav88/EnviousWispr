@@ -1577,9 +1577,330 @@ def phase_sleeping_stay(takes=5):
                 os.remove(path)
 
 
+# ---------------------------------------------------------------------------------------------
+# #3423: a floating launcher panel (Raycast, Alfred) takes the keyboard focus WITHOUT becoming the
+# front application. The fixture (`fixtures/launcher_panel/`) is that window and nothing else: an
+# accessory app whose non-activating panel becomes key over a TextEdit document that stays front.
+# Field A accepts Accessibility writes (Tier 1, `ax_direct`); field B silently ignores them, so the
+# write verifies as no mutation and the take reaches the key paste (Tier 2, `cgevent`), the route the
+# ENVIOUSWISPR-6G report ended on as "Copied". This proves the CLASS on this Mac, never Raycast itself.
+LAUNCHER = "com.enviouswispr.uat.launcherpanel"
+TARGET_FOCUS = re.compile(r"TARGET_FOCUS state=(\w+) front=(\S+) owner=(\S+)")
+ACTIVATION_SKIPPED = "activation skipped: destination owns the keyboard focus (#3423)"
+TERMINAL_COMPLETED = re.compile(r"dictation_terminal result=completed")
+LEARN_SKIPPED = re.compile(r"learn_skipped reason=(\w+) take=(\S+)")
+LEARN_ENDED = re.compile(r"learn_observation_ended reason=(\w+) settled_bursts=(\d+) .*?take=(\S+)")
+LEARN_SETTLE = "learn_settle trigger="
+FIXTURE = {"app": None, "proc": None, "run": None}
+
+
+def build_launcher():
+    """The fixture app, built once per run into the worktree's gitignored `build/`."""
+    if FIXTURE["app"] is None:
+        script = os.path.join(HERE, "fixtures", "launcher_panel", "build.sh")
+        out = subprocess.run([script], capture_output=True, text=True)
+        if out.returncode != 0 or not out.stdout.strip():
+            raise u.Aborted(f"launcher fixture did not build: {out.stderr.strip()[-400:]}")
+        FIXTURE["app"] = out.stdout.strip().splitlines()[-1]
+    return FIXTURE["app"]
+
+
+def panel_state():
+    """The fixture's own report (`state.json`), or {} before its first write."""
+    import json
+    run = FIXTURE["run"]
+    if run is None:
+        return {}
+    try:
+        with open(os.path.join(run, "state.json")) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def panel_command(name, text=""):
+    """Hands the fixture one command file, written whole (temp then rename)."""
+    run = FIXTURE["run"]
+    temp = os.path.join(run, f".{name}.tmp")
+    with open(temp, "w") as fh:
+        fh.write(text)
+    os.replace(temp, os.path.join(run, name))
+
+
+def launch_panel(field):
+    """Starts the fixture with `field` focused, by its executable (never `open`, which could
+    activate it), and waits for its own report that the panel is key on that field."""
+    import tempfile
+    close_panel()
+    app = build_launcher()
+    FIXTURE["run"] = tempfile.mkdtemp(prefix=f"ew-uat-3423-{field}-{u.RUN_ID}-")
+    FIXTURE["proc"] = subprocess.Popen(
+        [os.path.join(app, "Contents", "MacOS", "LauncherPanel"), FIXTURE["run"], field])
+    if not u.wait_for("the launcher panel to be key on its field",
+                      lambda: panel_state().get("key") and panel_state().get("focused") == field,
+                      deadline=8.0):
+        raise u.Aborted(f"launcher fixture never became key on field {field}: {panel_state()}")
+
+
+def close_panel():
+    """Quits THIS run's fixture process (the Popen handle's own pid), then forgets it."""
+    proc = FIXTURE["proc"]
+    if proc is not None and proc.poll() is None:
+        try:
+            panel_command("quit")
+            proc.wait(timeout=5)
+        except Exception:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+    FIXTURE["proc"] = None
+    return True
+
+
+def focus_owner_pid():
+    """The pid owning the SYSTEM-WIDE focused element, or None. Needs an `NSApplication` in this
+    process: without one every system-wide read fails with -25204 (measured 2026-10-03, #3423)."""
+    import AppKit
+    from ApplicationServices import (AXUIElementCopyAttributeValue, AXUIElementCreateSystemWide,
+                                     AXUIElementGetPid)
+    AppKit.NSApplication.sharedApplication()
+    err, element = AXUIElementCopyAttributeValue(
+        AXUIElementCreateSystemWide(), "AXFocusedUIElement", None)
+    if err or element is None:
+        return None
+    err, pid = AXUIElementGetPid(element, None)
+    return None if err else pid
+
+
+def launcher_precondition(host, field):
+    """Checked immediately before the hold: the host is still front, the panel's process owns the
+    keyboard focus, and the intended field is focused. Never activates the fixture to pass."""
+    def check():
+        u.require_front(host, "launcher: host before the take")
+        proc = FIXTURE["proc"]
+        owner = focus_owner_pid()
+        if proc is None or owner != proc.pid:
+            raise u.Aborted(f"launcher: the focus owner is {owner}, not the panel ({proc and proc.pid})")
+        if panel_state().get("focused") != field:
+            raise u.Aborted(f"launcher: field {field} is not focused: {panel_state()}")
+    return check
+
+
+def single_take_text(value):
+    """True when `value` holds the dictation once (5+ of the sentence's 7 words, under 1.5x its
+    length): a doubled paste roughly doubles the text."""
+    return u.sentence_overlap(value) >= 5 and len(value) < 1.5 * len(SENTENCE)
+
+
+def take_id_in(text):
+    match = re.search(r"dictation_terminal result=\w+ reason=\S+ take=(\S+)", text)
+    return match.group(1) if match else None
+
+
+def verify_launcher(name, text, field, want_tier, host_doc=None):
+    """The checks every launcher take shares; returns the take's text in `field`."""
+    focus = TARGET_FOCUS.findall(text)
+    u.check(f"{name}: record start targeted the panel (TARGET_FOCUS disagree)",
+            len(focus) == 1 and focus[0] == ("disagree", TEXTEDIT, LAUNCHER), str(focus))
+    tiers = [t for t, app in CASCADE.findall(text) if app.strip() == LAUNCHER]
+    others = [(t, app.strip()) for t, app in CASCADE.findall(text) if app.strip() != LAUNCHER]
+    u.check(f"{name}: one paste into the panel's app, tier {want_tier}",
+            tiers == [want_tier] and not others, f"panel={tiers} other={others}")
+    u.check(f"{name}: the take completed", len(TERMINAL_COMPLETED.findall(text)) == 1,
+            str(TERMINAL_COMPLETED.findall(text)))
+    fields = panel_state().get("fields", {})
+    other = "B" if field == "A" else "A"
+    u.check(f"{name}: the other panel field is untouched", fields.get(other) == "",
+            repr(fields.get(other)))
+    if host_doc is not None:
+        u.check(f"{name}: nothing landed in the TextEdit document behind the panel",
+                u.doc_text(host_doc) == "", repr(u.doc_text(host_doc)[:80]))
+    return fields.get(field, "")
+
+
+def launcher_host(name):
+    """A fresh TextEdit document in front: the app a launcher panel floats over."""
+    path = u.new_textedit_doc(f"3423-{name}-{u.RUN_ID}")
+    u.require_front(TEXTEDIT, f"{name}: host document open")
+    return path
+
+
+def phase_launcher_tier1():
+    print("\n== launcher_tier1: dictation into a launcher panel field that accepts a direct write")
+    host = launcher_host("launcher_tier1")
+    launch_panel("A")
+    try:
+        base = u.log_size()
+        take("launcher_tier1", base, bundle=TEXTEDIT, expect_landing=False,
+             before_hold=launcher_precondition(TEXTEDIT, "A"))
+        u.wait_for("the dictation in field A", lambda: single_take_text(
+            panel_state().get("fields", {}).get("A", "")), deadline=15.0)
+        text = u.log_since(base)
+        value = verify_launcher("launcher_tier1", text, "A", "ax_direct", host_doc=host)
+        u.check("launcher_tier1: field A holds the dictation once", single_take_text(value),
+                f"{u.sentence_overlap(value)}/7 {value[:80]!r}")
+    finally:
+        close_panel()
+
+
+def phase_launcher_tier2():
+    print("\n== launcher_tier2: a field that ignores direct writes, so the key paste runs")
+    host = launcher_host("launcher_tier2")
+    launch_panel("B")
+    try:
+        sentinel = "ew-uat-sentinel-launcher-tier2"
+        restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")
+        u.set_clipboard_text(sentinel)
+        base = u.log_size()
+        lines, _ = take("launcher_tier2", base, bundle=TEXTEDIT, expect_landing=True,
+                        before_hold=launcher_precondition(TEXTEDIT, "B"))
+        text = u.log_since(base)
+        value = verify_launcher("launcher_tier2", text, "B", "cgevent", host_doc=host)
+        u.check("launcher_tier2: field B holds the dictation once", single_take_text(value),
+                f"{u.sentence_overlap(value)}/7 {value[:80]!r}")
+        u.check("launcher_tier2: activation was skipped for the panel's app",
+                text.count(ACTIVATION_SKIPPED) == 1, str(text.count(ACTIVATION_SKIPPED)))
+        landing = [l for l in lines if l[3] == LAUNCHER]
+        u.check("launcher_tier2: the landing check found the paste in the panel field",
+                len(landing) == 1 and landing[0][0] == "cgevent" and landing[0][1] == "found",
+                str(lines))
+        if restore_on:
+            u.check("launcher_tier2: the previous clipboard is back (restore on)",
+                    u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,
+                               deadline=5.0), repr(u.clipboard_text()))
+        else:
+            u.skip("launcher_tier2: clipboard restore", "the founder's restore setting is off")
+        verify_launcher_learning(base, text)
+    finally:
+        close_panel()
+
+
+def verify_launcher_learning(base, text):
+    """Self-learning watches the panel field: no `destination_mismatch` skip for this take, and an
+    edit typed into the field is SEEN (a settled burst). The edit only ADDS a word, so the
+    candidate filter has no replacement pair to judge and nothing can be saved to the founder's
+    real dictionary (`custom-words.json` is compared byte for byte). The saved-entry proof is the
+    founder's manual Raycast check (plan section 11.1)."""
+    if u.defaults_value("learnFromEdits") in ("0", "false"):
+        u.skip("launcher_tier2: learning observes the panel", "Self-Learning Dictionary is off")
+        return
+    take_id = take_id_in(text)
+    words = os.path.expanduser("~/Library/Application Support/EnviousWispr/custom-words.json")
+    before = open(words, "rb").read() if os.path.exists(words) else None
+    learn_base = u.log_size()
+    u.require_front(TEXTEDIT, "launcher_tier2: host before the edit")
+    if focus_owner_pid() != (FIXTURE["proc"] and FIXTURE["proc"].pid):
+        raise u.Aborted("launcher_tier2: the panel lost the focus before the edit")
+    import simulate_input as si
+    si.type_text(" thanks")
+    seen = u.wait_for("the edit to settle in the learning watch",
+                      lambda: LEARN_SETTLE in u.log_since(learn_base), deadline=12.0)
+    u.check("launcher_tier2: the learning watch saw the edit in the panel field", seen,
+            "no learn_settle line after the edit")
+    skipped = [r for r, t in LEARN_SKIPPED.findall(u.log_since(base)) if t == take_id]
+    u.check("launcher_tier2: learning did not skip the panel as another app",
+            take_id is not None and not skipped, f"take={take_id} skips={skipped}")
+    panel_command("dismiss")  # ends the watch (focus moves), so its end row is written now
+    ended = u.wait_for("the learning watch to end", lambda: [
+        e for e in LEARN_ENDED.findall(u.log_since(learn_base)) if e[2] == take_id], deadline=10.0)
+    rows = [e for e in LEARN_ENDED.findall(u.log_since(learn_base)) if e[2] == take_id]
+    u.check("launcher_tier2: the watch ended with a settled burst, not a mismatch",
+            bool(ended) and rows and int(rows[0][1]) >= 1 and rows[0][0] != "destination_mismatch",
+            str(rows))
+    after = open(words, "rb").read() if os.path.exists(words) else None
+    u.check("launcher_tier2: the founder's dictionary file is unchanged", before == after,
+            "custom-words.json changed")
+
+
+def phase_launcher_dismissed():
+    print("\n== launcher_dismissed: the panel closes during the take; the words stay on the clipboard")
+    host = launcher_host("launcher_dismissed")
+    launch_panel("B")
+    try:
+        base = u.log_size()
+
+        def dismiss():
+            panel_command("dismiss")
+            if not u.wait_for("the panel to close", lambda: panel_state().get("closed"), deadline=3.0):
+                raise u.Aborted("launcher_dismissed: the panel did not close")
+
+        take("launcher_dismissed", base, bundle=TEXTEDIT, expect_landing=False,
+             before_hold=launcher_precondition(TEXTEDIT, "B"), before_release=dismiss)
+        text = u.log_since(base)
+        focus = TARGET_FOCUS.findall(text)
+        u.check("launcher_dismissed: record start targeted the panel",
+                len(focus) == 1 and focus[0][0] == "disagree", str(focus))
+        tiers = [t for t, _ in CASCADE.findall(text)]
+        u.check("launcher_dismissed: no key paste ran; the take ended clipboard-only",
+                tiers == ["clipboard_only"], str(tiers))
+        u.check("launcher_dismissed: the take completed",
+                len(TERMINAL_COMPLETED.findall(text)) == 1, "")
+        fields = panel_state().get("fields", {})
+        u.check("launcher_dismissed: nothing landed in the closed panel",
+                fields.get("A") == "" and fields.get("B") == "", str(fields))
+        u.check("launcher_dismissed: nothing landed in the TextEdit document",
+                u.doc_text(host) == "", repr(u.doc_text(host)[:80]))
+        board = u.clipboard_text() or ""
+        u.check("launcher_dismissed: the dictation is on the clipboard (the Copied fallback)",
+                u.sentence_overlap(board) >= 5, repr(board[:80]))
+    finally:
+        close_panel()
+
+
+def phase_appswap():
+    """Dictate into TextEdit document A, switch to Chrome during the take: the words land in A (the
+    box saved at record start), not in Chrome's text box. Guards that the owner rule leaves the
+    ordinary saved-target behaviour alone."""
+    print("\n== appswap: dictate into TextEdit, switch to Chrome mid-take")
+    quiet("appswap staging", open_page, "focused")
+    doc = u.new_textedit_doc(f"3423-appswap-{u.RUN_ID}")
+    u.require_front(TEXTEDIT, "appswap: document open")
+    sentinel = "ew-uat-sentinel-appswap"
+    restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")
+    u.set_clipboard_text(sentinel)
+    base = u.log_size()
+
+    def swap():
+        subprocess.run(["open", "-b", CHROME], check=False)
+        if not u.wait_for("Chrome front", lambda: u.frontmost_bundle() == CHROME, deadline=5.0):
+            raise u.Aborted("appswap: Chrome did not come front")
+
+    take("appswap", base, bundle=TEXTEDIT, expect_landing=False, before_release=swap)
+    u.wait_for("the dictation in document A", lambda: single_take_text(u.doc_text(doc)),
+               deadline=15.0)
+    text = u.log_since(base)
+    focus = TARGET_FOCUS.findall(text)
+    u.check("appswap: record start agreed (TextEdit front and focus owner)",
+            len(focus) == 1 and focus[0][0] == "agree" and focus[0][1] == TEXTEDIT, str(focus))
+    tiers = [(t, app.strip()) for t, app in CASCADE.findall(text)]
+    u.check("appswap: one paste into TextEdit, not clipboard-only",
+            len(tiers) == 1 and tiers[0][1] == TEXTEDIT and tiers[0][0] != "clipboard_only",
+            str(tiers))
+    u.check("appswap: document A holds the dictation once", single_take_text(u.doc_text(doc)),
+            repr(u.doc_text(doc)[:80]))
+    u.check("appswap: nothing landed in Chrome's text box", (textbox_value() or "") == "",
+            repr(textbox_value()))
+    if restore_on:
+        u.check("appswap: the previous clipboard is back (restore on)",
+                u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,
+                           deadline=5.0), repr(u.clipboard_text()))
+    else:
+        u.skip("appswap: clipboard restore", "the founder's restore setting is off")
+
+
+LAUNCHER_PHASES = {
+    "launcher_tier1": phase_launcher_tier1,
+    "launcher_tier2": phase_launcher_tier2,
+    "launcher_dismissed": phase_launcher_dismissed,
+    "appswap": phase_appswap,
+}
+
+
 PHASES = ["focused", "nofocus", "textedit", "readonly", "copy", "newtake", "otherwindow",
           "closedwindow", "reuseafter", "clickout", "sleeping", "sleepingswitch", "sleepingclosed",
-          "sleepingstay"]
+          "sleepingstay", *LAUNCHER_PHASES]
 
 
 def main():
@@ -1633,6 +1954,8 @@ def main():
                 phase_sleeping_closed()
             elif name == "sleepingstay":
                 phase_sleeping_stay()
+            elif name in LAUNCHER_PHASES:
+                LAUNCHER_PHASES[name]()
             else:
                 phase(name)
     except u.Aborted as e:
@@ -1643,6 +1966,7 @@ def main():
             ("modifier flags cleared", u.modifiers_cleared),
             ("run pages closed", close_run_pages),
             ("run documents closed", u.close_run_documents),
+            ("launcher fixture closed", close_panel),
         ]:
             try:
                 u.check(label, bool(step()))

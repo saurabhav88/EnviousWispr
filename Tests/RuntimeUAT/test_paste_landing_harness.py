@@ -263,6 +263,112 @@ class BeforeRelease(unittest.TestCase):
         self.assertEqual(self.events, ["down", "up"])
 
 
+class LauncherHarness(unittest.TestCase):
+    """#3423: the launcher phases' parsers and shared verdict, on synthetic log text and a scripted
+    fixture report. No fixture process, app, screen or key."""
+
+    LOG = ("[AXDiag] TARGET_FOCUS state=disagree front=com.apple.TextEdit "
+           "owner=com.enviouswispr.uat.launcherpanel\n"
+           "Paste cascade: tier=cgevent, app=com.enviouswispr.uat.launcherpanel, x\n"
+           "dictation_terminal result=completed reason=nil take=AAAA-1 backend=parakeet\n")
+
+    def setUp(self):
+        self.saved_state = h.panel_state
+        self.saved_doc = h.u.doc_text
+
+    def tearDown(self):
+        h.panel_state = self.saved_state
+        h.u.doc_text = self.saved_doc
+
+    def script(self, fields, doc=""):
+        h.panel_state = lambda: {"fields": fields}
+        h.u.doc_text = lambda path: doc
+
+    def statuses(self, results):
+        return {name: status for name, status, _ in results}
+
+    def test_every_launcher_phase_is_registered(self):
+        for name in ("launcher_tier1", "launcher_tier2", "launcher_dismissed", "appswap"):
+            self.assertIn(name, h.PHASES)
+            self.assertIn(name, h.LAUNCHER_PHASES)
+
+    def test_parsers(self):
+        self.assertEqual(h.TARGET_FOCUS.findall(self.LOG),
+                         [("disagree", "com.apple.TextEdit", "com.enviouswispr.uat.launcherpanel")])
+        self.assertEqual(h.take_id_in(self.LOG), "AAAA-1")
+        self.assertIsNone(h.take_id_in("no terminal here"))
+        ended = ("learn_observation_ended reason=focus_changed settled_bursts=1 app_class=native "
+                 "duration_ms=900 unfinished_edits=0 take=AAAA-1")
+        self.assertEqual(h.LEARN_ENDED.findall(ended), [("focus_changed", "1", "AAAA-1")])
+
+    def test_one_take_in_the_right_field_passes(self):
+        once = h.SENTENCE
+        self.script({"A": "", "B": once})
+        with Results() as results:
+            value = h.verify_launcher("t", self.LOG, "B", "cgevent", host_doc="doc")
+            recorded = list(results)
+        self.assertEqual(value, once)
+        self.assertEqual(len(recorded), 5)
+        self.assertTrue(all(s == "PASS" for _, s, _ in recorded), recorded)
+
+    def test_wrong_tier_wrong_bundle_and_host_landing_fail(self):
+        self.script({"A": "", "B": h.SENTENCE}, doc="leaked")
+        with Results() as results:
+            h.verify_launcher("t", self.LOG.replace("tier=cgevent", "tier=clipboard_only"), "B",
+                              "cgevent", host_doc="doc")
+            statuses = self.statuses(results)
+        self.assertEqual(statuses["t: one paste into the panel's app, tier cgevent"], "FAIL")
+        self.assertEqual(statuses["t: nothing landed in the TextEdit document behind the panel"], "FAIL")
+        with Results() as results:
+            h.verify_launcher("t", self.LOG.replace("launcherpanel, x", "launcherpanel, x\n"
+                              "Paste cascade: tier=cgevent, app=com.apple.TextEdit, y"), "B", "cgevent")
+            statuses = self.statuses(results)
+        self.assertEqual(statuses["t: one paste into the panel's app, tier cgevent"], "FAIL",
+                         "a second paste into another app is not one paste")
+
+    def test_front_agreement_is_not_a_launcher_take(self):
+        self.script({"A": "", "B": h.SENTENCE})
+        with Results() as results:
+            h.verify_launcher("t", self.LOG.replace("state=disagree", "state=agree"), "B", "cgevent")
+            statuses = self.statuses(results)
+        self.assertEqual(statuses["t: record start targeted the panel (TARGET_FOCUS disagree)"], "FAIL")
+
+    def test_doubled_and_empty_takes_are_not_single(self):
+        self.assertTrue(h.single_take_text(h.SENTENCE))
+        self.assertFalse(h.single_take_text(h.SENTENCE + " " + h.SENTENCE))
+        self.assertFalse(h.single_take_text(""))
+
+    def test_precondition_refuses_a_focus_owner_that_is_not_the_panel(self):
+        class Proc:
+            pid = 4242
+        saved = (h.u.require_front, h.focus_owner_pid, dict(h.FIXTURE))
+        try:
+            h.u.require_front = lambda bundle, label: None
+            h.FIXTURE["proc"] = Proc()
+            h.panel_state = lambda: {"focused": "B"}
+            h.focus_owner_pid = lambda: 999
+            with self.assertRaises(h.u.Aborted):
+                h.launcher_precondition("com.apple.TextEdit", "B")()
+            h.focus_owner_pid = lambda: 4242
+            h.launcher_precondition("com.apple.TextEdit", "B")()  # passes: owner and field match
+            h.panel_state = lambda: {"focused": "A"}
+            with self.assertRaises(h.u.Aborted):
+                h.launcher_precondition("com.apple.TextEdit", "B")()
+        finally:
+            h.u.require_front, h.focus_owner_pid = saved[0], saved[1]
+            h.FIXTURE.clear()
+            h.FIXTURE.update(saved[2])
+
+    def test_closing_with_no_fixture_is_a_clean_no_op(self):
+        saved = dict(h.FIXTURE)
+        try:
+            h.FIXTURE["proc"] = None
+            self.assertTrue(h.close_panel())
+        finally:
+            h.FIXTURE.clear()
+            h.FIXTURE.update(saved)
+
+
 if __name__ == "__main__":
     # `unittest.main()` exits 0 when it discovers ZERO tests: count explicitly.
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
