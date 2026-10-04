@@ -109,7 +109,23 @@ private final class CaptureAX: PastedRegionAXOperations {
     .element(AXUIElementCreateApplication(pid + 10_000))
   }
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool { true }
-  func frontmostPID() -> pid_t? { 42 }
+  func keyboardFocusRead(budget: PasteLandingPrepareBudget?) -> KeyboardFocusRead {
+    .unreadable
+  }
+  func destinationActivity(
+    pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
+    budget: PasteLandingPrepareBudget?
+  ) -> DestinationActivity {
+    DestinationActivityEvaluator.evaluate(
+      pid: pid, capturedElement: capturedElement, mode: mode, front: { 42 },
+      focus: { self.keyboardFocusRead(budget: budget) })
+  }
+  func destinationSwitchToken(pid: pid_t, budget: PasteLandingPrepareBudget?)
+    -> DestinationSwitchToken
+  {
+    DestinationActivityEvaluator.switchToken(
+      pid: pid, front: { 42 }, focus: { self.keyboardFocusRead(budget: budget) })
+  }
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome { .subrole(nil) }
   func supportsManualAccessibility(_ application: AXUIElement) -> Bool? { manual }
   func enableManualAccessibility(_ application: AXUIElement) -> Bool { true }
@@ -270,8 +286,10 @@ struct ObservedCorrectionWatcherTests {
     /// Production: the AFM judge's own deadline plus one second. A test that
     /// holds the judge shortens it so a wedged judge is proven bounded fast.
     var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
-    var frontmost: FrontmostApplication? = FrontmostApplication(
-      pid: 42, bundleID: "com.apple.Notes")
+    /// #3423: the front application and, when set, a confirmed focus owner in another process.
+    var frontmost: ActiveApplication? = ActiveApplication(
+      pid: 42, bundleID: "com.apple.Notes", isFocusOwner: false)
+    var owner: ActiveApplication? = nil
   }
   let knobs = Knobs()
 
@@ -291,17 +309,28 @@ struct ObservedCorrectionWatcherTests {
     let clock = clock
     let library = library
     var deps = ObservedCorrectionWatcherDependencies(
-        isLearnFromEditsOn: { knobs.toggle },
-        selectJudge: {
-          knobs.judgeAvailable ? SelectedCorrectionJudge(arm: .rules, judge: judge) : nil
-        },
-        frontmost: { knobs.frontmost },
-        observer: observer,
-        nowMs: { clock.nowMs },
-        userWords: { library.userWords },
-        packTerms: { library.packTerms },
-        coordinator: coordinator,
-        telemetry: telemetry)
+      isLearnFromEditsOn: { knobs.toggle },
+      selectJudge: {
+        knobs.judgeAvailable ? SelectedCorrectionJudge(arm: .rules, judge: judge) : nil
+      },
+      // The real supplier rule, over the knobs: front first, the owner only when front is not
+      // the destination's bundle.
+      activeApplications: { destination in
+        DestinationActivityEvaluator.activeApplications(
+          front: knobs.frontmost, destinationBundleID: destination,
+          focus: {
+            guard let owner = knobs.owner else { return .unreadable }
+            return .focused(
+              element: AXUIElementCreateApplication(owner.pid), ownerPID: owner.pid)
+          },
+          application: { pid in knobs.owner.flatMap { $0.pid == pid ? $0 : nil } })
+      },
+      observer: observer,
+      nowMs: { clock.nowMs },
+      userWords: { library.userWords },
+      packTerms: { library.packTerms },
+      coordinator: coordinator,
+      telemetry: telemetry)
     deps.judgeDeadlineSeconds = knobs.judgeDeadlineSeconds
     return ObservedCorrectionWatcher(dependencies: deps)
   }
@@ -342,7 +371,9 @@ struct ObservedCorrectionWatcherTests {
     #expect(edits.requests.count == 1)
   }
 
-  @Test("gate order in the deferred task: model, destination, then the observer's own skips; no language gate")
+  @Test(
+    "gate order in the deferred task: model, destination, then the observer's own skips; no language gate"
+  )
   func gateOrder() async {
     let watcher = makeWatcher()
     knobs.judgeAvailable = false
@@ -360,7 +391,7 @@ struct ObservedCorrectionWatcherTests {
     // No language gate (founder 2026-09-21, every language): an unknown or
     // undetermined dictation language reaches the destination gate like any
     // other, and is reported by THAT gate's reason, never as a language skip.
-    knobs.frontmost = FrontmostApplication(pid: 7, bundleID: "com.apple.Mail")
+    knobs.frontmost = ActiveApplication(pid: 7, bundleID: "com.apple.Mail", isFocusOwner: false)
     watcher.pasteCompleted(paste(bundle: "com.apple.Notes", language: "xx"))
     #expect(await waitForEvents(telemetry, count: 2))
     #expect(telemetry.events.last == .skipped(.destinationMismatch))
@@ -375,7 +406,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events.last == .skipped(.destinationMismatch), "mismatch, not a blocklist")
     #expect(edits.requests.isEmpty, "no Accessibility work before the gates pass")
 
-    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.apple.Notes")
+    knobs.frontmost = ActiveApplication(pid: 42, bundleID: "com.apple.Notes", isFocusOwner: false)
     // Past the gates the watcher asks the paste's arrival session ONCE; the session owns the
     // capture grace (#3106 PR A, `PasteArrivalCaptureTests`). Its final answers map to the
     // watcher's skips and ends as before.
@@ -395,6 +426,33 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events.last == .observationEnded(.dictatedTextNotFound, 0, .other))
     #expect(edits.requests.count == 3)
     #expect(observer.starts == 0)
+  }
+
+  @Test(
+    "an owner-only destination is watched; a same-bundle front destination keeps legacy selection (#3423)"
+  )
+  func focusOwnerDestination() async {
+    let watcher = makeWatcher()
+    let captured = PastedRegionCaptureOutcome.captured(
+      ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
+    edits.outcomes = [captured, captured, captured]
+    knobs.frontmost = ActiveApplication(pid: 7, bundleID: "com.apple.Mail", isFocusOwner: false)
+    knobs.owner = ActiveApplication(pid: 42, bundleID: "com.apple.Notes", isFocusOwner: true)
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 }, "owner-only destination, not front")
+    observer.finish(.focusChanged)
+    #expect(await waitUntil { !watcher.isWatching })
+
+    // Same bundle in front (pid 7) and as the owner (pid 42): the front app is the destination's
+    // bundle, so it is selected with no focus read, as before #3423; a field captured from pid 42
+    // is another process, so the watch is skipped.
+    knobs.frontmost = ActiveApplication(
+      pid: 7, bundleID: "com.apple.Notes", isFocusOwner: false)
+    let before = telemetry.events.count
+    watcher.pasteCompleted(paste())
+    #expect(await waitForEvents(telemetry, count: before + 1))
+    #expect(telemetry.events.last == .skipped(.destinationMismatch))
+    #expect(observer.starts == 1)
   }
 
   /// Starts a paste whose capture request parks, and returns once the request has arrived: the
@@ -468,11 +526,15 @@ struct ObservedCorrectionWatcherTests {
     watcher.recordingStarted()
     edits.release()
     #expect(await waitForEvents(telemetry, count: 2))
-    #expect(telemetry.events == [.skipped(.toggleOff), .observationEnded(.nextDictationStarted, 0, .other)])
+    #expect(
+      telemetry.events == [
+        .skipped(.toggleOff), .observationEnded(.nextDictationStarted, 0, .other),
+      ])
     #expect(telemetry.takeIDs == ["TAKE-A", "TAKE-B"])
   }
 
-  @Test("an observer-decided loss carries its detail to the row; any other end carries none (#3105)")
+  @Test(
+    "an observer-decided loss carries its detail to the row; any other end carries none (#3105)")
   func lossDetailReachesTheRow() async {
     let watcher = makeWatcher()
     let lost = PastedRegionEndDetail(
@@ -512,7 +574,7 @@ struct ObservedCorrectionWatcherTests {
     let watcher = makeWatcher()
     edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     await pasteAndPark(watcher)
-    knobs.frontmost = FrontmostApplication(pid: 7, bundleID: "com.apple.Mail")
+    knobs.frontmost = ActiveApplication(pid: 7, bundleID: "com.apple.Mail", isFocusOwner: false)
     edits.release()
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events.last == .skipped(.destinationMismatch))
@@ -599,7 +661,9 @@ struct ObservedCorrectionWatcherTests {
     #expect(watcher.isWatching == false)
   }
 
-  @Test("#3101: weak evidence holds back a correction below the higher score; strong evidence for the same text saves it with no second judge call")
+  @Test(
+    "#3101: weak evidence holds back a correction below the higher score; strong evidence for the same text saves it with no second judge call"
+  )
   func weakEvidenceHeldThenReleased() async throws {
     let watcher = makeWatcher()
     judge.probability = 0.80
@@ -610,7 +674,8 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.changed(region: "Ask Saira today"))
     observer.fire(.settled(region: "Ask Saira today", evidence: .weak))
     #expect(await waitForEvents(telemetry, count: 1))
-    #expect(telemetry.events.contains(.judged(.rules, .verdict, 1, 0)), "accepted counts both gates")
+    #expect(
+      telemetry.events.contains(.judged(.rules, .verdict, 1, 0)), "accepted counts both gates")
     #expect(telemetry.judgedEvidence == [.weak])
     #expect(presenter.offers.isEmpty, "held back: nothing saved on weak evidence at p 0.80")
 
@@ -625,7 +690,9 @@ struct ObservedCorrectionWatcherTests {
     #expect(presenter.offers.count == 1 && judge.requests.count == 1)
   }
 
-  @Test("#3101: a held-back fix whose capitals change later is saved with the spelling the text holds at release")
+  @Test(
+    "#3101: a held-back fix whose capitals change later is saved with the spelling the text holds at release"
+  )
   func weakHeldSavesCurrentSpelling() async throws {
     let watcher = makeWatcher()
     judge.probability = 0.80
@@ -639,7 +706,9 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.changed(region: "Ask Saurabh today"))
     observer.fire(.settled(region: "Ask Saurabh today", evidence: .strong))
     #expect(await waitUntil { presenter.offers.count == 1 })
-    #expect(presenter.offers.first?.canonical == "Saurabh", "the spelling at release, not the held lowercase one")
+    #expect(
+      presenter.offers.first?.canonical == "Saurabh",
+      "the spelling at release, not the held lowercase one")
   }
 
   @Test("#3101: a held-back fix survives an edit to the NEIGHBOURING word that merges into one run")
@@ -660,11 +729,15 @@ struct ObservedCorrectionWatcherTests {
     #expect(presenter.offers.first?.canonical == "Saira")
   }
 
-  @Test("#3101: a held-back fix survives an edit to another word and is saved on the next strong settle")
+  @Test(
+    "#3101: a held-back fix survives an edit to another word and is saved on the next strong settle"
+  )
   func weakHeldSurvivesAnotherEdit() async throws {
     let watcher = makeWatcher()
     judge.probability = 0.80
-    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah about today", pastedAtMs: 0))]
+    edits.outcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah about today", pastedAtMs: 0))
+    ]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
 
@@ -680,7 +753,9 @@ struct ObservedCorrectionWatcherTests {
     #expect(presenter.offers.first?.canonical == "Saira")
   }
 
-  @Test("#3101: a send that arrives while the weak-evidence judge call is still running makes its answer strong")
+  @Test(
+    "#3101: a send that arrives while the weak-evidence judge call is still running makes its answer strong"
+  )
   func strongEvidenceBeforeTheAnswer() async throws {
     let watcher = makeWatcher()
     judge.probability = 0.80
@@ -706,7 +781,8 @@ struct ObservedCorrectionWatcherTests {
   func deletionOnlyEditIsWithheldAndCounted() async {
     let watcher = makeWatcher()
     edits.outcomes = [
-      .captured(ObserverFake.target(pasted: "One more try, maybe if I do fewer words.", pastedAtMs: 0))
+      .captured(
+        ObserverFake.target(pasted: "One more try, maybe if I do fewer words.", pastedAtMs: 0))
     ]
     watcher.pasteCompleted(paste("One more try, maybe if I do fewer words."))
     #expect(await waitUntil { observer.starts == 1 })
@@ -750,7 +826,9 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events.last == .observationEnded(.ceilingElapsed, 2, .native))
   }
 
-  @Test("a judge that never answers is bounded: the call is reported as a deadline bypass and nothing is proposed")
+  @Test(
+    "a judge that never answers is bounded: the call is reported as a deadline bypass and nothing is proposed"
+  )
   func wedgedJudgeIsBounded() async throws {
     knobs.judgeDeadlineSeconds = 0.05
     let watcher = makeWatcher()
@@ -799,7 +877,9 @@ struct ObservedCorrectionWatcherTests {
     )
   }
 
-  @Test("a text change while the judge thinks makes the answer stale; a natural observer ending does not")
+  @Test(
+    "a text change while the judge thinks makes the answer stale; a natural observer ending does not"
+  )
   func revisionStaleness() async {
     let watcher = makeWatcher()
     judge.holdAnswers = true
@@ -850,7 +930,8 @@ struct ObservedCorrectionWatcherTests {
     judge.release()
     #expect(await waitUntil { presenter.offers.count == 1 })
     #expect(watcher.staleResults == 0)
-    #expect(telemetry.events.filter { if case .observationEnded = $0 { true } else { false } }.count == 1)
+    #expect(
+      telemetry.events.filter { if case .observationEnded = $0 { true } else { false } }.count == 1)
   }
 
   @Test(
@@ -902,7 +983,8 @@ struct ObservedCorrectionWatcherTests {
     judge.release()
     #expect(await waitForEvents(telemetry, count: 3))
     #expect(telemetry.events.last == .skipped(.toggleOff))
-    #expect(edits.requests.count == 2 && watcher3.isWatching == false, "no AX work after the toggle")
+    #expect(
+      edits.requests.count == 2 && watcher3.isWatching == false, "no AX work after the toggle")
   }
 
   @Test(
@@ -925,7 +1007,9 @@ struct ObservedCorrectionWatcherTests {
     #expect(watcher.staleResults == 0)
   }
 
-  @Test("a dictation while a fix is pending (seen, not yet settled) flushes it through the observer and proposes it")
+  @Test(
+    "a dictation while a fix is pending (seen, not yet settled) flushes it through the observer and proposes it"
+  )
   func dictationFlushesPendingFix() async {
     let watcher = makeWatcher()
     edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
@@ -940,7 +1024,8 @@ struct ObservedCorrectionWatcherTests {
     #expect(presenter.offers.first?.canonical == "Saira")
     // A second recordingStarted after the end is a no-op: one row, no cancel.
     watcher.recordingStarted()
-    #expect(telemetry.events.filter { if case .observationEnded = $0 { true } else { false } }.count == 1)
+    #expect(
+      telemetry.events.filter { if case .observationEnded = $0 { true } else { false } }.count == 1)
   }
 
   @Test(
@@ -962,7 +1047,8 @@ struct ObservedCorrectionWatcherTests {
     #expect(watcher.staleResults == 0)
     #expect(observer.finishes == [.nextDictationStarted])
     #expect(telemetry.events.contains(.observationEnded(.nextDictationStarted, 1, .native)))
-    #expect(telemetry.events.filter { $0 == .added(.existingWord) || $0 == .added(.newWord) }.count == 2)
+    #expect(
+      telemetry.events.filter { $0 == .added(.existingWord) || $0 == .added(.newWord) }.count == 2)
   }
 
   @Test("a bypass is reported as its own outcome, never as 'all false', and saves nothing")
@@ -1053,11 +1139,17 @@ struct ObservedCorrectionWatcherTests {
     let centred = ObservedCorrectionWatcher.contextExcerpt(long, focusTokens: 302..<303)
     #expect(centred.utf16.count <= 600 && centred.contains("ask Saira about the invoices today"))
     #expect(centred.hasPrefix("word "), "starts on a word boundary")
-    #expect(centred.hasSuffix("today"), "the end of the text is kept when the window is clamped there")
-    #expect(ObservedCorrectionWatcher.contextExcerpt(long, focusTokens: 900..<901).hasPrefix("word word"), "no such token: the prefix")
-    #expect(ObservedCorrectionWatcher.contextExcerpt(long).hasPrefix("word word"), "no focus: the prefix")
+    #expect(
+      centred.hasSuffix("today"), "the end of the text is kept when the window is clamped there")
+    #expect(
+      ObservedCorrectionWatcher.contextExcerpt(long, focusTokens: 900..<901).hasPrefix("word word"),
+      "no such token: the prefix")
+    #expect(
+      ObservedCorrectionWatcher.contextExcerpt(long).hasPrefix("word word"), "no focus: the prefix")
     let early = "ask Saira today " + filler
-    #expect(ObservedCorrectionWatcher.contextExcerpt(early, focusTokens: 1..<2).hasPrefix("ask Saira today"))
+    #expect(
+      ObservedCorrectionWatcher.contextExcerpt(early, focusTokens: 1..<2).hasPrefix(
+        "ask Saira today"))
     // tokenSpan counts the way the aligner splits: any whitespace, runs collapsed.
     let spaced = "a  b\tc\nd"
     let span = ObservedCorrectionWatcher.tokenSpan(2..<4, in: spaced)
@@ -1086,7 +1178,9 @@ struct ObservedCorrectionWatcherTests {
     #expect(first.context.contains("ask sara today"))
     #expect(second.context.contains("call sarah tonight"))
     #expect(!first.context.contains("sarah") && !second.context.contains("sara today"))
-    #expect(await waitUntil { learnedSaira()?.learnedAliases.count == 2 }, "both sound-alikes landed on Saira")
+    #expect(
+      await waitUntil { learnedSaira()?.learnedAliases.count == 2 },
+      "both sound-alikes landed on Saira")
 
     // Control: two edits inside one window share one request.
     let watcher2 = makeWatcher()
@@ -1100,7 +1194,9 @@ struct ObservedCorrectionWatcherTests {
     #expect(judge.requests.last?.candidates.map(\.original) == ["jon", "tomm"])
   }
 
-  @Test("windowGroups: the anchor always owns its window; runs inside join it; the rest anchor the next")
+  @Test(
+    "windowGroups: the anchor always owns its window; runs inside join it; the rest anchor the next"
+  )
   func windowGroupsPartition() {
     let filler = String(repeating: "word ", count: 300)
     let pasted = "ask sara today " + filler + "call sarah tonight"
@@ -1112,7 +1208,9 @@ struct ObservedCorrectionWatcherTests {
     let groups = ObservedCorrectionWatcher.windowGroups(filtered, in: pasted)
     #expect(groups.map { $0.map(\.run.coreOriginal) } == [["sara"], ["sarah"]])
     let near = CorrectionCandidateFilter.filter(
-      runs: EditAlignment.align(pasted: "ask sara and call sarah", edited: "ask Saira and call Saira").runs,
+      runs: EditAlignment.align(
+        pasted: "ask sara and call sarah", edited: "ask Saira and call Saira"
+      ).runs,
       inputs: inputs)
     #expect(ObservedCorrectionWatcher.windowGroups(near, in: "ask sara and call sarah").count == 1)
 
@@ -1123,14 +1221,17 @@ struct ObservedCorrectionWatcherTests {
     // inside its own context.
     let mixed = "ask jon today " + filler + "call sarah tonight"
     let mixedRuns = CorrectionCandidateFilter.filter(
-      runs: EditAlignment.align(pasted: mixed, edited: "ask john today " + filler + "call Saira tonight").runs,
+      runs: EditAlignment.align(
+        pasted: mixed, edited: "ask john today " + filler + "call Saira tonight"
+      ).runs,
       inputs: inputs)
     let mixedGroups = ObservedCorrectionWatcher.windowGroups(mixedRuns, in: mixed)
     #expect(mixedGroups.map { $0.map(\.run.coreOriginal) } == [["sarah"], ["jon"]])
     for group in mixedGroups {
       let prepared = CorrectionCandidateFilter.prepare(group)
       let anchor = prepared.byID[prepared.candidates[0].id]!
-      let window = ObservedCorrectionWatcher.excerptWindow(mixed, focusTokens: anchor.run.originalRange)
+      let window = ObservedCorrectionWatcher.excerptWindow(
+        mixed, focusTokens: anchor.run.originalRange)
       for f in group {
         let span = ObservedCorrectionWatcher.tokenSpan(f.run.originalRange, in: mixed)!
         #expect(span.lowerBound >= window.lowerBound && span.upperBound <= window.upperBound)
@@ -1140,14 +1241,18 @@ struct ObservedCorrectionWatcherTests {
     // The same pair twice, far apart, is one candidate in one group.
     let twice = "ask sarah today " + filler + "call sarah tonight"
     let twiceRuns = CorrectionCandidateFilter.filter(
-      runs: EditAlignment.align(pasted: twice, edited: "ask Saira today " + filler + "call Saira tonight").runs,
+      runs: EditAlignment.align(
+        pasted: twice, edited: "ask Saira today " + filler + "call Saira tonight"
+      ).runs,
       inputs: inputs)
     #expect(twiceRuns.count == 2)
     let twiceGroups = ObservedCorrectionWatcher.windowGroups(twiceRuns, in: twice)
     #expect(twiceGroups.map { $0.map(\.run.coreOriginal) } == [["sarah"]])
   }
 
-  @Test("a long region's judge context is centred on a PREPARED candidate, not on an earlier run the filter dropped")
+  @Test(
+    "a long region's judge context is centred on a PREPARED candidate, not on an earlier run the filter dropped"
+  )
   func contextCentredOnAPreparedCandidate() async throws {
     // The first edit is a pair the word already covers (the filter drops it
     // before the judge); the second, 1,500 units later, is the candidate.
@@ -1194,10 +1299,12 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events.contains(.observationEnded(.textboxEmptied, 1, .native)))
   }
 
-  @Test("a recognised browser destination is counted as `browser`; another Electron host as `manual_accessibility`; the rest `native`")
+  @Test(
+    "a recognised browser destination is counted as `browser`; another Electron host as `manual_accessibility`; the rest `native`"
+  )
   func appClass() async {
     let watcher = makeWatcher()
-    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.google.Chrome")
+    knobs.frontmost = ActiveApplication(pid: 42, bundleID: "com.google.Chrome", isFocusOwner: false)
     edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste(bundle: "com.google.Chrome"))
     #expect(await waitUntil { observer.starts == 1 })
@@ -1208,7 +1315,8 @@ struct ObservedCorrectionWatcherTests {
   @Test("#3106 extraction: a non-browser manual host is manual_accessibility, a native host native")
   func appClassManualAndNative() async {
     let slack = makeWatcher()
-    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.tinyspeck.slackmacgap")
+    knobs.frontmost = ActiveApplication(
+      pid: 42, bundleID: "com.tinyspeck.slackmacgap", isFocusOwner: false)
     edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0, manual: true))
     ]
@@ -1218,7 +1326,8 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events.last == .observationEnded(.focusChanged, 0, .manualAccessibility))
 
     let textEdit = makeWatcher()
-    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.apple.TextEdit")
+    knobs.frontmost = ActiveApplication(
+      pid: 42, bundleID: "com.apple.TextEdit", isFocusOwner: false)
     edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0, manual: false))
     ]
@@ -1231,7 +1340,7 @@ struct ObservedCorrectionWatcherTests {
   @Test("#3106 extraction: a take that never captured a target keeps the .other sentinel")
   func appClassUncapturedIsOther() async {
     let watcher = makeWatcher()
-    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.google.Chrome")
+    knobs.frontmost = ActiveApplication(pid: 42, bundleID: "com.google.Chrome", isFocusOwner: false)
     edits.outcomes = [.ended(.captureUnsupported)]
     watcher.pasteCompleted(paste(bundle: "com.google.Chrome"))
     #expect(

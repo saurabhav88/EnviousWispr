@@ -261,6 +261,9 @@ while IFS= read -r line; do
   file=$(echo "$line" | cut -d: -f1)
   case "$file" in
     Sources/EnviousWisprDesktopEffects/*) continue ;;
+    # Standalone launcher executable (#3423), built by its sibling build.sh.
+    # Package.swift and Project.swift exclude it from test targets.
+    Tests/Fixtures/launcher-panel/LauncherPanel.swift) continue ;;
   esac
   code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
   if echo "$code" | grep -Eq "$live_effect_pattern"; then

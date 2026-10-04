@@ -161,9 +161,12 @@ def is_frontmost(pid: int) -> bool:
       whatever was true at import and never moves. Measured 2026-09-04: after a raise, the
       target was frontmost within 0.4s and this call still named the previous app on every
       poll for 3.2s.
-    - **`AXFocusedApplication` on the system-wide element** returns `None` on this machine,
-      every time, for every application. It is a live query with no cache, which is why it
-      was reached for, and it simply does not answer.
+    - **`AXFocusedApplication` on the system-wide element** returned `None` here, for every
+      application, because this process had no `NSApplication`: a system-wide read from a
+      process without one fails (-25204) every time. With `NSApplication.sharedApplication()`
+      it answered in 17 of 17 apps (measured 2026-10-03, #3423). It still answers a different
+      question: it follows the KEYBOARD focus, which a non-activating launcher panel takes
+      without becoming the front application, so it is not a front-app check either.
 
     `AXFrontmost` read from the target's OWN application element does answer, immediately
     and correctly, and needs no Automation grant. Verified against the menu bar and

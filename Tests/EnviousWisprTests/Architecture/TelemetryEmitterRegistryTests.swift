@@ -125,8 +125,13 @@ struct TelemetryEmitterRegistryTests {
   /// three properties ride only on a failed cold attempt and are omitted when unknown; a fixed
   /// producer step label, a signed Int and a four-character String, no content; reader is the
   /// #1851 failure query grouped by `prepare_failed_os_status`; registry row unchanged.
+  /// #3423: `dictationCompleted` gained `focusOwnerState:`, which changes the enclosing-function
+  /// identity of the same single `dictation.completed` site. No new site, no new event, same
+  /// per-take cadence and treatment. Checklist (plan section 8): existing row, +0 rows, one closed
+  /// five-value String omitted when unknown, no content; reader is the #3423 seven-day query
+  /// (`analytics-operations.md` FACT: app-posthog-events); registry row unchanged.
   static let sitesFingerprint =
-    "1d0b9b24818ec273151a5cae1d89f83ddb5d8fb8c46c0fc89ff438ae31affb03"
+    "362c4285e9db72966f57e2c4b57bf09e37cfba452e097951e6eb1886aca96bad"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

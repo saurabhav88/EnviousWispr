@@ -132,6 +132,23 @@ struct DiagnosticsDiaryTests {
     #expect(event.fields == ["result": .string("completed"), "reason": .string("[REDACTED]")])
   }
 
+  @Test("#3423: the focus-owner state is kept from dictation.completed as text, and nothing else")
+  func focusOwnerStateIsKept() throws {
+    let kept = try #require(
+      DiagnosticsDiary.event(
+        source: .completed,
+        properties: ["take_id": Self.takeA, "focus_owner_state": "disagree"]))
+    #expect(kept.fields == ["focus_owner_state": .string("disagree")])
+    let wrongType = try #require(
+      DiagnosticsDiary.event(
+        source: .completed, properties: ["take_id": Self.takeA, "focus_owner_state": true]))
+    #expect(wrongType.fields.isEmpty, "a flag in a text field is dropped")
+    let terminal = try #require(
+      DiagnosticsDiary.event(
+        source: .terminal, properties: ["take_id": Self.takeA, "focus_owner_state": "agree"]))
+    #expect(terminal.fields.isEmpty, "it rides dictation.completed only")
+  }
+
   @Test(
     "A row without a hyphenated-UUID take id is not recorded",
     arguments: ["", "take-1", "7F3C2A104B5D4E6F8A9B0C1D2E3F4A5B"])

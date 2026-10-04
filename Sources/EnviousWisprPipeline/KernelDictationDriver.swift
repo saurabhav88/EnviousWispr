@@ -1261,10 +1261,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // #3304: when no field is captured, the app's focused window is recorded instead. Reset
         // BEFORE the field capture below runs, so the last recording's window never outlives it.
         context.targetWindow = nil
-        context.recordStartTarget(
-          app: NSWorkspace.shared.frontmostApplication,
-          element: PasteService.captureFocusedElement(), trusted: AXIsProcessTrusted(),
+        let front = NSWorkspace.shared.frontmostApplication
+        let ownerBundleID = context.recordStartTarget(
+          front: front, focus: PasteService.captureKeyboardFocus(), trusted: AXIsProcessTrusted(),
           captureWindow: { PasteService.captureFocusedStandardWindow(pid: $0) })
+        // #3423: one line per take; the state is metadata only, never content.
+        let targetFocusLine =
+          "TARGET_FOCUS state=\(context.focusOwnerState?.rawValue ?? "nil") "
+          + "front=\(front?.bundleIdentifier ?? "<nil>") owner=\(ownerBundleID ?? "<nil>")"
+        Task { await AppLogger.shared.log(targetFocusLine, level: .info, category: "AXDiag") }
         applyLLMConfigToPolishStep(config)
         // GAP 1 of seam audit (TP:708-713): warm the polish provider as
         // the session starts so the polish step's cold-start latency is

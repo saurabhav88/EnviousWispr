@@ -370,6 +370,7 @@ public final class TelemetryService {
       fillerRemoval: false,
       targetApp: m?.targetApp,
       pasteResult: m?.pasteTier,
+      focusOwnerState: m?.focusOwnerState,
       e2eSeconds: m?.e2eSeconds ?? t.processingTime,
       asrSeconds: m?.asrLatencySeconds,
       llmSeconds: m?.llmLatencySeconds,
@@ -1817,6 +1818,8 @@ public final class TelemetryService {
     result: String, inputMode: String, asrBackend: String,
     llmProvider: String?, fillerRemoval: Bool,
     targetApp: String?, pasteResult: String?,
+    /// #3423: the record-start focus-owner state, one of five closed values; nil omits the key.
+    focusOwnerState: String? = nil,
     e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?,
     itnRan: Bool? = nil, itnChanged: Bool? = nil, itnFloorDelivered: Bool? = nil,
     itnSkipReason: String? = nil, itnLatencyMs: Double? = nil,
@@ -1899,6 +1902,7 @@ public final class TelemetryService {
     if let trim = salvagedLeadTrimMs { props["salvaged_lead_trim_ms"] = trim }
     if let p = llmProvider { props["llm_provider"] = p }
     if let a = targetApp { props["target_app"] = a }
+    if let state = focusOwnerState { props["focus_owner_state"] = state }
     if let pr = pasteResult { props["paste_result"] = pr }
     if let asr = asrSeconds { props["asr_seconds"] = asr }
     if let llm = llmSeconds { props["llm_seconds"] = llm }

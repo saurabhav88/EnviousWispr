@@ -127,7 +127,8 @@ final class DiagnosticsDiary: @unchecked Sendable {
 
   /// Fields kept only from `dictation.completed`.
   static let completedFields: Set<String> = sharedFields.union([
-    "input_mode", "asr_backend", "llm_provider", "filler_removal", "target_app", "paste_result",
+    "input_mode", "asr_backend", "llm_provider", "filler_removal", "target_app", "focus_owner_state",
+    "paste_result",
     "e2e_seconds", "asr_seconds", "llm_seconds", "paste_latency_ms", "recording_seconds",
     "stop_reason", "interrupted_by", "asr_salvage_outcome", "asr_retry_outcome",
     "history_save_status", "history_save_error_class", "route_reason", "route_fallback_reason",

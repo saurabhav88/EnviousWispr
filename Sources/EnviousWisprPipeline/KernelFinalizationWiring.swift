@@ -181,21 +181,100 @@ final class KernelSessionContext {
   /// a delivery-time retry may adopt only a field inside it. Nil means today's behaviour.
   var targetWindow: AXUIElement?
 
+  /// How the keyboard-focus owner compared with the front application at record start (#3423).
+  /// The raw value is the logged and reported string.
+  enum FocusOwnerState: String, CaseIterable, Sendable {
+    /// The focused element belongs to the front application: today's target.
+    case agree
+    /// Another application owns the focused element (a non-activating launcher panel); it became
+    /// the target.
+    case disagree
+    /// Another process owns it, but it is not a regular or accessory application (a helper, an XPC
+    /// or service host) or it is us: the front application stays the target.
+    case disagreeKeptFront = "disagree_kept_front"
+    /// The system answered that nothing is focused.
+    case noElement = "no_element"
+    /// The read failed, was refused, or the owner pid could not be read.
+    case unreadable
+  }
+
+  /// Whether a focus owner other than the front app may become the paste target (#3423): a running
+  /// regular or accessory application. A prohibited-policy process (a helper, an XPC or service
+  /// host) never does, nor a terminated one.
+  nonisolated static func isEligibleOwner(
+    activationPolicy: NSApplication.ActivationPolicy, isTerminated: Bool
+  ) -> Bool {
+    !isTerminated && (activationPolicy == .regular || activationPolicy == .accessory)
+  }
+
+  /// This recording's `FocusOwnerState`; nil before the first record start.
+  var focusOwnerState: FocusOwnerState?
+
   /// Records the recording's paste target at record start (#3304 wraps the #1980-era capture).
+  ///
+  /// #3423: the target is the application that OWNS the focused element when it differs from the
+  /// front application and is a running regular or accessory application other than us; a
+  /// non-activating launcher panel takes the keyboard focus and leaves the front app unchanged.
+  /// Any other owner keeps the front application, because substituting a helper process would
+  /// move bundle-keyed paste policies onto a process they were never written for. The captured
+  /// element is kept in every case that has one, as before.
   ///
   /// `targetWindow` is reset first, so a previous recording's window can never survive. It is
   /// recorded only when no field was captured, Accessibility is trusted, and the app is alive;
   /// liveness is re-checked after the blocking read (a pid can be reclaimed meanwhile).
+  ///
+  /// - Returns: the owner application's bundle id when one was resolved, for the log line.
+  @discardableResult
   func recordStartTarget(
-    app: NSRunningApplication?, element: AXUIElement?, trusted: Bool,
-    captureWindow: (pid_t) -> AXUIElement?
-  ) {
+    front: NSRunningApplication?, focus: KeyboardFocusRead, trusted: Bool,
+    captureWindow: (pid_t) -> AXUIElement?,
+    ownerApplication: (pid_t) -> NSRunningApplication? = {
+      NSRunningApplication(processIdentifier: $0)
+    },
+    isEligibleOwner: (NSRunningApplication) -> Bool = {
+      KernelSessionContext.isEligibleOwner(
+        activationPolicy: $0.activationPolicy, isTerminated: $0.isTerminated)
+    },
+    ownPID: pid_t = ProcessInfo.processInfo.processIdentifier
+  ) -> String? {
+    var app = front
+    var ownerBundleID: String?
+    let element: AXUIElement?
+    let state: FocusOwnerState
+    switch focus {
+    case .focused(let focused, let owner):
+      element = focused
+      if owner == front?.processIdentifier {
+        state = .agree
+        ownerBundleID = front?.bundleIdentifier
+      } else {
+        let ownerApp = owner == ownPID ? nil : ownerApplication(owner)
+        ownerBundleID = ownerApp?.bundleIdentifier
+        if let ownerApp, isEligibleOwner(ownerApp) {
+          app = ownerApp
+          state = .disagree
+        } else {
+          state = .disagreeKeptFront
+        }
+      }
+    case .ownerUnreadable(let focused):
+      element = focused
+      state = .unreadable
+    case .noElement:
+      element = nil
+      state = .noElement
+    case .unreadable:
+      element = nil
+      state = .unreadable
+    }
     targetApp = app
     targetElement = element
     targetWindow = nil
-    guard element == nil, trusted, let app, !app.isTerminated else { return }
+    focusOwnerState = state
+    guard element == nil, trusted, let app, !app.isTerminated else { return ownerBundleID }
     let window = captureWindow(app.processIdentifier)
     if !app.isTerminated { targetWindow = window }
+    return ownerBundleID
   }
   /// Canonical protected spellings, snapshotted at `processText` entry.
   ///
@@ -1362,6 +1441,8 @@ struct KernelFinalizationWiring {
       languageResolutionSource: outcome.languageResolutionSource,
       languageConfidenceBucket: outcome.languageConfidenceBucket,
       targetApp: context.targetApp?.bundleIdentifier,
+      // #3423: carried unchanged, like the fields above.
+      focusOwnerState: context.focusOwnerState?.rawValue,
       coldStart: false,
       streamingMode: outcome.streamingMode,
       e2eSeconds: e2e,

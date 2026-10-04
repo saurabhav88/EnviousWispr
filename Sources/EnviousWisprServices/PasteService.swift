@@ -346,10 +346,108 @@ public enum PasteService {
 
   // MARK: - Tier 1: AX Direct Insertion
 
-  /// Capture the system-wide focused UI element (the specific text field, not just the app).
-  /// Sets a 1-second AX timeout on the element to avoid hanging on misbehaving apps.
-  /// Returns nil if no element is focused or accessibility is not trusted.
-  public static func captureFocusedElement() -> AXUIElement? {
+  /// The Accessibility calls behind `readKeyboardFocus`, injected so every branch is testable with
+  /// scripted answers (#3423). Production uses `.live`.
+  package struct KeyboardFocusOperations {
+    package var isTrusted: () -> Bool
+    package var systemWide: () -> AXUIElement
+    /// `AXUIElementSetMessagingTimeout` on the handle; on the system-wide handle this is the
+    /// process-wide default, and `0` puts the system default back (`AXUIElement.h`).
+    package var setMessagingTimeout: (AXUIElement, Double) -> Bool
+    package var copyFocusedElement: (AXUIElement) -> (AXError, CFTypeRef?)
+    package var ownerPID: (AXUIElement) -> pid_t?
+
+    package init(
+      isTrusted: @escaping () -> Bool, systemWide: @escaping () -> AXUIElement,
+      setMessagingTimeout: @escaping (AXUIElement, Double) -> Bool,
+      copyFocusedElement: @escaping (AXUIElement) -> (AXError, CFTypeRef?),
+      ownerPID: @escaping (AXUIElement) -> pid_t?
+    ) {
+      self.isTrusted = isTrusted
+      self.systemWide = systemWide
+      self.setMessagingTimeout = setMessagingTimeout
+      self.copyFocusedElement = copyFocusedElement
+      self.ownerPID = ownerPID
+    }
+
+    package static var live: KeyboardFocusOperations {
+      KeyboardFocusOperations(
+      isTrusted: { AXIsProcessTrusted() },
+      systemWide: { AXUIElementCreateSystemWide() },
+      setMessagingTimeout: { AXUIElementSetMessagingTimeout($0, Float($1)) == .success },
+      copyFocusedElement: { handle in
+        var ref: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(
+          handle, kAXFocusedUIElementAttribute as CFString, &ref)
+        return (error, ref)
+      },
+      ownerPID: { element in
+        var pid: pid_t = 0
+        return AXUIElementGetPid(element, &pid) == .success ? pid : nil
+      })
+    }
+  }
+
+  /// The bound on one keyboard-focus read on the paste, landing and learning paths (#3423 plan
+  /// section 2.5, "AX read cost": at most 0.25 s, less when the caller's budget has less left).
+  package static let keyboardFocusReadCapSeconds: Double = 0.25
+
+  /// One uncached system-wide `AXFocusedUIElement` read and the pid that owns the answer (#3423).
+  /// The system-wide read follows the KEYBOARD focus, which a non-activating launcher panel takes
+  /// without changing the front application; a per-application focused element cannot answer
+  /// this, because it survives an app switch.
+  ///
+  /// **The bound is process-wide, so it is put back.** A messaging timeout on the system-wide
+  /// handle sets the default for every Accessibility call this process makes (`AXUIElement.h`).
+  /// Every exit after the trust check therefore resets the default with `0`. Nothing else in the
+  /// app sets the system-wide timeout, so the default is what was there before.
+  ///
+  /// - Parameters:
+  ///   - cap: the read's bound; nil reads unbounded (record start, which has always been).
+  ///   - admit: asked with the system-wide handle and `cap`; it installs `min(cap, what its budget
+  ///     has left)` and says whether the read may run. Nil installs `cap` itself.
+  ///   - onFailure: told the call's error when the read answered no element or failed, after the
+  ///     call (record start's diagnostic line).
+  @MainActor
+  package static func readKeyboardFocus(
+    cap: Double?, admit: (@MainActor (AXUIElement, Double) -> Bool)?,
+    onFailure: ((AXError) -> Void)? = nil,
+    operations: KeyboardFocusOperations = .live
+  ) -> KeyboardFocusRead {
+    guard operations.isTrusted() else { return .unreadable }
+    let systemWide = operations.systemWide()
+    defer { _ = operations.setMessagingTimeout(systemWide, 0) }
+    if let cap {
+      let admitted =
+        admit.map { $0(systemWide, cap) } ?? operations.setMessagingTimeout(systemWide, cap)
+      guard admitted else { return .unreadable }
+    }
+    let (error, value) = operations.copyFocusedElement(systemWide)
+    // The same mapping as `PasteService.focusedElement`: `.noValue` is the ordinary "nothing is
+    // focused" answer, and a successful call with no value is an absence. A value that is not an
+    // element confirms nothing, so it is unreadable, never "nothing focused".
+    let element: AXUIElement
+    if isUnfocusedResponse(error) || (error == .success && value == nil) {
+      onFailure?(error)
+      return .noElement
+    } else if error == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() {
+      element = value as! AXUIElement
+    } else {
+      onFailure?(error)
+      return .unreadable
+    }
+    guard let owner = operations.ownerPID(element), owner > 0 else {
+      return .ownerUnreadable(element: element)
+    }
+    return .focused(element: element, ownerPID: owner)
+  }
+
+  /// Capture the system-wide focused UI element (the specific text field, not just the app) at
+  /// record start, typed (#3423): a failed query is `.unreadable`, "nothing focused" is
+  /// `.noElement`, and an element whose owner cannot be read is kept. Unbounded, as it has always
+  /// been. Sets a 1-second `AXTimeout` attribute on the element, as before.
+  @MainActor
+  package static func captureKeyboardFocus() -> KeyboardFocusRead {
     guard AXIsProcessTrusted() else {
       Task {
         await AppLogger.shared.log(
@@ -357,32 +455,37 @@ public enum PasteService {
           level: .info, category: "AXDiag"
         )
       }
-      return nil
+      return .unreadable
     }
-    let systemWide = AXUIElementCreateSystemWide()
-    var focusedRef: CFTypeRef?
-    let err = AXUIElementCopyAttributeValue(
-      systemWide,
-      kAXFocusedUIElementAttribute as CFString,
-      &focusedRef
-    )
-    guard err == .success, let ref = focusedRef else {
-      Task {
-        await AppLogger.shared.log(
-          "AXDiag capture: systemWide focus FAILED err=\(err.rawValue)",
-          level: .info, category: "AXDiag"
-        )
-      }
-      return nil
+    let read = readKeyboardFocus(
+      cap: nil, admit: nil,
+      onFailure: { error in
+        Task {
+          await AppLogger.shared.log(
+            "AXDiag capture: systemWide focus FAILED err=\(error.rawValue)",
+            level: .info, category: "AXDiag"
+          )
+        }
+      })
+    let element: AXUIElement
+    let owner: pid_t?
+    switch read {
+    case .focused(let focused, let ownerPID):
+      element = focused
+      owner = ownerPID
+    case .ownerUnreadable(let focused):
+      element = focused
+      owner = nil
+    case .noElement, .unreadable:
+      return read
     }
-    let element = ref as! AXUIElement
     AXUIElementSetAttributeValue(
       element,
       "AXTimeout" as CFString,
       Float(1.0) as CFTypeRef
     )
-    logElementDiagnostics(element)
-    return element
+    logElementDiagnostics(element, ownerPID: owner)
+    return read
   }
 
   /// Log role, subrole, and key settability signals for the focused element.
@@ -391,9 +494,12 @@ public enum PasteService {
   ///
   /// Runs off the caller's thread so the extra AX round-trips don't add
   /// latency to the PTT-to-recording start path.
-  private static func logElementDiagnostics(_ element: AXUIElement) {
+  /// The `app=` label names the application that OWNS the focused element (#3423), which is not
+  /// the front application when a non-activating panel holds the keyboard focus.
+  private static func logElementDiagnostics(_ element: AXUIElement, ownerPID: pid_t?) {
     nonisolated(unsafe) let axElement = element
-    let bundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<nil>"
+    let bundleId =
+      ownerPID.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier } ?? "<nil>"
     Task.detached {
       var roleRef: CFTypeRef?
       _ = AXUIElementCopyAttributeValue(axElement, kAXRoleAttribute as CFString, &roleRef)
@@ -2176,9 +2282,15 @@ public enum PasteService {
   /// unconditionally, which was worse than the defect it replaced: it pasted
   /// whatever the real board held into the frontmost app. Production passes
   /// `.general`, where the skip is unreachable and behaviour is unchanged.
+  ///
+  /// `postKeystroke` posts the Cmd+V; nil posts it at the annotated session tap, which the window
+  /// server delivers to the FRONT application. A destination that owns the keyboard focus without
+  /// being front (a non-activating launcher panel, #3423) never receives that post, so its caller
+  /// passes a poster aimed at the destination's process instead.
   public static func pasteToActiveApp(
     _ text: String,
-    to pasteboard: NSPasteboard = .general
+    to pasteboard: NSPasteboard = .general,
+    postKeystroke: (() -> Bool)? = nil
   ) -> PasteDispatchResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
     let accessibilityTrusted = AXIsProcessTrusted()
@@ -2213,7 +2325,7 @@ public enum PasteService {
       )
     }
 
-    guard dispatchCmdV() else {
+    guard (postKeystroke ?? dispatchCmdV)() else {
       Task {
         await AppLogger.shared.log(
           "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=false, clipboardWrite=\(clipboardWriteSuccess) — Failed to create CGEvent",
@@ -2319,7 +2431,7 @@ public enum PasteService {
 
   /// Walk the app's menu bar to find the Edit > Paste item, identified by its
   /// ⌘V shortcut rather than its (localized) title. Bounded traversal depth
-  /// (menu bar → top menus → items). Live-only (like `captureFocusedElement` /
+  /// (menu bar → top menus → items). Live-only (like `captureKeyboardFocus` /
   /// `forceActivateApp`); the pure matching logic is covered by
   /// `isPasteShortcut` unit tests.
   @MainActor
@@ -2491,7 +2603,7 @@ public enum PasteService {
   ///
   /// Activating the app alone puts the caret wherever that app last left it,
   /// which after a cancel is often a different field than the one the user was
-  /// dictating into. `captureFocusedElement` already stamped a 1-second
+  /// dictating into. `captureKeyboardFocus` already stamped a 1-second
   /// `AXTimeout` on this handle, so a dead or wedged element fails fast here
   /// rather than hanging the press.
   ///

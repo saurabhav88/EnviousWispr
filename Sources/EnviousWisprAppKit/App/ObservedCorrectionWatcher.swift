@@ -96,13 +96,6 @@ struct SelectedCorrectionJudge {
   var revision: String? = nil
 }
 
-/// The active application, sampled ONCE per gate pass so pid and bundle id
-/// describe the same process.
-struct FrontmostApplication: Equatable, Sendable {
-  let pid: pid_t
-  let bundleID: String?
-}
-
 /// The watcher's three telemetry events (#996 §4): why a paste was not
 /// watched, how a watched paste ended, and what the judge answered. Counts,
 /// durations and closed enums only, never text. `TelemetryService` conforms in
@@ -132,7 +125,10 @@ struct ObservedCorrectionWatcherDependencies {
   let isLearnFromEditsOn: () -> Bool
   /// nil = `model_unavailable`.
   let selectJudge: () -> SelectedCorrectionJudge?
-  let frontmost: () -> FrontmostApplication?
+  /// The applications that may hold keyboard input, front first, then the confirmed focus owner
+  /// (#3423), each sampled ONCE per gate pass so pid and bundle id describe the same process.
+  /// Given the paste's destination bundle id.
+  let activeApplications: (String?) -> [ActiveApplication]
   let observer: any PastedRegionObserving
   /// The observer scheduler's clock, so the paste deadline shares its domain.
   let nowMs: () -> Int
@@ -306,6 +302,15 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
 
   // MARK: Steps 2–3: the deferred gates and capture
 
+  /// The one application a watch may observe (#3423): among `candidates` whose bundle id is
+  /// `bundleID`, the confirmed keyboard-focus owner first, otherwise the first (front) one.
+  static func selectDestination(_ candidates: [ActiveApplication], bundleID: String?)
+    -> ActiveApplication?
+  {
+    let matching = candidates.filter { $0.bundleID == bundleID }
+    return matching.first(where: \.isFocusOwner) ?? matching.first
+  }
+
   private func begin(generation gen: UInt64) async {
     guard let booked = watch, booked.generation == gen, booked.isLive else { return }
     guard deps.isLearnFromEditsOn() else {
@@ -325,7 +330,12 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       skip(.toggleOff, generation: gen)
       return
     }
-    guard let frontmost = deps.frontmost(), frontmost.bundleID == w.event.destinationBundleID
+    // #3423: among the active applications with the destination's bundle, the confirmed focus
+    // owner wins (a launcher panel whose app is also running in front is the same bundle); ONE
+    // pid is selected and must still be the destination after the capture.
+    guard
+      let selectedApp = Self.selectDestination(
+        deps.activeApplications(w.event.destinationBundleID), bundleID: w.event.destinationBundleID)
     else {
       skip(.destinationMismatch, generation: gen)
       return
@@ -348,7 +358,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       skip(.toggleOff, generation: gen)
       return
     }
-    guard let again = deps.frontmost(), again.pid == frontmost.pid else {
+    guard
+      deps.activeApplications(w.event.destinationBundleID).contains(where: {
+        $0.pid == selectedApp.pid
+      })
+    else {
       skip(.destinationMismatch, generation: gen)
       return
     }
@@ -364,6 +378,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       watch?.ended = true
       emitEnded(reason: reason, generation: gen)
     case .captured(let target):
+      // The field was read from the selected application, not another process of its bundle.
+      guard target.pid == selectedApp.pid else {
+        skip(.destinationMismatch, generation: gen)
+        return
+      }
       w.target = target
       // A recognised browser (Safari, or a Chromium family member, which is
       // also a manual-accessibility host) is counted as `browser` so the

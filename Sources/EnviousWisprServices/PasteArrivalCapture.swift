@@ -59,13 +59,19 @@ package final class PasteLandingPrepareBudget {
   /// Whether the next Accessibility call on `handle` may run. Installs the remaining time on that
   /// exact handle first.
   package func admit(_ handle: AXUIElement) -> Bool {
+    admit(handle, cappedAt: .infinity)
+  }
+
+  /// `admit(_:)` for a call whose own bound is shorter than the budget (#3423, the system-wide
+  /// keyboard-focus read): installs the remaining time or `cap`, whichever is less.
+  package func admit(_ handle: AXUIElement, cappedAt cap: Double) -> Bool {
     guard refusal == nil else { return false }
     let remainingMs = totalMs - elapsedMs
     guard remainingMs > 0 else {
       refusal = .exhausted
       return false
     }
-    guard ax.setMessagingTimeout(handle, seconds: Double(remainingMs) / 1000) else {
+    guard ax.setMessagingTimeout(handle, seconds: min(cap, Double(remainingMs) / 1000)) else {
       refusal = .timeoutNotInstalled
       return false
     }
@@ -357,7 +363,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   package let context: Context
   private let application: AXUIElement
   let baseline: Baseline
-  private let frontmostBefore: pid_t?
+  /// The active destination at prepare (#3423); nil for an edit-only session, which never decides.
+  private let switchTokenBefore: DestinationSwitchToken?
   /// Nil when the question could not be asked or answered: never "does not support it". An
   /// edit-only session asks it at #996's first request instead of before a write.
   private var manualAX: Bool?
@@ -413,7 +420,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   package var onEditAttempt: (@MainActor () -> Void)?
 
   private init(
-    context: Context, application: AXUIElement, baseline: Baseline, frontmostBefore: pid_t?,
+    context: Context, application: AXUIElement, baseline: Baseline,
+    switchTokenBefore: DestinationSwitchToken?,
     manualAX: Bool?, hostExposedFocus: Bool, targetWindow: PasteLandingTargetWindow,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
     reporter: @escaping @MainActor (PasteArrivalObservation) -> Void,
@@ -422,7 +430,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     self.context = context
     self.application = application
     self.baseline = baseline
-    self.frontmostBefore = frontmostBefore
+    self.switchTokenBefore = switchTokenBefore
     self.manualAX = manualAX
     self.hostExposedFocus = hostExposedFocus
     self.targetWindow = targetWindow
@@ -464,7 +472,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     guard observedTiers.contains(context.tier) else { return nil }
     let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
     let application = ax.applicationElement(pid: context.pid)
-    let frontmostBefore = ax.frontmostPID()
+    let switchTokenBefore = ax.destinationSwitchToken(pid: context.pid, budget: budget)
     let manualAX: Bool? =
       budget.admit(application) ? ax.supportsManualAccessibility(application) : nil
 
@@ -484,7 +492,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
 
     let session = PasteArrivalCapture(
       context: context, application: application, baseline: baseline,
-      frontmostBefore: frontmostBefore, manualAX: manualAX,
+      switchTokenBefore: switchTokenBefore, manualAX: manualAX,
       hostExposedFocus: capturedTarget != nil, targetWindow: targetWindow,
       ax: ax, scheduler: scheduler, reporter: report, log: log ?? Self.debugLog)
     session.arm(element: element, budget: budget)
@@ -505,7 +513,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   ) -> PasteArrivalCapture {
     let session = PasteArrivalCapture(
       context: .init(tier: .axDirect, pid: pid, takeID: nil, bundleID: bundleID, payload: payload),
-      application: ax.applicationElement(pid: pid), baseline: .unreadable, frontmostBefore: nil,
+      application: ax.applicationElement(pid: pid), baseline: .unreadable,
+      switchTokenBefore: nil,
       manualAX: nil, hostExposedFocus: false, targetWindow: .unknown, ax: ax, scheduler: scheduler,
       reporter: { _ in }, log: { _ in })
     session.wasCommitted = true
@@ -626,7 +635,9 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private func enableManualAccessibilityIfNeeded() {
     guard !manualAccessibilityEnabled, manualAX != false,
       manualAccessibilityAttempts < Self.maxManualAccessibilityAttempts,
-      ax.isTrusted(), ax.isProcessRunning(context.pid), ax.frontmostPID() == context.pid,
+      ax.isTrusted(), ax.isProcessRunning(context.pid),
+      ax.destinationActivity(
+        pid: context.pid, capturedElement: nil, mode: .full, budget: nil) != .notActive,
       ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
     else { return }
     manualAccessibilityAttempts += 1
@@ -747,7 +758,9 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     // Whole-app causes first: every check below only asks whether a comparison can be trusted, and
     // must not hide that the app quit, lost the front, or took back our permission.
     if !ax.isProcessRunning(context.pid) { return .inconclusive(.appTerminated) }
-    if ax.frontmostPID() != frontmostBefore { return .inconclusive(.appSwitched) }
+    if ax.destinationSwitchToken(pid: context.pid, budget: nil) != switchTokenBefore {
+      return .inconclusive(.appSwitched)
+    }
     if case .permissionLost = attempt { return .cannotRead(.permissionLost) }
     if prepareBudgetExhausted { return .inconclusive(.budgetSpent) }
     switch baseline {

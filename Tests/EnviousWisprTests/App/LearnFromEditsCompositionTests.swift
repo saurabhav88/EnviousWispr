@@ -65,8 +65,8 @@ struct LearnFromEditsCompositionTests {
     let clock = ObserverClock()
     let judge = JudgeFake()
     let telemetry = LearnTelemetrySpy()
-    let frontmost: @MainActor () -> FrontmostApplication? = {
-      FrontmostApplication(pid: 42, bundleID: "com.apple.Notes")
+    let activeApplications: @MainActor (String?) -> [ActiveApplication] = { _ in
+      [ActiveApplication(pid: 42, bundleID: "com.apple.Notes", isFocusOwner: false)]
     }
     var selectJudgeForTests: (@MainActor () -> SelectedCorrectionJudge?)? = nil
     if judgeServes {
@@ -77,7 +77,7 @@ struct LearnFromEditsCompositionTests {
       pasteCompletionRegistry: registry, telemetry: telemetry,
       legacyLedgerDirectory: dir, osMajor: osMajor,
       observer: observer, scheduler: clock,
-      frontmost: frontmost,
+      activeApplications: activeApplications,
       selectJudgeForTests: selectJudgeForTests,
       debugExportPath: debugExportPath)
     return Fixture(
