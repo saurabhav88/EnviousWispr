@@ -53,6 +53,8 @@ w = types.ModuleType("wispr_eyes")
 w.tts = lambda *a, **k: "/dev/null"
 w.connect = lambda *a, **k: None
 w.tap = lambda *a, **k: True
+w._text_visible = lambda *a, **k: False
+w.press_key = lambda *a, **k: None
 sys.modules["wispr_eyes"] = w
 
 import escape_recovery_uat as uat
@@ -325,6 +327,134 @@ def test_restore_property():
 
 
 test_restore_property()
+
+# ---- #3437: the Undo-through-the-cascade checks --------------------------------------------
+# HARNESS CONTRACT rows: each pairs a correct outcome with near-identical wrong ones, and requires
+# the wrong ones to FAIL through the harness's own `verify_undo`, never a re-implementation of it.
+print("\n#3437 undo checks")
+
+HELD = "The quick brown fox jumps over the lazy dog."
+LEGACY = HELD + " "
+
+
+def verdicts(**overrides):
+    """Runs `verify_undo` on a correct key-paste Undo with `overrides` applied; returns the
+    names of the checks it FAILED."""
+    args = dict(
+        name="u", window=("[EscapeRecovery] escape recovery restore: outcome=pasted age_ms=10 take=t1\n"
+                          "[PipelineTiming] Paste cascade: tier=cgevent, app=com.example.panel, duration=3ms"),
+        field_value=LEGACY, expected=LEGACY,
+        others={"panel field B": ("", "")},
+        board=uat.SENTINEL, board_expected=uat.expected_clipboard("cgevent", True, HELD),
+        bundle="com.example.panel", route="cgevent", notice_expected=False)
+    args.update(overrides)
+    uat.results.clear()
+    uat.verify_undo(**args)
+    return [n for n, status, _ in uat.results if status == "FAIL"]
+
+
+ok("a correct key-paste Undo passes every check", verdicts() == [], str(verdicts()))
+for label, field in [("wrong text", "The quick brown fox. "), ("missing trailing space", HELD),
+                     ("extra space", " " + LEGACY), ("changed casing", LEGACY.lower()),
+                     ("duplicate insertion", LEGACY + LEGACY)]:
+    ok(f"a field with {label} fails", any("original field" in n for n in verdicts(field_value=field)))
+ok("a written sentinel field fails",
+   any("panel field B" in n for n in verdicts(others={"panel field B": ("x", "")})))
+ok("a missing restore line fails",
+   any("one restore" in n for n in verdicts(window="Paste cascade: tier=cgevent, app=com.example.panel,")))
+ok("a delivery into another app fails",
+   any("delivered by tier" in n for n in verdicts(
+       window="escape recovery restore: outcome=pasted age_ms=1 take=t\n"
+              "Paste cascade: tier=cgevent, app=com.apple.TextEdit,")))
+ok("a Copied notice where none belongs fails",
+   any("no Copied notice" in n for n in verdicts(
+       window="escape recovery restore: outcome=pasted age_ms=1 take=t\n"
+              "Paste cascade: tier=cgevent, app=com.example.panel,\n"
+              "ESCAPE_RECOVERY_NOTICE shown=true why=presented")))
+ok("a wrong clipboard fails", any("clipboard" in n for n in verdicts(board=LEGACY)))
+
+gone = dict(window=("escape recovery restore: outcome=clipboard_only age_ms=1 take=t\n"
+                    "Paste cascade: tier=clipboard_only, app=com.apple.TextEdit,\n"
+                    "ESCAPE_RECOVERY_NOTICE shown=true why=presented"),
+            field_value=None, expected=None, others={}, board=LEGACY,
+            board_expected=uat.expected_clipboard("clipboard_only", True, HELD),
+            bundle="com.apple.TextEdit", route="clipboard_only", notice_expected=True)
+ok("a clipboard-only Undo with its notice passes", verdicts(**gone) == [], str(verdicts(**gone)))
+ok("a refused notice fails",
+   any("Copied notice was shown" in n for n in verdicts(**{**gone, "window": gone["window"].replace(
+       "shown=true why=presented", "shown=false why=refused")})))
+ok("a stale notice fails",
+   any("Copied notice was shown" in n for n in verdicts(**{**gone, "window": gone["window"].replace(
+       "shown=true why=presented", "shown=false why=stale")})))
+ok("an absent notice fails",
+   any("Copied notice was shown" in n for n in verdicts(**{**gone, "window": gone["window"].replace(
+       "\nESCAPE_RECOVERY_NOTICE shown=true why=presented", "")})))
+
+ok("restore ON and OFF expect different boards after a key paste",
+   uat.expected_clipboard("cgevent", True, HELD) == uat.SENTINEL
+   and uat.expected_clipboard("cgevent", False, HELD) == LEGACY)
+ok("a direct write never touches the board, restore on or off",
+   uat.expected_clipboard("ax_direct", True, HELD) == uat.expected_clipboard("ax_direct", False, HELD)
+   == uat.SENTINEL)
+ok("the legacy payload never doubles a trailing space",
+   uat.legacy_payload("a ") == "a " and uat.legacy_payload("a") == "a ")
+ok("a selection is replaced and its neighbours kept",
+   uat.expected_field("Start. alpha end", 7, 5, HELD) == "Start. " + HELD + " end")
+ok("a corrupted selection does not match",
+   uat.expected_field("Start. alpha end", 7, 5, HELD) != "Start. " + HELD + "alpha end")
+ok("an empty field expects the legacy payload; a field between spaces expects the bare text",
+   uat.expected_insertion("empty", HELD) == LEGACY
+   and uat.expected_insertion("between_spaces", HELD) == HELD)
+
+ok("the held row's text prefers polished, then processed, then raw",
+   uat.held_row_text({"text": "raw", "processedText": "proc", "polishedText": "pol"}) == "pol"
+   and uat.held_row_text({"text": "raw", "processedText": "proc"}) == "proc"
+   and uat.held_row_text({"text": "raw"}) == "raw")
+
+
+def aborts(call):
+    try:
+        call()
+    except uat.Aborted:
+        return True
+    return False
+
+
+ok("exactly one new held row is required",
+   uat.new_held_row({"a.json"}, {"a.json": {"text": "old"}, "b.json": {"text": "new"}}) == "new"
+   and aborts(lambda: uat.new_held_row({"a.json"}, {"a.json": {"text": "old"}}))
+   and aborts(lambda: uat.new_held_row(set(), {"a.json": {"text": "x"}, "b.json": {"text": "y"}})))
+ok("an unreadable held row aborts rather than expecting nothing",
+   aborts(lambda: uat.new_held_row(set(), {"a.json": {"text": ""}})))
+ok("a rotated log invalidates the phase's evidence",
+   uat.evidence_is_current(100, 100) and not uat.evidence_is_current(100, 40))
+
+# The overlay's Copied text is a separate check in the gone-field phase: drive that phase with every
+# live boundary faked and require a FAIL when the overlay never shows the sentence.
+_saved = {k: getattr(uat, k) for k in (
+    "new_textedit_doc", "set_clipboard", "log_length", "log_since", "hold_take", "press_undo",
+    "overlay_shows", "wait_for_cleanup", "subprocess", "wait_for")}
+try:
+    uat.new_textedit_doc = lambda name: "/tmp/fake-doc.txt"
+    uat.set_clipboard = lambda text: None
+    uat.log_length = lambda: 0
+    uat.log_since = lambda base: gone["window"]
+    uat.hold_take = lambda path, base: HELD
+    uat.press_undo = lambda base: True
+    uat.wait_for_cleanup = lambda route, restore_on, held: LEGACY
+    uat.subprocess = types.SimpleNamespace(run=lambda *a, **k: None)
+    for shown, should_fail in ((True, False), (False, True)):
+        uat.overlay_shows = (lambda answer: lambda text: answer)(shown)
+        uat.results.clear()
+        uat.wait_for = (lambda real: lambda what, pred, deadline=45.0, poll=0.25: pred())(uat.wait_for)
+        uat.phase_gone_field()
+        failed = [n for n, status, _ in uat.results if status == "FAIL"]
+        ok(f"gone field: overlay {'shows' if shown else 'never shows'} Copied -> "
+           f"{'FAIL' if should_fail else 'pass'}",
+           any("overlay showed" in n for n in failed) == should_fail, str(failed))
+finally:
+    for k, v in _saved.items():
+        setattr(uat, k, v)
 
 print("\n" + "=" * 56)
 print(f"{len(fails)} failed" if fails else "all rows passed")

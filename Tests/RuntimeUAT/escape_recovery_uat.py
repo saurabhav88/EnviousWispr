@@ -58,8 +58,10 @@ follow, both encoded: settings are written with the app DOWN, because the app
 writes its own values back and wins any race; and the app is quit BEFORE the
 restore, so it cannot overwrite the restored values on the way out.
 """
+import json
 import os
 import plistlib
+import re
 import subprocess
 import sys
 import time
@@ -89,6 +91,20 @@ LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 LCTRL = 59  # left Control, a bare modifier: the event-tap path
 SENTENCE = ("The quick brown fox jumps over the lazy dog "
             "and then keeps running through the quiet field.")
+
+# #3437: where a kept (held) row is written. Read BEFORE Undo, so the expected field contents come
+# from the row the user was told was kept, never from the field or the production repair.
+PENDING_DIR = os.path.expanduser(
+    "~/Library/Application Support/EnviousWispr/transcripts/pending")
+# The settings #3437 phases borrow, alongside the cancel binding and the feature flag.
+BORROWED = ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled",
+            "restoreClipboardAfterPaste", "smartInsertion")
+RESTORE_LINE = re.compile(r"escape recovery restore: outcome=(\S+) age_ms=\S+ take=(\S+)")
+NOTICE_LINE = re.compile(r"ESCAPE_RECOVERY_NOTICE shown=(true|false) why=(\w+)")
+CASCADE_LINE = re.compile(r"Paste cascade: tier=(\w+), app=(\S+?),")
+# DictationNarrator.clipboardFallbackText; matched by text, so a copy change fails loudly here.
+COPIED = "Copied. Press \u2318V to paste"
+SENTINEL = "ew-uat-3437-clipboard-sentinel"
 
 results = []
 
@@ -573,6 +589,338 @@ def dictate_then_cancel(base):
     return "ok"
 
 
+# ---- #3437: Undo through the dictation delivery -------------------------------------------
+#
+# Everything from here to `main` is either PURE (an expectation, a parse, a verdict, all driven by
+# `test_escape_recovery_uat.py` with fakes) or a thin live boundary. The expectations are built
+# from the held row and the documented insertion rules, never from the destination or the repair.
+
+
+def held_row_text(row):
+    """The text a held row restores: `displayText` (polished, else processed, else raw)."""
+    for key in ("polishedText", "processedText", "text"):
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def new_held_row(before, after_rows):
+    """The ONE row written by this take: present now, absent from `before` (a set of file names).
+    `after_rows` maps file name to the decoded row. Anything else aborts: zero rows means nothing
+    was kept; two means the take cannot be told apart from another."""
+    fresh = sorted(set(after_rows) - set(before))
+    if len(fresh) != 1:
+        raise Aborted(f"expected exactly one new held row, found {len(fresh)}: {fresh}")
+    text = held_row_text(after_rows[fresh[0]])
+    if text is None:
+        raise Aborted(f"the held row {fresh[0]} has no readable text")
+    return text
+
+
+def legacy_payload(text):
+    """The context-free payload every route falls back to: one trailing space, never two."""
+    return text if text.endswith(" ") else text + " "
+
+
+def expected_field(prior, location, length, insertion):
+    """The field after `insertion` replaces the selection [location, location + length)."""
+    return prior[:location] + insertion + prior[location + length:]
+
+
+# The insertion each staged case expects, from the documented Smart Insertion rules and nothing
+# else. "empty": no left context, so the repair refuses (no left anchor) and the legacy payload
+# lands. "between_spaces": the selection sits after "Start. " and before " end", so no leading
+# space is added (one already precedes), the capital is kept after a terminator, and no trailing
+# space is added (one already follows).
+def expected_insertion(case, held):
+    if case == "empty":
+        return legacy_payload(held)
+    if case == "between_spaces":
+        return held
+    raise ValueError(f"unknown insertion case {case!r}")
+
+
+def expected_clipboard(route, restore_on, held):
+    """What the board holds once this delivery's cleanup has finished. A direct write never
+    touches it; a key paste restores the sentinel with Restore ON and leaves the legacy text with
+    it OFF; a clipboard-only ending leaves the legacy text either way."""
+    if route == "ax_direct":
+        return SENTINEL
+    if route in ("cgevent", "applescript", "menu_paste"):
+        return SENTINEL if restore_on else legacy_payload(held)
+    if route == "clipboard_only":
+        return legacy_payload(held)
+    raise ValueError(f"unknown route {route!r}")
+
+
+def restore_outcomes(window):
+    return [outcome for outcome, _ in RESTORE_LINE.findall(window)]
+
+
+def notice_verdicts(window):
+    return NOTICE_LINE.findall(window)
+
+
+def undo_routes(window, bundle):
+    """The cascade tiers this window delivered with into `bundle`."""
+    return [tier for tier, app in CASCADE_LINE.findall(window) if app == bundle]
+
+
+def evidence_is_current(base, current_length):
+    """A log that shrank under us was rotated: everything read since `base` is somebody else's."""
+    return current_length >= base
+
+
+def verify_undo(name, *, window, field_value, expected, others, board, board_expected,
+                bundle, route, notice_expected):
+    """Every check one Undo shares. Complete strings, never trimmed."""
+    outcomes = restore_outcomes(window)
+    want_outcome = "pasted" if route != "clipboard_only" else "clipboard_only"
+    check(f"{name}: one restore, outcome {want_outcome}", outcomes == [want_outcome], str(outcomes))
+    routes = undo_routes(window, bundle)
+    check(f"{name}: delivered by tier {route}", routes == [route], str(routes))
+    if field_value is not None:
+        check(f"{name}: the original field holds exactly the expected text",
+              field_value == expected, f"field={field_value!r} expected={expected!r}")
+    for label, (got, want) in others.items():
+        check(f"{name}: {label} is unchanged", got == want, f"{got!r} expected {want!r}")
+    check(f"{name}: the clipboard ends as this route leaves it", board == board_expected,
+          f"board={board!r} expected={board_expected!r}")
+    notices = notice_verdicts(window)
+    if notice_expected:
+        check(f"{name}: the Copied notice was shown, once", notices == [("true", "presented")],
+              str(notices))
+    else:
+        check(f"{name}: no Copied notice was asked for", notices == [], str(notices))
+
+
+# ---- live boundaries -------------------------------------------------------------------------
+
+
+def pending_rows():
+    """Every held row on disk, by file name. A missing folder is no rows, not an error."""
+    rows = {}
+    try:
+        names = os.listdir(PENDING_DIR)
+    except FileNotFoundError:
+        return rows
+    for entry in names:
+        if not entry.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(PENDING_DIR, entry)) as fh:
+                rows[entry] = json.load(fh)
+        except (OSError, ValueError) as error:
+            raise Aborted(f"held row {entry} is unreadable: {error}")
+    return rows
+
+
+def clipboard_text():
+    out = subprocess.run(["pbpaste"], capture_output=True, text=True)
+    return out.stdout if out.returncode == 0 else None
+
+
+def set_clipboard(text):
+    subprocess.run(["pbcopy"], input=text, text=True, check=True)
+
+
+def overlay_shows(text):
+    """Whether the app's own AX tree shows `text` right now (the overlay pill's label)."""
+    try:
+        w.connect()
+        return w._text_visible(text)
+    except Exception:  # noqa: BLE001 - an unreadable tree is "not shown", reported by the caller
+        return False
+
+
+def wait_for_cleanup(route, restore_on, held):
+    """Waits for the board to settle where this route's cleanup leaves it: a signal (the board's
+    own contents), with a deadline as the fallback."""
+    want = expected_clipboard(route, restore_on, held)
+    wait_for("the clipboard cleanup to finish", lambda: clipboard_text() == want, deadline=6.0)
+    return clipboard_text()
+
+
+def hold_take(field_path, base):
+    """Dictate into `field_path`, cancel, and return the held row's text (read from disk, before
+    Undo). Aborts when nothing was kept."""
+    before = set(pending_rows())
+    focus(field_path)
+    status = dictate_then_cancel(base)
+    if status != "ok":
+        raise Aborted(f"the take never concluded ({status})")
+    if not wait_for("the take to be kept",
+                    lambda: "escape recovery: keeping this take" in log_since(base), deadline=60.0):
+        raise Aborted("the cancel did not keep the take")
+    wait_for("the held row on disk", lambda: len(set(pending_rows()) - before) == 1, deadline=30.0)
+    return new_held_row(before, pending_rows())
+
+
+def press_undo(base):
+    w.connect()
+    tapped = w.tap("Undo")
+    wait_for("the restore to finish", lambda: RESTORE_LINE.search(log_since(base)), deadline=20.0)
+    return tapped
+
+
+def phase_background_window(field_a, field_b, restore_on):
+    label = f"undo background window (restore {'on' if restore_on else 'off'})"
+    print(f"\n[3] {label}")
+    apply_settings([("restoreClipboardAfterPaste", int(restore_on), "-bool")], label)
+    set_clipboard(SENTINEL)
+    base = log_length()
+    held = hold_take(field_a, base)
+    focus(field_b)
+    tapped = press_undo(base)
+    board = wait_for_cleanup("ax_direct", restore_on, held)
+    if not evidence_is_current(base, log_length()):
+        raise Aborted("the app log rotated during the phase; its evidence is not this run's")
+    check(f"{label}: Undo was pressed", bool(tapped))
+    verify_undo(
+        label, window=log_since(base), field_value=readable(field_a, label),
+        expected=expected_field("", 0, 0, expected_insertion("empty", held)),
+        others={"field B": (readable(field_b, label), "")}, board=board,
+        board_expected=expected_clipboard("ax_direct", restore_on, held),
+        bundle="com.apple.TextEdit", route="ax_direct", notice_expected=False)
+    clear_doc(field_a)
+
+
+def clear_doc(path):
+    focus(path)
+    w.press_key("a", cmd=True)
+    w.press_key("delete")
+
+
+def phase_launcher(field, restore_on):
+    """The launcher panel over TextEdit (#3423 fixture): field A takes a direct write, field B
+    only a key paste. The fixture's drivers are reused from the paste landing harness."""
+    import paste_landing_uat as pl  # noqa: E402 - live only; it imports this module back
+    label = f"undo launcher field {field} (restore {'on' if restore_on else 'off'})"
+    print(f"\n[4] {label}")
+    apply_settings([("restoreClipboardAfterPaste", int(restore_on), "-bool")], label)
+    route = "ax_direct" if field == "A" else "cgevent"
+    host = new_textedit_doc(f"3437-launcher-host-{field}-{int(restore_on)}")
+    try:
+        pl.launch_panel(field)
+        set_clipboard(SENTINEL)
+        base = log_length()
+        before = set(pending_rows())
+        status = dictate_then_cancel(base)
+        if status != "ok":
+            raise Aborted(f"{label}: the take never concluded ({status})")
+        wait_for("the held row on disk", lambda: len(set(pending_rows()) - before) == 1,
+                 deadline=30.0)
+        held = new_held_row(before, pending_rows())
+        tapped = press_undo(base)
+        board = wait_for_cleanup(route, restore_on, held)
+        fields = pl.panel_state().get("fields", {})
+        other = "B" if field == "A" else "A"
+        check(f"{label}: Undo was pressed", bool(tapped))
+        verify_undo(
+            label, window=log_since(base), field_value=fields.get(field),
+            expected=expected_field("", 0, 0, expected_insertion("empty", held)),
+            others={f"panel field {other}": (fields.get(other), ""),
+                    "the TextEdit document behind the panel": (readable(host, label), "")},
+            board=board, board_expected=expected_clipboard(route, restore_on, held),
+            bundle=pl.LAUNCHER, route=route, notice_expected=False)
+    except pl.u.Aborted as stop:
+        raise Aborted(f"{label}: {stop}")
+    finally:
+        pl.close_panel()
+
+
+def phase_gone_field():
+    label = "undo into a closed document"
+    print(f"\n[5] {label}")
+    doc = new_textedit_doc("3437-gone")
+    set_clipboard(SENTINEL)
+    base = log_length()
+    held = hold_take(doc, base)
+    subprocess.run(["osascript", "-e",
+                    f'tell application "TextEdit" to close (every document whose path is "{doc}") '
+                    'saving no'], check=True)
+    tapped = press_undo(base)
+    copied_seen = wait_for("the Copied notice in the overlay", lambda: overlay_shows(COPIED),
+                           deadline=3.0)
+    board = wait_for_cleanup("clipboard_only", True, held)
+    check(f"{label}: Undo was pressed", bool(tapped))
+    check(f"{label}: the overlay showed {COPIED!r}", copied_seen)
+    verify_undo(
+        label, window=log_since(base), field_value=None, expected=None, others={},
+        board=board, board_expected=expected_clipboard("clipboard_only", True, held),
+        bundle="com.apple.TextEdit", route="clipboard_only", notice_expected=True)
+
+
+def phase_edited_field():
+    """Plan §11.1 phase 5: the field changes after the cancel. The offer expires after a few
+    seconds unless hovered (PillCatalog's hover-pausing dwell), so the pointer rests on the pill
+    while the field is edited and the delay runs."""
+    label = "undo into a field edited after the cancel"
+    print(f"\n[6] {label}")
+    doc = new_textedit_doc("3437-edited")
+    set_clipboard(SENTINEL)
+    base = log_length()
+    held = hold_take(doc, base)
+    if not hover_offer():
+        skip(label, "the offer could not be located to hold it open; nothing staged")
+        return
+    focus_without_moving_pointer(doc)
+    prior = "Start. alpha end"
+    si.type_text(prior)
+    location, length = prior.index("alpha"), len("alpha")
+    if not select_range(doc, location, length):
+        raise Aborted(f"{label}: could not select the word to replace")
+    time.sleep(10.0)  # settle: the plan's delay between the cancel's edit and the Undo; held open
+    tapped = press_undo(base)
+    board = wait_for_cleanup("ax_direct", False, held)
+    check(f"{label}: Undo was pressed", bool(tapped))
+    verify_undo(
+        label, window=log_since(base), field_value=readable(doc, label),
+        expected=expected_field(prior, location, length, expected_insertion("between_spaces", held)),
+        others={}, board=board, board_expected=expected_clipboard("ax_direct", False, held),
+        bundle="com.apple.TextEdit", route="ax_direct", notice_expected=False)
+
+
+def offer_button():
+    pid = find_app_pid("EnviousWispr")
+    if pid is None:
+        return None
+    return find_element(get_ax_app(pid), role="AXButton", title="Undo")
+
+
+def hover_offer():
+    button = offer_button()
+    if button is None:
+        return False
+    position, size = get_attr(button, "AXPosition"), get_attr(button, "AXSize")
+    if position is None or size is None:
+        return False
+    si.move_mouse(position.x + size.width / 2, position.y + size.height / 2)
+    return True
+
+
+def focus_without_moving_pointer(path):
+    subprocess.run(["osascript", "-e", 'tell application "TextEdit" to activate'], check=True)
+    time.sleep(0.5)  # settle: activation; macOS exposes no observable ack for it
+
+
+def select_range(path, location, length):
+    from ApplicationServices import AXUIElementSetAttributeValue, AXValueCreate, kAXValueCFRangeType
+    import Quartz  # noqa: F401 - CFRange lives on the bridge
+    pid = find_app_pid("TextEdit")
+    want = os.path.basename(path)
+    for window in (get_attr(get_ax_app(pid), "AXWindows") or []):
+        if str(get_attr(window, "AXTitle") or "") != want:
+            continue
+        area = find_element(window, role="AXTextArea")
+        if area is None:
+            return False
+        value = AXValueCreate(kAXValueCFRangeType, (location, length))
+        return AXUIElementSetAttributeValue(area, "AXSelectedTextRange", value) == 0
+    return False
+
+
 def main():
     print("=== Escape Recovery Live UAT (#2087) ===\n")
 
@@ -618,12 +966,13 @@ def main():
 
     # Captured BEFORE anything is written, so the `finally` restores rather
     # than resets. A developer running this must not lose their own shortcut.
-    before = snapshot(("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
+    before = snapshot(BORROWED)
     # A SECOND capture through a different tool and parser. `before` is what the
     # restore is built from; this is what it is judged against, so a loss in the
     # text reader cannot hide inside both sides of the comparison.
-    before_plist = plist_snapshot(
-        ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
+    before_plist = plist_snapshot(BORROWED)
+    # The user's own clipboard text, put back at the end: #3437 phases write a sentinel to it.
+    user_clipboard = clipboard_text()
     print(f"prior settings: {before}")
 
     field_a = new_textedit_doc("field-a")
@@ -711,32 +1060,24 @@ def main():
         check("on: field A is still empty", readable(field_a, "on").strip() == "",
               "the text is HELD until the user asks for it")
 
-        # ---- The item nothing else can cover: §11.1 item 3 -----------------
-        print("\n[3] Paste with focus MOVED — the item no unit test can reach")
+        # ---- #3437: Undo is the dictation delivery ---------------------------
+        # Plan §11.1. Smart Insertion is pinned ON so the expected insertions hold.
         if not kept:
-            skip("retarget: the paste with focus moved",
-                 "nothing was kept, so there is no recovery to restore")
+            skip("undo phases", "nothing was kept, so there is no recovery to restore")
         else:
-            focus(field_b)
-            w.connect()
-            # The pill's button, whose label the founder renamed on 2026-08-18.
-            # Matched by TEXT, so a copy change breaks it silently and the
-            # failure reads as "the pill was unreachable" rather than "the label
-            # moved" -- keep this in step with
-            # `DictationNarrator.escapeRecoveryPillAction`.
-            tapped = w.tap("Undo")
-            landed = wait_for("text to land in either field",
-                              lambda: bool((field_text(field_a) or "").strip()
-                                           or (field_text(field_b) or "").strip()),
-                              deadline=20.0)
-            a_text = readable(field_a, "retarget A").strip()
-            b_text = readable(field_b, "retarget B").strip()
-            check("retarget: the pill's Paste was reachable", bool(tapped))
-            check("retarget: something was pasted", landed)
-            check("retarget: text landed in the ORIGINAL field A", len(a_text) > 0,
-                  f"A={a_text[:60]!r}")
-            check("retarget: field B was NOT written", b_text == "",
-                  f"B={b_text[:60]!r} — focus moved, so a naive paste lands here")
+            apply_settings([("smartInsertion", 1, "-bool")], "Smart Insertion on")
+            for restore_on in (True, False):
+                phase_background_window(field_a, field_b, restore_on)
+            for field in ("A", "B"):
+                for restore_on in (True, False):
+                    phase_launcher(field, restore_on)
+            phase_gone_field()
+            phase_edited_field()
+            # Plan §11.1 phase 4 (two fields in one window): SKIP by design. Founder Gate 2,
+            # 2026-10-04: Undo behaves exactly as a dictation finishing at the press, so a key paste
+            # lands at the caret and a direct write in the captured field; nothing Undo-only to test.
+            skip("undo phase 4: two fields in one window",
+                 "by design (founder Gate 2): no Undo-only behaviour exists to assert")
 
     except Aborted as stop:
         aborted = str(stop)
@@ -787,8 +1128,9 @@ def main():
             # Judged by the INDEPENDENT oracle as well. `restore` verifies with
             # the same text reader it wrote from, which cannot see a loss that
             # reader makes on both sides — a padded string is the concrete case.
-            after_plist = plist_snapshot(
-                ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
+            after_plist = plist_snapshot(BORROWED)
+            if user_clipboard is not None:
+                set_clipboard(user_clipboard)
             if before_plist is None or after_plist is None:
                 print("    (could not read the domain as a plist — restore is")
                 print("     UNVERIFIED by the independent oracle)")
@@ -830,7 +1172,8 @@ def main():
         # one, because nothing else will ever mention it again.
         print("\n  SETTINGS NOT RESTORED. Your own preferences may still be")
         print("  changed by this run. The keys it borrows are cancelKeyCode,")
-        print("  cancelModifiersRaw and escapeRecoveryEnabled in")
+        print("  cancelModifiersRaw, escapeRecoveryEnabled, restoreClipboardAfterPaste")
+        print("  and smartInsertion in")
         print(f"  {DOMAIN} — check them before trusting anything above.")
         print("=" * 60)
         return 3
