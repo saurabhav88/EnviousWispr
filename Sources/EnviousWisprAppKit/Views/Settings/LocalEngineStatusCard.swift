@@ -79,9 +79,6 @@ struct LocalEngineStatusCard: View {
   /// unaffected, and the run itself starts and awaits the server through `prepareLocalPolish`.
   /// Found by the cloud review of PR #2786.
   var allowsRuntimeActivation: Bool = true
-  /// Presentation is chosen explicitly by the hosting surface. Import keeps its
-  /// existing layout independently of whether runtime activation is allowed.
-  let surface: ProviderSetupSurface
   /// Removing a model is not just a delete: the caller owns the provider
   /// selection and must move the user off the engine being removed. Passed in
   /// rather than done here, because this view has no business writing settings.
@@ -122,15 +119,14 @@ struct LocalEngineStatusCard: View {
     let presentation = EGOneRowPresentation.forState(runtime.installState, engine: engine.name)
     switch runtime.installState {
     case .notInstalled:
-      stateRow {
+      HStack {
         // NOT "one-time" (#2096): a new model revision downloads again, on its own, when an app
         // update ships one. Promising a single download was true only while EG-1 could never be
         // replaced, and that stopped being true the moment the automatic upgrade path existed.
         Text("Download size: \(engine.downloadSize)")
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: surface == .dictation)
-        if surface == .fileImport { Spacer() }
+        Spacer()
         if let action = presentation.primaryAction {
           Button(action) { runtime.startDownload() }
         }
@@ -183,11 +179,11 @@ struct LocalEngineStatusCard: View {
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
-        stateRow {
+        HStack {
           if let action = presentation.primaryAction {
             Button(action) { runtime.startDownload() }
           }
-          if surface == .fileImport { Spacer() }
+          Spacer()
           if presentation.showsRemove {
             Button("Remove Model") { onRemove() }
               .buttonStyle(.borderless)
@@ -211,7 +207,7 @@ struct LocalEngineStatusCard: View {
         Button(action) { runtime.startDownload() }
       }
     case .installed:
-      stateRow {
+      HStack {
         Text("Status:")
         // #2109: the version, as a quiet secondary label. Deliberately not
         // prominent — Priya and Dr. Vasquez want to know which model they are
@@ -228,7 +224,7 @@ struct LocalEngineStatusCard: View {
             .font(.stHelper)
             .foregroundStyle(Color.stTextSecondary)
         }
-        if surface == .fileImport { Spacer() }
+        Spacer()
         if allowsRuntimeActivation {
           healthLabel
           Button {
@@ -258,16 +254,6 @@ struct LocalEngineStatusCard: View {
           .buttonStyle(.borderless)
           .font(.stHelper)
       }
-    }
-  }
-
-  @ViewBuilder
-  private func stateRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-    switch surface {
-    case .dictation:
-      VStack(alignment: .leading, spacing: 8) { content() }
-    case .fileImport:
-      HStack { content() }
     }
   }
 

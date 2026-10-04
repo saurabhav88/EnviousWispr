@@ -90,7 +90,7 @@ struct PolishRailCatalogTests {
   @Test(
     "each group contains exactly its approved providers, in order",
     arguments: [
-      (PolishRailGroup.onThisMac, [LLMProvider.egOne, .s1Mini, .appleIntelligence]),
+      (PolishRailGroup.onThisMac, [LLMProvider.egOne, .appleIntelligence, .s1Mini]),
       (PolishRailGroup.yourOwnSetup, [LLMProvider.ollama]),
       (PolishRailGroup.cloud, [LLMProvider.openAI, .gemini, .claude]),
     ])

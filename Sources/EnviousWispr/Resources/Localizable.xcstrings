@@ -4342,16 +4342,6 @@
         }
       }
     },
-    "Choose a model on this Mac or hosted by Ollama." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wähle ein Modell auf diesem Mac oder ein von Ollama gehostetes Modell."
-          }
-        }
-      }
-    },
     "Choose a snippets file" : {
       "comment" : "Snippets import: the title of the file picker.",
       "localizations" : {
@@ -4380,16 +4370,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lege fest, wie EnviousWispr aussieht."
-          }
-        }
-      }
-    },
-    "Choose how formal your text sounds." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lege fest, wie förmlich dein Text klingt."
           }
         }
       }
@@ -4443,16 +4423,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle das Mikrofon für die Aufnahme."
-          }
-        }
-      }
-    },
-    "Choose the model used to polish your text." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wähle das Modell, das deinen Text nachbearbeitet."
           }
         }
       }
@@ -7314,16 +7284,6 @@
         }
       }
     },
-    "Format dictated greetings and sign-offs as email." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diktierte Anreden und Grußformeln für E-Mails formatieren."
-          }
-        }
-      }
-    },
     "Found %@ entries, but none could be imported. Nothing was changed." : {
       "comment" : "Snippets, import result: %@ is the number of entries found, never 1; none could be imported.",
       "localizations" : {
@@ -8503,16 +8463,6 @@
         }
       }
     },
-    "Keep sentences or turn spoken items into lists." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sätze beibehalten oder gesprochene Aufzählungen in Listen umwandeln."
-          }
-        }
-      }
-    },
     "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words." : {
       "comment" : "Microphone settings: explains microphone readiness.",
       "localizations" : {
@@ -9334,16 +9284,6 @@
         }
       }
     },
-    "Local and hosted models are listed separately. Prepare applies only to a local model used for dictation." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lokale und gehostete Modelle werden getrennt aufgeführt. „Vorbereiten“ gilt nur für ein lokales Modell, das beim Diktieren verwendet wird."
-          }
-        }
-      }
-    },
     "Location not checked" : {
       "comment" : "Transcribe a File, Review step: where the cleanup runs is not known yet.",
       "localizations" : {
@@ -9949,16 +9889,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell: %1$@ · Kapazität: %2$@ Tokens"
-          }
-        }
-      }
-    },
-    "Models come from your provider account. Save your API key to discover them. Unavailable models cannot be selected." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Modelle kommen aus deinem Anbieterkonto. Speichere deinen API-Schlüssel, um sie zu finden. Nicht verfügbare Modelle können nicht ausgewählt werden."
           }
         }
       }
@@ -11416,16 +11346,6 @@
         }
       }
     },
-    "On-device polish on supported Macs with macOS 26+." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lokale KI-Nachbearbeitung auf unterstützten Macs mit macOS 26 oder neuer."
-          }
-        }
-      }
-    },
     "On-screen preview does not support this language yet." : {
       "comment" : "On-screen preview status: the dictation language is not supported by the preview.",
       "localizations" : {
@@ -11697,16 +11617,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unser bestes Modell für Nachbearbeitung und das Erstellen von Listen. Bei importierten Aufnahmen entfernt es etwa viermal so viele Füllwörter wie Apple Intelligence."
-          }
-        }
-      }
-    },
-    "Our model for cleaning up dictation on this Mac." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unser Modell zur Nachbearbeitung von Diktaten auf diesem Mac."
           }
         }
       }
@@ -14321,36 +14231,6 @@
         }
       }
     },
-    "Sends text and dictation context to Anthropic." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sendet Text und Diktatkontext an Anthropic."
-          }
-        }
-      }
-    },
-    "Sends text and dictation context to Google." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sendet Text und Diktatkontext an Google."
-          }
-        }
-      }
-    },
-    "Sends text and dictation context to OpenAI." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sendet Text und Diktatkontext an OpenAI."
-          }
-        }
-      }
-    },
     "Sends transcribed text, never audio" : {
       "comment" : "AI Polish: privacy line under the selected provider.",
       "localizations" : {
@@ -14745,16 +14625,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein langsames Verklingen wie ein Atemzug."
-          }
-        }
-      }
-    },
-    "Small, on this Mac, and happiest in English." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Klein, läuft auf diesem Mac und arbeitet am besten auf Englisch."
           }
         }
       }
@@ -17871,36 +17741,6 @@
         }
       }
     },
-    "Use your Claude API key for cloud polish." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nutze deinen Claude-API-Schlüssel für die Nachbearbeitung in der Cloud."
-          }
-        }
-      }
-    },
-    "Use your Gemini API key for cloud polish." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nutze deinen Gemini-API-Schlüssel für die Nachbearbeitung in der Cloud."
-          }
-        }
-      }
-    },
-    "Use your OpenAI API key for cloud polish." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nutze deinen OpenAI-API-Schlüssel für die Nachbearbeitung in der Cloud."
-          }
-        }
-      }
-    },
     "Use your words and vocabulary to improve recognition." : {
       "comment" : "Dictionary settings: short line under Enable Dictionary.",
       "localizations" : {
@@ -19299,16 +19139,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Mikrofon funktioniert. Wir haben nur nichts gehört.\nHalte %@ gedrückt und sag: Sag Oma, dass ich am Sonntag anrufe."
-          }
-        }
-      }
-    },
-    "Your models, local or hosted." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Modelle, lokal oder gehostet."
           }
         }
       }
