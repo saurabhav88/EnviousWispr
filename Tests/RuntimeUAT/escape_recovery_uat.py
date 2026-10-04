@@ -524,7 +524,9 @@ def new_textedit_doc(name):
     The path carries this run's pid, so a run never truncates a file a previous (aborted) run left
     open in TextEdit: that raises TextEdit's "changed by another application" sheet, which then
     blocks the closed-document phase's close (live run 2026-10-04 14:55)."""
-    path = f"/tmp/ew-uat-{name}-{os.getpid()}.txt"
+    # The REAL path: TextEdit reports `/private/tmp/...`, so a `/tmp/...` path never matches a
+    # `whose path is` query, and the closed-document phase's close silently closed nothing.
+    path = os.path.realpath(f"/tmp/ew-uat-{name}-{os.getpid()}.txt")
     open(path, "w").close()
     focus(path)
     return path
