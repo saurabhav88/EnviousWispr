@@ -1052,6 +1052,37 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     guard let takeID = outcome.afmPrewarmTakeID, takeID == lastTakeID else { return nil }
     return outcome.afmPrewarmOutcome?.rawValue
   }
+
+  /// #3438: the app's AI polish setup hooks. Set once by the composition root for BOTH drivers;
+  /// nil (tests, early launch) means takes freeze, classify and record nothing.
+  public var polishSetupHooks: PolishSetupTakeHooks?
+  /// The take whose polish outcome was already handed on.
+  private var deliveredPolishTakeID: String?
+
+  /// #3438: hands the concluded take's polish outcome to the app's `ingest` hook ONCE. Nothing
+  /// before the take concluded (its ID must be `lastTakeID`), nothing for another take, and
+  /// nothing on a later call for the same take, so repeated state notifications cannot deliver
+  /// it twice. Called from `PipelineStateChangeDispatch.run` for both backends.
+  public func deliverPolishTakeOutcome() {
+    guard let hooks = polishSetupHooks,
+      let polish = Self.deliverablePolishOutcome(
+        outcome.polishTakeOutcome, concludedTakeID: lastTakeID,
+        alreadyDelivered: deliveredPolishTakeID)
+    else { return }
+    deliveredPolishTakeID = polish.takeID
+    hooks.ingest(polish)
+  }
+
+  /// The rule `deliverPolishTakeOutcome` applies: only the concluded take's own outcome, and
+  /// only once.
+  static func deliverablePolishOutcome(
+    _ polish: PolishTakeOutcome?, concludedTakeID: String?, alreadyDelivered: String?
+  ) -> PolishTakeOutcome? {
+    guard let polish, let concludedTakeID, polish.takeID == concludedTakeID,
+      polish.takeID != alreadyDelivered
+    else { return nil }
+    return polish
+  }
   public var lastRecordingDurationSeconds: Double? { kernel.lastRecordingDurationSeconds }
   /// #1408: non-nil when the most recent recording's capture was interrupted
   /// mid-flight (device died, cap reached). Drives the disconnect disclosure pill
@@ -1216,6 +1247,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         lastTerminalReason = nil
         outcome.transcript = nil
         outcome.polishNotice = nil
+        // #3438: a new take never sees the last take's polish outcome (also take-keyed).
+        outcome.polishTakeOutcome = nil
         outcome.rawText = nil
         outcome.polishedText = nil
         outcome.llmProvider = nil
@@ -1258,6 +1291,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.historySaved = true
         outcome.historySaveError = nil
         context.config = config
+        // #3438: freeze the AI polish setup at the same boundary as `config`, and only when it
+        // describes the same provider and model this recording will ask for.
+        context.polishSetupHooks = polishSetupHooks
+        context.polishSetupContext = polishSetupHooks?.freeze().flatMap {
+          $0.provider == config.llmProvider && $0.model == config.llmModel ? $0 : nil
+        }
         // #3304: when no field is captured, the app's focused window is recorded instead. Reset
         // BEFORE the field capture below runs, so the last recording's window never outlives it.
         context.targetWindow = nil
@@ -2018,5 +2057,35 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .some(.engineLost): return .engineLost
     case .none: return .unknownInterruption
     }
+  }
+}
+
+/// #3438: what the app gives the live dictation path about AI polish setup. The pipeline never
+/// reads settings or setup facts itself: it freezes the setup at recording start through
+/// `freeze`, asks `classify` whether its typed evidence confirms an unfinished setup for that
+/// frozen setup, and writes a confirmed problem on the take's terminal row through
+/// `recordTerminalProblem` before the row closes. After the take concludes, `ingest` receives
+/// its outcome once.
+public struct PolishSetupTakeHooks {
+  public let freeze: @MainActor () -> PolishSetupTakeContext?
+  public let classify:
+    @MainActor (PolishSetupEvidence, PolishSetupTakeContext) -> PolishSetupProblemTag?
+  public let recordTerminalProblem: @MainActor (String, PolishSetupProblemTag) -> Void
+  public let ingest: @MainActor (PolishTakeOutcome) -> Void
+  public let now: @MainActor () -> ContinuousClock.Instant
+
+  public init(
+    freeze: @escaping @MainActor () -> PolishSetupTakeContext?,
+    classify: @escaping @MainActor (PolishSetupEvidence, PolishSetupTakeContext) ->
+      PolishSetupProblemTag?,
+    recordTerminalProblem: @escaping @MainActor (String, PolishSetupProblemTag) -> Void,
+    ingest: @escaping @MainActor (PolishTakeOutcome) -> Void,
+    now: @escaping @MainActor () -> ContinuousClock.Instant = { ContinuousClock.now }
+  ) {
+    self.freeze = freeze
+    self.classify = classify
+    self.recordTerminalProblem = recordTerminalProblem
+    self.ingest = ingest
+    self.now = now
   }
 }

@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -194,6 +195,41 @@ import Testing
       #expect(
         try terminal(events, take: Self.takeB).stringProps["polish_language_hint"] == "conflict")
       #expect(events.filter { $0.name == "dictation.terminal" }.count == 2, "no extra rows")
+    }
+
+    // MARK: - #3438 polish_setup_problem
+
+    @Test("#3438 a confirmed setup problem rides the take's own terminal; overlapping takes stay apart")
+    func polishSetupProblemFoldsOntoItsTake() throws {
+      let events = capture {
+        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(takeID: Self.takeB, backend: "parakeet")
+        TelemetryService.shared.recordPolishSetupProblem(takeID: Self.takeA, tag: .cloudKeyMissing)
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeB, backend: "parakeet", result: "completed", reason: nil)
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+      }
+      #expect(
+        try terminal(events, take: Self.takeA).stringProps["polish_setup_problem"]
+          == "cloud_key_missing")
+      // No fabricated "none": a take with no confirmed problem carries no field at all.
+      #expect(try terminal(events, take: Self.takeB).stringProps["polish_setup_problem"] == nil)
+      #expect(events.filter { $0.name == "dictation.terminal" }.count == 2, "no extra rows")
+    }
+
+    @Test("#3438 a setup problem recorded after the terminal, or for an unopened take, writes nothing")
+    func polishSetupProblemNeedsAnOpenTake() throws {
+      let events = capture {
+        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+        TelemetryService.shared.recordPolishSetupProblem(takeID: Self.takeA, tag: .localNotDownloaded)
+        TelemetryService.shared.recordPolishSetupProblem(takeID: Self.takeB, tag: .localNotDownloaded)
+      }
+      #expect(try terminal(events, take: Self.takeA).stringProps["polish_setup_problem"] == nil)
+      #expect(TelemetryService.shared.takeStages.close(takeID: Self.takeA) == nil)
+      #expect(TelemetryService.shared.takeStages.close(takeID: Self.takeB) == nil)
     }
 
     @Test("#3111 no hint recorded, or recorded for a closed take: the terminal carries none")

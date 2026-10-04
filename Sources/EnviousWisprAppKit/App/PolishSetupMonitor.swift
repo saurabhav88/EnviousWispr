@@ -167,6 +167,12 @@ final class PolishSetupMonitor {
   @ObservationIgnored private let ollamaRefresh: OllamaOffPageRefresh?
   /// Where `polish_setup.prompt` rows go. Production sends them; tests collect them.
   @ObservationIgnored private let reportPrompt: @MainActor (PolishSetupPromptEvent) -> Void
+  /// Where a take's own key read goes (`SavedKeyPresence.recordRead` in production): a take
+  /// that found no key is confirmed evidence the key is absent, with no second read.
+  @ObservationIgnored private let recordKeyEvidence:
+    @MainActor (LLMProvider, SavedKeyState, ContinuousClock.Instant) -> Void
+  /// Takes already taken in, newest last, so a repeated delivery changes nothing.
+  @ObservationIgnored private var ingestedTakeIDs: [String] = []
   @ObservationIgnored private var observing = false
   @ObservationIgnored private var observationGeneration: UInt64 = 0
   /// Moves on every change of the chosen configuration, including a return to an earlier one.
@@ -177,16 +183,25 @@ final class PolishSetupMonitor {
   /// WHEN the take observed it. Whichever of this and the service's own last commit is newer
   /// is believed (#3438 chunk 4 records these).
   @ObservationIgnored private var ollamaTakeObservation:
-    (revision: UInt64, problem: PolishSetupProblem, observedAt: ContinuousClock.Instant)?
+    (revision: UInt64, problem: PolishSetupProblem?, observedAt: ContinuousClock.Instant)?
+  /// The newest thing a take said about a saved cloud key: rejected by the provider, or accepted
+  /// (a take that polished). A fact about THAT key (provider and credential revision), so it
+  /// survives a model change and stops counting when the key is replaced or cleared.
+  @ObservationIgnored private var cloudKeyTakeObservation:
+    (provider: LLMProvider, credentialRevision: UInt64, rejected: Bool,
+      observedAt: ContinuousClock.Instant)?
 
   init(
     readInputs: @escaping @MainActor () -> PolishSetupInputs,
     ollamaRefresh: OllamaOffPageRefresh? = nil,
-    reportPrompt: @escaping @MainActor (PolishSetupPromptEvent) -> Void = { $0.send() }
+    reportPrompt: @escaping @MainActor (PolishSetupPromptEvent) -> Void = { $0.send() },
+    recordKeyEvidence: @escaping @MainActor (LLMProvider, SavedKeyState, ContinuousClock.Instant)
+      -> Void = { _, _, _ in }
   ) {
     self.readInputs = readInputs
     self.ollamaRefresh = ollamaRefresh
     self.reportPrompt = reportPrompt
+    self.recordKeyEvidence = recordKeyEvidence
   }
 
   // MARK: - What surfaces read
@@ -258,6 +273,196 @@ final class PolishSetupMonitor {
     reconcile()
   }
 
+  // MARK: - Takes (#3438 chunk 4)
+
+  /// The setup a take starting now runs under, read from the live owners, for the driver to
+  /// freeze beside the take's config.
+  func freezeTakeContext() -> PolishSetupTakeContext {
+    let context = currentContext()
+    return PolishSetupTakeContext(
+      provider: context.configuration.provider, model: context.configuration.model,
+      configurationRevision: context.configurationRevision, episode: context.episode?.rawValue)
+  }
+
+  /// Whether a take's typed evidence confirms an unfinished setup for the take's FROZEN
+  /// provider, judged now from the same live facts as every warning. Evidence alone is enough
+  /// only where the take itself proved it (no key in the Keychain; Ollama's own check before the
+  /// request). A rejected key needs the typed verdict for the current key; a local engine that
+  /// was not ready needs a confirmed not-downloaded, paused or failed install. Anything else
+  /// (unreadable key, installed or busy engine, a crash, a timeout) is not a setup problem.
+  func confirmedSetupProblem(
+    _ evidence: PolishSetupEvidence, for take: PolishSetupTakeContext
+  ) -> PolishSetupProblemTag? {
+    let provider = take.provider
+    switch evidence {
+    case .cloudKeyMissing:
+      return Self.usesCloudKey(provider) ? .cloudKeyMissing : nil
+    case .cloudKeyUnreadable:
+      return nil
+    case .cloudKeyRejected:
+      // The provider's own typed rejection (Gemini: 401 or its structured API_KEY_INVALID).
+      return Self.usesCloudKey(provider) ? .cloudKeyRejected : nil
+    case .cloudKeyRejectedClassified:
+      switch provider {
+      case .openAI, .claude:
+        // Their polish classifiers report rejection from HTTP 401 alone.
+        return .cloudKeyRejected
+      case .gemini:
+        // Read from body text only: confirmed by nothing but the typed verdict for the
+        // current key.
+        guard case .problem(.cloudKeyRejected(.gemini)) = readiness(for: .gemini) else {
+          return nil
+        }
+        return .cloudKeyRejected
+      case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+        return nil
+      }
+    case .ollamaUnreachable:
+      guard provider == .ollama else { return nil }
+      // The take's own check found no server; the service's facts say whether Ollama is
+      // installed at all.
+      if case .problem(.ollamaNotInstalled) = readiness(for: .ollama) { return .ollamaNotInstalled }
+      return .ollamaNotRunning
+    case .ollamaModelUnavailable:
+      return provider == .ollama ? .ollamaModelNotInstalled : nil
+    case .ollamaNoModel:
+      return provider == .ollama ? .ollamaNoModel : nil
+    case .localEngineNotReady, .localEngineDownloadPending:
+      guard case .problem(let problem) = readiness(for: provider) else { return nil }
+      switch problem {
+      case .localEngineNotDownloaded(let engine) where engine == provider:
+        return .localNotDownloaded
+      case .localEngineDownloadPaused(let engine) where engine == provider:
+        return .localDownloadPaused
+      case .localEngineUpdatePaused(let engine) where engine == provider:
+        return .localUpdatePaused
+      case .localEngineFailed(let engine) where engine == provider:
+        return .localDownloadFailed
+      case .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled, .ollamaNotRunning,
+        .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
+        .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed,
+        .localEngineDownloading, .localEngineVerifying, .appleUnavailable, .appleModelNotReady:
+        // Downloading, verifying or another engine's state: not this take's setup problem.
+        return nil
+      }
+    }
+  }
+
+  /// A concluded take's polish outcome. Taken in only while it still describes the current
+  /// configuration (same revision, provider and model) and, when the take started inside an
+  /// episode, that same episode; once per take. A take that started with no episode (a key
+  /// whose presence was not yet known) is taken in: its configuration revision already rejects
+  /// a take from before any provider, model or key change.
+  func ingest(_ outcome: PolishTakeOutcome) {
+    reconcile()
+    let take = outcome.context
+    guard ingestedTakeIDs.contains(outcome.takeID) == false,
+      take.configurationRevision == configurationRevision,
+      let configuration = lastConfiguration,
+      configuration.provider == take.provider, configuration.model == take.model
+    else { return }
+    if let episode = take.episode, episodes.episode?.token.rawValue != episode { return }
+    ingestedTakeIDs.append(outcome.takeID)
+    if ingestedTakeIDs.count > 16 { ingestedTakeIDs.removeFirst() }
+
+    // A bypassed (too short) or skipped take asked no model, so only `.polished` is repair.
+    let polished = outcome.result == .polished
+    if Self.usesCloudKey(take.provider) {
+      switch outcome.evidence {
+      case .cloudKeyMissing?:
+        recordKeyEvidence(take.provider, .absent, outcome.observedAt)
+      case .cloudKeyUnreadable?:
+        recordKeyEvidence(take.provider, .unknown, outcome.observedAt)
+      case .cloudKeyRejected?, .cloudKeyRejectedClassified?:
+        if outcome.setupProblem == .cloudKeyRejected {
+          recordCloudKeyTakeObservation(
+            rejected: true, configuration: configuration, observedAt: outcome.observedAt)
+        }
+      case .localEngineNotReady?, .localEngineDownloadPending?, .ollamaUnreachable?,
+        .ollamaModelUnavailable?, .ollamaNoModel?, nil:
+        break
+      }
+      if polished {
+        recordCloudKeyTakeObservation(
+          rejected: false, configuration: configuration, observedAt: outcome.observedAt)
+      }
+      // A request the provider answered or rejected carried a saved key when the connector read
+      // it: present AT THAT READ, ordered by the saved-key owner against every newer answer (a
+      // clear made while the request was in flight stays newer).
+      if let keyReadAt = outcome.keyReadAt,
+        polished || outcome.evidence == .cloudKeyRejected
+          || outcome.evidence == .cloudKeyRejectedClassified
+      {
+        recordKeyEvidence(take.provider, .present, keyReadAt)
+      }
+    }
+    if take.provider == .ollama {
+      let problem: PolishSetupProblem??
+      if polished {
+        problem = .some(nil)
+      } else if let tag = outcome.setupProblem, let confirmed = Self.ollamaProblem(tag) {
+        problem = .some(confirmed)
+      } else {
+        problem = nil
+      }
+      if let problem {
+        recordOllamaTakeObservation(
+          problem,
+          context: PolishSetupContext(
+            configuration: configuration, configurationRevision: take.configurationRevision,
+            episode: episodes.episode?.token),
+          observedAt: outcome.observedAt)
+      }
+    }
+  }
+
+  /// When the key check answered (accepted or rejected) about the key saved now; nil when it
+  /// has not, or answered about an older key.
+  private static func cloudVerdictAt(
+    _ facts: PolishSetupFacts, provider: LLMProvider
+  ) -> ContinuousClock.Instant? {
+    guard let verdict = facts.cloudVerdict, verdict.provider == provider,
+      verdict.credentialRevision == facts.credentialRevisions[provider]
+    else { return nil }
+    switch verdict.result {
+    case .accepted, .rejected: return verdict.decidedAt
+    case .checking, .inconclusive: return nil
+    }
+  }
+
+  /// Newer wins, for the same saved key only; a different key replaces it outright.
+  private func recordCloudKeyTakeObservation(
+    rejected: Bool, configuration: PolishSetupConfiguration, observedAt: ContinuousClock.Instant
+  ) {
+    guard let credentialRevision = configuration.credentialRevision else { return }
+    if let current = cloudKeyTakeObservation, current.provider == configuration.provider,
+      current.credentialRevision == credentialRevision, current.observedAt >= observedAt
+    {
+      return
+    }
+    cloudKeyTakeObservation = (configuration.provider, credentialRevision, rejected, observedAt)
+    reconcile()
+  }
+
+  private static func usesCloudKey(_ provider: LLMProvider) -> Bool {
+    switch provider {
+    case .openAI, .gemini, .claude: return true
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+    }
+  }
+
+  private static func ollamaProblem(_ tag: PolishSetupProblemTag) -> PolishSetupProblem? {
+    switch tag {
+    case .ollamaNotInstalled: return .ollamaNotInstalled
+    case .ollamaNotRunning: return .ollamaNotRunning
+    case .ollamaNoModel: return .ollamaNoModel
+    case .ollamaModelNotInstalled: return .ollamaModelNotInstalled
+    case .cloudKeyMissing, .cloudKeyRejected, .localNotDownloaded, .localDownloadPaused,
+      .localUpdatePaused, .localDownloadFailed:
+      return nil
+    }
+  }
+
   // MARK: - Ollama ordering
 
   /// A take that started under `context` observed Ollama at `observedAt` (chunk 4: stamped
@@ -265,7 +470,7 @@ final class PolishSetupMonitor {
   /// is still the one the take started under, and unless it is newer than the observation
   /// already recorded.
   func recordOllamaTakeObservation(
-    _ problem: PolishSetupProblem, context: PolishSetupContext,
+    _ problem: PolishSetupProblem?, context: PolishSetupContext,
     observedAt: ContinuousClock.Instant
   ) {
     reconcile()
@@ -342,7 +547,27 @@ final class PolishSetupMonitor {
       take.revision == configurationRevision,
       inputs.ollamaLastCommitAt.map({ $0 < take.observedAt }) ?? true
     {
-      readiness = .problem(take.problem)
+      // A take that polished is repair evidence, newer than the service's last word.
+      readiness = take.problem.map { .problem($0) } ?? .noProblem
+    }
+    let provider = inputs.configuration.provider
+    if Self.usesCloudKey(provider), let take = cloudKeyTakeObservation,
+      take.provider == provider,
+      take.credentialRevision == inputs.configuration.credentialRevision,
+      Self.cloudVerdictAt(inputs.facts, provider: provider).map({ $0 < take.observedAt }) ?? true
+    {
+      // The newest answer about this key came from a dictation's own request, not from the
+      // key check: it decides.
+      switch (take.rejected, readiness) {
+      case (true, .noProblem), (true, .unknown):
+        // The provider rejected this key during a dictation (no Settings visit needed).
+        readiness = .problem(.cloudKeyRejected(provider))
+      case (false, .problem(.cloudKeyRejected(provider))):
+        // A dictation polished with this key after the check rejected it.
+        readiness = .noProblem
+      default:
+        break
+      }
     }
     var next = episodes
     next.reconcile(

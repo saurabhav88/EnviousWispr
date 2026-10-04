@@ -92,6 +92,9 @@ struct PolishCloudVerdict: Equatable {
   let provider: LLMProvider
   let credentialRevision: UInt64
   let result: Result
+  /// #3438: when the answer arrived, so it is ordered against what a dictation's own request
+  /// learned about the same key.
+  var decidedAt: ContinuousClock.Instant = .now
 }
 
 /// Everything the three policies read, captured once so they see the same snapshot.

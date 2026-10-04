@@ -2135,11 +2135,29 @@ package final class WisprBootstrapper {
       },
       ollamaRefresh: OllamaOffPageRefresh(
         requestOnce: { [weak setup] in setup?.requestOffPageOllamaRefresh() },
-        cancel: { [weak setup] in setup?.cancelOffPageOllamaRefresh() }))
+        cancel: { [weak setup] in setup?.cancelOffPageOllamaRefresh() }),
+      // A take that found no key in the Keychain is that read's answer; no second read.
+      recordKeyEvidence: { [savedKeyPresence] provider, state, readAt in
+        savedKeyPresence.recordRead(state, for: provider, readAt: readAt)
+      })
     polishSetupMonitorHolder.monitor = polishSetupMonitor
     savedKeyPresence.onChange = { [weak polishSetupMonitor] in
       polishSetupMonitor?.configurationOrEligibilityChanged()
     }
+    // #3438 chunk 4: both dictation drivers freeze each take's AI polish setup, ask the monitor
+    // to confirm a setup problem, write it on the take's terminal row, and hand the concluded
+    // take's outcome back. One value for both, so the two backends cannot be wired apart.
+    let polishSetupTakeHooks = PolishSetupTakeHooks(
+      freeze: { [weak polishSetupMonitor] in polishSetupMonitor?.freezeTakeContext() },
+      classify: { [weak polishSetupMonitor] evidence, take in
+        polishSetupMonitor?.confirmedSetupProblem(evidence, for: take)
+      },
+      recordTerminalProblem: { takeID, tag in
+        TelemetryService.shared.recordPolishSetupProblem(takeID: takeID, tag: tag)
+      },
+      ingest: { [weak polishSetupMonitor] outcome in polishSetupMonitor?.ingest(outcome) })
+    kernelDriver.polishSetupHooks = polishSetupTakeHooks
+    whisperKitKernelDriver.polishSetupHooks = polishSetupTakeHooks
     self.polishSetup = PolishSetupWiring(
       savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor)
     self.vocabularyPackManager = vocabularyPackManager

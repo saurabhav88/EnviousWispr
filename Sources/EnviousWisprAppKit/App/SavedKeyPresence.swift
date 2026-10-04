@@ -27,6 +27,10 @@ final class SavedKeyPresence {
     .openAI: .unknown, .gemini: .unknown, .claude: .unknown,
   ]
   private(set) var revisions: [LLMProvider: UInt64] = [.openAI: 0, .gemini: 0, .claude: 0]
+  /// When the newest answer about each provider was produced. A read reported later but taken
+  /// earlier (a dictation's key read arriving after the editor's Check again) is not newer, so
+  /// it never replaces a newer answer.
+  @ObservationIgnored private var answeredAt: [LLMProvider: ContinuousClock.Instant] = [:]
 
   /// Told synchronously after every change here, so a reader whose configuration includes the
   /// credential revision never misses one between two observations (#3438 monitor).
@@ -45,10 +49,16 @@ final class SavedKeyPresence {
     revisions[provider]
   }
 
-  /// A path read this provider's key (the editor on appear, or Check again). No revision
-  /// change: the same key read again is the same credential.
-  func recordRead(_ state: SavedKeyState, for provider: LLMProvider) {
+  /// A path read this provider's key (the editor on appear, or Check again, or a dictation's
+  /// own read) at `readAt`. No revision change: the same key read again is the same credential.
+  /// Ignored when an answer produced after `readAt` is already recorded.
+  func recordRead(
+    _ state: SavedKeyState, for provider: LLMProvider,
+    readAt: ContinuousClock.Instant = .now
+  ) {
     guard Self.cloudProviders.contains(provider) else { return }
+    if let newer = answeredAt[provider], newer > readAt { return }
+    answeredAt[provider] = readAt
     states[provider] = state
     onChange?()
   }
@@ -72,6 +82,7 @@ final class SavedKeyPresence {
   private func recordMutation(_ provider: LLMProvider, state: SavedKeyState) {
     guard Self.cloudProviders.contains(provider) else { return }
     revisions[provider, default: 0] &+= 1
+    answeredAt[provider] = .now
     states[provider] = state
     onChange?()
   }

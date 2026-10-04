@@ -1676,6 +1676,7 @@ public final class TelemetryService {
         "learned_check_fallback_reason", "learned_check_checker_identity",
         "learned_check_checker_status", "learned_check_absence_reason",
         "vad_stage_reached", "vad_backend", "vad_input_route", "polish_language_hint",
+        "polish_setup_problem",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
@@ -4791,6 +4792,17 @@ public final class TelemetryService {
   /// `dictation.completed` (cleanup language) and `llm.polish_*` (outcome) on `take_id`.
   package func recordPolishLanguageHint(takeID: String, hint: String) {
     takeStages.update(takeID: takeID) { $0.polishLanguageHint = hint }
+  }
+
+  // MARK: - AI polish setup (#3438)
+
+  /// Records the confirmed unfinished AI polish setup that skipped this take's polish onto the
+  /// take's terminal row (`polish_setup_problem`, M1). Zero new rows: it folds onto
+  /// `dictation.terminal` through the take ledger, by the explicit take ID, before that row
+  /// closes. A take with no open entry (closed, evicted, never opened) records nothing. Closed,
+  /// provider-free vocabulary. Reader: setup-blocked takes per day by tag.
+  public func recordPolishSetupProblem(takeID: String, tag: PolishSetupProblemTag) {
+    takeStages.update(takeID: takeID) { $0.polishSetupProblem = tag.rawValue }
   }
 
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)

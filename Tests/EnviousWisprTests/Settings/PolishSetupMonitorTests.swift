@@ -429,3 +429,427 @@ struct PolishSetupMonitorTests {
     #expect(monitor.eligibleProblem == .cloudKeyMissing(.openAI))
   }
 }
+
+// MARK: - A take's polish outcome (#3438 chunk 4)
+
+extension PolishSetupMonitorTests {
+
+  @MainActor
+  private final class KeyLog {
+    var reads: [(LLMProvider, SavedKeyState)] = []
+  }
+
+  private static func takeMonitor(_ world: World, keys: KeyLog) -> PolishSetupMonitor {
+    let monitor = PolishSetupMonitor(
+      readInputs: { world.inputs },
+      recordKeyEvidence: { provider, state, _ in keys.reads.append((provider, state)) })
+    world.onTransition = { [weak monitor] in monitor?.configurationOrEligibilityChanged() }
+    return monitor
+  }
+
+  private static func outcome(
+    _ take: PolishSetupTakeContext, id: String = "take-1",
+    evidence: PolishSetupEvidence?, tag: PolishSetupProblemTag? = nil,
+    at observedAt: ContinuousClock.Instant = .now
+  ) -> PolishTakeOutcome {
+    PolishTakeOutcome(
+      takeID: id, context: take, result: .skippedWithNotice, evidence: evidence,
+      setupProblem: tag, observedAt: observedAt)
+  }
+
+  private static func withVerdict(
+    _ facts: PolishSetupFacts, _ verdict: PolishCloudVerdict?
+  ) -> PolishSetupFacts {
+    PolishSetupFacts(
+      egOneInstall: facts.egOneInstall, egOneHealth: facts.egOneHealth,
+      s1MiniInstall: facts.s1MiniInstall, s1MiniHealth: facts.s1MiniHealth,
+      appleStatus: facts.appleStatus, appleFailureReasons: facts.appleFailureReasons,
+      appleIsChecking: facts.appleIsChecking, validationProvider: facts.validationProvider,
+      cloudValidation: facts.cloudValidation, credentialRevisions: facts.credentialRevisions,
+      cloudVerdict: verdict, openAIKeySaved: facts.openAIKeySaved,
+      geminiKeySaved: facts.geminiKeySaved, claudeKeySaved: facts.claudeKeySaved,
+      ollamaSetup: facts.ollamaSetup, ollamaModel: facts.ollamaModel)
+  }
+
+  @Test("a take freezes the configuration, revision and episode it starts under")
+  func freezesTheTakeContext() throws {
+    let world = World()
+    let monitor = Self.monitor(world)
+    let take = monitor.freezeTakeContext()
+    #expect(take.provider == .openAI)
+    #expect(take.model == "gpt-test")
+    #expect(take.episode == monitor.currentEpisode?.rawValue)
+    #expect(take.episode != nil)
+    world.configuration = Self.egOne
+    #expect(monitor.freezeTakeContext().configurationRevision > take.configurationRevision)
+  }
+
+  @Test("evidence is confirmed for the take's frozen provider, from the take's own proof or live facts")
+  func confirmsSetupProblems() {
+    let world = World()
+    world.facts = Self.facts(egOneInstall: .notInstalled, openAIKeySaved: nil)
+    let monitor = Self.monitor(world)
+    let openAITake = PolishSetupTakeContext(
+      provider: .openAI, model: "gpt-test", configurationRevision: 0, episode: nil)
+    let egOneTake = PolishSetupTakeContext(
+      provider: .egOne, model: "eg-1", configurationRevision: 0, episode: nil)
+    let ollamaTake = PolishSetupTakeContext(
+      provider: .ollama, model: "qwen3:4b", configurationRevision: 0, episode: nil)
+
+    // No key in the Keychain is its own proof, even while presence was unknown.
+    #expect(monitor.confirmedSetupProblem(.cloudKeyMissing, for: openAITake) == .cloudKeyMissing)
+    #expect(monitor.confirmedSetupProblem(.cloudKeyMissing, for: egOneTake) == nil)
+    // An unreadable Keychain is unknown, never missing.
+    #expect(monitor.confirmedSetupProblem(.cloudKeyUnreadable, for: openAITake) == nil)
+    // A local engine that was not ready: confirmed by a not-downloaded install, for the
+    // frozen provider even though the chosen one is OpenAI now.
+    #expect(
+      monitor.confirmedSetupProblem(.localEngineNotReady, for: egOneTake) == .localNotDownloaded)
+    world.facts = Self.facts(egOneInstall: .paused, openAIKeySaved: nil)
+    #expect(
+      monitor.confirmedSetupProblem(.localEngineDownloadPending, for: egOneTake)
+        == .localDownloadPaused)
+    // Installed or still downloading is not an unfinished setup.
+    world.facts = Self.facts(egOneInstall: .installed(version: "1.2"))
+    #expect(monitor.confirmedSetupProblem(.localEngineNotReady, for: egOneTake) == nil)
+    world.facts = Self.facts(egOneInstall: .downloading(fractionCompleted: 0.4, upgrade: nil))
+    #expect(monitor.confirmedSetupProblem(.localEngineNotReady, for: egOneTake) == nil)
+    // OpenAI's polish request says "rejected" only on HTTP 401: its own typed answer.
+    #expect(monitor.confirmedSetupProblem(.cloudKeyRejected, for: openAITake) == .cloudKeyRejected)
+    // Gemini's can also come from body text, so it needs the typed verdict for the current key.
+    let geminiTake = PolishSetupTakeContext(
+      provider: .gemini, model: "gemini-test", configurationRevision: 0, episode: nil)
+    #expect(monitor.confirmedSetupProblem(.cloudKeyRejectedClassified, for: geminiTake) == nil)
+    var verdictFacts = Self.facts()
+    verdictFacts = Self.withVerdict(
+      PolishSetupFacts(
+        egOneInstall: verdictFacts.egOneInstall, egOneHealth: verdictFacts.egOneHealth,
+        s1MiniInstall: verdictFacts.s1MiniInstall, s1MiniHealth: verdictFacts.s1MiniHealth,
+        appleStatus: verdictFacts.appleStatus, appleFailureReasons: [], appleIsChecking: false,
+        validationProvider: nil, cloudValidation: .idle,
+        credentialRevisions: [.openAI: 1, .gemini: 1], cloudVerdict: nil,
+        openAIKeySaved: true, geminiKeySaved: true, claudeKeySaved: true,
+        ollamaSetup: .ready, ollamaModel: .installed),
+      PolishCloudVerdict(provider: .gemini, credentialRevision: 1, result: .rejected))
+    world.facts = verdictFacts
+    #expect(
+      monitor.confirmedSetupProblem(.cloudKeyRejectedClassified, for: geminiTake)
+        == .cloudKeyRejected)
+    // Ollama's own check is proof; the service says whether it is installed at all.
+    #expect(monitor.confirmedSetupProblem(.ollamaUnreachable, for: ollamaTake) == .ollamaNotRunning)
+    world.facts = Self.facts(ollamaSetup: .notInstalled)
+    #expect(
+      monitor.confirmedSetupProblem(.ollamaUnreachable, for: ollamaTake) == .ollamaNotInstalled)
+    #expect(
+      monitor.confirmedSetupProblem(.ollamaModelUnavailable, for: ollamaTake)
+        == .ollamaModelNotInstalled)
+    #expect(monitor.confirmedSetupProblem(.ollamaNoModel, for: ollamaTake) == .ollamaNoModel)
+    #expect(monitor.confirmedSetupProblem(.ollamaUnreachable, for: openAITake) == nil)
+  }
+
+  @Test("a missing-key take starts the warning when presence was unknown, once, with no new read")
+  func missingKeyTakeTeachesPresence() throws {
+    let world = World()
+    world.facts = Self.facts(openAIKeySaved: nil)
+    let keys = KeyLog()
+    let monitor = Self.takeMonitor(world, keys: keys)
+    monitor.start()
+    defer { monitor.stop() }
+    // Unknown presence: no warning, and a take starts with no episode.
+    #expect(monitor.eligibleProblem == nil)
+    let take = monitor.freezeTakeContext()
+    #expect(take.episode == nil)
+    let missing = Self.outcome(take, evidence: .cloudKeyMissing, tag: .cloudKeyMissing)
+    monitor.ingest(missing)
+    #expect(keys.reads.count == 1)
+    #expect(keys.reads.first?.0 == .openAI)
+    #expect(keys.reads.first?.1 == .absent)
+    // The same take delivered again changes nothing.
+    monitor.ingest(missing)
+    #expect(keys.reads.count == 1)
+    // An unreadable Keychain publishes unknown, never absent.
+    monitor.ingest(Self.outcome(take, id: "take-2", evidence: .cloudKeyUnreadable))
+    #expect(keys.reads.last?.1 == .unknown)
+  }
+
+  @Test("a take from an older configuration or an ended episode is not taken in")
+  func staleTakesAreRejected() throws {
+    let world = World()
+    let keys = KeyLog()
+    let monitor = Self.takeMonitor(world, keys: keys)
+    monitor.start()
+    defer { monitor.stop() }
+    let take = monitor.freezeTakeContext()
+    #expect(take.episode != nil)
+    // A, then B, then A: the first A's take says nothing.
+    world.configuration = Self.egOne
+    world.configuration = Self.openAI
+    monitor.ingest(Self.outcome(take, evidence: .cloudKeyMissing, tag: .cloudKeyMissing))
+    #expect(keys.reads.isEmpty)
+    // Repaired, then broken again in the same configuration: a new episode.
+    let second = monitor.freezeTakeContext()
+    world.facts = Self.facts(openAIKeySaved: true)
+    _ = monitor.currentContext()
+    #expect(monitor.currentEpisode == nil)
+    world.facts = Self.facts(openAIKeySaved: false)
+    _ = monitor.currentContext()
+    #expect(monitor.currentEpisode?.rawValue != second.episode)
+    monitor.ingest(Self.outcome(second, id: "take-2", evidence: .cloudKeyMissing))
+    #expect(keys.reads.isEmpty)
+  }
+
+  @Test("a take that started with no episode is still rejected after A, then B, then A")
+  func episodelessStaleTakeIsRejected() throws {
+    let world = World()
+    // Unknown presence: no episode, so only the configuration revision can tell this take is old.
+    world.facts = Self.facts(openAIKeySaved: nil)
+    let keys = KeyLog()
+    let monitor = Self.takeMonitor(world, keys: keys)
+    monitor.start()
+    defer { monitor.stop() }
+    let take = monitor.freezeTakeContext()
+    #expect(take.episode == nil)
+    world.configuration = Self.egOne
+    world.configuration = Self.openAI
+    monitor.ingest(Self.outcome(take, evidence: .cloudKeyMissing, tag: .cloudKeyMissing))
+    #expect(keys.reads.isEmpty)
+    // Control: the same evidence from a take of the current configuration is taken in.
+    monitor.ingest(
+      Self.outcome(monitor.freezeTakeContext(), id: "take-2", evidence: .cloudKeyMissing))
+    #expect(keys.reads.count == 1)
+  }
+
+  @Test("an Ollama take is believed only if it observed after the service last committed")
+  func ollamaTakeOrdering() throws {
+    let world = World()
+    world.configuration = Self.ollama
+    world.facts = Self.facts(ollamaSetup: .ready)
+    let keys = KeyLog()
+    let monitor = Self.takeMonitor(world, keys: keys)
+    monitor.start()
+    defer { monitor.stop() }
+    let take = monitor.freezeTakeContext()
+    let observedAt = ContinuousClock.now
+    // The service committed AFTER the take observed: the service wins.
+    world.ollamaLastCommitAt = observedAt.advanced(by: .seconds(1))
+    monitor.ingest(
+      Self.outcome(take, evidence: .ollamaUnreachable, tag: .ollamaNotRunning, at: observedAt))
+    #expect(monitor.eligibleProblem == nil)
+    // A later take that observed after the commit is believed.
+    monitor.ingest(
+      Self.outcome(
+        take, id: "take-2", evidence: .ollamaUnreachable, tag: .ollamaNotRunning,
+        at: observedAt.advanced(by: .seconds(2))))
+    #expect(monitor.eligibleProblem == .ollamaNotRunning)
+    #expect(keys.reads.isEmpty)
+  }
+
+  @Test("a key rejected during dictation warns with no Settings visit; a later success repairs it")
+  func rejectedKeyLearnedFromDictation() throws {
+    let world = World()
+    // After relaunch: the key is saved and nothing has checked it.
+    world.facts = Self.facts(openAIKeySaved: true)
+    let keys = KeyLog()
+    let monitor = Self.takeMonitor(world, keys: keys)
+    monitor.start()
+    defer { monitor.stop() }
+    #expect(monitor.eligibleProblem == nil)
+    let take = monitor.freezeTakeContext()
+    let start = ContinuousClock.now
+    monitor.ingest(
+      Self.outcome(take, evidence: .cloudKeyRejected, tag: .cloudKeyRejected, at: start))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    // An older success arriving late changes nothing.
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-old", context: take, result: .polished, evidence: nil, setupProblem: nil,
+        observedAt: start.advanced(by: .seconds(-1))))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    // A newer take that polished: the key works again.
+    let next = monitor.freezeTakeContext()
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-2", context: next, result: .polished, evidence: nil, setupProblem: nil,
+        observedAt: start.advanced(by: .seconds(1))))
+    #expect(monitor.eligibleProblem == nil)
+    #expect(keys.reads.isEmpty, "no key read was stamped, so no presence is published")
+    // Rejected again later: the warning returns.
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), id: "take-3", evidence: .cloudKeyRejected,
+        tag: .cloudKeyRejected, at: start.advanced(by: .seconds(2))))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    // A new key starts clean.
+    world.configuration = PolishSetupConfiguration(
+      provider: .openAI, model: "gpt-test", credentialRevision: 2)
+    #expect(monitor.eligibleProblem == nil)
+  }
+
+  @Test("an Ollama take that polished repairs an old failure; a short take does not")
+  func ollamaRepairAndRecurrence() throws {
+    let world = World()
+    world.configuration = Self.ollama
+    // The service's last word (no Settings page watching) says Ollama is not running.
+    world.facts = Self.facts(ollamaSetup: .installedNotRunning)
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    let start = ContinuousClock.now
+    let take = monitor.freezeTakeContext()
+    monitor.ingest(
+      Self.outcome(take, evidence: .ollamaUnreachable, tag: .ollamaNotRunning, at: start))
+    #expect(monitor.eligibleProblem == .ollamaNotRunning)
+    // Too short: no model was asked, so it proves nothing.
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-short", context: monitor.freezeTakeContext(), result: .bypassed,
+        evidence: nil, setupProblem: nil, observedAt: start.advanced(by: .seconds(1))))
+    #expect(monitor.eligibleProblem == .ollamaNotRunning)
+    // Started outside the app, then a dictation polished.
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-2", context: monitor.freezeTakeContext(), result: .polished,
+        evidence: nil, setupProblem: nil, observedAt: start.advanced(by: .seconds(2))))
+    #expect(monitor.eligibleProblem == nil)
+    // Stopped again.
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), id: "take-3", evidence: .ollamaUnreachable,
+        tag: .ollamaNotRunning, at: start.advanced(by: .seconds(3))))
+    #expect(monitor.eligibleProblem == .ollamaNotRunning)
+  }
+
+  private static func openAIFacts(verdict: PolishCloudVerdict?) -> PolishSetupFacts {
+    withVerdict(facts(openAIKeySaved: true), verdict)
+  }
+
+  @Test("the newest of the key check and a dictation's own request decides, both ways")
+  func keyCheckAndTakesAreOrdered() throws {
+    let world = World()
+    world.facts = Self.facts(openAIKeySaved: true)
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    let start = ContinuousClock.now
+    // A dictation's request is rejected.
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), evidence: .cloudKeyRejected, tag: .cloudKeyRejected,
+        at: start))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    // An OLDER key check that accepted the key arrives late: the rejection stands.
+    world.facts = Self.openAIFacts(
+      verdict: PolishCloudVerdict(
+        provider: .openAI, credentialRevision: 1, result: .accepted,
+        decidedAt: start.advanced(by: .seconds(-1))))
+    _ = monitor.currentContext()
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    // A NEWER key check accepts it: the warning clears.
+    world.facts = Self.openAIFacts(
+      verdict: PolishCloudVerdict(
+        provider: .openAI, credentialRevision: 1, result: .accepted,
+        decidedAt: start.advanced(by: .seconds(1))))
+    _ = monitor.currentContext()
+    #expect(monitor.eligibleProblem == nil)
+    // The key check rejects it; then a NEWER dictation polishes: the warning clears again.
+    world.facts = Self.openAIFacts(
+      verdict: PolishCloudVerdict(
+        provider: .openAI, credentialRevision: 1, result: .rejected,
+        decidedAt: start.advanced(by: .seconds(2))))
+    _ = monitor.currentContext()
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-2", context: monitor.freezeTakeContext(), result: .polished,
+        evidence: nil, setupProblem: nil, observedAt: start.advanced(by: .seconds(3))))
+    #expect(monitor.eligibleProblem == nil)
+  }
+
+  @Test("Gemini: a typed rejection confirms with no key check; body text alone does not")
+  func geminiRejectionNeedsTypedEvidence() {
+    let world = World()
+    let monitor = Self.monitor(world)
+    let gemini = PolishSetupTakeContext(
+      provider: .gemini, model: "gemini-test", configurationRevision: 0, episode: nil)
+    #expect(monitor.confirmedSetupProblem(.cloudKeyRejected, for: gemini) == .cloudKeyRejected)
+    #expect(monitor.confirmedSetupProblem(.cloudKeyRejectedClassified, for: gemini) == nil)
+    let openAI = PolishSetupTakeContext(
+      provider: .openAI, model: "gpt-test", configurationRevision: 0, episode: nil)
+    #expect(
+      monitor.confirmedSetupProblem(.cloudKeyRejectedClassified, for: openAI) == .cloudKeyRejected)
+  }
+
+  /// The saved-key owner as the app wires it: the monitor's key evidence lands in the facts.
+  private static func presenceMonitor(_ world: World) -> PolishSetupMonitor {
+    let monitor = PolishSetupMonitor(
+      readInputs: { world.inputs },
+      recordKeyEvidence: { _, state, _ in
+        world.facts = Self.facts(openAIKeySaved: state.asSavedFlag)
+      })
+    world.onTransition = { [weak monitor] in monitor?.configurationOrEligibilityChanged() }
+    return monitor
+  }
+
+  @Test("unknown presence: a rejection warns, a later success ends that episode, a new rejection starts afresh")
+  func unknownPresenceRejectionEpisodes() throws {
+    let world = World()
+    world.facts = Self.facts(openAIKeySaved: nil)
+    let monitor = Self.presenceMonitor(world)
+    monitor.start()
+    defer { monitor.stop() }
+    #expect(monitor.currentEpisode == nil)
+    let start = ContinuousClock.now
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-1", context: monitor.freezeTakeContext(), result: .failed,
+        evidence: .cloudKeyRejected, setupProblem: .cloudKeyRejected,
+        observedAt: start.advanced(by: .milliseconds(5)), keyReadAt: start))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    let first = try #require(monitor.currentEpisode)
+    let ticket = try #require(monitor.cardTicket())
+    monitor.cardPresented(ticket)
+    #expect(monitor.cardTicket() == nil, "the card was spent for this episode")
+
+    // A later dictation polished with the same key: the episode ends.
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-2", context: monitor.freezeTakeContext(), result: .polished,
+        evidence: nil, setupProblem: nil, observedAt: start.advanced(by: .seconds(1)),
+        keyReadAt: start.advanced(by: .milliseconds(900))))
+    #expect(monitor.eligibleProblem == nil)
+    #expect(monitor.currentEpisode == nil)
+
+    // Rejected again: a NEW episode, with the card allowed again.
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-3", context: monitor.freezeTakeContext(), result: .failed,
+        evidence: .cloudKeyRejected, setupProblem: .cloudKeyRejected,
+        observedAt: start.advanced(by: .seconds(2)),
+        keyReadAt: start.advanced(by: .milliseconds(1900))))
+    let second = try #require(monitor.currentEpisode)
+    #expect(second != first)
+    #expect(monitor.cardTicket() != nil)
+  }
+
+  @Test("another model from the same provider keeps a rejected key's warning; a new key clears it")
+  func rejectionBelongsToTheKeyNotTheModel() throws {
+    let world = World()
+    world.facts = Self.facts(openAIKeySaved: true)
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), evidence: .cloudKeyRejected, tag: .cloudKeyRejected))
+    let before = try #require(monitor.currentEpisode)
+    // Another OpenAI model, same saved key.
+    world.configuration = PolishSetupConfiguration(
+      provider: .openAI, model: "gpt-other", credentialRevision: 1)
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    #expect(monitor.currentEpisode != before, "a new configuration is a new episode")
+    // A new key.
+    world.configuration = PolishSetupConfiguration(
+      provider: .openAI, model: "gpt-other", credentialRevision: 2)
+    #expect(monitor.eligibleProblem == nil)
+  }
+}

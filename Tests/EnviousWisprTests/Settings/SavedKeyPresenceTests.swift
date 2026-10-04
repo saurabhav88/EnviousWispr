@@ -125,6 +125,25 @@ struct SavedKeyPresenceTests {
     #expect(presence.revision(for: .ollama) == nil)
   }
 
+  @Test("a key read taken earlier never replaces a newer answer, whenever it arrives (#3438)")
+  func olderReadsDoNotOverwriteNewerOnes() {
+    let presence = SavedKeyPresence()
+    let start = ContinuousClock.now
+    // A dictation read the Keychain first and could not tell...
+    let dictationRead = start
+    // ...then Check again confirmed the key, and only then did the dictation report.
+    presence.recordRead(.present, for: .openAI, readAt: start.advanced(by: .seconds(1)))
+    presence.recordRead(.unknown, for: .openAI, readAt: dictationRead)
+    #expect(presence.state(for: .openAI) == .present)
+    // A newer read still counts.
+    presence.recordRead(.absent, for: .openAI, readAt: start.advanced(by: .seconds(2)))
+    #expect(presence.state(for: .openAI) == .absent)
+    // A save is an answer too: an older dictation read cannot undo it.
+    presence.recordSaved(.openAI)
+    presence.recordRead(.absent, for: .openAI, readAt: dictationRead)
+    #expect(presence.state(for: .openAI) == .present)
+  }
+
   @Test("a stored key is present, no key is absent, an empty key is absent")
   func classification() throws {
     let keychain = Self.fixtureKeychain()
@@ -167,24 +186,24 @@ struct SavedKeyPresenceTests {
     let accepted = await check(.openAI, presence: presence, keychain: keychain) { p, _ in
       [Self.row("gpt-test", provider: p)]
     }
-    #expect(
-      accepted.cloudVerdict
-        == PolishCloudVerdict(provider: .openAI, credentialRevision: 1, result: .accepted))
+    #expect(accepted.cloudVerdict?.provider == .openAI)
+    #expect(accepted.cloudVerdict?.credentialRevision == 1)
+    #expect(accepted.cloudVerdict?.result == .accepted)
 
     let rejected = await check(.openAI, presence: presence, keychain: keychain) { _, _ in
       throw LLMError.invalidAPIKey
     }
-    #expect(
-      rejected.cloudVerdict
-        == PolishCloudVerdict(provider: .openAI, credentialRevision: 1, result: .rejected))
+    #expect(rejected.cloudVerdict?.provider == .openAI)
+    #expect(rejected.cloudVerdict?.credentialRevision == 1)
+    #expect(rejected.cloudVerdict?.result == .rejected)
 
     // No network: the legacy verdict reads invalid, but nothing says the key was refused.
     let offline = await check(.openAI, presence: presence, keychain: keychain) { _, _ in
       throw URLError(.notConnectedToInternet)
     }
-    #expect(
-      offline.cloudVerdict
-        == PolishCloudVerdict(provider: .openAI, credentialRevision: 1, result: .inconclusive))
+    #expect(offline.cloudVerdict?.provider == .openAI)
+    #expect(offline.cloudVerdict?.credentialRevision == 1)
+    #expect(offline.cloudVerdict?.result == .inconclusive)
     if case .invalid = offline.keyValidationState {
     } else {
       Issue.record("legacy verdict changed: \(offline.keyValidationState)")
@@ -203,6 +222,27 @@ struct SavedKeyPresenceTests {
     #expect(
       discovery.keyValidationState == .invalid(LLMModelDiscoveryCoordinator.invalidKeyMessage))
     #expect(discovery.cloudVerdict?.result == .inconclusive)
+  }
+
+  @Test("Gemini polish: a structured or 401 rejection is typed; body text alone is not (#3438)")
+  func geminiPolishRejectionIsTypedOnlyFromStructure() {
+    let invalidKeyEnvelope = """
+      {"error": {"code": 400, "message": "API key not valid. Please pass a valid API key.",
+      "status": "INVALID_ARGUMENT", "details": [{"@type": "type.googleapis.com/google.rpc.ErrorInfo",
+      "reason": "API_KEY_INVALID", "domain": "googleapis.com"}]}}
+      """
+    #expect(GeminiConnector.polishError(statusCode: 401, bodyString: "") == .invalidAPIKey)
+    #expect(
+      GeminiConnector.polishError(statusCode: 400, bodyString: invalidKeyEnvelope)
+        == .invalidAPIKey)
+    let textOnly = #"{"error": {"code": 400, "message": "reason API_KEY_INVALID"}}"#
+    #expect(
+      GeminiConnector.polishError(statusCode: 400, bodyString: textOnly)
+        == .classified(.apiKeyRejected))
+    #expect(
+      GeminiConnector.polishError(statusCode: 403, bodyString: "") == .classified(.accessDenied))
+    // What the person reads and the counted reason are unchanged by the typed form.
+    #expect(PolishFailureReason.from(LLMError.invalidAPIKey) == .apiKeyRejected)
   }
 
   @Test("Gemini: only Google's structured API_KEY_INVALID reason is a refused key")

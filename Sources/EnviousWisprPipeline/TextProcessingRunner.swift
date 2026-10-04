@@ -13,6 +13,21 @@ internal struct TextProcessingRunResult {
   let polishNotice: PolishNotice?
   /// The notice's text, for readers that only show it.
   var polishError: String? { polishNotice?.text }
+  /// #3438: what this take's polish met, for a live take with a frozen setup only.
+  var polishTakeOutcome: PolishTakeOutcome? = nil
+}
+
+/// #3438: the live take's AI polish setup, handed to one run. Recovery and file import pass
+/// none, so they classify nothing and record nothing.
+@MainActor
+struct PolishSetupTakeProbe {
+  let takeID: String
+  let context: PolishSetupTakeContext
+  /// The app's verdict: does this evidence confirm an unfinished setup for `context`?
+  let classify: @MainActor (PolishSetupEvidence) -> PolishSetupProblemTag?
+  /// Writes the confirmed problem on the take's terminal row, before the row closes.
+  let recordTerminalProblem: @MainActor (String, PolishSetupProblemTag) -> Void
+  let now: @MainActor () -> ContinuousClock.Instant
 }
 
 /// Runs the post-ASR chain, including deterministic correction, learned-word checking,
@@ -204,6 +219,9 @@ internal final class TextProcessingRunner {
     /// One take's full vocabulary, set before any step can suspend. Nil keeps
     /// direct runner callers on their existing per-step lane behavior.
     frozenCorrectorVocabulary: CorrectorVocabulary? = nil,
+    /// #3438: the live take's frozen AI polish setup. Nil for recovery, file import and direct
+    /// callers: they classify and record nothing.
+    polishSetup: PolishSetupTakeProbe? = nil,
     /// #1846: the live in-flight take. Frozen into the context below so every
     /// emission in this chain names the same dictation even if the session state
     /// moves on mid-chain.
@@ -245,6 +263,24 @@ internal final class TextProcessingRunner {
         for: selectedProvider, language: resolution.language)
     }
     var polishNotice: PolishNotice?
+    // #3438: set once, at the moment the polish step's result is classified; never rewritten.
+    var polishTakeOutcome: PolishTakeOutcome?
+    // `observedAt` is where the evidence was observed (`observationStamp`), never when the
+    // result reached this point: an error travels here after its observation, and a repair
+    // confirmed meanwhile must stay newer than it.
+    func settlePolishOutcome(
+      _ result: PolishTakeResult, _ evidence: PolishSetupEvidence?,
+      observedAt: ContinuousClock.Instant, keyReadAt: ContinuousClock.Instant? = nil
+    ) {
+      guard let probe = polishSetup else { return }
+      // The app confirms evidence for the take's FROZEN provider, now, before the terminal row
+      // closes; a later repair or acknowledgement cannot change what this take met.
+      let tag = evidence.flatMap { probe.classify($0) }
+      if let tag { probe.recordTerminalProblem(probe.takeID, tag) }
+      polishTakeOutcome = PolishTakeOutcome(
+        takeID: probe.takeID, context: probe.context, result: result, evidence: evidence,
+        setupProblem: tag, observedAt: observedAt, keyReadAt: keyReadAt)
+    }
 
     let logger = self.logger
     Task {
@@ -257,6 +293,9 @@ internal final class TextProcessingRunner {
     for step in steps {
       let stepName = step.name
       guard step.isEnabled(for: context) else {
+        if step is LLMPolishStep, let probe = polishSetup {
+          settlePolishOutcome(.notRequested, nil, observedAt: probe.now())
+        }
         Task {
           await logger.log(
             Self.stepTimingLine(name: stepName, milliseconds: 0, ran: false),
@@ -292,10 +331,23 @@ internal final class TextProcessingRunner {
       // LLMPolishStep.swift), so the step snapshot is the only reliable source of
       // the model the failed attempt actually used.
       let polishModelAtStart = (step as? LLMPolishStep)?.llmModel
+      // #3438: stamped before the await, so it precedes everything the step observes.
+      let polishObservedAt = step is LLMPolishStep ? polishSetup?.now() : nil
       var stepElapsedMs = 0.0
       do {
         context = try await timeoutExecutor(budgetSeconds) {
           try await step.process(input)
+        }
+        if let polishObservedAt {
+          // A too-short dictation returns the step's bypassed context: no model was asked.
+          let result: PolishTakeResult =
+            context.polishWasBypassed && context.llmProvider == nil ? .bypassed : .polished
+          settlePolishOutcome(
+            result, nil,
+            observedAt: Self.observationStamp(
+              evidence: nil, result: result, step: step as? LLMPolishStep,
+              fallback: polishObservedAt),
+            keyReadAt: (step as? LLMPolishStep)?.setupObservation.requestStartedAt)
         }
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
         stepElapsedMs = stepMs
@@ -521,6 +573,27 @@ internal final class TextProcessingRunner {
             polishNotice = PolishNotice(leadIn: .failed, text: error.localizedDescription)
           }
         }
+        if let polishObservedAt {
+          // #3438: the same classes as above, read once more as this take's outcome; the notice
+          // and the fallback text are unchanged by it.
+          let result: PolishTakeResult
+          if isCancellationLike {
+            result = .cancelled
+          } else if polishSkippedSilently {
+            result = .skippedSilently
+          } else if localPolishSkipReason != nil || polishNotice?.leadIn == .skipped {
+            result = .skippedWithNotice
+          } else {
+            result = .failed
+          }
+          let evidence = Self.setupEvidence(from: error)
+          settlePolishOutcome(
+            result, evidence,
+            observedAt: Self.observationStamp(
+              evidence: evidence, result: result, step: step as? LLMPolishStep,
+              fallback: polishObservedAt),
+            keyReadAt: (step as? LLMPolishStep)?.setupObservation.requestStartedAt)
+        }
         // #1055: emit a dedicated skip event so we can measure how often long
         // dictations bypass on-device polish — input the future 1-hour-recording
         // work needs. All three reasons share the `context_window_` prefix so a
@@ -587,7 +660,52 @@ internal final class TextProcessingRunner {
         name: stepName, milliseconds: stepElapsedMs, ran: true)
       Task { await logger.log(timingLine, level: .info, category: "Pipeline") }
     }
-    return TextProcessingRunResult(context: context, polishNotice: polishNotice)
+    return TextProcessingRunResult(
+      context: context, polishNotice: polishNotice, polishTakeOutcome: polishTakeOutcome)
+  }
+
+  /// #3438: where the step observed what `evidence` (or a polished `result`) says, from the
+  /// step's own stamps; `fallback` (the step's start) when it recorded none.
+  static func observationStamp(
+    evidence: PolishSetupEvidence?, result: PolishTakeResult, step: LLMPolishStep?,
+    fallback: ContinuousClock.Instant
+  ) -> ContinuousClock.Instant {
+    let seen = step?.setupObservation
+    let stamp: ContinuousClock.Instant?
+    switch evidence {
+    case .cloudKeyMissing?, .cloudKeyUnreadable?:
+      // The connector reads the saved key first thing in the request.
+      stamp = seen?.requestStartedAt
+    case .cloudKeyRejected?, .cloudKeyRejectedClassified?:
+      stamp = seen?.requestEndedAt
+    case .ollamaUnreachable?, .ollamaModelUnavailable?, .ollamaNoModel?:
+      stamp = seen?.probeAnsweredAt
+    case .localEngineNotReady?, .localEngineDownloadPending?:
+      stamp = seen?.requestEndedAt
+    case nil:
+      stamp = result == .polished ? seen?.requestEndedAt : nil
+    }
+    return stamp ?? fallback
+  }
+
+  /// #3438: what a polish error says about the setup, from its TYPE only (never a message).
+  /// Nil for every error that is not about setup: timeouts, length limits, server errors,
+  /// crashes, output rejection, a missing Apple Intelligence.
+  static func setupEvidence(from error: any Error) -> PolishSetupEvidence? {
+    guard let llmError = error as? LLMError else { return nil }
+    switch llmError {
+    case .classified(.apiKeyMissing): return .cloudKeyMissing
+    case .classified(.apiKeyUnreadable): return .cloudKeyUnreadable
+    case .invalidAPIKey: return .cloudKeyRejected
+    case .classified(.apiKeyRejected): return .cloudKeyRejectedClassified
+    case .localEngineSkipped(.notReady, _), .egOneSkipped(.notReady): return .localEngineNotReady
+    case .localEngineSkipped(.downloadPending, _), .egOneSkipped(.downloadPending):
+      return .localEngineDownloadPending
+    case .localPolishNotReady(.providerUnreachable): return .ollamaUnreachable
+    case .localPolishNotReady(.modelUnavailable): return .ollamaModelUnavailable
+    case .localPolishNotReady(.noModelSelected): return .ollamaNoModel
+    default: return nil
+    }
   }
 
   /// #3142: the Apple Intelligence failure notice, one localized frame around the error's own

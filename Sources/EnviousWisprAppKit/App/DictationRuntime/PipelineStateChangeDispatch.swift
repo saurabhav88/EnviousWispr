@@ -53,5 +53,8 @@ enum PipelineStateChangeDispatch {
         ? .otherInterruption
         : CompletionInterruptionDisclosure(cause: driver.lastAudioInterruptionCause),
       escapeRecoveryCompletion: driver.takeEscapeRecoveryCompletion())
+    // #3438: after the completion is planned, the concluded take's polish outcome goes to the
+    // AI polish setup warnings, once per take, from whichever backend ran it.
+    driver.deliverPolishTakeOutcome()
   }
 }
