@@ -304,7 +304,9 @@ struct SettingsShellWiringTests {
         ".diagnostics -> page DiagnosticsSettingsView",
       ], "\(wiring.hosts)")
     #expect(
-      wiring.navigationInjection == ["navigationState.apply($0)"], "\(wiring.navigationInjection)")
+      // #3438: in-page links go through the same leave guard as the sidebar and the menu.
+      wiring.navigationInjection == ["navigate(.destination($0))"],
+      "\(wiring.navigationInjection)")
     #expect(
       wiring.activity == [
         "section == .transcribeFile && fileImportCoordinator.isRunning -> .fileImport",

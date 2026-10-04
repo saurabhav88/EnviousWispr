@@ -191,6 +191,12 @@ final class PolishSetupMonitor {
 
   func shows(_ surface: PolishSetupSurface) -> Bool { episodes.shows(surface) }
 
+  /// Whether `provider` would be fully set up if chosen now, from the same live facts. For the
+  /// leave dialog's "Go back to" offer; it changes no warning memory.
+  func readiness(for provider: LLMProvider) -> PolishSetupReadiness {
+    PolishSetupReadiness.evaluate(provider: provider, facts: readInputs().facts)
+  }
+
   /// The episode a surface is showing now, for it to hand back with the person's answer.
   var currentEpisode: PolishSetupEpisodeToken? { episodes.episode?.token }
 
