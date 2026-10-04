@@ -1022,6 +1022,16 @@ public final class SettingsManager {
     }
   }
 
+  /// The user's microphone choice (#3454), from Settings or the menu bar: a device UID, or "" for
+  /// Auto. Writes both keys, override first, because the reconciler re-pins an empty override to
+  /// a connected `selectedInputDeviceUID`: choosing Auto must clear the remembered device too, or
+  /// the old device comes back on the next hardware change. A user write, so it never sets
+  /// `isApplyingSystemWrite`.
+  public func chooseInputDevice(uid: String) {
+    preferredInputDeviceIDOverride = uid
+    selectedInputDeviceUID = uid
+  }
+
   /// #2664: which input of a multi-input audio interface the microphone is on,
   /// per device UID, stored 0-based (the UI shows `Input \(index + 1)`). A
   /// missing UID means channel 0, today's behaviour. Persisted as JSON `Data`
