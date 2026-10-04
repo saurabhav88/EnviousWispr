@@ -44,6 +44,8 @@ struct HistoryContentView: View {
       if permissions.shouldShowAccessibilityWarning {
         AccessibilityWarningBanner()
       }
+      // #3438: beside the Accessibility banner, outside the transcript split; both can show.
+      PolishSetupBanner()
 
       GeometryReader { geo in
         let listWidth = HistorySplitMetrics.effectiveListWidth(

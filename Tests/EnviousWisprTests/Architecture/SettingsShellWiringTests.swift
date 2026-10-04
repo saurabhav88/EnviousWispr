@@ -310,6 +310,8 @@ struct SettingsShellWiringTests {
     #expect(
       wiring.activity == [
         "section == .transcribeFile && fileImportCoordinator.isRunning -> .fileImport",
+        // #3438: the setup tag reads only the warning monitor.
+        "section == .aiPolish && polishSetupMonitor.shows(.sidebarTag) -> .polishNeedsSetup",
         "yourWordsEnrichmentBadgeVisible(for: section) -> .dictionaryEnrichment",
         "else -> .none",
       ], "\(wiring.activity)")

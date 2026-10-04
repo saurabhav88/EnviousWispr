@@ -25,6 +25,9 @@ enum SettingsShellCopy {
     case none
     case dictionaryEnrichment
     case fileImport
+    /// #3438: the chosen AI polish model is not set up. Drawn as a "Set up" text tag rather than
+    /// the in-progress dot: it asks for something, it is not something running.
+    case polishNeedsSetup
   }
 
   static let dictionaryEnrichment = LocalizedStringResource(
@@ -41,6 +44,7 @@ enum SettingsShellCopy {
     case .none: return selection
     case .dictionaryEnrichment: detail = String(localized: dictionaryEnrichment)
     case .fileImport: detail = String(localized: fileImport)
+    case .polishNeedsSetup: detail = PolishSetupSurfaceCopy.sidebarTagSpoken
     }
     return String(
       localized: "\(selection). \(detail)",

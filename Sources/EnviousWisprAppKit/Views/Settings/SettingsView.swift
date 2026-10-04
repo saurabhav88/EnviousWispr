@@ -338,6 +338,7 @@ struct UnifiedWindowView: View {
   /// `isRunning`, which Stop clears at the press, never the engine claim it still holds.
   private func sidebarActivity(_ section: SettingsPage) -> SettingsShellCopy.SidebarActivity {
     if section == .transcribeFile && fileImportCoordinator.isRunning { return .fileImport }
+    if section == .aiPolish && polishSetupMonitor.shows(.sidebarTag) { return .polishNeedsSetup }
     if yourWordsEnrichmentBadgeVisible(for: section) { return .dictionaryEnrichment }
     return .none
   }

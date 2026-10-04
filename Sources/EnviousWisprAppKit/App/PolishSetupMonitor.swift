@@ -329,6 +329,19 @@ final class PolishSetupMonitor {
   }
 }
 
+/// The AI polish setup warnings' two app-lifetime owners, held by the composition root as one
+/// slot: the saved-key record and the warning monitor.
+@MainActor
+final class PolishSetupWiring {
+  let savedKeyPresence: SavedKeyPresence
+  let monitor: PolishSetupMonitor
+
+  init(savedKeyPresence: SavedKeyPresence, monitor: PolishSetupMonitor) {
+    self.savedKeyPresence = savedKeyPresence
+    self.monitor = monitor
+  }
+}
+
 /// Late binding for the settings change hook, which is installed before the monitor exists.
 @MainActor
 final class PolishSetupMonitorHolder {

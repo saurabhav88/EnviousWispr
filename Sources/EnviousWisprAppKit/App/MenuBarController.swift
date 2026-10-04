@@ -576,6 +576,23 @@ final class MenuBarController: NSObject {
       menu.addItem(micWarningItem)
     }
 
+    // #3438: the chosen AI polish model is not set up. A reminder, not an error: dictation still
+    // works (basic cleanup only), so the icon does not change and the line has no dismissal.
+    if state.onboardingComplete, state.showPolishSetupWarning {
+      let polishItem = NSMenuItem(
+        title: PolishSetupSurfaceCopy.menuLine,
+        action: #selector(openAIPolishAction),
+        keyEquivalent: "")
+      polishItem.image = NSImage(
+        systemSymbolName: "sparkles",
+        accessibilityDescription: String(
+          localized: "AI polish needs setup",
+          comment: "Menu bar menu, VoiceOver: the icon beside the AI polish setup line."))
+      polishItem.target = self
+      polishItem.identifier = MenuBarItemID.polishSetup
+      menu.addItem(polishItem)
+    }
+
     menu.addItem(.separator())
 
     // Settings (opens unified window to Speech Engine tab)
@@ -725,6 +742,7 @@ final class MenuBarController: NSObject {
       installEnabled: pending != nil && !installRefused,
       appearancePreference: settings.appearancePreference,
       pasteLastShortcut: Self.shortcutLabel(for: .pasteLast, bindings: settings.shortcutBindings),
+      showPolishSetupWarning: actions.polishSetupNeeded(),
       lastDictation: actions.lastDictation().map {
         LastDictationMenuState(
           rowID: $0.id, preview: LastDictationMenuState.preview(of: $0.text),
@@ -775,6 +793,11 @@ final class MenuBarController: NSObject {
 
   @objc private func openTranscribeFileAction() {
     actions.openTranscribeFile()
+  }
+
+  /// #3438: the AI polish setup line opens Settings on AI Polish.
+  @objc private func openAIPolishAction() {
+    actions.openAIPolish()
   }
 
   /// #1047: set the window-appearance preference from the Appearance submenu.
@@ -897,6 +920,10 @@ struct MenuBarActions: Sendable {
   /// Open the unified window on the Transcribe a File page (#2772).
   let openTranscribeFile: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
+  /// #3438: whether the AI polish setup line shows, evaluated live by the warning monitor at
+  /// the moment the menu is built; and what clicking it does (open Settings on AI Polish).
+  let polishSetupNeeded: @MainActor () -> Bool
+  let openAIPolish: @MainActor () -> Void
   let toggleRecording: @MainActor () async -> Void
   let quit: @MainActor () -> Void
   /// The newest reusable dictation, for the Paste Last row (#3106). A snapshot for rendering.
@@ -1029,6 +1056,14 @@ struct MenuBarViewState: Equatable {
   var appearancePreference: AppearancePreference = .system
   /// #3106: the Paste Last chord as readable text, or nil when `.pasteLast` does not own it.
   var pasteLastShortcut: String? = nil
+  /// #3438: the chosen AI polish model's setup is unfinished (monitor's menu surface). Display
+  /// only; deliberately not read by `iconState`.
+  var showPolishSetupWarning: Bool = false
   /// #3106: the Paste Last row's content, or nil when nothing may be reused (row disabled).
   var lastDictation: LastDictationMenuState? = nil
+}
+
+extension MenuBarItemID {
+  /// #3438: the "Finish setting up AI polish" line.
+  static let polishSetup = NSUserInterfaceItemIdentifier("menu.polishSetup")
 }

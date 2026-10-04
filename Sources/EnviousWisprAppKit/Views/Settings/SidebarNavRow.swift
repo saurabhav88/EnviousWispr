@@ -53,11 +53,26 @@ struct SidebarNavRow<Icon: View>: View {
         // The dot's slot is always laid out, so a run starting or ending never
         // rewraps the label or changes the row's height (measured: without the
         // reserved slot, "Dictation Settings" wrapped to two lines when busy).
-        Circle()
-          .fill(isSelected ? Color.white : Color.stAccentSolid)
-          .frame(width: 7, height: 7)
-          .opacity(activity == .none ? 0 : 1)
-          .accessibilityHidden(true)
+        if activity == .polishNeedsSetup {
+          // #3438: a request, not a progress dot. Its words are also the row's spoken value.
+          Text(PolishSetupSurfaceCopy.sidebarTag)
+            // The Settings text floor is 14pt (founder 2026-07-03).
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(isSelected ? Color.white : Color.orange)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(
+              Capsule().fill(isSelected ? Color.white.opacity(0.18) : Color.orange.opacity(0.16))
+            )
+            .fixedSize()
+            .accessibilityHidden(true)
+        } else {
+          Circle()
+            .fill(isSelected ? Color.white : Color.stAccentSolid)
+            .frame(width: 7, height: 7)
+            .opacity(activity == .none ? 0 : 1)
+            .accessibilityHidden(true)
+        }
       }
       .padding(.horizontal, 9)
       .padding(.vertical, 8)
