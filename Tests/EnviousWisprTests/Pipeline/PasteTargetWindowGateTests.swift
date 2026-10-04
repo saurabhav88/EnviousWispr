@@ -129,7 +129,8 @@ struct PasteTargetWindowGateTests {
     ax.focusedByApplication[pid] = .element(field)
     #expect(refusal(.window(windowA)) == nil)
     ax.focusedByApplication[pid] = .noFocus
-    #expect(refusal(.window(windowA)) == .focusedWindowUnreadable, "unread is not a different window")
+    #expect(
+      refusal(.window(windowA)) == .focusedWindowUnreadable, "unread is not a different window")
     ax.focusedWindows[pid] = .absent
     #expect(refusal(.window(windowA)) == .focusedWindowUnreadable)
   }
@@ -166,24 +167,27 @@ struct PasteTargetWindowGateTests {
   @Test("A captured field's window wins; else the recorded window; else none")
   func resolvePrecedence() {
     ax.windows[10_042] = .window(windowA)
-    guard case .window(let window) = PasteTargetWindowGate.resolve(
-      element: field, recordedWindow: windowB, ax: ax, admit: budget().admit)
+    guard
+      case .window(let window) = PasteTargetWindowGate.resolve(
+        element: field, recordedWindow: windowB, ax: ax, admit: budget().admit)
     else {
       Issue.record("expected the field's own window")
       return
     }
     #expect(CFEqual(window, windowA))
     ax.landingCalls = []
-    guard case .recordedWindow(let recorded) = PasteTargetWindowGate.resolve(
-      element: nil, recordedWindow: windowB, ax: ax, admit: budget().admit)
+    guard
+      case .recordedWindow(let recorded) = PasteTargetWindowGate.resolve(
+        element: nil, recordedWindow: windowB, ax: ax, admit: budget().admit)
     else {
       Issue.record("expected .recordedWindow")
       return
     }
     #expect(CFEqual(recorded, windowB))
     #expect(ax.landingCalls.isEmpty, "the recorded window needs no read to resolve")
-    guard case .none = PasteTargetWindowGate.resolve(
-      element: nil, recordedWindow: nil, ax: ax, admit: budget().admit)
+    guard
+      case .none = PasteTargetWindowGate.resolve(
+        element: nil, recordedWindow: nil, ax: ax, admit: budget().admit)
     else {
       Issue.record("expected .none")
       return
@@ -262,7 +266,8 @@ struct PasteTargetWindowGateTests {
     #expect(PasteTargetWindowGate.Pass.noTarget.rawValue == "no_target")
     #expect(PasteTargetWindowGate.Pass.sameWindow.rawValue == "same_window")
     #expect(PasteTargetWindowGate.Pass.fieldFocused.rawValue == "field_focused")
-    #expect(PasteTargetWindowGate.Pass.focusedWindowUnreadable.rawValue == "focused_window_unreadable")
+    #expect(
+      PasteTargetWindowGate.Pass.focusedWindowUnreadable.rawValue == "focused_window_unreadable")
     #expect(PasteTargetWindowGate.Pass.budget.rawValue == "budget")
   }
 
@@ -412,6 +417,52 @@ struct PasteTargetWindowGateWiringTests {
     }
     #expect(writes.count == 2)
     #expect(writes.allSatisfy { Self.onElseOf("dispatchRefusal", $0.node) })
+  }
+
+  @Test(
+    "Tier 2 and 2b: the owner path skips the omnibox read and ends on a full owner read (#3423)")
+  func ownerPathEndsOnTheOwnerRead() throws {
+    let (calls, _) = try Self.parse()
+    let finals = calls.found.filter {
+      $0.callee == "Self.appFrontRefusal"
+        && $0.node.arguments.trimmedDescription.contains("ownerPathOnly: gate.ownerPath")
+    }
+    #expect(finals.count == 2)
+    for final in finals {
+      // The front path keeps a local front read after the omnibox re-check; only the owner path
+      // reads the focus, and it is the last AX step.
+      #expect(
+        final.node.arguments.trimmedDescription.contains(
+          "mode: gate.ownerPath ? .full : .frontOnly"))
+    }
+    let omnibox = calls.found.filter {
+      $0.callee == "PasteService.freshFocusedElement"
+        && $0.node.arguments.trimmedDescription.contains("remainingGateSeconds")
+    }
+    #expect(omnibox.count == 2)
+    #expect(omnibox.allSatisfy { Self.onElseOf("gate.ownerPath", $0.node) })
+    // Control: the same helper reports the read as INSIDE the Chromium branch, not on its else.
+    #expect(omnibox.allSatisfy { !Self.onElseOf("isChromiumOmnibox", $0.node) })
+  }
+
+  @Test(
+    "Activation asks the owner question once before raising, and its poll stays front-only (#3423)")
+  func activationAdmission() throws {
+    let (calls, _) = try Self.parse()
+    let activity = calls.found.filter { $0.callee == "landingAX.destinationActivity" }
+    let firstIssue = try #require(
+      calls.found.filter { $0.callee == "issue" }.map(\.node.position).min())
+    let admissions = activity.filter {
+      $0.node.arguments.trimmedDescription.contains("admit: stepBudget().admit")
+    }
+    try #require(admissions.count == 1)
+    #expect(admissions[0].node.arguments.trimmedDescription.contains("mode: .full"))
+    #expect(admissions[0].node.position < firstIssue, "before any raise or activation")
+    let polls = activity.filter {
+      $0.node.arguments.trimmedDescription.contains("mode: .frontOnly,")
+    }
+    try #require(polls.count == 1)
+    #expect(polls[0].node.position > firstIssue, "the poll runs after the first activation")
   }
 }
 

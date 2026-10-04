@@ -360,6 +360,26 @@ struct PasteArrivalCaptureTests {
     #expect(switched.landing == .inconclusive(.appSwitched), "B to C, neither the destination")
   }
 
+  @Test(
+    "a launcher destination is observed as active, and losing the keyboard focus is an app switch (#3423)"
+  )
+  func focusOwnerDestination() throws {
+    ax.frontmost = 7
+    ax.keyboardFocus = .focused(element: field, ownerPID: pid)
+    let landed = try prepare()
+    ax.reads = [.text("Hi Sarah ")]
+    landed.commit()
+    scheduler.advance(ms: 25)
+    #expect(landed.landing == .found(.sameField), "the panel's field is read, not a mismatch")
+
+    ax.reads = [.text("Hi ")]
+    let closed = try prepare()
+    closed.commit()
+    ax.keyboardFocus = .focused(element: PastedRegionFakeAX.field(9), ownerPID: 9)
+    scheduler.advance(ms: 300)
+    #expect(closed.landing == .inconclusive(.appSwitched), "the panel closed: never a miss")
+  }
+
   @Test("only the same field through the same reader proves a new occurrence")
   func positivesNeedTheSameFieldAndReader() throws {
     // Another field already holding the phrase proves nothing.

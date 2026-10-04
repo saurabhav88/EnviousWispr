@@ -69,7 +69,8 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
     -> DestinationSwitchToken
   {
-    DestinationActivityEvaluator.switchToken(front: { self.frontmost })
+    DestinationActivityEvaluator.switchToken(
+      pid: pid, front: { self.frontmost }, focus: { self.keyboardFocusRead(admit: admit) })
   }
   /// Runs on every subrole read: a test advances the clock here to spend time INSIDE the read.
   var onSubroleRead: (() -> Void)?
@@ -351,7 +352,9 @@ struct PastedRegionLocatorTests {
     // sliced was 67 effective units, not the 68 drawn here.)
     #expect(anchors.after.hasPrefix("\n"))
     #expect(Set(anchors.after.unicodeScalars.map(\.value)).count > 1)
-    #expect(L.locateRegion(in: screen, anchors: anchors) == .located(.init(text: words, start: start, end: end)))
+    #expect(
+      L.locateRegion(in: screen, anchors: anchors)
+        == .located(.init(text: words, start: start, end: end)))
     #expect(L.ambiguityReport(in: screen, anchors: anchors) == nil)
   }
 
@@ -395,11 +398,14 @@ struct PastedRegionLocatorTests {
   )
   func locateAcrossHostSpaceHabits() {
     // Gmail in Chrome, measured 2026-09-20: "…to Sora.\u{00A0}" for a pasted "…to Sora. ".
-    #expect(L.locate(pasted: "to Sora. ", in: "Send it to Sora.\u{00A0}") == .unique(start: 8, end: 17))
+    #expect(
+      L.locate(pasted: "to Sora. ", in: "Send it to Sora.\u{00A0}") == .unique(start: 8, end: 17))
     // Slack: the trailing space is gone.
     #expect(L.locate(pasted: "to Sora. ", in: "Send it to Sora.") == .unique(start: 8, end: 16))
     // Inner no-break spaces fold too, and the value's own units are what the offsets count.
-    #expect(L.locate(pasted: "to Sora", in: "Send\u{00A0}it\u{00A0}to\u{00A0}Sora") == .unique(start: 8, end: 15))
+    #expect(
+      L.locate(pasted: "to Sora", in: "Send\u{00A0}it\u{00A0}to\u{00A0}Sora")
+        == .unique(start: 8, end: 15))
     // The trimmed retry never invents a match, and never trims to nothing.
     #expect(L.locate(pasted: "to Sarah ", in: "Send it to Sora.") == .absent)
     #expect(L.locate(pasted: "   ", in: "Send it to Sora.") == .absent)
@@ -417,8 +423,10 @@ struct PastedRegionLocatorTests {
   func locateAcrossTerminalWrap() {
     // Ghostty AXTextArea, measured 2026-09-21: one row per line, the Claude Code
     // input continues on the next row after a two-cell gutter.
-    let screen = "❯\u{00A0}Quick update before I log off. I asked Kishtik to pull the\n  full report so we can review it.\n───"
-    let pasted = "Quick update before I log off. I asked Kishtik to pull the full report so we can review it."
+    let screen =
+      "❯\u{00A0}Quick update before I log off. I asked Kishtik to pull the\n  full report so we can review it.\n───"
+    let pasted =
+      "Quick update before I log off. I asked Kishtik to pull the full report so we can review it."
     let located = L.locate(pasted: pasted, in: screen)
     guard case .unique(let start, let end) = located else {
       Issue.record("expected a unique hit across the wrap, got \(located)")
@@ -467,11 +475,14 @@ struct PastedRegionLocatorTests {
     // One letter, an emoji (2 units) and 63 letters before the paste: a 64-unit
     // window would start ON the emoji's trail surrogate, so the anchor drops the
     // whole emoji rather than cutting it. Mirror image after the paste.
-    let v2 = "x😀" + String(repeating: "x", count: 63) + "PASTE" + String(repeating: "y", count: 63) + "😀zz"
+    let v2 =
+      "x😀" + String(repeating: "x", count: 63) + "PASTE" + String(repeating: "y", count: 63) + "😀zz"
     let b = L.anchors(around: 66, end: 71, in: v2)
     #expect(b.before == String(repeating: "x", count: 63), "\(b.before.utf16.count)")
     #expect(b.after == String(repeating: "y", count: 63), "\(b.after.utf16.count)")
-    #expect(Array(b.before.utf16).allSatisfy { !UTF16.isTrailSurrogate($0) && !UTF16.isLeadSurrogate($0) })
+    #expect(
+      Array(b.before.utf16).allSatisfy { !UTF16.isTrailSurrogate($0) && !UTF16.isLeadSurrogate($0) }
+    )
   }
 
   @Test(
@@ -504,16 +515,24 @@ struct PastedRegionLocatorTests {
   )
   func editDistance() {
     let pasted = "please call sarah about the invoice tomorrow morning"
-    #expect(L.editDistance(pasted: pasted, region: "please call Saira about the invoice tomorrow morning") == .within)
-    #expect(L.editDistance(pasted: pasted, region: "completely different sentence typed over the paste") == .exceeded)
+    #expect(
+      L.editDistance(pasted: pasted, region: "please call Saira about the invoice tomorrow morning")
+        == .within)
+    #expect(
+      L.editDistance(pasted: pasted, region: "completely different sentence typed over the paste")
+        == .exceeded)
     #expect(L.editDistance(pasted: pasted, region: "") == .exceeded)
     #expect(L.editDistance(pasted: pasted, region: pasted) == .within)
     // The floor: a short paste keeps a budget that admits a full-token fix
     // (cloud review of PR #3054); the fraction alone would give "Zorab" 2.
     #expect(L.editDistance(pasted: "Zorab", region: "Saurabh") == .within)
     #expect(L.editDistance(pasted: "Zorab", region: "a completely different sentence") == .exceeded)
-    #expect(L.editDistance(pasted: "ab", region: "abc", limitFloor: 0) == .within, "one insert within limit 1")
-    #expect(L.editDistance(pasted: "ab", region: "abcd", limitFloor: 0) == .exceeded, "two inserts over limit 1")
+    #expect(
+      L.editDistance(pasted: "ab", region: "abc", limitFloor: 0) == .within,
+      "one insert within limit 1")
+    #expect(
+      L.editDistance(pasted: "ab", region: "abcd", limitFloor: 0) == .exceeded,
+      "two inserts over limit 1")
     // Exact banded distance vs its length lower bound: equal lengths, all letters changed.
     #expect(L.editDistance(pasted: "abcdefgh", region: "ABCDEFGH", limitFloor: 0) == .exceeded)
     // Over the cell budget the answer is INCONCLUSIVE, never "within": a same-length
@@ -531,7 +550,9 @@ struct PastedRegionLocatorTests {
     #expect(L.editDistance(pasted: "abcdefgh", region: "abcdefgX", cellBudget: 1) == .inconclusive)
   }
 
-  @Test("a same-length rewrite reports its ratio up to the telemetry budget; the band matches a full-table distance (#3105)")
+  @Test(
+    "a same-length rewrite reports its ratio up to the telemetry budget; the band matches a full-table distance (#3105)"
+  )
   func editBudgetRatioLongRewrite() {
     // 2,000 units rewritten letter for letter: distance 2,000 over a budget of
     // 1,000 is two budgets. The band never outgrows the region, so this costs
@@ -544,7 +565,9 @@ struct PastedRegionLocatorTests {
     #expect(L.editBudgetRatio(pasted: pasted, region: rewritten) == 2.0)
     // One unit longer is past the budget: the ratio is omitted rather than guessed.
     let longer = String(repeating: "a", count: 2_001)
-    #expect(L.editBudgetRatio(pasted: longer, region: longer.replacingOccurrences(of: "a", with: "b")) == nil)
+    #expect(
+      L.editBudgetRatio(pasted: longer, region: longer.replacingOccurrences(of: "a", with: "b"))
+        == nil)
     // A tiny budget omits it on a short input too.
     #expect(L.editBudgetRatio(pasted: pasted, region: rewritten, cellBudget: 1_000) == nil)
 
@@ -634,7 +657,8 @@ struct PastedRegionLocatorTests {
   @Test("one full and one trailing-space-omitted rendering both count; locate keeps its full match")
   func occurrencesCountMixedRenderings() {
     // At 0 the full "Saira " matches; at 10 only "Saira" fits (the field ends there).
-    #expect(spans(L.occurrences(ofPasted: "Saira ", in: "Saira and Saira")) == [[0, 6], [10, 15]])
+    #expect(
+      spans(L.occurrences(ofPasted: "Saira ", in: "Saira and Saira")) == [[0, 6], [10, 15]])
     // Characterization: `locate` still tries the omitted form only when the full form is absent
     // everywhere, so it reports the one full match as unique (#996's exact-first rule).
     #expect(L.locate(pasted: "Saira ", in: "Saira and Saira") == .unique(start: 0, end: 6))
@@ -665,7 +689,9 @@ struct PastedRegionLocatorTests {
   func occurrencesRefuseRatherThanUndercount() {
     let oversized = String(repeating: "a", count: PastedRegionTiming.maxValueUTF16 + 1)
     #expect(L.occurrences(ofPasted: "a", in: oversized) == .incomplete(.tooLong))
-    #expect(L.occurrences(ofPasted: "aaab", in: "aaaaaaaaaaaaaaaa", workBudget: 10) == .incomplete(.workBudget))
+    #expect(
+      L.occurrences(ofPasted: "aaab", in: "aaaaaaaaaaaaaaaa", workBudget: 10)
+        == .incomplete(.workBudget))
     // Near the size limit, a value that repeats a long prefix of the text costs about
     // 19,900 starts x 101 units, past the default budget: the count refuses instead of running on.
     let repeated = String(repeating: "a", count: PastedRegionTiming.maxValueUTF16 - 1) + "b"
@@ -675,7 +701,8 @@ struct PastedRegionLocatorTests {
     // 100 starts x 53 units here, past a 1,000 budget (uncharged, it cost about 300 and answered).
     let spaced = String(repeating: "a ", count: 100)
     let wide = "a" + String(repeating: " ", count: 50) + "b"
-    #expect(L.occurrences(ofPasted: wide, in: spaced, workBudget: 1_000) == .incomplete(.workBudget))
+    #expect(
+      L.occurrences(ofPasted: wide, in: spaced, workBudget: 1_000) == .incomplete(.workBudget))
     let oversizedText = String(repeating: "b", count: PastedRegionTiming.maxValueUTF16 + 1)
     #expect(L.occurrences(ofPasted: oversizedText, in: "b") == .incomplete(.tooLong))
     #expect(L.occurrences(ofPasted: "a", in: "a", workBudget: -1) == .incomplete(.workBudget))
@@ -700,7 +727,9 @@ struct PastedRegionObserverCaptureTests {
   @Test(
     "a readable field with the pasted text once is captured with its anchors and both timeouts set")
   func captured() throws {
-    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+    guard
+      case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+    else {
       Issue.record("expected captured")
       return
     }
@@ -716,66 +745,116 @@ struct PastedRegionObserverCaptureTests {
   @Test("no permission, a dead process, no focus and a failed query each refuse without reading")
   func refusals() {
     ax.trusted = false
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
     ax.trusted = true
     #expect(observer.capture(pid: 7, pastedText: "Sarah", pastedAtMs: 0) == .ended(.appTerminated))
     ax.focused[pid] = .noFocus
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .skipped(.noFocusedElement))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .skipped(.noFocusedElement))
     ax.focused[pid] = .queryFailed(.cannotComplete)
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.focused[pid] = .queryFailed(.apiDisabled)
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
     #expect(ax.readCount == 0, "nothing was read")
   }
 
-  @Test("the destination must be the active application, and a failed timeout install refuses the read")
+  @Test(
+    "the destination must be the active application, and a failed timeout install refuses the read")
   func frontmostAndTimeouts() {
     ax.frontmost = 7
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .skipped(.destinationMismatch))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+        == .skipped(.destinationMismatch))
     ax.frontmost = nil
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .skipped(.destinationMismatch))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+        == .skipped(.destinationMismatch))
     ax.frontmost = pid
     ax.timeoutFailsFor = [pid]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.timeoutFailsFor = [pid + 10_000]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     #expect(ax.readCount == 0, "no read behind a missing bound")
     ax.timeoutFailsFor = []
-    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 1234) else {
+    guard
+      case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 1234)
+    else {
       Issue.record("expected captured")
       return
     }
     #expect(target.pastedAtMs == 1234)
   }
 
+  @Test(
+    "a destination that owns the keyboard focus without being front is observed; another owner is not (#3423)"
+  )
+  func focusOwnerIsActive() {
+    ax.frontmost = 7
+    ax.keyboardFocus = .focused(element: PastedRegionFakeAX.field(pid), ownerPID: pid)
+    guard case .captured = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+      Issue.record("a launcher panel's field must be observed")
+      return
+    }
+    ax.keyboardFocus = .focused(element: PastedRegionFakeAX.field(9), ownerPID: 9)
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+        == .skipped(.destinationMismatch))
+    ax.keyboardFocus = .unreadable
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+        == .skipped(.destinationMismatch),
+      "an unreadable focus is today's front-only answer")
+    let reads = ax.keyboardFocusReads
+    ax.frontmost = pid
+    _ = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+    #expect(ax.keyboardFocusReads == reads, "a front destination costs no focus read")
+  }
+
   @Test("a secure field, and a field whose subrole cannot be read, are never observed")
   func secure() {
-    ax.subroles["\(CFHash(PastedRegionFakeAX.field(pid)))"] = .subrole(kAXSecureTextFieldSubrole as String)
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .skipped(.secureField))
+    ax.subroles["\(CFHash(PastedRegionFakeAX.field(pid)))"] = .subrole(
+      kAXSecureTextFieldSubrole as String)
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .skipped(.secureField))
     ax.subroles["\(CFHash(PastedRegionFakeAX.field(pid)))"] = .unreadable
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .skipped(.secureField))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .skipped(.secureField))
     #expect(ax.readCount == 0)
   }
 
   @Test("value outcomes: too long, absent, not text, failed, not found, ambiguous")
   func valueOutcomes() {
     ax.reads = [.text(String(repeating: "x", count: 20_001))]
-    #expect(observer.capture(pid: pid, pastedText: "x", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "x", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.reads = [.text(String(repeating: "x", count: 20_000))]
-    #expect(observer.capture(pid: pid, pastedText: "y", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    #expect(
+      observer.capture(pid: pid, pastedText: "y", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
     ax.reads = [.absent]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.reads = [.notText]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.reads = [.failed(.cannotComplete)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.reads = [.failed(.notImplemented)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
     ax.reads = [.text("Sarah met Sarah")]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.anchorAmbiguous))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.anchorAmbiguous))
   }
 
-  @Test("an Electron host gets AXManualAccessibility on every capture, before the first read; a non-Electron host is never asked")
+  @Test(
+    "an Electron host gets AXManualAccessibility on every capture, before the first read; a non-Electron host is never asked"
+  )
   func manualAccessibility() {
     ax.manualHosts = [pid]
     let o = observer
@@ -786,19 +865,25 @@ struct PastedRegionObserverCaptureTests {
     #expect(first.isManualAccessibilityHost)
     #expect(ax.enableCalls == [pid])
     _ = o.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
-    #expect(ax.enableCalls == [pid, pid], "asked again: no per-pid memory can go stale across a pid reuse")
+    #expect(
+      ax.enableCalls == [pid, pid], "asked again: no per-pid memory can go stale across a pid reuse"
+    )
     ax.manualHosts = []
     _ = o.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
     #expect(ax.enableCalls == [pid, pid], "a host that does not need it is not asked")
   }
 
-  @Test("an Electron host whose focused element appears only after the opt-in is still captured: the opt-in runs before the focus query")
+  @Test(
+    "an Electron host whose focused element appears only after the opt-in is still captured: the opt-in runs before the focus query"
+  )
   func manualAccessibilityBeforeFocus() {
     ax.manualHosts = [pid]
     ax.focusOnlyAfterOptIn = [pid]
     let o = observer
-    guard case .captured(let target) = o.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
-      Issue.record("expected captured; the focus query ran before AXManualAccessibility was enabled")
+    guard case .captured(let target) = o.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+    else {
+      Issue.record(
+        "expected captured; the focus query ran before AXManualAccessibility was enabled")
       return
     }
     #expect(target.isManualAccessibilityHost && ax.enableCalls == [pid])
@@ -814,7 +899,8 @@ struct PastedRegionObserverCaptureTests {
     return hits.map { [$0.start, $0.end] }
   }
 
-  @Test("a stable read without the text keeps its field, reader and value: a zero count, not a refusal")
+  @Test(
+    "a stable read without the text keeps its field, reader and value: a zero count, not a refusal")
   func arrivalZeroHitsKeepTheField() throws {
     let attempt = observer.attemptArrival(pid: pid, pastedText: "Saira")
     guard case .readable(let field) = attempt else {
@@ -827,17 +913,24 @@ struct PastedRegionObserverCaptureTests {
     #expect(field.value == "Ask Sarah today")
     #expect(field.occurrences == .complete([]))
     // The legacy capture of the same read is the collapsed cause #996 retries.
-    #expect(observer.capture(pid: pid, pastedText: "Saira", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Saira", pastedAtMs: 0)
+        == .ended(.dictatedTextNotFound))
   }
 
-  @Test("a repeated phrase is a readable field with every position; the legacy capture still calls it ambiguous")
+  @Test(
+    "a repeated phrase is a readable field with every position; the legacy capture still calls it ambiguous"
+  )
   func arrivalCountsARepeat() {
     ax.reads = [.text("Sarah met Sarah")]
     #expect(spans(observer.attemptArrival(pid: pid, pastedText: "Sarah")) == [[0, 5], [10, 15]])
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.anchorAmbiguous))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.anchorAmbiguous))
   }
 
-  @Test("the attempt never writes AXManualAccessibility, and an unreadable support answer stays unknown")
+  @Test(
+    "the attempt never writes AXManualAccessibility, and an unreadable support answer stays unknown"
+  )
   func arrivalNeverOptsIn() {
     ax.manualHosts = [pid]
     guard case .readable(let host) = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
@@ -845,16 +938,20 @@ struct PastedRegionObserverCaptureTests {
       return
     }
     #expect(host.manualAccessibility == true)
-    #expect(ax.enableCalls == [], "the arrival session opts in once after dispatch, never per attempt")
+    #expect(
+      ax.enableCalls == [], "the arrival session opts in once after dispatch, never per attempt")
     ax.manualReadFails = [pid]
-    guard case .readable(let unknown) = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+    guard case .readable(let unknown) = observer.attemptArrival(pid: pid, pastedText: "Sarah")
+    else {
       Issue.record("expected a readable field")
       return
     }
     #expect(unknown.manualAccessibility == nil, "could not read is not 'does not support it'")
   }
 
-  @Test("refusals keep their cause and read nothing: permission, focus, frontmost, bound, secure, failed query")
+  @Test(
+    "refusals keep their cause and read nothing: permission, focus, frontmost, bound, secure, failed query"
+  )
   func arrivalRefusalsKeepTheirCause() {
     ax.trusted = false
     guard case .permissionLost = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
@@ -873,12 +970,16 @@ struct PastedRegionObserverCaptureTests {
     }
     ax.frontmost = pid
     ax.timeoutFailsFor = [pid + 10_000]
-    guard case .unsupported(.timeoutNotInstalled) = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+    guard
+      case .unsupported(.timeoutNotInstalled) = observer.attemptArrival(
+        pid: pid, pastedText: "Sarah")
+    else {
       Issue.record("expected unsupported(timeoutNotInstalled)")
       return
     }
     ax.timeoutFailsFor = []
-    ax.subroles["\(CFHash(PastedRegionFakeAX.field(pid)))"] = .subrole(kAXSecureTextFieldSubrole as String)
+    ax.subroles["\(CFHash(PastedRegionFakeAX.field(pid)))"] = .subrole(
+      kAXSecureTextFieldSubrole as String)
     guard case .secureField = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
       Issue.record("expected secureField")
       return
@@ -890,7 +991,9 @@ struct PastedRegionObserverCaptureTests {
       return
     }
     ax.focused[pid] = .queryFailed(.cannotComplete)
-    guard case .queryFailed(.cannotComplete) = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+    guard
+      case .queryFailed(.cannotComplete) = observer.attemptArrival(pid: pid, pastedText: "Sarah")
+    else {
       Issue.record("expected queryFailed(cannotComplete)")
       return
     }
@@ -929,7 +1032,10 @@ struct PastedRegionObserverWatchTests {
     // through a word inside it stays within the edit-distance bound.
     ax.reads = [.text("Note: Ask Sarah today please")]
     observer = PastedRegionObserver(ax: ax, scheduler: scheduler)
-    guard case .captured(let t) = observer.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0) else {
+    guard
+      case .captured(let t) = observer.capture(
+        pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0)
+    else {
       throw TestSetupError.capture
     }
     target = t
@@ -968,7 +1074,8 @@ struct PastedRegionObserverWatchTests {
     #expect(events.list == [.changed(region: "Ask Saira today")], "same value again: no duplicate")
     // 1500 ms after the change (poll at 1500, settle due at 1500 + 1500 = 3000).
     scheduler.advance(ms: 750)
-    #expect(events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    #expect(
+      events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
     scheduler.advance(ms: 3000)
     #expect(events.list.count == 2, "no second settle without a new change")
     #expect(observer.isObserving)
@@ -1015,7 +1122,10 @@ struct PastedRegionObserverWatchTests {
     ax.reads = [.text("Note: Ask Saira today please")]
     scheduler.advance(ms: 750)
     #expect(
-      events.list == [.changed(region: "Ask Sa today"), .changed(region: "Ask Sai today"), .changed(region: "Ask Saira today")])
+      events.list == [
+        .changed(region: "Ask Sa today"), .changed(region: "Ask Sai today"),
+        .changed(region: "Ask Saira today"),
+      ])
     // Settle due at 2250 + 1500 = 3750; nothing at 3000.
     scheduler.advance(ms: 750)
     #expect(events.list.count == 3)
@@ -1038,7 +1148,9 @@ struct PastedRegionObserverWatchTests {
     #expect(events.list.count == 1, "focus still on our element: nothing new")
     ax.focused[pid] = .element(PastedRegionFakeAX.field(99))
     registration.fire(.focusedElementChanged)
-    #expect(events.list.count == 1, "focus on another element of the same app: tolerated for the grace, the element still read")
+    #expect(
+      events.list.count == 1,
+      "focus on another element of the same app: tolerated for the grace, the element still read")
     #expect(observer.isObserving)
     scheduler.jump(ms: PastedRegionTiming.focusGraceMs)
     registration.fire(.focusedElementChanged)
@@ -1079,7 +1191,9 @@ struct PastedRegionObserverWatchTests {
     run(.text("Ask Sarah today please"), .regionRemoved)
     run(.text("Note: Ask Sarah today please Note: x please"), .anchorAmbiguous)
     run(.text(String(repeating: "x", count: 20_001)), .captureUnsupported)
-    run(.text("Note: a completely rewritten sentence typed over the paste please"), .editDistanceExceeded)
+    run(
+      .text("Note: a completely rewritten sentence typed over the paste please"),
+      .editDistanceExceeded)
   }
 
   @Test("a watch that lost the text says why in counts only; other ends carry no detail (#3105)")
@@ -1108,8 +1222,12 @@ struct PastedRegionObserverWatchTests {
     let ratio = exceeded?.editBudgetRatio ?? 0
     #expect(ratio >= 3.0 && ratio <= PastedRegionLocator.editBudgetRatioCap)
     // The exact count below the cap, and cap + 1 beyond it.
-    #expect(PastedRegionLocator.bandedDistance(Array("kitten".utf16), Array("sitting".utf16), cap: 48) == 3)
-    #expect(PastedRegionLocator.bandedDistance(Array("abc".utf16), Array("xyzxyzxyz".utf16), cap: 4) == 5, "beyond the cap reads cap + 1")
+    #expect(
+      PastedRegionLocator.bandedDistance(Array("kitten".utf16), Array("sitting".utf16), cap: 48)
+        == 3)
+    #expect(
+      PastedRegionLocator.bandedDistance(Array("abc".utf16), Array("xyzxyzxyz".utf16), cap: 4) == 5,
+      "beyond the cap reads cap + 1")
   }
 
   @Test(
@@ -1118,7 +1236,8 @@ struct PastedRegionObserverWatchTests {
   func readFailurePolicy() {
     start()
     ax.reads = [
-      .failed(.cannotComplete), .absent, .text("Note: Ask Sarah today please"), .notText, .failed(.failure),
+      .failed(.cannotComplete), .absent, .text("Note: Ask Sarah today please"), .notText,
+      .failed(.failure),
       .absent,
     ]
     scheduler.advance(ms: 750 * 5)
@@ -1150,7 +1269,10 @@ struct PastedRegionObserverWatchTests {
       ax.reads = run
       scheduler.advance(ms: 750 * 3)
       #expect(
-        e.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.captureUnsupported)],
+        e.list == [
+          .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+          .ended(.captureUnsupported),
+        ],
         "\(run)")
     }
     // No fix seen before the box went away: nothing to act on.
@@ -1204,10 +1326,16 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750 * 3)
     #expect(lines.lines.count == 5)
     #expect(lines.lines[0] == "learn_read_changed source=poll")
-    #expect(lines.lines[1] == "learn_read_failed n=1/3 kind=failed(\(AXError.cannotComplete.rawValue)) pending_fix=true")
+    #expect(
+      lines.lines[1]
+        == "learn_read_failed n=1/3 kind=failed(\(AXError.cannotComplete.rawValue)) pending_fix=true"
+    )
     #expect(lines.lines[2] == "learn_read_failed n=2/3 kind=absent pending_fix=true")
     #expect(lines.lines[3] == "learn_read_failed n=3/3 kind=notText pending_fix=true")
-    #expect(lines.lines[4] == "learn_lost_box reason=capture_unsupported flushed=true reads=failed(\(AXError.cannotComplete.rawValue)),absent,notText")
+    #expect(
+      lines.lines[4]
+        == "learn_lost_box reason=capture_unsupported flushed=true reads=failed(\(AXError.cannotComplete.rawValue)),absent,notText"
+    )
     #expect(lines.lines.allSatisfy { !$0.contains("Saira") && !$0.contains("Sarah") })
   }
 
@@ -1243,7 +1371,8 @@ struct PastedRegionObserverWatchTests {
     registration2.fire(.valueChanged)
     #expect(
       e2.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.captureUnsupported),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.captureUnsupported),
       ])
   }
 
@@ -1318,10 +1447,13 @@ struct PastedRegionObserverWatchTests {
     registration.fire(.valueChanged)
     registration.fire(.elementDestroyed)
     scheduler.advance(ms: 120_000)
-    #expect(events.list == [.changed(region: "Ask Saira today")], "no event after stop, not even an end")
+    #expect(
+      events.list == [.changed(region: "Ask Saira today")], "no event after stop, not even an end")
   }
 
-  @Test("settling re-validates: a value change seen first by the settle read reports instead of settling")
+  @Test(
+    "settling re-validates: a value change seen first by the settle read reports instead of settling"
+  )
   func settleRevalidates() {
     start()
     // Poll at 750 sees new1; poll at 1500 still sees new1; the settle read at
@@ -1334,7 +1466,8 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     #expect(events.list == [.changed(region: "Ask Saira today")])
     scheduler.advance(ms: 1500)
-    #expect(events.list == [.changed(region: "Ask Saira today"), .changed(region: "Ask Sairaa today")])
+    #expect(
+      events.list == [.changed(region: "Ask Saira today"), .changed(region: "Ask Sairaa today")])
     #expect(ax.readCount == 4, "poll 750, poll 1500, settle 2250, poll 2250")
     scheduler.advance(ms: 1499)
     #expect(events.list.count == 2, "the new text has not been quiet for 1500 ms yet")
@@ -1353,16 +1486,22 @@ struct PastedRegionObserverWatchTests {
     #expect(ax.readCount == 0, "another app's turn: nothing is read")
   }
 
-  @Test("a read failure at the settle instant does not settle; a focus loss at the settle instant is tolerated for the focus grace, then ends")
+  @Test(
+    "a read failure at the settle instant does not settle; a focus loss at the settle instant is tolerated for the focus grace, then ends"
+  )
   func settleFailurePaths() throws {
     start()
     ax.reads = [.text("Note: Ask Saira today please")]
     scheduler.advance(ms: 750)
     // The poll at 1500 fails and cancels the pending settle; the poll at 2250
     // fails too. No settlement, the watch continues.
-    ax.reads = [.failed(.cannotComplete), .failed(.cannotComplete), .text("Note: Ask Saira today please")]
+    ax.reads = [
+      .failed(.cannotComplete), .failed(.cannotComplete), .text("Note: Ask Saira today please"),
+    ]
     scheduler.advance(ms: 1500)
-    #expect(events.list == [.changed(region: "Ask Saira today")], "a failed read cannot establish quiet time")
+    #expect(
+      events.list == [.changed(region: "Ask Saira today")],
+      "a failed read cannot establish quiet time")
     #expect(observer.isObserving)
     #expect(ax.readCount == 3, "poll 750, poll 1500, poll 2250; the cancelled settle read nothing")
     // Recovery: the good unchanged poll at 3000 starts a fresh quiet interval,
@@ -1372,7 +1511,8 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 1499)
     #expect(events.list.count == 1, "1499 ms after recovery is not quiet yet")
     scheduler.advance(ms: 1)
-    #expect(events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    #expect(
+      events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
     scheduler.advance(ms: 6000)
     #expect(events.list.count == 2, "no duplicate settlement while the text stays put")
 
@@ -1396,7 +1536,8 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 1500)
     #expect(
       e2.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.focusChanged),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.focusChanged),
       ])
     #expect(o2.isObserving == false)
   }
@@ -1416,23 +1557,35 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list == [.changed(region: "Ask Saira today")])
   }
 
-  @Test("the changed envelope is the span between the common prefix and suffix, in UTF-16 units of the region")
+  @Test(
+    "the changed envelope is the span between the common prefix and suffix, in UTF-16 units of the region"
+  )
   func changedEnvelope() {
-    #expect(PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Ask Saira today") == 6..<9)
-    #expect(PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Ask Sarah today") == 15..<15)
+    #expect(
+      PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Ask Saira today")
+        == 6..<9)
+    #expect(
+      PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Ask Sarah today")
+        == 15..<15)
     // Two separate edits become one envelope from the first to the last.
-    #expect(PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Asx Sarah todxy") == 2..<14)
+    #expect(
+      PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Asx Sarah todxy")
+        == 2..<14)
     // Appended text: the envelope is the tail.
-    #expect(PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah", region: "Ask Sarahs") == 9..<10)
+    #expect(
+      PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah", region: "Ask Sarahs") == 9..<10)
     // Deleted text: an empty envelope at the cut.
-    #expect(PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Ask today") == 4..<4)
+    #expect(
+      PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Ask today") == 4..<4)
     // Never inside a surrogate pair: two emoji sharing a lead unit.
     #expect(
       PastedRegionLocator.changedEnvelope(pasted: "X😀Y", region: "X😁Y") == 1..<3,
       "the envelope includes the complete changed scalar")
   }
 
-  @Test("the same changed region at a new absolute offset (text inserted before the anchor) keeps deferring at the new span end")
+  @Test(
+    "the same changed region at a new absolute offset (text inserted before the anchor) keeps deferring at the new span end"
+  )
   func movedRegionKeepsDeferring() {
     let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
     let e = Events()
@@ -1450,7 +1603,8 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list.last == .settled(region: "Ask Saira today", evidence: .strong))
   }
 
-  @Test("the cap or the ceiling crossed inside the caret read is honoured before any settle or re-arm")
+  @Test(
+    "the cap or the ceiling crossed inside the caret read is honoured before any settle or re-arm")
   func deadlineCrossedInsideCaretRead() {
     // Cap: the clock jumps past the cap deadline during the caret read.
     let lines = Events()
@@ -1471,7 +1625,9 @@ struct PastedRegionObserverWatchTests {
     let e2 = Events()
     ax.reads = [.text("Note: Ask Sarah today please")]
     // A target captured NOW, so the 60 s ceiling is measured from here.
-    guard case .captured(let fresh) = o2.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: scheduler.nowMs)
+    guard
+      case .captured(let fresh) = o2.capture(
+        pid: pid, pastedText: "Ask Sarah today", pastedAtMs: scheduler.nowMs)
     else {
       Issue.record("fixture capture failed")
       return
@@ -1484,7 +1640,8 @@ struct PastedRegionObserverWatchTests {
     ax.onSelectedRangeRead = nil
     #expect(
       e2.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.ceilingElapsed),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.ceilingElapsed),
       ], "the ceiling flushes the pending fix and ends; no re-arm")
     #expect(o2.isObserving == false)
   }
@@ -1498,7 +1655,9 @@ struct PastedRegionObserverWatchTests {
     #expect(PastedRegionLocator.locateRegion(in: "Message #general", anchors: anchors) == .lost)
   }
 
-  @Test("a caret inside or immediately after the changed span defers settling; a caret outside settles at the next quiet check")
+  @Test(
+    "a caret inside or immediately after the changed span defers settling; a caret outside settles at the next quiet check"
+  )
   func caretInsideSpanDefers() {
     let lines = Events()
     let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
@@ -1513,7 +1672,10 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list.count == 1)
     ax.selectedRange = .range(location: 16, length: 0)  // after the space: moved on
     scheduler.advance(ms: 1500)
-    #expect(e.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong)])
+    #expect(
+      e.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
+      ])
     #expect(lines.lines.contains("learn_settle trigger=caretLeft"))
     #expect(ax.selectedRangeReads == 3, "one caret read per quiet check")
   }
@@ -1534,7 +1696,8 @@ struct PastedRegionObserverWatchTests {
   @Test("an unavailable, malformed or unreadable caret falls back to today's quiet-only settling")
   func caretFallbacks() {
     for answer in [
-      PastedRegionSelectedRange.unavailable, .range(location: -1, length: 0), .range(location: 3, length: -2),
+      PastedRegionSelectedRange.unavailable, .range(location: -1, length: 0),
+      .range(location: 3, length: -2),
       .range(location: 10_000, length: 0), .range(location: Int.max, length: 1),
     ] {
       let lines = Events()
@@ -1548,7 +1711,9 @@ struct PastedRegionObserverWatchTests {
     }
   }
 
-  @Test("#3101: a weak settle followed by a send of the unchanged text is delivered again as strong; a later change cancels that")
+  @Test(
+    "#3101: a weak settle followed by a send of the unchanged text is delivered again as strong; a later change cancels that"
+  )
   func weakSettleUpgradedByStrongEnd() {
     let lines = Events()
     let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
@@ -1576,7 +1741,8 @@ struct PastedRegionObserverWatchTests {
     ax.selectedRange = .range(location: 0, length: 0)  // clicked elsewhere
     scheduler.advance(ms: 750)
     #expect(e3.list.last == .settled(region: "Ask Saira today", evidence: .strong))
-    #expect(e3.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1)
+    #expect(
+      e3.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1)
     scheduler.advance(ms: 1500)
     #expect(
       e3.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1,
@@ -1599,10 +1765,13 @@ struct PastedRegionObserverWatchTests {
     startWithFix(o4, e4)
     scheduler.advance(ms: 1500)
     o4.finish(.regionRemoved)
-    #expect(e4.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1)
+    #expect(
+      e4.list.filter { $0 == .settled(region: "Ask Saira today", evidence: .strong) }.count == 1)
   }
 
-  @Test("the cap: ten seconds after the first deferral of a revision, the region settles with the caret still inside; a new revision starts a new cap")
+  @Test(
+    "the cap: ten seconds after the first deferral of a revision, the region settles with the caret still inside; a new revision starts a new cap"
+  )
   func caretCapIsAbsolutePerRevision() {
     let lines = Events()
     let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
@@ -1638,7 +1807,9 @@ struct PastedRegionObserverWatchTests {
     #expect(e2.list.last == .settled(region: "Ask Sairah today"))
   }
 
-  @Test("a send-shaped end while the caret is still on the word flushes at once; the caret never delays a flush")
+  @Test(
+    "a send-shaped end while the caret is still on the word flushes at once; the caret never delays a flush"
+  )
   func terminalFlushBeatsCaretWait() {
     let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
     let e = Events()
@@ -1650,11 +1821,14 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     #expect(
       e.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(.textboxEmptied),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
+        .ended(.textboxEmptied),
       ])
   }
 
-  @Test("finish(nextDictationStarted) reads the box once more, flushes the pending fix as it is NOW and ends; with nothing pending it only ends; when not observing it is a no-op")
+  @Test(
+    "finish(nextDictationStarted) reads the box once more, flushes the pending fix as it is NOW and ends; with nothing pending it only ends; when not observing it is a no-op"
+  )
   func finishFlushesPendingFix() {
     let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
     let e = Events()
@@ -1689,7 +1863,8 @@ struct PastedRegionObserverWatchTests {
     o3.finish(.nextDictationStarted)
     #expect(
       e3.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(.textboxEmptied),
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
+        .ended(.textboxEmptied),
       ])
     #expect(o3.isObserving == false)
   }
@@ -1704,7 +1879,9 @@ struct PastedRegionObserverWatchTests {
     #expect(events.list == [.ended(.focusChanged)])
   }
 
-  @Test("an overdue poll, notification or settle after the deadline ends with ceiling_elapsed and reads nothing new; a change read before it is flushed")
+  @Test(
+    "an overdue poll, notification or settle after the deadline ends with ceiling_elapsed and reads nothing new; a change read before it is flushed"
+  )
   func deadlineEnforcedAtEveryCallback() throws {
     start()
     let registration = try #require(ax.registrations.first)
@@ -1721,7 +1898,10 @@ struct PastedRegionObserverWatchTests {
     let e2 = Events()
     let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
     ax.reads = [.text("Note: Ask Sarah today please")]
-    guard case .captured(let late) = o2.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: scheduler.nowMs) else {
+    guard
+      case .captured(let late) = o2.capture(
+        pid: pid, pastedText: "Ask Sarah today", pastedAtMs: scheduler.nowMs)
+    else {
       Issue.record("expected captured")
       return
     }
@@ -1741,7 +1921,9 @@ struct PastedRegionObserverWatchTests {
     #expect(o2.isObserving == false)
   }
 
-  @Test("a deadline reached between the post-read check and the emission still wins: no changed, one ceiling_elapsed")
+  @Test(
+    "a deadline reached between the post-read check and the emission still wins: no changed, one ceiling_elapsed"
+  )
   func deadlineCrossedInsideTheCallback() throws {
     start()
     let registration = try #require(ax.registrations.first)
@@ -1763,7 +1945,10 @@ struct PastedRegionObserverWatchTests {
     let e2 = Events()
     let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
     ax.reads = [.text("Note: Ask Sarah today please")]
-    guard case .captured(let late) = o2.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: scheduler.nowMs) else {
+    guard
+      case .captured(let late) = o2.capture(
+        pid: pid, pastedText: "Ask Sarah today", pastedAtMs: scheduler.nowMs)
+    else {
       Issue.record("expected captured")
       return
     }
@@ -1787,7 +1972,9 @@ struct PastedRegionObserverWatchTests {
       ])
   }
 
-  @Test("the ceiling counts from the paste: a late start gets only the remainder, an expired deadline ends at once")
+  @Test(
+    "the ceiling counts from the paste: a late start gets only the remainder, an expired deadline ends at once"
+  )
   func ceilingFromPaste() {
     // Start 50 s after the paste: 10 s remain.
     scheduler.advance(ms: 50_000)
@@ -1886,7 +2073,8 @@ struct PastedRegionObserverWatchTests {
       ])
   }
 
-  @Test("nothing pending, nothing flushed: an emptied box after an already settled edit ends plainly")
+  @Test(
+    "nothing pending, nothing flushed: an emptied box after an already settled edit ends plainly")
   func noPendingEditNoFlush() {
     start()
     // A caret outside the edit: the settle is strong, so a later send has nothing
@@ -1929,13 +2117,18 @@ struct PastedRegionObserverWatchTests {
       scheduler.advance(ms: 750)
       let want: [PastedRegionEvent] =
         flushes
-        ? [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong), .ended(expected)]
+        ? [
+          .changed(region: "Ask Saira today"),
+          .settled(region: "Ask Saira today", evidence: .strong), .ended(expected),
+        ]
         : [.changed(region: "Ask Saira today"), .ended(expected)]
       #expect(e.list == want, "\(read)")
     }
     // Discord after Return: the box reads as its placeholder, not as "".
     run(.text("Message #general"), .regionRemoved, flushes: true)
-    run(.text("Note: a completely rewritten sentence typed over the paste please"), .editDistanceExceeded, flushes: true)
+    run(
+      .text("Note: a completely rewritten sentence typed over the paste please"),
+      .editDistanceExceeded, flushes: true)
     run(.text("Note: Ask Saira today please Note: x please"), .anchorAmbiguous, flushes: true)
     // Too long to read is a host that stopped answering usefully: nothing to act on.
     run(.text(String(repeating: "x", count: 20_001)), .captureUnsupported, flushes: false)
@@ -2024,7 +2217,9 @@ struct PastedRegionObserverWatchTests {
     #expect(PastedRegionTiming.focusGraceMs == 1500)
   }
 
-  @Test("the flush set is closed: every end where the last good read still stands flushes; an unreadable field or a lost permission does not")
+  @Test(
+    "the flush set is closed: every end where the last good read still stands flushes; an unreadable field or a lost permission does not"
+  )
   func flushSetIsClosed() {
     let flushing = PastedRegionEndReason.allCases.filter(\.flushesPendingEdit)
     #expect(
@@ -2072,12 +2267,15 @@ struct PastedRegionRangeReaderCaptureTests {
     ax.focused[pid] = .element(PastedRegionFakeAX.field(pid))
   }
 
-  @Test("an AXValue host is captured through the value reader and the range reader is never consulted")
+  @Test(
+    "an AXValue host is captured through the value reader and the range reader is never consulted")
   func valueFirst() {
     ax.reads = [.text(host)]
     ax.counts = [.count(host.utf16.count)]
     ax.rangeReads = [.text(host)]
-    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+    guard
+      case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+    else {
       Issue.record("expected captured")
       return
     }
@@ -2085,12 +2283,16 @@ struct PastedRegionRangeReaderCaptureTests {
     #expect(ax.countCalls == 0 && ax.rangeCalls.isEmpty)
   }
 
-  @Test("no AXValue, a count and a range string of exactly that length: captured through the range reader with the unchanged anchors")
+  @Test(
+    "no AXValue, a count and a range string of exactly that length: captured through the range reader with the unchanged anchors"
+  )
   func rangeFallback() {
     ax.reads = [.absent]
     ax.counts = [.count(host.utf16.count)]
     ax.rangeReads = [.text(host)]
-    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+    guard
+      case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+    else {
       Issue.record("expected captured")
       return
     }
@@ -2106,58 +2308,78 @@ struct PastedRegionRangeReaderCaptureTests {
     ax.reads = [.notText]
     ax.counts = [.count(host.utf16.count)]
     ax.rangeReads = [.text(host)]
-    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+    guard
+      case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+    else {
       Issue.record("expected captured")
       return
     }
     #expect(target.reader == .range)
   }
 
-  @Test("a failed AXValue read is the host not answering: no fallback, the failure's own end reason")
+  @Test(
+    "a failed AXValue read is the host not answering: no fallback, the failure's own end reason")
   func failedValueIsNotRetried() {
     ax.counts = [.count(host.utf16.count)]
     ax.rangeReads = [.text(host)]
     ax.reads = [.failed(.cannotComplete)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.reads = [.failed(.apiDisabled)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
     #expect(ax.countCalls == 0 && ax.rangeCalls.isEmpty)
   }
 
-  @Test("a count above the ceiling refuses BEFORE any text is read; the ceiling itself is still readable")
+  @Test(
+    "a count above the ceiling refuses BEFORE any text is read; the ceiling itself is still readable"
+  )
   func ceilingBeforeTheRead() {
     ax.reads = [.absent]
     ax.counts = [.count(PastedRegionTiming.maxValueUTF16 + 1)]
     ax.rangeReads = [.text(host)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     #expect(ax.rangeCalls.isEmpty, "nothing above the ceiling is read into memory")
-    let atCeiling = String(repeating: "x", count: PastedRegionTiming.maxValueUTF16 - host.utf16.count) + host
+    let atCeiling =
+      String(repeating: "x", count: PastedRegionTiming.maxValueUTF16 - host.utf16.count) + host
     ax.counts = [.count(PastedRegionTiming.maxValueUTF16)]
     ax.rangeReads = [.text(atCeiling)]
-    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+    guard
+      case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+    else {
       Issue.record("expected captured at exactly the ceiling")
       return
     }
     #expect(target.reader == .range)
   }
 
-  @Test("fail closed: a range string of any other length than the count, a non-number count, a non-string range answer, a negative count")
+  @Test(
+    "fail closed: a range string of any other length than the count, a non-number count, a non-string range answer, a negative count"
+  )
   func mismatchesAreAbsent() {
     ax.reads = [.absent]
     ax.counts = [.count(host.utf16.count)]
     ax.rangeReads = [.text(host + "!")]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported), "one unit too long")
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported),
+      "one unit too long")
     ax.rangeReads = [.text(String(host.dropLast()))]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported), "one unit too short")
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported),
+      "one unit too short")
     ax.rangeReads = [.notText]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.counts = [.absent]
     ax.rangeReads = [.text(host)]
     let before = ax.rangeCalls.count
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     #expect(ax.rangeCalls.count == before, "no count, no range read")
     ax.counts = [.count(-1)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     #expect(ax.rangeCalls.count == before)
   }
 
@@ -2165,56 +2387,74 @@ struct PastedRegionRangeReaderCaptureTests {
   func rangeFailures() {
     ax.reads = [.absent]
     ax.counts = [.failed(.cannotComplete)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.counts = [.failed(.apiDisabled)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
     ax.counts = [.count(host.utf16.count)]
     ax.rangeReads = [.failed(.notImplemented)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
   }
 
   @Test("a count of zero is the empty text, not a refusal: the pasted text is simply not there yet")
   func zeroCount() {
     ax.reads = [.absent]
     ax.counts = [.count(0)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+        == .ended(.dictatedTextNotFound))
     #expect(ax.rangeCalls.isEmpty, "an empty field is not read")
   }
 
-  @Test("a count that changes across the range read is an unstable snapshot: retryable as dictated_text_not_found, never accepted as a prefix")
+  @Test(
+    "a count that changes across the range read is an unstable snapshot: retryable as dictated_text_not_found, never accepted as a prefix"
+  )
   func countChangesAcrossRead() {
     ax.reads = [.absent]
     let n = host.utf16.count
     ax.counts = [.count(n), .count(n + 1)]
     ax.rangeReads = [.text(host)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+        == .ended(.dictatedTextNotFound))
     #expect(ax.countCalls == 2)
     // The same drift seen through a wrong-length string, or a range read that
     // failed because the range no longer existed: the differing second count
     // is what names the class.
     ax.counts = [.count(n), .count(n - 1)]
     ax.rangeReads = [.text(String(host.dropLast()))]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+        == .ended(.dictatedTextNotFound))
     ax.counts = [.count(n), .count(n - 1)]
     ax.rangeReads = [.failed(.cannotComplete)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+        == .ended(.dictatedTextNotFound))
     // Under a STABLE count a wrong length is the host disagreeing with itself:
     // absent, final (mismatchesAreAbsent binds the rest of that row).
     ax.counts = [.count(n)]
     ax.rangeReads = [.text(String(host.dropLast()))]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(
+      observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
     ax.counts = [.count(n), .count(n + 5)]
     ax.rangeReads = [.text(host)]
     #expect(observer.readText(of: PastedRegionFakeAX.field(pid), using: .range) == .unstable)
   }
 
-  @Test("a count that changes across the range read is an UNSTABLE arrival attempt, never a stable zero count (#3106 PR A)")
+  @Test(
+    "a count that changes across the range read is an UNSTABLE arrival attempt, never a stable zero count (#3106 PR A)"
+  )
   func arrivalUnstableIsNotAbsent() {
     ax.reads = [.absent]
     let n = host.utf16.count
     ax.counts = [.count(n), .count(n + 1)]
     ax.rangeReads = [.text(host)]
-    guard case .unstable(let element, let reader) = observer.attemptArrival(pid: pid, pastedText: "Saira")
+    guard
+      case .unstable(let element, let reader) = observer.attemptArrival(
+        pid: pid, pastedText: "Saira")
     else {
       Issue.record("expected unstable")
       return
@@ -2266,7 +2506,10 @@ struct PastedRegionRangeReaderWatchTests {
     ax.counts = [.count(Self.host.utf16.count)]
     ax.rangeReads = [.text(Self.host)]
     observer = PastedRegionObserver(ax: ax, scheduler: scheduler)
-    guard case .captured(let t) = observer.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0) else {
+    guard
+      case .captured(let t) = observer.capture(
+        pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0)
+    else {
       throw SetupError.capture
     }
     target = t
@@ -2288,22 +2531,29 @@ struct PastedRegionRangeReaderWatchTests {
     ax.rangeReads = [.text(text)]
   }
 
-  @Test("the poll reads through the range reader, never the value reader, and reports an edit then settles")
+  @Test(
+    "the poll reads through the range reader, never the value reader, and reports an edit then settles"
+  )
   func pollsThroughTheRangeReader() {
     #expect(target.reader == .range)
     start()
     scheduler.advance(ms: 750)
-    #expect(ax.readCount == 0 && ax.countCalls == 2 && ax.rangeCalls.count == 1, "count, text, count again")
+    #expect(
+      ax.readCount == 0 && ax.countCalls == 2 && ax.rangeCalls.count == 1,
+      "count, text, count again")
     #expect(events.list.isEmpty)
     host("Note: Ask Saira today please")
     scheduler.advance(ms: 750)
     #expect(events.list == [.changed(region: "Ask Saira today")])
     scheduler.advance(ms: 1500)
-    #expect(events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    #expect(
+      events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
     #expect(ax.readCount == 0, "the value reader was never consulted during the watch")
   }
 
-  @Test("an emptied editor reads as textbox_emptied through the range reader (count zero, nothing read)")
+  @Test(
+    "an emptied editor reads as textbox_emptied through the range reader (count zero, nothing read)"
+  )
   func emptiedThroughRange() {
     start()
     ax.counts = [.count(0)]
@@ -2313,7 +2563,9 @@ struct PastedRegionRangeReaderWatchTests {
     #expect(ax.rangeCalls.isEmpty)
   }
 
-  @Test("a range answer of the wrong length during the watch is a read failure, three in a row end the watch; growth past the ceiling ends it at once")
+  @Test(
+    "a range answer of the wrong length during the watch is a read failure, three in a row end the watch; growth past the ceiling ends it at once"
+  )
   func watchFailClosed() {
     start()
     ax.rangeReads = [.text(Self.host + "x")]
@@ -2334,7 +2586,9 @@ struct PastedRegionRangeReaderWatchTests {
     #expect(ax.rangeCalls.count == before)
   }
 
-  @Test("three unstable watch snapshots follow the read-failure policy: a person mid-keystroke is not a lost field until it stays unreadable")
+  @Test(
+    "three unstable watch snapshots follow the read-failure policy: a person mid-keystroke is not a lost field until it stays unreadable"
+  )
   func unstableDuringWatch() {
     start()
     let n = Self.host.utf16.count
@@ -2346,7 +2600,9 @@ struct PastedRegionRangeReaderWatchTests {
     #expect(events.list == [.ended(.captureUnsupported)])
   }
 
-  @Test("the remaining range-watch failure rows follow the existing read-failure policy: absent count and a non-string range answer count three times, a failed count ends by its own code")
+  @Test(
+    "the remaining range-watch failure rows follow the existing read-failure policy: absent count and a non-string range answer count three times, a failed count ends by its own code"
+  )
   func remainingFailureRows() {
     func run(_ counts: [PastedRegionCountRead], _ ranges: [PastedRegionValueRead], ticks: Int)
       -> [PastedRegionEvent]
@@ -2363,14 +2619,17 @@ struct PastedRegionRangeReaderWatchTests {
     #expect(run([.absent], [.text(Self.host)], ticks: 3) == [.ended(.captureUnsupported)])
     #expect(run([.failed(.cannotComplete)], [], ticks: 3) == [.ended(.captureUnsupported)])
     #expect(run([.failed(.apiDisabled)], [], ticks: 1) == [.ended(.permissionLost)])
-    #expect(run([.count(Self.host.utf16.count)], [.notText], ticks: 3) == [.ended(.captureUnsupported)])
+    #expect(
+      run([.count(Self.host.utf16.count)], [.notText], ticks: 3) == [.ended(.captureUnsupported)])
   }
 }
 
 @MainActor
 @Suite(.tags(.productOutcome))
 struct PastedRegionRangeReaderDeadlineTests {
-  @Test("a deadline that passes during the read beats an emptied box: ceiling_elapsed, not textbox_emptied")
+  @Test(
+    "a deadline that passes during the read beats an emptied box: ceiling_elapsed, not textbox_emptied"
+  )
   func deadlineBeatsEmptiedDuringTheRead() throws {
     let ax = PastedRegionFakeAX()
     let scheduler = PastedRegionFakeScheduler()
@@ -2381,7 +2640,10 @@ struct PastedRegionRangeReaderDeadlineTests {
     ax.counts = [.count(host.utf16.count)]
     ax.rangeReads = [.text(host)]
     let observer = PastedRegionObserver(ax: ax, scheduler: scheduler)
-    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0) else {
+    guard
+      case .captured(let target) = observer.capture(
+        pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0)
+    else {
       Issue.record("expected captured")
       return
     }

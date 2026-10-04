@@ -4,7 +4,7 @@ import Testing
 
 // #729 Tier 2c: the language-agnostic Edit > Paste matcher. The AX menu-bar
 // traversal (`findPasteMenuItem`) is live-only like the other AX primitives
-// (`captureFocusedElement`, `forceActivateApp`) and is exercised by Live UAT;
+// (`captureKeyboardFocus`, `forceActivateApp`) and is exercised by Live UAT;
 // the pure matching predicate is unit-tested here.
 @Suite("PasteService.isPasteShortcut")
 struct PasteMenuProbeTests {

@@ -192,12 +192,12 @@ final class LearnFromEditsWiring {
     legacyCleanup: LegacyProposalLedgerCleanup = .live,
     osMajor: Int = ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
     // Test seams, all defaulted to the live objects: a scripted observer and
-    // frontmost app so a composition test can walk a paste to a card without
+    // active-applications supplier so a composition test can walk a paste to a card without
     // the accessibility API, and a selection override so it can stage a
     // serving judge while `qualified` stays empty.
     observer: (any PastedRegionObserving)? = nil,
     scheduler: (any PastedRegionScheduling)? = nil,
-    frontmost: (@MainActor () -> FrontmostApplication?)? = nil,
+    activeApplications: (@MainActor () -> [ActiveApplication])? = nil,
     selectJudgeForTests: (@MainActor () -> SelectedCorrectionJudge?)? = nil,
     debugExportPath: String? = LearnFromEditsWiring.debugExportPathFromEnvironment(),
     deliveryHome: ModelDeliveryHome? = nil,
@@ -295,10 +295,8 @@ final class LearnFromEditsWiring {
       dependencies: ObservedCorrectionWatcherDependencies(
         isLearnFromEditsOn: { [weak settings] in settings?.learnFromEdits ?? false },
         selectJudge: { selectJudgeForTests?() ?? box.wiring?.selectJudge() },
-        frontmost: frontmost ?? {
-          LivePastedRegionAXOperations.activeApplications().first.map {
-            FrontmostApplication(pid: $0.pid, bundleID: $0.bundleID)
-          }
+        activeApplications: activeApplications ?? {
+          LivePastedRegionAXOperations.activeApplications()
         },
         observer: observer,
         nowMs: { scheduler.nowMs },

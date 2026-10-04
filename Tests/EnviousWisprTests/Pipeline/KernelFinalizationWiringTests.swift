@@ -1636,24 +1636,25 @@ import os
     let context = KernelSessionContext()
     var asked: [pid_t] = []
 
-    context.recordStartTarget(app: app, element: field, trusted: true) { asked.append($0); return window }
+    context.recordStartTarget(
+      front: app, focus: .focused(element: field, ownerPID: app.processIdentifier), trusted: true) { asked.append($0); return window }
     #expect(context.targetElement == field)
     #expect(context.targetWindow == nil, "a captured field needs no window")
     #expect(asked.isEmpty, "and the window is never even read")
 
-    context.recordStartTarget(app: app, element: nil, trusted: true) { asked.append($0); return window }
+    context.recordStartTarget(front: app, focus: .noElement, trusted: true) { asked.append($0); return window }
     #expect(context.targetApp == app)
     #expect(context.targetWindow == window)
     #expect(asked == [app.processIdentifier], "read once, scoped to the recorded app")
 
-    context.recordStartTarget(app: app, element: nil, trusted: false) { asked.append($0); return window }
+    context.recordStartTarget(front: app, focus: .noElement, trusted: false) { asked.append($0); return window }
     #expect(context.targetWindow == nil, "untrusted: nothing recorded, and the old window is gone")
 
     context.targetWindow = window
-    context.recordStartTarget(app: nil, element: nil, trusted: true) { asked.append($0); return window }
+    context.recordStartTarget(front: nil, focus: .noElement, trusted: true) { asked.append($0); return window }
     #expect(context.targetWindow == nil, "no app: reset, nothing recorded")
 
-    context.recordStartTarget(app: app, element: nil, trusted: true) { _ in nil }
+    context.recordStartTarget(front: app, focus: .noElement, trusted: true) { _ in nil }
     #expect(context.targetWindow == nil, "an unreadable window records nothing")
     #expect(asked.count == 1)
   }

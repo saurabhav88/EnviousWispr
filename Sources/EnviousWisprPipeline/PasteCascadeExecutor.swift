@@ -725,7 +725,7 @@ internal final class PasteCascadeExecutor {
     // restored for Chromium/Electron contenteditable inputs — see #277).
     //
     // - textField: element present with a known text input role. Run full cascade.
-    // - missing:   captureFocusedElement returned nil. Common when Chromium /
+    // - missing:   captureKeyboardFocus found no element. Common when Chromium /
     //              Electron apps lazy-init their AX tree (systemWide focus query
     //              returns kAXErrorNoValue even though a DOM contenteditable is
     //              focused). Skip Tier 1 (no element to write to), but STILL
@@ -1013,6 +1013,8 @@ internal final class PasteCascadeExecutor {
         let chromiumOmniboxStillFocused: Bool =
           if gate.refusal != nil {
             true  // not consulted: the window refusal below already stops the dispatch
+          } else if gate.ownerPath {
+            true  // #3423: the final owner read below confirms the captured field itself, last
           } else if isChromiumOmnibox, let element = request.targetElement {
             remainingGateSeconds(gate.budget) > 0
               && PasteService.freshFocusedElement(
@@ -1020,13 +1022,16 @@ internal final class PasteCascadeExecutor {
           } else {
             true
           }
-        // The omnibox read above can also take time: the front app is read once more, last.
+        // The omnibox read above can also take time: the front app is read once more, last. On
+        // the owner path (#3423) this is instead the ONE focus read that confirms the owner and the
+        // captured field, and no AX step follows it; on the front path it stays a local read.
         let dispatchRefusal =
           gate.refusal
           ?? Self.appFrontRefusal(
             landingAX.destinationActivity(
-              pid: app.processIdentifier, capturedElement: request.targetElement, mode: .full,
-              admit: gate.budget.admit))
+              pid: app.processIdentifier, capturedElement: request.targetElement,
+              mode: gate.ownerPath ? .full : .frontOnly, admit: gate.budget.admit),
+            ownerPathOnly: gate.ownerPath)
         if let windowRefusal = dispatchRefusal {
           // #3121: same shape as the omnibox refusal below: `.cgEvent` is NOT recorded as
           // attempted, because `pasteToActiveApp` is never called.
@@ -1139,6 +1144,8 @@ internal final class PasteCascadeExecutor {
         let chromiumOmniboxStillFocusedForAppleScript: Bool =
           if gate.refusal != nil {
             true  // not consulted: the window refusal below already stops the paste
+          } else if gate.ownerPath {
+            true  // #3423: the final owner read below confirms the captured field itself, last
           } else if isChromiumOmnibox, let element = request.targetElement {
             remainingGateSeconds(gate.budget) > 0
               && PasteService.freshFocusedElement(
@@ -1150,8 +1157,9 @@ internal final class PasteCascadeExecutor {
           gate.refusal
           ?? Self.appFrontRefusal(
             landingAX.destinationActivity(
-              pid: app.processIdentifier, capturedElement: request.targetElement, mode: .full,
-              admit: gate.budget.admit))
+              pid: app.processIdentifier, capturedElement: request.targetElement,
+              mode: gate.ownerPath ? .full : .frontOnly, admit: gate.budget.admit),
+            ownerPathOnly: gate.ownerPath)
         if let windowRefusal = dispatchRefusal {
           // #3121: nothing was written and `.appleScript` is not recorded as attempted.
           let reason = "target_window_not_confirmed(\(windowRefusal))"
@@ -1300,7 +1308,8 @@ internal final class PasteCascadeExecutor {
             let gate = dispatchGate(
               app: app, target: activation.target, element: request.targetElement,
               tier1BoundTheTarget: false, takeID: request.takeID, bundleId: bundleId)
-            // `dispatchGate` read the front app last; no AX step follows it before AXPress.
+            // `dispatchGate` read the destination last (the front app, or the confirmed focus owner
+            // with the captured field, #3423); no AX step follows it before AXPress.
             let dispatchRefusal = gate.refusal
             if let windowRefusal = dispatchRefusal {
               // The payload stays on the clipboard, as on the `.disabled` arm; Tier 3 follows.
@@ -1588,6 +1597,23 @@ internal final class PasteCascadeExecutor {
       known
       ?? PasteTargetWindowGate.resolve(
         element: element, recordedWindow: recordedWindow, ax: landingAX, admit: stepBudget().admit)
+    // #3423: a destination that already owns the keyboard focus with the captured field focused
+    // (a non-activating launcher panel) is never front, so activating it cannot be observed and
+    // could close the panel. One admission read; the dispatch gate re-reads before the key event.
+    // Every other answer runs today's loop unchanged.
+    if landingAX.destinationActivity(
+      pid: pid, capturedElement: element, mode: .full, admit: stepBudget().admit)
+      == .focusOwner(elementConfirmed: true)
+    {
+      Task {
+        await AppLogger.shared.log(
+          "activation skipped: destination owns the keyboard focus (#3423)",
+          level: .info, category: "PasteTiming")
+      }
+      return Activation(
+        activated: true, target: target, windowRefusal: nil,
+        elapsed: landingScheduler.nowMs - startMs)
+    }
     func issue() { raiseAndActivate(app, target: target, remainingMs: remainingMs) }
     issue()
     var lastIssueMs = landingScheduler.nowMs
@@ -1656,14 +1682,15 @@ internal final class PasteCascadeExecutor {
   private func dispatchGate(
     app: NSRunningApplication, target: PasteTargetWindow, element: AXUIElement?,
     tier1BoundTheTarget: Bool, takeID: String?, bundleId: String
-  ) -> (refusal: String?, budget: PasteLandingPrepareBudget) {
+  ) -> (refusal: String?, budget: PasteLandingPrepareBudget, ownerPath: Bool) {
     let budget = PasteLandingPrepareBudget(scheduler: landingScheduler, ax: landingAX)
     defer { restoreCapturedTimeout(element, tier1BoundTheTarget: tier1BoundTheTarget) }
     if let notFront = Self.appFrontRefusal(
       landingAX.destinationActivity(
-        pid: app.processIdentifier, capturedElement: element, mode: .full, admit: budget.admit))
+        pid: app.processIdentifier, capturedElement: element, mode: .full, admit: budget.admit),
+      ownerPathOnly: false)
     {
-      return (notFront, budget)
+      return (notFront, budget, false)
     }
     let decision = PasteTargetWindowGate.decide(
       target: target, element: element, pid: app.processIdentifier, ax: landingAX,
@@ -1673,13 +1700,14 @@ internal final class PasteCascadeExecutor {
     if case .refuse(let reason) = decision { refusal = reason } else { refusal = nil }
     // The window read can take the whole budget; the user can switch apps meanwhile, and the
     // target app still reports its own focused window. Re-read the front app last.
-    if let refusal { return (refusal.rawValue, budget) }
+    if let refusal { return (refusal.rawValue, budget, false) }
+    // `ownerPath` (#3423): the destination passed as the confirmed focus owner, not as the front
+    // app, so the caller's last check must be a fresh owner read rather than a front read.
+    let last = landingAX.destinationActivity(
+      pid: app.processIdentifier, capturedElement: element, mode: .full, admit: budget.admit)
     return (
-      Self.appFrontRefusal(
-        landingAX.destinationActivity(
-          pid: app.processIdentifier, capturedElement: element, mode: .full,
-          admit: budget.admit)),
-      budget
+      Self.appFrontRefusal(last, ownerPathOnly: false), budget,
+      last == .focusOwner(elementConfirmed: true)
     )
   }
 
@@ -1688,9 +1716,14 @@ internal final class PasteCascadeExecutor {
   /// omnibox re-check without breaking "the omnibox read is the last AX step"), or it owns the
   /// keyboard focus AND the focused element is the captured field. An owner without the captured
   /// field never receives a key paste.
-  static func appFrontRefusal(_ activity: DestinationActivity) -> String? {
+  ///
+  /// `ownerPathOnly`: the dispatch was admitted as the focus owner, so only a fresh confirmed owner
+  /// passes; a destination that turned front meanwhile skipped the front path's omnibox re-check
+  /// and is refused (Copied, today's outcome for a launcher).
+  static func appFrontRefusal(_ activity: DestinationActivity, ownerPathOnly: Bool) -> String? {
     switch activity {
-    case .frontApp, .focusOwner(elementConfirmed: true): nil
+    case .focusOwner(elementConfirmed: true): nil
+    case .frontApp: ownerPathOnly ? "app_not_front" : nil
     case .focusOwner(elementConfirmed: false), .notActive: "app_not_front"
     }
   }

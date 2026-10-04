@@ -520,6 +520,16 @@ package enum KeyboardFocusRead {
   case noElement
   case ownerUnreadable(element: AXUIElement)
   case unreadable
+
+  /// The case name, for log lines.
+  package var logLabel: String {
+    switch self {
+    case .focused: "focused"
+    case .noElement: "no_element"
+    case .ownerUnreadable: "owner_unreadable"
+    case .unreadable: "unreadable"
+    }
+  }
 }
 
 /// #3423: whether a destination application is where keyboard input goes now.
@@ -540,15 +550,26 @@ package enum DestinationActivityMode: Sendable {
 }
 
 /// #3423: compared before and after a landing watch; a different token is an app switch. Opaque on
-/// purpose, so a caller compares tokens rather than re-deriving "front" itself.
+/// purpose, so a caller compares tokens rather than re-deriving "front" itself. The focus owner is
+/// part of it only while the destination is not front, so an ordinary front destination costs no
+/// focus read and compares exactly as before.
 package struct DestinationSwitchToken: Equatable, Sendable {
   let frontPID: pid_t?
+  let ownerPID: pid_t?
 }
 
 /// #3423: one application that may hold keyboard input, as the learning watcher sees it.
 package struct ActiveApplication: Equatable, Sendable {
   package let pid: pid_t
   package let bundleID: String?
+  /// A fresh system-wide read confirmed this application owns the keyboard focus.
+  package let isFocusOwner: Bool
+
+  package init(pid: pid_t, bundleID: String?, isFocusOwner: Bool) {
+    self.pid = pid
+    self.bundleID = bundleID
+    self.isFocusOwner = isFocusOwner
+  }
 }
 
 /// #3423: the pure decision behind `destinationActivity` and `destinationSwitchToken`. The live
@@ -571,8 +592,31 @@ package enum DestinationActivityEvaluator {
     return .focusOwner(elementConfirmed: capturedElement.map { CFEqual(element, $0) } ?? false)
   }
 
-  package static func switchToken(front: () -> pid_t?) -> DestinationSwitchToken {
-    DestinationSwitchToken(frontPID: front())
+  /// The front pid always; the focus owner only when `pid` is not front (one read, or none).
+  package static func switchToken(
+    pid: pid_t, front: () -> pid_t?, focus: () -> KeyboardFocusRead
+  ) -> DestinationSwitchToken {
+    let frontPID = front()
+    guard frontPID != pid, case .focused(_, let owner) = focus() else {
+      return DestinationSwitchToken(frontPID: frontPID, ownerPID: nil)
+    }
+    return DestinationSwitchToken(frontPID: frontPID, ownerPID: owner)
+  }
+
+  /// The applications that may hold keyboard input, front first, then the confirmed focus owner
+  /// when it is another application; one entry per pid. `application` resolves a pid.
+  package static func activeApplications(
+    front: ActiveApplication?, focus: () -> KeyboardFocusRead,
+    application: (pid_t) -> ActiveApplication?
+  ) -> [ActiveApplication] {
+    let owner: pid_t? = if case .focused(_, let pid) = focus() { pid } else { nil }
+    guard let front else { return owner.flatMap(application).map { [$0] } ?? [] }
+    let frontEntry = ActiveApplication(
+      pid: front.pid, bundleID: front.bundleID, isFocusOwner: owner == front.pid)
+    guard let owner, owner != front.pid, let ownerEntry = application(owner) else {
+      return [frontEntry]
+    }
+    return [frontEntry, ownerEntry]
   }
 }
 
@@ -2269,16 +2313,29 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     NSWorkspace.shared.frontmostApplication?.processIdentifier
   }
 
-  /// The applications that may hold keyboard input now, front first (#3423). The learning
-  /// watcher's supplier; today only the front application.
+  /// The applications that may hold keyboard input now, front first, then the confirmed focus
+  /// owner (#3423). The learning watcher's supplier; one bounded focus read per call.
   package static func activeApplications() -> [ActiveApplication] {
-    guard let app = NSWorkspace.shared.frontmostApplication else { return [] }
-    return [ActiveApplication(pid: app.processIdentifier, bundleID: app.bundleIdentifier)]
+    let front = NSWorkspace.shared.frontmostApplication.map {
+      ActiveApplication(pid: $0.processIdentifier, bundleID: $0.bundleIdentifier, isFocusOwner: false)
+    }
+    return DestinationActivityEvaluator.activeApplications(
+      front: front,
+      focus: {
+        PasteService.readKeyboardFocus(
+          bound: PasteService.axMessagingTimeoutSeconds, admit: { _ in true })
+      },
+      application: { pid in
+        NSRunningApplication(processIdentifier: pid).map {
+          ActiveApplication(pid: pid, bundleID: $0.bundleIdentifier, isFocusOwner: true)
+        }
+      })
   }
 
+  /// One bounded system-wide read (`PasteService.readKeyboardFocus`), at most the usual 0.5 s,
+  /// shortened by `admit`.
   package func keyboardFocusRead(admit: @MainActor (AXUIElement) -> Bool) -> KeyboardFocusRead {
-    // #3423 chunk 1: no live system-wide read yet, so every destination answer is front-only.
-    .unreadable
+    PasteService.readKeyboardFocus(bound: PasteService.axMessagingTimeoutSeconds, admit: admit)
   }
 
   package func destinationActivity(
@@ -2293,7 +2350,8 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
   package func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
     -> DestinationSwitchToken
   {
-    DestinationActivityEvaluator.switchToken(front: Self.frontPID)
+    DestinationActivityEvaluator.switchToken(
+      pid: pid, front: Self.frontPID, focus: { self.keyboardFocusRead(admit: admit) })
   }
 
   package func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome {

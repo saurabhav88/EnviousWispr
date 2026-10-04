@@ -86,38 +86,68 @@ struct DestinationActivityEvaluatorTests {
 
   @Test("a key paste may go to the front app or a confirmed owner, never to an unconfirmed one")
   func dispatchRule() {
-    #expect(PasteCascadeExecutor.appFrontRefusal(.frontApp) == nil)
-    #expect(PasteCascadeExecutor.appFrontRefusal(.focusOwner(elementConfirmed: true)) == nil)
+    #expect(PasteCascadeExecutor.appFrontRefusal(.frontApp, ownerPathOnly: false) == nil)
+    for ownerPathOnly in [false, true] {
+      #expect(
+        PasteCascadeExecutor.appFrontRefusal(
+          .focusOwner(elementConfirmed: true), ownerPathOnly: ownerPathOnly) == nil)
+      #expect(
+        PasteCascadeExecutor.appFrontRefusal(
+          .focusOwner(elementConfirmed: false), ownerPathOnly: ownerPathOnly) == "app_not_front")
+      #expect(
+        PasteCascadeExecutor.appFrontRefusal(.notActive, ownerPathOnly: ownerPathOnly)
+          == "app_not_front")
+    }
     #expect(
-      PasteCascadeExecutor.appFrontRefusal(.focusOwner(elementConfirmed: false)) == "app_not_front")
-    #expect(PasteCascadeExecutor.appFrontRefusal(.notActive) == "app_not_front")
+      PasteCascadeExecutor.appFrontRefusal(.frontApp, ownerPathOnly: true) == "app_not_front",
+      "admitted as the owner, a destination that turned front skipped the omnibox re-check")
   }
 
-  @Test("the switch token changes exactly when the front application changes")
+  @Test("the switch token holds the front app, plus the focus owner only while the destination is not front")
   func switchToken() {
-    let before = DestinationActivityEvaluator.switchToken(front: { 7 })
-    #expect(DestinationActivityEvaluator.switchToken(front: { 7 }) == before)
-    #expect(DestinationActivityEvaluator.switchToken(front: { 8 }) != before)
-    #expect(DestinationActivityEvaluator.switchToken(front: { nil }) != before)
+    let count = Count()
+    func token(front: pid_t?, owner: pid_t?) -> DestinationSwitchToken {
+      DestinationActivityEvaluator.switchToken(
+        pid: pid, front: { front },
+        focus: {
+          count.focusReads += 1
+          return owner.map { .focused(element: field, ownerPID: $0) } ?? .unreadable
+        })
+    }
+    let frontBefore = token(front: pid, owner: 7)
+    #expect(count.focusReads == 0, "a front destination costs no focus read")
+    #expect(token(front: pid, owner: 9) == frontBefore, "the owner is ignored while front")
+    let launcher = token(front: 7, owner: pid)
+    #expect(token(front: 7, owner: pid) == launcher)
+    #expect(token(front: 7, owner: 9) != launcher, "the panel lost the focus: a switch")
+    #expect(token(front: 8, owner: pid) != launcher, "the front app changed: a switch")
+    #expect(token(front: 7, owner: nil) != launcher, "the owner could not be confirmed again")
+    #expect(token(front: 8, owner: nil) != token(front: 7, owner: nil), "B to C, as before")
   }
 
-  @Test(
-    "the live seam makes no keyboard-focus read yet: every answer is front-only (#3423 chunk 1)")
-  func liveSeamIsFrontOnly() {
-    let live = LivePastedRegionAXOperations()
-    let admitted = Count()
-    let admit: @MainActor (AXUIElement) -> Bool = { _ in
-      admitted.focusReads += 1
-      return true
+  @Test("active applications: front first, the confirmed owner second, one entry per pid")
+  func activeApplications() {
+    let front = ActiveApplication(pid: 7, bundleID: "front", isFocusOwner: false)
+    func resolve(_ pid: pid_t) -> ActiveApplication? {
+      ActiveApplication(pid: pid, bundleID: "owner", isFocusOwner: true)
     }
-    guard case .unreadable = live.keyboardFocusRead(admit: admit) else {
-      Issue.record("a live focus read happened")
-      return
-    }
-    // pid -1 is never the front application, so `.full` reaches the focus branch.
     #expect(
-      live.destinationActivity(pid: -1, capturedElement: nil, mode: .full, admit: admit)
-        == .notActive)
-    #expect(admitted.focusReads == 0, "no system-wide handle was offered to the budget")
+      DestinationActivityEvaluator.activeApplications(
+        front: front, focus: { .focused(element: field, ownerPID: pid) }, application: resolve)
+        == [front, ActiveApplication(pid: pid, bundleID: "owner", isFocusOwner: true)])
+    #expect(
+      DestinationActivityEvaluator.activeApplications(
+        front: front, focus: { .focused(element: field, ownerPID: 7) }, application: resolve)
+        == [ActiveApplication(pid: 7, bundleID: "front", isFocusOwner: true)], "no duplicate pid")
+    for unconfirmed in [KeyboardFocusRead.noElement, .unreadable, .ownerUnreadable(element: field)] {
+      #expect(
+        DestinationActivityEvaluator.activeApplications(
+          front: front, focus: { unconfirmed }, application: resolve) == [front],
+        "\(unconfirmed.logLabel): today's front-only answer")
+    }
+    #expect(
+      DestinationActivityEvaluator.activeApplications(
+        front: front, focus: { .focused(element: field, ownerPID: pid) }, application: { _ in nil })
+        == [front], "an owner that cannot be resolved adds nothing")
   }
 }
