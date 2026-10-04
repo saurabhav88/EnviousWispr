@@ -808,47 +808,46 @@ struct KernelFinalizationWiring {
         // request built below (and `caretContextOutcome`'s `no_target` check)
         // both observe the recovered element too, not just this read.
         //
-        // #3437: the retry (`retryDeliveryTarget`), the caret read (`readInsertionCaret`) and the
-        // repair (`repairInsertion`) are shared with the Escape Recovery Undo delivery, so both
-        // resolve a target and repair the text the same way. Dictation calls the two halves itself
-        // so its outcome stamps keep their place between them.
-        let caret = Self.readInsertionCaret(
-          smartInsertion: config?.smartInsertion == true, targetApp: context.targetApp,
-          targetElement: context.targetElement, targetWindow: context.targetWindow,
-          seams: insertionSeams)
-        context.targetElement = caret.targetElement
-        let terminalBudget = caret.terminalBudget
-        let terminalRefusal = caret.terminalRefusal
-        let caretContext = caret.caretContext
-        let caretCaptureRetried = caret.retried
-        let caretCaptureRetryMs = caret.retryMs
-        outcome.caretCaptureRetried = caretCaptureRetried
-        outcome.caretCaptureRetryMs = caretCaptureRetryMs
+        // #3437: Smart Insertion (`computeInsertion`: the retry, the caret read and the repair) is
+        // shared with the Escape Recovery Undo delivery, so both resolve a target and repair the
+        // text the same way. The stamps below run in `afterCaret`, before the repair is awaited.
+        let computation = await Self.computeInsertion(
+          text: text, smartInsertion: config?.smartInsertion == true,
+          targetApp: context.targetApp, targetElement: context.targetElement,
+          targetWindow: context.targetWindow, seams: insertionSeams,
+          afterCaret: { caret in
+            context.targetElement = caret.targetElement
+            outcome.caretCaptureRetried = caret.retried
+            outcome.caretCaptureRetryMs = caret.retryMs
 
-        // Resolved from positive evidence, NOT read off the result.
-        //
-        // The earlier version of this line took `adapter.lastResult?.language`
-        // and justified it as "Parakeet reports English, which is the only
-        // language it transcribes". That was wrong, and our own settings
-        // screen says so: Parakeet transcribes 25 European languages while
-        // `ParakeetBackend` stamps `"en"` on every result. Since Parakeet is
-        // the DEFAULT engine, a German dictation on the default path was being
-        // recased with English rules — the exact defect the language gate was
-        // built to prevent (cloud review, PR #1802).
-        // Every `@MainActor` input, snapshotted BEFORE the `@Sendable` deadline
-        // operation, which cannot reach a `@MainActor` seam.
-        let lockedLanguageCode: String? = context.config?.lockedLanguageCode
-        let engineDetectsLanguage = adapter.capabilities.supportsLanguageDetection
-        let engineReportedLanguage = adapter.lastResult?.language
-        let repair = await Self.repairInsertion(
-          text: text, caretContext: caretContext, snippetFired: context.snippetExpansionFired,
-          lockedLanguageCode: lockedLanguageCode, engineDetectsLanguage: engineDetectsLanguage,
-          engineReportedLanguage: engineReportedLanguage,
-          protectedSpellings: context.protectedSpellings, seams: insertionSeams)
-        let gate = repair.gate
-        let casingSnapshot = repair.casingSnapshot
-        let payloads = repair.payloads
-        let resolution = repair.resolution
+            // Resolved from positive evidence, NOT read off the result.
+            //
+            // The earlier version of this line took `adapter.lastResult?.language`
+            // and justified it as "Parakeet reports English, which is the only
+            // language it transcribes". That was wrong, and our own settings
+            // screen says so: Parakeet transcribes 25 European languages while
+            // `ParakeetBackend` stamps `"en"` on every result. Since Parakeet is
+            // the DEFAULT engine, a German dictation on the default path was being
+            // recased with English rules — the exact defect the language gate was
+            // built to prevent (cloud review, PR #1802).
+            // Every `@MainActor` input, snapshotted BEFORE the `@Sendable` deadline
+            // operation, which cannot reach a `@MainActor` seam.
+            return InsertionTakeFacts(
+              snippetFired: context.snippetExpansionFired,
+              lockedLanguageCode: context.config?.lockedLanguageCode,
+              engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
+              engineReportedLanguage: adapter.lastResult?.language,
+              protectedSpellings: context.protectedSpellings)
+          })
+        let terminalBudget = computation.caret.terminalBudget
+        let terminalRefusal = computation.caret.terminalRefusal
+        let caretContext = computation.caret.caretContext
+        let caretCaptureRetried = computation.caret.retried
+        let caretCaptureRetryMs = computation.caret.retryMs
+        let gate = computation.repair.gate
+        let casingSnapshot = computation.repair.casingSnapshot
+        let payloads = computation.repair.payloads
+        let resolution = computation.repair.resolution
 
         // Why this dictation was or was not repaired, recorded before delivery
         // so it survives every route outcome. Names and shapes only (#1785 §8).
@@ -1184,6 +1183,45 @@ struct KernelFinalizationWiring {
     let resolution: DictationLanguageResolver.Resolution?
     let casingSnapshot: LanguageRepairDeadlineGate.Snapshot?
     let gate: LanguageRepairDeadlineGate
+  }
+
+  /// The take facts the repair reads that exist only during the take: whether a snippet expanded,
+  /// the language inputs and the protected spellings. Dictation reads them live after the caret;
+  /// the Escape Recovery Undo delivery supplies the values frozen when the take was held.
+  struct InsertionTakeFacts: Sendable {
+    let snippetFired: Bool
+    let lockedLanguageCode: String?
+    let engineDetectsLanguage: Bool
+    let engineReportedLanguage: String?
+    let protectedSpellings: Set<String>
+  }
+
+  /// Both halves of one Smart Insertion computation.
+  struct InsertionComputation {
+    let caret: InsertionCaret
+    let repair: InsertionRepair
+  }
+
+  /// #3437: Smart Insertion, the ONE entry the dictation delivery and the Escape Recovery Undo
+  /// delivery share. `afterCaret` runs synchronously between the caret read and the awaited repair,
+  /// so a caller's stamps and target assignment keep their place before the suspension point, and
+  /// it returns the take facts the repair reads.
+  static func computeInsertion(
+    text: String, smartInsertion: Bool, targetApp: NSRunningApplication?,
+    targetElement: AXUIElement?, targetWindow: AXUIElement?, seams: InsertionSeams,
+    afterCaret: @MainActor (InsertionCaret) -> InsertionTakeFacts
+  ) async -> InsertionComputation {
+    let caret = readInsertionCaret(
+      smartInsertion: smartInsertion, targetApp: targetApp, targetElement: targetElement,
+      targetWindow: targetWindow, seams: seams)
+    let facts = afterCaret(caret)
+    let repair = await repairInsertion(
+      text: text, caretContext: caret.caretContext, snippetFired: facts.snippetFired,
+      lockedLanguageCode: facts.lockedLanguageCode,
+      engineDetectsLanguage: facts.engineDetectsLanguage,
+      engineReportedLanguage: facts.engineReportedLanguage,
+      protectedSpellings: facts.protectedSpellings, seams: seams)
+    return InsertionComputation(caret: caret, repair: repair)
   }
 
   /// #3437: the caret half of Smart Insertion, shared by the dictation delivery and the Escape
