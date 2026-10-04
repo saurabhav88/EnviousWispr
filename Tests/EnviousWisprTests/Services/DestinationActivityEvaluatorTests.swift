@@ -157,7 +157,7 @@ struct DestinationActivityEvaluatorTests {
       #expect(
         DestinationActivityEvaluator.activeApplications(
           front: front, destinationBundleID: "owner", focus: { unconfirmed }, application: resolve) == [front],
-        "\(unconfirmed.logLabel): today's front-only answer")
+        "\(unconfirmed): today's front-only answer")
     }
     #expect(
       DestinationActivityEvaluator.activeApplications(

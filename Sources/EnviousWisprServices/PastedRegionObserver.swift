@@ -520,16 +520,6 @@ package enum KeyboardFocusRead {
   case noElement
   case ownerUnreadable(element: AXUIElement)
   case unreadable
-
-  /// The case name, for log lines.
-  package var logLabel: String {
-    switch self {
-    case .focused: "focused"
-    case .noElement: "no_element"
-    case .ownerUnreadable: "owner_unreadable"
-    case .unreadable: "unreadable"
-    }
-  }
 }
 
 /// #3423: whether a destination application is where keyboard input goes now.
