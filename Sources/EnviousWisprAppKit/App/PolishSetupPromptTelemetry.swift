@@ -98,13 +98,14 @@ extension PolishSetupLeaveAction {
   }
 
   /// The answer to report for a press of this button while `event` is the app's current event.
-  /// macOS sends Escape to an alert's cancel-role button, so the safe "Finish setup" (or "OK")
-  /// also runs when someone presses Escape; that is a dismissal and reports `closed`. The
-  /// behaviour is the same (stay on AI Polish), only the row differs.
+  /// macOS sends the cancel keys (Escape, Command-period) to an alert's cancel-role button, so
+  /// the safe "Finish setup" or "Pick another" also runs on a cancel key; that is a dismissal
+  /// and reports `closed`. The behaviour is the same (stay on AI Polish), only the row differs.
   func promptAction(isCancelRole: Bool, event: NSEvent?) -> PolishSetupPromptEvent.Action {
-    guard isCancelRole, let event, event.type == .keyDown, event.keyCode == 53 else {
-      return promptAction
-    }
-    return .closed
+    guard isCancelRole, let event, event.type == .keyDown else { return promptAction }
+    let cancelKey =
+      event.keyCode == 53
+      || (event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == ".")
+    return cancelKey ? .closed : promptAction
   }
 }

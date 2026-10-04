@@ -73,14 +73,14 @@ import Testing
       #expect(PolishSetupLeaveAction.openSystemSettings.promptAction == .openSystemSettings)
     }
 
-    @Test("Escape on the leave question reports closed; a click or Return reports the button")
-    func escapeIsAClose() throws {
-      func key(_ code: UInt16) throws -> NSEvent {
+    @Test("a cancel key on the leave question reports closed; a click or Return reports the button")
+    func cancelKeyIsAClose() throws {
+      func key(_ code: UInt16, _ characters: String = "", command: Bool = false) throws -> NSEvent {
         try #require(
           NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
-            context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false,
-            keyCode: code))
+            with: .keyDown, location: .zero, modifierFlags: command ? [.command] : [],
+            timestamp: 0, windowNumber: 0, context: nil, characters: characters,
+            charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
       }
       let click = try #require(
         NSEvent.mouseEvent(
@@ -88,7 +88,8 @@ import Testing
           context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
       let finish = PolishSetupLeaveAction.finishSetup
       #expect(finish.promptAction(isCancelRole: true, event: try key(53)) == .closed)
-      #expect(PolishSetupLeaveAction.ok.promptAction(isCancelRole: true, event: try key(53)) == .closed)
+      #expect(finish.promptAction(isCancelRole: true, event: try key(47, ".", command: true)) == .closed)
+      #expect(finish.promptAction(isCancelRole: true, event: try key(47, ".")) == .finishSetup)
       #expect(finish.promptAction(isCancelRole: true, event: click) == .finishSetup)
       #expect(finish.promptAction(isCancelRole: true, event: try key(36)) == .finishSetup)
       #expect(finish.promptAction(isCancelRole: true, event: nil) == .finishSetup)

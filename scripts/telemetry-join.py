@@ -1996,9 +1996,11 @@ def render_take_coverage(coverage: Sequence[TakeCoverageRow]) -> list[str]:
                     lines.append(f"  {event} on {release}: {NOT_OBSERVED}")
                 continue
             marker = "   <- no take keys" if row.with_take == 0 else ""
+            scope = TAKE_KEY_SCOPE.get(event)
+            scope_note = f" (scope: {scope})" if scope else ""
             lines.append(
                 f"  {event} on {release}: "
-                f"{row.with_take}/{row.total} rows carry {TAKE_PROPERTY}{marker}"
+                f"{row.with_take}/{row.total} rows carry {TAKE_PROPERTY}{scope_note}{marker}"
             )
 
     return lines
@@ -3394,6 +3396,7 @@ def run_self_test() -> int:
             {
                 "dictation.completed": [["2.6.0", 400, 400], ["2.7.0", 500, 500]],
                 "recording.cap_warning_shown": [["2.6.0", 3, 0]],
+                "polish_setup.prompt": [["2.6.0", 2, 2]],
             }
         )
     )
@@ -3412,6 +3415,10 @@ def run_self_test() -> int:
     assert "dictation.completed on 2.7.0: 500/500 rows carry take_id" in coverage_lines
     assert "recording.cap_warning_shown on 2.6.0: 0/3 rows carry take_id" in coverage_lines
     assert "<- no take keys" in coverage_lines, "a zero must be marked"
+    assert (
+        "polish_setup.prompt on 2.6.0: 2/2 rows carry take_id (scope: properties.surface = 'card')"
+        in coverage_lines
+    ), coverage_lines
     # THE BLACKOUT CELL. `recording.cap_warning_shown` was observed on 2.6.0 and is
     # absent on 2.7.0. The first renderer printed `not observed` only for events
     # missing from EVERY release, so this cell vanished silently — a per-release
@@ -3420,6 +3427,9 @@ def run_self_test() -> int:
     # Every event the fixture never returned gets a cell on BOTH observed releases.
     for name in TAKE_KEYED_EVENTS:
         if name in ("dictation.completed", "recording.cap_warning_shown"):
+            continue
+        if name == "polish_setup.prompt":
+            assert f"  {name} on 2.7.0: {NOT_OBSERVED}" in coverage_lines, name
             continue
         for rel in ("2.6.0", "2.7.0"):
             # #2958: with NO known floor a retired name's empty cell is still a blackout
