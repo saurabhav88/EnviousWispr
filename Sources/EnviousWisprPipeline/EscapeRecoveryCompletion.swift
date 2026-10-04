@@ -5,9 +5,8 @@ import Foundation
 /// What the Escape Recovery pill will need in order to paste, frozen before the
 /// driver clears its session context (#2087).
 ///
-/// **Nothing writes one yet.** Chunk 7 adds the capture at the terminal, chunk 8
-/// the pill that reads it. The sentences below describe the contract this type
-/// exists to keep, not behaviour the app performs today.
+/// Production captures this payload at the recovery terminal, before clearing
+/// the session context. The pill consumes it through the completion slot.
 ///
 /// **Not the text, by design.** It carries an id, so the presenter can re-read at
 /// press time and a row deleted or expired in the meantime resolves to nothing

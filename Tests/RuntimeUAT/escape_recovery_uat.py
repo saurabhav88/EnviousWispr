@@ -1017,12 +1017,12 @@ def main():
     print(f"targets: A={field_a}  B={field_b}")
 
     # The AX connection has to exist before the oracle control, not only before
-    # the retarget phase below. `verify_can_read` clears the document with
+    # the background-window Undo phase below. `verify_can_read` clears the document with
     # `w.press_key`, and every `w.*` entry point guards on `_ensure_connected`,
     # so without this the control aborts the whole run with "Not connected" —
     # BEFORE it has proven anything, and while reporting nothing about the
     # product. Connecting here rather than inside the control keeps the later
-    # reconnect at the retarget phase meaningful: that one re-attaches after
+    # reconnect at the background-window Undo phase meaningful: that one re-attaches after
     # focus has moved, which is a different thing from attaching at all.
     w.connect()
 
