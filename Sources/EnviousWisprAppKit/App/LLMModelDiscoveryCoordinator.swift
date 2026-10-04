@@ -10,6 +10,13 @@ final class LLMModelDiscoveryCoordinator {
   var isDiscoveringModels = false
   var keyValidationState: KeyValidationState = .idle
 
+  /// #3438: the TYPED verdict beside `keyValidationState`, tied to the provider and the saved
+  /// credential's revision it was earned on (`SavedKeyPresence`). `keyValidationState`'s
+  /// `.invalid(String)` carries a rejected key, no network and provider errors alike; only the
+  /// `.invalidAPIKey` catch below publishes `.rejected`. Cloud providers only, and only when a
+  /// presence owner was injected.
+  private(set) var cloudVerdict: PolishCloudVerdict?
+
   /// #2772 chunk 3: WHICH provider `discoveredModels` and `keyValidationState` describe,
   /// or `nil` when nothing has been loaded or validated.
   ///
@@ -29,6 +36,7 @@ final class LLMModelDiscoveryCoordinator {
       guard stateProvider != oldValue else { return }
       discoveredModels = []
       keyValidationState = .idle
+      cloudVerdict = nil
     }
   }
 
@@ -72,9 +80,35 @@ final class LLMModelDiscoveryCoordinator {
   /// default and is unchanged. Found by Codex.
   private let cacheDefaults: UserDefaults
 
-  init(keychainManager: KeychainManager, cacheDefaults: UserDefaults = .standard) {
+  /// The saved-key owner whose credential revision a typed verdict is tied to. nil in tests
+  /// that do not exercise the typed verdict; production always injects it.
+  private let savedKeyPresence: SavedKeyPresence?
+
+  /// The network call, injectable so a test drives every publication path below with a
+  /// scripted answer instead of a provider. Production takes `LLMModelDiscovery`.
+  private let discoverModels: @MainActor (LLMProvider, String) async throws -> [LLMModelInfo]
+
+  init(
+    keychainManager: KeychainManager, cacheDefaults: UserDefaults = .standard,
+    savedKeyPresence: SavedKeyPresence? = nil,
+    discoverModels: @escaping @MainActor (LLMProvider, String) async throws -> [LLMModelInfo] = {
+      provider, apiKey in
+      try await LLMModelDiscovery().discoverModels(provider: provider, apiKey: apiKey)
+    }
+  ) {
     self.keychainManager = keychainManager
     self.cacheDefaults = cacheDefaults
+    self.savedKeyPresence = savedKeyPresence
+    self.discoverModels = discoverModels
+  }
+
+  /// The revision of `provider`'s saved credential now, for a cloud provider with a presence
+  /// owner; nil otherwise, which publishes no typed verdict.
+  private func credentialRevision(for provider: LLMProvider) -> UInt64? {
+    switch provider {
+    case .openAI, .gemini, .claude: return savedKeyPresence?.revision(for: provider)
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return nil
+    }
   }
 
   /// Abandon any request still in flight, and clear the markers it was going to resolve.
@@ -88,6 +122,7 @@ final class LLMModelDiscoveryCoordinator {
     discoveryGeneration += 1
     isDiscoveringModels = false
     if keyValidationState == .validating { keyValidationState = .idle }
+    if cloudVerdict?.result == .checking { cloudVerdict = nil }
   }
 
   /// Reset discovery state (used when switching providers or clearing keys).
@@ -99,6 +134,7 @@ final class LLMModelDiscoveryCoordinator {
     stateProvider = nil
     discoveredModels = []
     keyValidationState = .idle
+    cloudVerdict = nil
   }
 
   /// Validate an API key and discover available models for the given provider.
@@ -129,6 +165,13 @@ final class LLMModelDiscoveryCoordinator {
     stateProvider = provider
     keyValidationState = .validating
     isDiscoveringModels = true
+    // The credential this check is about, captured before any read or network work. A save
+    // or clear while it runs moves the revision, and nothing this request learned about the
+    // old key may then publish (#3438).
+    let revisionAtStart = credentialRevision(for: provider)
+    cloudVerdict = revisionAtStart.map {
+      PolishCloudVerdict(provider: provider, credentialRevision: $0, result: .checking)
+    }
     // Lowered by whoever raised it, and only if nothing newer has raised it since. An
     // unconditional clear on the way out of a SUPERSEDED request turns off the spinner a
     // live one is still showing.
@@ -152,22 +195,25 @@ final class LLMModelDiscoveryCoordinator {
       }
       guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
         // Missing-key guard: no validation actually ran, so NO
-        // `api_key.validation_completed` event (#1173).
+        // `api_key.validation_completed` event (#1173). A missing or unreadable key is a
+        // presence fact (`SavedKeyPresence`), never a typed rejection.
         keyValidationState = .invalid(Self.noKeyMessage)
+        cloudVerdict = nil
         return
       }
       apiKey = key
     }
 
-    let discovery = LLMModelDiscovery()
     do {
-      let models = try await discovery.discoverModels(provider: provider, apiKey: apiKey)
+      let models = try await discoverModels(provider, apiKey)
       guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
       discoveredModels = models
       if provider != .appleIntelligence {
         cacheModels(models, for: provider)
       }
       keyValidationState = .valid
+      publishVerdict(.accepted, provider: provider, revision: revisionAtStart)
       emitValidationCompleted(
         provider: provider, result: "valid", source: source,
         modelCount: models.count,
@@ -182,6 +228,8 @@ final class LLMModelDiscoveryCoordinator {
       }
     } catch LLMError.providerUnavailable {
       guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(
         provider == .ollama
           ? Self.ollamaNotRunningMessage
@@ -191,14 +239,52 @@ final class LLMModelDiscoveryCoordinator {
       emitValidationCompleted(provider: provider, result: "provider_unavailable", source: source)
     } catch let error as LLMError where error == .invalidAPIKey {
       guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      // The ONE producer of a typed rejection: the provider refused this key.
+      publishVerdict(.rejected, provider: provider, revision: revisionAtStart)
+      keyValidationState = .invalid(Self.invalidKeyMessage)
+      discoveredModels = []
+      emitValidationCompleted(provider: provider, result: "invalid", source: source)
+    } catch let failure as ModelDiscoveryFailure
+      where failure == .permissionDenied || failure == .invalidKeyUnconfirmed
+    {
+      // Gemini 403, or a 400 that only MENTIONS the invalid-key reason: shown exactly as before
+      // (an invalid key, with the same telemetry), but neither is evidence the key was refused,
+      // so the typed verdict is inconclusive (#3438).
+      guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(Self.invalidKeyMessage)
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "invalid", source: source)
     } catch {
       guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(Self.validationFailureMessage(for: error))
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "error", source: source)
+    }
+  }
+
+  /// Whether the credential this request started on is still the saved one. When a save or
+  /// clear moved it, the request publishes nothing about the old key: not its models, legacy
+  /// verdict, typed verdict or model repair. The pending markers are cleared because this
+  /// request was their only author; the save path starts the next check itself.
+  private func credentialStillCurrent(_ provider: LLMProvider, _ revisionAtStart: UInt64?) -> Bool
+  {
+    guard credentialRevision(for: provider) != revisionAtStart else { return true }
+    isDiscoveringModels = false
+    if keyValidationState == .validating { keyValidationState = .idle }
+    if cloudVerdict?.result == .checking { cloudVerdict = nil }
+    return false
+  }
+
+  private func publishVerdict(
+    _ result: PolishCloudVerdict.Result, provider: LLMProvider, revision: UInt64?
+  ) {
+    cloudVerdict = revision.map {
+      PolishCloudVerdict(provider: provider, credentialRevision: $0, result: result)
     }
   }
 

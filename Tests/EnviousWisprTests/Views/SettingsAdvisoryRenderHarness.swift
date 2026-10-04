@@ -122,6 +122,7 @@ struct SettingsAdvisoryRenderHarness {
       .environment(coordinator).environment(settings).environment(setup)
       .environment(AIAvailabilityCoordinator())
       .environment(LLMModelDiscoveryCoordinator(keychainManager: keys, cacheDefaults: defaults))
+      .environment(SavedKeyPresence())
       .environment(egOne).environment(LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1))
       .environment(\.keychainManager, keys))
   }

@@ -17,6 +17,7 @@ struct AIPolishProviderPicker: View {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
+  @Environment(SavedKeyPresence.self) private var savedKeyPresence
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @State private var isOpen = false
 
@@ -31,6 +32,8 @@ struct AIPolishProviderPicker: View {
       cloudValidation: llmDiscovery.keyValidationState,
       openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,
       claudeKeySaved: model.claudeKeySaved,
+      savedKeyPresence: savedKeyPresence,
+      cloudVerdict: llmDiscovery.cloudVerdict,
       ollamaModel: settings.ollamaModel)
   }
 

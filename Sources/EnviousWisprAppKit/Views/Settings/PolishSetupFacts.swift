@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import Security
 
 // MARK: - The setup facts every polish policy reads (#3438)
 //
@@ -25,6 +26,27 @@ enum SavedKeyState: Equatable {
     case .some(true): return .present
     case .some(false): return .absent
     case nil: return .unknown
+    }
+  }
+
+  /// One provider's saved-key fact read straight from the Keychain, for a caller with no
+  /// editor on screen (the DEBUG import door). Key-less engines answer `.absent`; empty or
+  /// `errSecItemNotFound` is absent; any other failure is unknown. Synchronous like the
+  /// editor's reads; never call it from a view body.
+  static func read(_ provider: LLMProvider, keychain: KeychainManager) -> SavedKeyState {
+    let id: String
+    switch provider {
+    case .openAI: id = KeychainManager.openAIKeyID
+    case .gemini: id = KeychainManager.geminiKeyID
+    case .claude: id = KeychainManager.claudeKeyID
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return .absent
+    }
+    do {
+      return try keychain.retrieve(key: id).isEmpty ? .absent : .present
+    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+      return .absent
+    } catch {
+      return .unknown
     }
   }
 
@@ -126,9 +148,10 @@ struct PolishSetupFacts {
 }
 
 extension PolishSetupFacts {
-  /// The facts composed from the live app-level owners. The three things that differ per
-  /// surface are passed in: which verdict counts here, the saved-key reads (the page editor
-  /// holds its own, the DEBUG import door reads one provider), and the surface's Ollama model.
+  /// The facts composed from the live app-level owners. The things that differ per surface
+  /// are passed in: which verdict counts here, the saved-key reads (the page editor holds its
+  /// own, the DEBUG import door reads one provider), the typed verdict, and the surface's
+  /// Ollama model. Credential revisions always come from the one presence owner.
   @MainActor
   static func live(
     localPolishRuntimes: LocalPolishRuntimeSet,
@@ -137,6 +160,8 @@ extension PolishSetupFacts {
     validationProvider: LLMProvider?,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState,
     openAIKeySaved: Bool?, geminiKeySaved: Bool?, claudeKeySaved: Bool?,
+    savedKeyPresence: SavedKeyPresence,
+    cloudVerdict: PolishCloudVerdict?,
     ollamaModel: String
   ) -> PolishSetupFacts {
     PolishSetupFacts(
@@ -149,8 +174,7 @@ extension PolishSetupFacts {
       appleIsChecking: aiAvailability.isChecking,
       validationProvider: validationProvider,
       cloudValidation: cloudValidation,
-      // No typed verdict is published yet (#3438 chunk 2 adds it).
-      credentialRevisions: [:], cloudVerdict: nil,
+      credentialRevisions: savedKeyPresence.revisions, cloudVerdict: cloudVerdict,
       openAIKeySaved: openAIKeySaved, geminiKeySaved: geminiKeySaved,
       claudeKeySaved: claudeKeySaved,
       ollamaSetup: setup.ollamaSetup.setupState,

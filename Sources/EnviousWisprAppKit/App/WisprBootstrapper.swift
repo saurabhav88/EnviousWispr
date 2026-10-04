@@ -99,6 +99,8 @@ package final class WisprBootstrapper {
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
   let llmDiscovery: LLMModelDiscoveryCoordinator
+  /// #3438: which cloud keys are saved, for surfaces other than the AI Polish editor.
+  let savedKeyPresence: SavedKeyPresence
   let vocabularyPackManager: VocabularyPackManager
 
   /// Quick Add (#2381), as ONE slot rather than four.
@@ -309,7 +311,9 @@ package final class WisprBootstrapper {
       [transcriptionCheckpointStore] event in transcriptionCheckpointStore.apply(event)
     }
 
-    let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
+    let savedKeyPresence = SavedKeyPresence()
+    let llmDiscovery = LLMModelDiscoveryCoordinator(
+      keychainManager: keychainManager, savedKeyPresence: savedKeyPresence)
 
     let transcriptStore = TranscriptStore()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
@@ -2045,7 +2049,10 @@ package final class WisprBootstrapper {
         // The screen's gate, composed from the same coordinators the screen reads; the
         // door has no editor and so no unsaved-key draft.
         polishReadiness: {
-          [settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup] in
+          [
+            settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup,
+            savedKeyPresence
+          ] in
           let provider = settings.effectiveFileImportLLMProvider
           // The probes the screen runs on every appearance, through the same owner.
           await FileImportPolishGate.armImport(
@@ -2062,7 +2069,7 @@ package final class WisprBootstrapper {
             importOllamaModel: settings.fileImportLLMProvider == nil
               ? settings.ollamaModel : settings.fileImportOllamaModel,
             llmDiscovery: llmDiscovery, localPolishRuntimes: localPolishRuntimes,
-            aiAvailability: aiAvailability, setup: setup)
+            aiAvailability: aiAvailability, setup: setup, savedKeyPresence: savedKeyPresence)
         })
     #endif
     self.transcriptCoordinator = transcriptCoordinator
@@ -2096,6 +2103,7 @@ package final class WisprBootstrapper {
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
+    self.savedKeyPresence = savedKeyPresence
     self.vocabularyPackManager = vocabularyPackManager
     // #2381. Built from three collaborators this root already holds; it adds no new dependency of
     // its own and reaches nothing the root did not already have.
@@ -2415,6 +2423,7 @@ private struct MainWindowRoot: View {
       })
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
+      .environment(b.savedKeyPresence)
       .environment(b.vocabularyPackManager)
       // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
       .environment(b.learnFromEdits.availability)
@@ -2468,6 +2477,7 @@ private struct OnboardingWindowRoot: View {
     .environment(b.audioDeviceList)
     .environment(b.aiAvailability)
     .environment(b.llmDiscovery)
+    .environment(b.savedKeyPresence)
     .environment(\.asrManager, b.asrManager)
     .environment(\.activeEngine, b.activeEngine)
     .environment(\.keychainManager, b.keychainManager)

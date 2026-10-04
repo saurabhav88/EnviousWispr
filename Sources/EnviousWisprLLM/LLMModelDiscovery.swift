@@ -173,6 +173,42 @@ public struct LLMModelDiscovery: Sendable {
 
   // MARK: - Gemini
 
+  /// What a Gemini model-list answer that is not 200 means (#3438).
+  ///
+  /// Only Google's structured `ErrorInfo` with reason `API_KEY_INVALID` is evidence that the
+  /// KEY was refused: `{"error": {"status": "INVALID_ARGUMENT", "details": [{"@type":
+  /// "type.googleapis.com/google.rpc.ErrorInfo", "reason": "API_KEY_INVALID", ...}]}}`
+  /// (Google AIP-193 error model). The token appearing only in message text is
+  /// `invalidKeyUnconfirmed`, and a 403 is a permission failure (billing, API not enabled,
+  /// region or project restrictions), `permissionDenied`. The key check SHOWS both exactly as
+  /// it did before (an invalid key), but neither is recorded as a rejected key.
+  static func geminiFailure(statusCode: Int, body: String) -> (any Error)? {
+    if statusCode == 403 { return ModelDiscoveryFailure.permissionDenied }
+    if statusCode == 400 {
+      if geminiErrorInfoReasons(body).contains("API_KEY_INVALID") { return LLMError.invalidAPIKey }
+      // The old text match, kept for what the key check shows; not evidence of a refused key.
+      if body.contains("API_KEY_INVALID") { return ModelDiscoveryFailure.invalidKeyUnconfirmed }
+    }
+    guard statusCode == 200 else { return ModelDiscoveryFailure.httpStatus(statusCode) }
+    return nil
+  }
+
+  /// The `reason` of every `google.rpc.ErrorInfo` in a Google error envelope; empty when the
+  /// body is not that envelope.
+  static func geminiErrorInfoReasons(_ body: String) -> [String] {
+    guard let data = body.data(using: .utf8),
+      let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let error = root["error"] as? [String: Any],
+      let details = error["details"] as? [[String: Any]]
+    else { return [] }
+    return details.compactMap { detail in
+      guard (detail["@type"] as? String) == "type.googleapis.com/google.rpc.ErrorInfo" else {
+        return nil
+      }
+      return detail["reason"] as? String
+    }
+  }
+
   private func fetchGeminiModels(apiKey: String) async throws -> [(id: String, displayName: String)]
   {
     guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models") else {
@@ -187,15 +223,10 @@ public struct LLMModelDiscovery: Sendable {
       throw ModelDiscoveryFailure.invalidResponse
     }
 
-    if httpResponse.statusCode == 403 {
-      throw LLMError.invalidAPIKey
-    }
-    if httpResponse.statusCode == 400 {
-      let body = String(data: data, encoding: .utf8) ?? ""
-      if body.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
-    }
-    guard httpResponse.statusCode == 200 else {
-      throw ModelDiscoveryFailure.httpStatus(httpResponse.statusCode)
+    if let failure = Self.geminiFailure(
+      statusCode: httpResponse.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+    {
+      throw failure
     }
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -612,6 +643,12 @@ public enum ModelDiscoveryFailure: LocalizedError, Sendable, Equatable {
   case malformedPagination
   case invalidOllamaURL
   case network(String)
+  /// The provider refused the request for a permission reason (Gemini 403). Not evidence that
+  /// the key itself is invalid (#3438).
+  case permissionDenied
+  /// A Gemini 400 that mentions `API_KEY_INVALID` without the structured reason. Shown as an
+  /// invalid key, as before, but not evidence the key was refused (#3438).
+  case invalidKeyUnconfirmed
 
   public var errorDescription: String? {
     switch self {
@@ -622,6 +659,8 @@ public enum ModelDiscoveryFailure: LocalizedError, Sendable, Equatable {
       return "LLM request failed: Claude model pagination returned a malformed cursor"
     case .invalidOllamaURL: return "LLM request failed: Invalid Ollama URL"
     case .network(let detail): return "LLM request failed: Network error: \(detail)"
+    case .permissionDenied: return "LLM request failed: HTTP 403"
+    case .invalidKeyUnconfirmed: return "LLM request failed: HTTP 400"
     }
   }
 
@@ -659,6 +698,12 @@ public enum ModelDiscoveryFailure: LocalizedError, Sendable, Equatable {
         comment:
           "AI Polish settings, checking the API key: a network error. %@ is the system's description of it; keep it as is."
       )
+    // The key check shows the invalid-key sentence for this (`LLMModelDiscoveryCoordinator`);
+    // a caller that reaches here gets the same words as any other 403.
+    case .permissionDenied:
+      return ModelDiscoveryFailure.httpStatus(403).displayMessage
+    case .invalidKeyUnconfirmed:
+      return ModelDiscoveryFailure.httpStatus(400).displayMessage
     }
   }
 }

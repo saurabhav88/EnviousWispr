@@ -1,6 +1,5 @@
 import EnviousWisprCore
 import EnviousWisprLLM
-import Security
 
 // MARK: - May the import proceed with the engine it has chosen? (#2772 chunk 3)
 
@@ -107,7 +106,8 @@ enum FileImportPolishGate {
     llmDiscovery: LLMModelDiscoveryCoordinator,
     localPolishRuntimes: LocalPolishRuntimeSet,
     aiAvailability: AIAvailabilityCoordinator,
-    setup: SetupCoordinator
+    setup: SetupCoordinator,
+    savedKeyPresence: SavedKeyPresence
   ) -> FileImportPolishReadiness {
     // The caller's one saved-key read goes in this provider's slot; no other slot is read.
     let saved = savedKey.asSavedFlag
@@ -120,6 +120,8 @@ enum FileImportPolishGate {
         openAIKeySaved: provider == .openAI ? saved : nil,
         geminiKeySaved: provider == .gemini ? saved : nil,
         claudeKeySaved: provider == .claude ? saved : nil,
+        savedKeyPresence: savedKeyPresence,
+        cloudVerdict: llmDiscovery.cloudVerdict,
         // The import's own OLLAMA field, never the effective model, and present in the
         // daemon's own list, not merely remembered. See `ollamaModelIsArmed(_:downloaded:)`.
         ollamaModel: importOllamaModel),
@@ -157,20 +159,7 @@ enum FileImportPolishGate {
   static func savedKey(for provider: LLMProvider, keychain: KeychainManager)
     -> SavedKeyState
   {
-    let id: String
-    switch provider {
-    case .openAI: id = KeychainManager.openAIKeyID
-    case .gemini: id = KeychainManager.geminiKeyID
-    case .claude: id = KeychainManager.claudeKeyID
-    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return .absent
-    }
-    do {
-      return try keychain.retrieve(key: id).isEmpty ? .absent : .present
-    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
-      return .absent
-    } catch {
-      return .unknown
-    }
+    SavedKeyState.read(provider, keychain: keychain)
   }
 
   /// The whole decision, as a pure function of the same facts `ProviderStatusMapping.status`

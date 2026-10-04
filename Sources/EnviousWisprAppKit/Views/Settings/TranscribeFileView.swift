@@ -35,6 +35,7 @@ struct TranscribeFileView: View {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
+  @Environment(SavedKeyPresence.self) private var savedKeyPresence
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
 
   /// The shared setup editor's own state (key drafts, saved-key reads, a pending download).
@@ -1020,7 +1021,8 @@ struct TranscribeFileView: View {
     return FileImportPolishGate.readiness(
       provider: provider, savedKey: savedKey, hasUnsavedKeyDraft: edited,
       importOllamaModel: importOllamaModel, llmDiscovery: llmDiscovery,
-      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup)
+      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
+      savedKeyPresence: savedKeyPresence)
   }
 
   struct PolishChoice {
