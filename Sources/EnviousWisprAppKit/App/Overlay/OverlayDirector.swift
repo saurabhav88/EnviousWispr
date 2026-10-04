@@ -1644,10 +1644,10 @@ extension OverlayDirector: OverlayPresenting {
     // outcome the user asked for. That is a real VoiceOver experience, not a
     // theoretical one.
     //
-    // No second reason is claimed. `EscapeRecoveryWiring.pasteAction` copies to
-    // the clipboard and dispatches a keystroke; it raises no pill, so "a pill
-    // raised by onPaste would be destroyed by a later dismissal" describes
-    // nothing this code does today.
+    // A second effect of the order, since #3437: `EscapeRecoveryWiring.pasteAction`
+    // can now raise a pill (the guarded Copied notice when the restore ends on the
+    // clipboard). That notice is requested only after the delivery is awaited, so
+    // it arrives after this dismissal and is never destroyed by it.
     //
     // The take comes first so a stale press finds nothing and neither dismisses
     // nor pastes.

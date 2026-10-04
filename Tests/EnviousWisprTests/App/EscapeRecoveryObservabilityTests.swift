@@ -17,7 +17,7 @@ struct EscapeRecoveryObservabilityTests {
   private final class RestoreLogBox {
     var logs: [(outcome: String, ageMs: Int?, takeID: String?)] = []
     var reports: [(result: EscapeRecoveryPasteResult, takeID: String)] = []
-    var retargetCount = 0
+    var deliveryCount = 0
   }
 
   @MainActor
@@ -26,25 +26,24 @@ struct EscapeRecoveryObservabilityTests {
   }
 
   @Test("an id-less Undo is logged even though telemetry cannot join it")
-  func idlessUndoStillLogs() {
+  func idlessUndoStillLogs() async {
     let box = RestoreLogBox()
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil,
+      takeFacts: .testNone)
 
-    EscapeRecoveryPasteAction.paste(
+    await EscapeRecoveryPasteAction.paste(
       payload: payload,
       restorable: { _ in ("kept", Date(timeIntervalSinceNow: -1), nil) },
-      copyToClipboard: { _ in },
-      dispatchPaste: {},
-      report: { _, result, takeID in box.reports.append((result, takeID)) },
-      retarget: { _ in
-        box.retargetCount += 1
-        return false
+      deliver: { _, _, _ in
+        box.deliveryCount += 1
+        return HeldTextDeliveryResult(outcome: .clipboardOnly, fallbackClipboardChangeCount: 3)
       },
-      targetHasQuit: { _ in false },
+      presentNotice: { _, _, _ in },
+      report: { _, result, takeID in box.reports.append((result, takeID)) },
       recordLog: { box.logs.append(($0, $1, $2)) })
 
-    #expect(box.retargetCount == 1, "control: the restore reached its terminal path")
+    #expect(box.deliveryCount == 1, "control: the restore reached its terminal path")
     #expect(box.reports.isEmpty, "without a take id, telemetry must stay silent")
     #expect(box.logs.count == 1)
     #expect(box.logs.first?.outcome == EscapeRecoveryPasteResult.clipboardOnly.rawValue)
@@ -53,24 +52,23 @@ struct EscapeRecoveryObservabilityTests {
   }
 
   @Test("an Undo pressed after its row lapses records the refusal")
-  func missingRowLogsTheRefusal() {
+  func missingRowLogsTheRefusal() async {
     let box = RestoreLogBox()
 
-    EscapeRecoveryPasteAction.paste(
+    await EscapeRecoveryPasteAction.paste(
       payload: CancelUndoPayload(
-        transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
+        transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil,
+        takeFacts: .testNone),
       restorable: { _ in nil },
-      copyToClipboard: { _ in },
-      dispatchPaste: {},
-      report: { _, result, takeID in box.reports.append((result, takeID)) },
-      retarget: { _ in
-        box.retargetCount += 1
-        return true
+      deliver: { _, _, _ in
+        box.deliveryCount += 1
+        return HeldTextDeliveryResult(outcome: .pasted, fallbackClipboardChangeCount: nil)
       },
-      targetHasQuit: { _ in false },
+      presentNotice: { _, _, _ in },
+      report: { _, result, takeID in box.reports.append((result, takeID)) },
       recordLog: { box.logs.append(($0, $1, $2)) })
 
-    #expect(box.retargetCount == 0)
+    #expect(box.deliveryCount == 0)
     #expect(box.reports.isEmpty)
     #expect(box.logs.count == 1)
     #expect(box.logs.first?.outcome == "no-row")

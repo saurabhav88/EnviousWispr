@@ -58,7 +58,6 @@ import Testing
     let lockBox = TestRecordingLockedBox()
     let engineLease = EngineLease()
     let coordinator = DictationLifecycleCoordinator(
-      application: RecordingDesktopPresentationEffects(),
       kernelDriver: pipeline,
       whisperKitKernelDriver: whisperKitKernelDriver,
       recordingOverlay: overlay,

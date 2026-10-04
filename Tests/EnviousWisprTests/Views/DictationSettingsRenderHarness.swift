@@ -57,7 +57,7 @@ struct DictationSettingsRenderHarness {
     let last = LastRecordingResult()
     let locked = DictationLifecycleCoordinator.RecordingLockedAccess(get: { false }, set: { _ in })
     let lease = EngineLease()
-    let lifecycle = DictationLifecycleCoordinator(application: RecordingDesktopPresentationEffects(),
+    let lifecycle = DictationLifecycleCoordinator(
       kernelDriver: recording.kernelDriver, whisperKitKernelDriver: recording.whisperKitKernelDriver,
       recordingOverlay: overlay, hotkeyService: hotkey, settingsSync: sync,
       audioCapture: audio, transcriptCoordinator: TranscriptCoordinator(store: store),

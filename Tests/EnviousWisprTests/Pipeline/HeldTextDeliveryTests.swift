@@ -339,4 +339,44 @@ struct HeldTextDeliveryTests {
     #expect(calls.requests.isEmpty, "no cascade, so nothing can restore over the copy")
     #expect(calls.lines.isEmpty)
   }
+
+  // MARK: Real cascade, isolated board
+
+  /// The cascade itself, not a stand-in: with no target the cascade's own Tier 3 is the only
+  /// writer, so this proves the receipt is the real board's count after the real write.
+  private func realDelivery(
+    _ text: String, board: NSPasteboard, restore: Bool, calls: Calls
+  ) async -> HeldTextDeliveryResult {
+    await HeldTextDelivery.deliver(
+      text: text, targetApp: nil, targetElement: nil, targetWindow: nil, takeID: "take-x",
+      facts: Self.noFacts, settings: Self.settings(restore: restore),
+      seams: seams(calls, caret: nil), pasteboard: board,
+      cascade: { request in
+        await PasteCascadeExecutor(pasteboard: board, policy: .baseline).deliver(request)
+      },
+      log: { _ in })
+  }
+
+  @Test(
+    "Two restores ending on one board: each consumed its own text; only the latest receipt is fresh",
+    arguments: [false, true])
+  func interleavedRestoresKeepTheirOwnReceipts(restoreClipboard: Bool) async throws {
+    let calls = Calls()
+    let board = NSPasteboard.withUniqueName()
+    defer { board.releaseGlobally() }
+
+    let first = await realDelivery("first held", board: board, restore: restoreClipboard, calls: calls)
+    let firstReceipt = try #require(first.fallbackClipboardChangeCount)
+    // Which fallback depends on whether the test runner holds Accessibility trust (the cascade
+    // names a denial separately); both mean the text is on the board and nowhere else.
+    #expect([.clipboardOnly, .accessibilityDenied].contains(first.outcome))
+    #expect(board.string(forType: .string) == "first held ")
+
+    let second = await realDelivery("second held", board: board, restore: restoreClipboard, calls: calls)
+    let secondReceipt = try #require(second.fallbackClipboardChangeCount)
+    #expect(board.string(forType: .string) == "second held ")
+
+    #expect(board.changeCount == secondReceipt, "the latest write's notice may still show")
+    #expect(board.changeCount != firstReceipt, "the earlier restore's notice would now be stale")
+  }
 }

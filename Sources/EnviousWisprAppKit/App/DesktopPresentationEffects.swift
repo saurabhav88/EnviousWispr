@@ -61,8 +61,8 @@ package protocol ApplicationActivating: AnyObject {
   /// distinction that felt load-bearing — our app versus the user's — is about
   /// WHOSE focus moves, while the symptom is identical either way. A unit test
   /// that calls this steals focus on the developer's machine exactly as
-  /// `NSApp.activate` does. Escape Recovery uses it to hand the caret back after a
-  /// cancel.
+  /// `NSApp.activate` does. Paste Last uses it to bring the target app back (Escape Recovery
+  /// did until #3437 moved Undo onto the dictation paste cascade, which activates for itself).
   @discardableResult
   func activate(_ application: NSRunningApplication) -> Bool
 
@@ -70,27 +70,10 @@ package protocol ApplicationActivating: AnyObject {
   ///
   /// The route macOS 14+ needs: a background process is refused the foreground by
   /// `NSRunningApplication.activate()`, so the AX path is the one that works.
-  /// Separate from `activate(_:)` above because Escape Recovery tries THIS first
+  /// Separate from `activate(_:)` above because Paste Last tries THIS first
   /// and falls back to that — two calls, and a test must be able to see which one
   /// the code chose.
   func forceActivate(processIdentifier: pid_t) -> Bool
-
-  /// Put the caret in a specific field.
-  ///
-  /// The THIRD route in this family, and the one that made the point: I closed
-  /// `activateFallback`, then `forceActivate`, and reported the hole shut both
-  /// times while this one still defaulted live. Restoring the app alone hands the
-  /// caret back to wherever that app last left it, which after a cancel is
-  /// frequently a different field — so this is not decoration.
-  func focus(_ element: AXUIElement) -> Bool
-
-  /// Raise the window `element` lives in, within its app (#3121).
-  ///
-  /// Activating an app brings back ITS key window, which is the wrong one when the user moved to
-  /// another window of the same app before cancelling (two Chrome profiles are one process).
-  /// `nil`: the field's window could not be read, so there is nothing to raise; `true`: raised;
-  /// `false`: a readable window refused the raise.
-  func raiseWindow(of element: AXUIElement) -> Bool?
 }
 
 /// Give a panel the keyboard and bring it to the front.

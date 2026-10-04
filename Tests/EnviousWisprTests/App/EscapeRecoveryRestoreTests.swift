@@ -10,419 +10,121 @@ import Testing
 
 /// Getting the text back: the pill's Paste, and History's (#2087, chunk 12).
 ///
-/// Both doors were unguarded. A mutation battery deleted the field refocus and
-/// deleted History's restore event, and every existing test stayed green — so
-/// the pill could quietly paste into the wrong field, and every restore that did
-/// not go through the three-second offer could vanish from the numbers the
-/// feature is judged on.
+/// Both doors were unguarded. A mutation battery deleted History's restore event and every
+/// existing test stayed green, so every restore that did not go through the three-second offer
+/// could vanish from the numbers the feature is judged on. #3437: the pill's Undo now hands its
+/// text to the dictation delivery (`HeldTextDelivery`); where the text lands is that delivery's
+/// contract (`HeldTextDeliveryTests`), and this suite pins what Undo does with the result.
 @MainActor
 @Suite("Escape Recovery restore paths (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryRestoreTests {
 
   @MainActor
   private final class Spy {
-    var retargeted: [UUID] = []
+    var delivered: [(text: String, payload: ObjectIdentifier, takeID: String?)] = []
+    var notices: [(result: HeldTextDeliveryResult, takeID: String?, transcriptID: UUID)] = []
     var reports: [(ageMs: Int, result: EscapeRecoveryPasteResult, takeID: String)] = []
+    var logs: [(outcome: String, takeID: String?)] = []
+  }
+
+  private func payload() -> CancelUndoPayload {
+    CancelUndoPayload(
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil,
+      takeFacts: .testNone)
   }
 
   private func run(
     payload: CancelUndoPayload,
     row: (text: String, stampedAt: Date, takeID: String?)?,
+    returning result: HeldTextDeliveryResult = HeldTextDeliveryResult(
+      outcome: .pasted, fallbackClipboardChangeCount: nil),
     spy: Spy
-  ) {
-    EscapeRecoveryPasteAction.paste(
+  ) async {
+    await EscapeRecoveryPasteAction.paste(
       payload: payload,
       restorable: { _ in row },
-      copyToClipboard: { _ in },
-      dispatchPaste: {},
+      deliver: { text, payload, takeID in
+        spy.delivered.append((text, ObjectIdentifier(payload), takeID))
+        return result
+      },
+      presentNotice: { spy.notices.append(($0, $1, $2)) },
       report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: {
-        spy.retargeted.append($0.transcriptID)
-        return true
-      })
+      recordLog: { outcome, _, takeID in spy.logs.append((outcome, takeID)) })
   }
 
-  /// The pill's whole reason to exist over History.
-  ///
-  /// History pastes into whatever app you are in now. The pill pastes back into
-  /// the one you were dictating into, which is why the payload retains a handle
-  /// to it at all — and dropping the retarget makes the two identical while
-  /// every other assertion about the pill still holds.
-  @Test("a live row retargets the app and field it was dictated into")
-  func pasteRetargets() {
+  // MARK: The pill's door (#3437: the dictation delivery, not a paste of its own)
+
+  @Test("a live row hands its text, its payload and its take id to the delivery")
+  func liveRowIsDelivered() async {
     let spy = Spy()
-    let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
+    let held = payload()
+    await run(payload: held, row: ("kept text", Date(), "take-1"), spy: spy)
 
-    run(payload: payload, row: ("kept", Date(), "take-1"), spy: spy)
-
-    #expect(
-      spy.retargeted == [payload.transcriptID],
-      "without this the pill is just History's Paste wearing a different label")
-    #expect(spy.reports.count == 1, "control: the restore is reported")
-    #expect(spy.reports.first?.result == .pasted)
+    #expect(spy.delivered.count == 1)
+    #expect(spy.delivered.first?.text == "kept text")
+    #expect(spy.delivered.first?.payload == ObjectIdentifier(held))
+    #expect(spy.delivered.first?.takeID == "take-1")
+    #expect(spy.notices.isEmpty, "a delivered paste raises no Copied notice")
+    #expect(spy.reports.map(\.result) == [.pasted])
+    #expect(spy.reports.map(\.takeID) == ["take-1"])
   }
 
-  /// Inert, not merely harmless.
-  ///
-  /// A recovery can lapse between the pill being drawn and the button being
-  /// pressed. Retargeting anyway would yank the user into another app to paste
-  /// nothing — worse than doing nothing, because it looks like it worked.
-  @Test("a lapsed row retargets nothing and reports nothing")
-  func lapsedRowIsFullyInert() {
+  @Test("a lapsed row delivers nothing and reports nothing")
+  func lapsedRowDeliversNothing() async {
     let spy = Spy()
+    await run(payload: payload(), row: nil, spy: spy)
 
-    run(
-      payload: CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
-      row: nil, spy: spy)
-
-    #expect(spy.retargeted.isEmpty, "no app switch for text that is already gone")
-    #expect(spy.reports.isEmpty, "and nothing to report, because nothing was restored")
-  }
-
-  /// No join key, no event.
-  ///
-  /// The paste still happens — the user asked for their text and gets it. Only
-  /// the telemetry is dropped, because an event that cannot join the funnel
-  /// inflates a denominator and answers no question.
-  @Test("a row with no take id still pastes, and still reports nothing")
-  func missingTakeIDPastesButDoesNotReport() {
-    let spy = Spy()
-    let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
-
-    run(payload: payload, row: ("kept", Date(), nil), spy: spy)
-
-    #expect(spy.retargeted == [payload.transcriptID], "the user still gets their text")
+    #expect(spy.delivered.isEmpty)
+    #expect(spy.notices.isEmpty)
     #expect(spy.reports.isEmpty)
+    #expect(spy.logs.map(\.outcome) == ["no-row"])
   }
 
-  /// The target quit while the offer stood.
-  ///
-  /// Activation fails silently against a dead process — and the pid can even
-  /// belong to a REPLACEMENT process by then — after which an unconditional
-  /// Cmd-V lands in whatever is frontmost now. That is the user's words arriving
-  /// in an unrelated application, which is worse than not restoring them: they
-  /// did not ask for it and may not notice where it went.
-  @Test("a target that has quit is never pasted past")
-  func terminatedTargetIsNotPastedInto() {
+  @Test("a row with no take id still delivers and logs, and reports nothing")
+  func idlessRowDeliversWithoutTelemetry() async {
     let spy = Spy()
-    let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
+    await run(payload: payload(), row: ("kept", Date(), nil), spy: spy)
 
-    EscapeRecoveryPasteAction.paste(
-      payload: payload,
-      restorable: { _ in ("kept", Date(), "take-1") },
-      copyToClipboard: { _ in },
-      dispatchPaste: {},
-      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: {
-        spy.retargeted.append($0.transcriptID)
-        return true
-      },
-      targetHasQuit: { _ in true })
-
-    #expect(
-      spy.retargeted.isEmpty,
-      "no activation, so no keystroke goes to whatever replaced it")
-    #expect(
-      spy.reports.first?.result == .clipboardOnly,
-      """
-      still a restore, and the vocabulary already had the word for it: the text \
-      is on the clipboard and the row stands in History for 24 hours. Reporting \
-      `.pasted` would claim an insertion that did not happen.
-      """)
+    #expect(spy.delivered.count == 1 && spy.delivered.first?.takeID == nil)
+    #expect(spy.reports.isEmpty, "without a take id, telemetry must stay silent")
+    #expect(spy.logs.map(\.outcome) == [EscapeRecoveryPasteResult.pasted.rawValue])
   }
 
-  /// The control that keeps the test above honest: with a live target the paste
-  /// proceeds exactly as before, so the guard cannot be satisfied by refusing
-  /// everything.
-  @Test("a live target still pastes")
-  func liveTargetStillPastes() {
+  @Test(
+    "a delivery that ends on the clipboard asks for the Copied notice and reports clipboard_only",
+    arguments: [HeldTextDeliveryOutcome.clipboardOnly, .accessibilityDenied])
+  func clipboardEndingShowsTheNotice(outcome: HeldTextDeliveryOutcome) async {
     let spy = Spy()
-    let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
+    let held = payload()
+    let result = HeldTextDeliveryResult(outcome: outcome, fallbackClipboardChangeCount: 7)
+    await run(payload: held, row: ("kept", Date(), "take-2"), returning: result, spy: spy)
 
-    EscapeRecoveryPasteAction.paste(
-      payload: payload,
-      restorable: { _ in ("kept", Date(), "take-1") },
-      copyToClipboard: { _ in },
-      dispatchPaste: {},
-      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: {
-        spy.retargeted.append($0.transcriptID)
-        return true
-      },
-      targetHasQuit: { _ in false })
-
-    #expect(spy.retargeted == [payload.transcriptID])
-    #expect(spy.reports.first?.result == .pasted)
-  }
-
-  /// The app survived; the FIELD did not.
-  ///
-  /// One level finer than the terminated case above, and the same harm. The
-  /// view closed, the document was shut, the element refuses focus — and a
-  /// keystroke sent anyway lands in whatever that app has focused now. The user
-  /// dictated into one box and the words arrive in another.
-  ///
-  /// Refusing costs nothing: the text is already on the clipboard and the row
-  /// stands in History for 24 hours.
-  @Test("a retarget that failed is never followed by a keystroke")
-  func failedRetargetDoesNotPaste() {
-    let spy = Spy()
-    let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
-
-    EscapeRecoveryPasteAction.paste(
-      payload: payload,
-      restorable: { _ in ("kept", Date(), "take-1") },
-      copyToClipboard: { _ in },
-      dispatchPaste: {},
-      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: {
-        spy.retargeted.append($0.transcriptID)
-        return false
-      },
-      targetHasQuit: { _ in false })
-
-    #expect(
-      spy.retargeted == [payload.transcriptID],
-      "control: it was attempted — this is about the ANSWER being read, not skipped")
-    #expect(
-      spy.reports.first?.result == .clipboardOnly,
-      "the words stay on the clipboard rather than landing in the wrong field")
-  }
-
-  /// The production retarget has two activation routes because macOS may refuse
-  /// the Accessibility route while the ordinary AppKit activation still works.
-  /// If both fail, it must report failure so `paste` leaves the words safely on
-  /// the clipboard instead of sending Cmd-V to whichever app is frontmost.
-  @Test("the production retarget refuses a captured app when both activation routes fail")
-  func productionRetargetRefusesFailedActivation() {
-    let app = NSRunningApplication.current
-    let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: app, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
-    var forcedPIDs: [pid_t] = []
-    var fallbackCalls = 0
-    var focusCalls = 0
-
-    let retargeted = EscapeRecoveryPasteAction.retargetWithAccessibility(
-      payload,
-      forceActivate: {
-        forcedPIDs.append($0)
-        return false
-      },
-      activateFallback: { _ in
-        fallbackCalls += 1
-        return false
-      },
-      raiseWindow: { _ in nil },
-      // #2455 C3: was the live `PasteService.focusElement` default, so this case
-      // moved a real caret on the developer's machine. Unreached here — both
-      // activation routes fail above — and asserted as unreached below.
-      focusElement: { _ in
-        focusCalls += 1
-        return true
-      })
-
-    #expect(forcedPIDs == [app.processIdentifier], "the Accessibility route is tried first")
-    #expect(focusCalls == 0, "focus is not attempted when the app could not be reached")
-    #expect(fallbackCalls == 1, "the AppKit fallback is tried when Accessibility is unavailable")
-    #expect(
-      retargeted == false,
-      "a captured app that cannot be reached must not be followed by a paste into another app")
-  }
-
-  /// No target was captured, so Escape Recovery intentionally preserves
-  /// History's behavior and pastes into the user's current focus. This is not
-  /// an activation failure: there is simply no app to return to.
-  @Test("the production retarget permits a restore with no recorded target")
-  func productionRetargetPermitsNoTarget() {
-    let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
-    var activationAttempted = false
-    var focusAttempted = false
-
-    let retargeted = EscapeRecoveryPasteAction.retargetWithAccessibility(
-      payload,
-      forceActivate: { _ in
-        activationAttempted = true
-        return false
-      },
-      activateFallback: { _ in
-        activationAttempted = true
-        return false
-      },
-      raiseWindow: { _ in nil },
-      focusElement: { _ in
-        focusAttempted = true
-        return true
-      })
-
-    #expect(activationAttempted == false, "there is no app to activate")
-    #expect(focusAttempted == false, "and no field to focus")
-    #expect(retargeted == true, "the existing no-target behavior is intentional and preserved")
-  }
-
-  @Test("the production retarget refuses a captured field that cannot be focused")
-  func productionRetargetRefusesFailedFieldFocus() {
-    let app = NSRunningApplication.current
-    let element = AXUIElementCreateApplication(app.processIdentifier)
-    let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: app, targetElement: element, targetWindow: nil, takeFacts: .testNone)
-    var fallbackCalls = 0
-    var focusedElements: [AXUIElement] = []
-
-    let retargeted = EscapeRecoveryPasteAction.retargetWithAccessibility(
-      payload,
-      forceActivate: { _ in true },
-      activateFallback: { _ in
-        fallbackCalls += 1
-        return true
-      },
-      raiseWindow: { _ in nil },
-      focusElement: {
-        focusedElements.append($0)
-        return false
-      })
-
-    #expect(fallbackCalls == 0, "a successful Accessibility activation does not need AppKit")
-    #expect(focusedElements.count == 1, "the captured field is the decision point after activation")
-    #expect(
-      retargeted == false,
-      "a field that rejects focus must keep the recovery on the clipboard")
-  }
-
-  // MARK: The field's own window (#3121)
-
-  /// Two windows of one app (two Chrome profiles) are one process, so activating the app brings
-  /// back whichever window the user moved to. The live retarget raises the field's own window
-  /// between activation and field focus.
-  @MainActor
-  private func liveRetarget(raise: Bool?, element: AXUIElement?) -> (
-    Bool, [RecordingDesktopPresentationEffects.Call]
-  ) {
-    let effects = RecordingDesktopPresentationEffects()
-    effects.forceActivateSucceeds = true
-    effects.raiseWindowResult = raise
-    let app = NSRunningApplication.current
-    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: app, targetElement: element, targetWindow: nil, takeFacts: .testNone)
-    let result = EscapeRecoveryPasteAction.liveRetarget(application: effects)(payload)
-    return (result, effects.calls)
-  }
-
-  @Test("the field's window is raised after activation and before the field is focused")
-  @MainActor
-  func raisePrecedesFocus() {
-    let element = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
-    let (retargeted, calls) = liveRetarget(raise: true, element: element)
-    #expect(
-      calls == [
-        .forceActivate(pid: NSRunningApplication.current.processIdentifier), .raiseWindow, .focus,
-      ])
-    #expect(retargeted == true)
-  }
-
-  @Test("a readable window that refuses the raise is not focused and not pasted into")
-  @MainActor
-  func refusedRaiseStaysOnClipboard() {
-    let element = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
-    let (retargeted, calls) = liveRetarget(raise: false, element: element)
-    #expect(retargeted == false)
-    #expect(!calls.contains(.focus), "no caret move into a window that is not front")
-
-    // And the paste action turns that refusal into the clipboard-only finish, with no keystroke.
-    let effects = RecordingDesktopPresentationEffects()
-    effects.forceActivateSucceeds = true
-    effects.raiseWindowResult = false
-    let spy = Spy()
-    var dispatched = 0
-    EscapeRecoveryPasteAction.paste(
-      payload: CancelUndoPayload(
-        transcriptID: UUID(), targetApp: .current, targetElement: element, targetWindow: nil, takeFacts: .testNone),
-      restorable: { _ in ("kept", Date(), "take-1") },
-      copyToClipboard: { _ in },
-      dispatchPaste: { dispatched += 1 },
-      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: EscapeRecoveryPasteAction.liveRetarget(application: effects),
-      targetHasQuit: { _ in false })
-    #expect(spy.reports.first?.result == .clipboardOnly)
-    #expect(dispatched == 0)
-  }
-
-  @Test("an unreadable window leaves the field focus to decide, as before #3121")
-  @MainActor
-  func unreadableWindowKeepsFocusPath() {
-    let element = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
-    let (retargeted, calls) = liveRetarget(raise: nil, element: element)
-    #expect(calls.suffix(2) == [.raiseWindow, .focus])
-    #expect(retargeted == true)
-
-    let (noField, noFieldCalls) = liveRetarget(raise: false, element: nil)
-    #expect(noField == true, "no captured field: nothing to raise, the app-only retarget stands")
-    #expect(!noFieldCalls.contains(.raiseWindow))
-    #expect(!noFieldCalls.contains(.focus), "and no field focus either (#3423)")
-  }
-
-  // MARK: A launcher panel's owner as the target (#3423)
-
-  /// Record start now targets the application that owns the focused field when a non-activating
-  /// launcher panel holds the keyboard focus. If the panel closed before the user pressed the
-  /// pill's Paste, its field cannot be focused: the words must stay on the clipboard, never be
-  /// pasted into whatever the launcher's app or the front app shows now.
-  @Test("a substituted launcher target whose field cannot be focused keeps the words on the clipboard")
-  func substitutedOwnerWithClosedPanelStaysOnClipboard() throws {
-    let running = NSWorkspace.shared.runningApplications.filter { !$0.isTerminated }
-    try #require(running.count >= 2, "two live applications")
-    let (front, owner) = (running[0], running[1])
-    let field = AXUIElementCreateApplication(owner.processIdentifier + 10_000)
-    let context = KernelSessionContext()
-    context.recordStartTarget(
-      front: front, focus: .focused(element: field, ownerPID: owner.processIdentifier),
-      trusted: true, captureWindow: { _ in nil }, ownerApplication: { _ in owner },
-      // Raycast's policy, modeled without changing a running app's.
-      isEligibleOwner: { _ in
-        KernelSessionContext.isEligibleOwner(activationPolicy: .accessory, isTerminated: false)
-      },
-      ownPID: -2)
-    try #require(context.focusOwnerState == .disagree)
-    try #require(context.targetApp == owner, "the launcher's app was substituted")
-
-    var activated: [pid_t] = []
-    var focused: [AXUIElement] = []
-    var copies = 0
-    var dispatched = 0
-    let spy = Spy()
-    EscapeRecoveryPasteAction.paste(
-      payload: CancelUndoPayload(
-        transcriptID: UUID(), targetApp: context.targetApp,
-        targetElement: context.targetElement, targetWindow: nil, takeFacts: .testNone),
-      restorable: { _ in ("kept", Date(), "take-1") },
-      copyToClipboard: { _ in copies += 1 },
-      dispatchPaste: { dispatched += 1 },
-      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
-      retarget: { payload in
-        EscapeRecoveryPasteAction.retargetWithAccessibility(
-          payload,
-          forceActivate: {
-            activated.append($0)
-            return true
-          },
-          activateFallback: { _ in true },
-          raiseWindow: { _ in true },
-          focusElement: {
-            focused.append($0)
-            return false
-          })
-      },
-      targetHasQuit: { _ in false })
-
-    #expect(activated == [owner.processIdentifier], "the carried owner, not the front app")
-    #expect(focused.count == 1 && CFEqual(focused[0], field), "the carried field")
-    #expect(copies == 1)
+    #expect(spy.notices.count == 1)
+    #expect(spy.notices.first?.result == result, "the delivery's own receipt reaches the notice")
+    #expect(spy.notices.first?.takeID == "take-2")
+    #expect(spy.notices.first?.transcriptID == held.transcriptID)
     #expect(spy.reports.map(\.result) == [.clipboardOnly])
-    #expect(dispatched == 0, "no Cmd-V")
+  }
+
+  /// The settings are read at the PRESS, before anything is awaited. A coordinator with no row
+  /// keeps the delivery from running, so this case never reaches a live field or clipboard.
+  @Test("the wiring reads the delivery settings synchronously at the press")
+  func settingsAreSnapshottedAtThePress() {
+    let coordinator = TranscriptCoordinator(store: TranscriptStore())
+    final class Reads { var count = 0 }
+    let reads = Reads()
+    let action = EscapeRecoveryWiring.pasteAction(
+      coordinator: coordinator, overlay: nil,
+      settingsAtPress: {
+        reads.count += 1
+        return HeldDeliverySettings(
+          smartInsertion: true, autoPasteToActiveApp: true, restoreClipboardAfterPaste: false)
+      },
+      report: { _, _, _ in })
+
+    action(payload())
+
+    #expect(reads.count == 1, "read once, before the press returns")
   }
 
   // MARK: History's door

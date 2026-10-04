@@ -106,10 +106,13 @@ public enum EscapeRecoveryRestoreSource: String, Sendable, CaseIterable {
 /// Closed for the same reason as the source above: `paste_result` is a funnel
 /// dimension, and an invented label splits the series silently.
 public enum EscapeRecoveryPasteResult: String, Sendable, CaseIterable {
-  /// Inserted into the target application.
+  /// The paste route delivered: a verified direct insertion or a gated key or menu paste dispatch
+  /// (#3437: measured from the dictation cascade; it does not prove every key paste landed, a later
+  /// observed miss is `paste.landing_retained` with `origin=escape_recovery_undo`). Before #3437 the
+  /// pill reported this when the keystroke was merely attempted; split by version.
   case pasted
-  /// The target was gone or accessibility was refused, so the text went to the
-  /// clipboard instead. Still a restore — the user has their words back.
+  /// The cascade ended on the clipboard (target gone, unreachable, or Accessibility refused), so
+  /// the text went to the clipboard instead. Still a restore — the user has their words back.
   case clipboardOnly = "clipboard_only"
 }
 

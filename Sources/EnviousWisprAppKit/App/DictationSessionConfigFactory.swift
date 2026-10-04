@@ -26,19 +26,7 @@ enum DictationSessionConfigFactory {
     // (WhisperKit-only) maps to `.idle` in the kernel driver's state mapping.
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
-    // #1891: EXHAUSTIVE on purpose — the previous `default: return false` made
-    // this the one consumer the compiler could not flag. Adding `.advisory`
-    // without this line would have silently disabled auto-paste on the NEXT
-    // take: the user fixes their muted microphone, dictates successfully, and
-    // the text never lands. That is a heart-path regression hiding behind a
-    // green build and a green test suite. A future state must fail to compile
-    // here rather than quietly opt out of pasting.
-    let activePipelineIdle: Bool = {
-      switch active.state {
-      case .idle, .complete, .error, .advisory: return true
-      case .loadingModel, .recording, .transcribing, .polishing: return false
-      }
-    }()
+    let activePipelineIdle = Self.autoPasteAllowed(activePipelineState: active.state)
     // #500: drop the legacy `permissions.hasAccessibilityPermission` gate so the
     // paste cascade always runs. The cascade already handles AX-not-trusted
     // gracefully at PasteCascadeExecutor.swift:106-118 (forces `.nonText`,
@@ -82,5 +70,21 @@ enum DictationSessionConfigFactory {
       // mid-dictation applies to the next recording.
       s1Control: settings.s1Control
     )
+  }
+
+  /// Whether a delivery may paste automatically: only while the active pipeline is idle. #3437:
+  /// shared with the Escape Recovery Undo, which reads it at the press.
+  static func autoPasteAllowed(activePipelineState: PipelineState) -> Bool {
+    // #1891: EXHAUSTIVE on purpose — the previous `default: return false` made
+    // this the one consumer the compiler could not flag. Adding `.advisory`
+    // without this line would have silently disabled auto-paste on the NEXT
+    // take: the user fixes their muted microphone, dictates successfully, and
+    // the text never lands. That is a heart-path regression hiding behind a
+    // green build and a green test suite. A future state must fail to compile
+    // here rather than quietly opt out of pasting.
+    switch activePipelineState {
+    case .idle, .complete, .error, .advisory: return true
+    case .loadingModel, .recording, .transcribing, .polishing: return false
+    }
   }
 }

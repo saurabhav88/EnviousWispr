@@ -175,13 +175,7 @@ final class DictationLifecycleCoordinator {
   private lazy var whisperKitStateHandler: PipelineStateChangeHandler =
     makeStateChangeHandler(backendLabel: "whisperKit")
 
-  /// #2455 C3: the activation seam, required and non-defaulted. Escape Recovery's
-  /// pill hands the caret back to the user's app after a cancel, which is a focus
-  /// change a unit test must not be able to make.
-  private let application: any ApplicationActivating
-
   init(
-    application: any ApplicationActivating,
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
     recordingOverlay: OverlayDirector,
@@ -196,7 +190,6 @@ final class DictationLifecycleCoordinator {
     releaseEngineClaim: @escaping @MainActor (EngineLease.Token) -> Void,
     otherAudioHold: OtherAudioHold? = nil
   ) {
-    self.application = application
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
     self.recordingOverlay = recordingOverlay
@@ -519,6 +512,19 @@ final class DictationLifecycleCoordinator {
 
   // MARK: - PR8 deferred resolver helpers
 
+  /// #3437: the settings an Escape Recovery Undo delivers with, read at the press. Auto-paste
+  /// follows the same rule a recording-start config uses (`autoPasteAllowed`): only while the active
+  /// pipeline is idle, so an Undo pressed during a new dictation copies instead of pasting into it.
+  func undoDeliverySettings() -> HeldDeliverySettings {
+    let backend = activeCaptureBackend() ?? lastCapturingBackend
+    let driver = backend == .whisperKit ? whisperKitKernelDriver : kernelDriver
+    return HeldDeliverySettings(
+      smartInsertion: settings.smartInsertion,
+      autoPasteToActiveApp: DictationSessionConfigFactory.autoPasteAllowed(
+        activePipelineState: driver.state),
+      restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste)
+  }
+
   /// #285 — resolve which backend owns the shared audio capture right now.
   /// Returns nil when both pipelines are fully idle. Shared helper for both
   /// telemetry routing and engine-interrupt routing so the two paths cannot
@@ -645,7 +651,15 @@ final class DictationLifecycleCoordinator {
               payload: payload,
               onPaste: EscapeRecoveryWiring.pasteAction(
                 coordinator: self.transcriptCoordinator,
-                application: self.application,
+                overlay: self.recordingOverlay,
+                settingsAtPress: { [weak self] in
+                  guard let self else {
+                    return HeldDeliverySettings(
+                      smartInsertion: false, autoPasteToActiveApp: false,
+                      restoreClipboardAfterPaste: false)
+                  }
+                  return self.undoDeliverySettings()
+                },
                 report: EscapeRecoveryWiring.restoreReporter(source: .pill))))
         },
         // The SAME `append` an ordinary completion uses. A held row differs by

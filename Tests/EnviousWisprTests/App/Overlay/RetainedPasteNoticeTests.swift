@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprPipeline
 
 // MARK: - The late clipboard notice (#3106 PR B)
 //
@@ -213,5 +214,135 @@ struct RetainedPasteNoticeDirectorTests {
     #expect(OverlayDirector.ownerRecheck(for: id, bindingID: id, predicate: nil) == nil)
     let found = OverlayDirector.ownerRecheck(for: id, bindingID: id, predicate: { false })
     #expect(found?() == false, "the owner's own answer is what is returned")
+  }
+}
+
+// MARK: - The Copied notice after an Escape Recovery Undo (#3437)
+
+/// When these fail, an Undo that ended on the clipboard either says nothing (the user thinks the
+/// text is gone), says Copied when the board no longer holds the text, or covers a newer
+/// dictation's pill.
+@MainActor
+@Suite("Escape Recovery Undo: the Copied notice (#3437)", .tags(.productOutcome))
+struct EscapeRecoveryNoticeTests {
+
+  let clock = LearnedPillClock()
+  let host = WindowlessOverlayHost()
+
+  @MainActor
+  private final class Log {
+    var shown: [Bool] = []
+    var announcements: [OverlayAnnouncement] = []
+  }
+
+  @MainActor
+  private final class Board { var count = 10 }
+
+  private func director(_ log: Log, deferring: Bool) -> (OverlayDirector, () -> (() -> Void)?) {
+    var deferred: (() -> Void)?
+    let d = OverlayDirector(
+      host: host, scheduler: clock.scheduler,
+      announce: { log.announcements.append($0) },
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      advisoryHint: { _ in nil }, selections: { .shipped },
+      firstRenderSchedule: { deferring ? (deferred = $0) : $0() })
+    return (d, { deferred })
+  }
+
+  private func isShowing(_ d: OverlayDirector) -> Bool {
+    if case .retainedClipboardFallback? = d.renderModel.state.presentation?.content { return true }
+    return false
+  }
+
+  private func show(
+    _ d: (any RetainedPasteNoticeHosting)?, receipt: Int?, board: Board, log: Log
+  ) {
+    EscapeRecoveryNotice.show(
+      identity: "take-1", receipt: receipt, reason: nil, host: d,
+      reportShown: { log.shown.append($0) }, boardChangeCount: { board.count })
+  }
+
+  @Test("An idle overlay shows Copied once and reports it shown")
+  func idleOverlayShowsTheNotice() {
+    let log = Log()
+    let (d, _) = director(log, deferring: false)
+    show(d, receipt: 10, board: Board(), log: log)
+    #expect(isShowing(d))
+    #expect(log.shown == [true])
+  }
+
+  @Test("A missing receipt, a moved board or no overlay: nothing shown, reported once as not shown")
+  func staleOrMissingReceiptIsRefused() {
+    let log = Log()
+    let (d, _) = director(log, deferring: false)
+    let board = Board()
+    show(d, receipt: nil, board: board, log: log)
+    show(d, receipt: 9, board: board, log: log)
+    show(nil, receipt: 10, board: board, log: log)
+    #expect(isShowing(d) == false)
+    #expect(log.shown == [false, false, false])
+  }
+
+  @Test("The board moves before a deferred first render: the notice never renders")
+  func boardMovedBeforeRender() throws {
+    let log = Log()
+    let (d, deferred) = director(log, deferring: true)
+    let board = Board()
+    show(d, receipt: 10, board: board, log: log)
+    #expect(log.shown.isEmpty, "nothing answered before the render")
+    board.count = 11
+    let render = try #require(deferred())
+    render()
+    #expect(isShowing(d) == false)
+    #expect(log.shown == [false])
+  }
+
+  /// The race the guard exists for: the user presses Undo, starts a new dictation while the
+  /// delivery is still running, and the delivery then ends on the clipboard. The new
+  /// dictation's pill must stay exactly as it is.
+  @Test("An Undo finishing during a new dictation never replaces that dictation's pill")
+  func undoFinishingDuringANewDictationLeavesItsPill() async {
+    let log = Log()
+    let (d, _) = director(log, deferring: false)
+    let board = Board()
+    let held = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil,
+      takeFacts: .testNone)
+    var resume: CheckedContinuation<HeldTextDeliveryResult, Never>?
+    let started = AsyncStream<Void>.makeStream()
+
+    let undo = Task { @MainActor in
+      await EscapeRecoveryPasteAction.paste(
+        payload: held,
+        restorable: { _ in ("kept", Date(), "take-1") },
+        deliver: { _, _, _ in
+          await withCheckedContinuation { continuation in
+            resume = continuation
+            started.continuation.yield()
+          }
+        },
+        presentNotice: { result, takeID, transcriptID in
+          EscapeRecoveryNotice.show(
+            identity: takeID ?? transcriptID.uuidString,
+            receipt: result.fallbackClipboardChangeCount, reason: nil, host: d,
+            reportShown: { log.shown.append($0) }, boardChangeCount: { board.count })
+        },
+        report: { _, _, _ in })
+    }
+    var waiter = started.stream.makeAsyncIterator()
+    _ = await waiter.next()
+
+    _ = d.present(.processing(phase: .transcribing))
+    let newPill = d.renderModel.state.presentation
+    let announcedBefore = log.announcements.count
+
+    resume?.resume(
+      returning: HeldTextDeliveryResult(outcome: .clipboardOnly, fallbackClipboardChangeCount: 10))
+    await undo.value
+
+    #expect(d.renderModel.state.presentation == newPill, "the new dictation's pill is untouched")
+    #expect(isShowing(d) == false)
+    #expect(log.announcements.count == announcedBefore, "nothing spoken over the new dictation")
+    #expect(log.shown == [false])
   }
 }
