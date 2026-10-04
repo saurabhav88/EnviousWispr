@@ -312,10 +312,9 @@ struct ClipboardCleanupLandingTests {
 
   // MARK: #3437: an Undo restore and a new dictation overlap on one board
 
-  /// An Escape Recovery Undo is an ordinary delivery to the clipboard cleanup (it goes through the
-  /// same cascade), so a dictation delivered while the Undo's cleanup is still waiting must win the
-  /// board exactly as a second dictation would: each route consumed its own text, the older
-  /// cleanup neither writes nor reports, and the board ends where the newer delivery leaves it.
+  /// A newer delivery supersedes an Undo-shaped pending cleanup.
+  /// These cases prove cleanup silence and final clipboard state with restoration
+  /// on/off. They do not observe the payload consumed by a queued paste.
   @Test(
     "Restore on: a dictation delivered while an Undo cleanup waits supersedes it (#3437)")
   func dictationSupersedesAWaitingUndoCleanupRestoreOn() async throws {
@@ -325,7 +324,7 @@ struct ClipboardCleanupLandingTests {
       let pb = board(holding: Self.user)
       let undoSnapshot = ClipboardCleanup.snapshotForDelivery(from: pb)
       put("the held words ", on: pb)
-      #expect(pb.string(forType: .string) == "the held words ", "the Undo consumed its own text")
+      #expect(pb.string(forType: .string) == "the held words ", "the board holds the submitted payload")
       ClipboardCleanup.scheduleRestore(
         undoSnapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
         landing: check(undoFake, legacy: "the held words ", into: outcomes))
@@ -334,7 +333,7 @@ struct ClipboardCleanupLandingTests {
 
       let inherited = ClipboardCleanup.snapshotForDelivery(from: pb)
       put("the new dictation ", on: pb)
-      #expect(pb.string(forType: .string) == "the new dictation ", "the dictation consumed its own text")
+      #expect(pb.string(forType: .string) == "the new dictation ", "the board holds the submitted payload")
       let dictationFake = FakeLanding()
       ClipboardCleanup.scheduleRestore(
         inherited, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
