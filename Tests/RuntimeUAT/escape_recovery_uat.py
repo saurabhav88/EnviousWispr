@@ -519,8 +519,12 @@ def focus(path):
 
 
 def new_textedit_doc(name):
-    """A real foreign text field, which is the only honest paste target."""
-    path = f"/tmp/ew-uat-{name}.txt"
+    """A real foreign text field, which is the only honest paste target.
+
+    The path carries this run's pid, so a run never truncates a file a previous (aborted) run left
+    open in TextEdit: that raises TextEdit's "changed by another application" sheet, which then
+    blocks the closed-document phase's close (live run 2026-10-04 14:55)."""
+    path = f"/tmp/ew-uat-{name}-{os.getpid()}.txt"
     open(path, "w").close()
     focus(path)
     return path
@@ -891,6 +895,14 @@ def phase_gone_field():
     subprocess.run(["osascript", "-e",
                     f'tell application "TextEdit" to close (every document whose path is "{doc}") '
                     'saving no'], check=True)
+    # Undo must find the field GONE. A close a sheet refused leaves it open, and Undo would then
+    # paste into it and fail this phase for the harness's reason, not the product's.
+    still_open = subprocess.run(
+        ["osascript", "-e",
+         f'tell application "TextEdit" to count (every document whose path is "{doc}")'],
+        capture_output=True, text=True, check=True).stdout.strip()
+    if still_open != "0":
+        raise Aborted(f"{label}: TextEdit did not close {doc} ({still_open} open); Undo not tested")
     tapped = press_undo(base)
     copied_seen = wait_for("the Copied notice in the overlay", lambda: overlay_shows(COPIED),
                            deadline=3.0)

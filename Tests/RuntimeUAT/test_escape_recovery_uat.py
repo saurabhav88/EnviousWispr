@@ -446,7 +446,8 @@ try:
     uat.hold_take = lambda path, base: HELD
     uat.press_undo = lambda base: True
     uat.wait_for_cleanup = lambda route, restore_on, held: LEGACY
-    uat.subprocess = types.SimpleNamespace(run=lambda *a, **k: None)
+    closed = types.SimpleNamespace(stdout="0\n")
+    uat.subprocess = types.SimpleNamespace(run=lambda *a, **k: closed)
     for shown, should_fail in ((True, False), (False, True)):
         uat.overlay_shows = (lambda answer: lambda text: answer)(shown)
         uat.results.clear()
@@ -456,6 +457,12 @@ try:
         ok(f"gone field: overlay {'shows' if shown else 'never shows'} Copied -> "
            f"{'FAIL' if should_fail else 'pass'}",
            any("overlay showed" in n for n in failed) == should_fail, str(failed))
+    # A close a TextEdit sheet refused leaves the document open: the phase must abort, never let
+    # Undo paste into a field that should be gone.
+    uat.subprocess = types.SimpleNamespace(run=lambda *a, **k: types.SimpleNamespace(stdout="1\n"))
+    uat.overlay_shows = lambda text: True
+    ok("gone field: a document still open after the close aborts the phase",
+       aborts(uat.phase_gone_field))
 finally:
     for k, v in _saved.items():
         setattr(uat, k, v)
@@ -504,7 +511,7 @@ try:
     uat.press_undo = lambda base: True
     uat.overlay_shows = lambda text: True
     uat.wait_for_cleanup = lambda route, restore_on, held: LEGACY
-    uat.subprocess = types.SimpleNamespace(run=lambda *a, **k: None)
+    uat.subprocess = types.SimpleNamespace(run=lambda *a, **k: types.SimpleNamespace(stdout="0\n"))
     uat.wait_for = lambda what, pred, deadline=45.0, poll=0.25: True
     uat.apply_settings = lambda pairs, label: None
     uat.hover_offer = lambda: True
