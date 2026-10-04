@@ -398,34 +398,27 @@ struct KernelFinalizationWiring {
     // cumulative allowance as its later revalidation.
     readCaretContext: @escaping @MainActor (
       AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?
-    ) -> PasteService.CaretContext? = {
-      PasteService.readCaretContext(element: $0, terminalBudget: $1, onTerminalRefusal: $2)
-    },
+    ) -> PasteService.CaretContext? = KernelFinalizationWiring.InsertionSeams.live.readCaretContext,
     // #1980 delivery-time retry seam. Production queries the target app's OWN
     // focused element directly, scoped to its pid by construction, so it can
     // never resolve to a different app than the one the user was dictating
     // into. Tests inject a stub so the retry's occurrence, PID routing, and
     // outcome are provable without depending on real AX focus state.
-    focusedElementInTargetApp: @escaping @MainActor (pid_t) -> AXUIElement? = {
-      PasteService.focusedElement(inAppWithPID: $0)
-    },
+    focusedElementInTargetApp: @escaping @MainActor (pid_t) -> AXUIElement? =
+      KernelFinalizationWiring.InsertionSeams.live.focusedElementInTargetApp,
     // #1980 whole-diff review (P1). Whether a retry-recovered element is a
     // usable insertion target, gating whether it is adopted at all (see the
     // `deliver` closure). Production reads the live AX role; tests inject a
     // fixed answer so both directions of this gate are provable without a
     // real focused text field in the test process.
-    isRetryTargetUsable: @escaping @MainActor (AXUIElement) -> Bool = {
-      PasteService.isTextFieldRole($0)
-    },
+    isRetryTargetUsable: @escaping @MainActor (AXUIElement) -> Bool =
+      KernelFinalizationWiring.InsertionSeams.live.isRetryTargetUsable,
     // #3304: whether a retry-recovered field sits in the window recorded at record start. The
     // retry proves same APP only; with a recorded window, a field in ANOTHER window of that app
     // (the user switched and the host woke meanwhile) must not become the paste target. Production
     // reads the field's window under the standard bound; tests inject the answer.
-    recoveredIsInRecordedWindow: @escaping @MainActor (AXUIElement, AXUIElement) -> Bool = {
-      PasteService.element(
-        $0, isInWindow: $1, ax: LivePastedRegionAXOperations(),
-        scheduler: TaskPastedRegionScheduler())
-    },
+    recoveredIsInRecordedWindow: @escaping @MainActor (AXUIElement, AXUIElement) -> Bool =
+      KernelFinalizationWiring.InsertionSeams.live.recoveredIsInRecordedWindow,
     // Word-oracle seam. Production takes the live runtime snapshot; tests inject
     // a fixed oracle so a case never depends on the machine's dictionaries — and
     // so no test has to MUTATE the process-global runtime, which would race the
@@ -450,9 +443,8 @@ struct KernelFinalizationWiring {
     // The decision lease is unaffected. `snapshot(for:)` takes the lease and
     // `drain` admits a preparation under the SAME lock, so that handshake is
     // serialised by the lock and never by the main actor.
-    seamCasingOracle: @escaping @Sendable (String?) async -> SeamCasingOracle = {
-      language in SeamCasingOracleRuntime.snapshot(for: language)
-    },
+    seamCasingOracle: @escaping @Sendable (String?) async -> SeamCasingOracle =
+      KernelFinalizationWiring.InsertionSeams.live.seamCasingOracle,
     // Paired with the seam above. A READY snapshot holds a lease that stops the
     // preparation drain entering the shared spell checker underneath a decision
     // already in flight; releasing is mandatory and happens in a `defer`.
@@ -462,9 +454,8 @@ struct KernelFinalizationWiring {
     // (`SeamCasingOracleRuntime.swift:507-513`), so the hop bought nothing and
     // deferred the release until the main actor was next free — which is
     // exactly when a queued preparation for the next language could start.
-    releaseOracleLease: @escaping @Sendable () -> Void = {
-      SeamCasingOracleRuntime.releaseDecisionLease()
-    },
+    releaseOracleLease: @escaping @Sendable () -> Void =
+      KernelFinalizationWiring.InsertionSeams.live.releaseOracleLease,
     // #1921 language-resolver seam. `@Sendable`, not `@MainActor`, because
     // resolution now runs INSIDE the `@Sendable` deadline operation. Defaults to
     // the real resolver, so production behaviour is identical.
@@ -478,18 +469,16 @@ struct KernelFinalizationWiring {
       _ engineReportedLanguage: String?,
       _ text: String,
       _ surroundingText: String
-    ) -> DictationLanguageResolver.Resolution = {
-      DictationLanguageResolver.resolve(
-        lockedLanguage: $0, engineDetectsLanguage: $1, engineReportedLanguage: $2,
-        text: $3, surroundingText: $4)
-    },
+    ) -> DictationLanguageResolver.Resolution =
+      KernelFinalizationWiring.InsertionSeams.live.resolveLanguage,
     pasteCompletionRegistry: PasteCompletionRegistry?,
     // #900 clock seam — defaults to today's live expression, so production
     // behavior is identical (the closure capture adds one call). A test injects
     // a manual clock to advance logical time by hand and assert the tick rate,
     // instead of sleeping (which `tests-no-real-time-scheduling-precision` bans).
     // Trailing-defaulted so the other construction sites stay source-compatible.
-    currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    currentTime: @escaping @MainActor () -> TimeInterval =
+      KernelFinalizationWiring.InsertionSeams.live.currentTime,
     // #950 — the SAME shared `KernelTelemetryState` the kernel stamps and the
     // lifecycle sink reads; the metrics builder reads the kernel-computed
     // tail-trim diagnostic from it for the PostHog `dictation.completed` event.
@@ -852,27 +841,10 @@ struct KernelFinalizationWiring {
         // Why this dictation was or was not repaired, recorded before delivery
         // so it survives every route outcome. Names and shapes only (#1785 §8).
         outcome.smartInsertionEnabled = config?.smartInsertion
-        outcome.caretContextOutcome = {
-          if config?.smartInsertion != true { return "setting_off" }
-          if context.targetElement == nil { return "no_target" }
-          if let terminalRefusal { return terminalRefusal.rawValue }
-          // #1932. A titled box is named separately so the field can see that
-          // path working. The parser's own refusal names never get here —
-          // `TerminalContextResolver` collapses all ten into
-          // `terminal_screen_refused` on purpose, because that enum's raw values
-          // are a shipped closed set — so a titled path that silently stopped
-          // matching would be invisible without this. That is the six-week blind
-          // spot #1926 sat in, and it is why declining this field on the
-          // grounds that "the refusal side already shows it" was wrong.
-          if caretContext?.terminalEvidence?.located.boxOpeningKind == .titled {
-            return "terminal_read_titled_box"
-          }
-          if caretContext?.isScreenDerived == true { return "terminal_read" }
-          return caretContext == nil ? "unreadable" : "read_selected"
-        }()
-        outcome.repairRules =
-          payloads.candidateRules.isEmpty
-          ? nil : payloads.candidateRules.map(\.telemetryName).joined(separator: ",")
+        outcome.caretContextOutcome = Self.caretContextOutcome(
+          smartInsertion: config?.smartInsertion == true, targetElement: context.targetElement,
+          terminalRefusal: terminalRefusal, caretContext: caretContext)
+        outcome.repairRules = Self.repairRulesLabel(payloads)
         // #1921. An auto-paste attempt records the resolver outcome here,
         // overwriting the nil defaulted at the top of `deliver`. A
         // language-stage timeout records `none` because it genuinely produced
@@ -926,41 +898,13 @@ struct KernelFinalizationWiring {
         // (`scan=114.7ms of 115.3ms total`); this path had no equivalent, which
         // is why three separate causal theories all survived contact with the
         // data. Metadata only: labels and durations, never text.
-        let casingTiming: String = {
-          // The LOG reports healthy deliveries too; telemetry above does not.
-          // Measuring the main-thread hop per target app is the open question
-          // (#1946: all 9 field timeouts sit in 4 apps, and every app with a
-          // native accessibility bridge is at zero), and a timeout-only trace
-          // can only answer it by waiting for failures.
-          guard let s = casingSnapshot ?? gate.frozenEvidence else { return "" }
-          func ms(_ v: Double?) -> String { v.map { String(format: "%.1f", $0) } ?? "-" }
-          var parts = [
-            "phase=\(s.phase.rawValue)",
-            "lang=\(ms(s.languageMs))ms",
-            "hop=\(ms(s.oracleFetchMs))ms",
-            "repair=\(ms(s.repairMs))ms",
-          ]
-          if let inFlight = s.oracleInFlight {
-            parts.append("stuck=\(inFlight)")
-            parts.append("stuck_for=\(ms(s.oracleInFlightMs))ms")
-          }
-          parts.append("closures=\(s.oracleClosuresCompleted)")
-          if let maxMs = s.oracleClosureMaxMs { parts.append("slowest=\(ms(maxMs))ms") }
-          return parts.joined(separator: " ")
-        }()
+        let casingTiming = Self.casingTimingDescription(casingSnapshot ?? gate.frozenEvidence)
         await AppLogger.shared.log(
-          "CURSOR_REPAIR app=\(context.targetApp?.bundleIdentifier ?? "nil") "
-            + "caret=\(outcome.caretContextOutcome ?? "nil") "
-            + "rules=\(outcome.repairRules ?? "none") "
-            + "candidate=\(payloads.repairedText == nil ? "none" : "offered")"
-            + (terminalTiming.isEmpty ? "" : " timing=[\(terminalTiming)]")
-            + (casingTiming.isEmpty ? "" : " casing=[\(casingTiming)]")
-            // #1980: local diagnostic only — production recovery-rate/latency
-            // authority is the `caret_capture_retried`/`caret_capture_retry_ms`
-            // telemetry (Chunk 3), which survives past this DEBUG-only log.
-            + (caretCaptureRetried
-              ? " retry_ms=\(String(format: "%.1f", caretCaptureRetryMs ?? 0))"
-              : ""),
+          Self.cursorRepairLine(
+            app: context.targetApp?.bundleIdentifier, caretOutcome: outcome.caretContextOutcome,
+            rules: outcome.repairRules, candidateOffered: payloads.repairedText != nil,
+            terminalTiming: terminalTiming, casingTiming: casingTiming,
+            retried: caretCaptureRetried, retryMs: caretCaptureRetryMs),
           level: .info, category: "KernelFinalizationWiring")
 
         // #2639. Snippet text delivers through the cascade like every other payload, line
@@ -1006,29 +950,11 @@ struct KernelFinalizationWiring {
         // reports up to 1.5 s later carries its own take and never a later one's.
         let deliveryTakeID = telemetryState.takeID
         let result = await deliverPaste(
-          PasteDeliveryRequest(
-            legacyText: pasteText,
-            repairedText: payloads.repairedText,
-            caretContext: caretContext,
-            // Asked of the RULES, not enumerated here. Listing the destructive
-            // ones at this call site is how the first version missed
-            // `.droppedTerminalPeriod` — a rule that also removes a character
-            // the user dictated, found by cloud review. `deletesDictatedText`
-            // is an exhaustive switch beside the enum, so a new rule cannot
-            // inherit "not destructive" by being forgotten out here.
-            candidateDeletesDictatedText: payloads.candidateRules.contains {
-              $0.deletesDictatedText
-            },
-            targetApp: context.targetApp,
-            targetElement: context.targetElement,
-            // Same local boolean the outcome fields above were stamped from —
-            // not re-derived from `targetElement` presence, which cannot tell
-            // "retried and recovered" apart from "captured at record-start".
-            targetElementIsRetried: caretCaptureRetried,
+          Self.deliveryRequest(
+            computation: computation, targetApp: context.targetApp,
+            recordedWindow: context.targetWindow, takeID: deliveryTakeID,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
-            terminalBudget: terminalBudget,
-            takeID: deliveryTakeID,
-            recordedWindow: context.targetWindow))
+            origin: .dictation))
         pasteResult = result
 
         // WHICH payload actually went to the app, which `CURSOR_REPAIR` cannot
@@ -1161,6 +1087,30 @@ struct KernelFinalizationWiring {
     let resolveLanguage:
       @Sendable (String?, Bool, String?, String, String) -> DictationLanguageResolver.Resolution
     let currentTime: @MainActor () -> TimeInterval
+
+    /// The production seams: the ONE owner of each live default, which the wiring's initializer
+    /// defaults and the Escape Recovery Undo delivery both read.
+    static var live: InsertionSeams {
+      InsertionSeams(
+        readCaretContext: {
+          PasteService.readCaretContext(element: $0, terminalBudget: $1, onTerminalRefusal: $2)
+        },
+        focusedElementInTargetApp: { PasteService.focusedElement(inAppWithPID: $0) },
+        isRetryTargetUsable: { PasteService.isTextFieldRole($0) },
+        recoveredIsInRecordedWindow: {
+          PasteService.element(
+            $0, isInWindow: $1, ax: LivePastedRegionAXOperations(),
+            scheduler: TaskPastedRegionScheduler())
+        },
+        seamCasingOracle: { language in SeamCasingOracleRuntime.snapshot(for: language) },
+        releaseOracleLease: { SeamCasingOracleRuntime.releaseDecisionLease() },
+        resolveLanguage: {
+          DictationLanguageResolver.resolve(
+            lockedLanguage: $0, engineDetectsLanguage: $1, engineReportedLanguage: $2,
+            text: $3, surroundingText: $4)
+        },
+        currentTime: { ProcessInfo.processInfo.systemUptime })
+    }
   }
 
   /// The caret half of Smart Insertion: the field to insert into (the captured one, or the
@@ -1211,6 +1161,115 @@ struct KernelFinalizationWiring {
       engineReportedLanguage: facts.engineReportedLanguage,
       protectedSpellings: facts.protectedSpellings, seams: seams)
     return InsertionComputation(caret: caret, repair: repair)
+  }
+
+  /// Why a delivery was or was not repaired: the caret outcome name stamped and logged (#1785 §8).
+  /// #3437: shared by the dictation delivery and the Escape Recovery Undo delivery.
+  static func caretContextOutcome(
+    smartInsertion: Bool, targetElement: AXUIElement?, terminalRefusal: TerminalContextRefusal?,
+    caretContext: PasteService.CaretContext?
+  ) -> String {
+    if !smartInsertion { return "setting_off" }
+    if targetElement == nil { return "no_target" }
+    if let terminalRefusal { return terminalRefusal.rawValue }
+    // #1932. A titled box is named separately so the field can see that
+    // path working. The parser's own refusal names never get here —
+    // `TerminalContextResolver` collapses all ten into
+    // `terminal_screen_refused` on purpose, because that enum's raw values
+    // are a shipped closed set — so a titled path that silently stopped
+    // matching would be invisible without this. That is the six-week blind
+    // spot #1926 sat in, and it is why declining this field on the
+    // grounds that "the refusal side already shows it" was wrong.
+    if caretContext?.terminalEvidence?.located.boxOpeningKind == .titled {
+      return "terminal_read_titled_box"
+    }
+    if caretContext?.isScreenDerived == true { return "terminal_read" }
+    return caretContext == nil ? "unreadable" : "read_selected"
+  }
+
+  /// The casing deadline's per-step timing for the `CURSOR_REPAIR` line, or "" when there is no
+  /// evidence. #3437: shared by the dictation delivery and the Escape Recovery Undo delivery.
+  static func casingTimingDescription(_ evidence: LanguageRepairDeadlineGate.Snapshot?) -> String {
+    // The LOG reports healthy deliveries too; telemetry above does not.
+    // Measuring the main-thread hop per target app is the open question
+    // (#1946: all 9 field timeouts sit in 4 apps, and every app with a
+    // native accessibility bridge is at zero), and a timeout-only trace
+    // can only answer it by waiting for failures.
+    guard let s = evidence else { return "" }
+    func ms(_ v: Double?) -> String { v.map { String(format: "%.1f", $0) } ?? "-" }
+    var parts = [
+      "phase=\(s.phase.rawValue)",
+      "lang=\(ms(s.languageMs))ms",
+      "hop=\(ms(s.oracleFetchMs))ms",
+      "repair=\(ms(s.repairMs))ms",
+    ]
+    if let inFlight = s.oracleInFlight {
+      parts.append("stuck=\(inFlight)")
+      parts.append("stuck_for=\(ms(s.oracleInFlightMs))ms")
+    }
+    parts.append("closures=\(s.oracleClosuresCompleted)")
+    if let maxMs = s.oracleClosureMaxMs { parts.append("slowest=\(ms(maxMs))ms") }
+    return parts.joined(separator: " ")
+  }
+
+  /// The `CURSOR_REPAIR` line: names and shapes only, never a word of the document. `origin` is
+  /// nil for dictation and names an Escape Recovery Undo restore (#3437). Shared by both.
+  static func cursorRepairLine(
+    app: String?, caretOutcome: String?, rules: String?, candidateOffered: Bool,
+    terminalTiming: String, casingTiming: String, retried: Bool, retryMs: Double?,
+    origin: String? = nil
+  ) -> String {
+    "CURSOR_REPAIR app=\(app ?? "nil") "
+      + "caret=\(caretOutcome ?? "nil") "
+      + "rules=\(rules ?? "none") "
+      + "candidate=\(candidateOffered ? "offered" : "none")"
+      + (terminalTiming.isEmpty ? "" : " timing=[\(terminalTiming)]")
+      + (casingTiming.isEmpty ? "" : " casing=[\(casingTiming)]")
+      // #1980: local diagnostic only — production recovery-rate/latency
+      // authority is the `caret_capture_retried`/`caret_capture_retry_ms`
+      // telemetry (Chunk 3), which survives past this DEBUG-only log.
+      + (retried ? " retry_ms=\(String(format: "%.1f", retryMs ?? 0))" : "")
+      + (origin.map { " origin=\($0)" } ?? "")
+  }
+
+  /// The candidate rules as the one comma-joined label stamped and logged, or nil when none.
+  static func repairRulesLabel(_ payloads: CursorInsertionRepair.PreparedPayloads) -> String? {
+    payloads.candidateRules.isEmpty
+      ? nil : payloads.candidateRules.map(\.telemetryName).joined(separator: ",")
+  }
+
+  /// The cascade request for one Smart Insertion computation. #3437: shared by the dictation
+  /// delivery and the Escape Recovery Undo delivery, so both submit the same fields from the same
+  /// computation, including its ONE terminal-resolution budget.
+  static func deliveryRequest(
+    computation: InsertionComputation, targetApp: NSRunningApplication?,
+    recordedWindow: AXUIElement?, takeID: String?, restoreClipboardAfterPaste: Bool,
+    origin: PasteDeliveryOrigin
+  ) -> PasteDeliveryRequest {
+    let payloads = computation.repair.payloads
+    var request = PasteDeliveryRequest(
+      legacyText: payloads.legacyText,
+      repairedText: payloads.repairedText,
+      caretContext: computation.caret.caretContext,
+      // Asked of the RULES, not enumerated here. Listing the destructive
+      // ones at this call site is how the first version missed
+      // `.droppedTerminalPeriod` — a rule that also removes a character
+      // the user dictated, found by cloud review. `deletesDictatedText`
+      // is an exhaustive switch beside the enum, so a new rule cannot
+      // inherit "not destructive" by being forgotten out here.
+      candidateDeletesDictatedText: payloads.candidateRules.contains { $0.deletesDictatedText },
+      targetApp: targetApp,
+      targetElement: computation.caret.targetElement,
+      // Same local boolean the outcome fields above were stamped from —
+      // not re-derived from `targetElement` presence, which cannot tell
+      // "retried and recovered" apart from "captured at record-start".
+      targetElementIsRetried: computation.caret.retried,
+      restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+      terminalBudget: computation.caret.terminalBudget,
+      takeID: takeID,
+      recordedWindow: recordedWindow)
+    request.origin = origin
+    return request
   }
 
   /// #3437: the caret half of Smart Insertion, shared by the dictation delivery and the Escape
