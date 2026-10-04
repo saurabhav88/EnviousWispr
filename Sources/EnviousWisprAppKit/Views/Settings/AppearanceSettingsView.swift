@@ -96,7 +96,7 @@ struct AppearanceSettingsView: View {
           }
           // #2480: the menu bar icon always stays, so hiding the Dock icon
           // cannot leave the app unreachable.
-          BrandedRow(showDivider: false) {
+          BrandedRow {
             SettingsRow(
               icon: "dock.rectangle", title: "Show app in Dock",
               short: "Keep EnviousWispr in your Dock.",
@@ -107,6 +107,21 @@ struct AppearanceSettingsView: View {
                 .toggleStyle(BrandedToggleStyle())
                 .fixedSize()
                 .accessibilityLabel("Show app in Dock")
+            }
+          }
+          // #3441: the gold wave on the menu bar icon while an update waits. Off keeps the
+          // icon plain; the update still shows in the menu bar menu and What's New.
+          BrandedRow(showDivider: false) {
+            SettingsRow(
+              icon: "menubar.rectangle", title: "Update alert in menu bar",
+              short: "Show gold lips when an update is ready.",
+              help: "When off, the menu bar icon stays plain while an update waits. You can still install it from the menu bar menu or What's New."
+            ) {
+              Toggle("", isOn: $settings.showMenuBarUpdateAlert)
+                .labelsHidden()
+                .toggleStyle(BrandedToggleStyle())
+                .fixedSize()
+                .accessibilityLabel("Update alert in menu bar")
             }
           }
         }

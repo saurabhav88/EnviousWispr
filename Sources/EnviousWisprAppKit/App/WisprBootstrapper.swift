@@ -1069,6 +1069,7 @@ package final class WisprBootstrapper {
     // #3438: the same late binding for the setup-warning monitor, built further down. Its
     // configuration and eligibility move here, synchronously, never only by later observation.
     let polishSetupMonitorHolder = PolishSetupMonitorHolder()
+    let menuBarControllerHolder = MenuBarControllerHolder()
     // #3289 §8b: the same late binding for the idle-memory observer, built further down; a usage
     // metrics change restarts its idle stretch.
     weak var idleMemoryObserverForSettings: IdleMemoryObserver?
@@ -1077,7 +1078,8 @@ package final class WisprBootstrapper {
       [
         weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
         bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
-        weak learnFromEdits, weak appWindowCoordinator, polishSetupMonitorHolder
+        weak learnFromEdits, weak appWindowCoordinator, polishSetupMonitorHolder,
+        menuBarControllerHolder
       ] key
       in
       guard let settingsSync, let settings else { return }
@@ -1097,6 +1099,10 @@ package final class WisprBootstrapper {
       // #2480: the Dock switch takes effect now, not at the next window close.
       if key == .showInDock {
         appWindowCoordinator?.refreshActivationPolicy(excluding: nil)
+      }
+      // #3441: the update-alert switch changes the menu bar icon now.
+      if key == .showMenuBarUpdateAlert {
+        menuBarControllerHolder.controller?.updateIcon()
       }
       // #1047: appearance is a view-shell concern (no pipeline sync) — apply it
       // to NSApp here so both the menu and the Settings picker take effect live.
@@ -2141,6 +2147,7 @@ package final class WisprBootstrapper {
         savedKeyPresence.recordRead(state, for: provider, readAt: readAt)
       })
     polishSetupMonitorHolder.monitor = polishSetupMonitor
+    menuBarControllerHolder.controller = menuBarController
     savedKeyPresence.onChange = { [weak polishSetupMonitor] in
       polishSetupMonitor?.configurationOrEligibilityChanged()
     }

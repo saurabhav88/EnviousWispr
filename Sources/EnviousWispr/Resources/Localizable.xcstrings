@@ -15204,6 +15204,16 @@
         }
       }
     },
+    "Show gold lips when an update is ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Goldene Lippen anzeigen, wenn ein Update bereitsteht."
+          }
+        }
+      }
+    },
     "Show in Finder" : {
       "comment" : "Move to Applications result: opens Finder at the moved app.",
       "localizations" : {
@@ -18468,6 +18478,16 @@
         }
       }
     },
+    "Update alert in menu bar" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update-Hinweis in der Menüleiste"
+          }
+        }
+      }
+    },
     "Update available" : {
       "comment" : "Menu bar menu, VoiceOver: the menu bar icon when an update is waiting.",
       "localizations" : {
@@ -19256,6 +19276,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn dies ausgeschaltet ist, erscheint das Dock-Symbol nur bei geöffnetem EnviousWispr-Fenster. Das Symbol in der Menüleiste bleibt immer sichtbar."
+          }
+        }
+      }
+    },
+    "When off, the menu bar icon stays plain while an update waits. You can still install it from the menu bar menu or What's New." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn dies ausgeschaltet ist, bleibt das Symbol in der Menüleiste unverändert, solange ein Update bereitsteht. Du kannst es weiterhin über das Menü in der Menüleiste oder über „Neuigkeiten“ installieren."
           }
         }
       }

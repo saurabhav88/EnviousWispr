@@ -92,9 +92,10 @@ final class MenuBarController: NSObject {
   func updateIcon() {
     let state = currentViewState()
     iconAnimator.transition(to: Self.iconState(state))
-    // #1019: non-color accessibility affordance for the gold-wave cue.
+    // #1019: non-color accessibility affordance for the gold-wave cue; #3441: only while the
+    // cue is on.
     statusItem?.button?.setAccessibilityValue(
-      state.updateAvailable
+      Self.iconState(state) == .updatePending
         ? String(
           localized: "Update available",
           comment: "Menu bar menu, VoiceOver: the menu bar icon when an update is waiting.") : nil)
@@ -124,7 +125,8 @@ final class MenuBarController: NSObject {
       // #1019: idle-with-update variant. Chosen ONLY here, after onboarding /
       // warning / error / recording / processing — so the update cue never
       // overrides a higher-priority state.
-      return state.updateAvailable ? .updatePending : .idle
+      // #3441: the cue is the user's to turn off; the menu item and What's New still say it.
+      return state.updateAvailable && state.showUpdateAlert ? .updatePending : .idle
     }
   }
 
@@ -740,6 +742,7 @@ final class MenuBarController: NSObject {
       showMicrophoneWarning: permissions.microphonePermissionIsDenied,
       hasUpdater: sparkleUpdateController.hasUpdater,
       updateAvailable: pending != nil,
+      showUpdateAlert: settings.showMenuBarUpdateAlert,
       updateDisplayVersion: pending?.displayVersion,
       installEnabled: pending != nil && !installRefused,
       appearancePreference: settings.appearancePreference,
@@ -1050,6 +1053,9 @@ struct MenuBarViewState: Equatable {
   let hasUpdater: Bool
   /// #1019: a non-critical update is waiting to install.
   var updateAvailable: Bool = false
+  /// #3441: the user's "Update alert in menu bar" switch. Read only by `iconState`; the menu's
+  /// update item does not depend on it.
+  var showUpdateAlert: Bool = true
   /// #1019: the pending update's display version (e.g. "2.1.4"), for the
   /// dropdown item copy.
   var updateDisplayVersion: String? = nil
@@ -1071,4 +1077,11 @@ struct MenuBarViewState: Equatable {
 extension MenuBarItemID {
   /// #3438: the "Finish setting up AI polish" line.
   static let polishSetup = NSUserInterfaceItemIdentifier("menu.polishSetup")
+}
+
+/// Late binding for the settings change hook, which is installed before the menu bar exists
+/// (#3441).
+@MainActor
+final class MenuBarControllerHolder {
+  weak var controller: MenuBarController?
 }

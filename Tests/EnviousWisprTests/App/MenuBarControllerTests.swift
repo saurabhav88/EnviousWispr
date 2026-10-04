@@ -97,6 +97,29 @@ struct MenuBarControllerTests {
     #expect(MenuBarController.iconState(s) == .updatePending)
   }
 
+  @Test("iconState: with the update alert switched off, a waiting update keeps the plain icon (#3441)")
+  func iconStateUpdateAlertOff() {
+    var s = fixture(pipelineState: .idle, updateAvailable: true)
+    s.showUpdateAlert = false
+    #expect(MenuBarController.iconState(s) == .idle)
+    // The switch only hides the cue; other states are unchanged.
+    var recording = fixture(pipelineState: .recording, updateAvailable: true)
+    recording.showUpdateAlert = false
+    #expect(MenuBarController.iconState(recording) == .recording)
+  }
+
+  @Test("renderMenu: the update item stays when the menu bar alert is off (#3441)")
+  func renderMenuUpdateItemWithAlertOff() {
+    let controller = makeController()
+    let menu = NSMenu()
+    var state = fixture(
+      pipelineState: .idle, updateAvailable: true, updateDisplayVersion: "2.1.4",
+      installEnabled: true)
+    state.showUpdateAlert = false
+    controller.renderMenu(into: menu, state: state)
+    #expect(item(menu, id: MenuBarItemID.installUpdate)?.title == "Update ready: Install v2.1.4")
+  }
+
   @Test("iconState: update cue never overrides recording")
   func iconStateUpdateIgnoredWhileRecording() {
     let s = fixture(pipelineState: .recording, updateAvailable: true)

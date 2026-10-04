@@ -78,6 +78,8 @@ public final class SettingsManager {
     case showBluetoothTips
     /// #2480: keep the Dock icon for the whole run, or only while a window is open.
     case showInDock
+    /// #3441: the gold update wave on the menu bar icon.
+    case showMenuBarUpdateAlert
     case playRecordingSounds
     case recordingSoundPairing
     case otherAudioWhileDictating
@@ -127,7 +129,7 @@ public final class SettingsManager {
     "warmEnginePolicy", "appearancePreference",
     "overlayPillPosition",
     "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
-    "showBluetoothTips", "showInDock", "playRecordingSounds", "recordingSoundPairing",
+    "showBluetoothTips", "showInDock", "showMenuBarUpdateAlert", "playRecordingSounds", "recordingSoundPairing",
     "otherAudioWhileDictating", "learnFromEdits",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
@@ -902,6 +904,17 @@ public final class SettingsManager {
     }
   }
 
+  /// #3441: whether the menu bar icon shows the gold update wave while an update waits. Off:
+  /// the icon stays plain; the update still shows in the menu bar menu and the What's New gift.
+  /// Read by `MenuBarController.iconState`, reached through the settings onChange route.
+  /// Default: `SettingsDefaultValues.showMenuBarUpdateAlert`.
+  public var showMenuBarUpdateAlert: Bool {
+    didSet {
+      defaults.set(showMenuBarUpdateAlert, forKey: "showMenuBarUpdateAlert")
+      onChange?(.showMenuBarUpdateAlert)
+    }
+  }
+
   /// #1342: play a short sound when recording starts and stops. UI-only —
   /// no pipeline sync; read live by `RecordingSoundCue` at each cue moment.
   /// Default: `SettingsDefaultValues.playRecordingSounds`, named rather than
@@ -1426,6 +1439,10 @@ public final class SettingsManager {
     showInDock =
       defaults.object(forKey: "showInDock") as? Bool
       ?? SettingsDefaultValues.showInDock
+
+    showMenuBarUpdateAlert =
+      defaults.object(forKey: "showMenuBarUpdateAlert") as? Bool
+      ?? SettingsDefaultValues.showMenuBarUpdateAlert
 
     playRecordingSounds =
       defaults.object(forKey: "playRecordingSounds") as? Bool

@@ -174,6 +174,10 @@ enum SettingsDefaultValues {
   // appears only while a window is open.
   static let showInDock = true
 
+  // #3441 (founder, 2026-10-04): the gold update wave stays on by default; a user who finds it
+  // distracting can turn it off and still find the update in the menu and What's New.
+  static let showMenuBarUpdateAlert = true
+
   // Recording start/stop sounds default ON, paired to Whisper Tick (founder,
   // 2026-09-01), superseding the shipped OFF. Start and stop are the two moments
   // a user most needs confirmed without looking at the pill. Whisper Tick was

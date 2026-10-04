@@ -415,6 +415,8 @@ final class PipelineSettingsSync {
       break  // #1480: UI-only; read by BluetoothAwarenessPresenter, no pipeline sync.
     case .showInDock:
       break  // #2480: UI-only; the bootstrapper's settings onChange routes it to the Dock policy owner.
+    case .showMenuBarUpdateAlert:
+      break  // #3441: UI-only; the bootstrapper's settings onChange refreshes the menu bar icon.
     case .playRecordingSounds, .recordingSoundPairing:
       break  // #1342: UI-only; read live by RecordingSoundCue, no pipeline sync.
     case .otherAudioWhileDictating:
