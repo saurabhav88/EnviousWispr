@@ -77,6 +77,13 @@ def validate_route(page, tab=None, debug_build=None):
 
 # ── Reading the tree ───────────────────────────────────────────────────────
 
+# A list longer than this is page CONTENT (History shows every dictation, 24,384 rows on the
+# founder's Mac on 2026-10-04), never the sidebar or a tab strip, which hold a dozen buttons.
+# Reading such a list element by element took minutes and looked like a hang.
+LONG_LIST_ROLES = ("AXOutline", "AXTable", "AXList")
+LONG_LIST_CHILDREN = 200
+
+
 class AX:
     """How this module touches the accessibility tree. Every operation is injected."""
 
@@ -105,13 +112,24 @@ class AX:
         return [t for t in (self.text(el, "AXTitle"), self.text(el, "AXDescription")) if t]
 
     def walk(self, el, depth=0, max_depth=60, skip=None):
+        """Every element under `el`, itself first. The rows of a content list longer than
+        `LONG_LIST_CHILDREN` are not walked (the list itself is): nothing this module reads
+        lives in one, and History's 24,384 rows made every whole-window search take minutes."""
         if el is None or depth > max_depth:
             return
         if skip is not None and any(self.same(el, s) for s in skip):
             return
         yield el
-        for c in self.children(el) or []:
+        for c in _searchable_children(self, el):
             yield from self.walk(c, depth + 1, max_depth, skip)
+
+
+def _searchable_children(ax, el):
+    """`el`'s children, or none for a content list longer than `LONG_LIST_CHILDREN`."""
+    kids = ax.children(el) or []
+    if len(kids) > LONG_LIST_CHILDREN and ax.role(el) in LONG_LIST_ROLES:
+        return []
+    return kids
 
 
 def _labelled(ax, el, english, role="AXButton"):
@@ -135,13 +153,6 @@ def selection_state(ax, value):
     return None
 
 
-# A list longer than this is page CONTENT (History shows every dictation, 24,384 rows on the
-# founder's Mac on 2026-10-04), never the sidebar or a tab strip, which hold a dozen buttons.
-# Reading such a list element by element took minutes and looked like a hang.
-LONG_LIST_ROLES = ("AXOutline", "AXTable", "AXList")
-LONG_LIST_CHILDREN = 200
-
-
 def _minimal_region(ax, root, required, skip=None):
     """The smallest subtree holding a button for EVERY label in `required`.
 
@@ -158,10 +169,7 @@ def _minimal_region(ax, root, required, skip=None):
             return set()
         found = {label for label in required if _labelled(ax, el, label)}
         child_hit = False
-        kids = ax.children(el) or []
-        if len(kids) > LONG_LIST_CHILDREN and ax.role(el) in LONG_LIST_ROLES:
-            kids = []
-        for c in kids:
+        for c in _searchable_children(ax, el):
             sub = visit(c, depth + 1)
             if sub is True:
                 child_hit = True
@@ -1485,7 +1493,17 @@ def _scan_control(ax, root, kind, spec, hooks):
         return ("OK", f"btn:{spec}=found") if el is not None else (None, f"btn:{spec}=absent")
     if kind == "one_of":
         present = [l for l in spec if find_button(ax, root, l) is not None]
-        return ("OK", f"one_of:{present}") if present else (None, f"one_of:{list(spec)}=absent")
+        if present:
+            return "OK", f"one_of:{present}"
+        # Founder 2026-10-03: a downloaded Universal engine's Remove lives on its card inside
+        # the engine choices, not on the page. The surface's chooser, read earlier in the
+        # same scan, recorded the buttons it showed.
+        seen = hooks.get("choices_seen") or {}
+        inside = [l for l in spec
+                  if any(t.lower() in names for names in seen.values() for t in ax.terms(l))]
+        if inside:
+            return "OK", f"one_of:{inside} (inside the engine choices)"
+        return None, f"one_of:{list(spec)}=absent"
     if kind == "named":
         return (("OK", f"named:{spec}=found") if read_named(ax, root, spec) is not None
                 else (None, f"named:{spec}=absent"))
@@ -1684,6 +1702,10 @@ def _scan_disclosure(ax, spec, hooks):
             wait_until(ax, is_open, 3.0, f"{open_label!r} showing its cards")
         except NavigationError as e:
             raise ControlError(str(e)) from None
+        seen = hooks.get("choices_seen")
+        if seen is not None:
+            seen[open_label] = {n.lower() for el in _content(ax, root_of())
+                                if ax.role(el) == "AXButton" for n in ax.label_names(el)}
         chosen = [c for c, b in card_buttons().items()
                   if selection_state(ax, ax.get_attr(b, "AXValue")) is True]
         if len(chosen) != 1:
@@ -1737,6 +1759,7 @@ def scan_surface(ax, root_of, controls, probes, hooks):
     restore that does not land adds a FAIL row. `ScanStop` propagates: the caller stops."""
     out = []
     first = None
+    choices_seen = {}   # chooser label -> button names it showed while open, this surface only
     has_sections = any(kind == "section" for kind, _, _ in controls)
     if has_sections:
         first = selected_section(ax, root_of())
@@ -1748,7 +1771,8 @@ def scan_surface(ax, root_of, controls, probes, hooks):
                 continue
             try:
                 status, detail = scan_control(ax, root_of(), kind, spec,
-                                              {**hooks, "root_of": root_of})
+                                              {**hooks, "root_of": root_of,
+                                               "choices_seen": choices_seen})
             except (NavigationError, PreferenceError) as e:
                 status, detail = "BLOCKED", f"{kind}:{spec} ({e})"
             if status is None:

@@ -302,6 +302,15 @@ def _walk(el, out, d):
     if role == "AXOutline":  # sidebar — compact inline
         sel = None
         rows = get_attr(el,"AXRows") or get_attr(el,"AXChildren") or []
+        if len(rows) > _sn.LONG_LIST_CHILDREN:
+            # A content list (History: every dictation), not the sidebar. Naming each row
+            # took minutes on 24,384 rows; show the count and the first few.
+            out.append(f'{ind}[list] {len(rows)} rows')
+            for r in rows[:5]:
+                if len(out) >= _MAX_LINES: return
+                t = _row_text(r) if get_attr(r,"AXRole") == "AXRow" else ""
+                if t: out.append(f"{ind}  - {t}")
+            return
         names = []
         for r in rows:
             if get_attr(r,"AXRole") != "AXRow": continue

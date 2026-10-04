@@ -1212,6 +1212,44 @@ def scan_cases():
          ("STOP", True, [])),
     ]
 
+    # Live Preview: a downloaded Universal engine's Remove sits inside the engine choices
+    # (founder 2026-10-03), so the one-of row accepts it there, read by the same surface's
+    # chooser; with no chooser read first, or no Remove inside, it is still absent.
+    class PreviewPage:
+        def __init__(self, remove_inside=True):
+            self.open, self.remove_inside = False, remove_inside
+
+        def root(self):
+            if not self.open:
+                kids = [el("AXButton", desc="Change preview engine",
+                           press=lambda: setattr(self, "open", True))]
+            else:
+                kids = [el("AXButton", desc="Apple", value="Selected"),
+                        el("AXButton", desc="Universal", value="")]
+                if self.remove_inside:
+                    kids.append(el("AXButton", desc="Remove"))
+                kids.append(el("AXButton", desc="Keep current preview engine",
+                               press=lambda: setattr(self, "open", False)))
+            return _window(kids)
+
+    def preview_rows(page):
+        manifest = [("disclose", sn.PREVIEW_DISCLOSURE, None),
+                    ("one_of", sn.UNIVERSAL_ACTIONS, "universal_engine_built")]
+        out = sn.scan_surface(ax, page.root, manifest,
+                              {"universal_engine_built": lambda: True}, {})
+        return [s for s, _ in out], page.open
+    rows += [
+        ("a Remove inside the engine choices satisfies the Universal row",
+         preview_rows(PreviewPage()), (["OK", "OK"], False)),
+        ("no Remove anywhere still FAILs the Universal row",
+         preview_rows(PreviewPage(remove_inside=False)), (["OK", "FAIL"], False)),
+    ]
+    one_of_alone = sn.scan_surface(ax, PreviewPage().root,
+                                   [("one_of", sn.UNIVERSAL_ACTIONS, "universal_engine_built")],
+                                   {"universal_engine_built": lambda: True}, {})
+    rows.append(("without the chooser read first the Universal row is absent (FAIL)",
+                 [s for s, _ in one_of_alone], ["FAIL"]))
+
     # Dictionary sections: each is selected and read, then the first one is selected again.
     class Dict:
         def __init__(self, anchors=True):
@@ -1638,6 +1676,12 @@ def leave_valued_cases():
     f.long_list_rows = sn.LONG_LIST_CHILDREN + 1
     rows.append(("a long content list is skipped by the sidebar search",
                  (_nav(f, "Keybinds").page, f.page), ("Keybinds", "Keybinds")))
+    # Every whole-window search walks past the long list's rows too (scan, controls, sheets).
+    f = FakeSettings()
+    f.long_list_rows = sn.LONG_LIST_CHILDREN + 1
+    walked = list(f.ax().walk(f.root()))
+    rows.append(("a whole-window walk does not enter a long list's rows",
+                 sum(1 for e in walked if e.get("AXRole") == "AXRow"), 0))
     # The bound is what decides: the same decoy in a SHORT list is searched, and two
     # sidebars are refused rather than guessed.
     f = FakeSettings()
