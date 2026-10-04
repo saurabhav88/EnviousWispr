@@ -530,6 +530,9 @@ struct SettingsTabStrip<Tab: Hashable>: View {
       .accessibilityHidden(true)
     }
     // Its natural row count owns the height, never the flexible page below.
+    // Measured 2026-10-04 (#3390 row 8): removing this fixedSize changes no height, because
+    // SettingsTabWrappingLayout already reports its natural height and the overlay does not
+    // size the host. Two guards protect one outcome; no path exists where this is the only one.
     .fixedSize(horizontal: false, vertical: true)
     .background(Color.stSectionBg)
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

@@ -702,6 +702,13 @@ def valued_cases():
         rows.append(("a stale open menu is cancelled through AX before the menu is opened",
                      (f.presses[start:start + 2], f.input_uid), (["cancel", "input-open"],
                                                                  "BlackHole2ch_UID")))
+        # BlackHole is now stored. Asking for another named device must press it and report
+        # it, never report the stored one back (the stored choice alone does not answer it).
+        other = sn.select_input(ax, f.root, f.read_uid, auto=False, name="Studio Mic",
+                                cancel=ax.cancel)
+        rows.append(("choosing a named device while a different device is stored reports the named one",
+                     (f.input_uid, other), ("AppleUSBAudioEngine:Studio",
+                                            sn.InputChoice("AppleUSBAudioEngine:Studio", "Studio Mic"))))
         rows.append(("an InputChoice round-trips through the restore file with its UID",
                      sn.InputChoice.from_json(sn.InputChoice("BlackHole2ch_UID", "BlackHole 2ch").to_json()),
                      sn.InputChoice("BlackHole2ch_UID", "BlackHole 2ch")))
