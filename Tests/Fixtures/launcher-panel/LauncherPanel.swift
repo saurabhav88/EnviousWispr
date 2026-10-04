@@ -19,7 +19,7 @@
 //   `dismiss`            hide the panel (a launcher closed mid-take)
 //   `select <field> <s>` select the first occurrence of <s> in that field (a user about to retype)
 //   `quit`               terminate
-// Build: `Tests/RuntimeUAT/fixtures/launcher_panel/build.sh` (output under the worktree's `build/`).
+// Build: `Tests/Fixtures/launcher-panel/build.sh` (output under the worktree's `build/`).
 import AppKit
 
 final class FixtureTextView: NSTextView {

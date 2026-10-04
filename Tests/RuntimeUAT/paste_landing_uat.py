@@ -1579,7 +1579,7 @@ def phase_sleeping_stay(takes=5):
 
 # ---------------------------------------------------------------------------------------------
 # #3423: a floating launcher panel (Raycast, Alfred) takes the keyboard focus WITHOUT becoming the
-# front application. The fixture (`fixtures/launcher_panel/`) is that window and nothing else: an
+# front application. The fixture (`Tests/Fixtures/launcher-panel/`) is that window and nothing else: an
 # accessory app whose non-activating panel becomes key over a TextEdit document that stays front.
 # Field A accepts Accessibility writes (Tier 1, `ax_direct`); field B silently ignores them, so the
 # write verifies as no mutation and the take reaches the key paste (Tier 2, `cgevent`), the route the
@@ -1606,7 +1606,7 @@ AX_WRITE_SUCCEEDED = re.compile(
 def build_launcher():
     """The fixture app, built once per run into the worktree's gitignored `build/`."""
     if FIXTURE["app"] is None:
-        script = os.path.join(HERE, "fixtures", "launcher_panel", "build.sh")
+        script = os.path.join(HERE, "..", "Fixtures", "launcher-panel", "build.sh")
         out = subprocess.run([script], capture_output=True, text=True)
         if out.returncode != 0 or not out.stdout.strip():
             raise u.Aborted(f"launcher fixture did not build: {out.stderr.strip()[-400:]}")
