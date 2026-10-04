@@ -133,8 +133,14 @@ struct EscapeRecoveryCompletionProducerTests {
       let saved = Transcript(
         text: "kept text", language: "es", processingTime: 1, backendType: .parakeet,
         escapeRecoveredAt: Date(), escapeRecoveryTakeID: "take-1")
+      // The driver fires its state change AFTER the capture and the context clear, so this is the
+      // subject's own signal that both have run.
+      let captureFinished = PipelineStateWaiter(h.driver)
 
       await concludeRecovery(h, outcome: .completed, transcript: saved, historySaved: true)
+      await captureFinished.wait(for: .complete)
+      #expect(context.config == nil, "the clear ran, so the facts below survived it")
+      #expect(context.targetWindow == nil)
 
       let payload = try #require(h.driver.takeEscapeRecoveryCompletion()?.payload)
       let expected = InsertionTakeFacts(
@@ -154,10 +160,14 @@ struct EscapeRecoveryCompletionProducerTests {
     @Test("a saved row with no language and no recorded window freezes nil, never a fallback (#3437)")
     func payloadKeepsNilLanguageAndWindow() async throws {
       let h = makeDriver()
+      let context = h.driver.contextForTesting
       h.adapter.lastResult = ASRResult(
         text: "x", language: "fr", duration: 0.5, processingTime: 0.1, backendType: .parakeet)
+      let captureFinished = PipelineStateWaiter(h.driver)
 
       await concludeRecovery(h, outcome: .completed, transcript: row(), historySaved: true)
+      await captureFinished.wait(for: .complete)
+      #expect(context.config == nil)
 
       let payload = try #require(h.driver.takeEscapeRecoveryCompletion()?.payload)
       #expect(payload.takeFacts.engineReportedLanguage == nil)
