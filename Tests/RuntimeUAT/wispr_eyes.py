@@ -3394,22 +3394,26 @@ def _pr3_diagnostics_cases():
     from settings_nav_fixtures import _window, _ax_plain, el, _f
     rows = []
     for start, lands in (("EG-1", True), ("EG-1", False), ("OpenAI", True), ("Ollama", True)):
+        # The #3385 model card: one button naming the chosen provider, whose own popover
+        # lists the providers (the tiles this fixture used to build are gone).
         chosen = {"name": start}
-        tiles = []
+        card = el("AXButton", desc=_sn.POLISH_CARD, value=start + ", on this Mac, Status: Ready")
         def select(name):
+            card["AXChildren"] = []
             if lands or name == start:
                 chosen["name"] = name
-                for tile, provider in tiles:
-                    tile["AXValue"] = ("Selected" if name == provider else "Not selected") + ", Ready"
-        for name in ("Apple Intelligence", start):
-            tiles.append((el("AXButton", desc=name + ", on this Mac",
-                             value=("Selected" if name == start else "Not selected") + ", Ready",
-                             press=lambda n=name: select(n)), name))
+            card["AXValue"] = chosen["name"] + ", on this Mac, Status: Ready"
+        def open_menu():
+            card["AXChildren"] = [el("AXPopover", children=[
+                el("AXButton", desc=n + ", on this Mac", press=lambda n=n: select(n))
+                for n in ("Apple Intelligence", start)])]
+            return True
+        card["_press"] = open_menu
         detail = el("AXGroup", children=[
             el("AXStaticText", value="Status:", frame=_f(10)),
             el("AXStaticText", value="Available", frame=_f(10, x=500)),
             el("AXButton", desc="Check Apple Intelligence availability")])
-        root = _window([el("AXGroup", children=[t for t, _ in tiles]), detail])
+        root = _window([card, detail])
         patch = {"connect": lambda: None, "begin_test": lambda *a: None,
                  "end_test": lambda: None, "close_window": lambda: None,
                  "nav": lambda *a: True, "_app": root, "_ax": _ax_plain,
@@ -4084,7 +4088,7 @@ def _self_test():
             ("verify with a removed page", lambda: verify("Sounds", {"x": None})),
             ("verify with an unknown tab", lambda: verify("Dictation Settings", {}, tab="Sounds")),
             ("look with an action row", lambda: look("Check for Updates")),
-            ("look with an unknown tab", lambda: look("Dictation Settings", tab="Microphone")),
+            ("look with an unknown tab", lambda: look("Dictation Settings", tab="Sounds")),
             ("look with a tab and no page", lambda: look(tab="Engine")),
         ]:
             before = len(effects)
