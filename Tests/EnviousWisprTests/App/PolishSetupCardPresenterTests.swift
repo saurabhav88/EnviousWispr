@@ -8,6 +8,10 @@ import Testing
 
 @testable import EnviousWisprAppKit
 
+// DEBUG only: the suites read the presenter's DEBUG observers (`isPendingForTesting`,
+// `isShowingForTesting`), which a Release build does not compile.
+#if DEBUG
+
 /// #3438 chunk 6. The card after a dictation whose AI polish did not run because its chosen
 /// model is not set up. When this fails, the card shows for the wrong take, shows twice in one
 /// episode, never comes back after a repair, stays after its problem was fixed, or a button
@@ -569,3 +573,5 @@ struct PolishSetupCardOverlayTests {
     #expect(fx.card.isShowingForTesting == false)
   }
 }
+
+#endif

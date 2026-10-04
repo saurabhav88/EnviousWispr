@@ -285,15 +285,159 @@ def current_tab(ax, root, page):
     return chosen[0] if len(chosen) == 1 else None
 
 
-def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug_build=None):
+# ── Leaving AI Polish (#3438) ────────────────────────────────────────────────
+#
+# Leaving AI Polish while its chosen model is not set up asks first. An ACTIONABLE question has
+# "Leave anyway" (and "Finish setup" or "Pick another model", optionally "Go back to <provider>"
+# or "Open System Settings"); an INFORMATIONAL notice (still downloading, being checked, Apple
+# Intelligence not ready) has only "OK" and one of three known messages. The navigator never
+# answers on its own: a caller performing an approved scenario passes `leave_answer`.
+
+LEAVE_ANSWERS = ("leave_anyway", "finish_setup", "pick_another", "open_system_settings", "ok")
+_LEAVE_LABELS = {
+    "leave_anyway": "Leave anyway", "finish_setup": "Finish setup",
+    "pick_another": "Pick another model", "open_system_settings": "Open System Settings",
+    "ok": "OK",
+}
+# Answers that keep the person on AI Polish. They are never a navigation success.
+_STAYING_ANSWERS = ("finish_setup", "pick_another", "open_system_settings")
+# The actionable question's own titles: its "Leave anyway" counts only beside one of these.
+_ACTIONABLE_TITLES = (
+    "Finish AI polish setup",
+    "Apple Intelligence isn't available",
+    "Apple Intelligence is turned off",
+)
+_INFORMATIONAL_MESSAGES = (
+    "The download is still in progress. Until setup finishes, text is pasted without AI polish.",
+    "Until this check finishes, text is pasted without AI polish.",
+    "Until it is ready, text is pasted without AI polish.",
+)
+
+
+class LeaveDialogRequired(NavigationError):
+    """Leaving AI Polish asked a question and the caller gave no `leave_answer`. Nothing was
+    pressed; the question is still on screen."""
+
+    def __init__(self, kind):
+        super().__init__(f"leaving AI Polish asked an {kind} question; pass leave_answer")
+        self.kind = kind
+
+
+class LeaveDeclined(NavigationError):
+    """The caller answered with a choice that stays on AI Polish, and the stay was observed.
+    Not a navigation success: the requested page was not reached."""
+
+    def __init__(self, answer):
+        super().__init__(f"answered {answer!r}: stayed on AI Polish (observed)")
+        self.answer = answer
+
+
+def _sheet_roots(ax, root):
+    return [e for e in ax.walk(root)
+            if ax.role(e) == "AXSheet"
+            or (ax.role(e) == "AXWindow" and ax.text(e, "AXSubrole") in ("AXDialog", "AXSystemDialog"))]
+
+
+def _has_text(ax, region, english):
+    wanted = [t.lower() for t in ax.terms(english)]
+    for e in ax.walk(region):
+        for attr in ("AXValue", "AXTitle", "AXDescription"):
+            if ax.text(e, attr).lower() in wanted:
+                return True
+    return False
+
+
+def leave_dialog(ax, root):
+    """The AI Polish leave question on screen, as (kind, sheet), or None when there is none.
+    Only a sheet holding the question's own controls counts; any other alert is ignored. Two
+    matching sheets refuse."""
+    found = []
+    for sheet in _sheet_roots(ax, root):
+        buttons = [e for e in ax.walk(sheet) if ax.role(e) == "AXButton"]
+        if (any(_labelled(ax, b, "Leave anyway") for b in buttons)
+                and any(_has_text(ax, sheet, title) for title in _ACTIONABLE_TITLES)):
+            found.append(("actionable", sheet))
+        elif (any(_labelled(ax, b, "OK") for b in buttons)
+              and any(_has_text(ax, sheet, m) for m in _INFORMATIONAL_MESSAGES)):
+            found.append(("informational", sheet))
+    if len(found) > 1:
+        raise NavigationError(f"{len(found)} AI Polish leave questions on screen; refusing to choose")
+    return found[0] if found else None
+
+
+def _leave_label(ax, answer):
+    """English label for `answer`; ("go_back", "<Provider>") becomes "Go back to <Provider>"."""
+    if isinstance(answer, tuple) and len(answer) == 2 and answer[0] == "go_back":
+        return f"Go back to {answer[1]}"
+    if answer not in _LEAVE_LABELS:
+        raise RouteError(f"unknown leave_answer {answer!r}; use one of {list(LEAVE_ANSWERS)} "
+                         "or ('go_back', '<Provider>')")
+    return _LEAVE_LABELS[answer]
+
+
+def _answer_leave_dialog(ax, root_of, page, kind, expected_sheet, leave_answer, timeout,
+                         page_selected):
+    """Press the caller's answer inside the leave question navigation met (`expected_sheet`),
+    then OBSERVE the result. A question replaced meanwhile is never answered."""
+    if leave_answer is None:
+        raise LeaveDialogRequired(kind)
+    label = _leave_label(ax, leave_answer)
+    if kind == "informational" and leave_answer != "ok":
+        raise NavigationError(f"the informational notice offers only OK, not {leave_answer!r}")
+    if kind == "actionable" and leave_answer == "ok":
+        raise NavigationError("the question needs an answer; OK is only on the informational notice")
+    found = leave_dialog(ax, root_of())
+    if found is None:
+        raise NavigationError("the AI Polish leave question went away before it was answered")
+    live_kind, sheet = found
+    if live_kind != kind or not ax.same(sheet, expected_sheet):
+        raise NavigationError("the AI Polish leave question changed before it was answered")
+    if isinstance(leave_answer, tuple):
+        # "Go back to %@" is translated as a template; fill each shown form with the provider.
+        provider = leave_answer[1]
+        names = [t.replace("%@", provider) for t in ax.terms("Go back to %@")]
+        hits = [b for b in ax.walk(sheet) if ax.role(b) == "AXButton"
+                and any(n.lower() in [x.lower() for x in names] for n in ax.label_names(b))]
+        if len(hits) != 1:
+            raise NavigationError(f"{len(hits)} buttons read {label!r} in the leave question")
+        button = hits[0]
+    else:
+        button = unique_control(ax, sheet, label)
+    pressed = ax.press(button)
+    answer = leave_answer[0] if isinstance(leave_answer, tuple) else leave_answer
+
+    def question_gone():
+        return leave_dialog(ax, root_of()) is None
+    try:
+        wait_until(ax, question_gone, timeout, "the AI Polish leave question closed")
+        if answer in _STAYING_ANSWERS:
+            wait_until(ax, lambda: page_selected("AI Polish"), timeout, "still on AI Polish")
+        else:
+            wait_until(ax, lambda: page_selected(page), timeout, f"page {page!r} selected")
+    except NavigationError as e:
+        raise NavigationError(f"{e} (the press itself reported {pressed!r})") from None
+    if answer in _STAYING_ANSWERS:
+        raise LeaveDeclined(answer)
+
+
+def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug_build=None,
+             leave_answer=None):
     """Select `page` in the sidebar and, when given, `tab` in its strip, and PROVE both.
 
     `root_of()` returns the current tree root (re-read after every press). A press's own return
     value is never the verdict: plain SwiftUI buttons can report an error and still fire, or
     report success and do nothing, so success is the row (and tab) reading Selected afterwards.
     With no `tab`, the page keeps whichever tab the app remembers; `shown_tab` reports it.
+
+    #3438: leaving AI Polish may ask first. Without `leave_answer` that is
+    `LeaveDialogRequired` (nothing pressed). With one, it is pressed inside that question
+    only and its result observed: "leave_anyway", "ok" and ("go_back", "<Provider>") must
+    reach `page` (a caller checks the restored provider itself); "finish_setup",
+    "pick_another" and "open_system_settings" must be seen staying, then raise `LeaveDeclined`.
     """
     validate_route(page, tab, debug_build)
+    if leave_answer is not None:
+        _leave_label(ax, leave_answer)  # an unknown answer refuses before any press
 
     def side_row():
         root = root_of()
@@ -308,17 +452,33 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
         wait_until(ax, lambda: side_row() is not None, timeout, "the Settings sidebar")
         root, side = side_row()
 
+    def page_selected(name):
+        _, side2 = side_row()
+        return selection_state(ax, ax.get_attr(unique_control(ax, side2, name), "AXValue")) is True
+
     row = unique_control(ax, side, page)
     if selection_state(ax, ax.get_attr(row, "AXValue")) is not True:
+        # Only a press that LEAVES AI Polish can raise its question; nothing else is consumed.
+        leaving_ai_polish = page != "AI Polish" and page_selected("AI Polish")
         pressed = ax.press(row)
+        asked = {}
 
         def page_landed():
-            root2, side2 = side_row()
-            return selection_state(ax, ax.get_attr(unique_control(ax, side2, page), "AXValue")) is True
+            if page_selected(page):
+                return True
+            if leaving_ai_polish:
+                found = leave_dialog(ax, root_of())
+                if found is not None:
+                    asked["kind"], asked["sheet"] = found
+                    return True
+            return False
         try:
             wait_until(ax, page_landed, timeout, f"page {page!r} selected")
         except NavigationError as e:
             raise NavigationError(f"{e} (the press itself reported {pressed!r})") from None
+        if "kind" in asked:
+            _answer_leave_dialog(ax, root_of, page, asked["kind"], asked["sheet"], leave_answer,
+                                 timeout, page_selected)
 
     if page not in TABS:
         return Route(page, None, None)
@@ -1687,13 +1847,13 @@ def _self_test():
 
 # Fixtures live in settings_nav_fixtures.py so this module stays the implementation.
 def fixture_cases():
-    from settings_nav_fixtures import raising_cases
-    return raising_cases()
+    from settings_nav_fixtures import leave_raising_cases, raising_cases
+    return raising_cases() + leave_raising_cases()
 
 
 def value_cases():
-    from settings_nav_fixtures import valued_cases
-    return valued_cases()
+    from settings_nav_fixtures import leave_valued_cases, valued_cases
+    return valued_cases() + leave_valued_cases()
 
 
 if __name__ == "__main__":
