@@ -227,6 +227,8 @@ struct HeldTextDeliveryTests {
     #expect(held.caretContext == dictation.caretContext)
     #expect(held.candidateDeletesDictatedText == dictation.candidateDeletesDictatedText)
     #expect(held.targetApp == dictation.targetApp)
+    #expect(held.targetElement == dictation.targetElement)
+    #expect(held.recordedWindow == dictation.recordedWindow)
     #expect(held.targetElementIsRetried == dictation.targetElementIsRetried)
     #expect(held.restoreClipboardAfterPaste == dictation.restoreClipboardAfterPaste)
     #expect(held.takeID == dictation.takeID)
@@ -244,6 +246,52 @@ struct HeldTextDeliveryTests {
     #expect(
       HeldTextDelivery.outcome(of: .cgEventCreationFailed(accessibilityTrusted: true))
         == .clipboardOnly)
+    #expect(
+      HeldTextDelivery.outcome(
+        of: .clipboardOnly(
+          tiersAttempted: [], focus: .missing, targetBundleID: nil,
+          accessibilityTrusted: true, targetDiagnostics: .missing))
+        == .clipboardOnly)
+    #expect(
+      HeldTextDelivery.outcome(
+        of: .axWriteUnverifiable(targetBundleID: nil, targetDiagnostics: .unavailable))
+        == .clipboardOnly)
+  }
+
+  /// The committed arrival session holds its own timers weakly, so something must own it until
+  /// its one report. The test drops every reference it holds; only the delivery's own task can
+  /// keep the session alive long enough to report.
+  @Test("A committed arrival session outlives the delivery and reports once")
+  func arrivalSessionIsKeptAliveUntilItReports() async throws {
+    let ax = PastedRegionFakeAX()
+    let scheduler = PastedRegionFakeScheduler()
+    let pid: pid_t = 42
+    ax.focusedByApplication[pid] = .element(PastedRegionFakeAX.field(pid))
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(pid))
+    ax.reads = [.text("Hello")]
+    ax.selectedRange = .range(location: 5, length: 0)
+    let reports = Calls()
+    var session: PasteArrivalCapture? = PasteArrivalCapture.prepare(
+      .init(
+        tier: .cgEvent, pid: pid, takeID: "take-1", bundleID: "com.apple.TextEdit",
+        payload: "World. ", origin: "escape_recovery_undo"),
+      capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: scheduler,
+      report: { reports.lines.append($0.origin ?? "nil") })
+    try #require(session != nil)
+    session?.commit()
+    var delivered = PasteDeliveryResult(
+      tier: .cgEvent, durationMs: 1, outcome: .delivered(tier: .cgEvent, durationMs: 1))
+    delivered.arrivalCapture = session
+    session = nil
+
+    let calls = Calls()
+    _ = await run(calls: calls, seams: seams(calls, caret: nil), returning: delivered)
+    delivered.arrivalCapture = nil
+    // Let the delivery's task start awaiting the session, then run its clock to the report.
+    await Task.yield()
+    scheduler.advance(ms: 1_500)
+
+    #expect(reports.lines == ["escape_recovery_undo"], "exactly one report, from a session nothing else held")
   }
 
   @Test("The Tier 3 receipt is forwarded unchanged; a delivered paste carries none")

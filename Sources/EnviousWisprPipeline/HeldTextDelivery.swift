@@ -8,7 +8,7 @@ import Foundation
 package enum HeldTextDeliveryOutcome: Equatable, Sendable {
   /// The cascade delivered: a verified direct insertion, or a gated key or menu paste dispatch.
   case pasted
-  /// The text is on the clipboard and nowhere else.
+  /// Clipboard fallback. An unverified direct write may also have inserted text.
   case clipboardOnly
   /// The text is on the clipboard because Accessibility is not granted.
   case accessibilityDenied
@@ -127,9 +127,10 @@ package enum HeldTextDelivery {
       fallbackClipboardChangeCount: result.fallbackClipboardChangeCount)
   }
 
-  /// The cascade's outcome in the Undo vocabulary: only `.delivered` pasted; Accessibility denial
-  /// is named; every other outcome left the text on the clipboard. Exhaustive, so a new cascade
-  /// outcome must decide here what Undo tells the user.
+  /// Only `.delivered` maps to pasted; Accessibility denial is named separately. Every other
+  /// outcome maps to clipboard fallback, including an unverified write whose destination state
+  /// remains unknown. Exhaustive, so a new cascade outcome must decide here what Undo tells the
+  /// user.
   static func outcome(of outcome: PasteDeliveryOutcome) -> HeldTextDeliveryOutcome {
     switch outcome {
     case .delivered: return .pasted
