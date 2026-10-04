@@ -107,9 +107,12 @@ REQUIRED_PHASES = (
     "undo into a field edited after the cancel (restore on)",
     "undo into a field edited after the cancel (restore off)",
 )
-# The settings #3437 phases borrow, alongside the cancel binding and the feature flag.
+# The settings #3437 phases borrow, alongside the cancel binding and the feature flag. The two log
+# settings are borrowed because the verdicts read the kernel's `terminal cancelled` and `keeping
+# this take` lines, which the app writes only at the debug level (`AppLogger.log`); on the
+# shipped default (info) a correct app would fail every phase.
 BORROWED = ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled",
-            "restoreClipboardAfterPaste", "smartInsertion")
+            "restoreClipboardAfterPaste", "smartInsertion", "isDebugModeEnabled", "debugLogLevel")
 RESTORE_LINE = re.compile(r"escape recovery restore: outcome=(\S+) age_ms=\S+ take=(\S+)")
 NOTICE_LINE = re.compile(r"ESCAPE_RECOVERY_NOTICE shown=(true|false) why=(\w+)")
 CASCADE_LINE = re.compile(r"Paste cascade: tier=(\w+), app=(\S+?),")
@@ -1083,6 +1086,8 @@ def main():
             ("escapeRecoveryEnabled", 0, "-bool"),
             ("cancelKeyCode", LCTRL, "-int"),
             ("cancelModifiersRaw", 0, "-int"),
+            ("isDebugModeEnabled", 1, "-bool"),
+            ("debugLogLevel", "debug", "-string"),
         ], "OFF phase")
 
         base = log_length()
