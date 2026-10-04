@@ -48,9 +48,9 @@ struct EscapeRecoveryPillTests {
     let second = UUID()
 
     let firstPayload = CancelUndoPayload(
-      transcriptID: first, targetApp: nil, targetElement: nil)
+      transcriptID: first, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     let secondPayload = CancelUndoPayload(
-      transcriptID: second, targetApp: nil, targetElement: nil)
+      transcriptID: second, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
 
     handler.handle(
       to: PipelineState.complete,
@@ -89,8 +89,8 @@ struct EscapeRecoveryPillTests {
   @Test("a superseded pill's press cannot touch the newer payload")
   func supersededPillCannotTouchTheNewerPayload() throws {
     let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
-    let stale = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
-    let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let stale = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
+    let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var pasted: [UUID] = []
 
     let staleReceipt = d.present(
@@ -135,7 +135,7 @@ struct EscapeRecoveryPillTests {
   @Test("a live pill refuses an action carrying somebody else's transcript id")
   func livePillRefusesAForeignTranscriptID() throws {
     let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
-    let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var pasted: [UUID] = []
 
     let receipt = d.present(
@@ -185,7 +185,7 @@ struct EscapeRecoveryPillTests {
   @Test("pressing Paste takes the pill down")
   func pressingPasteDismissesTheOffer() throws {
     let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
-    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var pasted: [UUID] = []
 
     let receipt = d.present(
@@ -223,7 +223,7 @@ struct EscapeRecoveryPillTests {
   @Test("a second press after Paste is inert")
   func secondPressIsInert() throws {
     let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
-    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var pasteCount = 0
 
     let receipt = d.present(
@@ -351,7 +351,7 @@ struct EscapeRecoveryPillTests {
     // user actually takes.
     for (label, replace) in others {
       let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
-      let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
       var pasted: [UUID] = []
       let receipt = try #require(
         d.present(.escapeRecovery(payload: payload, onPaste: { pasted.append($0.transcriptID) })))
@@ -367,7 +367,7 @@ struct EscapeRecoveryPillTests {
 
     for (label, attempt) in refused {
       let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
-      let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
       var pasted: [UUID] = []
       let receipt = try #require(
         d.present(.escapeRecovery(payload: payload, onPaste: { pasted.append($0.transcriptID) })))
@@ -386,7 +386,7 @@ struct EscapeRecoveryPillTests {
     // The paired ACCEPTED case: without it, "drops on everything" would also be
     // satisfied by a director that never holds a payload at all.
     let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
-    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var pasted: [UUID] = []
     let receipt = try #require(
       d.present(.escapeRecovery(payload: payload, onPaste: { pasted.append($0.transcriptID) })))

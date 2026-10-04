@@ -1582,7 +1582,17 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         CancelUndoPayload(
           transcriptID: transcript.id,
           targetApp: context.targetApp,
-          targetElement: context.targetElement)))
+          targetElement: context.targetElement,
+          targetWindow: context.targetWindow,
+          // #3437: frozen here, while this take's context is still live. The language the engine
+          // reported comes from the SAVED row, never a re-read of `adapter.lastResult`, which
+          // nothing guarantees still describes this take by the time Undo is pressed.
+          takeFacts: InsertionTakeFacts(
+            snippetFired: context.snippetExpansionFired,
+            lockedLanguageCode: context.config?.lockedLanguageCode,
+            engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
+            engineReportedLanguage: transcript.language,
+            protectedSpellings: context.protectedSpellings))))
   }
 
   /// Why a recovery ended with nothing to restore.

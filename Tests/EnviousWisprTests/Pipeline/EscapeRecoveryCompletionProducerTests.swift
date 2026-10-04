@@ -1,3 +1,4 @@
+import ApplicationServices
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -32,6 +33,7 @@ struct EscapeRecoveryCompletionProducerTests {
       let driver: KernelDictationDriver
       let kernel: RecordingSessionKernel
       let outcome: KernelFinalizationOutcome
+      let adapter: FakeEngine
     }
 
     private func makeDriver() -> Harness {
@@ -70,7 +72,7 @@ struct EscapeRecoveryCompletionProducerTests {
         context: KernelSessionContext(), steps: steps, adapter: adapter,
         engineMutationScope: .alwaysAllowedForTesting)
       driver.start()
-      return Harness(driver: driver, kernel: kernel, outcome: outcome)
+      return Harness(driver: driver, kernel: kernel, outcome: outcome, adapter: adapter)
     }
 
     private func row() -> Transcript {
@@ -108,6 +110,60 @@ struct EscapeRecoveryCompletionProducerTests {
       #expect(
         completion?.payload?.transcriptID == saved.id,
         "the pill has to point at the row that was written, not at some other one")
+    }
+
+    // MARK: #3437: what Undo needs to repair the text exactly as this take would have
+
+    /// The Undo delivery runs the same Smart Insertion as dictation, but long after the take's
+    /// context is gone. So the payload must carry the take's window and Smart Insertion facts,
+    /// frozen at capture. The reported language comes from the SAVED row: the adapter's result
+    /// here deliberately says something else, so reading the wrong source fails this case.
+    @Test("the payload freezes this take's window and Smart Insertion facts (#3437)")
+    func payloadFreezesTakeFacts() async throws {
+      let h = makeDriver()
+      let context = h.driver.contextForTesting
+      context.config = .testDefault(languageMode: .locked("de"))
+      context.protectedSpellings = ["Zorblax"]
+      context.snippetExpansionFired = true
+      let window = AXUIElementCreateApplication(5001)
+      context.targetWindow = window
+      h.adapter.detectsLanguage = true
+      h.adapter.lastResult = ASRResult(
+        text: "x", language: "fr", duration: 0.5, processingTime: 0.1, backendType: .parakeet)
+      let saved = Transcript(
+        text: "kept text", language: "es", processingTime: 1, backendType: .parakeet,
+        escapeRecoveredAt: Date(), escapeRecoveryTakeID: "take-1")
+
+      await concludeRecovery(h, outcome: .completed, transcript: saved, historySaved: true)
+
+      let payload = try #require(h.driver.takeEscapeRecoveryCompletion()?.payload)
+      let expected = InsertionTakeFacts(
+        snippetFired: true, lockedLanguageCode: "de", engineDetectsLanguage: true,
+        engineReportedLanguage: "es", protectedSpellings: ["Zorblax"])
+      #expect(payload.takeFacts == expected)
+      #expect(payload.targetWindow.map { CFEqual($0, window) } == true)
+
+      // Later changes to the live context or the adapter never reach the frozen value.
+      context.protectedSpellings = ["Other"]
+      context.snippetExpansionFired = false
+      context.config = .testDefault()
+      h.adapter.lastResult = nil
+      #expect(payload.takeFacts == expected)
+    }
+
+    @Test("a saved row with no language and no recorded window freezes nil, never a fallback (#3437)")
+    func payloadKeepsNilLanguageAndWindow() async throws {
+      let h = makeDriver()
+      h.adapter.lastResult = ASRResult(
+        text: "x", language: "fr", duration: 0.5, processingTime: 0.1, backendType: .parakeet)
+
+      await concludeRecovery(h, outcome: .completed, transcript: row(), historySaved: true)
+
+      let payload = try #require(h.driver.takeEscapeRecoveryCompletion()?.payload)
+      #expect(payload.takeFacts.engineReportedLanguage == nil)
+      #expect(payload.takeFacts.lockedLanguageCode == nil)
+      #expect(payload.takeFacts.engineDetectsLanguage == false)
+      #expect(payload.targetWindow == nil)
     }
 
     // MARK: The two conditions `.saved` carries, each asserted alone

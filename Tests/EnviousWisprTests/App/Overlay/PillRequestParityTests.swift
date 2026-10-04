@@ -178,7 +178,7 @@ struct PillRequestParityTests {
   /// no pill.
   @Test("Undo dismisses the pill before it forwards the payload") func pasteOrdering() throws {
     let rig = Rig()
-    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var hiddenWhenPasted: Bool?
     // Hoisted out of `#require`: the macro cannot expand a call whose argument
     // closure captures the rig, and fails with an internal diagnostic error.
@@ -207,7 +207,7 @@ struct PillRequestParityTests {
   /// is paste twice.
   @Test("a queued second Undo is ignored after dismissal") func queuedSecondUndoIsIgnored() throws {
     let rig = Rig()
-    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var pastes = 0
     let receipt = try #require(
       rig.director.present(.escapeRecovery(payload: payload, onPaste: { _ in pastes += 1 })))

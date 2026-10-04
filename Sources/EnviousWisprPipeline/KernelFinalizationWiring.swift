@@ -1185,17 +1185,6 @@ struct KernelFinalizationWiring {
     let gate: LanguageRepairDeadlineGate
   }
 
-  /// The take facts the repair reads that exist only during the take: whether a snippet expanded,
-  /// the language inputs and the protected spellings. Dictation reads them live after the caret;
-  /// the Escape Recovery Undo delivery supplies the values frozen when the take was held.
-  struct InsertionTakeFacts: Sendable {
-    let snippetFired: Bool
-    let lockedLanguageCode: String?
-    let engineDetectsLanguage: Bool
-    let engineReportedLanguage: String?
-    let protectedSpellings: Set<String>
-  }
-
   /// Both halves of one Smart Insertion computation.
   struct InsertionComputation {
     let caret: InsertionCaret

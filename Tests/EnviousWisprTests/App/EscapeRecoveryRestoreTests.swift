@@ -52,7 +52,7 @@ struct EscapeRecoveryRestoreTests {
   func pasteRetargets() {
     let spy = Spy()
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
 
     run(payload: payload, row: ("kept", Date(), "take-1"), spy: spy)
 
@@ -73,7 +73,7 @@ struct EscapeRecoveryRestoreTests {
     let spy = Spy()
 
     run(
-      payload: CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil),
+      payload: CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
       row: nil, spy: spy)
 
     #expect(spy.retargeted.isEmpty, "no app switch for text that is already gone")
@@ -89,7 +89,7 @@ struct EscapeRecoveryRestoreTests {
   func missingTakeIDPastesButDoesNotReport() {
     let spy = Spy()
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
 
     run(payload: payload, row: ("kept", Date(), nil), spy: spy)
 
@@ -108,7 +108,7 @@ struct EscapeRecoveryRestoreTests {
   func terminatedTargetIsNotPastedInto() {
     let spy = Spy()
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
 
     EscapeRecoveryPasteAction.paste(
       payload: payload,
@@ -141,7 +141,7 @@ struct EscapeRecoveryRestoreTests {
   func liveTargetStillPastes() {
     let spy = Spy()
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
 
     EscapeRecoveryPasteAction.paste(
       payload: payload,
@@ -172,7 +172,7 @@ struct EscapeRecoveryRestoreTests {
   func failedRetargetDoesNotPaste() {
     let spy = Spy()
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
 
     EscapeRecoveryPasteAction.paste(
       payload: payload,
@@ -202,7 +202,7 @@ struct EscapeRecoveryRestoreTests {
   func productionRetargetRefusesFailedActivation() {
     let app = NSRunningApplication.current
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: app, targetElement: nil)
+      transcriptID: UUID(), targetApp: app, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var forcedPIDs: [pid_t] = []
     var fallbackCalls = 0
     var focusCalls = 0
@@ -240,7 +240,7 @@ struct EscapeRecoveryRestoreTests {
   @Test("the production retarget permits a restore with no recorded target")
   func productionRetargetPermitsNoTarget() {
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     var activationAttempted = false
     var focusAttempted = false
 
@@ -270,7 +270,7 @@ struct EscapeRecoveryRestoreTests {
     let app = NSRunningApplication.current
     let element = AXUIElementCreateApplication(app.processIdentifier)
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: app, targetElement: element)
+      transcriptID: UUID(), targetApp: app, targetElement: element, targetWindow: nil, takeFacts: .testNone)
     var fallbackCalls = 0
     var focusedElements: [AXUIElement] = []
 
@@ -307,7 +307,7 @@ struct EscapeRecoveryRestoreTests {
     effects.forceActivateSucceeds = true
     effects.raiseWindowResult = raise
     let app = NSRunningApplication.current
-    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: app, targetElement: element)
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: app, targetElement: element, targetWindow: nil, takeFacts: .testNone)
     let result = EscapeRecoveryPasteAction.liveRetarget(application: effects)(payload)
     return (result, effects.calls)
   }
@@ -340,7 +340,7 @@ struct EscapeRecoveryRestoreTests {
     var dispatched = 0
     EscapeRecoveryPasteAction.paste(
       payload: CancelUndoPayload(
-        transcriptID: UUID(), targetApp: .current, targetElement: element),
+        transcriptID: UUID(), targetApp: .current, targetElement: element, targetWindow: nil, takeFacts: .testNone),
       restorable: { _ in ("kept", Date(), "take-1") },
       copyToClipboard: { _ in },
       dispatchPaste: { dispatched += 1 },
@@ -397,7 +397,7 @@ struct EscapeRecoveryRestoreTests {
     EscapeRecoveryPasteAction.paste(
       payload: CancelUndoPayload(
         transcriptID: UUID(), targetApp: context.targetApp,
-        targetElement: context.targetElement),
+        targetElement: context.targetElement, targetWindow: nil, takeFacts: .testNone),
       restorable: { _ in ("kept", Date(), "take-1") },
       copyToClipboard: { _ in copies += 1 },
       dispatchPaste: { dispatched += 1 },

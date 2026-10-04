@@ -29,7 +29,7 @@ struct EscapeRecoveryObservabilityTests {
   func idlessUndoStillLogs() {
     let box = RestoreLogBox()
     let payload = CancelUndoPayload(
-      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
 
     EscapeRecoveryPasteAction.paste(
       payload: payload,
@@ -58,7 +58,7 @@ struct EscapeRecoveryObservabilityTests {
 
     EscapeRecoveryPasteAction.paste(
       payload: CancelUndoPayload(
-        transcriptID: UUID(), targetApp: nil, targetElement: nil),
+        transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
       restorable: { _ in nil },
       copyToClipboard: { _ in },
       dispatchPaste: {},
