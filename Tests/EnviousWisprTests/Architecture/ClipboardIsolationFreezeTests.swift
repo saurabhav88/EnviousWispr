@@ -883,8 +883,12 @@ struct ClipboardIsolationFreezeTests {
       let usesExecutorBoard = node.arguments.contains { argument in
         argument.label?.text == "to" && Self.namesExecutorBoard(argument.expression)
       }
+      // #3437: the manual fallback also returns its change count (the Copied notice's receipt),
+      // so the receipt-returning copy is classified by WHERE it is, not by its name: inside the
+      // clipboard fallback it is the manual write, anywhere else an automatic route's.
+      let insideFallback = isInsideClipboardFallback(node)
       if functionName == "pasteToActiveApp"
-        || functionName == "copyToClipboardReturningChangeCount"
+        || (functionName == "copyToClipboardReturningChangeCount" && !insideFallback)
       {
         automaticRouteWrites.append(
           (
@@ -892,9 +896,11 @@ struct ClipboardIsolationFreezeTests {
             position: node.positionAfterSkippingLeadingTrivia.utf8Offset,
             usesExecutorBoard: usesExecutorBoard
           ))
-      } else if functionName == "copyToClipboard" {
+      } else if functionName == "copyToClipboard"
+        || functionName == "copyToClipboardReturningChangeCount"
+      {
         clipboardFallbackWrites.append(
-          (insideFallback: isInsideClipboardFallback(node), usesExecutorBoard: usesExecutorBoard))
+          (insideFallback: insideFallback, usesExecutorBoard: usesExecutorBoard))
       }
       return .visitChildren
     }

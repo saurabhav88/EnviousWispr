@@ -513,15 +513,14 @@ final class DictationLifecycleCoordinator {
   // MARK: - PR8 deferred resolver helpers
 
   /// #3437: the settings an Escape Recovery Undo delivers with, read at the press. Auto-paste
-  /// follows the same rule a recording-start config uses (`autoPasteAllowed`): only while the active
+  /// follows the same rule a recording-start config uses (`allowsAutoPaste`): only while the active
   /// pipeline is idle, so an Undo pressed during a new dictation copies instead of pasting into it.
-  func undoDeliverySettings() -> HeldDeliverySettings {
+  private func undoDeliverySettings() -> HeldDeliverySettings {
     let backend = activeCaptureBackend() ?? lastCapturingBackend
     let driver = backend == .whisperKit ? whisperKitKernelDriver : kernelDriver
     return HeldDeliverySettings(
       smartInsertion: settings.smartInsertion,
-      autoPasteToActiveApp: DictationSessionConfigFactory.autoPasteAllowed(
-        activePipelineState: driver.state),
+      autoPasteToActiveApp: driver.state.allowsAutoPaste,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste)
   }
 
