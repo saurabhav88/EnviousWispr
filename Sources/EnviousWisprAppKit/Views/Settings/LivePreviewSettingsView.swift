@@ -914,7 +914,7 @@ struct LivePreviewSettingsView: View {
 /// APPEARANCE — bordered container, value, disclosure chevron — while keeping the
 /// sheet's behaviour. The chevron is `chevron.up.chevron.down`, the platform's
 /// pop-up glyph, rather than a plain `chevron.down`, which reads as "expand a
-/// section".
+/// section". At rest it wears the input-field colours, as the microphone picker does.
 struct LivePreviewLanguageMenuButton: View {
   let name: String
   let provenance: String
@@ -951,11 +951,11 @@ struct LivePreviewLanguageMenuButton: View {
       .padding(.vertical, 7)
       .background(
         RoundedRectangle(cornerRadius: 8, style: .continuous)
-          .fill(hovering ? Color.stAccentLight : Color.stSectionBg)
+          .fill(hovering ? Color.stAccentLight : Color.stInputBg)
       )
       .overlay(
         RoundedRectangle(cornerRadius: 8, style: .continuous)
-          .strokeBorder(hovering ? Color.stAccent : Color.stDivider, lineWidth: 1)
+          .strokeBorder(hovering ? Color.stAccent : Color.stInputBorder, lineWidth: 1)
           .allowsHitTesting(false)
       )
       .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
