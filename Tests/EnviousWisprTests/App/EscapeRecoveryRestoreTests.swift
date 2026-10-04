@@ -362,6 +362,63 @@ struct EscapeRecoveryRestoreTests {
     let (noField, noFieldCalls) = liveRetarget(raise: false, element: nil)
     #expect(noField == true, "no captured field: nothing to raise, the app-only retarget stands")
     #expect(!noFieldCalls.contains(.raiseWindow))
+    #expect(!noFieldCalls.contains(.focus), "and no field focus either (#3423)")
+  }
+
+  // MARK: A launcher panel's owner as the target (#3423)
+
+  /// Record start now targets the application that owns the focused field when a non-activating
+  /// launcher panel holds the keyboard focus. If the panel closed before the user pressed the
+  /// pill's Paste, its field cannot be focused: the words must stay on the clipboard, never be
+  /// pasted into whatever the launcher's app or the front app shows now.
+  @Test("a substituted launcher target whose field cannot be focused keeps the words on the clipboard")
+  func substitutedOwnerWithClosedPanelStaysOnClipboard() throws {
+    let running = NSWorkspace.shared.runningApplications.filter { !$0.isTerminated }
+    try #require(running.count >= 2, "two live applications")
+    let (front, owner) = (running[0], running[1])
+    let field = AXUIElementCreateApplication(owner.processIdentifier + 10_000)
+    let context = KernelSessionContext()
+    context.recordStartTarget(
+      front: front, focus: .focused(element: field, ownerPID: owner.processIdentifier),
+      trusted: true, captureWindow: { _ in nil }, ownerApplication: { _ in owner },
+      isEligibleOwner: { _ in true }, ownPID: -2)
+    try #require(context.focusOwnerState == .disagree)
+    try #require(context.targetApp == owner, "the launcher's app was substituted")
+
+    var activated: [pid_t] = []
+    var focused: [AXUIElement] = []
+    var copies = 0
+    var dispatched = 0
+    let spy = Spy()
+    EscapeRecoveryPasteAction.paste(
+      payload: CancelUndoPayload(
+        transcriptID: UUID(), targetApp: context.targetApp,
+        targetElement: context.targetElement),
+      restorable: { _ in ("kept", Date(), "take-1") },
+      copyToClipboard: { _ in copies += 1 },
+      dispatchPaste: { dispatched += 1 },
+      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
+      retarget: { payload in
+        EscapeRecoveryPasteAction.retargetWithAccessibility(
+          payload,
+          forceActivate: {
+            activated.append($0)
+            return true
+          },
+          activateFallback: { _ in true },
+          raiseWindow: { _ in true },
+          focusElement: {
+            focused.append($0)
+            return false
+          })
+      },
+      targetHasQuit: { _ in false })
+
+    #expect(activated == [owner.processIdentifier], "the carried owner, not the front app")
+    #expect(focused.count == 1 && CFEqual(focused[0], field), "the carried field")
+    #expect(copies == 1)
+    #expect(spy.reports.map(\.result) == [.clipboardOnly])
+    #expect(dispatched == 0, "no Cmd-V")
   }
 
   // MARK: History's door
