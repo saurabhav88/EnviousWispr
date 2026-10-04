@@ -179,6 +179,17 @@
         }
       }
     },
+    "%@ by Superwhisper" : {
+      "comment" : "AI Polish, Ollama: credit above the writing-style dials when the Ollama model is S1-mini. %@ is S1-mini. Keep Superwhisper as written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ von Superwhisper"
+          }
+        }
+      }
+    },
     "%@ by Superwhisper is a small cleanup model that runs on this Mac and works offline, with no API key to manage." : {
       "comment" : "AI Polish, Why use S1-mini: first paragraph. %@ is the model name, S1-mini. Keep Superwhisper as written.",
       "localizations" : {
@@ -15835,6 +15846,17 @@
         }
       }
     },
+    "Test that %@ is live" : {
+      "comment" : "AI Polish, local model: re-checks that the model answers. %@ is its name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfen, ob %@ läuft"
+          }
+        }
+      }
+    },
     "Testing %llds audio..." : {
       "comment" : "Settings > Diagnostics, speed test: progress. %lld is a length in seconds, such as 15.",
       "localizations" : {
@@ -19208,13 +19230,13 @@
         }
       }
     },
-    "You can keep dictating. Polish switches to %@ when the download is verified." : {
+    "You can keep dictating while %@ downloads." : {
       "comment" : "AI Polish, local model: while the model downloads. %@ is the model name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du kannst weiter diktieren. Polish wechselt zu %@, sobald der Download geprüft ist."
+            "value" : "Du kannst weiter diktieren, während %@ heruntergeladen wird."
           }
         }
       }

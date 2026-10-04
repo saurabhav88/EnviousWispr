@@ -1472,7 +1472,11 @@ def _scan_probes():
         if enabled is not True: return enabled
         provider = stored_or_none("llmProvider")
         if provider is None: return None
-        return provider in ("openAI", "gemini", "claude", "ollama")
+        # #3385: Ollama's Model row shows only once Ollama is running with a model, the
+        # state whose Server row is on screen.
+        if provider == "ollama":
+            return text("Server")
+        return provider in ("openAI", "gemini", "claude")
 
     def language_locked():
         visible = language_section_visible()

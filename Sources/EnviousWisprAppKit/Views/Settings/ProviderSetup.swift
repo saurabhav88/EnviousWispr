@@ -382,10 +382,6 @@ struct ProviderSetupSection: View {
       for: provider, cloudModel: surfaceCloudModel, ollamaModel: surfaceOllamaModel)
   }
 
-  private var surfaceModelBinding: Binding<String> {
-    Binding(get: { surfaceCloudModel }, set: { setCloudModel($0) })
-  }
-
   // MARK: - Discovery state, only when it is about THIS surface (#2772 chunk 3)
 
   /// `LLMModelDiscoveryCoordinator` holds one provider's catalog and one key verdict, and
@@ -440,21 +436,6 @@ struct ProviderSetupSection: View {
         modelsSheet
       }
     }
-  }
-
-  private var isCloudProvider: Bool {
-    provider == .openAI || provider == .gemini
-      || provider == .claude
-  }
-
-  private var showModelSection: Bool {
-    // EG-1 excluded: one fixed first-party model, no model picker (#1271).
-    // S1-mini excluded for the same reason (#2649): it is one bundled model, so
-    // a picker offers a choice that does not exist. Left in, it rendered
-    // Ollama's discovery dropdown on the S1-mini pane showing the lower-case
-    // Ollama model id, which also reads as the wrong name for the model.
-    provider != .none && provider != .appleIntelligence
-      && provider != .egOne && provider != .s1Mini
   }
 
 
@@ -650,7 +631,7 @@ private var cloudRows: some View {
       SettingsActionButton(
         title: LocalizedStringResource(
           "Check again", comment: "AI Polish: reads the saved API key again."),
-        isEnabled: true, emphasis: .quiet
+        isEnabled: true, emphasis: .quiet, size: .medium
       ) {
         ProviderSetupKeys.load(into: model, using: keychainManager)
       }
@@ -676,6 +657,21 @@ private var s1ControlRows: some View {
   @Bindable var settings = settings
   // The dials are ONE shared setting; on Transcribe a File a change reaches the next file
   // and the next dictation, and the page says so (#2772).
+  // An S1-mini pulled into Ollama has no S1-mini card or WHY block above its dials, so the
+  // licence's credit ("S1-mini" by "Superwhisper") is given here.
+  if surface == .dictation, provider == .ollama {
+    PolishIndented {
+      Text(
+        String(
+          localized: "\(LLMProvider.s1Mini.displayName) by Superwhisper",
+          comment:
+            "AI Polish, Ollama: credit above the writing-style dials when the Ollama model is S1-mini. %@ is S1-mini. Keep Superwhisper as written."
+        )
+      )
+      .font(.stRowHelper)
+      .foregroundStyle(Color.stTextSecondary)
+    }
+  }
   if surface == .fileImport {
     PolishIndented {
       Text(S1ControlCopy.fileImportIntro)
@@ -924,15 +920,6 @@ private var modelFieldLabel: String {
     }
   }
 
-  /// Which run freezes this editor's settings, in the host's words: a recording on the AI
-  /// Polish page, a cleanup on Transcribe a File. The sentence said "recording" on both.
-  private var frozenSettingsFootnote: String {
-    switch surface {
-    case .dictation: return SettingsCopy.frozenPerRecording
-    case .fileImport: return SettingsCopy.frozenPerImport
-    }
-  }
-
   private var activeKeyBinding: Binding<String> {
     switch provider {
     case .openAI: return Binding(get: { model.openAIKey }, set: { model.openAIKey = $0 })
@@ -990,7 +977,7 @@ private var apiKeyRow: some View {
             title: LocalizedStringResource(
               "Save", comment: "AI Polish: button that saves the API key."),
             isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited,
-            emphasis: .filled
+            emphasis: .filled, size: .medium
           ) {
             let provider = provider
             let key = activeKeyBinding.wrappedValue
@@ -1007,7 +994,7 @@ private var apiKeyRow: some View {
             SettingsActionButton(
               title: LocalizedStringResource(
                 "Clear", comment: "AI Polish: button that deletes the saved API key."),
-              isEnabled: true, emphasis: .destructive
+              isEnabled: true, emphasis: .destructive, size: .medium
             ) {
               guard clearKey(keychainId: descriptor.keychainId) else { return }
               activeKeyBinding.wrappedValue = ""
@@ -1074,7 +1061,7 @@ private var revealKeyTitle: String {
 private var validationBadge: some View {
   if case .failed(let message) = model.keyStoreStatus {
     keyBadge(message, tone: .stError)
-  } else if !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited {
+  } else if keyDraftIsEdited {
     keyBadge(
       String(
         localized: "Not saved yet",
@@ -1535,7 +1522,7 @@ private var ollamaSetupContent: some View {
           title: LocalizedStringResource(
             "Download Ollama", comment: "AI Polish, Ollama setup: opens the Ollama download page."
           ),
-          isEnabled: true, emphasis: .filled
+          isEnabled: true, emphasis: .filled, size: .medium
         ) {
           if let url = URL(string: "https://ollama.com/download") {
             NSWorkspace.shared.open(url)
@@ -1561,7 +1548,7 @@ private var ollamaSetupContent: some View {
         SettingsActionButton(
           title: LocalizedStringResource(
             "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
-          isEnabled: true, emphasis: .filled
+          isEnabled: true, emphasis: .filled, size: .medium
         ) {
           setup.ollamaSetup.startServer()
         }
@@ -1584,7 +1571,7 @@ private var ollamaSetupContent: some View {
         SettingsActionButton(
           title: "Download \(surfaceOllamaModel)",
           isEnabled: !hostedAddIsResolving,
-          emphasis: .filled
+          emphasis: .filled, size: .medium
         ) {
           // #1950: through the funnel, not straight to `pullModel`. The shipped default is a
           // recommended model so this normally downloads immediately, but a user who has
@@ -1660,7 +1647,7 @@ private var ollamaSetupContent: some View {
       SettingsActionButton(
         title: LocalizedStringResource(
           "Try Again", comment: "AI Polish, Ollama: checks the Ollama setup again."),
-        isEnabled: true, emphasis: .quiet
+        isEnabled: true, emphasis: .quiet, size: .medium
       ) {
         Task {
           await setup.ollamaSetup.detectState(trigger: "try_again")
@@ -1964,7 +1951,7 @@ private var ollamaBrowseModelsCard: some View {
         SettingsActionButton(
           title: LocalizedStringResource(
             "Done", comment: "AI Polish, Ollama: closes the model list sheet."),
-          isEnabled: true, emphasis: .filled, shortcut: .defaultAction
+          isEnabled: true, emphasis: .filled, size: .medium, shortcut: .defaultAction
         ) {
           model.modelsSheetOpen = false
         }
@@ -2340,6 +2327,8 @@ private var ollamaBrowseModelsCard: some View {
           .disabled(isPulling || hostedAddIsResolving)
         }
       }
+      // The row's plain actions (Download, Add, Cancel, Remove) at the Settings 14pt floor.
+      .font(.stHelper)
       .padding(.vertical, 2)
 
       // #1956: beneath its own row, never a pane-wide banner, and never removing

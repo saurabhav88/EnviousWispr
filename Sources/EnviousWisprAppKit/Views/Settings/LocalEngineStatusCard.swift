@@ -121,7 +121,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
         SettingsActionButton(
           title: LocalizedStringResource(
             "Download", comment: "AI Polish, local model: starts the model download."),
-          isEnabled: true, emphasis: .filled
+          isEnabled: true, emphasis: .filled, size: .medium
         ) {
           runtime.startDownload()
         }
@@ -136,7 +136,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
           engine: engine.name, upgrade: upgrade, downloadSize: engine.downloadSize),
         subtitle: String(
           localized:
-            "You can keep dictating. Polish switches to \(engine.name) when the download is verified.",
+            "You can keep dictating while \(engine.name) downloads.",
           comment: "AI Polish, local model: while the model downloads. %@ is the model name."),
         detail: {
           PolishProgressBar(fraction: fraction)
@@ -161,7 +161,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
         if let action = presentation.primaryAction {
           SettingsActionButton(
             title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
-            emphasis: .filled
+            emphasis: .filled, size: .medium
           ) {
             runtime.startDownload()
           }
@@ -178,7 +178,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
         if let action = presentation.primaryAction {
           SettingsActionButton(
             title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
-            emphasis: .filled
+            emphasis: .filled, size: .medium
           ) {
             runtime.startDownload()
           }
@@ -204,7 +204,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
         if let action = presentation.primaryAction {
           SettingsActionButton(
             title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
-            emphasis: .filled
+            emphasis: .filled, size: .medium
           ) {
             runtime.startDownload()
           }
@@ -227,7 +227,10 @@ struct LocalEngineStatusCard<Middle: View>: View {
           HStack(spacing: 10) {
             healthLabel
             PolishIconButton(
-              systemName: "arrow.clockwise", help: "Test that \(engine.name) is live"
+              systemName: "arrow.clockwise",
+              help: String(
+                localized: "Test that \(engine.name) is live",
+                comment: "AI Polish, local model: re-checks that the model answers. %@ is its name.")
             ) {
               runtime.activateAndProbe()
             }
