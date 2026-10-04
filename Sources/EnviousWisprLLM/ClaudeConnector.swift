@@ -3,26 +3,26 @@ import Foundation
 
 /// Anthropic Claude Messages API connector for transcript polishing.
 ///
-/// v1: no extended thinking, ever (`LLMModelCapabilities.thinkingControl`
-/// is `.unsupported` for every Claude model). `temperature`/`top_p`/`top_k` are
-/// omitted from the request body — Claude generations released after Opus
-/// 4.6 reject a non-default `temperature`, including 0, with an HTTP 400;
-/// omitting them unconditionally is the same shape #1330 established for
-/// OpenAI's reasoning family, applied here so a future catalog model
-/// doesn't silently break. `thinking` is the one exception: it IS sent,
-/// explicitly disabled (GitHub cloud review P2, PR #1712) — several
-/// current models (`claude-sonnet-5`, `claude-fable-5`, `claude-opus-4-8`,
-/// `claude-opus-4-7`) default to Anthropic's "adaptive" thinking mode when
-/// `thinking` is omitted entirely, which would silently spend thinking
-/// tokens the "no extended thinking, ever" design explicitly rules out and
-/// could push a polish call past its latency budget. `{"type":"disabled"}`
-/// is confirmed accepted (HTTP 200, `thinking_tokens: 0` in the response)
-/// across every current model's capability shape (adaptive-only,
-/// enabled-only, and both), verified live against the real catalog before
-/// landing this. No streaming (`onToken` accepted but unused, matching
-/// OpenAI's precedent) and no unsupported-param strip-and-retry (`thinking`
-/// is the only sampling-adjacent param sent, and every current model
-/// accepts disabling it).
+/// We never ask Claude to think (`LLMModelCapabilities.thinkingControl` is
+/// `.unsupported` for every Claude model); we ask it to think as little as the
+/// model allows, and the thinking part of the body is per model
+/// (`LLMModelCapabilities.claudeRequestShape`, #3425). `temperature`/`top_p`/
+/// `top_k` are omitted from the request body — Claude generations released
+/// after Opus 4.6 reject a non-default `temperature`, including 0, with an HTTP
+/// 400; omitting them unconditionally is the same shape #1330 established for
+/// OpenAI's reasoning family, applied here so a future catalog model doesn't
+/// silently break. `thinking` is the one sampling-adjacent field that IS sent
+/// (GitHub cloud review P2, PR #1712) — several current models
+/// (`claude-sonnet-5`, `claude-opus-4-8`, `claude-opus-4-7`) default to
+/// Anthropic's "adaptive" thinking mode when `thinking` is omitted entirely,
+/// which would spend thinking tokens and could push a polish call past its
+/// latency budget. Most models take `{"type":"disabled"}`; Sonnet 5.5 takes
+/// `{"type":"between_tools"}` instead; Opus 5.5 cannot switch thinking off at
+/// all, so it gets `output_config.effort: "low"` and its `thinking` blocks are
+/// dropped by `extractResponseText`. No streaming
+/// (`onToken` accepted but unused, matching OpenAI's precedent) and no
+/// unsupported-param strip-and-retry: an id whose shape we got wrong gets an
+/// HTTP 400, which the picker probe turns into "not offered".
 public struct ClaudeConnector: TranscriptPolisher {
   private let keychainManager: KeychainManager
   private let baseURL = "https://api.anthropic.com/v1/messages"
@@ -63,6 +63,16 @@ public struct ClaudeConnector: TranscriptPolisher {
       system: instructions.systemPrompt,
       userText: text
     )
+    // #3425: the pipeline's `thinking=` receipt describes `ResolvedThinking`,
+    // which is nil for Claude whatever the body says, so the shape the body
+    // actually carries is logged here. Content-free: ids and numbers only.
+    let shape = LLMProvider.claude.modelCapabilities(model: config.model).claudeRequestShape
+    Task {
+      await AppLogger.shared.log(
+        "Claude request shape: model=\(config.model) shape=\(shape) max_tokens=\(maxTokens)",
+        level: .info, category: "LLM"
+      )
+    }
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -150,30 +160,26 @@ public struct ClaudeConnector: TranscriptPolisher {
     system: String?,
     userText: String
   ) -> [String: Any] {
-    // Known, verified exception (GitHub cloud review r2, PR #1712):
-    // `claude-fable-5` rejects `thinking: {"type":"disabled"}` with a real
-    // HTTP 400 (`"thinking.type.disabled" is not supported for this
-    // model`), confirmed live — despite sharing the identical catalog
-    // `capabilities.thinking` shape (`enabled: false, adaptive: true`) as
-    // `claude-sonnet-5`/`claude-opus-4-8`/`claude-opus-4-7`, which all
-    // accept `disabled` fine (also verified live). The catalog's declared
-    // capability shape is therefore NOT a reliable predictor of which
-    // exact `thinking.type` values a model accepts — this is a per-model
-    // API quirk, not a pattern to hardcode around. No special-case branch
-    // here: the resulting 400 already falls through the EXISTING generic
-    // non-200 path in `probeClaude` (returns `false`, correctly excluding
-    // Fable 5 from the offered picker) and `classify` (`.badRequest` if a
-    // stale selection somehow reaches production, which the settings
-    // canonicalization fallback already prevents on the next discovery
-    // pass) — this is the "filtered out" resolution, not a locked/broken
-    // state. Confirmed live: 9/10 catalog models offered and passing with
-    // Fable 5 excluded, zero broken dictations.
+    // Which thinking field a model accepts is a per-model API quirk, not
+    // something the catalog's declared capability shape predicts (GitHub cloud
+    // review r2, PR #1712: `claude-fable-5` rejected `disabled` while sharing
+    // `claude-sonnet-5`'s catalog shape). The decision therefore lives in
+    // `LLMModelCapabilities.claudeRequestShape`, keyed on exact ids and verified
+    // live (#3425); an id whose shape is wrong still falls through the generic
+    // non-200 path in `probeClaude` (not offered) and `classify` (`.badRequest`).
     var body: [String: Any] = [
       "model": model,
       "max_tokens": maxTokens,
       "messages": [["role": "user", "content": userText]],
-      "thinking": ["type": "disabled"],
     ]
+    switch LLMProvider.claude.modelCapabilities(model: model).claudeRequestShape {
+    case .thinkingDisabled:
+      body["thinking"] = ["type": "disabled"]
+    case .thinkingBetweenTools:
+      body["thinking"] = ["type": "between_tools"]
+    case .effortLow:
+      body["output_config"] = ["effort": "low"]
+    }
     if let system, !system.isEmpty {
       body["system"] = system
     }
@@ -339,23 +345,21 @@ public struct ClaudeConnector: TranscriptPolisher {
       .compactMap { $0["text"] as? String }
       .joined()
     let truncated = (json?["stop_reason"] as? String) == "max_tokens"
+    // `stop_reason: "refusal"` is a documented Anthropic value for a model declining to
+    // continue. It is checked BEFORE the empty-content guard (#3425, Codex build r1): Anthropic
+    // documents refusals that arrive with `content: []`, and the guard below would turn those
+    // into `.emptyResponse`, which alerts and is the wrong class. A refusal that still carries
+    // explanatory TEXT would otherwise pass every check and be pasted as if it were cleaned-up
+    // dictation (Codex r7), so both shapes classify like OpenAI/Gemini's `.contentBlocked`.
+    if (json?["stop_reason"] as? String) == "refusal" {
+      throw LLMError.classified(.contentBlocked)
+    }
     // #1710 cloud review P2 class: empty text that ALSO carries max_tokens
     // is a provider condition — return the truncated flag so the decision
     // seam classifies it as outputTruncated, never our alerting
     // emptyResponse. Empty WITHOUT the marker stays emptyResponse.
     guard truncated || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw LLMError.emptyResponse
-    }
-    // `stop_reason: "refusal"` is a documented Anthropic value for a model
-    // declining to continue — unlike a moderation refusal on other
-    // providers (which tends to leave `content` empty/null and falls
-    // through to the generic `.emptyResponse` case), Claude's refusal still
-    // carries explanatory TEXT, so without this check it would pass every
-    // check above and get pasted as if it were legitimate cleaned-up
-    // dictation (Codex r7) — classify it the same way OpenAI/Gemini's
-    // existing `.contentBlocked` case handles a moderation refusal.
-    if (json?["stop_reason"] as? String) == "refusal" {
-      throw LLMError.classified(.contentBlocked)
     }
     return (text, truncated)
   }

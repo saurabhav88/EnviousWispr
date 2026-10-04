@@ -134,13 +134,14 @@ struct LLMProviderCapabilityTests {
     }
   }
 
-  // MARK: - Claude (#158): never reasons, always omits temperature
+  // MARK: - Claude (#158): no pipeline thinking value, always omits temperature
+  // (the thinking part of the body comes from `claudeRequestShape`, #3425).
 
   @Test(arguments: [
     "claude-haiku-4-5", "claude-haiku-4-5-20251001", "claude-sonnet-5",
     "claude-opus-4-8", "claude-fable-5",
   ])
-  func claudeNeverReasonsAndOmitsTemperature(model: String) {
+  func claudeHasNoPipelineThinkingValueAndOmitsTemperature(model: String) {
     let c = LLMProvider.claude.modelCapabilities(model: model)
     #expect(c.thinkingControl == .unsupported)
     #expect(c.temperaturePolicy == .omit)
