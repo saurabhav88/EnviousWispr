@@ -28,6 +28,9 @@ struct KeybindsSettingsView: View {
             )
             // As wide as the keybind fields below, two equal halves (founder, 2026-10-03).
             .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
+            // A group, so each option keeps its own name for VoiceOver; a label on the
+            // picker itself replaced every option's name with this one.
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(Text(KeybindsSettingsCopy.modeTitle))
           }
         }

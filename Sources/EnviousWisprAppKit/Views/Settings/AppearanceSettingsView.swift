@@ -50,6 +50,9 @@ struct AppearanceSettingsView: View {
                 ], selection: $settings.appearancePreference
               )
               .fixedSize()
+              // A group, so each option keeps its own name for VoiceOver; a label on the
+              // picker itself replaced every option's name with this one.
+              .accessibilityElement(children: .contain)
               .accessibilityLabel("Theme")
             }
           }
