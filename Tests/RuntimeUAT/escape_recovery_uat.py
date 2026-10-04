@@ -849,6 +849,12 @@ def phase_launcher(field, restore_on):
         tapped = press_undo(base)
         board = wait_for_cleanup(route, restore_on, held)
         require_current(base, label)
+        # The restore log confirms dispatch, not insertion, and the fixture reports its fields
+        # asynchronously, so a key paste can still be in flight here. Wait for the field to show
+        # the expected text; the exact comparison below still grades it.
+        want = expected_insertion("empty", held)
+        wait_for("the launcher field to update",
+                 lambda: pl.panel_state().get("fields", {}).get(field) == want, deadline=6.0)
         fields = pl.panel_state().get("fields", {})
         other = "B" if field == "A" else "A"
         check(f"{label}: Undo was pressed", bool(tapped))
@@ -1008,8 +1014,15 @@ def main():
     # restore is built from; this is what it is judged against, so a loss in the
     # text reader cannot hide inside both sides of the comparison.
     before_plist = plist_snapshot(BORROWED)
-    # The user's own clipboard text, put back at the end: #3437 phases write a sentinel to it.
-    user_clipboard = clipboard_text()
+    # The user's whole clipboard (every item, every type), put back at the end: #3437 phases
+    # write a sentinel to it. The owner of the snapshot and its byte-exact restore is
+    # `last_dictation_uat`, imported here because it imports this module at its top level.
+    # A clipboard it cannot capture stops the run here, before anything is written.
+    import last_dictation_uat as clipboard_owner
+    try:
+        user_clipboard = clipboard_owner.pasteboard_snapshot()
+    except clipboard_owner.Aborted as refused:
+        sys.exit(f"ABORTED: {refused}")
     print(f"prior settings: {before}")
 
     field_a = new_textedit_doc("field-a")
@@ -1167,8 +1180,9 @@ def main():
             # the same text reader it wrote from, which cannot see a loss that
             # reader makes on both sides — a padded string is the concrete case.
             after_plist = plist_snapshot(BORROWED)
-            if user_clipboard is not None:
-                set_clipboard(user_clipboard)
+            if not clipboard_owner.pasteboard_restore(user_clipboard):
+                print("    CLIPBOARD NOT RESTORED byte for byte")
+                restored = False
             if before_plist is None or after_plist is None:
                 print("    (could not read the domain as a plist — restore is")
                 print("     UNVERIFIED by the independent oracle)")
