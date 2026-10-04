@@ -360,6 +360,8 @@ for label, field in [("wrong text", "The quick brown fox. "), ("missing trailing
                      ("extra space", " " + LEGACY), ("changed casing", LEGACY.lower()),
                      ("duplicate insertion", LEGACY + LEGACY)]:
     ok(f"a field with {label} fails", any("original field" in n for n in verdicts(field_value=field)))
+ok("an unreadable field where text is expected fails",
+   any("original field" in n for n in verdicts(field_value=None)))
 ok("a written sentinel field fails",
    any("panel field B" in n for n in verdicts(others={"panel field B": ("x", "")})))
 ok("a missing restore line fails",

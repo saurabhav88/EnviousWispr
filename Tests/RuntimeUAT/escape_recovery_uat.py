@@ -715,9 +715,12 @@ def verify_undo(name, *, window, field_value, expected, others, board, board_exp
     check(f"{name}: one restore, outcome {want_outcome}", outcomes == [want_outcome], str(outcomes))
     routes = undo_routes(window, bundle)
     check(f"{name}: delivered by tier {route}", routes == [route], str(routes))
-    if field_value is not None:
+    # The EXPECTATION decides whether the field is graded: an unreadable field (None) where text is
+    # expected fails, rather than skipping the one check that proves where the text landed.
+    if expected is not None:
         check(f"{name}: the original field holds exactly the expected text",
-              field_value == expected, f"field={field_value!r} expected={expected!r}")
+              isinstance(field_value, str) and field_value == expected,
+              f"field={field_value!r} expected={expected!r}")
     for label, (got, want) in others.items():
         check(f"{name}: {label} is unchanged", got == want, f"{got!r} expected {want!r}")
     check(f"{name}: the clipboard ends as this route leaves it", board == board_expected,
@@ -910,6 +913,11 @@ def phase_edited_field(restore_on):
     focus_without_moving_pointer(doc)
     prior = "Start. alpha end"
     si.type_text(prior)
+    # Synthetic typing uses fixed US key codes, so a non-QWERTY layout writes other text. Prove the
+    # setup landed before Undo is graded against it.
+    if not wait_for("the edited-field setup to match exactly",
+                    lambda: field_text(doc) == prior, deadline=3.0):
+        raise Aborted(f"{label}: setup did not write {prior!r}; Undo has not been tested")
     location, length = prior.index("alpha"), len("alpha")
     if not select_range(doc, location, length):
         raise Aborted(f"{label}: could not select the word to replace")
