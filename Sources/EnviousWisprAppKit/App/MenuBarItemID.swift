@@ -11,8 +11,10 @@ enum MenuBarItemID {
   static let transcribeFile = NSUserInterfaceItemIdentifier("menu.transcribeFile")
   static let accessibilityWarning = NSUserInterfaceItemIdentifier("menu.accessibilityWarning")
   static let microphoneWarning = NSUserInterfaceItemIdentifier("menu.microphoneWarning")
-  static let settings = NSUserInterfaceItemIdentifier("menu.settings")
+  static let microphone = NSUserInterfaceItemIdentifier("menu.microphone")
+  static let openApp = NSUserInterfaceItemIdentifier("menu.openApp")
   static let appearance = NSUserInterfaceItemIdentifier("menu.appearance")
+  static let helpCenter = NSUserInterfaceItemIdentifier("menu.helpCenter")
   static let checkForUpdates = NSUserInterfaceItemIdentifier("menu.checkForUpdates")
   static let quit = NSUserInterfaceItemIdentifier("menu.quit")
 }

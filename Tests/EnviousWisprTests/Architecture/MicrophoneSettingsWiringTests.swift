@@ -19,14 +19,14 @@ struct MicrophoneSettingsWiringTests {
       source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
   }
 
-  @Test("choosing a microphone still writes both preferences")
+  /// #3454: the two writes moved, unchanged, into `SettingsManager.chooseInputDevice(uid:)`,
+  /// which the menu bar's Microphone submenu also calls; `SettingsManagerInputDeviceChoiceTests`
+  /// proves it writes both preferences, override first. This pins that the page still goes through it.
+  @Test("choosing a microphone still writes both preferences, through the shared owner")
   func selectionWritesBothPreferences() throws {
     let writes = Self.setterAssignments(binding: "inputDeviceSelection", in: try Self.source(Self.audioPath))
     #expect(
-      writes == [
-        "settingsManager.preferredInputDeviceIDOverride = newValue",
-        "settingsManager.selectedInputDeviceUID = newValue",
-      ], "setter writes: \(writes)")
+      writes == ["settingsManager.chooseInputDevice(uid: $0)"], "setter writes: \(writes)")
   }
 
   @Test("the page describes the device from the one shared resolver")

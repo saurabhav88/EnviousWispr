@@ -98,7 +98,7 @@ _COMPARE_FIELDS = ("role", "title", "description", "enabled")
 
 
 def _build_path(parent_path, index, node):
-    """Build a human-readable path segment like 'root > [0] AXMenuBar > [1] AXMenuItem \'Settings...\''"""
+    """Build a human-readable path segment like 'root > [0] AXMenuBar > [1] AXMenuItem \'Open EnviousWispr\''"""
     role = node.get("role") or "?"
     title = node.get("title") or ""
     label = f"[{index}] {role}"

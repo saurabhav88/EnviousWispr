@@ -134,9 +134,14 @@ public struct HelpCheckReply: Equatable, Sendable {
   public let versions: FeedbackHelpOutcome.Versions?
 }
 
+/// The help website (#3454): the menu bar's Help Center item opens it.
+public enum HelpCenter {
+  public static let rootURL = "https://enviouswispr.com/help/"
+}
+
 extension HelpCheckReply {
   /// The only help-center host a card may link to.
-  static let helpURLPrefix = "https://enviouswispr.com/help/"
+  static let helpURLPrefix = HelpCenter.rootURL
   /// The server's g3 gates (website/functions/_lib/help-check.js GATES), applied again here so a
   /// card the scores do not support is refused whatever the server's verdict says.
   public static let coverageGate = 0.5

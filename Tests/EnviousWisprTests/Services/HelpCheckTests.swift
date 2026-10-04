@@ -1165,4 +1165,12 @@ struct HelpCheckTests {
       #expect(recorder.saves.map(\.usageMetrics) == [expected], "cards")
     }
   }
+
+  /// #3454: the menu bar's Help Center item opens `HelpCenter.rootURL`, and the help cards may
+  /// link only under the same address. Both are pinned to the literal site so neither can drift.
+  @Test("the Help Center address is the help site, and help cards link only under it")
+  func helpCenterRootIsTheHelpSite() {
+    #expect(HelpCenter.rootURL == "https://enviouswispr.com/help/")
+    #expect(HelpCheckReply.helpURLPrefix == "https://enviouswispr.com/help/")
+  }
 }

@@ -22,8 +22,8 @@ struct SettingsNavigationProducerTests {
   /// pins that.
   static let routes: [Route] = [
     Route(
-      "1 menu Settings", file: app + "WisprBootstrapper.swift", callee: "request",
-      owner: "label:openSettings", argument: ".dictation(.engine)"),
+      "1 menu Open EnviousWispr", file: app + "WisprBootstrapper.swift", callee: "request",
+      owner: "label:openMainWindow", argument: ".history"),
     Route(
       "2 menu Transcribe a File", file: app + "WisprBootstrapper.swift", callee: "request",
       owner: "label:openTranscribeFile", argument: ".transcribeFile"),
@@ -99,13 +99,13 @@ struct SettingsNavigationProducerTests {
     let fixture = """
       func wire() {
         let other = { coordinator.request(.appSettings(.permissions)) }
-        actions(openSettings: { coordinator.request(.dictation(.engine)) })
+        actions(openMainWindow: { coordinator.request(.history) })
       }
       """
     let calls = Self.navigationCalls(in: fixture, callee: "request")
     #expect(calls.count == 2)
-    #expect(calls.filter { $0.owners.contains("label:openSettings") }.map(\.argument) == [
-      ".dictation(.engine)"
+    #expect(calls.filter { $0.owners.contains("label:openMainWindow") }.map(\.argument) == [
+      ".history"
     ])
     #expect(calls.filter { $0.owners.contains("binding:openPermissionsWindow") }.isEmpty)
   }

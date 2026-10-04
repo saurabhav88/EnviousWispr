@@ -599,18 +599,51 @@ final class MenuBarController: NSObject {
 
     menu.addItem(.separator())
 
-    // Settings (opens unified window to Speech Engine tab)
-    let settingsItem = NSMenuItem(
-      title: String(localized: "Settings...", comment: "Menu bar menu: opens Settings."),
-      action: #selector(openSettingsAction),
-      keyEquivalent: ",")
-    settingsItem.image = NSImage(
-      systemSymbolName: "gearshape",
+    // #3454: Microphone submenu: Auto, then each input in the Settings dropdown's order, checkmark
+    // on the saved choice. The same choice as Settings > Dictation > Microphone, saved through the
+    // same `SettingsManager.chooseInputDevice(uid:)`, so the two can never disagree.
+    let microphoneItem = NSMenuItem(
+      title: String(
+        localized: "Microphone",
+        comment: "Menu bar menu: the submenu for choosing the microphone used for recording."),
+      action: nil, keyEquivalent: "")
+    microphoneItem.image = NSImage(
+      systemSymbolName: "mic",
       accessibilityDescription: String(
-        localized: "Settings", comment: "Menu bar menu, VoiceOver: the icon beside Settings."))
-    settingsItem.target = self
-    settingsItem.identifier = MenuBarItemID.settings
-    menu.addItem(settingsItem)
+        localized: "menu.microphone.icon", defaultValue: "Microphone",
+        comment: "Menu bar menu, VoiceOver: the icon beside Microphone."))
+    let microphoneSubmenu = NSMenu()
+    let autoChoice = MicrophoneMenuChoice(uid: "", title: String(localized: "Auto"))
+    // A device with no UID is skipped: its key would be "", which is Auto's.
+    for choice in [autoChoice] + state.microphoneChoices.filter({ !$0.uid.isEmpty }) {
+      let item = NSMenuItem(
+        title: choice.title, action: #selector(setMicrophoneAction(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = choice.uid
+      item.state = choice.uid == state.microphoneSelection ? .on : .off
+      microphoneSubmenu.addItem(item)
+    }
+    microphoneItem.submenu = microphoneSubmenu
+    microphoneItem.identifier = MenuBarItemID.microphone
+    menu.addItem(microphoneItem)
+
+    // #3454: opens the app's window on History, its first page (was "Settings...", which opened
+    // Dictation > Engine). No key equivalent: Cmd+, means Settings, and it only ever worked while
+    // this menu was open.
+    let openAppItem = NSMenuItem(
+      title: String(
+        localized: "Open \(AppConstants.appName)",
+        comment: "Menu bar menu: opens the app's main window on History. %@ is the app name, EnviousWispr."),
+      action: #selector(openMainWindowAction),
+      keyEquivalent: "")
+    openAppItem.image = NSImage(
+      systemSymbolName: "macwindow",
+      accessibilityDescription: String(
+        localized: "menu.openApp.icon", defaultValue: "Window",
+        comment: "Menu bar menu, VoiceOver: the icon beside Open EnviousWispr."))
+    openAppItem.target = self
+    openAppItem.identifier = MenuBarItemID.openApp
+    menu.addItem(openAppItem)
 
     // Appearance submenu (System / Light / Dark) — checkmark on the current
     // preference. Mirrors the Settings → Appearance picker (#1047).
@@ -646,6 +679,22 @@ final class MenuBarController: NSObject {
     appearanceItem.submenu = appearanceSubmenu
     appearanceItem.identifier = MenuBarItemID.appearance
     menu.addItem(appearanceItem)
+
+    menu.addItem(.separator())
+
+    // #3454: the help website, the app's only general help link.
+    let helpItem = NSMenuItem(
+      title: String(
+        localized: "Help Center", comment: "Menu bar menu: opens the help website in the browser."),
+      action: #selector(openHelpCenterAction), keyEquivalent: "")
+    helpItem.image = NSImage(
+      systemSymbolName: "questionmark.circle",
+      accessibilityDescription: String(
+        localized: "menu.helpCenter.icon", defaultValue: "Help",
+        comment: "Menu bar menu, VoiceOver: the icon beside Help Center."))
+    helpItem.target = self
+    helpItem.identifier = MenuBarItemID.helpCenter
+    menu.addItem(helpItem)
 
     // Check for Updates — targets SparkleUpdateController so it can tag the
     // install source as "menu" for telemetry attribution (issue #343).
@@ -752,7 +801,9 @@ final class MenuBarController: NSObject {
         LastDictationMenuState(
           rowID: $0.id, preview: LastDictationMenuState.preview(of: $0.text),
           target: lastDictationTarget)
-      }
+      },
+      microphoneChoices: actions.microphoneChoices(),
+      microphoneSelection: settings.preferredInputDeviceIDOverride
     )
   }
 
@@ -792,8 +843,19 @@ final class MenuBarController: NSObject {
     }
   }
 
-  @objc private func openSettingsAction() {
-    actions.openSettings()
+  @objc private func openMainWindowAction() {
+    actions.openMainWindow()
+  }
+
+  @objc private func openHelpCenterAction() {
+    actions.openHelpCenter()
+  }
+
+  /// #3454: save the microphone chosen in the Microphone submenu ("" is Auto) through the same
+  /// owner Settings uses.
+  @objc private func setMicrophoneAction(_ sender: NSMenuItem) {
+    guard let uid = sender.representedObject as? String else { return }
+    settings.chooseInputDevice(uid: uid)
   }
 
   @objc private func openTranscribeFileAction() {
@@ -923,7 +985,13 @@ struct MenuBarActions: Sendable {
     @MainActor (SelectionReader.Result, SelectionReader.AcquisitionContext) ->
       Void
   let continueOnboarding: @MainActor () -> Void
-  let openSettings: @MainActor () -> Void
+  /// Open the unified window on History (#3454).
+  let openMainWindow: @MainActor () -> Void
+  /// Open the help website (#3454).
+  let openHelpCenter: @MainActor () -> Void
+  /// The inputs for the Microphone submenu, in the Settings dropdown's order, read when the menu
+  /// is built (#3454). Plain values: this file may not import the Audio module.
+  let microphoneChoices: @MainActor () -> [MicrophoneMenuChoice]
   /// Open the unified window on the Transcribe a File page (#2772).
   let openTranscribeFile: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
@@ -1072,6 +1140,17 @@ struct MenuBarViewState: Equatable {
   var polishSetupWarning: PolishSetupPromptSubject? = nil
   /// #3106: the Paste Last row's content, or nil when nothing may be reused (row disabled).
   var lastDictation: LastDictationMenuState? = nil
+  /// #3454: the Microphone submenu's inputs (Auto is added by `renderMenu`).
+  var microphoneChoices: [MicrophoneMenuChoice] = []
+  /// #3454: the saved choice (`preferredInputDeviceIDOverride`), "" for Auto; it decides the
+  /// checkmark, as it does in Settings.
+  var microphoneSelection: String = ""
+}
+
+/// One input in the Microphone submenu (#3454): its UID and its Settings dropdown title.
+struct MicrophoneMenuChoice: Equatable {
+  let uid: String
+  let title: String
 }
 
 extension MenuBarItemID {
