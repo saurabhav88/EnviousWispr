@@ -468,6 +468,8 @@ enum OverlayContent: Equatable, Sendable {
   case notice(NoticeModel)
   case languageChip(payload: LanguageChipPayload)
   case bluetoothAwareness
+  /// #3438: the AI polish setup card.
+  case polishSetupCard(PolishSetupCardModel)
   case escapeRecovery(transcriptID: UUID)
   /// #996 auto-learn: the Undo pill. The model carries the pill UUID and its
   /// phase (learned with the Undo button, or a typed result line); the reducer

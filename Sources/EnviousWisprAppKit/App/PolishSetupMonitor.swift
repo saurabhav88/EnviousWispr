@@ -143,12 +143,27 @@ struct PolishSetupEpisodes: Equatable {
     return PolishSetupCardTicket(episode: episode.token, generation: generation)
   }
 
-  /// The card was actually presented. Spends it only for the current episode and generation;
-  /// a duplicate or stale receipt does nothing.
-  mutating func cardPresented(_ ticket: PolishSetupCardTicket) {
+  /// The card was actually presented. Spends it only for the current episode and generation,
+  /// and answers whether it did; a duplicate or stale receipt does nothing and answers false.
+  @discardableResult
+  mutating func cardPresented(_ ticket: PolishSetupCardTicket) -> Bool {
     guard ticket.generation == generation, episode?.token == ticket.episode, shows(.card)
-    else { return }
+    else { return false }
     episode?.cardSpent = true
+    return true
+  }
+
+  /// Whether a card raised under `ticket` still describes the present: the same episode, the
+  /// same eligibility generation, and a problem still eligible to show. Spending the card does
+  /// not end it (the card on screen IS the spend).
+  func cardStillApplies(_ ticket: PolishSetupCardTicket) -> Bool {
+    guard let episode, let problem = eligibleProblem else { return false }
+    // Downloading or being checked is not something to finish: the card leaves, the episode
+    // and its memory stay.
+    return ticket.generation == generation
+      && episode.token == ticket.episode
+      && episode.configuration.provider != .appleIntelligence
+      && problem.isActionable
   }
 }
 
@@ -250,11 +265,25 @@ final class PolishSetupMonitor {
     return episodes.cardTicket()
   }
 
-  /// The card really appeared. Judged against the live state, not the last observed one.
-  func cardPresented(_ ticket: PolishSetupCardTicket) {
+  /// The card really appeared. Judged against the live state, not the last observed one;
+  /// answers whether this presentation spent the card (false: stale, duplicate, or no longer
+  /// eligible, and the caller withdraws it).
+  @discardableResult
+  func cardPresented(_ ticket: PolishSetupCardTicket) -> Bool {
     reconcile()
-    episodes.cardPresented(ticket)
+    return episodes.cardPresented(ticket)
   }
+
+  /// Whether a card raised under `ticket` still describes the present (live state).
+  func cardStillApplies(_ ticket: PolishSetupCardTicket) -> Bool {
+    reconcile()
+    return episodes.cardStillApplies(ticket)
+  }
+
+  /// Told SYNCHRONOUSLY whenever the episode state changes (an episode starts or ends,
+  /// eligibility is lost or regained, a surface is answered), so the card owner can withdraw a
+  /// card that no longer applies in the same turn, without waiting for observation.
+  @ObservationIgnored var onEpisodeChange: (@MainActor () -> Void)?
 
   /// The configuration and episode now, read from the live owners rather than a cached copy,
   /// for a take freezing its context at start.
@@ -353,15 +382,16 @@ final class PolishSetupMonitor {
   /// episode, that same episode; once per take. A take that started with no episode (a key
   /// whose presence was not yet known) is taken in: its configuration revision already rejects
   /// a take from before any provider, model or key change.
-  func ingest(_ outcome: PolishTakeOutcome) {
+  @discardableResult
+  func ingest(_ outcome: PolishTakeOutcome) -> Bool {
     reconcile()
     let take = outcome.context
     guard ingestedTakeIDs.contains(outcome.takeID) == false,
       take.configurationRevision == configurationRevision,
       let configuration = lastConfiguration,
       configuration.provider == take.provider, configuration.model == take.model
-    else { return }
-    if let episode = take.episode, episodes.episode?.token.rawValue != episode { return }
+    else { return false }
+    if let episode = take.episode, episodes.episode?.token.rawValue != episode { return false }
     ingestedTakeIDs.append(outcome.takeID)
     if ingestedTakeIDs.count > 16 { ingestedTakeIDs.removeFirst() }
 
@@ -414,6 +444,7 @@ final class PolishSetupMonitor {
           observedAt: outcome.observedAt)
       }
     }
+    return true
   }
 
   /// When the key check answered (accepted or rejected) about the key saved now; nil when it
@@ -572,21 +603,29 @@ final class PolishSetupMonitor {
     var next = episodes
     next.reconcile(
       readiness: readiness, configuration: inputs.configuration, eligible: eligible)
-    if next != episodes { episodes = next }
+    if next != episodes {
+      episodes = next
+      onEpisodeChange?()
+    }
     return inputs
   }
 }
 
-/// The AI polish setup warnings' two app-lifetime owners, held by the composition root as one
-/// slot: the saved-key record and the warning monitor.
+/// The AI polish setup warnings' app-lifetime owners, held by the composition root as one
+/// slot: the saved-key record, the warning monitor, and the card after a dictation.
 @MainActor
 final class PolishSetupWiring {
   let savedKeyPresence: SavedKeyPresence
   let monitor: PolishSetupMonitor
+  let card: PolishSetupCardPresenter
 
-  init(savedKeyPresence: SavedKeyPresence, monitor: PolishSetupMonitor) {
+  init(
+    savedKeyPresence: SavedKeyPresence, monitor: PolishSetupMonitor,
+    card: PolishSetupCardPresenter
+  ) {
     self.savedKeyPresence = savedKeyPresence
     self.monitor = monitor
+    self.card = card
   }
 }
 

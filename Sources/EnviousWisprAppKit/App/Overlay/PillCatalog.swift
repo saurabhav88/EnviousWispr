@@ -58,6 +58,9 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// catalog supplies the sentence directly (2026-09-21 plan §3.1 step 9).
   case correctionLearned(LearnedCorrectionPillModel)
   case correctionLearnedSaveError(LearnedCorrectionSaveError)
+  /// #3438: the AI polish setup card. A feature route with no pipeline intent, announced by the
+  /// catalog directly (medium, like the Bluetooth card).
+  case polishSetupCard(PolishSetupCardModel)
 
   // **NINETEEN cases: `.recording`, the sixteen non-recording the migration
   // froze, and the two #996 auto-learn feature routes above.** C2 staged
@@ -153,6 +156,9 @@ enum PillCatalog {
     }
     if case .correctionLearnedSaveError(let error) = request {
       return .medium(CorrectionLearnedPillCopy.saveError(error))
+    }
+    if case .polishSetupCard(let model) = request {
+      return .medium(PolishSetupSurfaceCopy.cardAnnouncement(line: model.line))
     }
     guard let intent = request.matchingIntent else {
       // **Import status announces NOTHING, and that is preserved rather than
@@ -363,6 +369,13 @@ enum PillCatalog {
         id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
         requestedWidth: .fixed(320))
 
+    case .polishSetupCard(let model):
+      // #3438: the Bluetooth card's shape and lifetime: persistent until answered or replaced,
+      // a fixed 320 wide, height from its content.
+      return PillDefinition(
+        id: id, content: .polishSetupCard(model), expiry: .untilReplaced,
+        requestedWidth: .fixed(320))
+
     case .correctionLearned(let model):
       // 2026-09-21 plan §3.1 step 9, widened to three seconds on 2026-09-22
       // (founder, live UAT: "the pill wasn't there long enough"), then to four
@@ -498,7 +511,7 @@ extension PillCatalogRequest {
     case .recoverySucceeded: return .recoverySucceeded
     case .bluetoothAwareness: return .bluetoothAwareness
     case .escapeRecovery(let transcriptID): return .escapeRecovery(transcriptID: transcriptID)
-    case .importStatus, .correctionLearned, .correctionLearnedSaveError:
+    case .importStatus, .correctionLearned, .correctionLearnedSaveError, .polishSetupCard:
       return nil
     }
   }

@@ -40,6 +40,38 @@ enum PolishSetupSurfaceCopy {
       comment: "History page banner, VoiceOver and tooltip: the close button.")
   }
 
+  // MARK: - The card after a dictation (plan §17 C3)
+
+  static var cardTitle: String {
+    String(
+      localized: "Finish setting up AI polish",
+      comment:
+        "Card after a dictation whose AI polish did not run because its chosen model is not set up: the title."
+    )
+  }
+
+  /// "<Short reason>. Pasted without AI polish." The reason starts the line, so its first
+  /// letter is raised here (the fragments may start lower case after a colon elsewhere).
+  static func cardLine(reason: String) -> String {
+    let sentence = reason.prefix(1).uppercased() + reason.dropFirst()
+    return String(
+      localized: "\(sentence). Pasted without AI polish.",
+      comment:
+        "Card after a dictation: %@ is a short reason without a full stop, such as OpenAI needs an API key."
+    )
+  }
+
+  static var cardNotNow: String {
+    String(
+      localized: "Not now",
+      comment: "Card after a dictation: closes the card and leaves the setup for later.")
+  }
+
+  /// What VoiceOver reads when the card appears.
+  static func cardAnnouncement(line: String) -> String {
+    "\(cardTitle). \(line)"
+  }
+
   /// The short reason: a fragment, no final punctuation, built from the problem itself (never
   /// from an error message).
   static func shortReason(_ problem: PolishSetupProblem) -> String {

@@ -1623,6 +1623,21 @@ extension OverlayDirector: OverlayPresenting {
           },
           onExpire: nil),
         relay: relay)
+    case .polishSetupCard(let model, let onFinishSetup, let onNotNow):
+      // #3438: the Bluetooth card's admission transaction, unchanged.
+      guard featureSlotIsAvailable else { return nil }
+      handle(
+        .polishSetupCard(model),
+        binding: .install(
+          deliver: { action in
+            switch action {
+            case .finishPolishSetup: onFinishSetup()
+            case .dismissPolishSetup: onNotNow()
+            default: break
+            }
+          },
+          onExpire: nil),
+        relay: relay)
     // **Take, DISMISS, then forward — matching the shipped order.**
     // `EscapeRecoveryWiring` dismisses before pasting for ONE stated reason: a
     // spoken "overlay hidden" arriving after the restore is noise on top of the

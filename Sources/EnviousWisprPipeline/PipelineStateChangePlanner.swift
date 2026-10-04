@@ -107,6 +107,21 @@ enum PipelineStateSideEffect: Equatable, Sendable {
 
 struct PipelineStateChangePlan: Equatable, Sendable {
   let effects: [PipelineStateSideEffect]
+
+  /// #3438: this completion schedules a disclosure that outranks a setup reminder (the History
+  /// save failed, the tail was interrupted, the beginning was salvaged). Read from the effects
+  /// the plan actually holds, so the planner's conditions are never restated.
+  var schedulesDataLossDisclosure: Bool {
+    effects.contains { effect in
+      switch effect {
+      case .scheduleHistorySaveFailedWarning, .scheduleSalvagedLeadWarning,
+        .scheduleInterruptionWarning:
+        return true
+      default:
+        return false
+      }
+    }
+  }
 }
 
 /// Pure projection from a state transition's observable inputs to the ordered
@@ -146,7 +161,11 @@ enum PipelineStateChangePlanner {
     // construction — the pill's paste target travels beside the plan, never in
     // it. Nil is the ordinary-dictation value and leaves the resulting plan
     // byte-identical, so no existing caller changes by a single effect.
-    escapeRecoveryOutcome: EscapeRecoveryTerminalOutcome? = nil
+    escapeRecoveryOutcome: EscapeRecoveryTerminalOutcome? = nil,
+    // #3438: the concluded take's polish was skipped by a CONFIRMED unfinished setup
+    // (`PolishTakeOutcome.setupProblem` for that take). Its card replaces the failure pill, so
+    // the pill is not scheduled, whether or not the card can show. False keeps today's plan.
+    polishSetupBlocked: Bool = false
   ) -> PipelineStateChangePlan {
     var effects: [PipelineStateSideEffect] = []
     let interrupted = interruptionDisclosure != nil
@@ -181,8 +200,10 @@ enum PipelineStateChangePlanner {
         // slot ahead of the polish pill (data-loss disclosure beats a
         // formatting notice) — scheduled below, outside this branch.
         // #1408: so does a mid-recording disconnect, for the same reason.
+        // #3438: a confirmed unfinished setup (a rejected key) is the setup card's to tell,
+        // read from the take's typed outcome, never from the notice text.
         if !historySaveFailed, !interrupted, !salvagedLead,
-          polishNotice.leadIn != .skipped
+          polishNotice.leadIn != .skipped, !polishSetupBlocked
         {
           effects.append(.schedulePolishFailedWarning)
         }

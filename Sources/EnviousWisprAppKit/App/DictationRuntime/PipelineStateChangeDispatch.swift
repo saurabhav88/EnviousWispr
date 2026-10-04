@@ -33,7 +33,7 @@ enum PipelineStateChangeDispatch {
     driver: KernelDictationDriver,
     to newState: PipelineState
   ) {
-    handler.handle(
+    let schedulesDataLossDisclosure = handler.handle(
       to: newState,
       pipelineOverlayIntent: driver.overlayIntent,
       lastPolishNotice: driver.lastPolishNotice,
@@ -52,9 +52,12 @@ enum PipelineStateChangeDispatch {
       interruptionDisclosure: driver.lastZeroSignalFailureMode == .becameZeroMidCapture
         ? .otherInterruption
         : CompletionInterruptionDisclosure(cause: driver.lastAudioInterruptionCause),
-      escapeRecoveryCompletion: driver.takeEscapeRecoveryCompletion())
+      escapeRecoveryCompletion: driver.takeEscapeRecoveryCompletion(),
+      // #3438: the concluded take's own typed outcome, read before planning, so a confirmed
+      // setup problem replaces the failure pill with the setup card.
+      polishSetupBlocked: driver.lastPolishSetupBlocked)
     // #3438: after the completion is planned, the concluded take's polish outcome goes to the
     // AI polish setup warnings, once per take, from whichever backend ran it.
-    driver.deliverPolishTakeOutcome()
+    driver.deliverPolishTakeOutcome(mayOfferCard: schedulesDataLossDisclosure == false)
   }
 }

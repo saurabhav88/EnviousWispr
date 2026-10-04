@@ -156,6 +156,12 @@ struct OverlayRootView: View {
         onClose: { press(.closeBluetoothAwareness, on: presentation) },
         onAdjustSettings: { press(.openBluetoothSettings, on: presentation) })
 
+    case .polishSetupCard(let model):
+      PolishSetupCardView(
+        model: model,
+        onFinishSetup: { press(.finishPolishSetup, on: presentation) },
+        onNotNow: { press(.dismissPolishSetup, on: presentation) })
+
     case .correctionLearned(let model):
       // #996 auto-learn: Undo is dispatched with the model's own pill id, and
       // only from the `.learned` phase (a result draws no button).

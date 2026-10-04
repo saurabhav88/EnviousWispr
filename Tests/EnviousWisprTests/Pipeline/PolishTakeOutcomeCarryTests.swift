@@ -36,7 +36,7 @@ struct PolishTakeOutcomeCarryTests {
           return self.answer
         },
         recordTerminalProblem: { self.recorded.append(($0, $1)) },
-        ingest: { self.ingested.append($0) })
+        ingest: { outcome, _ in self.ingested.append(outcome) })
     }
   }
 
@@ -258,13 +258,16 @@ struct PolishTakeOutcomeCarryTests {
     await wrapper.drainReadyWork()
     let takeA = try #require(wrapper.telemetryState.takeID)
     outcome.polishTakeOutcome = Self.outcome(takeA)
-    // Still in flight: nothing is handed back.
+    // Still in flight: nothing is handed back, and nothing blocks a pill yet.
     driver.deliverPolishTakeOutcome()
     #expect(log.ingested.isEmpty)
+    #expect(driver.lastPolishSetupBlocked == false)
 
     await wrapper.apply(.stop)
     await wrapper.drainUntilConcluded()
     #expect(driver.lastTakeID == takeA)
+    // A's confirmed setup problem is what the completion planner reads for A.
+    #expect(driver.lastPolishSetupBlocked)
     // Repeated state notifications: once.
     driver.deliverPolishTakeOutcome()
     driver.deliverPolishTakeOutcome()
@@ -279,6 +282,7 @@ struct PolishTakeOutcomeCarryTests {
     await wrapper.apply(.stop)
     await wrapper.drainUntilConcluded()
     #expect(driver.lastTakeID == takeB)
+    #expect(driver.lastPolishSetupBlocked == false, "B was judged by A's outcome")
     driver.deliverPolishTakeOutcome()
     #expect(log.ingested.map(\.takeID) == [takeA])
   }

@@ -880,6 +880,17 @@
         }
       }
     },
+    "%@. Pasted without AI polish." : {
+      "comment" : "Card after a dictation: %@ is a short reason without a full stop, such as OpenAI needs an API key.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@. Ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
     "%@. Undo available." : {
       "comment" : "VoiceOver reading of the pill: %@ is the pill's sentence, then the Undo button is announced.",
       "localizations" : {
@@ -7492,7 +7503,7 @@
       }
     },
     "Finish setting up AI polish" : {
-      "comment" : "Menu bar menu: opens Settings on AI Polish, whose chosen model is not set up.",
+      "comment" : "Card after a dictation whose AI polish did not run because its chosen model is not set up: the title.\nMenu bar menu: opens Settings on AI Polish, whose chosen model is not set up.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11450,6 +11461,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht installiert"
+          }
+        }
+      }
+    },
+    "Not now" : {
+      "comment" : "Card after a dictation: closes the card and leaves the setup for later.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht jetzt"
           }
         }
       }

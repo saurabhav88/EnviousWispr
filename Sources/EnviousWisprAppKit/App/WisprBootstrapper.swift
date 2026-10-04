@@ -2144,22 +2144,40 @@ package final class WisprBootstrapper {
     savedKeyPresence.onChange = { [weak polishSetupMonitor] in
       polishSetupMonitor?.configurationOrEligibilityChanged()
     }
+    // #3438 chunk 6: the card after a dictation, offered for a take the monitor took in, and
+    // withdrawn in the same turn its episode stops applying.
+    let polishSetupCard = PolishSetupCardPresenter(
+      overlay: recordingOverlay, monitor: polishSetupMonitor,
+      openAIPolish: { [weak navigationCoordinator, weak appWindowCoordinator] in
+        navigationCoordinator?.request(.aiPolish)
+        appWindowCoordinator?.showWindow()
+      })
+    polishSetupMonitor.onEpisodeChange = { [weak polishSetupCard] in polishSetupCard?.reconcile() }
     // #3438 chunk 4: both dictation drivers freeze each take's AI polish setup, ask the monitor
     // to confirm a setup problem, write it on the take's terminal row, and hand the concluded
     // take's outcome back. One value for both, so the two backends cannot be wired apart.
     let polishSetupTakeHooks = PolishSetupTakeHooks(
-      freeze: { [weak polishSetupMonitor] in polishSetupMonitor?.freezeTakeContext() },
+      // A recording starting is where a pending or shown card stops applying.
+      freeze: { [weak polishSetupMonitor, weak polishSetupCard] in
+        polishSetupCard?.stop()
+        return polishSetupMonitor?.freezeTakeContext()
+      },
       classify: { [weak polishSetupMonitor] evidence, take in
         polishSetupMonitor?.confirmedSetupProblem(evidence, for: take)
       },
       recordTerminalProblem: { takeID, tag in
         TelemetryService.shared.recordPolishSetupProblem(takeID: takeID, tag: tag)
       },
-      ingest: { [weak polishSetupMonitor] outcome in polishSetupMonitor?.ingest(outcome) })
+      // One ingestion authority: the card is offered only for a take the monitor took in.
+      ingest: { [weak polishSetupMonitor, weak polishSetupCard] outcome, mayOfferCard in
+        guard polishSetupMonitor?.ingest(outcome) == true else { return }
+        polishSetupCard?.offer(
+          after: outcome, dataLossDisclosureScheduled: mayOfferCard == false)
+      })
     kernelDriver.polishSetupHooks = polishSetupTakeHooks
     whisperKitKernelDriver.polishSetupHooks = polishSetupTakeHooks
     self.polishSetup = PolishSetupWiring(
-      savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor)
+      savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor, card: polishSetupCard)
     self.vocabularyPackManager = vocabularyPackManager
     // #2381. Built from three collaborators this root already holds; it adds no new dependency of
     // its own and reaches nothing the root did not already have.
@@ -2389,6 +2407,7 @@ package final class WisprBootstrapper {
     // the volume for a quit mid-dictation.
     dictationRuntime.otherAudioHold.finishForTermination()
     // #3438: stop observing before the owners it reads are torn down.
+    polishSetup.card.stop()
     polishSetup.monitor.stop()
     // #3269: best effort; the process may exit first, and every outbox write is atomic anyway.
     Task { await FeedbackReporter.stopDelivery() }

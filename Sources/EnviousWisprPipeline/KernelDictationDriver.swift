@@ -1063,14 +1063,25 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// before the take concluded (its ID must be `lastTakeID`), nothing for another take, and
   /// nothing on a later call for the same take, so repeated state notifications cannot deliver
   /// it twice. Called from `PipelineStateChangeDispatch.run` for both backends.
-  public func deliverPolishTakeOutcome() {
+  /// `mayOfferCard` is false when this completion schedules a data-loss disclosure: the
+  /// outcome is still taken in, but its card is not offered for this take.
+  public func deliverPolishTakeOutcome(mayOfferCard: Bool = true) {
     guard let hooks = polishSetupHooks,
       let polish = Self.deliverablePolishOutcome(
         outcome.polishTakeOutcome, concludedTakeID: lastTakeID,
         alreadyDelivered: deliveredPolishTakeID)
     else { return }
     deliveredPolishTakeID = polish.takeID
-    hooks.ingest(polish)
+    hooks.ingest(polish, mayOfferCard)
+  }
+
+  /// #3438: whether the CONCLUDED take's polish was skipped by a confirmed unfinished setup.
+  /// Read for that take only (its ID must be `lastTakeID`), never another take's outcome.
+  public var lastPolishSetupBlocked: Bool {
+    guard let polish = outcome.polishTakeOutcome, polish.takeID == lastTakeID else {
+      return false
+    }
+    return polish.setupProblem != nil
   }
 
   /// The rule `deliverPolishTakeOutcome` applies: only the concluded take's own outcome, and
@@ -2071,7 +2082,8 @@ public struct PolishSetupTakeHooks {
   public let classify:
     @MainActor (PolishSetupEvidence, PolishSetupTakeContext) -> PolishSetupProblemTag?
   public let recordTerminalProblem: @MainActor (String, PolishSetupProblemTag) -> Void
-  public let ingest: @MainActor (PolishTakeOutcome) -> Void
+  /// The concluded take's outcome, and whether its card may be offered now.
+  public let ingest: @MainActor (PolishTakeOutcome, Bool) -> Void
   public let now: @MainActor () -> ContinuousClock.Instant
 
   public init(
@@ -2079,7 +2091,7 @@ public struct PolishSetupTakeHooks {
     classify: @escaping @MainActor (PolishSetupEvidence, PolishSetupTakeContext) ->
       PolishSetupProblemTag?,
     recordTerminalProblem: @escaping @MainActor (String, PolishSetupProblemTag) -> Void,
-    ingest: @escaping @MainActor (PolishTakeOutcome) -> Void,
+    ingest: @escaping @MainActor (PolishTakeOutcome, Bool) -> Void,
     now: @escaping @MainActor () -> ContinuousClock.Instant = { ContinuousClock.now }
   ) {
     self.freeze = freeze

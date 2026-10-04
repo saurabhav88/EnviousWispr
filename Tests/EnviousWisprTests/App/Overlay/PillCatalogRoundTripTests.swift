@@ -203,6 +203,9 @@ struct PillCatalogRoundTripTests {
       // save-error notice, unfrozen deliberately. Chunk 5a removed the
       // ask-first card's case the same way.
       "correctionLearned", "correctionLearnedSaveError",
+      // #3438 chunk 6: the AI polish setup card, a feature route with no pipeline intent,
+      // unfrozen deliberately.
+      "polishSetupCard",
     ]
     #expect(Set(names) == expected, "the catalog case set changed")
     #expect(names.count == expected.count, "a catalog case is duplicated")
