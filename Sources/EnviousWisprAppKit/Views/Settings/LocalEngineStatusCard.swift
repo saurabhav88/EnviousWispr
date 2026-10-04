@@ -215,12 +215,13 @@ struct LocalEngineStatusCard<Middle: View>: View {
       // so the value the tests assert is the value that renders. nil and blank both render
       // NOTHING: an absent label is honest and "EG-1 V" with an empty tail reads as a bug.
       // The size is the engine's download size, which is what it is: no disk reading is
-      // claimed.
+      // claimed. The row is titled by the model rather than "Installed": the provider card
+      // above already says Installed, and saying it twice was noise (founder review,
+      // 2026-10-03).
       PolishRow(
         icon: "checkmark.circle",
-        title: String(
-          localized: "Installed", comment: "AI Polish, local model: the model is on this Mac."),
-        subtitle: [presentation.versionLabel, engine.downloadSize, installedHealthLine]
+        title: presentation.versionLabel ?? engine.name,
+        subtitle: [engine.downloadSize, installedHealthLine]
           .compactMap { $0 }.joined(separator: " · ")
       ) {
         if allowsRuntimeActivation {

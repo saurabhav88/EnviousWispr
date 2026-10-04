@@ -142,6 +142,7 @@ struct LocalEngineDescriptorTests {
   /// source model that they're providing. Not showing their logo would be doing
   /// them a disservice."* A silent fallback would quietly undo that.
   @Test("Superwhisper's mark renders, rather than silently falling back")
+  @MainActor
   func superwhisperMarkRenders() throws {
     let image = try #require(
       ProviderLogoSVG.templateImage(ProviderLogoSVG.superwhisper),

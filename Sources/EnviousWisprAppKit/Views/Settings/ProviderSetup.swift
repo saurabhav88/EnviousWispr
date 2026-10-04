@@ -1089,7 +1089,11 @@ private var validationBadge: some View {
           comment: "AI Polish: the saved API key was checked and works."),
         tone: .stSuccess)
     case .invalid(let message):
-      keyBadge(message, tone: .stError)
+      // With no saved key the band across the card already says so; the coordinator's
+      // "no key" verdict under the field was the same warning twice.
+      if !savedKeyIsEmptyForCurrentProvider {
+        keyBadge(message, tone: .stError)
+      }
     }
   }
 }

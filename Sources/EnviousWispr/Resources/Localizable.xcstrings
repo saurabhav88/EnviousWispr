@@ -8499,7 +8499,7 @@
       }
     },
     "Installed" : {
-      "comment" : "AI Polish provider status chip.\nAI Polish, Ollama model list: the model is on this Mac.\nAI Polish, local model: the model is on this Mac.",
+      "comment" : "AI Polish provider status chip.\nAI Polish, Ollama model list: the model is on this Mac.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
