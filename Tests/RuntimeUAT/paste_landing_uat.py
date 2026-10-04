@@ -1765,7 +1765,8 @@ def verify_exact(name, field_value, log_text, sentence):
 
 def launcher_host(name):
     """A fresh TextEdit document in front: the app a launcher panel floats over."""
-    path = u.new_textedit_doc(f"3423-{name}-{u.RUN_ID}")
+    # The "3106-" prefix is what `u.close_run_documents` closes at the end of the run.
+    path = u.new_textedit_doc(f"3106-3423-{name}-{u.RUN_ID}")
     u.require_front(TEXTEDIT, f"{name}: host document open")
     return path
 
@@ -1879,8 +1880,11 @@ def verify_launcher_learning(base, text):
     learn_base = u.log_size()
     import simulate_input as si
     si.type_text("Markus")
-    judged = u.wait_for("the correction to be judged", lambda: [
-        j for j in LEARN_JUDGED.findall(u.log_since(learn_base)) if j[4] == take_id], deadline=25.0)
+    def judged_rows():
+        return [j for j in LEARN_JUDGED.findall(u.log_since(learn_base)) if j[4] == take_id]
+    # `wait_for` answers whether the condition came true, never the value: read the rows again.
+    u.wait_for("the correction to be judged", judged_rows, deadline=25.0)
+    judged = judged_rows()
     skipped = [r for r, t in LEARN_SKIPPED.findall(u.log_since(base)) if t == take_id]
     u.check("launcher_tier2: learning did not skip the panel as another app",
             take_id is not None and not skipped, f"take={take_id} skips={skipped}")
@@ -1991,7 +1995,7 @@ def phase_appswap():
     ordinary saved-target behaviour alone."""
     print("\n== appswap: dictate into TextEdit, switch to Chrome mid-take")
     quiet("appswap staging", open_page, "focused")
-    doc = u.new_textedit_doc(f"3423-appswap-{u.RUN_ID}")
+    doc = u.new_textedit_doc(f"3106-3423-appswap-{u.RUN_ID}")
     u.require_front(TEXTEDIT, "appswap: document open")
     sentinel = "ew-uat-sentinel-appswap"
     restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")
@@ -2047,7 +2051,7 @@ def phase_savesheet():
     cancelled afterwards."""
     print("\n== savesheet: observation, dictation into TextEdit's Save sheet name field")
     import simulate_input as si
-    doc = u.new_textedit_doc(f"3423-savesheet-{u.RUN_ID}")
+    doc = u.new_textedit_doc(f"3106-3423-savesheet-{u.RUN_ID}")
     u.require_front(TEXTEDIT, "savesheet: document open")
     # Save As (Shift+Option+Cmd+S): the run's document is an existing file, so plain Cmd+S would
     # save it without a sheet.
