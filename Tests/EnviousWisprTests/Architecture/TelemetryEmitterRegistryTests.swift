@@ -136,9 +136,9 @@ struct TelemetryEmitterRegistryTests {
   /// action, problem tag and provider enum name as String, no key, model name or text; `take_id`
   /// on card rows only and listed in TAKE_KEYED_EVENTS; reader the "Polish setup prompts"
   /// funnel). Derived by removing that one line from the printed site list: the rest hashes to
-  /// the previous value (#3423 value, after rebase).
+  /// the previous value (the #3423 value after the rebase onto it).
   static let sitesFingerprint =
-    "1cc92cf35e58e7c5f749dd9cb00d979385196275e2ed6ad2abf3a58ecd938826"
+    "5039b2fc0388170dc17a60745f3568c9aaad211a15c999d23dc8d5948efc552a"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
