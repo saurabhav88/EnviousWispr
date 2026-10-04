@@ -340,22 +340,12 @@ enum SettingsProjection {
     }
   }
 
-  /// Curated known PUBLIC cloud model ids (OpenAI + Gemini + Claude).
-  /// Deny-by-default anchor: anything not here is `custom`, so no
-  /// private/unknown string leaks. Trade-off: a brand-new public model not
-  /// yet listed reads `custom` until added (itself a useful "on an
-  /// unrecognized model" signal). Seeded from the shipped defaults + the
-  /// families the discovery filters accept (`LLMModelDiscovery`:
-  /// gpt-/o1/o3/o4, gemini-). Claude ids are the live-confirmed base ids
-  /// with their date-snapshot suffix already stripped (issue #158).
-  private static let cloudModelAllowlist: Set<String> = [
-    // OpenAI
-    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-4.1", "gpt-4.1-mini",
-    "gpt-4.1-nano", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro",
-    "o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o4-mini", "chatgpt-4o-latest",
-    "gpt-5.1", "gpt-5.2", "gpt-5.2-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
-    "gpt-5.4-pro", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol",
-    // Gemini
+  /// Curated public Gemini ids. Its own set (not inline in `cloudModelAllowlist`) so
+  /// `SettingsChangeTelemetryTests` can require that every id here has a recorded
+  /// thinking decision in `LLMModelCapabilities` (#3425): `gemini-3.8-flash` was
+  /// added here for telemetry and shipped with no thinking row, thinking by
+  /// default and taking 3 to 14 seconds.
+  static let geminiModelIDs: Set<String> = [
     "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b",
     "gemini-2.0-flash", "gemini-2.0-flash-lite",
     "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
@@ -380,11 +370,33 @@ enum SettingsProjection {
     // the one this issue promotes to Recommended, so it would have become the
     // most-selected invisible model.
     "gemini-3.8-flash",
+  ]
+
+  /// Curated known PUBLIC cloud model ids (OpenAI + Gemini + Claude).
+  /// Deny-by-default anchor: anything not here is `custom`, so no
+  /// private/unknown string leaks. Trade-off: a brand-new public model not
+  /// yet listed reads `custom` until added (itself a useful "on an
+  /// unrecognized model" signal). Seeded from the shipped defaults + the
+  /// families the discovery filters accept (`LLMModelDiscovery`:
+  /// gpt-/o1/o3/o4, gemini-). Claude ids are the live-confirmed base ids
+  /// with their date-snapshot suffix already stripped (issue #158).
+  private static let cloudModelAllowlist: Set<String> = geminiModelIDs.union([
+    // OpenAI
+    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-4.1", "gpt-4.1-mini",
+    "gpt-4.1-nano", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro",
+    "o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o4-mini", "chatgpt-4o-latest",
+    "gpt-5.1", "gpt-5.2", "gpt-5.2-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
+    "gpt-5.4-pro", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol",
+    // #3425: the gpt-6 generation, listed live on the founder's key 2026-10-03.
+    "gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-6.1-sol",
     // Claude
     "claude-sonnet-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
     "claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-5", "claude-haiku-4-5",
     "claude-sonnet-4-5", "claude-opus-4-1", "claude-fable-5-1", "claude-opus-5",
-  ]
+    // #3425: Sonnet 5.5 and Opus 5.5 are now usable (their request shape is known), so
+    // they must not read as `custom`.
+    "claude-sonnet-5-5", "claude-opus-5-5",
+  ])
 
   /// Strip a trailing provider date-snapshot suffix so dated variants match
   /// their base allowlist entry. The suffix is public/non-sensitive; this

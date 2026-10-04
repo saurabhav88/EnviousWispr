@@ -44,6 +44,13 @@ struct ClaudeLiveSweepTests {
   /// for `.components.attoseconds`) can straddle a second boundary and
   /// under-report by roughly a second, letting a call that is actually
   /// over budget pass the ship gate (#158, Codex r5).
+  /// The one refusal this change knowingly ships with (#3425): `claude-fable-5` declined this
+  /// ordinary dictation on the first attempt in 4 of 4 live runs. It stays a labelled, named
+  /// limitation; tolerating refusals more broadly needs a founder decision.
+  private static let knownRefusals: [String: Set<String>] = [
+    "claude-fable-5": ["also look at the actual real code in UX "]
+  ]
+
   private static func elapsedMs(since start: ContinuousClock.Instant) -> Double {
     let elapsed = ContinuousClock.now - start
     return Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
@@ -57,17 +64,25 @@ struct ClaudeLiveSweepTests {
     // The exact candidate population the picker offers: live models list
     // through the shipped filter + availability probe.
     let discovered = try await LLMModelDiscovery().discoverModels(provider: .claude, apiKey: apiKey)
-    let offered = discovered.filter(\.isAvailable)
+    let offered = LiveSweepSupport.narrowed(discovered.filter(\.isAvailable))
     #expect(!offered.isEmpty, "discovery returned no available models — sweep cannot run")
+    // #3425: a nonempty offered set can pass while the newest models are hidden by a wrong
+    // request shape, so each must be offered. The picker probe has a 10s timeout and
+    // Fable 5.1 once took 6.1s, so a miss there is a finding to read, not noise to retry away.
+    for required in ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1"]
+    where ProcessInfo.processInfo.environment["EW_SWEEP_ONLY"] == nil {
+      #expect(offered.contains { $0.id == required }, "\(required) must be offered; offered: \(offered.map(\.id))")
+    }
 
     let connector = ClaudeConnector(keychainManager: keychain)
     var failures: [String] = []
     var report: [String] = []
+    var sweepMedians: [String] = []
 
     for model in offered {
-      // Mirror LLMPolishStep's config decisions for this model. Claude never
-      // reasons (v1) so outputTokens/reasoningEffort never branch on capability
-      // the way OpenAI's sweep does.
+      // Mirror LLMPolishStep's config decisions for this model. `thinking` stays nil for
+      // Claude: the thinking part of the body comes from `claudeRequestShape`, which the
+      // connector reads itself, so this config does not branch on capability.
       let config = LLMProviderConfig(
         model: model.id,
         apiKeyKeychainId: KeychainManager.claudeKeyID,
@@ -76,48 +91,55 @@ struct ClaudeLiveSweepTests {
         thinking: nil
       )
 
-      // One test-level retry on top of the connector's own internal retry
-      // (`performWithRetry`, already exhausted by the time an error reaches
-      // here): a live run twice saw `claude-opus-4-5-20251101` fail with a
-      // real `providerServerError` after the connector's retries, while an
-      // isolated direct API call to the same model succeeded moments later
-      // — genuine transient elevated error-rate on Anthropic's side for
-      // this model, not a connector defect. This tolerates one bad moment
-      // per model without hiding a model that is persistently broken.
-      var lastError: Error?
-      var polished: String?
-      var elapsed = Duration.zero
-      // Real production envelope, not `.default` (Codex r9): this is the
-      // ONLY sweep covering every catalog model, so a model that accepts
-      // the small `.default` prompt but rejects or mishandles the real
-      // `.cloudFixed` v6 system prompt would otherwise pass here and still
-      // show up as "available" in the picker despite not actually working.
-      let envelope = Self.productionEnvelope(
-        transcript: "so um I think we should uh probably move the meeting to thursday afternoon",
-        modelID: model.id)
-      for attempt in 0..<2 {
+      // Real dictations (LiveSweepSupport), production envelope per model. ONE attempt per
+      // sentence, exactly like production: the connector's own internal retry already ran,
+      // and a test-level retry would hide a refusal or a slow call that a user would hit
+      // (Codex build r1: a recovered second attempt had turned a refusal into a PASS).
+      // To investigate a transient failure, rerun the sweep; do not paper over it here.
+      var times: [Double] = []  // successful polishes only: the latency receipt
+      var allTimes: [Double] = []  // every attempt, refusals and failures included: the budget check
+      var problems: [String] = []
+      var knownRefused: [String] = []
+      for sentence in LiveSweepSupport.realDictations.prefix(5) {
+        let envelope = Self.productionEnvelope(transcript: sentence, modelID: model.id)
         let start = ContinuousClock.now
         do {
           let result = try await connector.polish(envelope: envelope, config: config, onToken: nil)
-          elapsed = ContinuousClock.now - start
-          polished = result.polishedText
-          lastError = nil
-          break
-        } catch {
-          elapsed = ContinuousClock.now - start
-          lastError = error
-          if attempt == 0 {
-            print("RETRY \(model.id) after \(elapsed) \(error)")
+          let elapsed = Self.elapsedMs(since: start)
+          times.append(elapsed)
+          allTimes.append(elapsed)
+          if let problem = LiveSweepSupport.problem(input: sentence, output: result.polishedText) {
+            problems.append("\(problem) for \"\(sentence.prefix(40))\"")
           }
+        } catch LLMError.classified(.contentBlocked) {
+          // The model declined an ordinary dictation. Every attempt's duration counts toward the
+          // 15 s budget. Only the one KNOWN case is tolerated (and labelled); any other refusal
+          // is a failure, so a new refusal on another model or sentence cannot hide here.
+          let elapsed = Self.elapsedMs(since: start)
+          allTimes.append(elapsed)
+          if Self.knownRefusals[model.id]?.contains(String(sentence.prefix(40))) == true {
+            knownRefused.append("\"\(sentence.prefix(40))\" after \(Int(elapsed))ms")
+          } else {
+            problems.append("unexpected refusal for \"\(sentence.prefix(40))\"")
+          }
+        } catch {
+          allTimes.append(Self.elapsedMs(since: start))
+          problems.append("\(error) for \"\(sentence.prefix(40))\"")
         }
       }
-
-      if let polished {
-        report.append("PASS \(model.id) \(elapsed) -> \(polished.prefix(60))")
-        if polished.isEmpty { failures.append("\(model.id): empty polish") }
+      if !knownRefused.isEmpty {
+        report.append("REFUSED(known limitation) \(model.id): \(knownRefused.joined(separator: ", "))")
+      }
+      let median = LiveSweepSupport.medianMs(times)
+      // The 15-second cloud polish budget (LLMPolishStep.maxDuration) applies to every call.
+      if let worst = allTimes.max(), worst > 15_000 { problems.append("a call took \(Int(worst))ms, over the 15s budget") }
+      let shape = LLMProvider.claude.modelCapabilities(model: model.id).claudeRequestShape
+      if problems.isEmpty {
+        report.append("PASS \(model.id) shape=\(shape) median=\(Int(median))ms n=\(times.count)")
+        sweepMedians.append("\(model.id)=\(Int(median))ms")
       } else {
-        failures.append("\(model.id): \(lastError!) after \(elapsed) (2 attempts)")
-        report.append("FAIL \(model.id) \(elapsed) \(lastError!)")
+        failures.append("\(model.id): \(problems.joined(separator: "; "))")
+        report.append("FAIL \(model.id) shape=\(shape) \(problems.joined(separator: "; "))")
       }
     }
 
