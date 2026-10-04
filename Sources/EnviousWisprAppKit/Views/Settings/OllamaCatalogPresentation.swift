@@ -1,7 +1,7 @@
 import EnviousWisprLLM
 import Foundation
 
-/// #1914: how the **Manage Models** list is split for display, and what each row
+/// #1914: how the **Models sheet** list (formerly Manage Models) is split for display, and what each row
 /// may show.
 ///
 /// This is the list where models are downloaded and deleted. It is NOT the model
@@ -24,7 +24,7 @@ import Foundation
 /// the tests would still pass. That half is a Live UAT item.
 enum OllamaCatalogPresentation {
 
-  /// The Manage Models list, split for display.
+  /// The Models sheet list, split for display.
   struct Groups {
     /// Rows that run on this Mac. Keep their existing order and metadata.
     let local: [OllamaModelCatalogEntry]
@@ -44,6 +44,23 @@ enum OllamaCatalogPresentation {
       local: catalog.filter { !$0.isRemote },
       hosted: catalog.filter(\.isRemote)
     )
+  }
+
+  /// "N of M installed on this Mac" on the Download more models card (#3385). Both counts come
+  /// from the SAME unfiltered local group, so a search in the Models sheet cannot change them:
+  /// M is every local row the catalog offers (our suggestions plus any model the user pulled
+  /// themselves), N the ones already on this Mac. Hosted rows are not on this Mac and count in
+  /// neither.
+  static func installedCount(from catalog: [OllamaModelCatalogEntry]) -> (installed: Int, total: Int) {
+    let local = groups(from: catalog).local
+    return (local.filter(\.isDownloaded).count, local.count)
+  }
+
+  static func installedCountText(installed: Int, total: Int) -> String {
+    String(
+      localized: "\(installed) of \(total) installed on this Mac",
+      comment:
+        "AI Polish, Ollama: pill on the Download more models card. The numbers count the models that run on this Mac.")
   }
 
   /// Size and quality are meaningless for a model that is not on this disk. A
@@ -297,7 +314,7 @@ enum OllamaCatalogPresentation {
 
   /// The tier decision itself, over anything that can name a model.
   ///
-  /// Generic because TWO surfaces ask this question — the Manage Models list
+  /// Generic because TWO surfaces ask this question — the Models sheet list
   /// (`OllamaModelCatalogEntry`) and the selection dropdown (`LLMModelInfo`) —
   /// and they must never disagree about which bucket a model is in. A second
   /// implementation on the picker side would be a copy that drifts, which is

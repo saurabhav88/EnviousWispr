@@ -53,7 +53,7 @@ struct LowerModuleCopyEnglishTests {
     )
     #expect(
       message([.modelNotReady])
-        == "The on-device model is not ready — it may still be downloading. Try again later.")
+        == "The on-device model is not ready. It may still be downloading. Try again later.")
     #expect(
       message([.modelAccessFailed])
         == "Apple Intelligence is available but model initialization failed.")

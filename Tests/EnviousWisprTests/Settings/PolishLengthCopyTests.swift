@@ -85,11 +85,16 @@ struct PolishLengthCopyTests {
     // Split on the DECLARATION, not the name: the name also appears where the
     // body is used, so splitting on it finds two boundaries and the check reads
     // as a broken subject rather than a broken claim.
-    let cloudBody = source.components(separatedBy: "private var cloudProviderExplainer: some View")
-    #expect(cloudBody.count == 2, "the cloud explainer body was renamed or removed")
-    let after = (cloudBody.last ?? "").prefix(2500)
+    // #3385: the explainers became one WHY USE block; its cloud arms run from the OpenAI case
+    // to the `.none` case.
+    let whyBody = source.components(separatedBy: "private var whyBlock: some View")
+    #expect(whyBody.count == 2, "the WHY USE block was renamed or removed")
+    let block = whyBody.last ?? ""
+    let cloudArms = block.components(separatedBy: "case .openAI:\n").dropFirst().first?
+      .components(separatedBy: "case .none:\n").first ?? ""
+    #expect(cloudArms.contains("Why use Claude"), "the cloud arms were not found")
     #expect(
-      !after.contains("minutes"),
+      !cloudArms.contains("minutes"),
       "a cloud length claim would describe an unfixed deadline as a documented limit")
   }
 }

@@ -642,6 +642,9 @@ public final class OllamaSetupService {
 
   private static let binaryPaths = ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]
   private static let baseURL = "http://localhost:11434"
+  /// The address the AI Polish Server row shows (#3385): the one this service talks to, read
+  /// from here so the row cannot name a different server than the one in use.
+  package static var serverAddress: String { baseURL }
   private static let lastKnownStateKey = "OllamaSetupService.lastKnownReady"
 
   // MARK: - Detection Pipeline

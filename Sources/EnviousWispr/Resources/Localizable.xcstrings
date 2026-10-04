@@ -179,12 +179,13 @@
         }
       }
     },
-    "%@ by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {
+    "%@ by Superwhisper is a small cleanup model that runs on this Mac and works offline, with no API key to manage." : {
+      "comment" : "AI Polish, Why use S1-mini: first paragraph. %@ is the model name, S1-mini. Keep Superwhisper as written.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ von Superwhisper ist ein kleines offenes Modell, das diktierte Texte nachbearbeitet. Es läuft vollständig auf diesem Mac. Nichts, was du sagst, verlässt dein Gerät. Es ist kostenlos und braucht keinen API-Schlüssel."
+            "value" : "%@ von Superwhisper ist ein kleines Bereinigungsmodell, das auf diesem Mac läuft und offline funktioniert, ohne API-Schlüssel."
           }
         }
       }
@@ -196,6 +197,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ Kanäle"
+          }
+        }
+      }
+    },
+    "%@ download · needs %@ free · stays on this Mac" : {
+      "comment" : "AI Polish, local model: what downloading the model takes. The first %@ is its size, the second the free space it needs.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ download · needs %2$@ free · stays on this Mac"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Download · braucht %@ frei · bleibt auf diesem Mac"
+          }
+        }
+      }
+    },
+    "%@ download. Runs entirely on your Mac." : {
+      "comment" : "AI Polish, Ollama setup: the size of the model offered. %@ is a size such as ~1.9 GB.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Download. Läuft komplett auf deinem Mac."
           }
         }
       }
@@ -806,7 +835,7 @@
       }
     },
     "%lld of %lld installed on this Mac" : {
-      "comment" : "Live Preview: actual installed and total language counts from the loaded macOS inventory.",
+      "comment" : "AI Polish, Ollama: pill on the Download more models card. The numbers count the models that run on this Mac.\nLive Preview: actual installed and total language counts from the loaded macOS inventory.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -896,16 +925,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld."
-          }
-        }
-      }
-    },
-    "(%@)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%@)"
           }
         }
       }
@@ -1186,6 +1205,7 @@
       }
     },
     "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription." : {
+      "comment" : "AI Polish, Why use Claude: chat plans do not include API access.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1499,16 +1519,6 @@
         }
       }
     },
-    "AI polish engine" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell für KI-Nachbearbeitung"
-          }
-        }
-      }
-    },
     "AI polish failed: %@" : {
       "comment" : "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system.",
       "localizations" : {
@@ -1724,6 +1734,17 @@
         }
       }
     },
+    "AI polish model" : {
+      "comment" : "VoiceOver: the AI Polish provider card under the Model heading; it opens the provider list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Polish-Modell"
+          }
+        }
+      }
+    },
     "AI polish needs macOS 26" : {
       "comment" : "Setup notice title on Macs older than macOS 26.",
       "localizations" : {
@@ -1741,6 +1762,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ALLE SPRACHEN"
+          }
+        }
+      }
+    },
+    "API access." : {
+      "comment" : "AI Polish, Why use Claude: bold lead-in.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Zugang."
           }
         }
       }
@@ -1798,16 +1830,6 @@
         }
       }
     },
-    "About 2 GB download. Runs entirely on your Mac." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Download von etwa 2 GB. Läuft vollständig auf deinem Mac."
-          }
-        }
-      }
-    },
     "About 2 minutes" : {
       "comment" : "Transcribe a File, Transcription step: how long the All Languages engine takes for an hour of audio.",
       "localizations" : {
@@ -1826,6 +1848,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Etwa 7 Sekunden"
+          }
+        }
+      }
+    },
+    "About Apple Intelligence" : {
+      "comment" : "AI Polish: link to Apple's Apple Intelligence support page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über Apple Intelligence"
           }
         }
       }
@@ -2408,16 +2441,6 @@
         }
       }
     },
-    "After installing, come back and click refresh." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Komm nach der Installation zurück und klicke auf das Symbol ↻."
-          }
-        }
-      }
-    },
     "After rebuilding the app you may need to re-grant this permission." : {
       "localizations" : {
         "de" : {
@@ -2807,17 +2830,6 @@
         }
       }
     },
-    "Any open model, local or hosted" : {
-      "comment" : "AI Polish provider list: description under a provider name. Ollama.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jedes offene Modell, lokal oder gehostet"
-          }
-        }
-      }
-    },
     "Anything saved lands in History" : {
       "comment" : "Pill subtitle during recovery. History is the app's list of past dictations.",
       "localizations" : {
@@ -2938,22 +2950,35 @@
         }
       }
     },
-    "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account." : {
+    "Apple Intelligence cleans up short dictation well. Claude is a step up for longer recordings, lists, and code. You bring your own API key and pay per use." : {
+      "comment" : "AI Polish, Why use Claude: first paragraph.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence bearbeitet kurze Diktate gut nach. Für längere Aufnahmen, Listen und Code bietet Gemini mehr. Du verwendest deinen eigenen API-Schlüssel. Das kostenlose Kontingent ist für die private Nutzung großzügig, und die meisten Nachbearbeitungen dauern deutlich unter einer Sekunde. Bei der KI-Nachbearbeitung in der Cloud wird dein Text über dein Gemini-API-Konto an Google gesendet."
+            "value" : "Apple Intelligence bereinigt kurze Diktate gut. Claude ist ein Schritt nach oben für längere Aufnahmen, Listen und Code. Du nutzt deinen eigenen API-Schlüssel und zahlst pro Nutzung."
           }
         }
       }
     },
-    "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account." : {
+    "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, and the free tier is generous for personal use." : {
+      "comment" : "AI Polish, Why use Gemini: first paragraph.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence bearbeitet kurze Diktate gut nach. Für längere Aufnahmen, Listen und Code bietet OpenAI mehr. Du verwendest deinen eigenen API-Schlüssel und bezahlst OpenAI nur für die Nutzung. Die meisten Nachbearbeitungen dauern deutlich unter einer Sekunde. Bei der KI-Nachbearbeitung in der Cloud wird dein Text über dein API-Konto an OpenAI gesendet."
+            "value" : "Apple Intelligence bereinigt kurze Diktate gut. Gemini ist ein Schritt nach oben für längere Aufnahmen, Listen und Code. Du nutzt deinen eigenen API-Schlüssel, und die kostenlose Stufe reicht für den persönlichen Gebrauch großzügig aus."
+          }
+        }
+      }
+    },
+    "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key and pay OpenAI for what you use." : {
+      "comment" : "AI Polish, Why use OpenAI: first paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence bereinigt kurze Diktate gut. OpenAI ist ein Schritt nach oben für längere Aufnahmen, Listen und Code. Du nutzt deinen eigenen API-Schlüssel und bezahlst OpenAI für das, was du nutzt."
           }
         }
       }
@@ -3013,6 +3038,17 @@
         }
       }
     },
+    "Apple Intelligence needs macOS 26 or later, a supported Mac, and Apple Intelligence turned on in System Settings. The status above says what this Mac reports." : {
+      "comment" : "AI Polish, Why use Apple Intelligence: when it is not available.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence braucht macOS 26 oder neuer, einen unterstützten Mac und eingeschaltetes Apple Intelligence in den Systemeinstellungen. Der Status oben zeigt, was dieser Mac meldet."
+          }
+        }
+      }
+    },
     "Apple Intelligence not available on this system." : {
       "comment" : "AI Polish settings, checking the API key: this Mac can't use Apple Intelligence.",
       "localizations" : {
@@ -3024,6 +3060,17 @@
         }
       }
     },
+    "Apple Intelligence polish uses Apple's on-device model, built into macOS. It needs no API key, and your text stays on this Mac for this step." : {
+      "comment" : "AI Polish, Why use Apple Intelligence: first paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence Polish nutzt Apples Modell auf dem Gerät, das in macOS eingebaut ist. Es braucht keinen API-Schlüssel, und dein Text bleibt für diesen Schritt auf diesem Mac."
+          }
+        }
+      }
+    },
     "Apple Intelligence requires macOS 26 or later." : {
       "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.",
       "localizations" : {
@@ -3031,16 +3078,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apple Intelligence erfordert macOS 26 oder neuer."
-          }
-        }
-      }
-    },
-    "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Intelligence nutzt das in macOS integrierte Modell von Apple. Es ist kostenlos, braucht keinen API-Schlüssel und deine Diktate bleiben auf deinem Mac. Eine gute Wahl für kurze Alltagsdiktate."
           }
         }
       }
@@ -3362,16 +3399,6 @@
         }
       }
     },
-    "Automatically fix grammar, punctuation, and formatting." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grammatik, Zeichensetzung und Formatierung automatisch korrigieren."
-          }
-        }
-      }
-    },
     "Available" : {
       "comment" : "AI Polish provider status chip.",
       "localizations" : {
@@ -3467,6 +3494,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bengalisch"
+          }
+        }
+      }
+    },
+    "Best fit." : {
+      "comment" : "AI Polish, Why use: bold lead-in of a paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am besten geeignet."
           }
         }
       }
@@ -3710,6 +3748,17 @@
         }
       }
     },
+    "Browse models" : {
+      "comment" : "AI Polish, Ollama: opens the model list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle durchsuchen"
+          }
+        }
+      }
+    },
     "Built for Apple Silicon." : {
       "comment" : "Welcome screen feature line under Native Speed.",
       "localizations" : {
@@ -3948,7 +3997,7 @@
       }
     },
     "Change" : {
-      "comment" : "Keybind field: the chip inside the field; clicking the field changes the keys.\nSettings: button that opens the other choices for a setting.",
+      "comment" : "AI Polish: cue on the provider card that opens the provider list.\nKeybind field: the chip inside the field; clicking the field changes the keys.\nSettings: button that opens the other choices for a setting.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4029,7 +4078,7 @@
       }
     },
     "Changes apply to the next recording" : {
-      "comment" : "Speech engine settings: note beside the heading; a change made while recording applies next time.",
+      "comment" : "AI Polish: the note beside the Model heading. A change made while recording takes effect next time.\nSpeech engine settings: note beside the heading; a change made while recording applies next time.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4050,18 +4099,8 @@
         }
       }
     },
-    "Changes made during a recording apply to the next recording." : {
-      "comment" : "Settings: notice that a change made while recording takes effect next time.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Änderungen während einer Aufnahme gelten ab der nächsten Aufnahme."
-          }
-        }
-      }
-    },
     "Check Apple Intelligence availability" : {
+      "comment" : "AI Polish, Apple Intelligence: re-checks availability.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4072,11 +4111,23 @@
       }
     },
     "Check again" : {
+      "comment" : "AI Polish: reads the saved API key again.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erneut prüfen"
+          }
+        }
+      }
+    },
+    "Check failed" : {
+      "comment" : "AI Polish provider status chip: checking the saved API key did not succeed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung fehlgeschlagen"
           }
         }
       }
@@ -4136,6 +4187,7 @@
       }
     },
     "Checking Ollama installation..." : {
+      "comment" : "AI Polish, Ollama: the app is checking whether Ollama is installed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4185,6 +4237,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Korrekturmodell wird geprüft"
+          }
+        }
+      }
+    },
+    "Checking the file against its manifest before it is used." : {
+      "comment" : "AI Polish, local model: what verifying does.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei wird vor der Verwendung mit ihrem Manifest abgeglichen."
           }
         }
       }
@@ -4374,6 +4437,17 @@
         }
       }
     },
+    "Choose how formal your text sounds." : {
+      "comment" : "AI Polish, S1-mini: the line under Tone.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle, wie förmlich dein Text klingt."
+          }
+        }
+      }
+    },
     "Choose short, distinctive words after the keyword." : {
       "localizations" : {
         "de" : {
@@ -4423,6 +4497,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle das Mikrofon für die Aufnahme."
+          }
+        }
+      }
+    },
+    "Choose the model used to polish your text." : {
+      "comment" : "AI Polish, cloud provider: the line under the Model row's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle das Modell, das deinen Text verbessert."
           }
         }
       }
@@ -4537,12 +4622,13 @@
         }
       }
     },
-    "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs finish in one to two seconds. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends your text to Anthropic under your API account." : {
+    "Claude API rate limits" : {
+      "comment" : "AI Polish: link to Anthropic's rate limits page.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Claude eignet sich gut für technische Texte, Kommentare zu Code-Reviews und Bezeichner. Haiku ist der empfohlene Einstieg für die Nachbearbeitung von Diktaten: Es ist derzeit die schnellste und günstigste Modellklasse von Anthropic, und die meisten Nachbearbeitungen dauern ein bis zwei Sekunden. Modellnamen und Verfügbarkeit stammen aus deinem Claude Platform-Konto. Die angezeigte Liste kann deshalb je nach Konto und Nutzungsstufe variieren. Bei der Nachbearbeitung in der Cloud wird dein Text über dein API-Konto an Anthropic gesendet."
+            "value" : "Claude-API-Ratenlimits"
           }
         }
       }
@@ -4731,6 +4817,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Paket %@ schließen"
+          }
+        }
+      }
+    },
+    "Close Models" : {
+      "comment" : "AI Polish, Ollama: closes the model list sheet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle schließen"
           }
         }
       }
@@ -5055,6 +5152,17 @@
         }
       }
     },
+    "Could not check" : {
+      "comment" : "AI Polish provider status chip: the saved API key could not be read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht prüfbar"
+          }
+        }
+      }
+    },
     "Could not download the model. Check your connection. On a managed network, ask IT whether models.enviouswispr.com is allowed." : {
       "comment" : "AI Polish, local model card: why the model download failed. Keep models.enviouswispr.com exactly; it is a web address.",
       "localizations" : {
@@ -5143,6 +5251,7 @@
       }
     },
     "Couldn't prepare model. Click to retry." : {
+      "comment" : "AI Polish, Ollama: loading the model failed; clicking tries again.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5357,6 +5466,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kroatisch"
+          }
+        }
+      }
+    },
+    "Current step" : {
+      "comment" : "VoiceOver: the Ollama setup step to do now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktueller Schritt"
           }
         }
       }
@@ -5964,7 +6084,7 @@
       }
     },
     "Done" : {
-      "comment" : "Live Preview settings: catalog done button.\nTranscribe a File: a step name in the step bar.",
+      "comment" : "AI Polish, Ollama: closes the model list sheet.\nLive Preview settings: catalog done button.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5985,7 +6105,7 @@
       }
     },
     "Download" : {
-      "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install.\nYour Words, Learn from: the self-learning dictionary row: button that downloads the correction model.",
+      "comment" : "AI Polish, Ollama model list: button that downloads a model to this Mac.\nAI Polish, local model: starts the model download.\nLive Preview settings, Universal engine card: button. It starts the engine download.\nLive Preview settings: pack install.\nYour Words, Learn from: the self-learning dictionary row: button that downloads the correction model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6028,17 +6148,6 @@
         }
       }
     },
-    "Download a Model" : {
-      "comment" : "AI Polish, Ollama setup: the current step.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell herunterladen"
-          }
-        }
-      }
-    },
     "Download a language from macOS to preview it." : {
       "comment" : "Live Preview settings: short line under Install new languages.",
       "localizations" : {
@@ -6046,6 +6155,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lade für die Vorschau ein Sprachpaket von macOS herunter."
+          }
+        }
+      }
+    },
+    "Download a model" : {
+      "comment" : "AI Polish, Ollama setup: the current step.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Modell laden"
           }
         }
       }
@@ -6104,6 +6224,28 @@
         }
       }
     },
+    "Download more models" : {
+      "comment" : "AI Polish, Ollama: title of the card that opens the model list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Modelle laden"
+          }
+        }
+      }
+    },
+    "Download paused" : {
+      "comment" : "AI Polish provider status chip.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download pausiert"
+          }
+        }
+      }
+    },
     "Download paused. It will pick up where it stopped." : {
       "comment" : "Live Preview settings, preview engine: download cancelled.",
       "localizations" : {
@@ -6122,16 +6264,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Download pausiert. Du kannst ihn jederzeit fortsetzen."
-          }
-        }
-      }
-    },
-    "Download size: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Downloadgröße: %@"
           }
         }
       }
@@ -6367,12 +6499,13 @@
         }
       }
     },
-    "EG-1 is the model we trained ourselves, tuned only for cleaning up dictation. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage." : {
+    "EG-1 is our own model, built for cleaning up dictation. Its polish runs on this Mac and works offline, with no API key and no per-use cost." : {
+      "comment" : "AI Polish, Why use EG-1: first paragraph.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EG-1 ist unser eigenes Modell, speziell für die Nachbearbeitung von Diktaten trainiert. Es läuft vollständig auf diesem Mac. Nichts, was du sagst, verlässt dein Gerät. Es ist kostenlos und braucht keinen API-Schlüssel."
+            "value" : "EG-1 ist unser eigenes Modell, gebaut zum Bereinigen von Diktaten. Sein Polish läuft auf diesem Mac und funktioniert offline, ohne API-Schlüssel und ohne Kosten pro Nutzung."
           }
         }
       }
@@ -6414,17 +6547,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "E-Mail"
-          }
-        }
-      }
-    },
-    "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else." : {
-      "comment" : "AI Polish, S1-mini writing-style card: explains the context options. Email is an option name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„E-Mail“ formatiert eine diktierte Anrede und Grußformel. Sonst ändert es nichts."
           }
         }
       }
@@ -6631,6 +6753,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr lädt dein Adressbuch nie hoch. Diese Namen werden deiner Wortliste auf diesem Mac hinzugefügt, damit das Diktat sie richtig schreibt."
+          }
+        }
+      }
+    },
+    "EnviousWispr only lists models Ollama already has. Use Browse models, or run ollama pull in Terminal." : {
+      "comment" : "AI Polish, Why use Ollama: where to get another model. Keep ollama pull as written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr zeigt nur Modelle, die Ollama bereits hat. Nutze Modelle durchsuchen oder führe ollama pull im Terminal aus."
           }
         }
       }
@@ -7012,6 +7145,17 @@
         }
       }
     },
+    "Fast tier · recommended for cleanup" : {
+      "comment" : "AI Polish, cloud model menu: the line under a model recognised as the fast tier.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnelle Stufe · empfohlen für die Bereinigung"
+          }
+        }
+      }
+    },
     "Fast, or All Languages." : {
       "comment" : "Transcribe a File, Upload step: a feature tile's detail. Fast and All Languages are the two engines' names.",
       "localizations" : {
@@ -7224,6 +7368,17 @@
         }
       }
     },
+    "Fixes grammar, punctuation and formatting" : {
+      "comment" : "AI Polish: the line under Enable AI Polish.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Korrigiert Grammatik, Zeichensetzung und Formatierung"
+          }
+        }
+      }
+    },
     "Follows macOS" : {
       "comment" : "Microphone menu: the line under Auto. Auto uses the Mac's input microphone.",
       "localizations" : {
@@ -7231,6 +7386,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Folgt macOS"
+          }
+        }
+      }
+    },
+    "For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks." : {
+      "comment" : "AI Polish, Why use Gemini: which model to pick. Keep Flash as written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für die Bereinigung von Diktaten such nach Flash im Namen. Diese sind für schnelle, leichte Aufgaben abgestimmt."
+          }
+        }
+      }
+    },
+    "For dictation cleanup, look for mini in the name. Those are tuned for fast, light tasks." : {
+      "comment" : "AI Polish, Why use OpenAI: which model to pick. Keep mini as written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für die Bereinigung von Diktaten such nach mini im Namen. Diese sind für schnelle, leichte Aufgaben abgestimmt."
           }
         }
       }
@@ -7273,6 +7450,17 @@
         }
       }
     },
+    "For the smallest download and mostly short English dictation, S1-mini is lighter. For long recordings or code, a cloud model is a step up." : {
+      "comment" : "AI Polish, Why use EG-1: when another engine fits better.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für den kleinsten Download und meist kurze englische Diktate ist S1-mini leichter. Für lange Aufnahmen oder Code ist ein Cloud-Modell ein Schritt nach oben."
+          }
+        }
+      }
+    },
     "Formal" : {
       "comment" : "AI Polish, S1-mini writing-style card: tone option.",
       "localizations" : {
@@ -7280,6 +7468,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Förmlich"
+          }
+        }
+      }
+    },
+    "Format dictated greetings and sign-offs as email." : {
+      "comment" : "AI Polish, S1-mini: the line under Context.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktierte Anreden und Grußformeln als E-Mail formatieren."
           }
         }
       }
@@ -7426,6 +7625,7 @@
       }
     },
     "Gemini API rate limits by tier" : {
+      "comment" : "AI Polish: link to Google's Gemini rate limits page.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7501,6 +7701,7 @@
       }
     },
     "Get your Claude API key" : {
+      "comment" : "AI Polish: link to the Claude Platform API key page.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7511,6 +7712,7 @@
       }
     },
     "Get your free API key at aistudio.google.com" : {
+      "comment" : "AI Polish: link to the Gemini API key page.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7521,6 +7723,7 @@
       }
     },
     "Get your free API key at platform.openai.com" : {
+      "comment" : "AI Polish: link to the OpenAI API key page.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7703,6 +7906,17 @@
         }
       }
     },
+    "Haiku is the recommended starting point for dictation cleanup." : {
+      "comment" : "AI Polish, Why use Claude: which model to pick. Keep Haiku as written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haiku ist der empfohlene Einstieg für die Bereinigung von Diktaten."
+          }
+        }
+      }
+    },
     "Haitian Creole" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -7710,6 +7924,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Haitianisches Kreolisch"
+          }
+        }
+      }
+    },
+    "Handles dictations up to about %lld minutes." : {
+      "comment" : "AI Polish, Why use EG-1: the longest dictation it polishes whole. %lld is a number of minutes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verarbeitet Diktate bis etwa %lld Minuten."
           }
         }
       }
@@ -7785,6 +8010,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilf uns, Abstürze und Fehler zu beheben."
+          }
+        }
+      }
+    },
+    "Hide key" : {
+      "comment" : "AI Polish: hides the API key text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel ausblenden"
           }
         }
       }
@@ -7884,12 +8120,13 @@
         }
       }
     },
-    "How OpenAI model availability works by usage tier" : {
+    "Hosted by Ollama · text is sent to Ollama's servers" : {
+      "comment" : "AI Polish, Ollama model menu: the line under a hosted model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wie die Verfügbarkeit von OpenAI-Modellen von der Nutzungsstufe abhängt"
+            "value" : "Von Ollama gehostet · Text wird an Ollamas Server gesendet"
           }
         }
       }
@@ -7932,6 +8169,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartezeit nach dem Sprechen, bevor die Aufnahme endet."
+          }
+        }
+      }
+    },
+    "How long?" : {
+      "comment" : "AI Polish, Why use: bold lead-in of a paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie lang?"
           }
         }
       }
@@ -8195,6 +8443,17 @@
         }
       }
     },
+    "Install" : {
+      "comment" : "AI Polish, Ollama setup: the first step.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installieren"
+          }
+        }
+      }
+    },
     "Install Ollama" : {
       "comment" : "AI Polish, Ollama setup: the current step.",
       "localizations" : {
@@ -8229,6 +8488,7 @@
       }
     },
     "Installed" : {
+      "comment" : "AI Polish provider status chip.\nAI Polish, Ollama model list: the model is on this Mac.\nAI Polish, local model: the model is on this Mac.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8324,12 +8584,13 @@
         }
       }
     },
-    "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {
+    "It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {
+      "comment" : "AI Polish, Why use S1-mini: how it handles other languages.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Es ist etwa ein Sechstel so groß wie EG-1, startet daher schneller und braucht viel weniger Speicher. Am besten funktioniert es mit Englisch. Es bearbeitet auch andere Sprachen nach, ohne sie zu übersetzen, erkennt aber Korrekturen mitten im Satz nicht immer."
+            "value" : "Es bereinigt andere Sprachen, ohne sie zu übersetzen, erkennt aber nicht immer eine Korrektur, die du mitten im Satz machst."
           }
         }
       }
@@ -8459,6 +8720,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beim Start synchron halten"
+          }
+        }
+      }
+    },
+    "Keep sentences or turn spoken items into lists." : {
+      "comment" : "AI Polish, S1-mini: the line under Structure.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sätze behalten oder gesprochene Punkte in Listen umwandeln."
           }
         }
       }
@@ -8614,6 +8886,17 @@
         }
       }
     },
+    "Key saved" : {
+      "comment" : "AI Polish provider status chip: an API key is saved but was not checked here.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel gespeichert"
+          }
+        }
+      }
+    },
     "Key valid" : {
       "comment" : "AI Polish provider status chip.",
       "localizations" : {
@@ -8621,6 +8904,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel gültig"
+          }
+        }
+      }
+    },
+    "Key valid · saved in your Keychain" : {
+      "comment" : "AI Polish: the saved API key was checked and works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel gültig · in deinem Schlüsselbund gespeichert"
           }
         }
       }
@@ -9121,17 +9415,6 @@
         }
       }
     },
-    "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences." : {
-      "comment" : "AI Polish, S1-mini writing-style card: explains the structure options. Lists and Prose are the option names.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„Listen“ macht aus gesprochenen Aufzählungen Stichpunkte. „Fließtext“ belässt alles in Sätzen."
-          }
-        }
-      }
-    },
     "Lithuanian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -9155,7 +9438,6 @@
       }
     },
     "Live" : {
-      "comment" : "AI Polish provider status chip.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9284,6 +9566,17 @@
         }
       }
     },
+    "Local models stay on this Mac; hosted models send text to Ollama's servers. Prepare loads a local model into memory ahead of your next dictation." : {
+      "comment" : "AI Polish, Ollama: the line under the Model row's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale Modelle bleiben auf diesem Mac; gehostete Modelle senden Text an Ollamas Server. Vorbereiten lädt ein lokales Modell vor deinem nächsten Diktat in den Speicher."
+          }
+        }
+      }
+    },
     "Location not checked" : {
       "comment" : "Transcribe a File, Review step: where the cleanup runs is not known yet.",
       "localizations" : {
@@ -9305,22 +9598,13 @@
         }
       }
     },
-    "Locked models? Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status." : {
+    "Locked models?" : {
+      "comment" : "AI Polish, Why use Gemini: bold lead-in of a paragraph.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gesperrte Modelle? EnviousWispr sperrt sie nicht. Dein Gemini-API-Schlüssel hat derzeit keinen Zugriff darauf. Einige Gemini-Modelle sind nur in bestimmten Regionen, Abrechnungsstufen oder als Vorschau verfügbar."
-          }
-        }
-      }
-    },
-    "Locked models? Those aren't blocked by EnviousWispr. Your OpenAI API key doesn't currently have access to them. OpenAI gates some models behind spend tier or organization verification." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesperrte Modelle? EnviousWispr sperrt sie nicht. Dein OpenAI-API-Schlüssel hat derzeit keinen Zugriff darauf. Für einige Modelle verlangt OpenAI eine bestimmte Ausgabenstufe oder die Verifizierung deiner Organisation."
+            "value" : "Gesperrte Modelle?"
           }
         }
       }
@@ -9495,17 +9779,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Maltesisch"
-          }
-        }
-      }
-    },
-    "Manage Models" : {
-      "comment" : "AI Polish, Ollama: heading of the model download list.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modelle verwalten"
           }
         }
       }
@@ -9791,6 +10064,17 @@
         }
       }
     },
+    "Missing models?" : {
+      "comment" : "AI Polish, Why use: bold lead-in of a paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehlende Modelle?"
+          }
+        }
+      }
+    },
     "Mixed results" : {
       "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.",
       "localizations" : {
@@ -9803,7 +10087,7 @@
       }
     },
     "Model" : {
-      "comment" : "AI Polish: card title above the model picker.\nSpeech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table.",
+      "comment" : "AI Polish, Ollama setup: the third step.\nAI Polish: heading above the provider card.\nAI Polish: the model row's title.\nSpeech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9846,11 +10130,23 @@
       }
     },
     "Model is ready" : {
+      "comment" : "AI Polish, Ollama: the model is loaded.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell ist bereit"
+          }
+        }
+      }
+    },
+    "Model missing?" : {
+      "comment" : "AI Polish, Why use Ollama: bold lead-in of a paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell fehlt?"
           }
         }
       }
@@ -9877,18 +10173,30 @@
         }
       }
     },
-    "Model: %@ · Capacity: %@ tokens" : {
+    "Model: %@ · Capacity: %@ tokens · nothing is sent to Apple's servers" : {
+      "comment" : "AI Polish, Apple Intelligence: the model in use and its capacity. The first %@ is a model name such as AFM 3, the second a number of tokens.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Model: %1$@ · Capacity: %2$@ tokens"
+            "value" : "Model: %1$@ · Capacity: %2$@ tokens · nothing is sent to Apple's servers"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Modell: %1$@ · Kapazität: %2$@ Tokens"
+            "value" : "Modell: %@ · Kapazität: %@ Token · nichts wird an Apples Server gesendet"
+          }
+        }
+      }
+    },
+    "Models" : {
+      "comment" : "AI Polish, Ollama: the model list sheet's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle"
           }
         }
       }
@@ -10718,6 +11026,17 @@
         }
       }
     },
+    "Not available on this Mac" : {
+      "comment" : "AI Polish, Apple Intelligence: the status row's title when this Mac reports it unavailable.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Mac nicht verfügbar"
+          }
+        }
+      }
+    },
     "Not available on this version of macOS yet" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch.",
       "localizations" : {
@@ -10730,11 +11049,23 @@
       }
     },
     "Not available with your API key" : {
+      "comment" : "AI Polish model menu: heading for models the user's API key cannot use.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mit deinem API-Schlüssel nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Not available?" : {
+      "comment" : "AI Polish, Why use Apple Intelligence: bold lead-in of a paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht verfügbar?"
           }
         }
       }
@@ -10899,6 +11230,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft nicht. Klicke auf das Symbol ↻, um es erneut zu versuchen."
+          }
+        }
+      }
+    },
+    "Not saved yet" : {
+      "comment" : "AI Polish: the API key in the field differs from the saved one.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht gesichert"
           }
         }
       }
@@ -11077,17 +11419,6 @@
         }
       }
     },
-    "Nothing you dictate leaves this Mac" : {
-      "comment" : "AI Polish: privacy line under the selected provider.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Diktate verlassen diesen Mac nicht"
-          }
-        }
-      }
-    },
     "Numbers, dates, your saved words and filler removal run either way." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue: what runs even without a cleanup engine.",
       "localizations" : {
@@ -11163,22 +11494,13 @@
         }
       }
     },
-    "Ollama is a free tool you install once. Models on your Mac need no API key and no per-use cost, and they keep your dictation on your Mac. Ollama also offers hosted models, which run on Ollama's servers. Those are listed separately below and are never selected for you. A hosted model needs you signed in to Ollama, and some of them need a paid Ollama plan." : {
+    "Ollama is installed but isn't running yet. Or run `ollama serve` in Terminal." : {
+      "comment" : "AI Polish, Ollama setup: Ollama is installed and stopped. Keep ollama serve as written.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ollama ist ein kostenloses Tool, das du einmal installierst. Modelle auf deinem Mac brauchen keinen API-Schlüssel, verursachen keine Nutzungskosten und lassen deine Diktate auf deinem Mac. Ollama bietet auch gehostete Modelle auf eigenen Servern an. Sie stehen unten in einer separaten Liste und werden nie automatisch für dich ausgewählt. Für gehostete Modelle musst du bei Ollama angemeldet sein; einige benötigen einen kostenpflichtigen Ollama-Tarif."
-          }
-        }
-      }
-    },
-    "Ollama is installed but isn't running yet." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ollama ist installiert, läuft aber noch nicht."
+            "value" : "Ollama ist installiert, läuft aber noch nicht. Oder führe `ollama serve` im Terminal aus."
           }
         }
       }
@@ -11205,7 +11527,19 @@
         }
       }
     },
+    "Ollama model library" : {
+      "comment" : "AI Polish: link to Ollama's model library.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama-Modellbibliothek"
+          }
+        }
+      }
+    },
     "Ollama needs a language model to polish your text." : {
+      "comment" : "AI Polish, Ollama setup: no model is installed yet.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11226,12 +11560,24 @@
         }
       }
     },
-    "Ollama runs AI models on your Mac. No API keys, completely free." : {
+    "Ollama runs AI models on your Mac. No API keys, completely free. After installing, come back and click refresh." : {
+      "comment" : "AI Polish, Ollama setup: what installing Ollama gets you.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ollama führt KI-Modelle auf deinem Mac aus. Ohne API-Schlüssel und völlig kostenlos."
+            "value" : "Ollama führt KI-Modelle auf deinem Mac aus. Keine API-Schlüssel, komplett kostenlos. Komm nach der Installation zurück und klicke auf Aktualisieren."
+          }
+        }
+      }
+    },
+    "Ollama runs open models you choose. Local polish runs on this Mac; hosted polish sends text to Ollama's servers." : {
+      "comment" : "AI Polish, Why use Ollama: first paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama führt offene Modelle deiner Wahl aus. Lokales Polish läuft auf diesem Mac; gehostetes Polish sendet Text an Ollamas Server."
           }
         }
       }
@@ -11303,7 +11649,7 @@
       }
     },
     "On this Mac" : {
-      "comment" : "AI Polish provider list: group heading.",
+      "comment" : "AI Polish provider list: group heading.\nAI Polish, Ollama model menu: heading for models that run on this Mac.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11342,6 +11688,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auf dem Gerät"
+          }
+        }
+      }
+    },
+    "On-device polish on supported Macs with macOS 26+." : {
+      "comment" : "AI Polish provider card: the line under Apple Intelligence's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Polish auf dem Gerät auf unterstützten Macs mit macOS 26+."
           }
         }
       }
@@ -11386,16 +11743,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Bildschirmvorschau pausiert, solange „Schnellere Transkription“ aktiviert ist."
-          }
-        }
-      }
-    },
-    "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Modell, keine Auswahl. Es gibt keine verschiedenen Größen und keine Nutzungskosten. Wir pflegen EG-1 und verbessern es laufend, damit du ohne Feineinstellungen zuverlässig nachbearbeitete Texte bekommst."
           }
         }
       }
@@ -11528,6 +11875,17 @@
         }
       }
     },
+    "OpenAI rate limits by tier" : {
+      "comment" : "AI Polish: link to OpenAI's rate limits page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-Ratenlimits nach Stufe"
+          }
+        }
+      }
+    },
     "Opening update…" : {
       "localizations" : {
         "de" : {
@@ -11568,12 +11926,13 @@
         }
       }
     },
-    "Or run `ollama serve` in Terminal." : {
+    "Opens the list of AI polish models" : {
+      "comment" : "VoiceOver hint on the AI Polish provider card.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Oder führe `ollama serve` im Terminal aus."
+            "value" : "Öffnet die Liste der KI-Polish-Modelle"
           }
         }
       }
@@ -11600,12 +11959,13 @@
         }
       }
     },
-    "Other available models" : {
+    "Other languages?" : {
+      "comment" : "AI Polish, Why use S1-mini: bold lead-in of a paragraph.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Weitere verfügbare Modelle"
+            "value" : "Andere Sprachen?"
           }
         }
       }
@@ -11617,6 +11977,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unser bestes Modell für Nachbearbeitung und das Erstellen von Listen. Bei importierten Aufnahmen entfernt es etwa viermal so viele Füllwörter wie Apple Intelligence."
+          }
+        }
+      }
+    },
+    "Our model for cleaning up dictation on this Mac." : {
+      "comment" : "AI Polish provider card: the line under EG-1's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unser Modell zum Bereinigen von Diktaten auf diesem Mac."
           }
         }
       }
@@ -11639,6 +12010,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unser angepasstes Modell"
+          }
+        }
+      }
+    },
+    "Our verdicts come from testing each model on dictation cleanup. Downloads happen only when you ask." : {
+      "comment" : "AI Polish, Ollama: the introduction at the top of the model list sheet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsere Bewertungen stammen aus Tests jedes Modells bei der Bereinigung von Diktaten. Downloads starten nur, wenn du es willst."
           }
         }
       }
@@ -11953,17 +12335,6 @@
         }
       }
     },
-    "Paused" : {
-      "comment" : "AI Polish provider status chip.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pausiert"
-          }
-        }
-      }
-    },
     "Paused to free memory for other apps. Use the refresh button to restart it." : {
       "comment" : "AI Polish, local model card: the reason under the health status.",
       "localizations" : {
@@ -12073,22 +12444,13 @@
         }
       }
     },
-    "Picking the right model. Gemini sells two sizes inside each generation. For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks. Pro models are overkill: slightly smarter on hard reasoning, slower and pricier on a job that doesn't need it." : {
+    "Picking the right model." : {
+      "comment" : "AI Polish, Why use: bold lead-in of a paragraph.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das passende Modell wählen. Gemini bietet in jeder Generation zwei Größen. Für die Nachbearbeitung von Diktaten eignen sich Modelle mit „Flash“ im Namen: Sie sind auf schnelle, einfache Aufgaben ausgelegt. Pro-Modelle sind dafür überdimensioniert. Sie lösen schwierige Denkaufgaben etwas besser, sind hier aber langsamer und teurer."
-          }
-        }
-      }
-    },
-    "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das passende Modell wählen. OpenAI bietet in jeder Generation mehrere Größen. Für die Nachbearbeitung von Diktaten eignen sich Modelle mit „Mini“ im Namen. Sie sind auf schnelle, einfache Aufgaben ausgelegt und etwa 3- bis 10-mal günstiger als die größten Modelle. Nano ist noch kleiner und schneller. Die Modelle ohne Zusatz (GPT-5, GPT-4.1) und alle Pro-Modelle sind für diese Aufgabe überdimensioniert."
+            "value" : "Das richtige Modell wählen."
           }
         }
       }
@@ -12259,6 +12621,7 @@
       }
     },
     "Prepare model" : {
+      "comment" : "AI Polish, Ollama: loads the model now.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12291,6 +12654,7 @@
       }
     },
     "Preparing model for faster responses..." : {
+      "comment" : "AI Polish, Ollama: the model is being loaded into memory.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12532,6 +12896,17 @@
         }
       }
     },
+    "Pull a local model from Ollama. Nothing downloads on its own." : {
+      "comment" : "AI Polish, Ollama: the line under Download more models.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade ein lokales Modell von Ollama. Nichts wird von selbst heruntergeladen."
+          }
+        }
+      }
+    },
     "Punjabi" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -12639,6 +13014,7 @@
       }
     },
     "Re-check Ollama status" : {
+      "comment" : "AI Polish, Ollama: checks Ollama again.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12914,22 +13290,12 @@
       }
     },
     "Recommended" : {
-      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nTranscribe a File: badge on the recommended engine.\nVoiceOver: the recommended AI Polish provider, not chosen.",
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nAI Polish: the pill on the recommended provider, EG-1.\nTranscribe a File: badge on the recommended engine.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Empfohlen"
-          }
-        }
-      }
-    },
-    "Recommended for cleanup" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für die Nachbearbeitung empfohlen"
           }
         }
       }
@@ -13150,11 +13516,23 @@
       }
     },
     "Refresh available models" : {
+      "comment" : "AI Polish: re-checks the key and reloads the model list.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verfügbare Modelle aktualisieren"
+          }
+        }
+      }
+    },
+    "Refreshing models…" : {
+      "comment" : "AI Polish model menu: models are being loaded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle werden aktualisiert…"
           }
         }
       }
@@ -13181,7 +13559,7 @@
       }
     },
     "Remove" : {
-      "comment" : "Live Preview settings, Universal engine card: button. It deletes the downloaded engine.",
+      "comment" : "AI Polish, Ollama model list: removes a downloaded model from this Mac.\nLive Preview settings, Universal engine card: button. It deletes the downloaded engine.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13192,6 +13570,7 @@
       }
     },
     "Remove Model" : {
+      "comment" : "AI Polish, local model: deletes the model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13273,6 +13652,17 @@
         }
       }
     },
+    "Removing frees %@. Polish switches to Apple Intelligence." : {
+      "comment" : "AI Polish, local model: what Remove Model does. %@ is the model's size, such as 2.9 GB.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernen gibt %@ frei. Polish wechselt zu Apple Intelligence."
+          }
+        }
+      }
+    },
     "Removing model..." : {
       "localizations" : {
         "de" : {
@@ -13320,16 +13710,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zum Einfügen deines Diktats erforderlich"
-          }
-        }
-      }
-    },
-    "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erfordert macOS 26 oder neuer. Auf älteren Versionen ist diese Option nicht verfügbar; dein Text wird genau so eingefügt, wie er transkribiert wurde."
           }
         }
       }
@@ -13450,16 +13830,6 @@
         }
       }
     },
-    "Retry preparing model" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell erneut vorbereiten"
-          }
-        }
-      }
-    },
     "Review" : {
       "comment" : "Snippets, import snippets: sheet title, reviewing what will be added.\nTranscribe a File: a step name in the step bar.",
       "localizations" : {
@@ -13527,7 +13897,7 @@
       }
     },
     "Running" : {
-      "comment" : "AI Polish provider status chip.",
+      "comment" : "AI Polish, Ollama: the server is running.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13954,6 +14324,17 @@
         }
       }
     },
+    "Search models" : {
+      "comment" : "AI Polish, Ollama: the model list's search field.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle suchen"
+          }
+        }
+      }
+    },
     "Search snippets" : {
       "localizations" : {
         "de" : {
@@ -14155,27 +14536,6 @@
         }
       }
     },
-    "Selected, recommended" : {
-      "comment" : "VoiceOver: an AI Polish provider that is chosen and is the recommended one.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausgewählt, empfohlen"
-          }
-        }
-      }
-    },
-    "Selects %@ for AI polish" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wählt %@ für die KI-Nachbearbeitung aus"
-          }
-        }
-      }
-    },
     "Self-Learning Dictionary" : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: the feature's name.",
       "localizations" : {
@@ -14209,17 +14569,6 @@
         }
       }
     },
-    "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text." : {
-      "comment" : "AI Polish, S1-mini writing-style card: explains the tone options.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„Eher förmlich“ behält Großschreibung und Punkte bei. „Locker“ und „Eher locker“ schreiben wie in einer Chatnachricht."
-          }
-        }
-      }
-    },
     "Send crash reports" : {
       "comment" : "Permissions settings, Privacy: switch label.",
       "localizations" : {
@@ -14231,13 +14580,35 @@
         }
       }
     },
-    "Sends transcribed text, never audio" : {
-      "comment" : "AI Polish: privacy line under the selected provider.",
+    "Sends text and dictation context to Anthropic." : {
+      "comment" : "AI Polish: the line under the Claude API key's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sendet nur transkribierten Text, keine Audioaufnahmen"
+            "value" : "Sendet Text und Diktatkontext an Anthropic."
+          }
+        }
+      }
+    },
+    "Sends text and dictation context to Google." : {
+      "comment" : "AI Polish: the line under the Google Gemini API key's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet Text und Diktatkontext an Google."
+          }
+        }
+      }
+    },
+    "Sends text and dictation context to OpenAI." : {
+      "comment" : "AI Polish: the line under the OpenAI API key's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet Text und Diktatkontext an OpenAI."
           }
         }
       }
@@ -14249,6 +14620,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Serbisch"
+          }
+        }
+      }
+    },
+    "Server" : {
+      "comment" : "AI Polish, Ollama: the server row's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server"
           }
         }
       }
@@ -14416,6 +14798,28 @@
         }
       }
     },
+    "Short dictation in English. Tone, structure, and context let you steer how formal the result reads. Best for dictations up to about %lld minutes." : {
+      "comment" : "AI Polish, Why use S1-mini: what it is best at. %lld is a number of minutes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurze Diktate auf Englisch. Mit Ton, Struktur und Kontext steuerst du, wie förmlich das Ergebnis klingt. Am besten für Diktate bis etwa %lld Minuten."
+          }
+        }
+      }
+    },
+    "Short dictation: punctuation, capitalization, and filler words. For longer recordings, lists, or code, EG-1 or a cloud model does better. Handles dictations up to about 8 minutes." : {
+      "comment" : "AI Polish, Why use Apple Intelligence: what it is best at.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurze Diktate: Zeichensetzung, Großschreibung und Füllwörter. Für längere Aufnahmen, Listen oder Code eignet sich EG-1 oder ein Cloud-Modell besser. Verarbeitet Diktate bis etwa 8 Minuten."
+          }
+        }
+      }
+    },
     "Show" : {
       "localizations" : {
         "de" : {
@@ -14454,6 +14858,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Im Finder anzeigen"
+          }
+        }
+      }
+    },
+    "Show key" : {
+      "comment" : "AI Polish: shows the API key text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel anzeigen"
           }
         }
       }
@@ -14629,6 +15044,17 @@
         }
       }
     },
+    "Small model by Superwhisper, on this Mac and happiest in English." : {
+      "comment" : "AI Polish provider card: the line under S1-mini's name. Required licence credit; keep Superwhisper as written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kleines Modell von Superwhisper, auf diesem Mac und am stärksten auf Englisch."
+          }
+        }
+      }
+    },
     "Smart insertion" : {
       "comment" : "Clipboard settings: switch title.",
       "localizations" : {
@@ -14791,6 +15217,7 @@
       }
     },
     "Something went wrong" : {
+      "comment" : "AI Polish, Ollama: an unexpected error.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14940,6 +15367,17 @@
         }
       }
     },
+    "Start" : {
+      "comment" : "AI Polish, Ollama setup: the second step.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starten"
+          }
+        }
+      }
+    },
     "Start / stop recording" : {
       "localizations" : {
         "de" : {
@@ -15026,12 +15464,13 @@
         }
       }
     },
-    "Status:" : {
+    "Status" : {
+      "comment" : "AI Polish, Apple Intelligence: the status row's title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Status:"
+            "value" : "Status"
           }
         }
       }
@@ -15053,6 +15492,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schritt %lld von 6"
+          }
+        }
+      }
+    },
+    "Step %lld, %@" : {
+      "comment" : "VoiceOver: an Ollama setup step. %lld is its number, %@ its name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Step %1$lld, %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritt %lld, %@"
           }
         }
       }
@@ -15181,17 +15637,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sundanesisch"
-          }
-        }
-      }
-    },
-    "Superwhisper trained %@ on these three settings. Change them any time; a new pick applies to your next dictation." : {
-      "comment" : "AI Polish, S1-mini writing-style card: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Superwhisper hat %@ mit diesen drei Einstellungen trainiert. Du kannst sie jederzeit ändern. Eine neue Auswahl gilt ab dem nächsten Diktat."
           }
         }
       }
@@ -15386,16 +15831,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Telugu"
-          }
-        }
-      }
-    },
-    "Test that %@ is live" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Prüfen, ob %@ läuft"
           }
         }
       }
@@ -16271,17 +16706,6 @@
         }
       }
     },
-    "The on-device model is not ready — it may still be downloading. Try again later." : {
-      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Modell auf diesem Gerät ist noch nicht bereit – es wird möglicherweise noch heruntergeladen. Versuche es später erneut."
-          }
-        }
-      }
-    },
     "The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider." : {
       "comment" : "AI polish error: Apple Intelligence's on-device model can't be used yet. Shown after 'AI polish failed:'.",
       "localizations" : {
@@ -16289,6 +16713,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Modell auf diesem Gerät ist noch nicht bereit. Es wird möglicherweise noch heruntergeladen oder ist durch deine Organisation eingeschränkt. Versuche es später erneut oder wähle einen anderen Anbieter."
+          }
+        }
+      }
+    },
+    "The on-device model is not ready. It may still be downloading. Try again later." : {
+      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell auf dem Gerät ist noch nicht bereit. Es wird möglicherweise noch heruntergeladen. Versuche es später erneut."
           }
         }
       }
@@ -16463,16 +16898,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Datei enthält keinen Ton."
-          }
-        }
-      }
-    },
-    "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das sind allgemeine offene Modelle. Anders als EG-1 wurden sie nicht für Diktate abgestimmt. Die Qualität hängt vom heruntergeladenen Modell ab; größere Modelle arbeiten langsamer. Wähle und verwalte die Modelle unten selbst."
           }
         }
       }
@@ -16913,6 +17338,28 @@
         }
       }
     },
+    "Those aren't blocked by EnviousWispr. Model access and limits depend on your Anthropic account's usage tier." : {
+      "comment" : "AI Polish, Why use Claude: why a model may be missing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese werden nicht von EnviousWispr blockiert. Modellzugang und Limits hängen von der Nutzungsstufe deines Anthropic-Kontos ab."
+          }
+        }
+      }
+    },
+    "Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status." : {
+      "comment" : "AI Polish, Why use Gemini: why a model may be locked.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese werden nicht von EnviousWispr blockiert. Dein Gemini-API-Schlüssel hat derzeit keinen Zugriff darauf. Manche Gemini-Modelle sind nach Region, Abrechnungsstufe oder Vorschaustatus eingeschränkt."
+          }
+        }
+      }
+    },
     "Tibetan" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -17256,7 +17703,7 @@
       }
     },
     "Try Again" : {
-      "comment" : "Live Preview settings, Universal engine card: button. It retries a failed download.\nSettings > AI Polish, local model row: button after a failed download.\nSpeech engine settings, speech model download: button after a failure.",
+      "comment" : "AI Polish, Ollama: checks the Ollama setup again.\nLive Preview settings, Universal engine card: button. It retries a failed download.\nSettings > AI Polish, local model row: button after a failed download.\nSpeech engine settings, speech model download: button after a failure.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17741,6 +18188,39 @@
         }
       }
     },
+    "Use your Claude API key for cloud polish." : {
+      "comment" : "AI Polish provider card: the line under Claude's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze deinen Claude-API-Schlüssel für Cloud-Polish."
+          }
+        }
+      }
+    },
+    "Use your Gemini API key for cloud polish." : {
+      "comment" : "AI Polish provider card: the line under Google Gemini's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze deinen Gemini-API-Schlüssel für Cloud-Polish."
+          }
+        }
+      }
+    },
+    "Use your OpenAI API key for cloud polish." : {
+      "comment" : "AI Polish provider card: the line under OpenAI's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze deinen OpenAI-API-Schlüssel für Cloud-Polish."
+          }
+        }
+      }
+    },
     "Use your words and vocabulary to improve recognition." : {
       "comment" : "Dictionary settings: short line under Enable Dictionary.",
       "localizations" : {
@@ -17781,17 +18261,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verwendet ein heruntergeladenes Modell für unterstützte Sprachen."
-          }
-        }
-      }
-    },
-    "Uses your selected Ollama model, local or hosted" : {
-      "comment" : "AI Polish: privacy line under the selected provider.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verwendet dein ausgewähltes Ollama-Modell, lokal oder gehostet"
           }
         }
       }
@@ -17846,27 +18315,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "VAD: Aktiv"
-          }
-        }
-      }
-    },
-    "Valid" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gültig"
-          }
-        }
-      }
-    },
-    "Validating" : {
-      "comment" : "AI Polish provider status chip.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird geprüft"
           }
         }
       }
@@ -17926,6 +18374,7 @@
       }
     },
     "Verifying download integrity" : {
+      "comment" : "AI Polish, local model: checking the downloaded file.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18094,6 +18543,7 @@
       }
     },
     "We could not check your saved key on this Mac." : {
+      "comment" : "AI Polish: the saved API key could not be read from the Keychain.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18336,48 +18786,13 @@
         }
       }
     },
-    "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose." : {
+    "When to pick something else." : {
+      "comment" : "AI Polish, Why use EG-1: bold lead-in of a paragraph.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wann du es verwenden solltest: Wähle Ollama, wenn du ein bestimmtes offenes Modell auf deinem Gerät ausführen oder experimentieren möchtest. Für die beste Nachbearbeitung direkt auf deinem Mac ohne Einrichtung ist EG-1 einfacher. Die mögliche Diktatlänge hängt vom gewählten Modell ab."
-          }
-        }
-      }
-    },
-    "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about %lld minutes." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wann du es verwenden solltest: EG-1 ist die empfohlene Wahl für alle, die ihre Diktate privat und kostenlos auf dem Gerät nachbearbeiten möchten. Es wurde genau dafür abgestimmt. Wenn du ein sehr großes allgemeines Modell brauchst, gibt es Cloud-Optionen. Verarbeitet Diktate bis etwa %lld Minuten."
-          }
-        }
-      }
-    },
-    "When to use it. Pick %@ if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about %lld minutes." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "When to use it. Pick %1$@ if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about %2$lld minutes."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wann du es verwenden solltest: Wähle %1$@, wenn du auf Englisch diktierst und die leichteste lokale Option möchtest oder wenn dein Mac nicht genug Platz für EG-1 hat. EG-1 bleibt unsere Empfehlung. Am besten für Diktate bis etwa %2$lld Minuten."
-          }
-        }
-      }
-    },
-    "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better. Handles dictations up to about 8 minutes." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wann du es verwenden solltest: Apple Intelligence eignet sich für kurze Notizen, wenn du ohne Einrichtung saubere Ergebnisse möchtest. Bei längeren Aufnahmen, Listen oder Code kommen EG-1 oder ein Cloud-Modell besser mit der Struktur zurecht. Verarbeitet Diktate bis etwa 8 Minuten."
+            "value" : "Wann du etwas anderes wählen solltest."
           }
         }
       }
@@ -18717,17 +19132,6 @@
         }
       }
     },
-    "Writing style" : {
-      "comment" : "AI Polish, S1-mini writing-style card: the card title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schreibstil"
-          }
-        }
-      }
-    },
     "YOUR PROCESSING PATH" : {
       "localizations" : {
         "de" : {
@@ -18800,6 +19204,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das hast du bereits als alternative Schreibweise von %@."
+          }
+        }
+      }
+    },
+    "You can keep dictating. Polish switches to %@ when the download is verified." : {
+      "comment" : "AI Polish, local model: while the model downloads. %@ is the model name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst weiter diktieren. Polish wechselt zu %@, sobald der Download geprüft ist."
           }
         }
       }
@@ -18892,16 +19307,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du sagst „%@ %@“"
-          }
-        }
-      }
-    },
-    "You're all set! Select a model above." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alles bereit! Wähle oben ein Modell aus."
           }
         }
       }
@@ -19121,6 +19526,17 @@
         }
       }
     },
+    "Your key lists the models your OpenAI account can use, and EnviousWispr leaves out kinds of model it cannot use for cleanup. Some models need a verified organization or a higher usage tier." : {
+      "comment" : "AI Polish, Why use OpenAI: why a model may be missing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Schlüssel zeigt die Modelle, die dein OpenAI-Konto nutzen kann, und EnviousWispr lässt Modellarten weg, die es für die Bereinigung nicht nutzen kann. Manche Modelle brauchen eine verifizierte Organisation oder eine höhere Nutzungsstufe."
+          }
+        }
+      }
+    },
     "Your keyword has to be a single word. Pick one you would not say by accident." : {
       "comment" : "Snippets: error when the keyword is more than one word.",
       "localizations" : {
@@ -19139,6 +19555,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Mikrofon funktioniert. Wir haben nur nichts gehört.\nHalte %@ gedrückt und sag: Sag Oma, dass ich am Sonntag anrufe."
+          }
+        }
+      }
+    },
+    "Your models, local or hosted" : {
+      "comment" : "AI Polish provider list: description under a provider name. Ollama.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Modelle, lokal oder gehostet"
+          }
+        }
+      }
+    },
+    "Your models, local or hosted." : {
+      "comment" : "AI Polish provider card: the line under Ollama's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Modelle, lokal oder gehostet."
           }
         }
       }
@@ -21366,6 +21804,17 @@
         }
       }
     },
+    "qwen2.5:3b did best in our cleanup tests, but may follow dictated instructions. %@ How long a dictation it handles depends on the model you choose." : {
+      "comment" : "AI Polish, Why use Ollama: which model to pick. Keep qwen2.5:3b as written. %@ is a sentence about other languages.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "qwen2.5:3b war in unseren Bereinigungstests am besten, folgt aber eventuell diktierten Anweisungen. %@ Wie lange Diktate es verarbeitet, hängt vom gewählten Modell ab."
+          }
+        }
+      }
+    },
     "selected" : {
       "comment" : "Dictation language picker, VoiceOver: the chosen row.\nVoiceOver: a chosen segmented option.\nVoiceOver: a chosen segmented option; here, the Auto-detect row of the dictation language picker.",
       "localizations" : {
@@ -21624,6 +22073,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "· %@"
+          }
+        }
+      }
+    },
+    "· only for this model" : {
+      "comment" : "AI Polish: after the chosen model's name above its own settings, such as \"EG-1 · only for this model\".",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· nur für dieses Modell"
           }
         }
       }

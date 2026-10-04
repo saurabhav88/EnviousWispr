@@ -227,7 +227,7 @@ public struct AppleIntelligenceAvailabilityReport: Sendable, Codable {
     if failureReasons.contains(.modelNotReady) {
       return String(
         localized:
-          "The on-device model is not ready — it may still be downloading. Try again later.",
+          "The on-device model is not ready. It may still be downloading. Try again later.",
         comment:
           "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
     }

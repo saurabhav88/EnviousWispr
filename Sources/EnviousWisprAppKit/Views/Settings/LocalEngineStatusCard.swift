@@ -67,7 +67,7 @@ struct LocalEngineDescriptor: Equatable {
 /// This is a semantic no-op port for EG-1. Every comment travelled with the
 /// code it explains, and the only edits turn a hard-coded engine into
 /// `LocalEngineDescriptor`.
-struct LocalEngineStatusCard: View {
+struct LocalEngineStatusCard<Middle: View>: View {
   let runtime: EGOneRuntime
   let engine: LocalEngineDescriptor
   /// Whether this card may START the engine's server.
@@ -83,34 +83,20 @@ struct LocalEngineStatusCard: View {
   /// selection and must move the user off the engine being removed. Passed in
   /// rather than done here, because this view has no business writing settings.
   let onRemove: () -> Void
+  /// Rows the host places between the install row and the remove row (S1-mini's
+  /// writing-style dials, #3385).
+  @ViewBuilder let middle: () -> Middle
 
   private var isLowMemoryMac: Bool {
     ProcessInfo.processInfo.physicalMemory <= (8 << 30)
   }
 
-  /// Whole-section content for the EG-1 provider: explainer with the
-  /// founder-approved benchmark claim (real numbers, no competitor names),
-  /// download flow with size disclosure, the green/yellow/red activation
-  /// pill (a REAL inference probe, never process-exists), Remove Model, and
-  /// the 8 GB heads-up. Copy rules: no em or en dashes in these strings.
+  /// The rows of a bundled local engine in the AI Polish card (#3385, founder's Claude
+  /// Design 2026-10-03): the install state row with its action, the host's middle rows, the
+  /// remove row, and the 8 GB heads-up. Every state keeps a row, including the ones the design
+  /// did not draw (update paused, failed, upgrades). Copy rules: no em or en dashes.
   @ViewBuilder
   var body: some View {
-    // The pitch (tuned, on-device, benchmark) lives in the "Why use EG-1" card
-    // now (#1286); this card is just the actionable status/download/remove.
-    if engine.showsLowMemoryNote, isLowMemoryMac {
-      Label(
-        String(
-          localized:
-            "This Mac has 8 GB of memory. \(engine.name) may run slower here. Dictation always works, even when polish is unavailable.",
-          comment:
-            "AI Polish, local model card: low-memory note. %@ is the model name, such as EG-1."),
-        systemImage: "exclamationmark.triangle"
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stWarning)
-      .fixedSize(horizontal: false, vertical: true)
-    }
-
     // One presentation value for the whole row (#2109). Hoisted above the
     // switch deliberately: when only some branches consumed it, the remaining
     // mappings were still ASSERTED by the agreement tests while the real row
@@ -119,162 +105,250 @@ struct LocalEngineStatusCard: View {
     let presentation = EGOneRowPresentation.forState(runtime.installState, engine: engine.name)
     switch runtime.installState {
     case .notInstalled:
-      HStack {
-        // NOT "one-time" (#2096): a new model revision downloads again, on its own, when an app
-        // update ships one. Promising a single download was true only while EG-1 could never be
-        // replaced, and that stopped being true the moment the automatic upgrade path existed.
-        Text("Download size: \(engine.downloadSize)")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        Spacer()
-        if let action = presentation.primaryAction {
-          Button(action) { runtime.startDownload() }
+      // NOT "one-time" (#2096): a new model revision downloads again, on its own, when an app
+      // update ships one. Promising a single download was true only while EG-1 could never be
+      // replaced, and that stopped being true the moment the automatic upgrade path existed.
+      PolishRow(
+        icon: "arrow.down.circle",
+        title: presentation.primaryAction ?? engine.name,
+        subtitle: String(
+          localized:
+            "\(engine.downloadSize) download · needs \(engine.installHeadroom) free · stays on this Mac",
+          comment:
+            "AI Polish, local model: what downloading the model takes. The first %@ is its size, the second the free space it needs."
+        )
+      ) {
+        SettingsActionButton(
+          title: LocalizedStringResource(
+            "Download", comment: "AI Polish, local model: starts the model download."),
+          isEnabled: true, emphasis: .filled
+        ) {
+          runtime.startDownload()
         }
       }
     case .downloading(let fraction, let upgrade):
-      VStack(alignment: .leading, spacing: 4) {
-        ProgressView(value: max(0, min(1, fraction))) {
-          // An UPGRADE says so and names the version arriving; a first install
-          // keeps the original sentence (founder, 2026-08-17, from Live UAT).
-          // Both used to read "Downloading \(engine.name) (\(engine.downloadSize))", so a user who
-          // already had EG-1 could not tell a 2.9 GB upgrade from a 2.9 GB
-          // first install and was never told which version was coming.
-          //
-          // The version comes from `presentation.versionLabel`, composed from
-          // the manifest — never a literal here. A revision ships as a manifest
-          // edit with no Swift change, so a hard-coded number would keep naming
-          // the previous model after the real one moved on.
-          Text(
-            EGOneRowPresentation.downloadingLine(
-              engine: engine.name, upgrade: upgrade, downloadSize: engine.downloadSize)
-          )
-          .font(.stHelper)
-        }
-        if let action = presentation.primaryAction {
-          Button(action) { runtime.cancelDownload() }
-            .buttonStyle(.borderless)
-            .font(.stHelper)
-        }
-      }
-    // #2109: an interrupted FIRST install. Ported from the founder ruling of
-    // 2026-07-17 already shipped for Parakeet and WhisperKit — paused, Resume
-    // anytime. This used to render through the failure branch with a red row
-    // and a Try Again button, for something the user deliberately chose.
-    case .paused:
-      VStack(alignment: .leading, spacing: 4) {
-        Text(presentation.message)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        if let action = presentation.primaryAction {
-          Button(action) { runtime.startDownload() }
-        }
-      }
-    // A working older EG-1 is installed and the pinned one is not, so AI
-    // cleanup is off until this finishes. The old revision is deliberately
-    // NOT named: this app bundle does not contain its manifest, so any name
-    // for it would be invented.
-    case .updatePaused:
-      VStack(alignment: .leading, spacing: 4) {
-        Text(presentation.message)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-        HStack {
-          if let action = presentation.primaryAction {
-            Button(action) { runtime.startDownload() }
-          }
-          Spacer()
-          if presentation.showsRemove {
-            Button("Remove Model") { onRemove() }
-              .buttonStyle(.borderless)
+      // An UPGRADE says so and names the version arriving; a first install keeps the
+      // original sentence (founder, 2026-08-17, from Live UAT). The version comes from
+      // `presentation.versionLabel`, composed from the manifest, never a literal here.
+      PolishRow(
+        icon: "arrow.down.circle",
+        title: EGOneRowPresentation.downloadingLine(
+          engine: engine.name, upgrade: upgrade, downloadSize: engine.downloadSize),
+        subtitle: String(
+          localized:
+            "You can keep dictating. Polish switches to \(engine.name) when the download is verified.",
+          comment: "AI Polish, local model: while the model downloads. %@ is the model name."),
+        detail: {
+          PolishProgressBar(fraction: fraction)
+            .padding(.top, 6)
+        },
+        trailing: {
+          HStack(spacing: 10) {
+            Text("\(Int((max(0, min(1, fraction)) * 100).rounded()))%")
               .font(.stHelper)
+              .monospacedDigit()
+              .foregroundStyle(Color.stTextSecondary)
+            if let action = presentation.primaryAction {
+              PolishTextAction(title: action) { runtime.cancelDownload() }
+            }
+          }
+        })
+    // #2109: an interrupted FIRST install. Ported from the founder ruling of 2026-07-17
+    // already shipped for Parakeet and WhisperKit: paused, Resume anytime. No percentage:
+    // the paused state carries no progress, so any number would be invented.
+    case .paused:
+      PolishRow(icon: "pause.circle", title: presentation.message) {
+        if let action = presentation.primaryAction {
+          SettingsActionButton(
+            title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
+            emphasis: .filled
+          ) {
+            runtime.startDownload()
+          }
+        }
+      }
+    // A working older EG-1 is installed and the pinned one is not, so AI cleanup is off until
+    // this finishes. The old revision is deliberately NOT named: this app bundle does not
+    // contain its manifest, so any name for it would be invented.
+    case .updatePaused:
+      PolishRow(
+        icon: "exclamationmark.triangle", iconTint: .stWarning, title: presentation.message,
+        adaptsTrailing: true
+      ) {
+        if let action = presentation.primaryAction {
+          SettingsActionButton(
+            title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
+            emphasis: .filled
+          ) {
+            runtime.startDownload()
           }
         }
       }
     case .verifying:
-      HStack {
-        ProgressView().controlSize(.small)
-        Text("Verifying download integrity")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
+      PolishRow(
+        icon: "checkmark.shield", showsSpinner: true,
+        title: String(
+          localized: "Verifying download integrity",
+          comment: "AI Polish, local model: checking the downloaded file."),
+        subtitle: String(
+          localized: "Checking the file against its manifest before it is used.",
+          comment: "AI Polish, local model: what verifying does.")
+      ) {
+        EmptyView()
       }
     case .failed(let failure):
-      Text(failureCopy(failure))
-        .font(.stHelper)
-        .foregroundStyle(.stError)
-        .fixedSize(horizontal: false, vertical: true)
-      if let action = presentation.primaryAction {
-        Button(action) { runtime.startDownload() }
+      PolishRow(
+        icon: "xmark.octagon", iconTint: .stError, title: failureCopy(failure),
+        adaptsTrailing: true
+      ) {
+        if let action = presentation.primaryAction {
+          SettingsActionButton(
+            title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
+            emphasis: .filled
+          ) {
+            runtime.startDownload()
+          }
+        }
       }
     case .installed:
-      HStack {
-        Text("Status:")
-        // #2109: the version, as a quiet secondary label. Deliberately not
-        // prominent — Priya and Dr. Vasquez want to know which model they are
-        // on, Frank and Meera must be able to ignore it entirely, and nobody
-        // is being asked to make a decision here.
-        //
-        // Composed by `EGOneRowPresentation`, not here, so the same value the
-        // tests assert is the value that renders. nil and blank both render
-        // NOTHING: an absent label is honest, "Unknown version" is a string
-        // Frank should never see, and `EG-1 V` with an empty tail reads as a
-        // rendering bug.
-        if let versionLabel = presentation.versionLabel {
-          Text(versionLabel)
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
-        }
-        Spacer()
+      // #2109: the version, as a quiet secondary label, composed by `EGOneRowPresentation`
+      // so the value the tests assert is the value that renders. nil and blank both render
+      // NOTHING: an absent label is honest and "EG-1 V" with an empty tail reads as a bug.
+      // The size is the engine's download size, which is what it is: no disk reading is
+      // claimed.
+      PolishRow(
+        icon: "checkmark.circle",
+        title: String(
+          localized: "Installed", comment: "AI Polish, local model: the model is on this Mac."),
+        subtitle: [presentation.versionLabel, engine.downloadSize, installedHealthLine]
+          .compactMap { $0 }.joined(separator: " · ")
+      ) {
         if allowsRuntimeActivation {
-          healthLabel
-          Button {
-            runtime.activateAndProbe()
-          } label: {
-            Image(systemName: "arrow.clockwise")
-              .settingsHoverQuiet()
+          HStack(spacing: 10) {
+            healthLabel
+            PolishIconButton(
+              systemName: "arrow.clockwise", help: "Test that \(engine.name) is live"
+            ) {
+              runtime.activateAndProbe()
+            }
           }
-          .buttonStyle(.borderless)
-          .help("Test that \(engine.name) is live")
-          .accessibilityLabel("Test that \(engine.name) is live")
         } else {
           // Installed and ready to be used BY A RUN. Deliberately not a health reading: this
           // card is not allowed to start the server, so it cannot know, and a stale green
           // light is worse than none.
-          Text("Ready for import").foregroundStyle(Color.stTextSecondary)
+          Text("Ready for import")
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
         }
       }
-      if allowsRuntimeActivation, let reason = healthDetail {
-        Text(reason)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      if presentation.showsRemove {
-        Button("Remove Model") { onRemove() }
-          .buttonStyle(.borderless)
-          .font(.stHelper)
+    }
+    middle()
+    if presentation.showsRemove { removeRow }
+    if engine.showsLowMemoryNote, isLowMemoryMac {
+      PolishRowDivider()
+      PolishRow(
+        icon: "exclamationmark.triangle", iconTint: .stWarning,
+        title: String(
+          localized:
+            "This Mac has 8 GB of memory. \(engine.name) may run slower here. Dictation always works, even when polish is unavailable.",
+          comment:
+            "AI Polish, local model card: low-memory note. %@ is the model name, such as EG-1.")
+      ) {
+        EmptyView()
       }
     }
+  }
+
+  /// The health reason under "Installed" when the engine is not green; nothing extra when it
+  /// is (the design's "Answered a test request in 0.4 s" is not shipped: the probe does not
+  /// publish its timing).
+  private var installedHealthLine: String? {
+    allowsRuntimeActivation ? healthDetail : nil
+  }
+
+  @ViewBuilder
+  private var removeRow: some View {
+    PolishRowDivider()
+    HStack(spacing: 12) {
+      Text(
+        String(
+          localized:
+            "Removing frees \(engine.downloadSize). Polish switches to Apple Intelligence.",
+          comment:
+            "AI Polish, local model: what Remove Model does. %@ is the model's size, such as 2.9 GB.")
+      )
+      .font(.stRowHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      PolishTextAction(
+        title: String(
+          localized: "Remove Model", comment: "AI Polish, local model: deletes the model.")
+      ) {
+        onRemove()
+      }
+    }
+    .padding(.leading, PolishSectionLayout.textIndent)
+    .padding(.trailing, PolishSectionLayout.rowPaddingH)
+    .padding(.vertical, PolishSectionLayout.rowPaddingV)
   }
 
   @ViewBuilder
   private var healthLabel: some View {
     switch runtime.health {
     case .green:
-      Label("Live", systemImage: "checkmark.circle.fill")
-        .foregroundStyle(.stSuccess)
+      ProviderStatusChip(status: ProviderStatus(label: String(localized: "Live"), tone: .ready))
     case .yellow:
-      Label("Attention", systemImage: "exclamationmark.triangle.fill")
-        .foregroundStyle(.stWarning)
+      ProviderStatusChip(
+        status: ProviderStatus(label: String(localized: "Attention"), tone: .needsSetup))
     case .red:
-      Label("Not working", systemImage: "xmark.circle.fill")
-        .foregroundStyle(.stError)
+      ProviderStatusChip(
+        status: ProviderStatus(label: String(localized: "Not working"), tone: .error))
     }
   }
 
   /// Plain-language reason line under the health pill (nil for green).
-  private var healthDetail: String? { Self.detail(for: runtime.health) }
+  private var healthDetail: String? { LocalEngineHealthCopy.detail(for: runtime.health) }
 
+  private func failureCopy(_ failure: EGOneDownloadFailure) -> String {
+    switch failure {
+    case .network:
+      return String(
+        localized:
+          "Could not download the model. Check your connection. On a managed network, ask IT whether models.enviouswispr.com is allowed.",
+        comment:
+          "AI Polish, local model card: why the model download failed. Keep models.enviouswispr.com exactly; it is a web address."
+      )
+    case .checksum:
+      return String(
+        localized: "The download did not verify correctly and was discarded. Please try again.",
+        comment: "AI Polish, local model card: why the model download failed.")
+    case .disk:
+      return String(
+        localized:
+          "Not enough free disk space. The download needs about \(engine.installHeadroom) free during install.",
+        comment:
+          "AI Polish, local model card: why the model download failed. %@ is an amount of disk space, such as 6 GB."
+      )
+    case .cancelled:
+      return String(
+        localized: "Download canceled. Your progress is saved.",
+        comment: "AI Polish, local model card: why the model download failed.")
+    case .rangeUnsupported, .http:
+      return String(
+        localized: "The download server had a problem. Please try again in a few minutes.",
+        comment: "AI Polish, local model card: why the model download failed.")
+    case .stubURL:
+      return String(
+        localized: "This build has no download source configured.",
+        comment: "AI Polish, local model card: why the model download failed.")
+    }
+  }
+}
+
+/// The plain-language reason under a local engine's health, outside the generic card so a
+/// test can call it without naming the card's content type.
+enum LocalEngineHealthCopy {
   /// Pure, and `static` so a test can enumerate every reason the app
   /// PRODUCES and require copy for each. As an instance property reading
   /// `runtime` this was unreachable, which is how two produced reasons
@@ -360,41 +434,6 @@ struct LocalEngineStatusCard: View {
           localized: "Not running. Use the refresh button to try again.",
           comment: "AI Polish, local model card: the reason under the health status.")
       }
-    }
-  }
-
-  private func failureCopy(_ failure: EGOneDownloadFailure) -> String {
-    switch failure {
-    case .network:
-      return String(
-        localized:
-          "Could not download the model. Check your connection. On a managed network, ask IT whether models.enviouswispr.com is allowed.",
-        comment:
-          "AI Polish, local model card: why the model download failed. Keep models.enviouswispr.com exactly; it is a web address."
-      )
-    case .checksum:
-      return String(
-        localized: "The download did not verify correctly and was discarded. Please try again.",
-        comment: "AI Polish, local model card: why the model download failed.")
-    case .disk:
-      return String(
-        localized:
-          "Not enough free disk space. The download needs about \(engine.installHeadroom) free during install.",
-        comment:
-          "AI Polish, local model card: why the model download failed. %@ is an amount of disk space, such as 6 GB."
-      )
-    case .cancelled:
-      return String(
-        localized: "Download canceled. Your progress is saved.",
-        comment: "AI Polish, local model card: why the model download failed.")
-    case .rangeUnsupported, .http:
-      return String(
-        localized: "The download server had a problem. Please try again in a few minutes.",
-        comment: "AI Polish, local model card: why the model download failed.")
-    case .stubURL:
-      return String(
-        localized: "This build has no download source configured.",
-        comment: "AI Polish, local model card: why the model download failed.")
     }
   }
 }

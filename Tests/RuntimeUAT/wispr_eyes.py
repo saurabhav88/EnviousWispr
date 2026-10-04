@@ -1225,8 +1225,8 @@ def check_ai_diagnostics():
     ax = _ax()
     original = None
     try:
-        selected = [name for name in _sn.POLISH_PROVIDERS
-                    if _sn.provider_selected(ax, _sn.provider_button(ax, _app, name)) is True]
+        chosen = _sn.current_provider(ax, _app)
+        selected = [chosen] if chosen is not None else []
         if len(selected) != 1:
             raise NavigationError("the selected AI Polish provider cannot be read")
         if selected[0] not in ("Apple Intelligence", "EG-1", "S1-mini"):
@@ -1240,7 +1240,7 @@ def check_ai_diagnostics():
         _sn.select_provider(ax, lambda: _app, "Apple Intelligence")
         result = {"provider": "Apple Intelligence"}
 
-        # Read the status beside Apple's refresh, outside the provider rail and sidebar.
+        # Read the status beside Apple's refresh, outside the provider card and sidebar.
         refresh = _sn.find_button(ax, _app, "Check Apple Intelligence availability")
         if refresh is None:
             raise NavigationError("selected Apple detail has no availability control")

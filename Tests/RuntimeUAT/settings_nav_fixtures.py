@@ -1350,21 +1350,35 @@ def pr3_cases():
         flat["AXChildren"].remove(flat_reset)
         rows.append((f"PR3 {german}: flattened rows: no own Reset never borrows the next row's",
                      sn.keybind_control(ax, flat_root, label, reset=True), None))
-        chosen = {"name": "Ollama"}
-        def tile(name):
+        chosen = {"name": "Ollama", "open": False}
+        def provider_row(name):
             return el("AXButton", desc=tr(name) + ", on this Mac",
-                      value=tr("Selected" if chosen["name"] == name else "Not selected")
-                      + ", Ready", press=lambda: chosen.update(name=name))
-        root_of = lambda: _window([tile("Apple Intelligence"), tile("Ollama")])
+                      press=lambda: chosen.update(name=name, open=False))
+        def card():
+            menu = ([el("AXPopover", children=[provider_row("Apple Intelligence"),
+                                               provider_row("Ollama")])]
+                    if chosen["open"] else [])
+            return el("AXButton", desc=tr(sn.POLISH_CARD),
+                      value=tr(chosen["name"]) + ", on this Mac, Status: Ready",
+                      children=menu, press=lambda: chosen.update(open=True))
+        root_of = lambda: _window([card()])
+        rows.append((f"PR3 {german}: the card names the chosen provider",
+                     sn.current_provider(ax, root_of()), "Ollama"))
         sn.select_provider(ax, root_of, "Apple Intelligence")
         rows.append((f"PR3 {german}: Apple selection is observed before diagnostics",
                      chosen["name"], "Apple Intelligence"))
         sn.select_provider(ax, root_of, "Ollama")
         rows.append((f"PR3 {german}: original provider is restored", chosen["name"], "Ollama"))
-        stale = _window([el("AXButton", desc=tr("Apple Intelligence") + ", on this Mac",
-                            value=tr("Not selected") + ", Ready")])
+        stale_open = {"open": False}
+        def stale_card():
+            menu = ([el("AXPopover", children=[el("AXButton", desc=tr("Apple Intelligence")
+                                                  + ", on this Mac")])]
+                    if stale_open["open"] else [])
+            return el("AXButton", desc=tr(sn.POLISH_CARD), value=tr("Ollama") + ", your own setup",
+                      children=menu, press=lambda: stale_open.update(open=True))
         try:
-            sn.select_provider(ax, lambda: stale, "Apple Intelligence")
+            sn.select_provider(ax, lambda: _window([stale_card()]), "Apple Intelligence",
+                               timeout=0.2)
             got = "returned"
         except sn.NavigationError:
             got = "refused"

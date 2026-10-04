@@ -38,51 +38,35 @@ struct PolishRailCatalogTests {
   }
 
   @Test(
-    "each group's heading, accessibility phrase and privacy line are exact",
+    "each group's heading and accessibility phrase are exact",
     arguments: [
-      (
-        PolishRailGroup.onThisMac, "On this Mac", "on this Mac",
-        "Nothing you dictate leaves this Mac"
-      ),
-      (
-        PolishRailGroup.yourOwnSetup, "Your own setup", "your own setup",
-        "Uses your selected Ollama model, local or hosted"
-      ),
-      (PolishRailGroup.cloud, "Cloud", "cloud", "Sends transcribed text, never audio"),
+      (PolishRailGroup.onThisMac, "On this Mac", "on this Mac"),
+      (PolishRailGroup.yourOwnSetup, "Your own setup", "your own setup"),
+      (PolishRailGroup.cloud, "Cloud", "cloud"),
     ])
-  func groupCopyIsExact(
-    group: PolishRailGroup, heading: String, phrase: String, privacy: String
-  ) {
+  func groupCopyIsExact(group: PolishRailGroup, heading: String, phrase: String) {
     #expect(group.heading == heading)
     #expect(group.accessibilityPhrase == phrase)
-    #expect(group.privacyLine == privacy)
   }
 
-  /// The specific regression. `.yourOwnSetup` must not claim dictation stays on
-  /// the Mac because this provider-level policy does not inspect the armed
-  /// Ollama model.
-  ///
-  /// Assert the exact approved string and reject common device-boundary claims,
-  /// so an equally false rewording also fails.
-  @Test("the Ollama group never claims dictation stays on this Mac")
-  func yourOwnSetupMakesNoDeviceBoundaryClaim() {
-    let line = PolishRailGroup.yourOwnSetup.privacyLine
-    #expect(line == "Uses your selected Ollama model, local or hosted")
-    let lowered = line.lowercased()
-    #expect(lowered.contains("leaves this mac") == false)
-    #expect(lowered.contains("leaves your device") == false)
-    #expect(lowered.contains("stays on") == false)
-    #expect(lowered.contains("never leaves") == false)
-    // And it does say the thing that IS true either way.
-    #expect(lowered.contains("local or hosted"))
-  }
-
-  /// Freeze the two previously correct privacy lines so adding the third policy
-  /// does not rewrite their copy.
-  @Test("the on-Mac and cloud privacy lines are unchanged from before #1914")
-  func untouchedGroupsKeepTheirExactCopy() {
-    #expect(PolishRailGroup.onThisMac.privacyLine == "Nothing you dictate leaves this Mac")
-    #expect(PolishRailGroup.cloud.privacyLine == "Sends transcribed text, never audio")
+  /// The #1914 regression, now on the lines that name Ollama (the privacy line went with the
+  /// rail's header, #3385). Provider-level copy does not inspect the armed Ollama model, so it
+  /// must not claim dictation stays on the Mac. Common device-boundary claims are rejected so an
+  /// equally false rewording also fails.
+  @Test("Ollama's lines never claim dictation stays on this Mac")
+  func yourOwnSetupMakesNoDeviceBoundaryClaim() throws {
+    let ollama = try #require(PolishRailCatalog.entry(for: .ollama))
+    #expect(ollama.tagline == "Your models, local or hosted")
+    #expect(ollama.short == "Your models, local or hosted.")
+    for line in [ollama.tagline, ollama.short] {
+      let lowered = line.lowercased()
+      #expect(lowered.contains("leaves this mac") == false)
+      #expect(lowered.contains("leaves your device") == false)
+      #expect(lowered.contains("stays on") == false)
+      #expect(lowered.contains("never leaves") == false)
+      // And it does say the thing that IS true either way.
+      #expect(lowered.contains("local or hosted"))
+    }
   }
 
   // MARK: - Catalog membership
@@ -90,7 +74,7 @@ struct PolishRailCatalogTests {
   @Test(
     "each group contains exactly its approved providers, in order",
     arguments: [
-      (PolishRailGroup.onThisMac, [LLMProvider.egOne, .appleIntelligence, .s1Mini]),
+      (PolishRailGroup.onThisMac, [LLMProvider.egOne, .s1Mini, .appleIntelligence]),
       (PolishRailGroup.yourOwnSetup, [LLMProvider.ollama]),
       (PolishRailGroup.cloud, [LLMProvider.openAI, .gemini, .claude]),
     ])
@@ -137,6 +121,9 @@ struct PolishRailCatalogTests {
     #expect(
       !row.tagline.contains("SuperWhisper"),
       "the licence requires \"Superwhisper\", lower-case w")
+    // The provider card's line credits the maker too (#3385), with the same spelling rule.
+    #expect(row.short.contains("by Superwhisper"))
+    #expect(!row.short.contains("SuperWhisper"))
     #expect(row.group == .onThisMac)
     // EG-1 remains the recommended engine. A second recommended row would make
     // the word meaningless, so this is asserted here rather than trusted.
@@ -165,7 +152,7 @@ struct PolishRailCatalogTests {
   func ollamaRowCopyIsExact() throws {
     let ollama = try #require(PolishRailCatalog.entry(for: .ollama))
     #expect(ollama.name == "Ollama")
-    #expect(ollama.tagline == "Any open model, local or hosted")
+    #expect(ollama.tagline == "Your models, local or hosted")
     #expect(ollama.group == .yourOwnSetup)
     #expect(ollama.recommended == false)
     // The old name is gone. "Local" was a claim, not a label, and it stopped
@@ -211,10 +198,10 @@ struct PolishRailCatalogTests {
   func noFancyDashesInRailCopy() {
     var strings: [String] = []
     for group in PolishRailGroup.allCases {
-      strings += [group.heading, group.accessibilityPhrase, group.privacyLine]
+      strings += [group.heading, group.accessibilityPhrase]
     }
     for entry in PolishRailCatalog.all {
-      strings += [entry.name, entry.tagline]
+      strings += [entry.name, entry.tagline, entry.short]
     }
     for value in strings {
       #expect(!value.contains("\u{2014}"), "em-dash in \(value)")

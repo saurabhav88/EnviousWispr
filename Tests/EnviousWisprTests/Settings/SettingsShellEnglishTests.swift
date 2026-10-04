@@ -85,9 +85,7 @@ struct SettingsShellEnglishTests {
 
   @Test("the shared notices and the spoken selected value keep their English")
   func sharedCopy() {
-    #expect(
-      SettingsCopy.frozenPerRecording
-        == "Changes made during a recording apply to the next recording.")
+    #expect(SettingsCopy.frozenPerRecording == "Changes apply to the next recording")
     #expect(SettingsCopy.frozenPerImport == "Changes made during a cleanup apply to the next file.")
     #expect(SettingsCopy.selectedValue == "Selected")
   }

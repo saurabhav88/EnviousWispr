@@ -857,6 +857,7 @@ KEYBIND_FIELDS = {
     "Change paste last dictation keybind": "Paste last dictation keybind",
     "Change copy last dictation keybind": "Copy last dictation keybind",
 }
+POLISH_CARD = "AI polish model"
 POLISH_PROVIDERS = ("EG-1", "S1-mini", "Apple Intelligence", "Ollama", "OpenAI",
                     "Google Gemini", "Claude")
 
@@ -926,7 +927,8 @@ SCAN = [
     ("AI Polish", None, [
         ("toggle^", "Enable AI Polish", None),
         ("polish_picker", "Model", "model_picker_shown"),
-    ] + [("provider", name, "polish_enabled") for name in POLISH_PROVIDERS]),
+        ("provider_card", POLISH_CARD, "polish_enabled"),
+    ]),
     ("Dictionary", None, [
         ("toggle", "Enable Dictionary", None),
         ("section", ("Your Words", "button", "Add word"), None),
@@ -1186,30 +1188,51 @@ def keybind_control(ax, root, label, reset=False):
     return _one(fields, f"keybind field {label!r}")
 
 
-def provider_button(ax, root, name):
-    """Provider rail tile: its name precedes the spoken group, and its value precedes status."""
+def provider_card(ax, root):
+    """The AI Polish provider card (#3385): one button naming the chosen provider, which opens
+    the provider list. Its value starts "<provider>, <group>"."""
     return _one([e for e in _content(ax, root) if ax.role(e) == "AXButton"
-                 and _names_match(ax, e, name, prefix=True)], f"provider {name!r}")
+                 and _names_match(ax, e, POLISH_CARD)], "the AI polish model card")
 
 
-def provider_selected(ax, button):
-    """A tile's value is one of a closed set: "Selected", "Selected, recommended",
-    "Recommended", or empty (neither). The two unchosen forms read as not selected."""
-    value = ax.text(button, "AXValue") if button is not None else ""
-    if not value.strip() or value.strip().lower() in [t.lower() for t in ax.terms("Recommended")]:
-        return False
-    return selection_state(ax, value.split(",", 1)[0])
+def current_provider(ax, root):
+    """The English name of the chosen provider, read off the card, or None when the card is
+    absent (AI Polish off) or its value names no known provider."""
+    card = provider_card(ax, root)
+    if card is None:
+        return None
+    value = (ax.text(card, "AXValue") or "").strip()
+    hits = [name for name in POLISH_PROVIDERS
+            if any(value.startswith(t + ", ") for t in ax.terms(name))]
+    return hits[0] if len(hits) == 1 else None
 
 
-def select_provider(ax, root_of, name):
-    button = provider_button(ax, root_of(), name)
-    if button is None:
-        raise ControlError(f"provider {name!r} absent (AI Polish may be off)")
-    if provider_selected(ax, button) is not True:
-        ax.press(button)
-        wait_until(ax, lambda: provider_selected(ax, provider_button(ax, root_of(), name)) is True,
-                   3.0, f"provider {name!r} selected")
-    return provider_button(ax, root_of(), name)
+def provider_selected(ax, root, name):
+    chosen = current_provider(ax, root)
+    return None if chosen is None else chosen == name
+
+
+def select_provider(ax, root_of, name, timeout=3.0):
+    """Choose `name` from the card's OWN provider list and observe the card name it. Never a
+    row from some other popover on the page; the press's return value is never the verdict."""
+    if current_provider(ax, root_of()) == name:
+        return provider_card(ax, root_of())
+    card = provider_card(ax, root_of())
+    if card is None:
+        raise ControlError(f"provider {name!r}: no AI polish model card (AI Polish may be off)")
+    if _own_menu(ax, card) is None:
+        ax.press(card)
+        wait_until(ax, lambda: _own_menu(ax, provider_card(ax, root_of())) is not None, timeout,
+                   "the provider list open")
+    menu = _own_menu(ax, provider_card(ax, root_of()))
+    row = _one([e for e in ax.walk(menu) if ax.role(e) == "AXButton"
+                and _names_match(ax, e, name, prefix=True)], f"provider {name!r}")
+    if row is None:
+        raise ControlError(f"provider {name!r} is not in the provider list")
+    ax.press(row)
+    wait_until(ax, lambda: current_provider(ax, root_of()) == name, timeout,
+               f"provider {name!r} selected")
+    return provider_card(ax, root_of())
 
 
 def snippet_edit_controls(ax, sheet):
@@ -1262,14 +1285,14 @@ def _scan_control(ax, root, kind, spec, hooks):
         if buttons:
             raise ControlError(f"keybind {spec!r}: {len(buttons)} separate Change buttons")
         return "OK", f"keybind:{spec}={ax.text(field, 'AXValue')} (field is the target)"
-    if kind == "provider":
-        button = provider_button(ax, root, spec)
-        if button is None:
-            return None, f"provider:{spec}=absent"
-        chosen = provider_selected(ax, button)
+    if kind == "provider_card":
+        card = provider_card(ax, root)
+        if card is None:
+            return None, f"provider_card:{spec}=absent"
+        chosen = current_provider(ax, root)
         if chosen is None:
-            raise ControlError(f"provider {spec!r}: selection unreadable")
-        return "OK", f"provider:{spec}={ax.text(button, 'AXValue')}"
+            raise ControlError(f"provider card: chosen provider unreadable from {ax.text(card, 'AXValue')!r}")
+        return "OK", f"provider_card:{spec}={chosen}"
     if kind == "field":
         field = read_row_single(ax, root, spec, "AXTextField")
         if field is None:
@@ -1314,14 +1337,12 @@ def _scan_control(ax, root, kind, spec, hooks):
         return "OK", f"input:{'Auto' if uid == '' else 'chosen'} shows {list(names)}"
     if kind in ("picker", "polish_picker"):
         if kind == "polish_picker":
-            # AI Polish's Model picker sits in the setup panel, not in a settings row with a
-            # "?" help button. Its visible "Model" label is a sibling text, so the menu itself
-            # is often unnamed: take the named one, else the page's ONLY unnamed menu.
-            menus = [e for e in _content(ax, root) if ax.role(e) == "AXPopUpButton"]
-            named = [e for e in menus if _names_match(ax, e, spec)]
-            unnamed = [e for e in menus
-                       if not (ax.text(e, "AXTitle") or ax.text(e, "AXDescription"))]
-            el = _one(named or unnamed, f"polish picker {spec!r}")
+            # #3385: AI Polish's Model menu is the design's field-style dropdown, a button named
+            # "Model" whose value is the chosen model; the "Model" row title beside it is text.
+            el = _one([e for e in _content(ax, root)
+                       if ax.role(e) == "AXButton" and _names_match(ax, e, spec)
+                       and ax.text(e, "AXValue")],
+                      f"polish picker {spec!r}")
         else:
             el = read_row_single(ax, root, spec, "AXPopUpButton")
         if el is None:
