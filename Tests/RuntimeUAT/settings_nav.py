@@ -925,7 +925,7 @@ SCAN = [
     ("Transcribe a File", None, [("button", "Upload", None)]),
     ("AI Polish", None, [
         ("toggle^", "Enable AI Polish", None),
-        ("picker", "Model", "model_picker_shown"),
+        ("polish_picker", "Model", "model_picker_shown"),
     ] + [("provider", name, "polish_enabled") for name in POLISH_PROVIDERS]),
     ("Dictionary", None, [
         ("toggle", "Enable Dictionary", None),
@@ -1193,7 +1193,11 @@ def provider_button(ax, root, name):
 
 
 def provider_selected(ax, button):
+    """A tile's value is one of a closed set: "Selected", "Selected, recommended",
+    "Recommended", or empty (neither). The two unchosen forms read as not selected."""
     value = ax.text(button, "AXValue") if button is not None else ""
+    if not value.strip() or value.strip().lower() in [t.lower() for t in ax.terms("Recommended")]:
+        return False
     return selection_state(ax, value.split(",", 1)[0])
 
 
@@ -1308,8 +1312,18 @@ def _scan_control(ax, root, kind, spec, hooks):
         names = display_candidates(ax, ax.get_attr(input_control(ax, root), "AXValue"),
                                    auto=(uid == ""))
         return "OK", f"input:{'Auto' if uid == '' else 'chosen'} shows {list(names)}"
-    if kind == "picker":
-        el = read_row_single(ax, root, spec, "AXPopUpButton")
+    if kind in ("picker", "polish_picker"):
+        if kind == "polish_picker":
+            # AI Polish's Model picker sits in the setup panel, not in a settings row with a
+            # "?" help button. Its visible "Model" label is a sibling text, so the menu itself
+            # is often unnamed: take the named one, else the page's ONLY unnamed menu.
+            menus = [e for e in _content(ax, root) if ax.role(e) == "AXPopUpButton"]
+            named = [e for e in menus if _names_match(ax, e, spec)]
+            unnamed = [e for e in menus
+                       if not (ax.text(e, "AXTitle") or ax.text(e, "AXDescription"))]
+            el = _one(named or unnamed, f"polish picker {spec!r}")
+        else:
+            el = read_row_single(ax, root, spec, "AXPopUpButton")
         if el is None:
             return None, f"picker:{spec}=absent"
         v = ax.get_attr(el, "AXValue")
