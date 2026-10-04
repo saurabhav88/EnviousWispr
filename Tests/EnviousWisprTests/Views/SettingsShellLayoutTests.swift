@@ -1,7 +1,7 @@
 import AppKit
+import EnviousWisprServices
 import SwiftUI
 import Testing
-import EnviousWisprServices
 
 @testable import EnviousWisprAppKit
 
@@ -91,6 +91,23 @@ struct SettingsShellLayoutTests {
         #expect(
           frame.size == rest.size, "\(section) \(name) is \(frame.size), at rest \(rest.size)")
       }
+      // At the tightest width a resting row fits on one line, a busy row must still fit on
+      // one line: the dot's slot is reserved at rest, so it cannot rewrap the label.
+      let tightest = NSHostingView(rootView: Self.row(section, selected: false)).fittingSize.width
+      var tightHeights: [String: CGFloat] = [:]
+      for (name, activity) in [
+        ("rest", SettingsShellCopy.SidebarActivity.none), ("busy", .fileImport),
+      ] {
+        let frames = Self.frames(
+          width: tightest,
+          Self.row(section, selected: false, activity: activity).background(Self.probe("row")))
+        tightHeights[name] = try #require(
+          frames["row"], "\(section) \(name) at \(tightest) measured nothing"
+        ).height
+      }
+      #expect(
+        tightHeights["busy"] == tightHeights["rest"],
+        "\(section) rewraps when busy at \(tightest): \(tightHeights)")
       heights[section.rawValue] = rest.height
     }
     // A label too long for one line wraps (a taller row), it is never squeezed below 14pt.
@@ -104,8 +121,9 @@ struct SettingsShellLayoutTests {
     let defaults = try #require(TestDefaults.suite("ew.iconGift.\(UUID().uuidString)"))
     let settings = SettingsManager(defaults: defaults)
     let holder = UpdateCoordinatorHolder()
-    let host = NSHostingView(rootView: WhatsNewToolbarButton()
-      .environment(settings).environment(holder))
+    let host = NSHostingView(
+      rootView: WhatsNewToolbarButton()
+        .environment(settings).environment(holder))
     let width = host.fittingSize.width
     print("GiftButton width=\(width)")
     // A caption beside the icon would add ~150pt; an icon-only pill is ~36pt.
@@ -134,7 +152,8 @@ struct SettingsShellLayoutTests {
     // At the wide window the heading, the switch and its name share one line, so the whole
     // heading is two text lines tall; narrower, the short line wraps (and, narrower still than
     // any window allows, the control drops under the heading) rather than clipping.
-    let wide = try #require(heights.last), narrow = try #require(heights.first)
+    let wide = try #require(heights.last)
+    let narrow = try #require(heights.first)
     #expect(wide < 64, "the Enable control is not on the heading line at the wide window: \(wide)")
     #expect(narrow > wide, "the narrow heading did not reflow: \(narrow) vs \(wide)")
     let off = try #require(

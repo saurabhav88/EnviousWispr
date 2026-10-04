@@ -784,6 +784,9 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
     )
     // Leading and full width in both states, so the status region does not
     // drift to the middle when the choices are narrower than the page.
+    // Measured 2026-10-04 (#3391 row 3): removing THIS frame changes nothing, because the
+    // identical frame above, before the padding and background, already fills the width.
+    // Two guards protect one outcome; no path exists where this one is the only guard.
     .frame(maxWidth: .infinity, alignment: .leading)
     .onAppear { isMounted = true }
     .onDisappear {
