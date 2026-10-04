@@ -66,7 +66,9 @@ uat.log_text = lambda: "\n".join(LOG)
 uat.app_is_running = lambda: RUNNING[0]
 
 fails = []
+ROWS = [0]
 def ok(name, cond, detail=""):
+    ROWS[0] += 1
     print(f"  {'PASS' if cond else 'FAIL'}  {name}{('  :: ' + detail) if detail else ''}")
     if not cond:
         fails.append(name)
@@ -456,7 +458,93 @@ finally:
     for k, v in _saved.items():
         setattr(uat, k, v)
 
+# ---- #3437: the overall verdict and the rotation gate, through the real phase paths ---------
+print("\n#3437 overall verdict")
+full = [(f"{phase}: a check", "PASS", "") for phase in uat.REQUIRED_PHASES]
+ok("every required phase graded, nothing failed -> 0",
+   uat.overall_status(full, uat.REQUIRED_PHASES, None, True) == 0)
+ok("one required phase never ran -> nonzero",
+   uat.overall_status(full[1:], uat.REQUIRED_PHASES, None, True) == 1)
+ok("a phase that only skipped counts as never run",
+   uat.overall_status(full[1:] + [(uat.REQUIRED_PHASES[0] + ": skipped", "SKIP", "")],
+                      uat.REQUIRED_PHASES, None, True) == 1)
+ok("a failed check -> nonzero",
+   uat.overall_status(full + [("x: y", "FAIL", "")], uat.REQUIRED_PHASES, None, True) == 1)
+ok("an aborted run is never a pass",
+   uat.overall_status(full, uat.REQUIRED_PHASES, "stopped", True) == 2)
+ok("settings not restored outranks everything",
+   uat.overall_status(full, uat.REQUIRED_PHASES, None, False) == 3)
+ok("the design skip (phase 4) is not a required phase",
+   not any("phase 4" in phase for phase in uat.REQUIRED_PHASES))
+
+print("\n#3437 rotation gate in each phase")
+_live = {k: getattr(uat, k) for k in (
+    "new_textedit_doc", "set_clipboard", "log_length", "log_since", "hold_take", "press_undo",
+    "overlay_shows", "wait_for_cleanup", "subprocess", "wait_for", "apply_settings", "hover_offer",
+    "focus_without_moving_pointer", "select_range", "readable", "pending_rows", "dictate_then_cancel",
+    "time")}
+fake_pl = types.ModuleType("paste_landing_uat")
+fake_pl.u = types.SimpleNamespace(Aborted=type("PLAborted", (Exception,), {}))
+fake_pl.LAUNCHER = "com.example.panel"
+fake_pl.launch_panel = lambda field: None
+fake_pl.close_panel = lambda: True
+fake_pl.panel_state = lambda: {"fields": {"A": LEGACY, "B": ""}}
+_saved_pl = sys.modules.get("paste_landing_uat")
+sys.modules["paste_landing_uat"] = fake_pl
+rows = [{}, {"new.json": {"text": HELD}}]
+try:
+    lengths = iter([])
+    uat.log_length = lambda: next(lengths)
+    uat.new_textedit_doc = lambda name: "/tmp/fake-doc.txt"
+    uat.set_clipboard = lambda text: None
+    uat.log_since = lambda base: gone["window"]
+    uat.hold_take = lambda path, base: HELD
+    uat.press_undo = lambda base: True
+    uat.overlay_shows = lambda text: True
+    uat.wait_for_cleanup = lambda route, restore_on, held: LEGACY
+    uat.subprocess = types.SimpleNamespace(run=lambda *a, **k: None)
+    uat.wait_for = lambda what, pred, deadline=45.0, poll=0.25: True
+    uat.apply_settings = lambda pairs, label: None
+    uat.hover_offer = lambda: True
+    uat.focus_without_moving_pointer = lambda path: None
+    uat.select_range = lambda path, loc, length: True
+    uat.readable = lambda path, label: ""
+    uat.dictate_then_cancel = lambda base: "ok"
+    uat.time = types.SimpleNamespace(sleep=lambda s: None, monotonic=_time.monotonic)
+    si.type_text = lambda text, delay=None: None
+    phases = [
+        ("gone field", lambda: uat.phase_gone_field()),
+        ("edited field", lambda: uat.phase_edited_field(True)),
+        ("launcher field A", lambda: uat.phase_launcher("A", True)),
+    ]
+    for name, run in phases:
+        lengths = iter([500, 100, 100, 100])  # the base, then a log that shrank
+        state = {"n": 0}
+        def pending():
+            state["n"] += 1
+            return rows[0] if state["n"] == 1 else rows[1]
+        uat.pending_rows = pending
+        uat.results.clear()
+        ok(f"{name}: a rotated log aborts the phase before it grades", aborts(run))
+        ok(f"{name}: and nothing was graded on the rotated evidence",
+           not any(status == "PASS" and "one restore" in n for n, status, _ in uat.results))
+        lengths = iter([500] * 8)  # control: a log that did not rotate
+        state["n"] = 0
+        uat.results.clear()
+        aborted = aborts(run)
+        ok(f"{name}: control: an unrotated log lets the phase grade",
+           not aborted and any("one restore" in n for n, _, _ in uat.results),
+           str([n for n, _, _ in uat.results][:3]))
+finally:
+    for k, v in _live.items():
+        setattr(uat, k, v)
+    if _saved_pl is None:
+        sys.modules.pop("paste_landing_uat", None)
+    else:
+        sys.modules["paste_landing_uat"] = _saved_pl
+
 print("\n" + "=" * 56)
+print(f"control rows executed: {ROWS[0]}")
 print(f"{len(fails)} failed" if fails else "all rows passed")
 for f in fails:
     print(f"  FAILED: {f}")

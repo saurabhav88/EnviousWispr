@@ -9,11 +9,12 @@ document, then puts every setting back.
 
 WHY THIS EXISTS RATHER THAN A CHECKLIST
 ---------------------------------------
-The item that matters cannot be covered by a unit test at any price: #2087 §11.1
-item 3 — cancel while dictating into field A, move focus to field B, press the
-pill's Paste, and confirm the text lands in A. The retarget runs through
-`AXUIElementSetAttributeValue` against a live app, so a test can prove the app
-ASKS to be retargeted and never that the caret moved.
+The item that matters cannot be covered by a unit test at any price: cancel while
+dictating into field A, move focus elsewhere, press the pill's Undo, and confirm
+the text lands in A. Since #3437 Undo runs the dictation delivery itself (Smart
+Insertion and the paste cascade), so where the text lands is decided by a live
+app's Accessibility answers and a real keystroke, which a unit test can only
+fake.
 
 WAITING
 -------
@@ -96,6 +97,16 @@ SENTENCE = ("The quick brown fox jumps over the lazy dog "
 # from the row the user was told was kept, never from the field or the production repair.
 PENDING_DIR = os.path.expanduser(
     "~/Library/Application Support/EnviousWispr/transcripts/pending")
+# The #3437 phases a run must complete: each label is a phase's check prefix. Phase 4 is the one
+# skip allowed (by design, founder Gate 2); anything else missing fails the run.
+REQUIRED_PHASES = (
+    "undo background window (restore on)", "undo background window (restore off)",
+    "undo launcher field A (restore on)", "undo launcher field A (restore off)",
+    "undo launcher field B (restore on)", "undo launcher field B (restore off)",
+    "undo into a closed document",
+    "undo into a field edited after the cancel (restore on)",
+    "undo into a field edited after the cancel (restore off)",
+)
 # The settings #3437 phases borrow, alongside the cancel binding and the feature flag.
 BORROWED = ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled",
             "restoreClipboardAfterPaste", "smartInsertion")
@@ -672,6 +683,30 @@ def evidence_is_current(base, current_length):
     return current_length >= base
 
 
+def require_current(base, label):
+    """Called by every phase before it grades anything read from the log."""
+    if not evidence_is_current(base, log_length()):
+        raise Aborted(f"{label}: the app log rotated; evidence is invalid")
+
+
+def missing_phases(all_results, required):
+    """The required phases with no executed check at all: a phase that never graded anything."""
+    ran = {name for name, status, _ in all_results if status in ("PASS", "FAIL")}
+    return [phase for phase in required
+            if not any(name.startswith(phase + ":") for name in ran)]
+
+
+def overall_status(all_results, required, aborted, restored):
+    """The run's exit status. Settings not restored outranks everything (3); an aborted run is
+    never a pass (2); a failed check or a required phase that never ran fails the run (1)."""
+    if not restored:
+        return 3
+    if aborted:
+        return 2
+    failed = [n for n, s, _ in all_results if s == "FAIL"]
+    return 1 if failed or missing_phases(all_results, required) else 0
+
+
 def verify_undo(name, *, window, field_value, expected, others, board, board_expected,
                 bundle, route, notice_expected):
     """Every check one Undo shares. Complete strings, never trimmed."""
@@ -774,8 +809,7 @@ def phase_background_window(field_a, field_b, restore_on):
     focus(field_b)
     tapped = press_undo(base)
     board = wait_for_cleanup("ax_direct", restore_on, held)
-    if not evidence_is_current(base, log_length()):
-        raise Aborted("the app log rotated during the phase; its evidence is not this run's")
+    require_current(base, label)
     check(f"{label}: Undo was pressed", bool(tapped))
     verify_undo(
         label, window=log_since(base), field_value=readable(field_a, label),
@@ -814,6 +848,7 @@ def phase_launcher(field, restore_on):
         held = new_held_row(before, pending_rows())
         tapped = press_undo(base)
         board = wait_for_cleanup(route, restore_on, held)
+        require_current(base, label)
         fields = pl.panel_state().get("fields", {})
         other = "B" if field == "A" else "A"
         check(f"{label}: Undo was pressed", bool(tapped))
@@ -844,6 +879,7 @@ def phase_gone_field():
     copied_seen = wait_for("the Copied notice in the overlay", lambda: overlay_shows(COPIED),
                            deadline=3.0)
     board = wait_for_cleanup("clipboard_only", True, held)
+    require_current(base, label)
     check(f"{label}: Undo was pressed", bool(tapped))
     check(f"{label}: the overlay showed {COPIED!r}", copied_seen)
     verify_undo(
@@ -852,19 +888,19 @@ def phase_gone_field():
         bundle="com.apple.TextEdit", route="clipboard_only", notice_expected=True)
 
 
-def phase_edited_field():
+def phase_edited_field(restore_on):
     """Plan §11.1 phase 5: the field changes after the cancel. The offer expires after a few
     seconds unless hovered (PillCatalog's hover-pausing dwell), so the pointer rests on the pill
     while the field is edited and the delay runs."""
-    label = "undo into a field edited after the cancel"
+    label = f"undo into a field edited after the cancel (restore {'on' if restore_on else 'off'})"
     print(f"\n[6] {label}")
-    doc = new_textedit_doc("3437-edited")
+    apply_settings([("restoreClipboardAfterPaste", int(restore_on), "-bool")], label)
+    doc = new_textedit_doc(f"3437-edited-{int(restore_on)}")
     set_clipboard(SENTINEL)
     base = log_length()
     held = hold_take(doc, base)
     if not hover_offer():
-        skip(label, "the offer could not be located to hold it open; nothing staged")
-        return
+        raise Aborted(f"{label}: required phase 5 could not hold the Undo offer open")
     focus_without_moving_pointer(doc)
     prior = "Start. alpha end"
     si.type_text(prior)
@@ -873,12 +909,13 @@ def phase_edited_field():
         raise Aborted(f"{label}: could not select the word to replace")
     time.sleep(10.0)  # settle: the plan's delay between the cancel's edit and the Undo; held open
     tapped = press_undo(base)
-    board = wait_for_cleanup("ax_direct", False, held)
+    board = wait_for_cleanup("ax_direct", restore_on, held)
+    require_current(base, label)
     check(f"{label}: Undo was pressed", bool(tapped))
     verify_undo(
         label, window=log_since(base), field_value=readable(doc, label),
         expected=expected_field(prior, location, length, expected_insertion("between_spaces", held)),
-        others={}, board=board, board_expected=expected_clipboard("ax_direct", False, held),
+        others={}, board=board, board_expected=expected_clipboard("ax_direct", restore_on, held),
         bundle="com.apple.TextEdit", route="ax_direct", notice_expected=False)
 
 
@@ -1072,7 +1109,8 @@ def main():
                 for restore_on in (True, False):
                     phase_launcher(field, restore_on)
             phase_gone_field()
-            phase_edited_field()
+            for restore_on in (True, False):
+                phase_edited_field(restore_on)
             # Plan §11.1 phase 4 (two fields in one window): SKIP by design. Founder Gate 2,
             # 2026-10-04: Undo behaves exactly as a dictation finishing at the press, so a key paste
             # lands at the caret and a direct write in the captured field; nothing Undo-only to test.
@@ -1166,6 +1204,9 @@ def main():
         print("  This is NOT a partial pass. The remaining items were never")
         print("  exercised, and no verdict about the feature follows from it.")
     print("=" * 60)
+    missing = missing_phases(results, REQUIRED_PHASES) if not aborted else []
+    for phase in missing:
+        print(f"  REQUIRED PHASE NEVER RAN: {phase}")
     if not restored:
         # Loudest line in the summary, and it outranks the test verdicts: a green
         # run that left the developer's own shortcut rebound is worse than a red
@@ -1176,10 +1217,7 @@ def main():
         print("  and smartInsertion in")
         print(f"  {DOMAIN} — check them before trusting anything above.")
         print("=" * 60)
-        return 3
-    if aborted:
-        return 2
-    return 1 if failed else 0
+    return overall_status(results, REQUIRED_PHASES, aborted, restored)
 
 
 if __name__ == "__main__":
