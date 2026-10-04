@@ -135,11 +135,19 @@ def selection_state(ax, value):
     return None
 
 
+# A list longer than this is page CONTENT (History shows every dictation, 24,384 rows on the
+# founder's Mac on 2026-10-04), never the sidebar or a tab strip, which hold a dozen buttons.
+# Reading such a list element by element took minutes and looked like a hang.
+LONG_LIST_ROLES = ("AXOutline", "AXTable", "AXList")
+LONG_LIST_CHILDREN = 200
+
+
 def _minimal_region(ax, root, required, skip=None):
     """The smallest subtree holding a button for EVERY label in `required`.
 
     Exactly one such subtree, or NavigationError: none means the region is not on screen,
-    more than one means the tree is ambiguous and choosing would be a guess.
+    more than one means the tree is ambiguous and choosing would be a guess. A list with more
+    than `LONG_LIST_CHILDREN` rows is not searched: no navigation region is that long.
     """
     candidates = []
 
@@ -150,7 +158,10 @@ def _minimal_region(ax, root, required, skip=None):
             return set()
         found = {label for label in required if _labelled(ax, el, label)}
         child_hit = False
-        for c in ax.children(el) or []:
+        kids = ax.children(el) or []
+        if len(kids) > LONG_LIST_CHILDREN and ax.role(el) in LONG_LIST_ROLES:
+            kids = []
+        for c in kids:
             sub = visit(c, depth + 1)
             if sub is True:
                 child_hit = True
