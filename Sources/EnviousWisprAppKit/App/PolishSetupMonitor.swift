@@ -194,12 +194,15 @@ final class PolishSetupMonitor {
   @ObservationIgnored private var configurationRevision: UInt64 = 0
   @ObservationIgnored private var lastConfiguration: PolishSetupConfiguration?
   @ObservationIgnored private var lastEligible = false
-  /// The newest thing a take said about Ollama, the model it asked for, and WHEN it observed
-  /// it. Whichever of this and the service's own last commit is newer is believed. Kept across
-  /// configuration changes: a server that is not running is not running for every model; a
-  /// model-level answer counts only for its own model (`withOllamaTakeObservation`).
-  @ObservationIgnored private var ollamaTakeObservation:
-    (model: String, problem: PolishSetupProblem?, observedAt: ContinuousClock.Instant)?
+  /// What takes said about the Ollama SERVER (not installed, not running, or running: any take
+  /// that polished), and about each MODEL (missing or none chosen, or working), with WHEN they
+  /// observed it. Kept apart because one server serves many models: a success with model B
+  /// says the server runs, never that model A is installed. Each is believed only when newer
+  /// than the service's own last commit; kept across configuration changes.
+  @ObservationIgnored private var ollamaServerObservation:
+    (problem: PolishSetupProblem?, observedAt: ContinuousClock.Instant)?
+  @ObservationIgnored private var ollamaModelObservations:
+    [String: (problem: PolishSetupProblem?, observedAt: ContinuousClock.Instant)] = [:]
   /// The newest thing a take said about each saved cloud key: rejected by the provider, or
   /// accepted (a take that polished). One per PROVIDER, each a fact about that key (its
   /// credential revision): it survives model and provider changes and another provider's
@@ -479,24 +482,30 @@ final class PolishSetupMonitor {
     _ readiness: PolishSetupReadiness, provider: LLMProvider, model: String?,
     lastCommitAt: ContinuousClock.Instant?
   ) -> PolishSetupReadiness {
-    guard provider == .ollama, let take = ollamaTakeObservation,
-      lastCommitAt.map({ $0 < take.observedAt }) ?? true
-    else { return readiness }
-    let sameModel = model == take.model
-    switch take.problem {
-    case .ollamaNotRunning?, .ollamaNotInstalled?:
-      return .problem(take.problem!)
-    case .ollamaNoModel?, .ollamaModelNotInstalled?:
-      return sameModel ? .problem(take.problem!) : readiness
-    case nil:
-      if sameModel { return .noProblem }
-      switch readiness {
-      case .problem(.ollamaNotRunning), .problem(.ollamaNotInstalled): return .unknown
-      default: return readiness
+    guard provider == .ollama else { return readiness }
+    func newer(_ at: ContinuousClock.Instant) -> Bool { lastCommitAt.map { $0 < at } ?? true }
+    var result = readiness
+    if let server = ollamaServerObservation, newer(server.observedAt) {
+      if let problem = server.problem { return .problem(problem) }
+      // The server runs: a stale "not running" or "not installed" no longer holds.
+      switch result {
+      case .problem(.ollamaNotRunning), .problem(.ollamaNotInstalled): result = .unknown
+      default: break
       }
-    case .some:
-      return readiness
     }
+    guard let model else {
+      // The model a way back would select is not known here: unresolved model evidence makes
+      // the answer unknown rather than ready.
+      let unresolved = ollamaModelObservations.values.contains {
+        $0.problem != nil && newer($0.observedAt)
+      }
+      if unresolved, result == .noProblem { return .unknown }
+      return result
+    }
+    if let seen = ollamaModelObservations[model], newer(seen.observedAt) {
+      return seen.problem.map { .problem($0) } ?? .noProblem
+    }
+    return result
   }
 
   private func withCloudTakeObservation(
@@ -523,14 +532,14 @@ final class PolishSetupMonitor {
   private static func cloudVerdictAt(
     _ facts: PolishSetupFacts, provider: LLMProvider
   ) -> ContinuousClock.Instant? {
+    // The last DEFINITIVE answer about the key saved now, whether this verdict is that answer
+    // or a running/inconclusive check carrying it.
     guard let verdict = facts.cloudVerdicts[provider], verdict.provider == provider,
       verdict.credentialRevision == facts.credentialRevisions[provider]
     else { return nil }
-    switch verdict.result {
-    case .accepted, .rejected: return verdict.decidedAt
-    case .checking, .inconclusive: return nil
-    }
+    return verdict.lastDefinitive?.decidedAt
   }
+
 
   /// Newer wins, for the same saved key only; a different key replaces it outright.
   private func recordCloudKeyTakeObservation(
@@ -579,11 +588,32 @@ final class PolishSetupMonitor {
     guard context.configuration.provider == .ollama,
       context.configurationRevision == configurationRevision
     else { return }
-    if let current = ollamaTakeObservation, current.observedAt >= observedAt {
-      return
+    let model = context.configuration.model
+    switch problem {
+    case .ollamaNotRunning?, .ollamaNotInstalled?:
+      recordOllamaServer(problem, at: observedAt)
+    case nil:
+      // A polished take: the server runs AND this model works.
+      recordOllamaServer(nil, at: observedAt)
+      recordOllamaModel(model, nil, at: observedAt)
+    case .some(let modelProblem):
+      // Reaching the model check means the server answered.
+      recordOllamaServer(nil, at: observedAt)
+      recordOllamaModel(model, modelProblem, at: observedAt)
     }
-    ollamaTakeObservation = (context.configuration.model, problem, observedAt)
     reconcile()
+  }
+
+  private func recordOllamaServer(_ problem: PolishSetupProblem?, at observedAt: ContinuousClock.Instant) {
+    if let current = ollamaServerObservation, current.observedAt >= observedAt { return }
+    ollamaServerObservation = (problem, observedAt)
+  }
+
+  private func recordOllamaModel(
+    _ model: String, _ problem: PolishSetupProblem?, at observedAt: ContinuousClock.Instant
+  ) {
+    if let current = ollamaModelObservations[model], current.observedAt >= observedAt { return }
+    ollamaModelObservations[model] = (problem, observedAt)
   }
 
   // MARK: - Lifecycle

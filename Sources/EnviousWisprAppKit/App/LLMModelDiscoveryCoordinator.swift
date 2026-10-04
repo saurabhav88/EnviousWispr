@@ -165,7 +165,9 @@ final class LLMModelDiscoveryCoordinator {
     surface: ProviderSetupSurface = .dictation,
     source: ApiKeyValidationSource = .modelDiscovery
   ) async {
-    discoveryGeneration += 1
+    // Every earlier request is dismissed here, so none of their `.checking` markers can
+    // outlive them (a superseded check never publishes again).
+    invalidateInFlightDiscovery()
     let generation = discoveryGeneration
     // The surface's OWNERSHIP MODE at the moment the request was made. A discovery started
     // while the import had its own provider must not repair DICTATION's model because the
@@ -185,7 +187,9 @@ final class LLMModelDiscoveryCoordinator {
     // old key may then publish (#3438).
     let revisionAtStart = credentialRevision(for: provider)
     pendingVerdicts[provider] = revisionAtStart.map {
-      PolishCloudVerdict(provider: provider, credentialRevision: $0, result: .checking)
+      PolishCloudVerdict(
+        provider: provider, credentialRevision: $0, result: .checking,
+        definitive: lastDefinitive(provider, revision: $0))
     }
     // Lowered by whoever raised it, and only if nothing newer has raised it since. An
     // unconditional clear on the way out of a SUPERSEDED request turns off the spinner a
@@ -303,9 +307,20 @@ final class LLMModelDiscoveryCoordinator {
   ) {
     pendingVerdicts[provider] = nil
     if let revision {
+      // A check that could not tell keeps the last definitive answer about this key.
       completedVerdicts[provider] = PolishCloudVerdict(
-        provider: provider, credentialRevision: revision, result: result)
+        provider: provider, credentialRevision: revision, result: result,
+        definitive: result == .inconclusive ? lastDefinitive(provider, revision: revision) : nil)
     }
+  }
+
+  /// The last accepted or rejected answer about `provider`'s key at `revision`, if any.
+  private func lastDefinitive(_ provider: LLMProvider, revision: UInt64)
+    -> PolishCloudVerdict.Definitive?
+  {
+    guard let completed = completedVerdicts[provider], completed.credentialRevision == revision
+    else { return nil }
+    return completed.lastDefinitive
   }
 
   /// #3142: the key check's own sentences, apart from the flow so a test can pin the English.

@@ -715,6 +715,7 @@ extension PolishSetupMonitorTests {
         takeID: "take-2", context: monitor.freezeTakeContext(), result: .polished,
         evidence: nil, setupProblem: nil, observedAt: start.advanced(by: .seconds(2))))
     #expect(monitor.eligibleProblem == nil)
+    #expect(monitor.currentEpisode == nil, "a repair ends the episode, it does not only pause it")
     // Stopped again.
     monitor.ingest(
       Self.outcome(
@@ -940,5 +941,61 @@ extension PolishSetupMonitorTests {
     #expect(monitor.eligibleProblem == .ollamaModelNotInstalled)
     world.configuration = Self.ollama
     #expect(monitor.eligibleProblem == nil, "another model's missing model was applied")
+  }
+
+  @Test("a check that could not tell never erases a newer definitive answer about the key")
+  func inconclusiveKeepsTheDefinitiveAnswer() {
+    let world = World()
+    world.facts = Self.facts(openAIKeySaved: true)
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    let start = ContinuousClock.now
+    // T1: a dictation's request was rejected.
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), evidence: .cloudKeyRejected, tag: .cloudKeyRejected,
+        at: start))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    // T2: the key check accepted it. T3: a later check could not tell (offline).
+    let accepted = PolishCloudVerdict(
+      provider: .openAI, credentialRevision: 1, result: .accepted,
+      decidedAt: start.advanced(by: .seconds(1)))
+    world.facts = Self.withVerdict(
+      Self.facts(openAIKeySaved: true),
+      PolishCloudVerdict(
+        provider: .openAI, credentialRevision: 1, result: .inconclusive,
+        decidedAt: start.advanced(by: .seconds(2)), definitive: accepted.lastDefinitive))
+    _ = monitor.currentContext()
+    #expect(monitor.eligibleProblem == nil, "the T1 rejection came back over the T2 repair")
+  }
+
+  @Test("Ollama: a success with model B never erases model A's missing-model answer")
+  func ollamaModelEvidenceIsPerModel() {
+    let world = World()
+    world.configuration = Self.ollama
+    world.facts = Self.facts(ollamaSetup: .ready)
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    let start = ContinuousClock.now
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), evidence: .ollamaModelUnavailable,
+        tag: .ollamaModelNotInstalled, at: start))
+    #expect(monitor.eligibleProblem == .ollamaModelNotInstalled)
+    world.configuration = PolishSetupConfiguration(
+      provider: .ollama, model: "llama3:8b", credentialRevision: nil)
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-b", context: monitor.freezeTakeContext(), result: .polished,
+        evidence: nil, setupProblem: nil, observedAt: start.advanced(by: .seconds(1))))
+    #expect(monitor.eligibleProblem == nil)
+    world.configuration = Self.ollama
+    #expect(monitor.eligibleProblem == .ollamaModelNotInstalled)
+    // Leaving for another provider: Ollama is not offered back while a model is known missing
+    // and the way back cannot say which model it would select.
+    world.configuration = Self.openAI
+    #expect(monitor.readiness(for: .ollama) == .unknown)
   }
 }

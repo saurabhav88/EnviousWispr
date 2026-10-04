@@ -413,6 +413,70 @@ struct SavedKeyPresenceTests {
     #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected)
   }
 
+  @Test("a check superseded by another provider's check leaves no stale checking marker")
+  func supersededCheckClearsItsMarker() async throws {
+    let keychain = Self.fixtureKeychain()
+    try keychain.store(key: KeychainManager.openAIKeyID, value: "test-not-a-real-key")
+    try keychain.store(key: KeychainManager.geminiKeyID, value: "test-not-a-real-key")
+    let presence = SavedKeyPresence()
+    presence.recordSaved(.openAI)
+    presence.recordSaved(.gemini)
+    let entered = Signal()
+    let release = Signal()
+    var calls = 0
+    let discovery = LLMModelDiscoveryCoordinator(
+      keychainManager: keychain, cacheDefaults: Self.cacheDefaults(),
+      savedKeyPresence: presence,
+      discoverModels: { provider, _ in
+        calls += 1
+        if calls == 1 { throw LLMError.invalidAPIKey }  // OpenAI, completed: rejected
+        if provider == .openAI {
+          entered.open()
+          #expect(await release.wait(), "the test never released the provider")
+          throw LLMError.invalidAPIKey
+        }
+        return [Self.row("gemini-test", provider: .gemini)]
+      })
+    let settings = Self.settings()
+    await discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: settings)
+    let recheck = Task { @MainActor in
+      await discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: settings)
+    }
+    defer { release.open() }
+    #expect(await entered.wait(), "the recheck never reached the provider")
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .checking)
+    // A Gemini check starts: the OpenAI recheck is superseded.
+    await discovery.validateKeyAndDiscoverModels(provider: .gemini, settings: settings)
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected, "a stale checking marker stayed")
+    release.open()
+    await recheck.value
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected)
+  }
+
+  @Test("an offline check keeps the last accepted or rejected answer about the key")
+  func inconclusiveCheckKeepsTheDefinitive() async throws {
+    let keychain = Self.fixtureKeychain()
+    try keychain.store(key: KeychainManager.openAIKeyID, value: "test-not-a-real-key")
+    let presence = SavedKeyPresence()
+    presence.recordSaved(.openAI)
+    var offline = false
+    let discovery = LLMModelDiscoveryCoordinator(
+      keychainManager: keychain, cacheDefaults: Self.cacheDefaults(),
+      savedKeyPresence: presence,
+      discoverModels: { provider, _ in
+        if offline { throw URLError(.notConnectedToInternet) }
+        return [Self.row("gpt-test", provider: provider)]
+      })
+    let settings = Self.settings()
+    await discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: settings)
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .accepted)
+    offline = true
+    await discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: settings)
+    let verdict = try #require(discovery.cloudVerdicts[.openAI])
+    #expect(verdict.result == .inconclusive)
+    #expect(verdict.lastDefinitive?.rejected == false, "the accepted answer was erased")
+  }
+
   @Test("the readiness answer follows the verdict only for the key saved now")
   func readinessFollowsTheCurrentKey() async throws {
     let keychain = Self.fixtureKeychain()

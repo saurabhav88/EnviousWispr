@@ -95,6 +95,23 @@ struct PolishCloudVerdict: Equatable {
   /// #3438: when the answer arrived, so it is ordered against what a dictation's own request
   /// learned about the same key.
   var decidedAt: ContinuousClock.Instant = .now
+  /// #3438: the last DEFINITIVE answer (accepted or rejected) about the same key, carried by a
+  /// check still running or one that could not tell, so neither erases what is known.
+  var definitive: Definitive? = nil
+
+  struct Definitive: Equatable {
+    let rejected: Bool
+    let decidedAt: ContinuousClock.Instant
+  }
+
+  /// This verdict's own definitive answer, or the one it carries.
+  var lastDefinitive: Definitive? {
+    switch result {
+    case .accepted: return Definitive(rejected: false, decidedAt: decidedAt)
+    case .rejected: return Definitive(rejected: true, decidedAt: decidedAt)
+    case .checking, .inconclusive: return definitive
+    }
+  }
 }
 
 /// Everything the three policies read, captured once so they see the same snapshot.
@@ -334,7 +351,10 @@ enum PolishSetupReadiness: Equatable {
       case .checking: return .checking
       case .accepted: return .noProblem
       case .rejected: return .problem(.cloudKeyRejected(provider))
-      case .inconclusive: return .unknown
+      case .inconclusive:
+        // A check that could not tell leaves the last definitive answer about this key.
+        guard let known = verdict.definitive else { return .unknown }
+        return known.rejected ? .problem(.cloudKeyRejected(provider)) : .noProblem
       }
     }
   }
