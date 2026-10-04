@@ -367,6 +367,11 @@ class LauncherHarness(unittest.TestCase):
                "[2026-10-03T22:45:24-04:00] [INFO] [PipelineTiming] Paste cascade: tier=cgevent, app=x\n")
         self.assertEqual(h.submitted_text(log), "First line\nSecond line")
 
+    def test_verbose_line_ends_submitted_text(self):
+        log = (self.P + "CORRECTION_DEBUG [LLM Polish] OUT: hello\n"
+               "[2026-10-04T00:00:01-04:00] [VERBOSE] [Pipeline] unrelated\n")
+        self.assertEqual(h.submitted_text(log), "hello")
+
     def test_a_failed_relaunch_keeps_the_snapshot_for_a_retry(self):
         import learn_from_edits_uat as lf
         saved = (h.WORDS["snap"], lf.stop_app, lf.file_restore, lf.verify_restore, h.subprocess.run)

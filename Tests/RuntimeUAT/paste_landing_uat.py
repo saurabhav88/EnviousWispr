@@ -1597,7 +1597,7 @@ LAUNCHER_CONTINUATION = "then ask whether the budget review moved"
 # output (a list, a paragraph break) is read whole.
 DEBUG_TEXT = re.compile(
     r"CORRECTION_DEBUG \[([^\]]+)\] (?:OUT: )?"
-    r"(.*?)(?=^\[[^\]\n]+\] \[(?:DEBUG|INFO|WARNING|ERROR)\] \[|\Z)",
+    r"(.*?)(?=^\[[^\]\n]+\] \[(?:DEBUG|INFO|VERBOSE|WARNING|ERROR)\] \[|\Z)",
     re.M | re.S)
 AX_WRITE_SUCCEEDED = re.compile(
     r"step=ax_direct_write started_at=\S+ elapsed_ms=\S+ outcome=succeeded bundle_id=(\S+)")

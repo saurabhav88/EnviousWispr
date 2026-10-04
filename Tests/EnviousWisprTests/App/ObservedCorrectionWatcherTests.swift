@@ -313,7 +313,18 @@ struct ObservedCorrectionWatcherTests {
       selectJudge: {
         knobs.judgeAvailable ? SelectedCorrectionJudge(arm: .rules, judge: judge) : nil
       },
-      activeApplications: { _ in [knobs.frontmost, knobs.owner].compactMap { $0 } },
+      // The real supplier rule, over the knobs: front first, the owner only when front is not
+      // the destination's bundle.
+      activeApplications: { destination in
+        DestinationActivityEvaluator.activeApplications(
+          front: knobs.frontmost, destinationBundleID: destination,
+          focus: {
+            guard let owner = knobs.owner else { return .unreadable }
+            return .focused(
+              element: AXUIElementCreateApplication(owner.pid), ownerPID: owner.pid)
+          },
+          application: { pid in knobs.owner.flatMap { $0.pid == pid ? $0 : nil } })
+      },
       observer: observer,
       nowMs: { clock.nowMs },
       userWords: { library.userWords },
@@ -418,7 +429,7 @@ struct ObservedCorrectionWatcherTests {
   }
 
   @Test(
-    "a launcher panel that owns the keyboard focus is watched; the owner wins a same-bundle tie and its pid must hold (#3423)"
+    "an owner-only destination is watched; a same-bundle front destination keeps legacy selection (#3423)"
   )
   func focusOwnerDestination() async {
     let watcher = makeWatcher()
@@ -432,21 +443,16 @@ struct ObservedCorrectionWatcherTests {
     observer.finish(.focusChanged)
     #expect(await waitUntil { !watcher.isWatching })
 
-    // Same bundle in front (pid 7) and as the owner (pid 42): the owner is selected, and the
-    // field captured from pid 42 matches it.
-    knobs.frontmost = ActiveApplication(pid: 7, bundleID: "com.apple.Notes", isFocusOwner: false)
-    watcher.pasteCompleted(paste())
-    #expect(await waitUntil { observer.starts == 2 }, "the owner wins the tie")
-    observer.finish(.focusChanged)
-    #expect(await waitUntil { !watcher.isWatching })
-
-    // Without the owner, pid 7 is selected; a field captured from pid 42 is another process.
-    knobs.owner = nil
+    // Same bundle in front (pid 7) and as the owner (pid 42): the front app is the destination's
+    // bundle, so it is selected with no focus read, as before #3423; a field captured from pid 42
+    // is another process, so the watch is skipped.
+    knobs.frontmost = ActiveApplication(
+      pid: 7, bundleID: "com.apple.Notes", isFocusOwner: false)
     let before = telemetry.events.count
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: before + 1))
     #expect(telemetry.events.last == .skipped(.destinationMismatch))
-    #expect(observer.starts == 2)
+    #expect(observer.starts == 1)
   }
 
   /// Starts a paste whose capture request parks, and returns once the request has arrived: the
