@@ -1589,8 +1589,6 @@ TARGET_FOCUS = re.compile(r"TARGET_FOCUS state=(\w+) front=(\S+) owner=(\S+)")
 ACTIVATION_SKIPPED = "activation skipped: destination owns the keyboard focus (#3423)"
 TERMINAL_COMPLETED = re.compile(r"dictation_terminal result=completed")
 LEARN_SKIPPED = re.compile(r"learn_skipped reason=(\w+) take=(\S+)")
-LEARN_ENDED = re.compile(r"learn_observation_ended reason=(\w+) settled_bursts=(\d+) .*?take=(\S+)")
-LEARN_SETTLE = "learn_settle trigger="
 FIXTURE = {"app": None, "proc": None, "run": None}
 # Plan section 11.1: the launcher takes speak these, never the shared `SENTENCE`.
 LAUNCHER_SENTENCE = "Please send the quarterly summary to Marcus by Friday afternoon."
@@ -1836,44 +1834,91 @@ def phase_launcher_tier2():
         close_panel()
 
 
+LEARN_JUDGED = re.compile(r"learn_judged arm=(\w+) outcome=(\w+) candidates=(\d+) accepted=(\d+) .*?take=(\S+)")
+LEARN_ADDED = re.compile(r"learn_added state=(\w+)")
+LEARN_SAVE_FAILED = re.compile(r"learn_save_failed reason=(\w+)")
+# The founder's real word file, snapshotted before the first learned correction and restored, with
+# this worktree's app stopped, at the end of the run (the `learn_from_edits_uat.py` procedure).
+WORDS = {"snap": None}
+
+
 def verify_launcher_learning(base, text):
-    """Self-learning watches the panel field: no `destination_mismatch` skip for this take, and an
-    edit typed into the field is SEEN (a settled burst). The edit only ADDS a word, so the
-    candidate filter has no replacement pair to judge and nothing can be saved to the founder's
-    real dictionary (`custom-words.json` is compared byte for byte). The saved-entry proof is the
-    founder's manual Raycast check (plan section 11.1)."""
+    """Self-learning works in the panel: the take is watched (no `destination_mismatch`), a typed
+    correction ("Marcus" to "Markus") is judged and SAVED, and the word file holds the new entry.
+    The file is restored at the end of the run (`restore_words`)."""
+    import learn_from_edits_uat as lf
     if u.defaults_value("learnFromEdits") in ("0", "false"):
         u.record("launcher_tier2: learning proof", "INCONCLUSIVE",
                  "Self-Learning Dictionary is off; required proof was not exercised")
         return
     take_id = take_id_in(text)
-    words = os.path.expanduser("~/Library/Application Support/EnviousWispr/custom-words.json")
-    before = open(words, "rb").read() if os.path.exists(words) else None
-    learn_base = u.log_size()
+    if WORDS["snap"] is None:
+        WORDS["snap"] = lf.file_snapshot(lf.WORDS)
+    before = lf.file_snapshot(lf.WORDS)
+    field = panel_state().get("fields", {}).get("B", "")
+    if "Marcus" not in field:
+        u.record("launcher_tier2: saved correction", "INCONCLUSIVE",
+                 f"the recogniser did not write 'Marcus' to correct: {field!r}")
+        return
     u.require_front(TEXTEDIT, "launcher_tier2: host before the edit")
     if focus_owner_pid() != (FIXTURE["proc"] and FIXTURE["proc"].pid):
         raise u.Aborted("launcher_tier2: the panel lost the focus before the edit")
+    start = field.index("Marcus")
+    panel_command("select", "B Marcus")
+    if not u.wait_for("Marcus selected in field B",
+                      lambda: panel_state().get("selection") == [start, len("Marcus")], deadline=3.0):
+        raise u.Aborted(f"launcher_tier2: the fixture did not select Marcus: {panel_state()}")
+    learn_base = u.log_size()
     import simulate_input as si
-    si.type_text(" thanks")
-    seen = u.wait_for("the edit to settle in the learning watch",
-                      lambda: LEARN_SETTLE in u.log_since(learn_base), deadline=12.0)
-    u.check("launcher_tier2: the learning watch saw the edit in the panel field", seen,
-            "no learn_settle line after the edit")
+    si.type_text("Markus")
+    judged = u.wait_for("the correction to be judged", lambda: [
+        j for j in LEARN_JUDGED.findall(u.log_since(learn_base)) if j[4] == take_id], deadline=25.0)
     skipped = [r for r, t in LEARN_SKIPPED.findall(u.log_since(base)) if t == take_id]
     u.check("launcher_tier2: learning did not skip the panel as another app",
             take_id is not None and not skipped, f"take={take_id} skips={skipped}")
-    panel_command("dismiss")  # ends the watch (focus moves), so its end row is written now
-    ended = u.wait_for("the learning watch to end", lambda: [
-        e for e in LEARN_ENDED.findall(u.log_since(learn_base)) if e[2] == take_id], deadline=10.0)
-    rows = [e for e in LEARN_ENDED.findall(u.log_since(learn_base)) if e[2] == take_id]
-    u.check("launcher_tier2: the watch ended with a settled burst, not a mismatch",
-            bool(ended) and rows and int(rows[0][1]) >= 1 and rows[0][0] != "destination_mismatch",
-            str(rows))
-    after = open(words, "rb").read() if os.path.exists(words) else None
-    u.check("launcher_tier2: the founder's dictionary file is unchanged", before == after,
-            "custom-words.json changed")
-    u.record("launcher_tier2: saved correction", "INCONCLUSIVE",
-             "Observation only; required pending/learned entry was not verified")
+    if not judged:
+        u.check("launcher_tier2: the correction in the panel field was judged", False,
+                "no learn_judged line for this take within 25 s")
+        return
+    arm, outcome, candidates, accepted, _ = judged[0]
+    u.check("launcher_tier2: the correction in the panel field was judged", int(candidates) >= 1,
+            f"arm={arm} outcome={outcome} candidates={candidates} accepted={accepted}")
+    if int(accepted) < 1:
+        u.record("launcher_tier2: saved correction", "INCONCLUSIVE",
+                 f"the judge ({arm}) declined Marcus -> Markus ({outcome}); nothing to save")
+        return
+    added = u.wait_for("the save", lambda: LEARN_ADDED.search(u.log_since(learn_base))
+                       or LEARN_SAVE_FAILED.search(u.log_since(learn_base)), deadline=10.0)
+    after = lf.file_snapshot(lf.WORDS)
+    new_text = (after.get("bytes") or b"").decode("utf-8", "replace")
+    old_text = (before.get("bytes") or b"").decode("utf-8", "replace")
+    u.check("launcher_tier2: the correction was saved (learn_added)",
+            bool(added) and LEARN_ADDED.search(u.log_since(learn_base)) is not None,
+            u.log_since(learn_base)[-300:])
+    u.check("launcher_tier2: the word file now holds Markus",
+            new_text.count("Markus") > old_text.count("Markus"),
+            f"before={old_text.count('Markus')} after={new_text.count('Markus')}")
+
+
+def restore_words():
+    """Puts the founder's word file back, byte for byte, with this worktree's app stopped (it holds
+    the words in memory and would write them back), then starts the app again. True when nothing
+    was snapshotted or the restore verified."""
+    import learn_from_edits_uat as lf
+    snap = WORDS["snap"]
+    if snap is None:
+        return True
+    if lf.verify_restore(lf.WORDS, snap, "words")[0]:
+        WORDS["snap"] = None
+        return True
+    lf.stop_app()
+    lf.file_restore(lf.WORDS, snap)
+    ok, detail = lf.verify_restore(lf.WORDS, snap, "words")
+    print(f"    word file restore: {detail}")
+    subprocess.run(["open", "-n", lf.APP], check=False)
+    if ok:
+        WORDS["snap"] = None
+    return ok
 
 
 def phase_launcher_dismissed():
@@ -1954,7 +1999,55 @@ def phase_appswap():
         u.skip("appswap: clipboard restore", "the founder's restore setting is off")
 
 
+def focused_value():
+    """The system-wide focused element's owner pid, role and value (None for any unread part)."""
+    import AppKit
+    from ApplicationServices import (AXUIElementCopyAttributeValue, AXUIElementCreateSystemWide,
+                                     AXUIElementGetPid)
+    AppKit.NSApplication.sharedApplication()
+    err, element = AXUIElementCopyAttributeValue(
+        AXUIElementCreateSystemWide(), "AXFocusedUIElement", None)
+    if err or element is None:
+        return None, None, None
+    _, pid = AXUIElementGetPid(element, None)
+    _, role = AXUIElementCopyAttributeValue(element, "AXRole", None)
+    _, value = AXUIElementCopyAttributeValue(element, "AXValue", None)
+    return pid, role, value
+
+
+def phase_savesheet():
+    """Observation row (plan section 11.1), never a pass/fail of the product: dictate into the
+    file-name field of TextEdit's Save sheet, a field another process may host. Records who owned
+    the focus, the record-start state, the tier, and whether the name field changed; the sheet is
+    cancelled afterwards."""
+    print("\n== savesheet: observation, dictation into TextEdit's Save sheet name field")
+    import simulate_input as si
+    doc = u.new_textedit_doc(f"3423-savesheet-{u.RUN_ID}")
+    u.require_front(TEXTEDIT, "savesheet: document open")
+    si.press_key("s", cmd=True)
+    if not u.wait_for("the Save sheet's name field", lambda: focused_value()[1] == "AXTextField",
+                      deadline=5.0):
+        u.record("savesheet: observation", "INCONCLUSIVE", f"no focused text field: {focused_value()}")
+        return
+    owner, _, before = focused_value()
+    si.press_key("a", cmd=True)
+    si.press_key("delete")
+    base = u.log_size()
+    try:
+        take("savesheet", base, bundle=TEXTEDIT, expect_landing=False)
+        time.sleep(1.0)
+        owner_after, role, after = focused_value()
+        text = u.log_since(base)
+        u.record("savesheet: observation", "PASS",
+                 f"focus_owner_pid={owner} textedit_front=True target_focus={TARGET_FOCUS.findall(text)} "
+                 f"tiers={CASCADE.findall(text)} name_before={before!r} name_after={after!r} "
+                 f"role={role} owner_after={owner_after} doc={u.field_text(doc)!r}")
+    finally:
+        si.press_key("escape")
+
+
 LAUNCHER_PHASES = {
+    "savesheet": phase_savesheet,
     "launcher_tier1": phase_launcher_tier1,
     "launcher_tier2": phase_launcher_tier2,
     "launcher_dismissed": phase_launcher_dismissed,
@@ -2054,6 +2147,10 @@ def main():
             u.check("devices restored", sink.restore())
         except Exception as exc:
             u.check("devices restored", False, repr(exc))
+        try:
+            u.check("word file restored (Self-Learning Dictionary)", restore_words())
+        except Exception as exc:
+            u.check("word file restored (Self-Learning Dictionary)", False, repr(exc))
     passed = sum(1 for _, s, _ in u.results if s == "PASS")
     failed = [r for r in u.results if r[1] in ("FAIL", "ABORT")]
     skipped = sum(1 for _, s, _ in u.results if s == "SKIP")

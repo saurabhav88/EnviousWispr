@@ -150,6 +150,9 @@ final class Fixture: NSObject, NSApplicationDelegate {
       "key": panel?.isKeyWindow ?? false,
       "app_active": NSApp.isActive,
       "focused": focusedField() ?? "",
+      "selection": (panel?.firstResponder as? FixtureTextView).map {
+        [$0.selectedRange().location, $0.selectedRange().length]
+      } ?? [],
       "closed": closed,
       "fields": closed ? closedTexts : fields.mapValues { $0.string },
     ]

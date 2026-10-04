@@ -297,9 +297,19 @@ class LauncherHarness(unittest.TestCase):
                          [("disagree", "com.apple.TextEdit", "com.enviouswispr.uat.launcherpanel")])
         self.assertEqual(h.take_id_in(self.LOG), "AAAA-1")
         self.assertIsNone(h.take_id_in("no terminal here"))
-        ended = ("learn_observation_ended reason=focus_changed settled_bursts=1 app_class=native "
-                 "duration_ms=900 unfinished_edits=0 take=AAAA-1")
-        self.assertEqual(h.LEARN_ENDED.findall(ended), [("focus_changed", "1", "AAAA-1")])
+        judged = ("learn_judged arm=classifier outcome=accepted candidates=1 accepted=1 latency_ms=40 "
+                  "evidence=strong take=AAAA-1")
+        self.assertEqual(h.LEARN_JUDGED.findall(judged),
+                         [("classifier", "accepted", "1", "1", "AAAA-1")])
+        self.assertEqual(h.LEARN_ADDED.findall("learn_added state=new_word"), ["new_word"])
+
+    def test_restore_words_is_a_no_op_without_a_snapshot(self):
+        saved = h.WORDS["snap"]
+        try:
+            h.WORDS["snap"] = None
+            self.assertTrue(h.restore_words())
+        finally:
+            h.WORDS["snap"] = saved
 
     def test_one_take_in_the_right_field_passes(self):
         once = h.SENTENCE
