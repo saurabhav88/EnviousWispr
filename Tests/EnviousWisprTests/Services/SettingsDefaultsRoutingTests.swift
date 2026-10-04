@@ -58,6 +58,8 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.ollamaModel == "qwen2.5:3b")
     // #2480: a normal Dock app by default, so the window opens in front with the app menu.
     #expect(settings.showInDock == true)
+    // #3441: the menu bar update alert stays on by default.
+    #expect(settings.showMenuBarUpdateAlert == true)
   }
 
   @Test("the Ollama default and the Core fallback cannot drift apart")

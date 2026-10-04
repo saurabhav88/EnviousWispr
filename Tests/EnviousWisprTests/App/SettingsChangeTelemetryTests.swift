@@ -312,6 +312,11 @@ import Testing
       settings.showInDock = false
       #expect(emitSnapshot()?.stringProps["show_in_dock"] == "off")
 
+      // #3441: the menu bar update alert switch's baseline, default and changed.
+      #expect(atDefault?.stringProps["menu_bar_update_alert"] == "on")
+      settings.showMenuBarUpdateAlert = false
+      #expect(emitSnapshot()?.stringProps["menu_bar_update_alert"] == "off")
+
       settings.toggleKeyCode = ModifierKeyCodes.globe
       let afterBind = emitSnapshot()
       #expect(afterBind?.stringProps["toggle_hotkey_identity"] == "globe")
@@ -430,6 +435,21 @@ import Testing
       telemetry.flush()
 
       let d = deltas(box, setting: "show_in_dock")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "on")
+      #expect(d.first?.stringProps["to"] == "off")
+      #expect(d.first?.stringProps["source"] == "user")
+    }
+
+    @Test("Update alert in menu bar emits one on/off delta (#3441)")
+    func menuBarUpdateAlertDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      // To the NON-default value: it ships ON, so writing `true` emits nothing.
+      settings.showMenuBarUpdateAlert = false
+      telemetry.flush()
+
+      let d = deltas(box, setting: "menu_bar_update_alert")
       #expect(d.count == 1)
       #expect(d.first?.stringProps["from"] == "on")
       #expect(d.first?.stringProps["to"] == "off")

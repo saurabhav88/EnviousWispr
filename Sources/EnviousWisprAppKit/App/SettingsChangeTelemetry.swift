@@ -102,6 +102,8 @@ enum SettingsProjection {
     /// #2480. On or off only. Answers how many people choose a menu-bar-only app
     /// once the Dock icon is the default.
     case showInDock = "show_in_dock"
+    /// #3441. On or off only. Answers how many people turn off the menu bar update wave.
+    case menuBarUpdateAlert = "menu_bar_update_alert"
   }
 
   /// Logicals whose underlying control is a slider; they earn the longer
@@ -176,6 +178,7 @@ enum SettingsProjection {
     case .recordingSoundPairing: return [.recordingSoundPairing]
     case .otherAudioWhileDictating: return [.otherAudioWhileDictating]
     case .showInDock: return [.showInDock]
+    case .showMenuBarUpdateAlert: return [.menuBarUpdateAlert]
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
       .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
@@ -274,6 +277,7 @@ enum SettingsProjection {
     case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
     case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue
     case .showInDock: return onOff(settings.showInDock)
+    case .menuBarUpdateAlert: return onOff(settings.showMenuBarUpdateAlert)
     }
   }
 
