@@ -73,6 +73,10 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var languageResolutionSource: String?
   public var languageConfidenceBucket: String?
   public var targetApp: String?
+  /// #3423: how the keyboard-focus owner compared with the front app at record start, one of
+  /// `agree`, `disagree`, `disagree_kept_front`, `no_element`, `unreadable`; nil on rows written
+  /// before it existed. Metadata only.
+  public var focusOwnerState: String?
   public var coldStart: Bool
   public var streamingMode: Bool
   public var e2eSeconds: Double?
@@ -217,6 +221,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     languageResolutionSource: String? = nil,
     languageConfidenceBucket: String? = nil,
     targetApp: String? = nil,
+    focusOwnerState: String? = nil,
     coldStart: Bool = false,
     streamingMode: Bool = false,
     e2eSeconds: Double? = nil,
@@ -283,6 +288,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.languageResolutionSource = languageResolutionSource
     self.languageConfidenceBucket = languageConfidenceBucket
     self.targetApp = targetApp
+    self.focusOwnerState = focusOwnerState
     self.coldStart = coldStart
     self.streamingMode = streamingMode
     self.e2eSeconds = e2eSeconds

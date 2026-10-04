@@ -169,6 +169,24 @@ import os
     #expect((metrics.itnLenBefore ?? 0) > 0)
   }
 
+  @Test(
+    "#3423: the record-start focus-owner state reaches the take's metrics unchanged",
+    arguments: [KernelSessionContext.FocusOwnerState.disagree, .noElement, nil])
+  func focusOwnerStateReachesMetrics(_ state: KernelSessionContext.FocusOwnerState?) async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    context.focusOwnerState = state
+    let wiring = makeWiring(outcome: outcome, context: context, save: { _, _ in })
+
+    let result = try await wiring.processText("hello there friend") {}
+    try await wiring.store(result, UUID(), .ordinary)
+    _ = await wiring.deliver(result, .ordinary)
+
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.focusOwnerState == state?.rawValue)
+  }
+
   @Test("plain prose is a no-op: ITN ran, changed nothing, floor not delivered")
   func itnNoOpPassthrough() async throws {
     let outcome = KernelFinalizationOutcome()

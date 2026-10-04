@@ -268,6 +268,49 @@ struct DictationCompletedRouteFieldsTests {
           polishRanRemote: true))
     }
 
+    // MARK: - #3423 focus-owner state
+
+    /// The record-start state rides `dictation.completed` unchanged, once per take, from the
+    /// transcript's metrics; nil metrics or a nil state omit the key (never `agree`).
+    @Test(
+      "#3423: focus_owner_state rides dictation.completed for every state, and is omitted when absent",
+      arguments: ["agree", "disagree", "disagree_kept_front", "no_element", "unreadable", nil])
+    func focusOwnerStateThreaded(_ state: String?) throws {
+      let seen = EventsBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { seen.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(
+          text: "hello",
+          metrics: ExecutionMetrics(
+            pasteTier: "cgevent", targetApp: "com.raycast.macos", focusOwnerState: state)),
+        inputMode: "ptt", takeID: Self.takeID)
+
+      let completed = seen.events.filter { $0.name == "dictation.completed" }
+      try #require(completed.count == 1)
+      #expect(completed[0].stringProps["focus_owner_state"] == state)
+      #expect(completed[0].stringProps["target_app"] == "com.raycast.macos", "siblings unchanged")
+      #expect(completed[0].stringProps["paste_result"] == "cgevent")
+    }
+
+    @Test("#3423: no metrics at all omits focus_owner_state")
+    func focusOwnerStateOmittedWithoutMetrics() throws {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated {
+          if event.name == "dictation.completed" { box.event = event }
+        }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt")
+      let event = try #require(box.event)
+      #expect(event.stringProps["focus_owner_state"] == nil)
+    }
+
     @Test("Auto dictation omits route fields when nil")
     func autoOmitsFields() {
       let box = Box()

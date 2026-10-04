@@ -1441,6 +1441,8 @@ struct KernelFinalizationWiring {
       languageResolutionSource: outcome.languageResolutionSource,
       languageConfidenceBucket: outcome.languageConfidenceBucket,
       targetApp: context.targetApp?.bundleIdentifier,
+      // #3423: carried unchanged, like the fields above.
+      focusOwnerState: context.focusOwnerState?.rawValue,
       coldStart: false,
       streamingMode: outcome.streamingMode,
       e2eSeconds: e2e,
