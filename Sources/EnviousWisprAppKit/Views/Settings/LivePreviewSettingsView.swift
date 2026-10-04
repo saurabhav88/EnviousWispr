@@ -914,21 +914,12 @@ struct LivePreviewSettingsView: View {
 /// APPEARANCE — bordered container, value, disclosure chevron — while keeping the
 /// sheet's behaviour. The chevron is `chevron.up.chevron.down`, the platform's
 /// pop-up glyph, rather than a plain `chevron.down`, which reads as "expand a
-/// section". At rest it wears the input-field colours, as the microphone picker does.
+/// section". It wears the input-field colours and the faint row hover, as the
+/// microphone picker does.
 struct LivePreviewLanguageMenuButton: View {
   let name: String
   let provenance: String
   let action: () -> Void
-
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  /// See `SettingsHover.respondsToPointer`.
-  @Environment(\.isEnabled) private var environmentEnabled
-  @State private var pointerInside = false
-
-  /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
-  private var hovering: Bool {
-    SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
-  }
 
   var body: some View {
     Button(action: action) {
@@ -945,23 +936,19 @@ struct LivePreviewLanguageMenuButton: View {
         }
         Image(systemName: "chevron.up.chevron.down")
           .font(.system(size: 10, weight: .semibold))
-          .foregroundStyle(hovering ? Color.stAccent : Color.stTextSecondary)
+          .foregroundStyle(Color.stTextSecondary)
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 7)
-      .background(
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-          .fill(hovering ? Color.stAccentLight : Color.stInputBg)
-      )
+      .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
       .overlay(
         RoundedRectangle(cornerRadius: 8, style: .continuous)
-          .strokeBorder(hovering ? Color.stAccent : Color.stInputBorder, lineWidth: 1)
+          .strokeBorder(Color.stInputBorder, lineWidth: 1)
           .allowsHitTesting(false)
       )
+      .settingsHoverRow(cornerRadius: 8)
       .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)
-    .onHover { pointerInside = $0 }
-    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
   }
 }
