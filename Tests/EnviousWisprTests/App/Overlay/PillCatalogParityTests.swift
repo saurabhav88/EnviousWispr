@@ -59,6 +59,8 @@ struct PillCatalogParityTests {
     case .correctionLearnedSaveError: return "correctionLearnedSaveError"
     // #3106 PR B: minted by the reducer from the clipboard-fallback entry, never by the catalog.
     case .retainedClipboardFallback: return "retainedClipboardFallback"
+    // #3438: a feature card the catalog mints; it has no frozen pre-migration row.
+    case .polishSetupCard: return "polishSetupCard"
     }
   }
 
@@ -104,6 +106,8 @@ struct PillCatalogParityTests {
     case .closeBluetoothAwareness: return "closeBluetoothAwareness"
     case .openBluetoothSettings: return "openBluetoothSettings"
     case .undoLearnedCorrection: return "undoLearnedCorrection"
+    case .finishPolishSetup: return "finishPolishSetup"
+    case .dismissPolishSetup: return "dismissPolishSetup"
     }
   }
 

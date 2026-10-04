@@ -407,6 +407,20 @@ struct AIPolishSettingsView: View {
       }
     }
     .modifier(ProviderSetupLifecycle(model: setupModel))
+    // #3438: the leave dialog says "key not saved yet" when a typed key was not saved. Only
+    // this yes/no leaves the page; the draft itself stays here.
+    .preference(key: PolishSetupUnsavedKeyDraftKey.self, value: hasUnsavedKeyDraft)
+  }
+
+  /// A key typed for the chosen cloud provider and not saved (the field differs from what was
+  /// last loaded or saved, and is not empty). A key loaded from the Keychain is not a draft.
+  private var hasUnsavedKeyDraft: Bool {
+    switch settings.llmProvider {
+    case .openAI: return setupModel.openAIKeyEdited && !setupModel.openAIKey.isEmpty
+    case .gemini: return setupModel.geminiKeyEdited && !setupModel.geminiKey.isEmpty
+    case .claude: return setupModel.claudeKeyEdited && !setupModel.claudeKey.isEmpty
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+    }
   }
 }
 

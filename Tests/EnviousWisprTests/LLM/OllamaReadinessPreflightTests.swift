@@ -454,13 +454,13 @@ struct OllamaReadinessPreflightTests {
   func pinnedCopy() {
     let serverDown = PolishFailureReason.providerUnreachable.ollamaPreflightSkipMessage
     #expect(
-      serverDown == "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish.")
+      serverDown == "AI polish skipped: Ollama isn't running. Start it in Settings → AI Polish.")
     // #1914: was "no model is installed in Ollama", which is false whenever
     // models ARE installed and the armed one simply is not among them.
     let modelMissing = PolishFailureReason.modelUnavailable.ollamaPreflightSkipMessage
     #expect(
       modelMissing
-        == "AI cleanup skipped: the selected Ollama model isn't installed. "
+        == "AI polish skipped: the selected Ollama model isn't installed. "
         + "Download it or pick another in Settings → AI Polish."
     )
     // #1914: the founder's sentence, pinned. Distinct from the one above on
@@ -469,7 +469,7 @@ struct OllamaReadinessPreflightTests {
     let noSelection = PolishFailureReason.noModelSelected.ollamaPreflightSkipMessage
     #expect(
       noSelection
-        == "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish.")
+        == "AI polish skipped: no polish model selected. Pick one in Settings → AI Polish.")
     #expect(modelMissing != noSelection, "the two states must not collapse to one sentence")
     // All three carry the skip tone the completion planner reads (#3142), with the same text.
     for reason in [PolishFailureReason.providerUnreachable, .modelUnavailable, .noModelSelected] {

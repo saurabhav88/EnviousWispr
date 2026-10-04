@@ -145,8 +145,19 @@ TAKE_KEYED_EVENTS = (
     # #3106 PR B. At most one row per take whose checked miss kept the dictation (or yielded to
     # the user's copy), keyed by the same snapshotted take id; pill_shown is the overlay's verdict.
     "paste.landing_retained",
+    # #3438. Only card rows carry the key (the take whose skipped polish raised the card); leave
+    # dialog, banner and menu rows are not about one take and carry none by design.
+    "polish_setup.prompt",
     "recording.cap_warning_shown",
 )
+
+# Events where only SOME rows are about one take. Coverage counts only the rows the
+# predicate selects; the other rows carry no key by design and are not a coverage gap.
+# A predicate is HogQL over `properties`, ANDed into the per-event coverage query.
+TAKE_KEY_SCOPE: dict[str, str] = {
+    # #3438: only card rows (the card follows one dictation) carry `take_id`.
+    "polish_setup.prompt": "properties.surface = 'card'",
+}
 
 # #2958: names kept for HISTORICAL queries whose rows stopped on the first
 # release carrying telemetry policy 2 (policy 1 never shipped in a tagged
@@ -1536,6 +1547,7 @@ def fetch_take_coverage(client: PostHogClient) -> list[TakeCoverageRow]:
             FROM events
             WHERE event = {sql_id_list([event_name])}
               AND {client.environment_clause()}
+              AND {TAKE_KEY_SCOPE.get(event_name, "1 = 1")}
             GROUP BY release
             """,
             f"take_coverage_{index}",
@@ -1984,9 +1996,11 @@ def render_take_coverage(coverage: Sequence[TakeCoverageRow]) -> list[str]:
                     lines.append(f"  {event} on {release}: {NOT_OBSERVED}")
                 continue
             marker = "   <- no take keys" if row.with_take == 0 else ""
+            scope = TAKE_KEY_SCOPE.get(event)
+            scope_note = f" (scope: {scope})" if scope else ""
             lines.append(
                 f"  {event} on {release}: "
-                f"{row.with_take}/{row.total} rows carry {TAKE_PROPERTY}{marker}"
+                f"{row.with_take}/{row.total} rows carry {TAKE_PROPERTY}{scope_note}{marker}"
             )
 
     return lines
@@ -3377,11 +3391,12 @@ def run_self_test() -> int:
     def _coverage_fixture(per_event: dict[str, list[list[object]]]) -> list[HTTPResponse]:
         return [_posthog_response(per_event.get(name, [])) for name in TAKE_KEYED_EVENTS]
 
-    ph, _ = _posthog_client(
+    ph, coverage_transport = _posthog_client(
         _coverage_fixture(
             {
                 "dictation.completed": [["2.6.0", 400, 400], ["2.7.0", 500, 500]],
                 "recording.cap_warning_shown": [["2.6.0", 3, 0]],
+                "polish_setup.prompt": [["2.6.0", 2, 2]],
             }
         )
     )
@@ -3400,6 +3415,10 @@ def run_self_test() -> int:
     assert "dictation.completed on 2.7.0: 500/500 rows carry take_id" in coverage_lines
     assert "recording.cap_warning_shown on 2.6.0: 0/3 rows carry take_id" in coverage_lines
     assert "<- no take keys" in coverage_lines, "a zero must be marked"
+    assert (
+        "polish_setup.prompt on 2.6.0: 2/2 rows carry take_id (scope: properties.surface = 'card')"
+        in coverage_lines
+    ), coverage_lines
     # THE BLACKOUT CELL. `recording.cap_warning_shown` was observed on 2.6.0 and is
     # absent on 2.7.0. The first renderer printed `not observed` only for events
     # missing from EVERY release, so this cell vanished silently — a per-release
@@ -3409,12 +3428,25 @@ def run_self_test() -> int:
     for name in TAKE_KEYED_EVENTS:
         if name in ("dictation.completed", "recording.cap_warning_shown"):
             continue
+        if name == "polish_setup.prompt":
+            assert f"  {name} on 2.7.0: {NOT_OBSERVED}" in coverage_lines, name
+            continue
         for rel in ("2.6.0", "2.7.0"):
             # #2958: with NO known floor a retired name's empty cell is still a blackout
             # cell. Dressing it up as "retired" before the floor is known would hide a
             # genuine historical gap.
             assert f"  {name} on {rel}: {NOT_OBSERVED}" in coverage_lines, (name, rel)
     assert set(RETIRED_TAKE_KEYED_EVENTS) <= set(TAKE_KEYED_EVENTS), "a retired name stays listed"
+    # #3438: a scoped event's coverage query selects only its keyed rows, and every scoped
+    # name is a registered take-keyed event.
+    assert set(TAKE_KEY_SCOPE) <= set(TAKE_KEYED_EVENTS), "a scope names an unlisted event"
+    scoped_index = TAKE_KEYED_EVENTS.index("polish_setup.prompt")
+    scoped_sql = coverage_transport.seen[scoped_index].body.decode()
+    assert "properties.surface = 'card'" in scoped_sql, scoped_sql
+    unscoped_sql = coverage_transport.seen[
+        TAKE_KEYED_EVENTS.index("dictation.completed")
+    ].body.decode()
+    assert "properties.surface" not in unscoped_sql, unscoped_sql
     assert "100%" not in coverage_lines and "0%" not in coverage_lines
     passed("take coverage renders the full event x release grid, blackout cells included")
 

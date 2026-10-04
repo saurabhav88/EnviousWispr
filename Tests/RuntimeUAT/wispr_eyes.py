@@ -584,7 +584,7 @@ def _open_settings():
     print("Auto-opened Settings")
 
 
-def nav(page, tab=None):
+def nav(page, tab=None, leave_answer=None):
     """Open a Settings page, and with `tab` one of its tabs, and PROVE both are selected.
 
         nav("Dictation Settings", "Engine")   nav("Keybinds")
@@ -598,11 +598,17 @@ def nav(page, tab=None):
 
     #1296 replaced the sidebar's AXOutline/AXRow list with AXButton rows; this is the button
     sidebar's driver. Returns True, or False (with the reason printed) when the window did
-    not land on the route."""
+    not land on the route.
+
+    #3438: leaving AI Polish while its model is not set up asks first. The answer is the
+    caller's, never chosen here: pass `leave_answer` ("leave_anyway", "ok", ("go_back",
+    "<Provider>"), or a staying answer, which returns False after the stay is observed).
+    With none, the question stays on screen and this returns False naming it."""
     _sn.validate_route(page, tab)   # a route error is the caller's, raised before any app check
     _ensure_connected()
     try:
-        route = _sn.navigate(_ax(), lambda: _app, page, tab, open_settings=_open_settings)
+        route = _sn.navigate(_ax(), lambda: _app, page, tab, open_settings=_open_settings,
+                             leave_answer=leave_answer)
     except NavigationError as e:
         print(f"nav({page!r}, {tab!r}) FAILED: {e}")
         return False

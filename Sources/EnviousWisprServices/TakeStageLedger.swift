@@ -43,6 +43,10 @@ struct TakeStageSummary: Equatable {
   var polishLanguageHint: String?
   /// #3105: what the learned-word check did for this take, written when the step ends.
   var learnedCheck: LearnedCheckTerminalFacts?
+  /// #3438: the confirmed unfinished AI polish setup that skipped this take's polish
+  /// (`PolishSetupProblemTag`), written when the polish result is classified. Absent unless
+  /// confirmed: never a "none" or "unknown" value.
+  var polishSetupProblem: String?
 
   /// The terminal-row projection. Keys are prefixed `vad_` beside the #2184 conditioning
   /// fields that already live on the same row; `vad_stage_reached` is always present when
@@ -59,6 +63,7 @@ struct TakeStageSummary: Equatable {
     if let otherAudio { out.merge(otherAudio.terminalProperties) { current, _ in current } }
     if let polishLanguageHint { out["polish_language_hint"] = polishLanguageHint }
     if let learnedCheck { out.merge(learnedCheck.terminalProperties) { current, _ in current } }
+    if let polishSetupProblem { out["polish_setup_problem"] = polishSetupProblem }
     return out
   }
 }

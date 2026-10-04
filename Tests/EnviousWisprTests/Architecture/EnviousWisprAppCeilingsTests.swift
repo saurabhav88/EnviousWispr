@@ -186,6 +186,10 @@ import Testing
   ///   one slot for the whole learn-from-edits runtime. Its two weakly-held
   ///   collaborators (the overlay presenter, the paste-registry subscriber) need an
   ///   app-lifetime owner, and the composition root is the only object with one.
+  /// - 46 → 47 in #3438 (2026-10-04): App-owned `polishSetup` (`PolishSetupWiring`), one
+  ///   slot for the AI polish setup warnings: the saved-key record and the warning monitor.
+  ///   The monitor follows dictation's chosen model from launch with Settings closed and
+  ///   the menu bar line reads it, so it needs an app-lifetime owner.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
@@ -219,9 +223,13 @@ import Testing
       // file import) asks it. Not inside `learnFromEdits`: that slot owns
       // learning a word (Judge 1); this owns using one (Judge 2), and the
       // delivery observers it holds must outlive any one dictation.
-      count <= 46,
+      // #3438: 46 -> 47. `polishSetup` (`PolishSetupWiring`), the AI polish setup warnings as
+      // ONE slot (the `learnFromEdits` shape): the saved-key record and the warning monitor.
+      // Held here because both outlive every window and view: the monitor follows dictation's
+      // chosen model from launch with Settings closed, and the menu bar line reads it.
+      count <= 47,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 46. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 47. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

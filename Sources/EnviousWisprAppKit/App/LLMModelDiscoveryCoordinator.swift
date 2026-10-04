@@ -10,6 +10,30 @@ final class LLMModelDiscoveryCoordinator {
   var isDiscoveringModels = false
   var keyValidationState: KeyValidationState = .idle
 
+  /// #3438: the TYPED verdict beside `keyValidationState`, tied to the provider and the saved
+  /// credential's revision it was earned on (`SavedKeyPresence`). `keyValidationState`'s
+  /// `.invalid(String)` carries a rejected key, no network and provider errors alike; only the
+  /// `.invalidAPIKey` catch below publishes `.rejected`. Cloud providers only, and only when a
+  /// presence owner was injected.
+  ///
+  /// ONE PER PROVIDER, each tied to its own credential revision: a verdict about dictation's
+  /// key must survive another surface (Transcribe a File) checking a different provider, and a
+  /// replaced or cleared key already stops counting through its revision. A check in flight is
+  /// kept APART from the last completed answer: it shows as `.checking` while it runs, and
+  /// when it is abandoned (superseded, the key replaced, another surface's provider) the
+  /// completed answer is what remains, never nothing.
+  private var completedVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
+  private var pendingVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
+
+  /// Every provider's verdict: a pending check where one runs, otherwise the last completed one.
+  var cloudVerdicts: [LLMProvider: PolishCloudVerdict] {
+    completedVerdicts.merging(pendingVerdicts) { _, pending in pending }
+  }
+
+  /// The verdict about the provider this coordinator's catalog and validation state describe,
+  /// for the surfaces that show that provider.
+  var cloudVerdict: PolishCloudVerdict? { stateProvider.flatMap { cloudVerdicts[$0] } }
+
   /// #2772 chunk 3: WHICH provider `discoveredModels` and `keyValidationState` describe,
   /// or `nil` when nothing has been loaded or validated.
   ///
@@ -72,9 +96,35 @@ final class LLMModelDiscoveryCoordinator {
   /// default and is unchanged. Found by Codex.
   private let cacheDefaults: UserDefaults
 
-  init(keychainManager: KeychainManager, cacheDefaults: UserDefaults = .standard) {
+  /// The saved-key owner whose credential revision a typed verdict is tied to. nil in tests
+  /// that do not exercise the typed verdict; production always injects it.
+  private let savedKeyPresence: SavedKeyPresence?
+
+  /// The network call, injectable so a test drives every publication path below with a
+  /// scripted answer instead of a provider. Production takes `LLMModelDiscovery`.
+  private let discoverModels: @MainActor (LLMProvider, String) async throws -> [LLMModelInfo]
+
+  init(
+    keychainManager: KeychainManager, cacheDefaults: UserDefaults = .standard,
+    savedKeyPresence: SavedKeyPresence? = nil,
+    discoverModels: @escaping @MainActor (LLMProvider, String) async throws -> [LLMModelInfo] = {
+      provider, apiKey in
+      try await LLMModelDiscovery().discoverModels(provider: provider, apiKey: apiKey)
+    }
+  ) {
     self.keychainManager = keychainManager
     self.cacheDefaults = cacheDefaults
+    self.savedKeyPresence = savedKeyPresence
+    self.discoverModels = discoverModels
+  }
+
+  /// The revision of `provider`'s saved credential now, for a cloud provider with a presence
+  /// owner; nil otherwise, which publishes no typed verdict.
+  private func credentialRevision(for provider: LLMProvider) -> UInt64? {
+    switch provider {
+    case .openAI, .gemini, .claude: return savedKeyPresence?.revision(for: provider)
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return nil
+    }
   }
 
   /// Abandon any request still in flight, and clear the markers it was going to resolve.
@@ -88,6 +138,7 @@ final class LLMModelDiscoveryCoordinator {
     discoveryGeneration += 1
     isDiscoveringModels = false
     if keyValidationState == .validating { keyValidationState = .idle }
+    pendingVerdicts = [:]
   }
 
   /// Reset discovery state (used when switching providers or clearing keys).
@@ -114,7 +165,9 @@ final class LLMModelDiscoveryCoordinator {
     surface: ProviderSetupSurface = .dictation,
     source: ApiKeyValidationSource = .modelDiscovery
   ) async {
-    discoveryGeneration += 1
+    // Every earlier request is dismissed here, so none of their `.checking` markers can
+    // outlive them (a superseded check never publishes again).
+    invalidateInFlightDiscovery()
     let generation = discoveryGeneration
     // The surface's OWNERSHIP MODE at the moment the request was made. A discovery started
     // while the import had its own provider must not repair DICTATION's model because the
@@ -129,6 +182,15 @@ final class LLMModelDiscoveryCoordinator {
     stateProvider = provider
     keyValidationState = .validating
     isDiscoveringModels = true
+    // The credential this check is about, captured before any read or network work. A save
+    // or clear while it runs moves the revision, and nothing this request learned about the
+    // old key may then publish (#3438).
+    let revisionAtStart = credentialRevision(for: provider)
+    pendingVerdicts[provider] = revisionAtStart.map {
+      PolishCloudVerdict(
+        provider: provider, credentialRevision: $0, result: .checking,
+        definitive: lastDefinitive(provider, revision: $0))
+    }
     // Lowered by whoever raised it, and only if nothing newer has raised it since. An
     // unconditional clear on the way out of a SUPERSEDED request turns off the spinner a
     // live one is still showing.
@@ -152,22 +214,28 @@ final class LLMModelDiscoveryCoordinator {
       }
       guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
         // Missing-key guard: no validation actually ran, so NO
-        // `api_key.validation_completed` event (#1173).
+        // `api_key.validation_completed` event (#1173). A missing or unreadable key is a
+        // presence fact (`SavedKeyPresence`), never a typed rejection.
         keyValidationState = .invalid(Self.noKeyMessage)
+        // No key could be read (absent, or a Keychain that did not answer): the check asked
+        // nothing, so it ends without touching the last completed answer, which is about a
+        // credential revision and stops counting by itself when the key changes.
+        pendingVerdicts[provider] = nil
         return
       }
       apiKey = key
     }
 
-    let discovery = LLMModelDiscovery()
     do {
-      let models = try await discovery.discoverModels(provider: provider, apiKey: apiKey)
+      let models = try await discoverModels(provider, apiKey)
       guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
       discoveredModels = models
       if provider != .appleIntelligence {
         cacheModels(models, for: provider)
       }
       keyValidationState = .valid
+      publishVerdict(.accepted, provider: provider, revision: revisionAtStart)
       emitValidationCompleted(
         provider: provider, result: "valid", source: source,
         modelCount: models.count,
@@ -182,6 +250,8 @@ final class LLMModelDiscoveryCoordinator {
       }
     } catch LLMError.providerUnavailable {
       guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(
         provider == .ollama
           ? Self.ollamaNotRunningMessage
@@ -191,15 +261,66 @@ final class LLMModelDiscoveryCoordinator {
       emitValidationCompleted(provider: provider, result: "provider_unavailable", source: source)
     } catch let error as LLMError where error == .invalidAPIKey {
       guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      // The ONE producer of a typed rejection: the provider refused this key.
+      publishVerdict(.rejected, provider: provider, revision: revisionAtStart)
+      keyValidationState = .invalid(Self.invalidKeyMessage)
+      discoveredModels = []
+      emitValidationCompleted(provider: provider, result: "invalid", source: source)
+    } catch let failure as ModelDiscoveryFailure
+      where failure == .permissionDenied || failure == .invalidKeyUnconfirmed
+    {
+      // Gemini 403, or a 400 that only MENTIONS the invalid-key reason: shown exactly as before
+      // (an invalid key, with the same telemetry), but neither is evidence the key was refused,
+      // so the typed verdict is inconclusive (#3438).
+      guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(Self.invalidKeyMessage)
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "invalid", source: source)
     } catch {
       guard discoveryGeneration == generation else { return }
+      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(Self.validationFailureMessage(for: error))
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "error", source: source)
     }
+  }
+
+  /// Whether the credential this request started on is still the saved one. When a save or
+  /// clear moved it, the request publishes nothing about the old key: not its models, legacy
+  /// verdict, typed verdict or model repair. The pending markers are cleared because this
+  /// request was their only author; the save path starts the next check itself.
+  private func credentialStillCurrent(_ provider: LLMProvider, _ revisionAtStart: UInt64?) -> Bool
+  {
+    guard credentialRevision(for: provider) != revisionAtStart else { return true }
+    isDiscoveringModels = false
+    if keyValidationState == .validating { keyValidationState = .idle }
+    pendingVerdicts[provider] = nil
+    return false
+  }
+
+  private func publishVerdict(
+    _ result: PolishCloudVerdict.Result, provider: LLMProvider, revision: UInt64?
+  ) {
+    pendingVerdicts[provider] = nil
+    if let revision {
+      // A check that could not tell keeps the last definitive answer about this key.
+      completedVerdicts[provider] = PolishCloudVerdict(
+        provider: provider, credentialRevision: revision, result: result,
+        definitive: result == .inconclusive ? lastDefinitive(provider, revision: revision) : nil)
+    }
+  }
+
+  /// The last accepted or rejected answer about `provider`'s key at `revision`, if any.
+  private func lastDefinitive(_ provider: LLMProvider, revision: UInt64)
+    -> PolishCloudVerdict.Definitive?
+  {
+    guard let completed = completedVerdicts[provider], completed.credentialRevision == revision
+    else { return nil }
+    return completed.lastDefinitive
   }
 
   /// #3142: the key check's own sentences, apart from the flow so a test can pin the English.

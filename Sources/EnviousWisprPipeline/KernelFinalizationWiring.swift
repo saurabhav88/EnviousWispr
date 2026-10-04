@@ -59,6 +59,9 @@ final class KernelFinalizationOutcome {
   /// is the concluded one). Carried straight through from the context.
   var afmPrewarmOutcome: AppleIntelligenceConnector.AFMPrewarmOutcome?
   var afmPrewarmTakeID: String?
+  /// #3438: what this take's polish met, carrying its own take ID; the driver hands it on once,
+  /// only for the concluded take.
+  var polishTakeOutcome: PolishTakeOutcome?
   var pipelineStartedAtSeconds: Double?
   var pipelineEndedAtSeconds: Double?
   var asrStartedAtSeconds: Double?
@@ -166,6 +169,11 @@ final class KernelFinalizationOutcome {
 final class KernelSessionContext {
   /// The frozen per-recording config — VAD, decode language, paste prefs.
   var config: DictationSessionConfig?
+  /// #3438: the AI polish setup this recording started under, frozen beside `config` and
+  /// agreeing with its provider and model, and the app's hooks that judge and record it. Nil
+  /// when no warning owner is wired (tests) or when it disagreed with `config`.
+  var polishSetupContext: PolishSetupTakeContext?
+  var polishSetupHooks: PolishSetupTakeHooks?
   /// The frontmost app captured at recording start, re-activated before paste.
   var targetApp: NSRunningApplication?
   /// The focused text element captured at recording start, or — if that
@@ -304,6 +312,19 @@ final class KernelSessionContext {
 /// clock from the real finalization types.
 @MainActor
 struct KernelFinalizationWiring {
+  /// #3438: the probe for one live take, or nil when the take has no key, no frozen setup or no
+  /// wired warning owner (then nothing is classified or recorded).
+  static func polishSetupProbe(
+    takeID: String?, context: PolishSetupTakeContext?, hooks: PolishSetupTakeHooks?
+  ) -> PolishSetupTakeProbe? {
+    guard let takeID, let context, let hooks else { return nil }
+    return PolishSetupTakeProbe(
+      takeID: takeID, context: context,
+      classify: { hooks.classify($0, context) },
+      recordTerminalProblem: hooks.recordTerminalProblem,
+      now: hooks.now)
+  }
+
 
   // MARK: Wedge-detection tuning (PR-4 §3.6)
 
@@ -548,6 +569,9 @@ struct KernelFinalizationWiring {
         targetAppName: context.targetApp?.localizedName,
         steps: steps.orderedChain,
         frozenCorrectorVocabulary: frozenCorrectorVocabulary,
+        polishSetup: Self.polishSetupProbe(
+          takeID: telemetryState.takeID, context: context.polishSetupContext,
+          hooks: context.polishSetupHooks),
         // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
         // the session terminal, and starting a session CLEARS `kernel.lastTakeID`,
         // so it is nil here — substituting it would emit no take key at all. Same
@@ -620,6 +644,7 @@ struct KernelFinalizationWiring {
       outcome.afmPrewarmOutcome = ctx.afmPrewarmOutcome
       outcome.afmPrewarmTakeID = ctx.afmPrewarmOutcome == nil ? nil : ctx.takeID
       outcome.polishNotice = result.polishNotice
+      outcome.polishTakeOutcome = result.polishTakeOutcome
       outcome.polishDurationSeconds = CFAbsoluteTimeGetCurrent() - start
 
       // #1358: the display text after the limb chain. `ctx.polishedText ?? ctx.text`

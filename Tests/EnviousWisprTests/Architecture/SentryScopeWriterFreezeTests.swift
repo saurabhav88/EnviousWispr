@@ -36,8 +36,11 @@ struct SentryScopeWriterFreezeTests {
 
   /// SHA-256 of the sorted inventory lines. The failure message prints the inventory and the new
   /// value; update it only after reviewing the new site (filtered at write time? metadata only?).
+  /// #3438: one new breadcrumb producer, `PolishSetupPromptEvent.send` (stage `polish_setup`,
+  /// message `prompt_<action>`, data surface/problem/provider): closed enum values only, no
+  /// key, model name or text. The other 69 lines hash to the previous value.
   static let inventoryFingerprint =
-    "7191b542b6d6a6bf163da84fd137ca74980facde089f0f889f0e646ac32b1fe3"
+    "39c1c978e0947b937c42d6c05b84ed54ef54431d8ab1bafa5951d12775d39062"
 
   struct Site: Hashable, Comparable {
     let file: String

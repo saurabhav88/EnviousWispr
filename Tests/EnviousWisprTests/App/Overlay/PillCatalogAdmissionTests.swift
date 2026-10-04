@@ -86,6 +86,11 @@ struct PillCatalogAdmissionTests {
       .correctionLearnedSaveError(
         LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed))
     ),
+    // #3438 chunk 6: the AI polish setup card, the Bluetooth card's admission.
+    (
+      "polishSetupCard.featureRoute",
+      .polishSetupCard(PolishSetupCardModel(problem: .cloudKeyMissing(.openAI)))
+    ),
   ]
 
   // MARK: - The sweep
@@ -174,12 +179,12 @@ struct PillCatalogAdmissionTests {
     // conditional, so a mis-specified axis — one state, one event, a predicate
     // that never fires — leaves this test green while asserting nothing. The
     // three counts are arithmetic over the axes.
-    // 19 requests x 3 states = 57 cells: the 4 feature routes refused in the 2
-    // non-empty states (8), `.hidden` emptying in all 3, and the remaining 46
+    // 20 requests x 3 states = 60 cells: the 5 feature routes refused in the 2
+    // non-empty states (10), `.hidden` emptying in all 3, and the remaining 47
     // admitted.
-    #expect(refused == 8, "the refusal half of this sweep is not being exercised")
+    #expect(refused == 10, "the refusal half of this sweep is not being exercised")
     #expect(emptied == 3, "the emptying half of this sweep is not being exercised")
-    #expect(admitted == 46, "the admission half of this sweep is not being exercised")
+    #expect(admitted == 47, "the admission half of this sweep is not being exercised")
     #expect(refused + emptied + admitted == StartingState.allCases.count * Self.events.count)
   }
 
@@ -235,10 +240,10 @@ struct PillCatalogAdmissionTests {
   }
 
   /// The same class one suite over: the sweep's axes are hand-written lists, and
-  /// the coverage floor above counts CELLS. Fifty-seven cells is equally true
-  /// of nineteen distinct requests and of eighteen with one duplicated, so the
+  /// the coverage floor above counts CELLS. Sixty cells is equally true
+  /// of twenty distinct requests and of nineteen with one duplicated, so the
   /// floor cannot tell a complete axis from a short one. Name the axis.
-  @Test("the request axis is the whole set, not merely nineteen entries")
+  @Test("the request axis is the whole set, not merely twenty entries")
   func requestAxisIsComplete() {
     let labels = Self.events.map(\.label)
     let expected: Set<String> = [
@@ -248,12 +253,13 @@ struct PillCatalogAdmissionTests {
       "bluetoothAwareness.pipelineRoute", "escapeRecovery",
       "bluetoothAwareness.featureRoute", "importStatus.featureRoute",
       "correctionLearned.featureRoute", "correctionLearnedSaveError.featureRoute",
+      "polishSetupCard.featureRoute",
     ]
     #expect(Set(labels) == expected, "a request is missing from the sweep's axis")
     #expect(labels.count == expected.count, "the sweep's axis contains a duplicate")
     #expect(
-      Self.events.filter { Self.isFeatureRoute($0.event) }.count == 4,
-      "all four feature routes must be on the axis — they are where a refusal is observable")
+      Self.events.filter { Self.isFeatureRoute($0.event) }.count == 5,
+      "all five feature routes must be on the axis — they are where a refusal is observable")
 
     // **A LABEL IS NOT AN EVENT, and the set check above only proves the labels.**
     // A row labelled "warning" carrying `.error` satisfies every assertion in this
@@ -280,7 +286,8 @@ struct PillCatalogAdmissionTests {
         ("bluetoothAwareness.featureRoute", .bluetoothAwareness),
         ("importStatus.featureRoute", .importStatus(message: _)),
         ("correctionLearned.featureRoute", .correctionLearned(_)),
-        ("correctionLearnedSaveError.featureRoute", .correctionLearnedSaveError(_)):
+        ("correctionLearnedSaveError.featureRoute", .correctionLearnedSaveError(_)),
+        ("polishSetupCard.featureRoute", .polishSetupCard(_)):
         break
       default:
         Issue.record("\(label) is paired with the wrong request")
@@ -290,7 +297,8 @@ struct PillCatalogAdmissionTests {
 
   private static func isFeatureRoute(_ event: OverlayEvent) -> Bool {
     switch event {
-    case .importStatus, .bluetoothAwareness, .correctionLearned, .correctionLearnedSaveError:
+    case .importStatus, .bluetoothAwareness, .correctionLearned, .correctionLearnedSaveError,
+      .polishSetupCard:
       return true
     default: return false
     }

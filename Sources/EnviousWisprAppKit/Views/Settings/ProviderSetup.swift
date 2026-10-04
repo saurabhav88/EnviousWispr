@@ -243,11 +243,19 @@ enum ProviderSetupDownloads {
 /// fail-to-empty convention (unchanged from before #1455).
 @MainActor
 enum ProviderSetupKeys {
-  static func load(into model: ProviderSetupModel, using keychainManager: KeychainManager) {
+  /// #3438: each read is also published to `presence`, so surfaces outside this editor see
+  /// what the editor just read without a second Keychain read.
+  static func load(
+    into model: ProviderSetupModel, using keychainManager: KeychainManager,
+    presence: SavedKeyPresence
+  ) {
     // Every arm below writes the field from the Keychain or empties it, so what is on screen
     // afterwards IS the persisted value; the digests are taken at the end, once, which also
     // covers a THROWN read that emptied the field.
     defer {
+      presence.recordRead(.from(model.openAIKeySaved), for: .openAI)
+      presence.recordRead(.from(model.geminiKeySaved), for: .gemini)
+      presence.recordRead(.from(model.claudeKeySaved), for: .claude)
       model.openAIKeyPersistedDigest = ProviderSetupModel.digest(model.openAIKey)
       model.geminiKeyPersistedDigest = ProviderSetupModel.digest(model.geminiKey)
       model.claudeKeyPersistedDigest = ProviderSetupModel.digest(model.claudeKey)
@@ -301,6 +309,7 @@ struct ProviderSetupSection: View {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
+  @Environment(SavedKeyPresence.self) private var savedKeyPresence
   @Environment(EGOneRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @Environment(\.keychainManager) private var keychainManagerEnv
@@ -441,20 +450,19 @@ struct ProviderSetupSection: View {
 
 // MARK: - Status (#3385)
 
-/// The status mapping's inputs for this surface. The validation verdict counts only when it
-/// is about THIS surface's provider (`stateIsAboutThisSurface`).
-private var statusInputs: ProviderStatusInputs {
-  ProviderStatusInputs(
-    egOneInstall: egOne.installState, egOneHealth: egOne.health,
-    s1MiniInstall: localPolishRuntimes.s1Mini.installState,
-    s1MiniHealth: localPolishRuntimes.s1Mini.health,
-    appleStatus: aiAvailability.latestReport?.overallStatus,
-    appleIsChecking: aiAvailability.isChecking,
+/// The setup facts for this surface (#3438: shared with the import gate and the setup
+/// warnings). The validation verdict counts only when it is about THIS surface's provider
+/// (`stateIsAboutThisSurface`).
+private var statusFacts: PolishSetupFacts {
+  .live(
+    localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
     validationProvider: stateIsAboutThisSurface ? llmDiscovery.stateProvider : nil,
     cloudValidation: surfaceValidation,
     openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,
     claudeKeySaved: model.claudeKeySaved,
-    ollamaSetup: setup.ollamaSetup.setupState)
+    savedKeyPresence: savedKeyPresence,
+    cloudVerdicts: llmDiscovery.cloudVerdicts,
+    ollamaModel: surfaceOllamaModel)
 }
 
 /// The chosen provider's status, as the card on the AI Polish page shows it. Health only
@@ -463,7 +471,7 @@ private var currentProviderStatus: ProviderStatus? {
   ProviderStatusMapping.status(
     for: provider,
     context: ProviderStatusContext(selected: true, healthApplies: surface == .dictation),
-    inputs: statusInputs)
+    facts: statusFacts)
 }
 
 /// Whether the CONFIRMED-persisted key for the current provider read back
@@ -481,34 +489,22 @@ private var currentProviderStatus: ProviderStatus? {
 /// "say nothing", which is right for the missing-key nudge and leaves this case with no
 /// surface at all. It needs one, because the import's Continue gate blocks on it and a
 /// user staring at a disabled button deserves both the reason and a way to ask again.
-private var savedKeyIsUnknownForCurrentProvider: Bool {
-  switch provider {
-  case .openAI: return model.openAIKeySaved == nil
-  case .gemini: return model.geminiKeySaved == nil
-  case .claude: return model.claudeKeySaved == nil
-  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
-  }
-}
+private var savedKeyIsUnknownForCurrentProvider: Bool { currentSavedKey == .unknown }
 
-private var savedKeyIsEmptyForCurrentProvider: Bool {
+private var savedKeyIsEmptyForCurrentProvider: Bool { currentSavedKey == .absent }
+
+private var savedKeyIsPresentForCurrentProvider: Bool { currentSavedKey == .present }
+
+/// The current provider's saved-key fact, read from the shared facts; nil for a provider
+/// that stores no key.
+private var currentSavedKey: SavedKeyState? {
   switch provider {
-  case .openAI: return model.openAIKeySaved == false
-  case .gemini: return model.geminiKeySaved == false
-  case .claude: return model.claudeKeySaved == false
+  case .openAI, .gemini, .claude: return .from(statusFacts.savedKey(for: provider))
   // #2651: enumerated rather than `default:`. No key is stored for these, so
   // the missing-key notice must stay suppressed. A NEW cloud provider on a
   // `default:` arm would never show that notice, which is the direction that
   // hides a real problem from the user.
-  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
-  }
-}
-
-private var savedKeyIsPresentForCurrentProvider: Bool {
-  switch provider {
-  case .openAI: return model.openAIKeySaved == true
-  case .gemini: return model.geminiKeySaved == true
-  case .claude: return model.claudeKeySaved == true
-  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return nil
   }
 }
 
@@ -614,7 +610,7 @@ private var cloudRows: some View {
   if savedKeyIsEmptyForCurrentProvider {
     PolishBand(
       text:
-        "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
+        "Dictation still works. Without a key, text is pasted without AI polish.",
       systemImage: "exclamationmark.triangle")
   }
   // #2772 chunk 3, plan §7: the Keychain would not answer. Saying "you have no key"
@@ -633,7 +629,7 @@ private var cloudRows: some View {
           "Check again", comment: "AI Polish: reads the saved API key again."),
         isEnabled: true, emphasis: .quiet, size: .medium
       ) {
-        ProviderSetupKeys.load(into: model, using: keychainManager)
+        ProviderSetupKeys.load(into: model, using: keychainManager, presence: savedKeyPresence)
       }
     }
     PolishRowDivider()
@@ -981,8 +977,15 @@ private var apiKeyRow: some View {
           ) {
             let provider = provider
             let key = activeKeyBinding.wrappedValue
-            guard saveKey(key: key, keychainId: descriptor.keychainId) else { return }
+            guard saveKey(key: key, keychainId: descriptor.keychainId) else {
+              // A failed store may or may not have changed what is stored; say unknown and
+              // drop any verdict about the previous key rather than guess (#3438).
+              savedKeyPresence.recordUncertain(provider)
+              return
+            }
             setKeySaved(!key.isEmpty)
+            // Before the check below starts, so its verdict is tied to THIS key (#3438).
+            savedKeyPresence.recordSaved(provider)
             Task {
               await llmDiscovery.validateKeyAndDiscoverModels(
                 provider: provider, settings: settings, surface: surface, source: .save)
@@ -996,9 +999,13 @@ private var apiKeyRow: some View {
                 "Clear", comment: "AI Polish: button that deletes the saved API key."),
               isEnabled: true, emphasis: .destructive, size: .medium
             ) {
-              guard clearKey(keychainId: descriptor.keychainId) else { return }
+              guard clearKey(keychainId: descriptor.keychainId) else {
+                savedKeyPresence.recordUncertain(provider)
+                return
+              }
               activeKeyBinding.wrappedValue = ""
               setKeySaved(false)
+              savedKeyPresence.recordCleared(provider)
               revealsKey = false
               llmDiscovery.reset()
             }
@@ -2635,6 +2642,7 @@ struct ProviderSetupLifecycle: ViewModifier {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
+  @Environment(SavedKeyPresence.self) private var savedKeyPresence
   @Environment(EGOneRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @Environment(\.keychainManager) private var keychainManagerEnv
@@ -2674,7 +2682,7 @@ struct ProviderSetupLifecycle: ViewModifier {
     .modifier(
       OllamaDownloadConfirmation(model: model, setup: setup, isActive: !model.modelsSheetOpen))
     .onAppear {
-      ProviderSetupKeys.load(into: model, using: keychainManager)
+      ProviderSetupKeys.load(into: model, using: keychainManager, presence: savedKeyPresence)
       if provider == .ollama {
         llmDiscovery.loadCachedModels(for: .ollama, settings: settings, surface: surface)
         setup.startOllamaStatusWatch()

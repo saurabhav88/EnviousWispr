@@ -34,15 +34,15 @@ struct ProviderStatusMappingTests {
     ProviderStatusMapping.status(
       for: provider,
       context: ProviderStatusContext(selected: selected, healthApplies: selected),
-      inputs: ProviderStatusInputs(
+      facts: PolishSetupFacts(
         egOneInstall: egOneInstall, egOneHealth: egOneHealth,
         s1MiniInstall: s1MiniInstall, s1MiniHealth: s1MiniHealth,
-        appleStatus: appleStatus, appleIsChecking: appleIsChecking,
+        appleStatus: appleStatus, appleFailureReasons: [], appleIsChecking: appleIsChecking,
         validationProvider: validationProvider ?? provider,
-        cloudValidation: cloudValidation,
+        cloudValidation: cloudValidation, credentialRevisions: [:], cloudVerdicts: [:],
         openAIKeySaved: cloudKeySaved, geminiKeySaved: cloudKeySaved,
         claudeKeySaved: cloudKeySaved,
-        ollamaSetup: ollamaSetup))
+        ollamaSetup: ollamaSetup, ollamaModel: .installed))
   }
 
   // MARK: - S1-mini (#2649: same renderer as EG-1, separate state)

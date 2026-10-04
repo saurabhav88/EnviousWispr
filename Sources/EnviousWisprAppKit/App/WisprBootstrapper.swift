@@ -99,6 +99,9 @@ package final class WisprBootstrapper {
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
   let llmDiscovery: LLMModelDiscoveryCoordinator
+  /// #3438: the AI polish setup warnings as ONE slot (the `learnFromEdits` shape): which cloud
+  /// keys are saved, and which warnings may show.
+  let polishSetup: PolishSetupWiring
   let vocabularyPackManager: VocabularyPackManager
 
   /// Quick Add (#2381), as ONE slot rather than four.
@@ -309,7 +312,9 @@ package final class WisprBootstrapper {
       [transcriptionCheckpointStore] event in transcriptionCheckpointStore.apply(event)
     }
 
-    let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
+    let savedKeyPresence = SavedKeyPresence()
+    let llmDiscovery = LLMModelDiscoveryCoordinator(
+      keychainManager: keychainManager, savedKeyPresence: savedKeyPresence)
 
     let transcriptStore = TranscriptStore()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
@@ -1061,6 +1066,9 @@ package final class WisprBootstrapper {
     // #1480: late-binding bridge so this early-assigned onChange closure can
     // forward setting-change facts to the (later-constructed) presenter.
     let bluetoothAwarenessPresenterHolder = BluetoothAwarenessPresenterHolder()
+    // #3438: the same late binding for the setup-warning monitor, built further down. Its
+    // configuration and eligibility move here, synchronously, never only by later observation.
+    let polishSetupMonitorHolder = PolishSetupMonitorHolder()
     // #3289 §8b: the same late binding for the idle-memory observer, built further down; a usage
     // metrics change restarts its idle stretch.
     weak var idleMemoryObserverForSettings: IdleMemoryObserver?
@@ -1069,12 +1077,17 @@ package final class WisprBootstrapper {
       [
         weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
         bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
-        weak learnFromEdits, weak appWindowCoordinator
+        weak learnFromEdits, weak appWindowCoordinator, polishSetupMonitorHolder
       ] key
       in
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
       if key == .shareUsageMetrics { idleMemoryObserverForSettings?.usageMetricsChanged() }
+      switch key {
+      case .llmProvider, .llmModel, .ollamaModel, .onboardingState:
+        polishSetupMonitorHolder.monitor?.configurationOrEligibilityChanged()
+      default: break
+      }
       // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
       // throws/awaits into the setter path).
       settingsChangeTelemetry?.handle(key)
@@ -1596,6 +1609,19 @@ package final class WisprBootstrapper {
           appWindowCoordinator.showWindow()
         },
         openPermissions: openPermissionsWindow,
+        // #3438: evaluated live as the menu is built (the monitor is bound later; until it is,
+        // nothing shows).
+        polishSetupWarning: { [polishSetupMonitorHolder] in
+          guard let monitor = polishSetupMonitorHolder.monitor else { return nil }
+          _ = monitor.currentContext()
+          return monitor.shows(.menu) ? monitor.promptSubject : nil
+        },
+        openAIPolish: { [polishSetupMonitorHolder] subject in
+          // The menu line is the only way here; report what it showed when it was built.
+          polishSetupMonitorHolder.monitor?.recordPrompt(.menu, .finishSetup, subject: subject)
+          navigationCoordinator.request(.aiPolish)
+          appWindowCoordinator.showWindow()
+        },
         toggleRecording: { await dictationRuntime.toggleRecording(source: .menuBar) },
         quit: { NSApp.terminate(nil) },
         lastDictation: { [weak transcriptCoordinator] in
@@ -2045,7 +2071,10 @@ package final class WisprBootstrapper {
         // The screen's gate, composed from the same coordinators the screen reads; the
         // door has no editor and so no unsaved-key draft.
         polishReadiness: {
-          [settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup] in
+          [
+            settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup,
+            savedKeyPresence
+          ] in
           let provider = settings.effectiveFileImportLLMProvider
           // The probes the screen runs on every appearance, through the same owner.
           await FileImportPolishGate.armImport(
@@ -2062,7 +2091,7 @@ package final class WisprBootstrapper {
             importOllamaModel: settings.fileImportLLMProvider == nil
               ? settings.ollamaModel : settings.fileImportOllamaModel,
             llmDiscovery: llmDiscovery, localPolishRuntimes: localPolishRuntimes,
-            aiAvailability: aiAvailability, setup: setup)
+            aiAvailability: aiAvailability, setup: setup, savedKeyPresence: savedKeyPresence)
         })
     #endif
     self.transcriptCoordinator = transcriptCoordinator
@@ -2096,6 +2125,59 @@ package final class WisprBootstrapper {
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
+    let polishSetupMonitor = PolishSetupMonitor(
+      readInputs: {
+        [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
+        PolishSetupInputs.live(
+          settings: settings, localPolishRuntimes: localPolishRuntimes,
+          aiAvailability: aiAvailability, setup: setup, llmDiscovery: llmDiscovery,
+          savedKeyPresence: savedKeyPresence)
+      },
+      ollamaRefresh: OllamaOffPageRefresh(
+        requestOnce: { [weak setup] in setup?.requestOffPageOllamaRefresh() },
+        cancel: { [weak setup] in setup?.cancelOffPageOllamaRefresh() }),
+      // A take that found no key in the Keychain is that read's answer; no second read.
+      recordKeyEvidence: { [savedKeyPresence] provider, state, readAt in
+        savedKeyPresence.recordRead(state, for: provider, readAt: readAt)
+      })
+    polishSetupMonitorHolder.monitor = polishSetupMonitor
+    savedKeyPresence.onChange = { [weak polishSetupMonitor] in
+      polishSetupMonitor?.configurationOrEligibilityChanged()
+    }
+    // #3438 chunk 6: the card after a dictation, offered for a take the monitor took in, and
+    // withdrawn in the same turn its episode stops applying.
+    let polishSetupCard = PolishSetupCardPresenter(
+      overlay: recordingOverlay, monitor: polishSetupMonitor,
+      openAIPolish: { [weak navigationCoordinator, weak appWindowCoordinator] in
+        navigationCoordinator?.request(.aiPolish)
+        appWindowCoordinator?.showWindow()
+      })
+    polishSetupMonitor.onEpisodeChange = { [weak polishSetupCard] in polishSetupCard?.reconcile() }
+    // #3438 chunk 4: both dictation drivers freeze each take's AI polish setup, ask the monitor
+    // to confirm a setup problem, write it on the take's terminal row, and hand the concluded
+    // take's outcome back. One value for both, so the two backends cannot be wired apart.
+    let polishSetupTakeHooks = PolishSetupTakeHooks(
+      // A recording starting is where a pending or shown card stops applying.
+      freeze: { [weak polishSetupMonitor, weak polishSetupCard] in
+        polishSetupCard?.stop()
+        return polishSetupMonitor?.freezeTakeContext()
+      },
+      classify: { [weak polishSetupMonitor] evidence, take in
+        polishSetupMonitor?.confirmedSetupProblem(evidence, for: take)
+      },
+      recordTerminalProblem: { takeID, tag in
+        TelemetryService.shared.recordPolishSetupProblem(takeID: takeID, tag: tag)
+      },
+      // One ingestion authority: the card is offered only for a take the monitor took in.
+      ingest: { [weak polishSetupMonitor, weak polishSetupCard] outcome, mayOfferCard in
+        guard polishSetupMonitor?.ingest(outcome) == true else { return }
+        polishSetupCard?.offer(
+          after: outcome, dataLossDisclosureScheduled: mayOfferCard == false)
+      })
+    kernelDriver.polishSetupHooks = polishSetupTakeHooks
+    whisperKitKernelDriver.polishSetupHooks = polishSetupTakeHooks
+    self.polishSetup = PolishSetupWiring(
+      savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor, card: polishSetupCard)
     self.vocabularyPackManager = vocabularyPackManager
     // #2381. Built from three collaborators this root already holds; it adds no new dependency of
     // its own and reaches nothing the root did not already have.
@@ -2275,6 +2357,8 @@ package final class WisprBootstrapper {
     appWindowCoordinator.finishLaunch()
     // #2381.
     quickAdd.install()
+    // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not.
+    polishSetup.monitor.start()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
     // "recovering" pill. Strict limb, single-flight, one attempt per orphan.
     Task { await recoveryCoordinator.scanAndRecover() }
@@ -2307,6 +2391,8 @@ package final class WisprBootstrapper {
 
   package func applicationDidBecomeActive() {
     appLifecycleCoordinator.runDidBecomeActive()
+    // #3438: after the pane-scoped probe above, so a visible watch is never doubled.
+    polishSetup.monitor.applicationDidBecomeActive()
     // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }
@@ -2320,6 +2406,9 @@ package final class WisprBootstrapper {
     // a Cocoa quit concludes no take, so this is the only path that restores
     // the volume for a quit mid-dictation.
     dictationRuntime.otherAudioHold.finishForTermination()
+    // #3438: stop observing before the owners it reads are torn down.
+    polishSetup.card.stop()
+    polishSetup.monitor.stop()
     // #3269: best effort; the process may exit first, and every outbox write is atomic anyway.
     Task { await FeedbackReporter.stopDelivery() }
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
@@ -2415,6 +2504,8 @@ private struct MainWindowRoot: View {
       })
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
+      .environment(b.polishSetup.savedKeyPresence)
+      .environment(b.polishSetup.monitor)
       .environment(b.vocabularyPackManager)
       // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
       .environment(b.learnFromEdits.availability)
@@ -2468,6 +2559,8 @@ private struct OnboardingWindowRoot: View {
     .environment(b.audioDeviceList)
     .environment(b.aiAvailability)
     .environment(b.llmDiscovery)
+    .environment(b.polishSetup.savedKeyPresence)
+    .environment(b.polishSetup.monitor)
     .environment(\.asrManager, b.asrManager)
     .environment(\.activeEngine, b.activeEngine)
     .environment(\.keychainManager, b.keychainManager)

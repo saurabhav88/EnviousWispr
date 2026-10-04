@@ -26,6 +26,13 @@ GERMAN = {
     "Recording Pill": "Aufnahmeanzeige", "Chimes": "Signaltöne", "Clipboard": "Zwischenablage",
     "Input device": "Eingabegerät", "Choose a microphone": "Mikrofon auswählen",
     "Built-in": "Integriert",
+    # #3438 leave question: the shipped German catalog values.
+    "Leave anyway": "Trotzdem verlassen", "Finish setup": "Einrichtung abschließen",
+    "Pick another model": "Anderes Modell wählen", "Go back to %@": "Zurück zu %@",
+    "Finish AI polish setup": "KI-Nachbearbeitung fertig einrichten",
+    "The download is still in progress. Until setup finishes, text is pasted without AI polish.":
+        "Der Download läuft noch. Bis die Einrichtung fertig ist, wird Text ohne "
+        "KI-Nachbearbeitung eingefügt.",
 }
 
 
@@ -65,6 +72,18 @@ class FakeSettings:
         self.presses = []
         self.scrolls = 0
         self.cancels = 0
+        # #3438: leaving AI Polish asks first. None, "actionable" or "informational".
+        self.leave_question = None
+        self.go_back_provider = None    # offers "Go back to <provider>" when set
+        self.provider = "OpenAI"
+        self.asking = None              # the page the person tried to reach
+        self.duplicate_question = False # two leave sheets (must refuse)
+        self.unrelated_sheet = False    # another app alert with an OK button (must be ignored)
+        self.unrelated_leave_sheet = False  # an alert with "Leave anyway" and another title
+        # Each question shown has its own identity; replacing it changes the identity.
+        self.question_id = 0
+        self.replace_question_at_read = None  # replace the question on this tree read
+        self.reads_while_asking = 0
 
     # ---- shown text ---------------------------------------------------------
     def t(self, english):
@@ -101,8 +120,47 @@ class FakeSettings:
 
     def _select_page(self, page):
         def change():
+            if self.page == "AI Polish" and page != "AI Polish" and self.leave_question:
+                self.asking = page   # the question appears; the page does not change
+                self.question_id += 1
+                self.reads_while_asking = 0
+                return
             self.page = page
         return self._act(f"page:{page}", change)
+
+    def _leave(self, name, change):
+        return self._act(f"leave:{name}", change)
+
+    def leave_sheet(self):
+        target = self.asking
+
+        def go(page_after):
+            def change():
+                self.asking = None
+                self.page = page_after
+            return change
+        if self.leave_question == "informational":
+            return self._identified(el("AXSheet", children=[
+                el("AXStaticText", value=self.t(
+                    "The download is still in progress. Until setup finishes, text is pasted "
+                    "without AI polish.")),
+                self.named("AXButton", "OK", press=self._leave("ok", go(target)))]))
+        buttons = [self.named("AXButton", "Finish setup",
+                              press=self._leave("finish_setup", go("AI Polish")))]
+        if self.go_back_provider:
+            def back():
+                self.provider = self.go_back_provider
+                go(target)()
+            label = self.t("Go back to %@").replace("%@", self.go_back_provider)
+            buttons.append(el("AXButton", desc=label, press=self._leave("go_back", back)))
+        buttons.append(self.named("AXButton", "Leave anyway",
+                                  press=self._leave("leave_anyway", go(target))))
+        return self._identified(el("AXSheet", children=[
+            el("AXStaticText", value=self.t("Finish AI polish setup"))] + buttons))
+
+    def _identified(self, sheet):
+        sheet["_question"] = self.question_id
+        return sheet
 
     def _select_tab(self, tab):
         def change():
@@ -115,6 +173,22 @@ class FakeSettings:
         window_children = []
         if self.open:
             window_children = [self.sidebar_tree(), self.content_tree()]
+            if self.asking is not None:
+                self.reads_while_asking += 1
+                if self.reads_while_asking == self.replace_question_at_read:
+                    self.question_id += 1   # a different question took its place
+                window_children.append(self.leave_sheet())
+                if self.duplicate_question:
+                    window_children.append(self.leave_sheet())
+            if self.unrelated_leave_sheet:
+                window_children.append(el("AXSheet", children=[
+                    el("AXStaticText", value="Quit the other thing?"),
+                    self.named("AXButton", "Leave anyway",
+                               press=self._act("unrelated:leave", lambda: None))]))
+            if self.unrelated_sheet:
+                window_children.append(el("AXSheet", children=[
+                    el("AXStaticText", value="Something else happened."),
+                    self.named("AXButton", "OK")]))
         return el("AXApplication", children=[el("AXWindow", title="EnviousWispr",
                                                  children=window_children,
                                                  frame={"x": 100, "y": 100, "width": 900,
@@ -240,7 +314,7 @@ class FakeSettings:
             press=lambda e: e["_press"]() if e.get("_press") else False,
             frame=lambda e: e.get("_frame"),
             terms=lambda text: [text] + ([GERMAN[text]] if self.german and text in GERMAN else []),
-            sleep=sleep, clock=lambda: clock["t"])
+            sleep=sleep, clock=lambda: clock["t"], same=_same_element)
         # Trap any future attempt to rescue clipped tabs by scrolling.
         def scroll(element):
             self.scrolls += 1
@@ -248,6 +322,15 @@ class FakeSettings:
         a.scroll_to_visible = scroll
         a.cancel = cancel
         return a
+
+
+def _same_element(a, b):
+    """The modelled tree is rebuilt on every read, so a leave question keeps its identity in
+    `_question` (the way the live tree's element stays the same element); anything else is
+    the same only as the same object or an equal value."""
+    if isinstance(a, dict) and isinstance(b, dict) and "_question" in a and "_question" in b:
+        return a["_question"] == b["_question"]
+    return a is b or a == b
 
 
 def _nav(fake, page, tab=None, **kw):
@@ -1423,6 +1506,128 @@ def pr3_cases():
         got = "refused"
     rows.append(("PR3: an existing draft is neither edited nor dismissed", (got, state["open"]),
                  ("refused", True)))
+    return rows
+
+
+
+# ── Leaving AI Polish (#3438) ─────────────────────────────────────────────────
+# These model the leave question's tree; they certify the instrument, not the native alert.
+
+def _on_ai_polish(question, **kw):
+    f = FakeSettings(**kw)
+    f.page = "AI Polish"
+    f.leave_question = question
+    return f
+
+
+def leave_raising_cases():
+    def no_answer():
+        f = _on_ai_polish("actionable")
+        try:
+            _nav(f, "History")
+        finally:
+            assert f.asking == "History" and not any(p.startswith("leave:") for p in f.presses), \
+                "the question was answered or dismissed without a caller's answer"
+
+    def stay_is_not_success():
+        f = _on_ai_polish("actionable")
+        try:
+            _nav(f, "History", leave_answer="finish_setup")
+        finally:
+            assert f.page == "AI Polish" and f.asking is None, "the stay was not observed"
+
+    def informational_refuses_leave_anyway():
+        _nav(_on_ai_polish("informational"), "History", leave_answer="leave_anyway")
+
+    def actionable_refuses_ok():
+        _nav(_on_ai_polish("actionable"), "History", leave_answer="ok")
+
+    def two_questions():
+        f = _on_ai_polish("actionable")
+        f.duplicate_question = True
+        _nav(f, "History", leave_answer="leave_anyway")
+
+    def unknown_answer():
+        f = _on_ai_polish("actionable")
+        try:
+            _nav(f, "History", leave_answer="close")
+        finally:
+            assert f.presses == [], "a press happened before the unknown answer was refused"
+
+    def go_back_not_offered():
+        _nav(_on_ai_polish("actionable"), "History", leave_answer=("go_back", "Gemini"))
+
+    def replaced_question():
+        f = _on_ai_polish("actionable")
+        f.replace_question_at_read = 3   # after navigation met it, before the answer
+        try:
+            _nav(f, "History", leave_answer="leave_anyway")
+        finally:
+            assert not any(p.startswith("leave:") for p in f.presses), \
+                "a replaced question received a press"
+
+    return [
+        ("#3438 leaving AI Polish with no answer refuses and presses nothing in the question",
+         no_answer, sn.LeaveDialogRequired),
+        ("#3438 Finish setup is an observed stay, never a navigation success",
+         stay_is_not_success, sn.LeaveDeclined),
+        ("#3438 the informational notice only takes OK", informational_refuses_leave_anyway,
+         sn.NavigationError),
+        ("#3438 OK is not an answer to the actionable question", actionable_refuses_ok,
+         sn.NavigationError),
+        ("#3438 two leave questions on screen refuse", two_questions, sn.NavigationError),
+        ("#3438 an unknown answer refuses before any press", unknown_answer, sn.RouteError),
+        ("#3438 Go back that the question does not offer refuses", go_back_not_offered,
+         sn.NavigationError),
+        ("#3438 a question replaced after navigation met it is never answered",
+         replaced_question, sn.NavigationError),
+    ]
+
+
+def leave_valued_cases():
+    rows = []
+    # Ordinary navigation away from AI Polish (set up, no question) is unchanged.
+    f = _on_ai_polish(None)
+    rows.append(("#3438 no question: leaving AI Polish lands as before",
+                 (_nav(f, "History").page, f.page), ("History", "History")))
+    for german in (False, True):
+        f = _on_ai_polish("actionable", german=german)
+        r = _nav(f, "History", leave_answer="leave_anyway")
+        rows.append((f"#3438 {'German' if german else 'English'}: Leave anyway reaches the page",
+                     (r.page, f.page, f.presses[-1]), ("History", "History", "leave:leave_anyway")))
+    f = _on_ai_polish("actionable")
+    f.go_back_provider = "Gemini"
+    r = _nav(f, "Keybinds", leave_answer=("go_back", "Gemini"))
+    rows.append(("#3438 Go back restores the provider and reaches the page",
+                 (r.page, f.provider), ("Keybinds", "Gemini")))
+    f = _on_ai_polish("informational")
+    r = _nav(f, "History", leave_answer="ok")
+    rows.append(("#3438 the informational notice: OK reaches the page", r.page, "History"))
+    f = _on_ai_polish("actionable")
+    f.remembered_tab = "Chimes"
+    r = _nav(f, "Dictation Settings", "Clipboard", leave_answer="leave_anyway")
+    rows.append(("#3438 an explicit tab still lands after the question", (r.page, r.tab),
+                 ("Dictation Settings", "Clipboard")))
+    f = _on_ai_polish("actionable")
+    f.remembered_tab = "Chimes"
+    r = _nav(f, "Dictation Settings", leave_answer="leave_anyway")
+    rows.append(("#3438 the remembered tab is kept after the question", r.shown_tab, "Chimes"))
+    # Another alert with an OK button is not the question: navigation proceeds untouched.
+    f = _on_ai_polish(None)
+    f.unrelated_sheet = True
+    rows.append(("#3438 an unrelated alert is never taken for the question",
+                 (sn.leave_dialog(f.ax(), f.root()), _nav(f, "History").page), (None, "History")))
+    # Another alert offering "Leave anyway" under a different title is not the question.
+    f = _on_ai_polish(None)
+    f.unrelated_leave_sheet = True
+    rows.append(("#3438 an unrelated 'Leave anyway' alert is never taken or pressed",
+                 (sn.leave_dialog(f.ax(), f.root()), _nav(f, "History").page,
+                  "unrelated:leave" in f.presses), (None, "History", False)))
+    # Not leaving AI Polish: a question can never be consumed by another route.
+    f = FakeSettings()
+    f.leave_question = "actionable"
+    rows.append(("#3438 moving between other pages never meets the question",
+                 _nav(f, "Keybinds").page, "Keybinds"))
     return rows
 
 

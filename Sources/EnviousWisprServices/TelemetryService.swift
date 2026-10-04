@@ -1016,6 +1016,32 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("dictation.last_reused", properties: props)
   }
 
+  /// An AI polish setup warning was shown or answered (#3438 M2). One row per showing (leave
+  /// dialog, card) or per press (every surface). Menu and banner rows are presses only.
+  ///
+  /// Closed values only: the surface, the action, the setup problem tag and the provider's
+  /// enum name. `take_id` only on card rows, to join the take that raised the card. Never a key,
+  /// a model name, an error message or any text. Reader: the "Polish setup prompts" funnel by
+  /// surface and action per day, checked in the post-release review.
+  public func polishSetupPrompt(
+    surface: String, action: String, problem: String, provider: String, takeID: String?
+  ) {
+    var props: [String: Any] = [
+      "surface": surface, "action": action, "problem": problem, "provider": provider,
+    ]
+    if let takeID { props["take_id"] = takeID }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "polish_setup.prompt",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("polish_setup.prompt", properties: props)
+  }
+
   /// A committed key paste's arrival session ended (#3106). One row per committed session.
   ///
   /// What the one shared reader observed in the destination field, never whether the paste
@@ -1650,6 +1676,7 @@ public final class TelemetryService {
         "learned_check_fallback_reason", "learned_check_checker_identity",
         "learned_check_checker_status", "learned_check_absence_reason",
         "vad_stage_reached", "vad_backend", "vad_input_route", "polish_language_hint",
+        "polish_setup_problem",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
@@ -4765,6 +4792,17 @@ public final class TelemetryService {
   /// `dictation.completed` (cleanup language) and `llm.polish_*` (outcome) on `take_id`.
   package func recordPolishLanguageHint(takeID: String, hint: String) {
     takeStages.update(takeID: takeID) { $0.polishLanguageHint = hint }
+  }
+
+  // MARK: - AI polish setup (#3438)
+
+  /// Records the confirmed unfinished AI polish setup that skipped this take's polish onto the
+  /// take's terminal row (`polish_setup_problem`, M1). Zero new rows: it folds onto
+  /// `dictation.terminal` through the take ledger, by the explicit take ID, before that row
+  /// closes. A take with no open entry (closed, evicted, never opened) records nothing. Closed,
+  /// provider-free vocabulary. Reader: setup-blocked takes per day by tag.
+  public func recordPolishSetupProblem(takeID: String, tag: PolishSetupProblemTag) {
+    takeStages.update(takeID: takeID) { $0.polishSetupProblem = tag.rawValue }
   }
 
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)

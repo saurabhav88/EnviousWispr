@@ -446,7 +446,21 @@ public struct GeminiConnector: TranscriptPolisher {
         )
       }
     #endif
-    throw LLMError.classified(Self.classify(statusCode: statusCode, bodyString: body))
+    throw Self.polishError(statusCode: statusCode, bodyString: body)
+  }
+
+  /// #3438: the error a failed polish request throws. A rejection Google states in its own
+  /// structure (HTTP 401, or a 400 whose `google.rpc.ErrorInfo` reason is API_KEY_INVALID) is
+  /// the TYPED `invalidAPIKey`; it shows and counts exactly as before (`PolishFailureReason.from`
+  /// maps it to `.apiKeyRejected`). A rejection read from body TEXT alone stays `.classified`.
+  static func polishError(statusCode: Int, bodyString: String) -> LLMError {
+    if statusCode == 401
+      || (statusCode == 400
+        && LLMModelDiscovery.geminiErrorInfoReasons(bodyString).contains("API_KEY_INVALID"))
+    {
+      return .invalidAPIKey
+    }
+    return .classified(classify(statusCode: statusCode, bodyString: bodyString))
   }
 
   /// Pure status+body -> reason classifier (#945). Gemini's 429

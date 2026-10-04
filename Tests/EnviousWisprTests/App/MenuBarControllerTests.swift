@@ -248,6 +248,68 @@ struct MenuBarControllerTests {
       "the action carries the TITLE's text and the sample it came from, never a later read")
   }
 
+  // MARK: - AI polish setup line (#3438)
+
+  private static let openAIKeyMissing = PolishSetupPromptSubject(
+    problem: .cloudKeyMissing(.openAI), provider: .openAI)
+
+  @Test("an unfinished AI polish setup adds one enabled line that opens AI Polish")
+  func polishSetupLine() {
+    let spy = ActionSpy()
+    let controller = makeController(spy: spy)
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu, state: fixture(pipelineState: .idle, polishSetupWarning: Self.openAIKeyMissing))
+    let lines = menu.items.filter { $0.identifier == MenuBarItemID.polishSetup }
+    #expect(lines.count == 1)
+    let line = lines.first
+    #expect(line?.title == "Finish setting up AI polish")
+    #expect(line?.isEnabled == true)
+    // It sits in the warning area, above Settings.
+    let lineIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.polishSetup }
+    let settingsIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.settings }
+    #expect(lineIndex != nil && settingsIndex != nil && lineIndex! < settingsIndex!)
+    perform(line)
+    #expect(spy.fired == ["openAIPolish"])
+    #expect(spy.openedAIPolishFor == [Self.openAIKeyMissing])
+
+    // No unfinished setup, or onboarding not finished: no line.
+    controller.renderMenu(into: menu, state: fixture(pipelineState: .idle))
+    #expect(menu.items.contains { $0.identifier == MenuBarItemID.polishSetup } == false)
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle, onboardingComplete: false, polishSetupWarning: Self.openAIKeyMissing))
+    #expect(menu.items.contains { $0.identifier == MenuBarItemID.polishSetup } == false)
+  }
+
+  @Test("a click reports what the line showed, even after the setup was finished meanwhile")
+  func polishSetupLineReportsWhatItShowed() {
+    let spy = ActionSpy()
+    spy.polishSetupWarning = Self.openAIKeyMissing
+    let controller = makeController(spy: spy)
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu, state: fixture(pipelineState: .idle, polishSetupWarning: Self.openAIKeyMissing))
+    let line = menu.items.first { $0.identifier == MenuBarItemID.polishSetup }
+    #expect(line != nil)
+    // The key is saved while the menu is open: the live reader now says nothing is wrong, and
+    // the click must not ask it again.
+    spy.polishSetupWarning = nil
+    perform(line)
+    #expect(spy.openedAIPolishFor == [Self.openAIKeyMissing])
+  }
+
+  @Test("the AI polish setup line never changes the menu bar icon")
+  func polishSetupLeavesTheIconAlone() {
+    for pipelineState in [PipelineState.idle, .recording] {
+      #expect(
+        MenuBarController.iconState(fixture(pipelineState: pipelineState))
+          == MenuBarController.iconState(
+            fixture(pipelineState: pipelineState, polishSetupWarning: Self.openAIKeyMissing)))
+    }
+  }
+
   // MARK: - Paste Last Dictation (#3106)
 
   @Test("Paste Last Dictation sits directly under Quick Add, disabled when nothing may be reused")
@@ -795,9 +857,10 @@ struct MenuBarControllerTests {
     quickAddShortcut: String? = "\u{2303}\u{2325} W",
     quickAddContext: SelectionReader.AcquisitionContext = .init(
       pid: 501, bundleIdentifier: "com.apple.TextEdit", focusedSubrole: nil),
-    quickAddFallbackEnabled: Bool = true
+    quickAddFallbackEnabled: Bool = true,
+    polishSetupWarning: PolishSetupPromptSubject? = nil
   ) -> MenuBarViewState {
-    MenuBarViewState(
+    var state = MenuBarViewState(
       quickAddShortcut: quickAddShortcut,
       quickAddContext: quickAddContext,
       quickAddFallbackEnabled: quickAddFallbackEnabled,
@@ -816,6 +879,8 @@ struct MenuBarControllerTests {
       installEnabled: installEnabled,
       appearancePreference: appearancePreference
     )
+    state.polishSetupWarning = polishSetupWarning
+    return state
   }
 
   private func makeController(spy: ActionSpy = ActionSpy()) -> MenuBarController {
@@ -870,6 +935,11 @@ struct MenuBarControllerTests {
         openSettings: { spy.fired.append("openSettings") },
         openTranscribeFile: { spy.fired.append("openTranscribeFile") },
         openPermissions: { spy.fired.append("openPermissions") },
+        polishSetupWarning: { spy.polishSetupWarning },
+        openAIPolish: {
+          spy.fired.append("openAIPolish")
+          spy.openedAIPolishFor.append($0)
+        },
         toggleRecording: { spy.fired.append("toggleRecording") },
         quit: { spy.fired.append("quit") },
         lastDictation: { spy.lastDictation },
@@ -1055,4 +1125,7 @@ final class ActionSpy {
   var fired: [String] = []
   /// #3106: what `lastDictation` answers; nil means History has nothing to reuse.
   var lastDictation: (id: UUID, text: String)?
+  /// #3438: what `polishSetupWarning` answers, and what each AI Polish open was told.
+  var polishSetupWarning: PolishSetupPromptSubject?
+  var openedAIPolishFor: [PolishSetupPromptSubject] = []
 }

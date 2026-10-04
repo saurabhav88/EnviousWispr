@@ -216,7 +216,7 @@ struct TextProcessingRunnerCaptureTests {
 
     // The notice the user reads is untouched by the downgrade.
     #expect(
-      result.polishError == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
+      result.polishError == "AI polish skipped: no Gemini API key set yet. Add one in Settings.")
     #expect(result.polishNotice?.leadIn == .skipped)
     #expect(spy.calls.isEmpty)
     #expect(records.calls.count == 1)
@@ -348,7 +348,7 @@ struct TextProcessingRunnerCaptureTests {
 
     // Same sentence the no-key user reads; a different fingerprint for us.
     #expect(
-      result.polishError == "AI cleanup skipped: no Gemini API key set yet. Add one in Settings.")
+      result.polishError == "AI polish skipped: no Gemini API key set yet. Add one in Settings.")
     #expect(result.polishNotice?.leadIn == .skipped)
     #expect(spy.calls.count == 1)
     #expect(spy.calls.first?.fingerprintDetail == "api_key_unreadable")
@@ -470,7 +470,7 @@ struct TextProcessingRunnerCaptureTests {
     #expect(spy.calls.count == 1)
     #expect(spy.calls.first?.tags["polish.error_case"] == "timed_out")
     #expect(spy.calls.first?.tags["polish.is_timeout"] == "true")
-    #expect(result.polishError?.hasPrefix("AI cleanup skipped:") == true)
+    #expect(result.polishError?.hasPrefix("AI polish skipped:") == true)
     #expect(result.polishNotice?.leadIn == .skipped)
     // #1446: `is_timeout` reaches the durable record too, not only the alert.
     #expect(records.calls.count == 1)
@@ -757,7 +757,7 @@ struct TextProcessingRunnerCaptureTests {
     #expect(
       result.polishError
         == "AI polish failed: Gemini ended the response before cleanup finished. "
-        + "EnviousWispr kept your complete original text instead. If this keeps happening, "
+        + "Pasted without AI polish. If this keeps happening, "
         + "choose another model or use a shorter dictation.")
     // Exactly one durable count with the right attribution; zero alerts.
     #expect(spy.calls.isEmpty)
@@ -876,4 +876,203 @@ struct TextProcessingRunnerCaptureTests {
         == "AI polish failed: The on-device model is not ready. It may still be downloading or restricted by your organization. Try again later or use a different provider."
     )
   }
+
+  // MARK: - The take's polish outcome (#3438 chunk 4)
+
+  private struct FixedPolisher: TranscriptPolisher {
+    let text: String
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      LLMResult(polishedText: self.text)
+    }
+  }
+
+  @MainActor
+  final class ProbeLog {
+    var classified: [PolishSetupEvidence] = []
+    var recorded: [(String, PolishSetupProblemTag)] = []
+    var answer: PolishSetupProblemTag?
+    let observedAt = ContinuousClock.now
+  }
+
+  private static let take = PolishSetupTakeContext(
+    provider: .openAI, model: "gpt-4o-mini", configurationRevision: 7, episode: 3)
+
+  private static func probe(_ log: ProbeLog) -> PolishSetupTakeProbe {
+    PolishSetupTakeProbe(
+      takeID: "take-A", context: take,
+      classify: { log.classified.append($0); return log.answer },
+      recordTerminalProblem: { log.recorded.append(($0, $1)) },
+      now: { log.observedAt })
+  }
+
+  nonisolated static let errorOutcomes:
+    [(String, @Sendable () -> any Error, PolishTakeResult, PolishSetupEvidence?)] = [
+      ("missing key", { LLMError.classified(.apiKeyMissing) }, .skippedWithNotice, .cloudKeyMissing),
+      ("unreadable key", { LLMError.classified(.apiKeyUnreadable) }, .skippedWithNotice, .cloudKeyUnreadable),
+      ("rejected key (401)", { LLMError.invalidAPIKey }, .failed, .cloudKeyRejected),
+      ("rejected key (classified)", { LLMError.classified(.apiKeyRejected) }, .failed, .cloudKeyRejectedClassified),
+      ("out of credits", { LLMError.classified(.outOfCredits) }, .failed, nil),
+      ("server error", { LLMError.classified(.providerServerError) }, .failed, nil),
+      ("local engine not ready", { LLMError.localEngineSkipped(.notReady, .egOne) }, .skippedSilently, .localEngineNotReady),
+      ("local engine download pending", { LLMError.egOneSkipped(.downloadPending) }, .skippedSilently, .localEngineDownloadPending),
+      ("local engine crashed", { LLMError.localEngineSkipped(.crashed, .egOne) }, .skippedSilently, nil),
+      ("Ollama not running", { LLMError.localPolishNotReady(.providerUnreachable) }, .skippedWithNotice, .ollamaUnreachable),
+      ("Ollama model missing", { LLMError.localPolishNotReady(.modelUnavailable) }, .skippedWithNotice, .ollamaModelUnavailable),
+      ("no Ollama model", { LLMError.localPolishNotReady(.noModelSelected) }, .skippedWithNotice, .ollamaNoModel),
+      ("Apple Intelligence missing", { LLMError.frameworkUnavailable("pre-26") }, .skippedSilently, nil),
+      ("torn-down request", { URLError(.cancelled) }, .cancelled, nil),
+    ]
+
+  @Test(
+    "each polish error becomes one outcome with typed evidence, and the notice is unchanged",
+    arguments: errorOutcomes)
+  func errorOutcome(
+    label: String, makeError: @escaping @Sendable () -> any Error, result: PolishTakeResult,
+    evidence: PolishSetupEvidence?
+  ) async throws {
+    let plain = try await makeRunner(CaptureSpy()).run(
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil,
+      steps: [makeStep(provider: .openAI, model: "gpt-4o-mini", throwing: makeError)])
+    let log = ProbeLog()
+    let probed = try await makeRunner(CaptureSpy()).run(
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil,
+      steps: [makeStep(provider: .openAI, model: "gpt-4o-mini", throwing: makeError)],
+      polishSetup: Self.probe(log), takeID: "take-A")
+
+    let outcome = try #require(probed.polishTakeOutcome, "\(label)")
+    #expect(outcome.result == result, "\(label)")
+    #expect(outcome.evidence == evidence, "\(label)")
+    #expect(outcome.takeID == "take-A")
+    #expect(outcome.context == Self.take)
+    // Stamped where the step observed it; never before the run began.
+    #expect(outcome.observedAt >= log.observedAt)
+    // The app is asked exactly when there is evidence.
+    #expect(log.classified == (evidence.map { [$0] } ?? []), "\(label)")
+    // What the person reads and the text that ships are untouched by the outcome.
+    #expect(probed.polishNotice == plain.polishNotice, "\(label)")
+    #expect(probed.context.text == plain.context.text, "\(label)")
+    #expect(plain.polishTakeOutcome == nil, "no probe, no outcome")
+  }
+
+  @Test("a confirmed problem is written on the take's terminal row at classification; unconfirmed is not")
+  func confirmedProblemIsRecorded() async throws {
+    let log = ProbeLog()
+    log.answer = .cloudKeyMissing
+    let confirmed = try await makeRunner(CaptureSpy()).run(
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil,
+      steps: [
+        makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.classified(.apiKeyMissing) }
+      ],
+      polishSetup: Self.probe(log), takeID: "take-A")
+    #expect(confirmed.polishTakeOutcome?.setupProblem == .cloudKeyMissing)
+    #expect(log.recorded.count == 1)
+    #expect(log.recorded.first?.0 == "take-A")
+    #expect(log.recorded.first?.1 == .cloudKeyMissing)
+
+    let unconfirmedLog = ProbeLog()
+    let unconfirmed = try await makeRunner(CaptureSpy()).run(
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil,
+      steps: [
+        makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.localEngineSkipped(.notReady, .egOne) }
+      ],
+      polishSetup: Self.probe(unconfirmedLog), takeID: "take-A")
+    #expect(unconfirmedLog.classified == [.localEngineNotReady])
+    #expect(unconfirmed.polishTakeOutcome?.setupProblem == nil)
+    #expect(unconfirmedLog.recorded.isEmpty)
+  }
+
+  @Test("polished, too short and polish off each have their own outcome, with no evidence")
+  func nonErrorOutcomes() async throws {
+    func run(_ step: LLMPolishStep, _ text: String) async throws -> PolishTakeOutcome? {
+      let log = ProbeLog()
+      let result = try await makeRunner(CaptureSpy()).run(
+        rawText: text, evidence: .locked("en"), targetAppName: nil, steps: [step],
+        polishSetup: Self.probe(log), takeID: "take-A")
+      #expect(log.classified.isEmpty)
+      #expect(log.recorded.isEmpty)
+      return result.polishTakeOutcome
+    }
+    let polishing = makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.emptyResponse }
+    polishing.makePolisher = { _, _, _ in FixedPolisher(text: "Polished.") }
+    #expect(try await run(polishing, Self.longTranscript)?.result == .polished)
+
+    let short = makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.emptyResponse }
+    #expect(try await run(short, "too short")?.result == .bypassed)
+
+    let off = makeStep(provider: .none, model: "") { LLMError.emptyResponse }
+    #expect(try await run(off, Self.longTranscript)?.result == .notRequested)
+  }
+
+  @Test("typed errors map to evidence; messages never do")
+  func evidenceIsTyped() {
+    #expect(
+      TextProcessingRunner.setupEvidence(from: LLMError.requestFailed("invalid api key")) == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: LLMError.classified(.accessDenied)) == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: LLMError.modelNotFound("x")) == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: URLError(.notConnectedToInternet)) == nil)
+    #expect(
+      TextProcessingRunner.setupEvidence(from: LLMError.egOneSkipped(.notReady))
+        == .localEngineNotReady)
+  }
+
+  final class Stamps: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: ContinuousClock.Instant?
+    func mark() { lock.withLock { value = .now } }
+    var marked: ContinuousClock.Instant? { lock.withLock { value } }
+  }
+
+  private func outcome(_ step: LLMPolishStep) async throws -> PolishTakeOutcome {
+    let result = try await makeRunner(CaptureSpy()).run(
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step],
+      polishSetup: PolishSetupTakeProbe(
+        takeID: "take-A", context: Self.take, classify: { _ in nil },
+        recordTerminalProblem: { _, _ in }, now: { .now }),
+      takeID: "take-A")
+    return try #require(result.polishTakeOutcome)
+  }
+
+  @Test("an Ollama failure seen after a service update is stamped after it, not at step start")
+  func ollamaFailureStampedWhereObserved() async throws {
+    let serviceCommit = Stamps()
+    let step = makeStep(provider: .ollama, model: "qwen3:4b") { LLMError.emptyResponse }
+    step.ollamaReadinessProbe = { _ in
+      serviceCommit.mark()  // the service answers while this take's check is in flight
+      return .serverDown
+    }
+    let polish = try await outcome(step)
+    #expect(polish.evidence == .ollamaUnreachable)
+    #expect(polish.observedAt > (try #require(serviceCommit.marked)))
+  }
+
+  @Test("an Ollama success seen after a service update is stamped after it")
+  func ollamaSuccessStampedWhereObserved() async throws {
+    let serviceCommit = Stamps()
+    let step = makeStep(provider: .ollama, model: "qwen3:4b") { LLMError.emptyResponse }
+    step.makePolisher = { _, _, _ in
+      serviceCommit.mark()
+      return FixedPolisher(text: "Polished text for the take.")
+    }
+    let polish = try await outcome(step)
+    #expect(polish.result == .polished)
+    #expect(polish.observedAt > (try #require(serviceCommit.marked)))
+  }
+
+  @Test("a missing key is stamped when the request read it, before anything later in the request")
+  func missingKeyStampedAtTheRead() async throws {
+    let editorRead = Stamps()
+    let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
+      editorRead.mark()  // the editor reads the key again while the request is in flight
+      return LLMError.classified(.apiKeyMissing)
+    }
+    let polish = try await outcome(step)
+    #expect(polish.evidence == .cloudKeyMissing)
+    #expect(polish.observedAt < (try #require(editorRead.marked)))
+    // The request's key read is carried for the saved-key owner to order.
+    #expect(polish.keyReadAt == polish.observedAt)
+  }
+
 }

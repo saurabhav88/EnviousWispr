@@ -35,6 +35,7 @@ struct TranscribeFileView: View {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
+  @Environment(SavedKeyPresence.self) private var savedKeyPresence
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
 
   /// The shared setup editor's own state (key drafts, saved-key reads, a pending download).
@@ -990,7 +991,7 @@ struct TranscribeFileView: View {
   /// editor renders a state and this decides an outcome; a view that reported its own
   /// readiness would be a second authority on the same question.
   private func readiness(for provider: LLMProvider) -> FileImportPolishReadiness {
-    let savedKey: FileImportSavedKeyState
+    let savedKey: SavedKeyState
     // Whether the field was TYPED IN since it was last loaded or saved, which is not the
     // same fact as the SAVED one: polish reads the Keychain, so a key nobody pressed Save
     // on does not run.
@@ -1020,7 +1021,8 @@ struct TranscribeFileView: View {
     return FileImportPolishGate.readiness(
       provider: provider, savedKey: savedKey, hasUnsavedKeyDraft: edited,
       importOllamaModel: importOllamaModel, llmDiscovery: llmDiscovery,
-      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup)
+      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
+      savedKeyPresence: savedKeyPresence)
   }
 
   struct PolishChoice {

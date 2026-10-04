@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
@@ -14,6 +15,17 @@ struct UnifiedWindowView: View {
   /// The page and the Dictation tab on screen (#3385). One value, for the
   /// window's life only; see `SettingsNavigationState`.
   @State private var navigationState = SettingsNavigationState()
+  /// #3438: the leave guard. The monitor decides whether a warning may show; the window keeps
+  /// only this visit's state: the pending question, the provider chosen when the AI Polish
+  /// visit began, whether a typed key is unsaved (yes/no only), and sidebar focus.
+  @Environment(PolishSetupMonitor.self) private var polishSetupMonitor
+  @Environment(SettingsManager.self) private var settings
+  /// The question on screen and its identity; a dismissal clears only the one it belongs to.
+  @State private var pendingLeave: PolishSetupLeaveRequest?
+  @State private var pendingLeaveID: UInt64 = 0
+  @State private var providerWhenVisitBegan: LLMProvider?
+  @State private var hasUnsavedKeyDraft = false
+  @FocusState private var focusedSidebarPage: SettingsPage?
 
   /// Owned HERE so a language download survives the user navigating to another section: this view
   /// is retained, the pages inside `detailContent` are not. See
@@ -48,10 +60,126 @@ struct UnifiedWindowView: View {
     // Settings item opens the window and asks in the same breath) still lands.
     .onChange(of: navigationCoordinator.pendingDestination, initial: true) { _, destination in
       if let destination {
-        navigationState.apply(destination)
+        // Accepted here: from now on the guard holds it, as navigation or as the pending
+        // destination of a leave question.
         navigationCoordinator.consume()
+        navigate(.destination(destination))
       }
     }
+    .onPreferenceChange(PolishSetupUnsavedKeyDraftKey.self) { hasUnsavedKeyDraft = $0 }
+    .alert(
+      leaveQuestion?.content.title ?? "",
+      isPresented: leaveIsPresented,
+      presenting: leaveQuestion
+    ) { question in
+      ForEach(Array(question.content.buttons.enumerated()), id: \.offset) { _, button in
+        Button(button.title, role: button.role == .cancel ? .cancel : nil) {
+          respond(
+            button.action,
+            reportedAs: button.action.promptAction(
+              isCancelRole: button.role == .cancel, event: NSApp.currentEvent),
+            to: question.id)
+        }
+      }
+    } message: { question in
+      Text(question.content.message)
+    }
+  }
+
+  // MARK: - Navigation through one guard (#3438)
+
+  private struct LeaveQuestion {
+    let id: UInt64
+    let content: PolishSetupLeaveDialogContent
+  }
+
+  private var leaveQuestion: LeaveQuestion? {
+    pendingLeave.map { LeaveQuestion(id: pendingLeaveID, content: .make(for: $0)) }
+  }
+
+  /// Closing the alert (Escape with no Cancel button, or the system) clears only the question
+  /// it was showing; a newer one that arrived meanwhile stays.
+  private var leaveIsPresented: Binding<Bool> {
+    let shownID = pendingLeaveID
+    return Binding(
+      get: { pendingLeave != nil },
+      set: { presented in
+        if !presented, pendingLeaveID == shownID { pendingLeave = nil }
+      })
+  }
+
+  /// Every way of changing page comes through here: a sidebar row, an in-page link, and a
+  /// request from the menu or elsewhere. Leaving AI Polish while the chosen model is not set up
+  /// asks first; while that question is open, the latest request replaces the pending one.
+  private func navigate(_ intent: SettingsNavigationIntent) {
+    if var pending = pendingLeave {
+      // The latest request wins; the question on screen keeps its identity.
+      pending.intent = intent
+      pendingLeave = pending
+      return
+    }
+    if let request = PolishSetupLeaveGuard.request(
+      for: intent, from: navigationState.selectedPage, monitor: polishSetupMonitor,
+      previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,
+      keyNotSaved: hasUnsavedKeyDraft)
+    {
+      pendingLeaveID &+= 1
+      pendingLeave = request
+      polishSetupMonitor.recordPrompt(.leaveDialog, .shown, subject: request.promptSubject)
+      return
+    }
+    commit(intent)
+  }
+
+  private func commit(_ intent: SettingsNavigationIntent) {
+    let wasOnAIPolish = navigationState.selectedPage == .aiPolish
+    navigationState.perform(intent)
+    // A new AI Polish visit begins: remember what was chosen before the person changes it.
+    if intent.page == .aiPolish, !wasOnAIPolish { providerWhenVisitBegan = settings.llmProvider }
+  }
+
+  /// A button on the question `id`. The question's latest destination is read now; the
+  /// answer is validated by the guard before anything changes.
+  private func respond(
+    _ action: PolishSetupLeaveAction, reportedAs reported: PolishSetupPromptEvent.Action,
+    to id: UInt64
+  ) {
+    guard id == pendingLeaveID, let request = pendingLeave else { return }
+    pendingLeave = nil
+    // Reported as pressed (Escape as `closed`), before the guard judges it against the live
+    // state.
+    polishSetupMonitor.recordPrompt(.leaveDialog, reported, subject: request.promptSubject)
+    switch PolishSetupLeaveGuard.resolve(
+      action, request: request, monitor: polishSetupMonitor,
+      previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,
+      keyNotSaved: hasUnsavedKeyDraft)
+    {
+    case .stay:
+      break
+    case .openSystemSettings:
+      if let url = URL(string: AppleIntelligenceSettings.systemSettingsURL) {
+        NSWorkspace.shared.open(url)
+      }
+    case .navigate(let intent):
+      leave(to: intent)
+    case .restoreProvider(let provider, let intent):
+      // The normal setter: the same path as choosing it in the dropdown.
+      settings.llmProvider = provider
+      // Validated as fully set up a moment ago; if that is somehow no longer true, stay rather
+      // than raise a second alert over this one's dismissal.
+      if PolishSetupLeaveGuard.request(
+        for: intent, from: .aiPolish, monitor: polishSetupMonitor,
+        previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,
+        keyNotSaved: hasUnsavedKeyDraft) == nil
+      {
+        leave(to: intent)
+      }
+    }
+  }
+
+  private func leave(to intent: SettingsNavigationIntent) {
+    commit(intent)
+    focusedSidebarPage = intent.page
   }
 
   /// The left navigation, rendered as a self-contained rounded card that floats
@@ -190,8 +318,9 @@ struct UnifiedWindowView: View {
         .font(.system(size: 15, weight: .medium))
         .foregroundStyle(selected ? .white : .stAccent)
     } action: {
-      navigationState.selectSidebar(section)
+      navigate(.sidebar(section))
     }
+    .focused($focusedSidebarPage, equals: section)
   }
 
   /// The load-bearing notification surface for a background bulk-import
@@ -220,6 +349,7 @@ struct UnifiedWindowView: View {
   /// `isRunning`, which Stop clears at the press, never the engine claim it still holds.
   private func sidebarActivity(_ section: SettingsPage) -> SettingsShellCopy.SidebarActivity {
     if section == .transcribeFile && fileImportCoordinator.isRunning { return .fileImport }
+    if section == .aiPolish && polishSetupMonitor.shows(.sidebarTag) { return .polishNeedsSetup }
     if yourWordsEnrichmentBadgeVisible(for: section) { return .dictionaryEnrichment }
     return .none
   }
@@ -234,7 +364,7 @@ struct UnifiedWindowView: View {
     content()
       // The only place `navigationState` is in scope, so the only place this can
       // be supplied without threading a binding through every page.
-      .environment(\.settingsNavigate) { navigationState.apply($0) }
+      .environment(\.settingsNavigate) { navigate(.destination($0)) }
   }
 }
 

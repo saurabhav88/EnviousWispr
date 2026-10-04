@@ -662,7 +662,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     return ctx
   }
 
+  /// #3438: WHEN this step observed what the setup warnings care about, stamped where it was
+  /// observed: Ollama's own check answered (`probeAnsweredAt`); the request was handed to the
+  /// connector, which reads the saved key first (`requestStartedAt`); the provider answered or
+  /// refused (`requestEndedAt`). Reset at every `process` so one take never reads another's.
+  struct SetupObservation: Equatable {
+    var probeAnsweredAt: ContinuousClock.Instant?
+    var requestStartedAt: ContinuousClock.Instant?
+    var requestEndedAt: ContinuousClock.Instant?
+  }
+  private(set) var setupObservation = SetupObservation()
+
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+    setupObservation = SetupObservation()
     // #3105: every caller (live take, file-import part, re-polish, recovery
     // replay) holds the bundled server through the actual inference. A live
     // take deliberately takes no hold at recording start: that would put an
@@ -785,7 +797,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let ollamaThinks: Bool?
     let ollamaRemote: Bool?
     if provider == .ollama {
-      switch await ollamaReadinessProbe(model) {
+      let readiness = await ollamaReadinessProbe(model)
+      setupObservation.probeAnsweredAt = .now
+      switch readiness {
       case .ready(let facts):
         ollamaThinks = facts.thinks
         ollamaRemote = facts.isRemote
@@ -1109,17 +1123,23 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     let llmStart = CFAbsoluteTimeGetCurrent()
     let result: LLMResult
+    setupObservation.requestStartedAt = .now
     do {
       result = try await polisher.polish(
         envelope: plan.envelope,
         config: config,
         onToken: onToken
       )
+      setupObservation.requestEndedAt = .now
     } catch LLMError.egOneSkipped(let reason) {
+      setupObservation.requestEndedAt = .now
       // #2649 (cloud review): the connectors share one transport and throw one
       // error; the ENGINE is this step's entry snapshot, stamped here so the
       // runner attributes the skip without a snapshot of its own (#1448).
       throw LLMError.localEngineSkipped(reason, provider)
+    } catch {
+      setupObservation.requestEndedAt = .now
+      throw error
     }
     let llmEnd = CFAbsoluteTimeGetCurrent()
 

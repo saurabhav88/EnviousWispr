@@ -103,6 +103,10 @@ public final class PipelineStateChangeHandler {
   /// comprehensively in `PipelineStateChangePlannerTests`).
   /// Step 2 — execute each side effect through the injected dependencies.
   /// No decision logic beyond translating typed effects into calls.
+  ///
+  /// #3438: answers whether the executed plan scheduled a data-loss disclosure, so the AI
+  /// polish setup card does not spend its one showing on a moment that disclosure replaces.
+  @discardableResult
   public func handle(
     to newState: any PipelineStateProtocol,
     pipelineOverlayIntent: OverlayIntent,
@@ -119,8 +123,10 @@ public final class PipelineStateChangeHandler {
     // due and never what it points at. Nil for every user with the setting off,
     // which is the default. Being wired is not the same as being able to fire,
     // and conflating the two is how a dormant path gets read as a live one.
-    escapeRecoveryCompletion: EscapeRecoveryCompletion? = nil
-  ) {
+    escapeRecoveryCompletion: EscapeRecoveryCompletion? = nil,
+    // #3438: the concluded take's polish met a confirmed unfinished setup; see the planner.
+    polishSetupBlocked: Bool = false
+  ) -> Bool {
     let plan = PipelineStateChangePlanner.plan(
       to: newState,
       pipelineOverlayIntent: pipelineOverlayIntent,
@@ -133,7 +139,8 @@ public final class PipelineStateChangeHandler {
       historySaveReason: historySaveReason,
       salvagedLead: salvagedLead,
       interruptionDisclosure: interruptionDisclosure,
-      escapeRecoveryOutcome: escapeRecoveryCompletion?.outcome
+      escapeRecoveryOutcome: escapeRecoveryCompletion?.outcome,
+      polishSetupBlocked: polishSetupBlocked
     )
     for effect in plan.effects {
       switch effect {
@@ -178,5 +185,6 @@ public final class PipelineStateChangeHandler {
         reportEscapeRecoveryCompleted(outcome, currentTranscript)
       }
     }
+    return plan.schedulesDataLossDisclosure
   }
 }

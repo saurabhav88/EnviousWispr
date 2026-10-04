@@ -304,10 +304,14 @@ struct SettingsShellWiringTests {
         ".diagnostics -> page DiagnosticsSettingsView",
       ], "\(wiring.hosts)")
     #expect(
-      wiring.navigationInjection == ["navigationState.apply($0)"], "\(wiring.navigationInjection)")
+      // #3438: in-page links go through the same leave guard as the sidebar and the menu.
+      wiring.navigationInjection == ["navigate(.destination($0))"],
+      "\(wiring.navigationInjection)")
     #expect(
       wiring.activity == [
         "section == .transcribeFile && fileImportCoordinator.isRunning -> .fileImport",
+        // #3438: the setup tag reads only the warning monitor.
+        "section == .aiPolish && polishSetupMonitor.shows(.sidebarTag) -> .polishNeedsSetup",
         "yourWordsEnrichmentBadgeVisible(for: section) -> .dictionaryEnrichment",
         "else -> .none",
       ], "\(wiring.activity)")

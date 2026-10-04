@@ -71,6 +71,11 @@ enum PillAction: Equatable, Sendable {
   /// dismiss action: the pill never takes keyboard focus, so an unanswered
   /// pill leaves on its dwell.
   case undoLearnedCorrection(pillID: UUID)
+  /// #3438: the AI polish setup card's "Finish setup".
+  case finishPolishSetup
+  /// #3438: the AI polish setup card's "Not now". Distinct from Finish setup: the two are
+  /// different answers, reported apart (`polish_setup.prompt` card rows).
+  case dismissPolishSetup
 }
 
 // MARK: - What the director must tell a feature owner
@@ -178,6 +183,14 @@ enum PillRequest {
     onAcknowledge: () -> Void,
     onClose: () -> Void,
     onOpenSettings: () -> Void
+  )
+  /// #3438: the card after a dictation whose AI polish did not run because its chosen model is
+  /// not set up. A feature: the slot only while the pipeline is idle, never displacing another
+  /// feature, persisting until answered or replaced.
+  case polishSetupCard(
+    model: PolishSetupCardModel,
+    onFinishSetup: () -> Void,
+    onNotNow: () -> Void
   )
   case escapeRecovery(
     payload: CancelUndoPayload,

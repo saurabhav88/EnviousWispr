@@ -212,6 +212,28 @@
         }
       }
     },
+    "%@ did not accept your API key" : {
+      "comment" : "Short reason, no full stop. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat deinen API-Schlüssel nicht akzeptiert"
+          }
+        }
+      }
+    },
+    "%@ did not accept your API key." : {
+      "comment" : "AI Polish, leave pop-up reason. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat deinen API-Schlüssel nicht akzeptiert."
+          }
+        }
+      }
+    },
     "%@ download · needs %@ free · stays on this Mac" : {
       "comment" : "AI Polish, local model: what downloading the model takes. The first %@ is its size, the second the free space it needs.",
       "localizations" : {
@@ -341,6 +363,50 @@
         }
       }
     },
+    "%@ is being checked" : {
+      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird geprüft"
+          }
+        }
+      }
+    },
+    "%@ is not downloaded yet" : {
+      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist noch nicht heruntergeladen"
+          }
+        }
+      }
+    },
+    "%@ is not downloaded yet." : {
+      "comment" : "AI Polish, leave pop-up reason. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist noch nicht heruntergeladen."
+          }
+        }
+      }
+    },
+    "%@ is still downloading" : {
+      "comment" : "AI Polish, notice when leaving the page during a download. %@ is a model name.\nShort reason, no full stop. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird noch heruntergeladen"
+          }
+        }
+      }
+    },
     "%@ is warming up after a restart" : {
       "comment" : "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name.",
       "localizations" : {
@@ -403,6 +469,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ Fehlerkennungen"
+          }
+        }
+      }
+    },
+    "%@ needs an API key" : {
+      "comment" : "Short reason, no full stop: a cloud model has no saved API key. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ braucht einen API-Schlüssel"
           }
         }
       }
@@ -799,6 +876,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@. Ändere es unter „Tastenkürzel“."
+          }
+        }
+      }
+    },
+    "%@. Pasted without AI polish." : {
+      "comment" : "Card after a dictation: %@ is a short reason without a full stop, such as OpenAI needs an API key.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@. Ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -1453,83 +1541,6 @@
         }
       }
     },
-    "AI cleanup skipped: %@ did not answer in time. Your original text was pasted unchanged." : {
-      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: %@ hat nicht rechtzeitig geantwortet. Dein Originaltext wurde unverändert eingefügt."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: Ollama isn't running. Start it in Settings → AI Polish." : {
-      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Ollama läuft nicht. Starte es unter Einstellungen → KI-Nachbearbeitung."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: no %@ API key set yet. Add one in Settings." : {
-      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Für %@ ist noch kein API-Schlüssel hinterlegt. Füge ihn in den Einstellungen hinzu."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: no polish model is selected. Pick one in Settings." : {
-      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Kein Modell für die Nachbearbeitung ausgewählt. Wähle eines in den Einstellungen."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: no polish model selected. Pick one in Settings → AI Polish." : {
-      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Kein Modell für die Nachbearbeitung ausgewählt. Wähle eines unter Einstellungen → KI-Nachbearbeitung."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish." : {
-      "comment" : "Dictation notice: AI cleanup was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Das gewählte Ollama-Modell ist nicht installiert. Lade es herunter oder wähle ein anderes unter Einstellungen → KI-Nachbearbeitung."
-          }
-        }
-      }
-    },
-    "AI cleanup skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings." : {
-      "comment" : "Dictation notice: AI cleanup was skipped, not broken; the original text was used.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KI-Nachbearbeitung übersprungen: Dieses Diktat ist zu lang für das gewählte Modell. Versuche ein kürzeres Diktat oder wähle ein größeres Modell in den Einstellungen."
-          }
-        }
-      }
-    },
     "AI polish failed: %@" : {
       "comment" : "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system.",
       "localizations" : {
@@ -1541,13 +1552,13 @@
         }
       }
     },
-    "AI polish failed: %@ blocked this text. Your original was pasted unchanged." : {
+    "AI polish failed: %@ blocked this text. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat diesen Text blockiert. Dein Originaltext wurde unverändert eingefügt."
+            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat diesen Text blockiert. Ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -1563,13 +1574,13 @@
         }
       }
     },
-    "AI polish failed: %@ ended the response before cleanup finished. EnviousWispr kept your complete original text instead. If this keeps happening, choose another model or use a shorter dictation." : {
-      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is. EnviousWispr is the app name; keep it.",
+    "AI polish failed: %@ ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation." : {
+      "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat die Antwort vor Abschluss der Nachbearbeitung beendet. EnviousWispr hat stattdessen deinen vollständigen Originaltext behalten. Falls das wiederholt passiert, wähle ein anderes Modell oder diktiere kürzer."
+            "value" : "KI-Nachbearbeitung fehlgeschlagen: %@ hat die Antwort vor Abschluss der Nachbearbeitung beendet. Ohne KI-Nachbearbeitung eingefügt. Falls das wiederholt passiert, wähle ein anderes Modell oder diktiere kürzer."
           }
         }
       }
@@ -1657,24 +1668,24 @@
         }
       }
     },
-    "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged." : {
+    "AI polish failed: a configuration problem stopped it. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Nachbearbeitung wegen eines Konfigurationsproblems fehlgeschlagen. Dein Originaltext wurde unverändert eingefügt."
+            "value" : "KI-Nachbearbeitung wegen eines Konfigurationsproblems fehlgeschlagen. Ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
     },
-    "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged." : {
+    "AI polish failed: an unexpected error stopped it. Pasted without AI polish." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Nachbearbeitung wegen eines unerwarteten Fehlers fehlgeschlagen. Dein Originaltext wurde unverändert eingefügt."
+            "value" : "KI-Nachbearbeitung wegen eines unerwarteten Fehlers fehlgeschlagen. Ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -1745,6 +1756,17 @@
         }
       }
     },
+    "AI polish isn't set up: %@." : {
+      "comment" : "History page banner. %@ is a short reason without a full stop, such as OpenAI needs an API key.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung ist nicht eingerichtet: %@."
+          }
+        }
+      }
+    },
     "AI polish model" : {
       "comment" : "VoiceOver: the AI Polish provider card under the Model heading; it opens the provider list.",
       "localizations" : {
@@ -1763,6 +1785,105 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung benötigt macOS 26"
+          }
+        }
+      }
+    },
+    "AI polish needs setup" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside the AI polish setup line.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung muss eingerichtet werden"
+          }
+        }
+      }
+    },
+    "AI polish skipped: %@ did not answer in time. Pasted without AI polish." : {
+      "comment" : "Dictation notice: AI polish was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: %@ hat nicht rechtzeitig geantwortet. Ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
+    "AI polish skipped: Ollama isn't running. Start it in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Ollama läuft nicht. Starte es unter Einstellungen → KI-Nachbearbeitung."
+          }
+        }
+      }
+    },
+    "AI polish skipped: no %@ API key set yet. Add one in Settings." : {
+      "comment" : "Dictation notice: AI polish was skipped, not broken; the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Für %@ ist noch kein API-Schlüssel hinterlegt. Füge ihn in den Einstellungen hinzu."
+          }
+        }
+      }
+    },
+    "AI polish skipped: no polish model is selected. Pick one in Settings." : {
+      "comment" : "Dictation notice: AI polish was skipped, not broken; the original text was used.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Kein Modell für die Nachbearbeitung ausgewählt. Wähle eines in den Einstellungen."
+          }
+        }
+      }
+    },
+    "AI polish skipped: no polish model selected. Pick one in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Kein Modell für die Nachbearbeitung ausgewählt. Wähle eines unter Einstellungen → KI-Nachbearbeitung."
+          }
+        }
+      }
+    },
+    "AI polish skipped: the selected Ollama model isn't installed. Download it or pick another in Settings → AI Polish." : {
+      "comment" : "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Das gewählte Ollama-Modell ist nicht installiert. Lade es herunter oder wähle ein anderes unter Einstellungen → KI-Nachbearbeitung."
+          }
+        }
+      }
+    },
+    "AI polish skipped: this dictation is too long for the selected model. Try a shorter one or a larger model in Settings." : {
+      "comment" : "Dictation notice: AI polish was skipped, not broken; the original text was used.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: Dieses Diktat ist zu lang für das gewählte Modell. Versuche ein kürzeres Diktat oder wähle ein größeres Modell in den Einstellungen."
+          }
+        }
+      }
+    },
+    "AI polish with Apple Intelligence requires macOS 26 or later. Pick another model." : {
+      "comment" : "AI Polish, leave pop-up. Apple Intelligence and macOS are product names.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung mit Apple Intelligence erfordert macOS 26 oder neuer. Wähle ein anderes Modell."
           }
         }
       }
@@ -2202,6 +2323,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wort hinzufügen"
+          }
+        }
+      }
+    },
+    "Add your %@ API key to use AI polish." : {
+      "comment" : "AI Polish, leave pop-up reason. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge deinen %@-API-Schlüssel hinzu, um die KI-Nachbearbeitung zu nutzen."
           }
         }
       }
@@ -3028,12 +3160,45 @@
       }
     },
     "Apple Intelligence is turned off" : {
-      "comment" : "Setup notice title when Apple Intelligence is off in System Settings.",
+      "comment" : "AI Polish, leave pop-up title. Apple Intelligence is a product name.\nSetup notice title when Apple Intelligence is off in System Settings.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apple Intelligence ist deaktiviert"
+          }
+        }
+      }
+    },
+    "Apple Intelligence isn't available" : {
+      "comment" : "AI Polish, leave pop-up title. Apple Intelligence is a product name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence ist nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Apple Intelligence isn't available on this Mac" : {
+      "comment" : "Short reason, no full stop. Apple Intelligence is a product name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence ist auf diesem Mac nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Apple Intelligence isn't ready yet" : {
+      "comment" : "AI Polish, notice when leaving the page. Apple Intelligence is a product name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence ist noch nicht bereit"
           }
         }
       }
@@ -4252,6 +4417,17 @@
         }
       }
     },
+    "Checking the downloaded %@" : {
+      "comment" : "AI Polish, notice when leaving the page while a download is checked. %@ is a model name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das heruntergeladene %@ wird geprüft"
+          }
+        }
+      }
+    },
     "Checking the file against its manifest before it is used." : {
       "comment" : "AI Polish, local model: what verifying does.",
       "localizations" : {
@@ -4423,6 +4599,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Textbaustein-Datei auswählen"
+          }
+        }
+      }
+    },
+    "Choose an Ollama model to use AI polish." : {
+      "comment" : "AI Polish, leave pop-up reason. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Ollama-Modell, um die KI-Nachbearbeitung zu nutzen."
           }
         }
       }
@@ -4839,6 +5026,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle schließen"
+          }
+        }
+      }
+    },
+    "Close the AI polish setup notice" : {
+      "comment" : "History page banner, VoiceOver and tooltip: the close button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweis zur KI-Nachbearbeitung schließen"
           }
         }
       }
@@ -5976,12 +6174,12 @@
         }
       }
     },
-    "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time." : {
+    "Dictation still works. Without a key, text is pasted without AI polish." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Diktieren funktioniert weiterhin. Ohne Schlüssel erhältst du statt der Nachbearbeitung aber jedes Mal den unbearbeiteten Text."
+            "value" : "Das Diktieren funktioniert weiterhin. Ohne Schlüssel wird Text ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -6308,6 +6506,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lade das Vorschaumodell in den Einstellungen herunter, damit die Wörter angezeigt werden."
+          }
+        }
+      }
+    },
+    "Download the selected Ollama model, or choose another." : {
+      "comment" : "AI Polish, leave pop-up reason. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade das gewählte Ollama-Modell herunter oder wähle ein anderes."
           }
         }
       }
@@ -7271,6 +7480,17 @@
         }
       }
     },
+    "Finish AI polish setup" : {
+      "comment" : "AI Polish, pop-up when leaving the page while the chosen model is not set up.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung fertig einrichten"
+          }
+        }
+      }
+    },
     "Finish setting this one up, or pick another." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue when it is blocked.",
       "localizations" : {
@@ -7282,6 +7502,17 @@
         }
       }
     },
+    "Finish setting up AI polish" : {
+      "comment" : "Card after a dictation whose AI polish did not run because its chosen model is not set up: the title.\nMenu bar menu: opens Settings on AI Polish, whose chosen model is not set up.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung fertig einrichten"
+          }
+        }
+      }
+    },
     "Finish setting up EnviousWispr" : {
       "comment" : "Move to Applications prompt: the heading. EnviousWispr is the app name; keep it.",
       "localizations" : {
@@ -7289,6 +7520,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einrichtung von EnviousWispr abschließen"
+          }
+        }
+      }
+    },
+    "Finish setup" : {
+      "comment" : "AI Polish, leave pop-up button: stay on the page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichtung abschließen"
           }
         }
       }
@@ -7848,6 +8090,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprich los. Lass %@ los, wenn du fertig bist."
+          }
+        }
+      }
+    },
+    "Go back to %@" : {
+      "comment" : "AI Polish, leave pop-up button: choose the previous model again. %@ is a model or provider name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück zu %@"
           }
         }
       }
@@ -8472,6 +8725,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ollama installieren"
+          }
+        }
+      }
+    },
+    "Install Ollama to use AI polish." : {
+      "comment" : "AI Polish, leave pop-up reason. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installiere Ollama, um die KI-Nachbearbeitung zu nutzen."
           }
         }
       }
@@ -9241,6 +9505,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur lernen: Diese Nachbearbeitungsoption verwendet gelernte Wörter noch nicht."
+          }
+        }
+      }
+    },
+    "Leave anyway" : {
+      "comment" : "AI Polish, leave pop-up button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trotzdem verlassen"
           }
         }
       }
@@ -10419,7 +10694,7 @@
       }
     },
     "Needs setup" : {
-      "comment" : "Transcribe a File, Polish step: the line under an engine's name.",
+      "comment" : "Settings sidebar, VoiceOver: AI Polish's chosen model is not set up.\nTranscribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11190,6 +11465,17 @@
         }
       }
     },
+    "Not now" : {
+      "comment" : "Card after a dictation: closes the card and leaves the setup for later.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht jetzt"
+          }
+        }
+      }
+    },
     "Not ready" : {
       "comment" : "Transcribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
@@ -11442,7 +11728,7 @@
       }
     },
     "OK" : {
-      "comment" : "Button that closes a message.",
+      "comment" : "AI Polish, notice button.\nButton that closes a message.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11516,6 +11802,28 @@
         }
       }
     },
+    "Ollama is not installed" : {
+      "comment" : "Short reason, no full stop. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama ist nicht installiert"
+          }
+        }
+      }
+    },
+    "Ollama is not running" : {
+      "comment" : "Short reason, no full stop. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama läuft nicht"
+          }
+        }
+      }
+    },
     "Ollama is not running. Start it with: ollama serve" : {
       "comment" : "AI Polish settings, checking the API key: Ollama is not running. Keep the command ollama serve as is.",
       "localizations" : {
@@ -11556,6 +11864,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ollama benötigt ein Sprachmodell, um deinen Text nachzubearbeiten."
+          }
+        }
+      }
+    },
+    "Ollama needs a model" : {
+      "comment" : "Short reason, no full stop: no model is chosen or Ollama has no installed models. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ollama braucht ein Modell"
           }
         }
       }
@@ -11812,6 +12131,7 @@
       }
     },
     "Open System Settings" : {
+      "comment" : "AI Polish, leave pop-up button. System Settings is the name of the macOS app.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12314,6 +12634,17 @@
         }
       }
     },
+    "Pasted without AI polish." : {
+      "comment" : "Pill: AI polish failed, so the unpolished text was pasted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
     "Pastes your last dictation." : {
       "localizations" : {
         "de" : {
@@ -12407,6 +12738,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Person"
+          }
+        }
+      }
+    },
+    "Pick another model" : {
+      "comment" : "AI Polish, leave pop-up button: stay on the page to choose another model.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anderes Modell wählen"
           }
         }
       }
@@ -12517,17 +12859,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Polnisch"
-          }
-        }
-      }
-    },
-    "Polish failed. Using raw text." : {
-      "comment" : "Pill: AI polish failed, so the unpolished text was pasted.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nachbearbeitung fehlgeschlagen. Unbearbeiteter Text wird verwendet."
           }
         }
       }
@@ -14656,6 +14987,17 @@
         }
       }
     },
+    "Set up" : {
+      "comment" : "Settings sidebar: a small tag beside AI Polish when its chosen model is not set up. Keep it very short.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichten"
+          }
+        }
+      }
+    },
     "Set up model" : {
       "comment" : "Speech engine settings: button that downloads the multilingual engine's model.",
       "localizations" : {
@@ -15406,6 +15748,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ollama starten"
+          }
+        }
+      }
+    },
+    "Start Ollama to use AI polish." : {
+      "comment" : "AI Polish, leave pop-up reason. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starte Ollama, um die KI-Nachbearbeitung zu nutzen."
           }
         }
       }
@@ -16346,6 +16699,39 @@
         }
       }
     },
+    "The %@ download did not finish." : {
+      "comment" : "AI Polish, leave pop-up reason. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download von %@ wurde nicht abgeschlossen."
+          }
+        }
+      }
+    },
+    "The %@ download is paused." : {
+      "comment" : "AI Polish, leave pop-up reason. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download von %@ ist pausiert."
+          }
+        }
+      }
+    },
+    "The %@ update is paused." : {
+      "comment" : "AI Polish, leave pop-up reason. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Update von %@ ist pausiert."
+          }
+        }
+      }
+    },
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {
       "localizations" : {
         "de" : {
@@ -16539,6 +16925,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Download hat die Überprüfung nicht bestanden und wurde verworfen. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "The download is still in progress. Until setup finishes, text is pasted without AI polish." : {
+      "comment" : "AI Polish, notice when leaving the page during a download.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download läuft noch. Bis die Einrichtung fertig ist, wird Text ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -16993,6 +17390,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Mac"
+          }
+        }
+      }
+    },
+    "This Mac does not support Apple Intelligence." : {
+      "comment" : "AI Polish, leave pop-up. Apple Intelligence is a product name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac unterstützt Apple Intelligence nicht."
           }
         }
       }
@@ -17810,6 +18218,17 @@
         }
       }
     },
+    "Turn it on in System Settings, or pick another model." : {
+      "comment" : "AI Polish, leave pop-up. System Settings is the name of the macOS app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte es in den Systemeinstellungen ein oder wähle ein anderes Modell."
+          }
+        }
+      }
+    },
     "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
       "comment" : "Setup notice when Apple Intelligence is off in System Settings.",
       "localizations" : {
@@ -18012,6 +18431,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unzuverlässig"
+          }
+        }
+      }
+    },
+    "Until it is ready, text is pasted without AI polish." : {
+      "comment" : "AI Polish, notice when leaving the page while Apple Intelligence is not ready.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis es bereit ist, wird Text ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
+    "Until then, text is pasted without AI polish." : {
+      "comment" : "AI Polish, leave pop-up: the sentence after the reason.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis dahin wird Text ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
+    "Until this check finishes, text is pasted without AI polish." : {
+      "comment" : "AI Polish, notice when leaving the page while a download is checked.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis diese Prüfung fertig ist, wird Text ohne KI-Nachbearbeitung eingefügt."
           }
         }
       }
@@ -19349,6 +19801,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du hast Wörter eingegeben. Sie werden dadurch verworfen."
+          }
+        }
+      }
+    },
+    "Your %@ key is not saved yet." : {
+      "comment" : "AI Polish, leave pop-up reason: a key was typed but Save was not pressed. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein %@-Schlüssel ist noch nicht gespeichert."
           }
         }
       }
@@ -21927,6 +22390,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "stereo"
+          }
+        }
+      }
+    },
+    "the %@ download did not finish" : {
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download von %@ wurde nicht abgeschlossen"
+          }
+        }
+      }
+    },
+    "the %@ download is paused" : {
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download von %@ ist pausiert"
+          }
+        }
+      }
+    },
+    "the %@ update is paused" : {
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Update von %@ ist pausiert"
+          }
+        }
+      }
+    },
+    "the chosen Ollama model is not downloaded" : {
+      "comment" : "Short reason, no full stop, starts lower case after a colon. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das gewählte Ollama-Modell ist nicht heruntergeladen"
           }
         }
       }

@@ -30,6 +30,9 @@ enum OverlayEvent: Equatable {
   /// The Bluetooth-microphone card. A feature, so it takes the slot only while
   /// the pipeline is idle, and persists until it is replaced.
   case bluetoothAwareness
+  /// #3438: the AI polish setup card. A feature with the Bluetooth card's admission: idle
+  /// pipeline, free slot, persists until replaced.
+  case polishSetupCard(PolishSetupCardModel)
   /// A notice that morphs a LIVE recording pill rather than replacing it.
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
   /// Hands-free lock engaged or released. updateLockState today; it
@@ -193,7 +196,7 @@ struct OverlayState: Equatable {
   var featureSlotIsAvailable: Bool {
     guard pipelineIntent == .hidden else { return false }
     switch current?.content {
-    case .bluetoothAwareness, .languageChip: return false
+    case .bluetoothAwareness, .languageChip, .polishSetupCard: return false
     // #996 auto-learn: the Undo pill's own route may replace it (another
     // learned pill or the save-error notice); no other feature may. It leaves
     // on its own dwell, an Undo, or the pipeline.
@@ -256,6 +259,8 @@ struct OverlayReducer {
       return reduceImportStatus(message: message)
     case .bluetoothAwareness:
       return reduceBluetoothAwareness()
+    case .polishSetupCard(let model):
+      return reducePolishSetupCard(model)
     case .inPanelNotice(let reason, let dismissAfter):
       return reduceInPanelNotice(reason, dismissAfter: dismissAfter)
     case .lockStateChanged(let locked):
@@ -630,6 +635,13 @@ struct OverlayReducer {
     return admitEntry(PillCatalog.entry(for: .bluetoothAwareness, id: makeID()))
   }
 
+  /// #3438: the Bluetooth card's admission, exactly. It never displaces another feature and
+  /// any pipeline intent (a recording, a warning) replaces it.
+  private mutating func reducePolishSetupCard(_ model: PolishSetupCardModel) -> OverlayPlan {
+    guard state.featureSlotIsAvailable else { return .noChange }
+    return admitEntry(PillCatalog.entry(for: .polishSetupCard(model), id: makeID()))
+  }
+
   /// Admit a catalog entry.
   ///
   /// **The `nil` branch cannot be reached and is loud rather than silent.**
@@ -968,7 +980,8 @@ struct OverlayReducer {
       break
     case .recording:
       effects.append(.recordingStateChanged(false))
-    case .notice, .bluetoothAwareness, .correctionLearnedSaveError, .retainedClipboardFallback:
+    case .notice, .bluetoothAwareness, .polishSetupCard, .correctionLearnedSaveError,
+      .retainedClipboardFallback:
       break
     case .correctionLearned(let shown):
       // #996 auto-learn: only an unanswered offer owes an end report; a result

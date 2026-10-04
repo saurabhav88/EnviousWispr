@@ -140,7 +140,7 @@ struct PipelineStateChangePlannerTests {
     )
   )
   func completeSkippedPolishSuppressesWarning() {
-    // A real skip reason's composed notice ("AI cleanup skipped: no OpenAI API
+    // A real skip reason's composed notice ("AI polish skipped: no OpenAI API
     // key set yet. ...") must NOT schedule the hard-failure overlay.
     let skipNotice = PolishFailureReason.apiKeyMissing.notice(provider: .openAI)
     let plan = PipelineStateChangePlanner.plan(
@@ -811,6 +811,42 @@ struct PipelineStateChangePlannerTests {
     #expect(PipelineState.polishing.activity == .processing)
     #expect(PipelineState.complete.activity == .complete)
     #expect(PipelineState.error(.modelWedged).activity == .error(.modelWedged))
+  }
+
+  @Test(
+    "#3438 a confirmed unfinished setup replaces the failure pill; an ordinary failure keeps it")
+  func confirmedSetupProblemReplacesThePill() {
+    func plan(blocked: Bool, notice: PolishNotice?, historySaved: Bool = true)
+      -> PipelineStateChangePlan
+    {
+      PipelineStateChangePlanner.plan(
+        to: PipelineState.complete, pipelineOverlayIntent: Self.hiddenIntent,
+        isClipboardFallback: false, isAccessibilityToast: false, lastPolishNotice: notice,
+        hasCurrentTranscript: true, historySaved: historySaved,
+        historySaveReason: historySaved ? nil : "disk full",
+        polishSetupBlocked: blocked)
+    }
+    let rejected = PolishNotice(
+      leadIn: .failed, text: "AI polish failed: OpenAI rejected your API key.")
+    // Confirmed: the card tells it; no pill.
+    #expect(
+      plan(blocked: true, notice: rejected).effects.contains(.schedulePolishFailedWarning) == false)
+    // Not confirmed (Gemini text-only, a rate limit, a server error): today's pill.
+    #expect(plan(blocked: false, notice: rejected).effects.contains(.schedulePolishFailedWarning))
+    // Everything else about the completion is unchanged.
+    let blocked = plan(blocked: true, notice: rejected).effects
+    #expect(blocked.contains(.showOverlay(.hidden)))
+    #expect(blocked.contains(.appendCompletedTranscript))
+    #expect(blocked.contains(.reportDictationCompleted))
+    // The setup card stands aside only for a data-loss disclosure the plan really schedules.
+    #expect(plan(blocked: true, notice: rejected).schedulesDataLossDisclosure == false)
+    #expect(plan(blocked: true, notice: rejected, historySaved: false).schedulesDataLossDisclosure)
+    // A higher-priority disclosure is untouched: a failed History save still warns.
+    #expect(
+      plan(blocked: true, notice: rejected, historySaved: false).effects.contains {
+        if case .scheduleHistorySaveFailedWarning = $0 { return true }
+        return false
+      })
   }
 
   // PR-5 Rung 5 (#827) deleted: WhisperKit's bespoke state-activity mapping

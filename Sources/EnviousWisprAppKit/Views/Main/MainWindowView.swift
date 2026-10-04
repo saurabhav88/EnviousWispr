@@ -174,7 +174,7 @@ struct StatusView: View {
               Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.stWarning)
               // #945: the runner composes the full, lead-in-varied notice
-              // ("AI polish failed: ..." for real errors, "AI cleanup skipped:
+              // ("AI polish failed: ..." for real errors, "AI polish skipped:
               // ..." for not-set-up / too-long / timeout), so render it verbatim
               // instead of hardcoding the prefix here.
               Text(polishError)

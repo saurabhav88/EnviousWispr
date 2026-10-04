@@ -199,7 +199,7 @@ enum DictationNarrator {
         comment: "Pill: the chosen speech engine is not downloaded. %@ is the engine's name.")
     case .polishFailed:
       return String(
-        localized: "Polish failed. Using raw text.",
+        localized: "Pasted without AI polish.",
         comment: "Pill: AI polish failed, so the unpolished text was pasted.")
     case .historySaveFailed(let reason):
       // #3142: `reason` is already the whole translated sentence
