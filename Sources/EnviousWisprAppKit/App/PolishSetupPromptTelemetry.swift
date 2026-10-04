@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
@@ -94,5 +95,16 @@ extension PolishSetupLeaveAction {
     case .ok: return .ok
     case .openSystemSettings: return .openSystemSettings
     }
+  }
+
+  /// The answer to report for a press of this button while `event` is the app's current event.
+  /// macOS sends Escape to an alert's cancel-role button, so the safe "Finish setup" (or "OK")
+  /// also runs when someone presses Escape; that is a dismissal and reports `closed`. The
+  /// behaviour is the same (stay on AI Polish), only the row differs.
+  func promptAction(isCancelRole: Bool, event: NSEvent?) -> PolishSetupPromptEvent.Action {
+    guard isCancelRole, let event, event.type == .keyDown, event.keyCode == 53 else {
+      return promptAction
+    }
+    return .closed
   }
 }

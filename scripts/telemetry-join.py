@@ -151,6 +151,14 @@ TAKE_KEYED_EVENTS = (
     "recording.cap_warning_shown",
 )
 
+# Events where only SOME rows are about one take. Coverage counts only the rows the
+# predicate selects; the other rows carry no key by design and are not a coverage gap.
+# A predicate is HogQL over `properties`, ANDed into the per-event coverage query.
+TAKE_KEY_SCOPE: dict[str, str] = {
+    # #3438: only card rows (the card follows one dictation) carry `take_id`.
+    "polish_setup.prompt": "properties.surface = 'card'",
+}
+
 # #2958: names kept for HISTORICAL queries whose rows stopped on the first
 # release carrying telemetry policy 2 (policy 1 never shipped in a tagged
 # release, so one floor covers both phases). A post-floor empty cell for one of
@@ -1539,6 +1547,7 @@ def fetch_take_coverage(client: PostHogClient) -> list[TakeCoverageRow]:
             FROM events
             WHERE event = {sql_id_list([event_name])}
               AND {client.environment_clause()}
+              AND {TAKE_KEY_SCOPE.get(event_name, "1 = 1")}
             GROUP BY release
             """,
             f"take_coverage_{index}",
@@ -3380,7 +3389,7 @@ def run_self_test() -> int:
     def _coverage_fixture(per_event: dict[str, list[list[object]]]) -> list[HTTPResponse]:
         return [_posthog_response(per_event.get(name, [])) for name in TAKE_KEYED_EVENTS]
 
-    ph, _ = _posthog_client(
+    ph, coverage_transport = _posthog_client(
         _coverage_fixture(
             {
                 "dictation.completed": [["2.6.0", 400, 400], ["2.7.0", 500, 500]],
@@ -3418,6 +3427,16 @@ def run_self_test() -> int:
             # genuine historical gap.
             assert f"  {name} on {rel}: {NOT_OBSERVED}" in coverage_lines, (name, rel)
     assert set(RETIRED_TAKE_KEYED_EVENTS) <= set(TAKE_KEYED_EVENTS), "a retired name stays listed"
+    # #3438: a scoped event's coverage query selects only its keyed rows, and every scoped
+    # name is a registered take-keyed event.
+    assert set(TAKE_KEY_SCOPE) <= set(TAKE_KEYED_EVENTS), "a scope names an unlisted event"
+    scoped_index = TAKE_KEYED_EVENTS.index("polish_setup.prompt")
+    scoped_sql = coverage_transport.seen[scoped_index].body.decode()
+    assert "properties.surface = 'card'" in scoped_sql, scoped_sql
+    unscoped_sql = coverage_transport.seen[
+        TAKE_KEYED_EVENTS.index("dictation.completed")
+    ].body.decode()
+    assert "properties.surface" not in unscoped_sql, unscoped_sql
     assert "100%" not in coverage_lines and "0%" not in coverage_lines
     passed("take coverage renders the full event x release grid, blackout cells included")
 

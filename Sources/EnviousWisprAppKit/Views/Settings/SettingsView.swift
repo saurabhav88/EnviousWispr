@@ -74,7 +74,11 @@ struct UnifiedWindowView: View {
     ) { question in
       ForEach(Array(question.content.buttons.enumerated()), id: \.offset) { _, button in
         Button(button.title, role: button.role == .cancel ? .cancel : nil) {
-          respond(button.action, to: question.id)
+          respond(
+            button.action,
+            reportedAs: button.action.promptAction(
+              isCancelRole: button.role == .cancel, event: NSApp.currentEvent),
+            to: question.id)
         }
       }
     } message: { question in
@@ -136,12 +140,15 @@ struct UnifiedWindowView: View {
 
   /// A button on the question `id`. The question's latest destination is read now; the
   /// answer is validated by the guard before anything changes.
-  private func respond(_ action: PolishSetupLeaveAction, to id: UInt64) {
+  private func respond(
+    _ action: PolishSetupLeaveAction, reportedAs reported: PolishSetupPromptEvent.Action,
+    to id: UInt64
+  ) {
     guard id == pendingLeaveID, let request = pendingLeave else { return }
     pendingLeave = nil
-    // Reported as pressed, before the guard judges it against the live state.
-    polishSetupMonitor.recordPrompt(
-      .leaveDialog, action.promptAction, subject: request.promptSubject)
+    // Reported as pressed (Escape as `closed`), before the guard judges it against the live
+    // state.
+    polishSetupMonitor.recordPrompt(.leaveDialog, reported, subject: request.promptSubject)
     switch PolishSetupLeaveGuard.resolve(
       action, request: request, monitor: polishSetupMonitor,
       previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,

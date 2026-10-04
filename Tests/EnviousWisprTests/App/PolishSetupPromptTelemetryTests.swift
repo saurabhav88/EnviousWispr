@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
@@ -70,6 +71,31 @@ import Testing
       #expect(PolishSetupLeaveAction.leaveAnyway.promptAction == .leaveAnyway)
       #expect(PolishSetupLeaveAction.ok.promptAction == .ok)
       #expect(PolishSetupLeaveAction.openSystemSettings.promptAction == .openSystemSettings)
+    }
+
+    @Test("Escape on the leave question reports closed; a click or Return reports the button")
+    func escapeIsAClose() throws {
+      func key(_ code: UInt16) throws -> NSEvent {
+        try #require(
+          NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+            context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false,
+            keyCode: code))
+      }
+      let click = try #require(
+        NSEvent.mouseEvent(
+          with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+          context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+      let finish = PolishSetupLeaveAction.finishSetup
+      #expect(finish.promptAction(isCancelRole: true, event: try key(53)) == .closed)
+      #expect(PolishSetupLeaveAction.ok.promptAction(isCancelRole: true, event: try key(53)) == .closed)
+      #expect(finish.promptAction(isCancelRole: true, event: click) == .finishSetup)
+      #expect(finish.promptAction(isCancelRole: true, event: try key(36)) == .finishSetup)
+      #expect(finish.promptAction(isCancelRole: true, event: nil) == .finishSetup)
+      // Only the cancel-role button answers Escape; another button never reports closed.
+      #expect(
+        PolishSetupLeaveAction.leaveAnyway.promptAction(isCancelRole: false, event: try key(53))
+          == .leaveAnyway)
     }
 
     @Test("every problem has its own tag, and no tag names a provider")
