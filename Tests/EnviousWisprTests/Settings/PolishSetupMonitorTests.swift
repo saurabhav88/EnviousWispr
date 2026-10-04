@@ -878,4 +878,67 @@ extension PolishSetupMonitorTests {
         currentProvider: .egOne, keyNotSaved: false))
     #expect(request.goBackProvider == nil, "offered a way back to a key known to be rejected")
   }
+
+  @Test("each provider keeps its own dictation evidence: Gemini working says nothing about OpenAI")
+  func cloudEvidenceIsPerProvider() throws {
+    let world = World()
+    var facts = Self.facts(openAIKeySaved: true)
+    facts = PolishSetupFacts(
+      egOneInstall: facts.egOneInstall, egOneHealth: facts.egOneHealth,
+      s1MiniInstall: facts.s1MiniInstall, s1MiniHealth: facts.s1MiniHealth,
+      appleStatus: facts.appleStatus, appleFailureReasons: [], appleIsChecking: false,
+      validationProvider: nil, cloudValidation: .idle,
+      credentialRevisions: [.openAI: 1, .gemini: 1], cloudVerdicts: [:],
+      openAIKeySaved: true, geminiKeySaved: true, claudeKeySaved: true,
+      ollamaSetup: .ready, ollamaModel: .installed)
+    world.facts = facts
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    let start = ContinuousClock.now
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), evidence: .cloudKeyRejected, tag: .cloudKeyRejected,
+        at: start))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+    // Gemini, then a Gemini dictation that polished.
+    world.configuration = PolishSetupConfiguration(
+      provider: .gemini, model: "gemini-test", credentialRevision: 1)
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-gemini", context: monitor.freezeTakeContext(), result: .polished,
+        evidence: nil, setupProblem: nil, observedAt: start.advanced(by: .seconds(1))))
+    #expect(monitor.readiness(for: .openAI) == .problem(.cloudKeyRejected(.openAI)))
+    // Back to OpenAI: its key is still known to be rejected.
+    world.configuration = Self.openAI
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI))
+  }
+
+  @Test("Ollama not running holds across a model change; a missing model only for that model")
+  func ollamaEvidenceAcrossModels() {
+    let world = World()
+    world.configuration = Self.ollama
+    world.facts = Self.facts(ollamaSetup: .ready)
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    let start = ContinuousClock.now
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), evidence: .ollamaUnreachable, tag: .ollamaNotRunning,
+        at: start))
+    #expect(monitor.eligibleProblem == .ollamaNotRunning)
+    // Another Ollama model: the server is still not running.
+    world.configuration = PolishSetupConfiguration(
+      provider: .ollama, model: "llama3:8b", credentialRevision: nil)
+    #expect(monitor.eligibleProblem == .ollamaNotRunning)
+    // A missing model is about that model only.
+    monitor.ingest(
+      Self.outcome(
+        monitor.freezeTakeContext(), id: "take-2", evidence: .ollamaModelUnavailable,
+        tag: .ollamaModelNotInstalled, at: start.advanced(by: .seconds(1))))
+    #expect(monitor.eligibleProblem == .ollamaModelNotInstalled)
+    world.configuration = Self.ollama
+    #expect(monitor.eligibleProblem == nil, "another model's missing model was applied")
+  }
 }

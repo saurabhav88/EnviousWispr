@@ -18,9 +18,17 @@ final class LLMModelDiscoveryCoordinator {
   ///
   /// ONE PER PROVIDER, each tied to its own credential revision: a verdict about dictation's
   /// key must survive another surface (Transcribe a File) checking a different provider, and a
-  /// replaced or cleared key already stops counting through its revision. Only a pending
-  /// `.checking` entry is dropped when its request is dismissed.
-  private(set) var cloudVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
+  /// replaced or cleared key already stops counting through its revision. A check in flight is
+  /// kept APART from the last completed answer: it shows as `.checking` while it runs, and
+  /// when it is abandoned (superseded, the key replaced, another surface's provider) the
+  /// completed answer is what remains, never nothing.
+  private var completedVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
+  private var pendingVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
+
+  /// Every provider's verdict: a pending check where one runs, otherwise the last completed one.
+  var cloudVerdicts: [LLMProvider: PolishCloudVerdict] {
+    completedVerdicts.merging(pendingVerdicts) { _, pending in pending }
+  }
 
   /// The verdict about the provider this coordinator's catalog and validation state describe,
   /// for the surfaces that show that provider.
@@ -130,7 +138,7 @@ final class LLMModelDiscoveryCoordinator {
     discoveryGeneration += 1
     isDiscoveringModels = false
     if keyValidationState == .validating { keyValidationState = .idle }
-    cloudVerdicts = cloudVerdicts.filter { $0.value.result != .checking }
+    pendingVerdicts = [:]
   }
 
   /// Reset discovery state (used when switching providers or clearing keys).
@@ -176,7 +184,7 @@ final class LLMModelDiscoveryCoordinator {
     // or clear while it runs moves the revision, and nothing this request learned about the
     // old key may then publish (#3438).
     let revisionAtStart = credentialRevision(for: provider)
-    cloudVerdicts[provider] = revisionAtStart.map {
+    pendingVerdicts[provider] = revisionAtStart.map {
       PolishCloudVerdict(provider: provider, credentialRevision: $0, result: .checking)
     }
     // Lowered by whoever raised it, and only if nothing newer has raised it since. An
@@ -205,7 +213,10 @@ final class LLMModelDiscoveryCoordinator {
         // `api_key.validation_completed` event (#1173). A missing or unreadable key is a
         // presence fact (`SavedKeyPresence`), never a typed rejection.
         keyValidationState = .invalid(Self.noKeyMessage)
-        cloudVerdicts[provider] = nil
+        // No key could be read (absent, or a Keychain that did not answer): the check asked
+        // nothing, so it ends without touching the last completed answer, which is about a
+        // credential revision and stops counting by itself when the key changes.
+        pendingVerdicts[provider] = nil
         return
       }
       apiKey = key
@@ -283,15 +294,17 @@ final class LLMModelDiscoveryCoordinator {
     guard credentialRevision(for: provider) != revisionAtStart else { return true }
     isDiscoveringModels = false
     if keyValidationState == .validating { keyValidationState = .idle }
-    if cloudVerdicts[provider]?.result == .checking { cloudVerdicts[provider] = nil }
+    pendingVerdicts[provider] = nil
     return false
   }
 
   private func publishVerdict(
     _ result: PolishCloudVerdict.Result, provider: LLMProvider, revision: UInt64?
   ) {
-    cloudVerdicts[provider] = revision.map {
-      PolishCloudVerdict(provider: provider, credentialRevision: $0, result: result)
+    pendingVerdicts[provider] = nil
+    if let revision {
+      completedVerdicts[provider] = PolishCloudVerdict(
+        provider: provider, credentialRevision: revision, result: result)
     }
   }
 

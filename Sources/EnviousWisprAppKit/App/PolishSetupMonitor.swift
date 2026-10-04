@@ -194,17 +194,19 @@ final class PolishSetupMonitor {
   @ObservationIgnored private var configurationRevision: UInt64 = 0
   @ObservationIgnored private var lastConfiguration: PolishSetupConfiguration?
   @ObservationIgnored private var lastEligible = false
-  /// The newest thing a take said about Ollama for the current configuration revision, and
-  /// WHEN the take observed it. Whichever of this and the service's own last commit is newer
-  /// is believed (#3438 chunk 4 records these).
+  /// The newest thing a take said about Ollama, the model it asked for, and WHEN it observed
+  /// it. Whichever of this and the service's own last commit is newer is believed. Kept across
+  /// configuration changes: a server that is not running is not running for every model; a
+  /// model-level answer counts only for its own model (`withOllamaTakeObservation`).
   @ObservationIgnored private var ollamaTakeObservation:
-    (revision: UInt64, problem: PolishSetupProblem?, observedAt: ContinuousClock.Instant)?
-  /// The newest thing a take said about a saved cloud key: rejected by the provider, or accepted
-  /// (a take that polished). A fact about THAT key (provider and credential revision), so it
-  /// survives a model change and stops counting when the key is replaced or cleared.
-  @ObservationIgnored private var cloudKeyTakeObservation:
-    (provider: LLMProvider, credentialRevision: UInt64, rejected: Bool,
-      observedAt: ContinuousClock.Instant)?
+    (model: String, problem: PolishSetupProblem?, observedAt: ContinuousClock.Instant)?
+  /// The newest thing a take said about each saved cloud key: rejected by the provider, or
+  /// accepted (a take that polished). One per PROVIDER, each a fact about that key (its
+  /// credential revision): it survives model and provider changes and another provider's
+  /// takes, and stops counting when that key is replaced or cleared.
+  @ObservationIgnored private var cloudKeyTakeObservations:
+    [LLMProvider: (credentialRevision: UInt64, rejected: Bool, observedAt: ContinuousClock.Instant)] =
+      [:]
 
   init(
     readInputs: @escaping @MainActor () -> PolishSetupInputs,
@@ -228,12 +230,15 @@ final class PolishSetupMonitor {
   /// Whether `provider` would be fully set up if chosen now, from the same live facts. For the
   /// leave dialog's "Go back to" offer; it changes no warning memory.
   func readiness(for provider: LLMProvider) -> PolishSetupReadiness {
-    let facts = readInputs().facts
-    // The same evidence and freshness rules as the warnings themselves: a key a dictation
-    // proved rejected is not offered as a way back.
-    return withCloudTakeObservation(
-      PolishSetupReadiness.evaluate(provider: provider, facts: facts), provider: provider,
-      facts: facts)
+    let inputs = readInputs()
+    // The same evidence and freshness rules as the warnings themselves: a key or a server a
+    // dictation proved broken is not offered as a way back. The model of a provider that is not
+    // the chosen one is not known here, so only server-level Ollama answers apply to it.
+    let model =
+      provider == inputs.configuration.provider ? inputs.configuration.model : nil
+    return withTakeObservations(
+      PolishSetupReadiness.evaluate(provider: provider, facts: inputs.facts),
+      provider: provider, model: model, inputs: inputs)
   }
 
   /// The episode a surface is showing now, for it to hand back with the person's answer.
@@ -456,11 +461,48 @@ final class PolishSetupMonitor {
   /// that is the newest answer about THAT key (same provider and credential revision, newer
   /// than the key check's verdict). Used by the warnings and by every other readiness question
   /// (the leave dialog's way back), so the two can never disagree.
+  private func withTakeObservations(
+    _ readiness: PolishSetupReadiness, provider: LLMProvider, model: String?,
+    inputs: PolishSetupInputs
+  ) -> PolishSetupReadiness {
+    let afterOllama = withOllamaTakeObservation(
+      readiness, provider: provider, model: model, lastCommitAt: inputs.ollamaLastCommitAt)
+    return withCloudTakeObservation(afterOllama, provider: provider, facts: inputs.facts)
+  }
+
+  /// `readiness` for Ollama with the newest take answer applied when it is newer than the
+  /// service's last commit. A server-level answer (not running, not installed) holds for any
+  /// model; a model-level one (model missing, none chosen) and a success hold for the model
+  /// the take asked for. A success with ANOTHER model proves only that the server runs, so a
+  /// stale "not running" from the service becomes unknown rather than ready.
+  private func withOllamaTakeObservation(
+    _ readiness: PolishSetupReadiness, provider: LLMProvider, model: String?,
+    lastCommitAt: ContinuousClock.Instant?
+  ) -> PolishSetupReadiness {
+    guard provider == .ollama, let take = ollamaTakeObservation,
+      lastCommitAt.map({ $0 < take.observedAt }) ?? true
+    else { return readiness }
+    let sameModel = model == take.model
+    switch take.problem {
+    case .ollamaNotRunning?, .ollamaNotInstalled?:
+      return .problem(take.problem!)
+    case .ollamaNoModel?, .ollamaModelNotInstalled?:
+      return sameModel ? .problem(take.problem!) : readiness
+    case nil:
+      if sameModel { return .noProblem }
+      switch readiness {
+      case .problem(.ollamaNotRunning), .problem(.ollamaNotInstalled): return .unknown
+      default: return readiness
+      }
+    case .some:
+      return readiness
+    }
+  }
+
   private func withCloudTakeObservation(
     _ readiness: PolishSetupReadiness, provider: LLMProvider, facts: PolishSetupFacts
   ) -> PolishSetupReadiness {
-    guard Self.usesCloudKey(provider), let take = cloudKeyTakeObservation,
-      take.provider == provider,
+    guard Self.usesCloudKey(provider), let take = cloudKeyTakeObservations[provider],
       take.credentialRevision == facts.credentialRevisions[provider],
       Self.cloudVerdictAt(facts, provider: provider).map({ $0 < take.observedAt }) ?? true
     else { return readiness }
@@ -495,12 +537,12 @@ final class PolishSetupMonitor {
     rejected: Bool, configuration: PolishSetupConfiguration, observedAt: ContinuousClock.Instant
   ) {
     guard let credentialRevision = configuration.credentialRevision else { return }
-    if let current = cloudKeyTakeObservation, current.provider == configuration.provider,
+    if let current = cloudKeyTakeObservations[configuration.provider],
       current.credentialRevision == credentialRevision, current.observedAt >= observedAt
     {
       return
     }
-    cloudKeyTakeObservation = (configuration.provider, credentialRevision, rejected, observedAt)
+    cloudKeyTakeObservations[configuration.provider] = (credentialRevision, rejected, observedAt)
     reconcile()
   }
 
@@ -537,12 +579,10 @@ final class PolishSetupMonitor {
     guard context.configuration.provider == .ollama,
       context.configurationRevision == configurationRevision
     else { return }
-    if let current = ollamaTakeObservation, current.revision == configurationRevision,
-      current.observedAt >= observedAt
-    {
+    if let current = ollamaTakeObservation, current.observedAt >= observedAt {
       return
     }
-    ollamaTakeObservation = (configurationRevision, problem, observedAt)
+    ollamaTakeObservation = (context.configuration.model, problem, observedAt)
     reconcile()
   }
 
@@ -594,24 +634,15 @@ final class PolishSetupMonitor {
     if lastConfiguration != inputs.configuration {
       if lastConfiguration != nil { configurationRevision &+= 1 }
       lastConfiguration = inputs.configuration
-      ollamaTakeObservation = nil
       // A refresh asked for the previous configuration answers a question nobody asks now.
       ollamaRefresh?.cancel()
     }
     if lastEligible, !eligible { ollamaRefresh?.cancel() }
     lastEligible = eligible
 
-    var readiness = PolishSetupReadiness.evaluate(
-      provider: inputs.configuration.provider, facts: inputs.facts)
-    if inputs.configuration.provider == .ollama, let take = ollamaTakeObservation,
-      take.revision == configurationRevision,
-      inputs.ollamaLastCommitAt.map({ $0 < take.observedAt }) ?? true
-    {
-      // A take that polished is repair evidence, newer than the service's last word.
-      readiness = take.problem.map { .problem($0) } ?? .noProblem
-    }
-    readiness = withCloudTakeObservation(
-      readiness, provider: inputs.configuration.provider, facts: inputs.facts)
+    let readiness = withTakeObservations(
+      PolishSetupReadiness.evaluate(provider: inputs.configuration.provider, facts: inputs.facts),
+      provider: inputs.configuration.provider, model: inputs.configuration.model, inputs: inputs)
     var next = episodes
     next.reconcile(
       readiness: readiness, configuration: inputs.configuration, eligible: eligible)

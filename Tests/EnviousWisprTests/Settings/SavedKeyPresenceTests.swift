@@ -375,6 +375,44 @@ struct SavedKeyPresenceTests {
     #expect(again.cloudVerdicts[.openAI]?.credentialRevision != presence.revision(for: .openAI))
   }
 
+  @Test("a recheck abandoned by another surface leaves the completed rejection, never nothing")
+  func abandonedRecheckKeepsTheCompletedVerdict() async throws {
+    let keychain = Self.fixtureKeychain()
+    try keychain.store(key: KeychainManager.openAIKeyID, value: "test-not-a-real-key")
+    let presence = SavedKeyPresence()
+    presence.recordSaved(.openAI)
+    let entered = Signal()
+    let release = Signal()
+    var firstAnswer = true
+    let discovery = LLMModelDiscoveryCoordinator(
+      keychainManager: keychain, cacheDefaults: Self.cacheDefaults(),
+      savedKeyPresence: presence,
+      discoverModels: { _, _ in
+        if firstAnswer {
+          firstAnswer = false
+          throw LLMError.invalidAPIKey
+        }
+        entered.open()
+        #expect(await release.wait(), "the test never released the provider")
+        throw LLMError.invalidAPIKey
+      })
+    let settings = Self.settings()
+    await discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: settings)
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected)
+    // Check again; while it runs, Transcribe a File shows Gemini and dismisses the check.
+    let recheck = Task { @MainActor in
+      await discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: settings)
+    }
+    defer { release.open() }
+    #expect(await entered.wait(), "the recheck never reached the provider")
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .checking)
+    discovery.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected, "the rejection was lost")
+    release.open()
+    await recheck.value
+    #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected)
+  }
+
   @Test("the readiness answer follows the verdict only for the key saved now")
   func readinessFollowsTheCurrentKey() async throws {
     let keychain = Self.fixtureKeychain()
