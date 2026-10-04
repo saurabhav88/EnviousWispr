@@ -491,9 +491,10 @@ internal final class PasteCascadeExecutor {
   /// #3106: the live seams an arrival session reads and schedules through; #3121's window gate
   /// (`activate`, `dispatchGate`) reads through the same two. Every system-paste
   /// tier is inert on an isolated test pasteboard (`systemPasteCanReachOurText`), so no test run
-  /// reaches them; the placement is guarded by `PasteCascadeLandingContractTests`.
-  private let landingAX: any PastedRegionAXOperations = LivePastedRegionAXOperations()
-  private let landingScheduler: any PastedRegionScheduling = TaskPastedRegionScheduler()
+  /// reaches them; the placement is guarded by `PasteCascadeLandingContractTests`. Injected with
+  /// live defaults (#3423), so a test can script what the destination checks read.
+  private let landingAX: any PastedRegionAXOperations
+  private let landingScheduler: any PastedRegionScheduling
 
   /// Prepares and arms the observation for one key-paste tier, immediately before its write.
   ///
@@ -600,11 +601,15 @@ internal final class PasteCascadeExecutor {
 
   internal init(
     pasteboard: NSPasteboard, policy: PasteDeliveryPolicy,
-    onRetained: RetainedHandler? = nil
+    onRetained: RetainedHandler? = nil,
+    landingAX: any PastedRegionAXOperations = LivePastedRegionAXOperations(),
+    landingScheduler: any PastedRegionScheduling = TaskPastedRegionScheduler()
   ) {
     self.pasteboard = pasteboard
     self.policy = policy
     self.onRetained = onRetained
+    self.landingAX = landingAX
+    self.landingScheduler = landingScheduler
   }
 
   /// #3106 PR B: the landing check a COMMITTED key paste hands its one clipboard cleanup, or nil
@@ -1017,7 +1022,11 @@ internal final class PasteCascadeExecutor {
           }
         // The omnibox read above can also take time: the front app is read once more, last.
         let dispatchRefusal =
-          gate.refusal ?? Self.appFrontRefusal(landingAX.frontmostPID(), app)
+          gate.refusal
+          ?? Self.appFrontRefusal(
+            landingAX.destinationActivity(
+              pid: app.processIdentifier, capturedElement: request.targetElement, mode: .full,
+              admit: gate.budget.admit))
         if let windowRefusal = dispatchRefusal {
           // #3121: same shape as the omnibox refusal below: `.cgEvent` is NOT recorded as
           // attempted, because `pasteToActiveApp` is never called.
@@ -1138,7 +1147,11 @@ internal final class PasteCascadeExecutor {
             true
           }
         let dispatchRefusal =
-          gate.refusal ?? Self.appFrontRefusal(landingAX.frontmostPID(), app)
+          gate.refusal
+          ?? Self.appFrontRefusal(
+            landingAX.destinationActivity(
+              pid: app.processIdentifier, capturedElement: request.targetElement, mode: .full,
+              admit: gate.budget.admit))
         if let windowRefusal = dispatchRefusal {
           // #3121: nothing was written and `.appleScript` is not recorded as attempted.
           let reason = "target_window_not_confirmed(\(windowRefusal))"
@@ -1582,7 +1595,10 @@ internal final class PasteCascadeExecutor {
     var refusal: PasteTargetWindowGate.Refusal? = nil
     while remainingMs() > 0 {
       try? await Task.sleep(for: .milliseconds(TimingConstants.activationPollIntervalMs))
-      appFront = NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+      // `.frontOnly`: the poll never reads the keyboard focus (#3423).
+      appFront =
+        landingAX.destinationActivity(
+          pid: pid, capturedElement: element, mode: .frontOnly, admit: { _ in false }) == .frontApp
       if appFront {
         let latest = PasteTargetWindowGate.refusal(
           target: target, element: element, pid: pid, ax: landingAX, admit: stepBudget().admit)
@@ -1643,7 +1659,10 @@ internal final class PasteCascadeExecutor {
   ) -> (refusal: String?, budget: PasteLandingPrepareBudget) {
     let budget = PasteLandingPrepareBudget(scheduler: landingScheduler, ax: landingAX)
     defer { restoreCapturedTimeout(element, tier1BoundTheTarget: tier1BoundTheTarget) }
-    if let notFront = Self.appFrontRefusal(landingAX.frontmostPID(), app) {
+    if let notFront = Self.appFrontRefusal(
+      landingAX.destinationActivity(
+        pid: app.processIdentifier, capturedElement: element, mode: .full, admit: budget.admit))
+    {
       return (notFront, budget)
     }
     let decision = PasteTargetWindowGate.decide(
@@ -1655,13 +1674,25 @@ internal final class PasteCascadeExecutor {
     // The window read can take the whole budget; the user can switch apps meanwhile, and the
     // target app still reports its own focused window. Re-read the front app last.
     if let refusal { return (refusal.rawValue, budget) }
-    return (Self.appFrontRefusal(landingAX.frontmostPID(), app), budget)
+    return (
+      Self.appFrontRefusal(
+        landingAX.destinationActivity(
+          pid: app.processIdentifier, capturedElement: element, mode: .full,
+          admit: budget.admit)),
+      budget
+    )
   }
 
-  /// `app_not_front` unless `frontmost` is `app`. A local read (`NSWorkspace`), no AX call, so it can
-  /// follow the omnibox re-check without breaking "the omnibox read is the last AX step".
-  static func appFrontRefusal(_ frontmost: pid_t?, _ app: NSRunningApplication) -> String? {
-    frontmost == app.processIdentifier ? nil : "app_not_front"
+  /// `app_not_front` unless a key paste may be dispatched to the destination (#3423): it is the
+  /// front app (today's rule, a local `NSWorkspace` read with no AX call, so it can follow the
+  /// omnibox re-check without breaking "the omnibox read is the last AX step"), or it owns the
+  /// keyboard focus AND the focused element is the captured field. An owner without the captured
+  /// field never receives a key paste.
+  static func appFrontRefusal(_ activity: DestinationActivity) -> String? {
+    switch activity {
+    case .frontApp, .focusOwner(elementConfirmed: true): nil
+    case .focusOwner(elementConfirmed: false), .notActive: "app_not_front"
+    }
   }
 
   /// Seconds left in a dispatch gate's budget for the omnibox re-check; zero or less means the

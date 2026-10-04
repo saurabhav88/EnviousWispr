@@ -50,7 +50,27 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     timeoutsSet.append((pid, seconds))
     return !timeoutFailsFor.contains(pid)
   }
-  func frontmostPID() -> pid_t? { frontmost }
+  /// #3423: the system-wide keyboard-focus answer, and how many times it was read.
+  var keyboardFocus: KeyboardFocusRead = .unreadable
+  private(set) var keyboardFocusReads = 0
+  func keyboardFocusRead(admit: @MainActor (AXUIElement) -> Bool) -> KeyboardFocusRead {
+    guard admit(AXUIElementCreateSystemWide()) else { return .unreadable }
+    keyboardFocusReads += 1
+    return keyboardFocus
+  }
+  func destinationActivity(
+    pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
+    admit: @MainActor (AXUIElement) -> Bool
+  ) -> DestinationActivity {
+    DestinationActivityEvaluator.evaluate(
+      pid: pid, capturedElement: capturedElement, mode: mode, front: { self.frontmost },
+      focus: { self.keyboardFocusRead(admit: admit) })
+  }
+  func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
+    -> DestinationSwitchToken
+  {
+    DestinationActivityEvaluator.switchToken(front: { self.frontmost })
+  }
   /// Runs on every subrole read: a test advances the clock here to spend time INSIDE the read.
   var onSubroleRead: (() -> Void)?
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome {

@@ -342,6 +342,24 @@ struct PasteArrivalCaptureTests {
     #expect(secure.landing == .cannotRead(.baselineUnreadable))
   }
 
+  @Test(
+    "a front-app change is an app switch even for a destination inactive at both reads, and it outranks an unreadable baseline (#3423)"
+  )
+  func switchTokenKeepsTheFrontComparison() throws {
+    ax.subroles["\(CFHash(field))"] = .subrole(kAXSecureTextFieldSubrole as String)
+    ax.frontmost = 7
+    let steady = try prepare()
+    steady.commit()
+    scheduler.advance(ms: 300)
+    #expect(steady.landing == .cannotRead(.baselineUnreadable), "no switch: B stayed front")
+
+    let switched = try prepare()
+    switched.commit()
+    ax.frontmost = 8
+    scheduler.advance(ms: 300)
+    #expect(switched.landing == .inconclusive(.appSwitched), "B to C, neither the destination")
+  }
+
   @Test("only the same field through the same reader proves a new occurrence")
   func positivesNeedTheSameFieldAndReader() throws {
     // Another field already holding the phrase proves nothing.
@@ -670,7 +688,8 @@ struct PasteArrivalCaptureTests {
     #expect(ambiguous == .ended(.anchorAmbiguous))
   }
 
-  @Test("a phrase absent before and present once after is this paste's, even when the ends coincide")
+  @Test(
+    "a phrase absent before and present once after is this paste's, even when the ends coincide")
   func singleNewOccurrenceIsTheRegion() async throws {
     // #3105 live test (Ghostty): the old text ends like the pasted one ("Done." / "...name."), so
     // the suffix-first alignment ([3, 20)) cuts into the insertion [5, 22) and the two alignments

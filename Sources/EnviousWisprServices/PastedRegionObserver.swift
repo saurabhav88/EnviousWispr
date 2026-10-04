@@ -512,6 +512,70 @@ package protocol PastedRegionAXRegistration: AnyObject {
   var registeredNotifications: Set<PastedRegionAXNotification> { get }
 }
 
+/// #3423: what one system-wide keyboard-focus read said. A failed or refused call (`.unreadable`)
+/// is never merged with "the system answered: nothing is focused" (`.noElement`), and an element
+/// whose owner pid could not be read is kept (`.ownerUnreadable`), never discarded.
+package enum KeyboardFocusRead {
+  case focused(element: AXUIElement, ownerPID: pid_t)
+  case noElement
+  case ownerUnreadable(element: AXUIElement)
+  case unreadable
+}
+
+/// #3423: whether a destination application is where keyboard input goes now.
+package enum DestinationActivity: Equatable, Sendable {
+  /// The destination is the front application: today's answer, decided with no focus read.
+  case frontApp
+  /// The destination is not front but owns the system keyboard focus (a non-activating launcher
+  /// panel). `elementConfirmed`: the focused element is the captured field itself.
+  case focusOwner(elementConfirmed: Bool)
+  /// Neither, or the focus could not be read: exactly today's front-only refusal.
+  case notActive
+}
+
+/// #3423: `.frontOnly` never reads the keyboard focus (the activation poll); `.full` may, once.
+package enum DestinationActivityMode: Sendable {
+  case full
+  case frontOnly
+}
+
+/// #3423: compared before and after a landing watch; a different token is an app switch. Opaque on
+/// purpose, so a caller compares tokens rather than re-deriving "front" itself.
+package struct DestinationSwitchToken: Equatable, Sendable {
+  let frontPID: pid_t?
+}
+
+/// #3423: one application that may hold keyboard input, as the learning watcher sees it.
+package struct ActiveApplication: Equatable, Sendable {
+  package let pid: pid_t
+  package let bundleID: String?
+}
+
+/// #3423: the pure decision behind `destinationActivity` and `destinationSwitchToken`. The live
+/// seam and every test fake call this with their own front and focus answers, so the rule exists
+/// once.
+///
+/// **Additive only.** The front branch is evaluated first and is today's rule unchanged; the focus
+/// owner can only add a pass that today is a refusal, and any focus answer that cannot confirm the
+/// owner (`.noElement`, `.ownerUnreadable`, `.unreadable`, another pid) is `.notActive`, today's
+/// answer. Nothing that passes today can start refusing.
+@MainActor
+package enum DestinationActivityEvaluator {
+  package static func evaluate(
+    pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
+    front: () -> pid_t?, focus: () -> KeyboardFocusRead
+  ) -> DestinationActivity {
+    if front() == pid { return .frontApp }
+    guard mode == .full else { return .notActive }
+    guard case .focused(let element, let owner) = focus(), owner == pid else { return .notActive }
+    return .focusOwner(elementConfirmed: capturedElement.map { CFEqual(element, $0) } ?? false)
+  }
+
+  package static func switchToken(front: () -> pid_t?) -> DestinationSwitchToken {
+    DestinationSwitchToken(frontPID: front())
+  }
+}
+
 /// Every Accessibility operation the observer performs. The production
 /// conformer is `LivePastedRegionAXOperations`; tests script answers.
 @MainActor
@@ -522,8 +586,22 @@ package protocol PastedRegionAXOperations: AnyObject {
   func focusedElement(pid: pid_t) -> PastedRegionFocus
   /// Whether the bound was installed; a read behind a failed install is unbounded.
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool
-  /// The pid of the active (frontmost) application, nil when none is.
-  func frontmostPID() -> pid_t?
+  /// #3423: one uncached system-wide `AXFocusedUIElement` read and the pid that owns the answer.
+  /// The system-wide handle is passed to `admit` first; a refusal answers `.unreadable` with no call.
+  func keyboardFocusRead(admit: @MainActor (AXUIElement) -> Bool) -> KeyboardFocusRead
+  /// #3423: whether `pid` is where keyboard input goes now. The ONE answer to that question: there
+  /// is no raw front-pid read on this seam, because the front application is not always the owner
+  /// of the keyboard focus (a non-activating launcher panel takes the focus and leaves the front
+  /// app unchanged). `.frontOnly` never reads the focus; `.full` reads it at most once, and only
+  /// when `pid` is not the front app. See `DestinationActivityEvaluator`.
+  func destinationActivity(
+    pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
+    admit: @MainActor (AXUIElement) -> Bool
+  ) -> DestinationActivity
+  /// #3423: an opaque snapshot for "did the active destination change between two moments".
+  /// Equal tokens mean no switch.
+  func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
+    -> DestinationSwitchToken
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome
   /// Nil when the attribute names could not be read: "could not tell" is not "unsupported".
   func supportsManualAccessibility(_ application: AXUIElement) -> Bool?
@@ -960,7 +1038,8 @@ package enum PastedRegionLocator {
   ) -> EditDistanceVerdict {
     let a = Array(pasted.utf16)
     let b = Array(region.utf16)
-    let limit = editLimit(pastedUTF16: a.count, limitFraction: limitFraction, limitFloor: limitFloor)
+    let limit = editLimit(
+      pastedUTF16: a.count, limitFraction: limitFraction, limitFloor: limitFloor)
     if abs(a.count - b.count) > limit { return .exceeded }
     if a == b { return .within }
     guard bandedDistanceCells(m: a.count, n: b.count, cap: limit) <= cellBudget else {
@@ -1349,8 +1428,12 @@ package final class PastedRegionObserver: PastedRegionObserving {
     guard ax.isTrusted() else { return .permissionLost }
     guard pid > 0, ax.isProcessRunning(pid) else { return .appTerminated }
     // A process-local focused element survives an app switch, so the ACTIVE
-    // application is checked separately, here and on every observation.
-    guard ax.frontmostPID() == pid else { return .destinationMismatch }
+    // application is checked separately, here and on every observation. Active
+    // means front or the keyboard-focus owner (#3423).
+    guard
+      ax.destinationActivity(
+        pid: pid, capturedElement: nil, mode: .full, admit: { _ in true }) != .notActive
+    else { return .destinationMismatch }
     let application = ax.applicationElement(pid: pid)
     // A read behind a failed bound is unbounded: refuse rather than hang.
     guard ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
@@ -1725,7 +1808,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
       return .ended
     }
     if checkIdentity {
-      guard ax.frontmostPID() == target.pid else {
+      guard
+        ax.destinationActivity(
+          pid: target.pid, capturedElement: nil, mode: .full, admit: { _ in true })
+          != .notActive
+      else {
         end(.focusChanged)
         return .ended
       }
@@ -2176,8 +2263,37 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     AXUIElementSetMessagingTimeout(element, Float(seconds)) == .success
   }
 
-  package func frontmostPID() -> pid_t? {
+  /// The front application's pid: a local `NSWorkspace` read, no Accessibility call. Private: no
+  /// decision reads it except through `destinationActivity` (#3423).
+  private static func frontPID() -> pid_t? {
     NSWorkspace.shared.frontmostApplication?.processIdentifier
+  }
+
+  /// The applications that may hold keyboard input now, front first (#3423). The learning
+  /// watcher's supplier; today only the front application.
+  package static func activeApplications() -> [ActiveApplication] {
+    guard let app = NSWorkspace.shared.frontmostApplication else { return [] }
+    return [ActiveApplication(pid: app.processIdentifier, bundleID: app.bundleIdentifier)]
+  }
+
+  package func keyboardFocusRead(admit: @MainActor (AXUIElement) -> Bool) -> KeyboardFocusRead {
+    // #3423 chunk 1: no live system-wide read yet, so every destination answer is front-only.
+    .unreadable
+  }
+
+  package func destinationActivity(
+    pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
+    admit: @MainActor (AXUIElement) -> Bool
+  ) -> DestinationActivity {
+    DestinationActivityEvaluator.evaluate(
+      pid: pid, capturedElement: capturedElement, mode: mode, front: Self.frontPID,
+      focus: { self.keyboardFocusRead(admit: admit) })
+  }
+
+  package func destinationSwitchToken(pid: pid_t, admit: @MainActor (AXUIElement) -> Bool)
+    -> DestinationSwitchToken
+  {
+    DestinationActivityEvaluator.switchToken(front: Self.frontPID)
   }
 
   package func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome {

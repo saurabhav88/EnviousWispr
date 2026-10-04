@@ -296,8 +296,9 @@ final class LearnFromEditsWiring {
         isLearnFromEditsOn: { [weak settings] in settings?.learnFromEdits ?? false },
         selectJudge: { selectJudgeForTests?() ?? box.wiring?.selectJudge() },
         frontmost: frontmost ?? {
-          guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
-          return FrontmostApplication(pid: app.processIdentifier, bundleID: app.bundleIdentifier)
+          LivePastedRegionAXOperations.activeApplications().first.map {
+            FrontmostApplication(pid: $0.pid, bundleID: $0.bundleID)
+          }
         },
         observer: observer,
         nowMs: { scheduler.nowMs },

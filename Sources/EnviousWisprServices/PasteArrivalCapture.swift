@@ -357,7 +357,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   package let context: Context
   private let application: AXUIElement
   let baseline: Baseline
-  private let frontmostBefore: pid_t?
+  /// The active destination at prepare (#3423); nil for an edit-only session, which never decides.
+  private let switchTokenBefore: DestinationSwitchToken?
   /// Nil when the question could not be asked or answered: never "does not support it". An
   /// edit-only session asks it at #996's first request instead of before a write.
   private var manualAX: Bool?
@@ -413,7 +414,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   package var onEditAttempt: (@MainActor () -> Void)?
 
   private init(
-    context: Context, application: AXUIElement, baseline: Baseline, frontmostBefore: pid_t?,
+    context: Context, application: AXUIElement, baseline: Baseline,
+    switchTokenBefore: DestinationSwitchToken?,
     manualAX: Bool?, hostExposedFocus: Bool, targetWindow: PasteLandingTargetWindow,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
     reporter: @escaping @MainActor (PasteArrivalObservation) -> Void,
@@ -422,7 +424,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     self.context = context
     self.application = application
     self.baseline = baseline
-    self.frontmostBefore = frontmostBefore
+    self.switchTokenBefore = switchTokenBefore
     self.manualAX = manualAX
     self.hostExposedFocus = hostExposedFocus
     self.targetWindow = targetWindow
@@ -464,7 +466,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     guard observedTiers.contains(context.tier) else { return nil }
     let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
     let application = ax.applicationElement(pid: context.pid)
-    let frontmostBefore = ax.frontmostPID()
+    let switchTokenBefore = ax.destinationSwitchToken(pid: context.pid, admit: budget.admit)
     let manualAX: Bool? =
       budget.admit(application) ? ax.supportsManualAccessibility(application) : nil
 
@@ -484,7 +486,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
 
     let session = PasteArrivalCapture(
       context: context, application: application, baseline: baseline,
-      frontmostBefore: frontmostBefore, manualAX: manualAX,
+      switchTokenBefore: switchTokenBefore, manualAX: manualAX,
       hostExposedFocus: capturedTarget != nil, targetWindow: targetWindow,
       ax: ax, scheduler: scheduler, reporter: report, log: log ?? Self.debugLog)
     session.arm(element: element, budget: budget)
@@ -505,7 +507,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   ) -> PasteArrivalCapture {
     let session = PasteArrivalCapture(
       context: .init(tier: .axDirect, pid: pid, takeID: nil, bundleID: bundleID, payload: payload),
-      application: ax.applicationElement(pid: pid), baseline: .unreadable, frontmostBefore: nil,
+      application: ax.applicationElement(pid: pid), baseline: .unreadable,
+      switchTokenBefore: nil,
       manualAX: nil, hostExposedFocus: false, targetWindow: .unknown, ax: ax, scheduler: scheduler,
       reporter: { _ in }, log: { _ in })
     session.wasCommitted = true
@@ -626,7 +629,9 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private func enableManualAccessibilityIfNeeded() {
     guard !manualAccessibilityEnabled, manualAX != false,
       manualAccessibilityAttempts < Self.maxManualAccessibilityAttempts,
-      ax.isTrusted(), ax.isProcessRunning(context.pid), ax.frontmostPID() == context.pid,
+      ax.isTrusted(), ax.isProcessRunning(context.pid),
+      ax.destinationActivity(
+        pid: context.pid, capturedElement: nil, mode: .full, admit: { _ in true }) != .notActive,
       ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
     else { return }
     manualAccessibilityAttempts += 1
@@ -747,7 +752,9 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     // Whole-app causes first: every check below only asks whether a comparison can be trusted, and
     // must not hide that the app quit, lost the front, or took back our permission.
     if !ax.isProcessRunning(context.pid) { return .inconclusive(.appTerminated) }
-    if ax.frontmostPID() != frontmostBefore { return .inconclusive(.appSwitched) }
+    if ax.destinationSwitchToken(pid: context.pid, admit: { _ in true }) != switchTokenBefore {
+      return .inconclusive(.appSwitched)
+    }
     if case .permissionLost = attempt { return .cannotRead(.permissionLost) }
     if prepareBudgetExhausted { return .inconclusive(.budgetSpent) }
     switch baseline {
