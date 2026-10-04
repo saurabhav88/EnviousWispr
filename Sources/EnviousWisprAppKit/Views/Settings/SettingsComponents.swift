@@ -778,13 +778,23 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(14)
-    .background(Color.stSectionBg)
+    // Collapsed, the card is a dropdown (founder UAT 2026-10-04, #3445): the input-field
+    // colours every Settings dropdown wears, the card hover, and a click anywhere on it opens
+    // the choices, as the AI Polish model card does. Controls inside the card (a re-check, a
+    // download's Cancel) keep their own clicks: a child button wins over this tap. Expanded,
+    // it is a plain section again and only its own buttons respond.
+    .background(isExpanded ? Color.stSectionBg : Color.stInputBg)
     .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
     .overlay(
       RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-        .strokeBorder(Color.stDivider, lineWidth: 1)
+        .strokeBorder(isExpanded ? Color.stDivider : Color.stInputBorder, lineWidth: 1)
         .allowsHitTesting(false)
     )
+    .settingsHoverCard(cornerRadius: SettingsLayout.sectionRadius, isEnabled: !isExpanded)
+    .contentShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+    .gesture(
+      TapGesture().onEnded { open(fromKeyboard: false, fromAccessibility: false) },
+      including: isExpanded ? .subviews : .all)
     // Leading and full width in both states, so the status region does not
     // drift to the middle when the choices are narrower than the page.
     // Measured 2026-10-04 (#3391 row 3): removing THIS frame changes nothing, because the
@@ -811,13 +821,20 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
     }
   }
 
+  /// Opens the choices. Focus returns to Change on close only for a keyboard or VoiceOver
+  /// opening; a pointer click anywhere on the card is neither.
+  private func open(fromKeyboard: Bool, fromAccessibility: Bool) {
+    guard isExpanded == false else { return }
+    openedFromKeyboard = fromKeyboard
+    openedFromAccessibility = fromAccessibility
+    isExpanded = true
+  }
+
   /// The real control is this `Button`; `SettingsActionButton` without an action only draws
   /// the page's button treatment, so focus modifiers land on an actual control.
   private var changeButton: some View {
     Button {
-      openedFromKeyboard = changeFocused
-      openedFromAccessibility = changeAccessibilityFocused
-      isExpanded = true
+      open(fromKeyboard: changeFocused, fromAccessibility: changeAccessibilityFocused)
     } label: {
       SettingsActionButton(
         title: LocalizedStringResource(
