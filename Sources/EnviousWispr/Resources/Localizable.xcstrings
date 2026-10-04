@@ -22400,7 +22400,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "der Download von %@ wurde nicht abgeschlossen"
+            "value" : "Der Download von %@ wurde nicht abgeschlossen"
           }
         }
       }
@@ -22411,7 +22411,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "der Download von %@ ist pausiert"
+            "value" : "Der Download von %@ ist pausiert"
           }
         }
       }
@@ -22422,7 +22422,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "das Update von %@ ist pausiert"
+            "value" : "Das Update von %@ ist pausiert"
           }
         }
       }
@@ -22433,7 +22433,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "das gewählte Ollama-Modell ist nicht heruntergeladen"
+            "value" : "Das gewählte Ollama-Modell ist nicht heruntergeladen"
           }
         }
       }
