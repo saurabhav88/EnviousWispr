@@ -78,6 +78,9 @@ class FakeSettings:
         self.provider = "OpenAI"
         self.asking = None              # the page the person tried to reach
         self.duplicate_question = False # two leave sheets (must refuse)
+        # A long content list (History). Its first row repeats every sidebar label, so a search
+        # that reads it finds two sidebars and refuses; a search that skips it finds one.
+        self.long_list_rows = 0
         self.unrelated_sheet = False    # another app alert with an OK button (must be ignored)
         self.unrelated_leave_sheet = False  # an alert with "Leave anyway" and another title
         # Each question shown has its own identity; replacing it changes the identity.
@@ -173,6 +176,12 @@ class FakeSettings:
         window_children = []
         if self.open:
             window_children = [self.sidebar_tree(), self.content_tree()]
+            if self.long_list_rows:
+                decoy = [self.named("AXButton", page, value=self.sel(False)) for page in sn.PAGES]
+                rows = [el("AXRow", children=[el("AXCell", children=decoy)])]
+                rows += [el("AXRow", children=[el("AXStaticText", value=f"dictation {i}")])
+                         for i in range(1, self.long_list_rows)]
+                window_children.append(el("AXOutline", children=rows))
             if self.asking is not None:
                 self.reads_while_asking += 1
                 if self.reads_while_asking == self.replace_question_at_read:
@@ -1203,6 +1212,44 @@ def scan_cases():
          ("STOP", True, [])),
     ]
 
+    # Live Preview: a downloaded Universal engine's Remove sits inside the engine choices
+    # (founder 2026-10-03), so the one-of row accepts it there, read by the same surface's
+    # chooser; with no chooser read first, or no Remove inside, it is still absent.
+    class PreviewPage:
+        def __init__(self, remove_inside=True):
+            self.open, self.remove_inside = False, remove_inside
+
+        def root(self):
+            if not self.open:
+                kids = [el("AXButton", desc="Change preview engine",
+                           press=lambda: setattr(self, "open", True))]
+            else:
+                kids = [el("AXButton", desc="Apple", value="Selected"),
+                        el("AXButton", desc="Universal", value="")]
+                if self.remove_inside:
+                    kids.append(el("AXButton", desc="Remove"))
+                kids.append(el("AXButton", desc="Keep current preview engine",
+                               press=lambda: setattr(self, "open", False)))
+            return _window(kids)
+
+    def preview_rows(page):
+        manifest = [("disclose", sn.PREVIEW_DISCLOSURE, None),
+                    ("one_of", sn.UNIVERSAL_ACTIONS, "universal_engine_built")]
+        out = sn.scan_surface(ax, page.root, manifest,
+                              {"universal_engine_built": lambda: True}, {})
+        return [s for s, _ in out], page.open
+    rows += [
+        ("a Remove inside the engine choices satisfies the Universal row",
+         preview_rows(PreviewPage()), (["OK", "OK"], False)),
+        ("no Remove anywhere still FAILs the Universal row",
+         preview_rows(PreviewPage(remove_inside=False)), (["OK", "FAIL"], False)),
+    ]
+    one_of_alone = sn.scan_surface(ax, PreviewPage().root,
+                                   [("one_of", sn.UNIVERSAL_ACTIONS, "universal_engine_built")],
+                                   {"universal_engine_built": lambda: True}, {})
+    rows.append(("without the chooser read first the Universal row is absent (FAIL)",
+                 [s for s, _ in one_of_alone], ["FAIL"]))
+
     # Dictionary sections: each is selected and read, then the first one is selected again.
     class Dict:
         def __init__(self, anchors=True):
@@ -1623,6 +1670,28 @@ def leave_valued_cases():
     rows.append(("#3438 an unrelated 'Leave anyway' alert is never taken or pressed",
                  (sn.leave_dialog(f.ax(), f.root()), _nav(f, "History").page,
                   "unrelated:leave" in f.presses), (None, "History", False)))
+    # A History list longer than the bound is not searched for the sidebar: navigation works
+    # from History with thousands of dictations (the founder's Mac on 2026-10-04).
+    f = FakeSettings()
+    f.long_list_rows = sn.LONG_LIST_CHILDREN + 1
+    rows.append(("a long content list is skipped by the sidebar search",
+                 (_nav(f, "Keybinds").page, f.page), ("Keybinds", "Keybinds")))
+    # Every whole-window search walks past the long list's rows too (scan, controls, sheets).
+    f = FakeSettings()
+    f.long_list_rows = sn.LONG_LIST_CHILDREN + 1
+    walked = list(f.ax().walk(f.root()))
+    rows.append(("a whole-window walk does not enter a long list's rows",
+                 sum(1 for e in walked if e.get("AXRole") == "AXRow"), 0))
+    # The bound is what decides: the same decoy in a SHORT list is searched, and two
+    # sidebars are refused rather than guessed.
+    f = FakeSettings()
+    f.long_list_rows = sn.LONG_LIST_CHILDREN
+    try:
+        _nav(f, "Keybinds")
+        refused = False
+    except sn.NavigationError:
+        refused = True
+    rows.append(("a list at the bound is still searched (two sidebars refused)", refused, True))
     # Not leaving AI Polish: a question can never be consumed by another route.
     f = FakeSettings()
     f.leave_question = "actionable"
