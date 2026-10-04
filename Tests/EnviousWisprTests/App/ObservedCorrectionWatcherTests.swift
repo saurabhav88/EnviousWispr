@@ -313,7 +313,7 @@ struct ObservedCorrectionWatcherTests {
       selectJudge: {
         knobs.judgeAvailable ? SelectedCorrectionJudge(arm: .rules, judge: judge) : nil
       },
-      activeApplications: { [knobs.frontmost, knobs.owner].compactMap { $0 } },
+      activeApplications: { _ in [knobs.frontmost, knobs.owner].compactMap { $0 } },
       observer: observer,
       nowMs: { clock.nowMs },
       userWords: { library.userWords },

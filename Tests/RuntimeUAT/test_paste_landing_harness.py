@@ -360,6 +360,31 @@ class LauncherHarness(unittest.TestCase):
             h.FIXTURE.update(saved[0])
             h.panel_command = saved[1]
 
+    def test_submitted_text_keeps_a_multi_line_output_whole(self):
+        log = ("[2026-10-03T22:45:22-04:00] [INFO] [CorrectionDebug] CORRECTION_DEBUG [RAW ASR] a b\n"
+               "[2026-10-03T22:45:24-04:00] [INFO] [CorrectionDebug] CORRECTION_DEBUG [LLM Polish] OUT: "
+               "First line\nSecond line\n"
+               "[2026-10-03T22:45:24-04:00] [INFO] [PipelineTiming] Paste cascade: tier=cgevent, app=x\n")
+        self.assertEqual(h.submitted_text(log), "First line\nSecond line")
+
+    def test_a_failed_relaunch_keeps_the_snapshot_for_a_retry(self):
+        import learn_from_edits_uat as lf
+        saved = (h.WORDS["snap"], lf.stop_app, lf.file_restore, lf.verify_restore, h.subprocess.run)
+        try:
+            h.WORDS["snap"] = {"exists": True}
+            lf.stop_app = lambda: None
+            lf.file_restore = lambda path, snap: None
+            lf.verify_restore = lambda path, snap, kind: (True, "equal")
+
+            class Failed:
+                returncode = 1
+            h.subprocess.run = lambda *a, **k: Failed()
+            self.assertFalse(h.restore_words())
+            self.assertIsNotNone(h.WORDS["snap"], "a retry must relaunch again")
+        finally:
+            (h.WORDS["snap"], lf.stop_app, lf.file_restore, lf.verify_restore,
+             h.subprocess.run) = saved
+
     def test_restore_words_is_a_no_op_without_a_snapshot(self):
         saved = h.WORDS["snap"]
         try:
@@ -400,16 +425,18 @@ class LauncherHarness(unittest.TestCase):
             statuses = self.statuses(results)
         self.assertEqual(statuses["t: record start targeted the panel (TARGET_FOCUS disagree)"], "FAIL")
 
-    DEBUG = ("CORRECTION_DEBUG [RAW ASR] please send the quarterly summary to marcus by friday afternoon\n"
-             "CORRECTION_DEBUG [Word Correction] no change\n"
-             "CORRECTION_DEBUG [LLM Polish] IN:  please send the quarterly summary\n"
-             "CORRECTION_DEBUG [LLM Polish] OUT: Please send the quarterly summary to Marcus by "
+    P = "[2026-10-03T23:00:00-04:00] [INFO] [CorrectionDebug] "
+    DEBUG = (P + "CORRECTION_DEBUG [RAW ASR] please send the quarterly summary to marcus by friday afternoon\n"
+             + P + "CORRECTION_DEBUG [Word Correction] no change\n"
+             + P + "CORRECTION_DEBUG [LLM Polish] IN:  please send the quarterly summary\n"
+             + P + "CORRECTION_DEBUG [LLM Polish] OUT: Please send the quarterly summary to Marcus by "
              "Friday afternoon.\n")
 
     def test_submitted_text_is_the_last_logged_output(self):
         final = "Please send the quarterly summary to Marcus by Friday afternoon."
         self.assertEqual(h.submitted_text(self.DEBUG), final)
-        raw_only = "CORRECTION_DEBUG [RAW ASR] hello there\nCORRECTION_DEBUG [Filler Removal] no change\n"
+        raw_only = (self.P + "CORRECTION_DEBUG [RAW ASR] hello there\n"
+                    + self.P + "CORRECTION_DEBUG [Filler Removal] no change\n")
         self.assertEqual(h.submitted_text(raw_only), "hello there")
         self.assertIsNone(h.submitted_text("nothing logged"))
 

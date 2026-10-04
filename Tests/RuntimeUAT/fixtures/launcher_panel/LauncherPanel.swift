@@ -160,10 +160,8 @@ final class Fixture: NSObject, NSApplicationDelegate {
       data != lastWritten
     else { return }
     let target = runDir.appendingPathComponent("state.json")
-    let temp = runDir.appendingPathComponent(".state.json.tmp")
     do {
-      try data.write(to: temp)
-      _ = try FileManager.default.replaceItemAt(target, withItemAt: temp)
+      try data.write(to: target, options: .atomic)
       lastWritten = data
     } catch {
       // A missed write is retried on the next tick; the harness waits for the value it needs.

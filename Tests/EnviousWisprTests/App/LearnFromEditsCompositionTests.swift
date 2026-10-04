@@ -65,7 +65,7 @@ struct LearnFromEditsCompositionTests {
     let clock = ObserverClock()
     let judge = JudgeFake()
     let telemetry = LearnTelemetrySpy()
-    let activeApplications: @MainActor () -> [ActiveApplication] = {
+    let activeApplications: @MainActor (String?) -> [ActiveApplication] = { _ in
       [ActiveApplication(pid: 42, bundleID: "com.apple.Notes", isFocusOwner: false)]
     }
     var selectJudgeForTests: (@MainActor () -> SelectedCorrectionJudge?)? = nil

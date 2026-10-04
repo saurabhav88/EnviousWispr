@@ -127,7 +127,8 @@ struct ObservedCorrectionWatcherDependencies {
   let selectJudge: () -> SelectedCorrectionJudge?
   /// The applications that may hold keyboard input, front first, then the confirmed focus owner
   /// (#3423), each sampled ONCE per gate pass so pid and bundle id describe the same process.
-  let activeApplications: () -> [ActiveApplication]
+  /// Given the paste's destination bundle id.
+  let activeApplications: (String?) -> [ActiveApplication]
   let observer: any PastedRegionObserving
   /// The observer scheduler's clock, so the paste deadline shares its domain.
   let nowMs: () -> Int
@@ -334,7 +335,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     // pid is selected and must still be the destination after the capture.
     guard
       let selectedApp = Self.selectDestination(
-        deps.activeApplications(), bundleID: w.event.destinationBundleID)
+        deps.activeApplications(w.event.destinationBundleID), bundleID: w.event.destinationBundleID)
     else {
       skip(.destinationMismatch, generation: gen)
       return
@@ -357,7 +358,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       skip(.toggleOff, generation: gen)
       return
     }
-    guard deps.activeApplications().contains(where: { $0.pid == selectedApp.pid }) else {
+    guard
+      deps.activeApplications(w.event.destinationBundleID).contains(where: {
+        $0.pid == selectedApp.pid
+      })
+    else {
       skip(.destinationMismatch, generation: gen)
       return
     }

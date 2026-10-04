@@ -125,6 +125,20 @@ struct DestinationActivityEvaluatorTests {
     #expect(token(front: 8, owner: nil) != token(front: 7, owner: nil), "B to C, as before")
   }
 
+  @Test("a front app with the destination's bundle is the answer, with no focus read")
+  func frontDestinationNeedsNoFocusRead() {
+    let front = ActiveApplication(pid: 7, bundleID: "com.apple.Notes", isFocusOwner: false)
+    let count = Count()
+    let answer = DestinationActivityEvaluator.activeApplications(
+      front: front, destinationBundleID: "com.apple.Notes",
+      focus: {
+        count.focusReads += 1
+        return .focused(element: field, ownerPID: pid)
+      }, application: { _ in nil })
+    #expect(answer == [front])
+    #expect(count.focusReads == 0)
+  }
+
   @Test("active applications: front first, the confirmed owner second, one entry per pid")
   func activeApplications() {
     let front = ActiveApplication(pid: 7, bundleID: "front", isFocusOwner: false)
@@ -133,21 +147,21 @@ struct DestinationActivityEvaluatorTests {
     }
     #expect(
       DestinationActivityEvaluator.activeApplications(
-        front: front, focus: { .focused(element: field, ownerPID: pid) }, application: resolve)
+        front: front, destinationBundleID: "owner", focus: { .focused(element: field, ownerPID: pid) }, application: resolve)
         == [front, ActiveApplication(pid: pid, bundleID: "owner", isFocusOwner: true)])
     #expect(
       DestinationActivityEvaluator.activeApplications(
-        front: front, focus: { .focused(element: field, ownerPID: 7) }, application: resolve)
+        front: front, destinationBundleID: "owner", focus: { .focused(element: field, ownerPID: 7) }, application: resolve)
         == [ActiveApplication(pid: 7, bundleID: "front", isFocusOwner: true)], "no duplicate pid")
     for unconfirmed in [KeyboardFocusRead.noElement, .unreadable, .ownerUnreadable(element: field)] {
       #expect(
         DestinationActivityEvaluator.activeApplications(
-          front: front, focus: { unconfirmed }, application: resolve) == [front],
+          front: front, destinationBundleID: "owner", focus: { unconfirmed }, application: resolve) == [front],
         "\(unconfirmed.logLabel): today's front-only answer")
     }
     #expect(
       DestinationActivityEvaluator.activeApplications(
-        front: front, focus: { .focused(element: field, ownerPID: pid) }, application: { _ in nil })
+        front: front, destinationBundleID: "owner", focus: { .focused(element: field, ownerPID: pid) }, application: { _ in nil })
         == [front], "an owner that cannot be resolved adds nothing")
   }
 }

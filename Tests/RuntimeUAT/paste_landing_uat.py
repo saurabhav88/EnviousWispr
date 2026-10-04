@@ -1593,7 +1593,12 @@ FIXTURE = {"app": None, "proc": None, "run": None}
 # Plan section 11.1: the launcher takes speak these, never the shared `SENTENCE`.
 LAUNCHER_SENTENCE = "Please send the quarterly summary to Marcus by Friday afternoon."
 LAUNCHER_CONTINUATION = "then ask whether the budget review moved"
-DEBUG_TEXT = re.compile(r"CORRECTION_DEBUG \[([^\]]+)\] (?:OUT: )?(.*)$", re.M)
+# A step's text runs to the next log line's `[time] [LEVEL] [Category]` prefix, so a multi-line
+# output (a list, a paragraph break) is read whole.
+DEBUG_TEXT = re.compile(
+    r"CORRECTION_DEBUG \[([^\]]+)\] (?:OUT: )?"
+    r"(.*?)(?=^\[[^\]\n]+\] \[(?:DEBUG|INFO|WARNING|ERROR)\] \[|\Z)",
+    re.M | re.S)
 AX_WRITE_SUCCEEDED = re.compile(
     r"step=ax_direct_write started_at=\S+ elapsed_ms=\S+ outcome=succeeded bundle_id=(\S+)")
 
@@ -1864,7 +1869,9 @@ def verify_launcher_learning(base, text):
     u.require_front(TEXTEDIT, "launcher_tier2: host before the edit")
     if focus_owner_pid() != (FIXTURE["proc"] and FIXTURE["proc"].pid):
         raise u.Aborted("launcher_tier2: the panel lost the focus before the edit")
-    start = field.index("Marcus")
+    # The fixture reports Cocoa's UTF-16 offsets; a character before the word that is two UTF-16
+    # units (an emoji) would otherwise put Python's index one short.
+    start = len(field[:field.index("Marcus")].encode("utf-16-le")) // 2
     panel_command("select", "B Marcus")
     if not u.wait_for("Marcus selected in field B",
                       lambda: panel_state().get("selection") == [start, len("Marcus")], deadline=3.0):
@@ -1934,7 +1941,7 @@ def restore_words():
     print(f"    word file restore: {detail}")
     relaunched = subprocess.run(["open", "-n", lf.APP], check=False).returncode == 0
     print(f"    dev app relaunched: {relaunched}")
-    if ok:
+    if ok and relaunched:
         WORDS["snap"] = None
     return ok and relaunched
 
@@ -2042,7 +2049,9 @@ def phase_savesheet():
     import simulate_input as si
     doc = u.new_textedit_doc(f"3423-savesheet-{u.RUN_ID}")
     u.require_front(TEXTEDIT, "savesheet: document open")
-    si.press_key("s", cmd=True)
+    # Save As (Shift+Option+Cmd+S): the run's document is an existing file, so plain Cmd+S would
+    # save it without a sheet.
+    si.press_key("s", cmd=True, shift=True, alt=True)
     try:
         if not u.wait_for("the Save sheet's name field",
                           lambda: focused_value()[1] == "AXTextField", deadline=5.0):

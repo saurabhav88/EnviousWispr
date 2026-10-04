@@ -6,10 +6,10 @@ section: "Paste System"
 order: 1
 keywords: ["paste", "how does it type", "where does the text go", "delivery", "spacing", "capitals", "capitalisation", "capitalization", "stop capitalising", "stop capitalizing", "capital letters", "extra space", "no space", "jams words together", "smart insertion", "middle of a sentence", "cursor", "wrong window", "address bar", "trailing space", "web address"]
 related: ["clipboard-preservation", "paste-not-working", "using-snippets"]
-updated: 2026-09-29
+updated: 2026-10-03
 deflection: "can_resolve"
 ---
-EnviousWispr delivers your text to the app, window and text box that were in front when you started recording. It works anywhere you can type, including native Mac apps, web browsers, and apps built on web technology such as VS Code, Slack, Discord, and Notion.
+EnviousWispr delivers your text to the app, window and text box you were typing in when you started recording. It works anywhere you can type, including native Mac apps, web browsers, and apps built on web technology such as VS Code, Slack, Discord, and Notion.
 
 ### My text went to the window I started in
 

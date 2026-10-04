@@ -197,7 +197,7 @@ final class LearnFromEditsWiring {
     // serving judge while `qualified` stays empty.
     observer: (any PastedRegionObserving)? = nil,
     scheduler: (any PastedRegionScheduling)? = nil,
-    activeApplications: (@MainActor () -> [ActiveApplication])? = nil,
+    activeApplications: (@MainActor (String?) -> [ActiveApplication])? = nil,
     selectJudgeForTests: (@MainActor () -> SelectedCorrectionJudge?)? = nil,
     debugExportPath: String? = LearnFromEditsWiring.debugExportPathFromEnvironment(),
     deliveryHome: ModelDeliveryHome? = nil,
@@ -296,7 +296,7 @@ final class LearnFromEditsWiring {
         isLearnFromEditsOn: { [weak settings] in settings?.learnFromEdits ?? false },
         selectJudge: { selectJudgeForTests?() ?? box.wiring?.selectJudge() },
         activeApplications: activeApplications ?? {
-          LivePastedRegionAXOperations.activeApplications()
+          LivePastedRegionAXOperations.activeApplications(destinationBundleID: $0)
         },
         observer: observer,
         nowMs: { scheduler.nowMs },

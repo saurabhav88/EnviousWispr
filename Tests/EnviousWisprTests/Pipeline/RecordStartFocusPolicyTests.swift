@@ -94,8 +94,8 @@ struct RecordStartFocusPolicyTests {
     #expect(bundle == nil)
   }
 
-  @Test("the recorded window is read from the substituted target when no field was captured")
-  func windowFollowsTheTarget() throws {
+  @Test("without a captured field, the front app supplies the recorded window")
+  func windowFollowsTheFrontWithoutAField() throws {
     let (front, _) = try apps()
     var asked: [pid_t] = []
     let context = KernelSessionContext()
@@ -106,6 +106,8 @@ struct RecordStartFocusPolicyTests {
         return nil
       },
       ownerApplication: { _ in nil }, isEligibleOwner: { _ in true }, ownPID: -2)
+    #expect(context.targetApp == front)
+    #expect(context.focusOwnerState == .noElement)
     #expect(asked == [front.processIdentifier])
   }
 
@@ -122,7 +124,7 @@ struct RecordStartFocusPolicyTests {
     }
   }
 
-  @Test("a Gecko field owned by a helper process keeps the browser as the target and its policy")
+  @Test("a helper-owned field (a Gecko content process) keeps the front application as the target")
   func helperOwnedGeckoFieldKeepsTheBrowser() throws {
     let (front, owner) = try apps()
     // The front app stands in for Firefox; the owner for its content process (prohibited policy).
@@ -130,10 +132,8 @@ struct RecordStartFocusPolicyTests {
       front: front, focus: .focused(element: field, ownerPID: owner.processIdentifier),
       owner: owner, eligible: false)
     #expect(context.focusOwnerState == .disagreeKeptFront)
-    #expect(context.targetApp?.bundleIdentifier == front.bundleIdentifier)
-    #expect(
-      PasteDeliveryPolicy.skipsDirectWrite(bundleID: "org.mozilla.firefox"),
-      "the bundle-keyed Gecko policy still keys on the kept front app")
+    #expect(context.targetApp == front, "the front app's bundle-keyed policies still apply")
+    #expect(context.targetElement == field)
   }
 
   /// Launchers whose panels take the focus without becoming front, as named in #3423.

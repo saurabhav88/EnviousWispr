@@ -605,10 +605,14 @@ package enum DestinationActivityEvaluator {
 
   /// The applications that may hold keyboard input, front first, then the confirmed focus owner
   /// when it is another application; one entry per pid. `application` resolves a pid.
+  ///
+  /// When the front app already has the destination's bundle, that is today's answer and no focus
+  /// is read: an ordinary front destination pays nothing (plan section 11.1 core criterion).
   package static func activeApplications(
-    front: ActiveApplication?, focus: () -> KeyboardFocusRead,
+    front: ActiveApplication?, destinationBundleID: String?, focus: () -> KeyboardFocusRead,
     application: (pid_t) -> ActiveApplication?
   ) -> [ActiveApplication] {
+    if let front, front.bundleID == destinationBundleID { return [front] }
     let owner: pid_t? = if case .focused(_, let pid) = focus() { pid } else { nil }
     guard let front else { return owner.flatMap(application).map { [$0] } ?? [] }
     let frontEntry = ActiveApplication(
@@ -634,10 +638,11 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// bounded by `PasteService.keyboardFocusReadCapSeconds` or what `budget` has left, whichever is
   /// less; a spent budget answers `.unreadable` with no call. Nil: the cap alone.
   func keyboardFocusRead(budget: PasteLandingPrepareBudget?) -> KeyboardFocusRead
-  /// #3423: whether `pid` is where keyboard input goes now. The ONE answer to that question: there
-  /// is no raw front-pid read on this seam, because the front application is not always the owner
-  /// of the keyboard focus (a non-activating launcher panel takes the focus and leaves the front
-  /// app unchanged). `.frontOnly` never reads the focus; `.full` reads it at most once, and only
+  /// #3423: whether `pid` counts as the active destination: the front app (today's rule, decided
+  /// without a focus read), or, when it is not front, the confirmed keyboard-focus owner. The ONE
+  /// answer to that question: there is no raw front-pid read on this seam, because the front
+  /// application is not always the owner of the keyboard focus (a non-activating launcher panel
+  /// takes the focus and leaves the front app unchanged). `.frontOnly` never reads the focus; `.full` reads it at most once, and only
   /// when `pid` is not the front app. See `DestinationActivityEvaluator`.
   func destinationActivity(
     pid: pid_t, capturedElement: AXUIElement?, mode: DestinationActivityMode,
@@ -2315,13 +2320,14 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
   }
 
   /// The applications that may hold keyboard input now, front first, then the confirmed focus
-  /// owner (#3423). The learning watcher's supplier; one bounded focus read per call.
-  package static func activeApplications() -> [ActiveApplication] {
+  /// owner (#3423). The learning watcher's supplier; at most one bounded focus read per call, and
+  /// none when the front app is the destination's.
+  package static func activeApplications(destinationBundleID: String?) -> [ActiveApplication] {
     let front = NSWorkspace.shared.frontmostApplication.map {
       ActiveApplication(pid: $0.processIdentifier, bundleID: $0.bundleIdentifier, isFocusOwner: false)
     }
     return DestinationActivityEvaluator.activeApplications(
-      front: front,
+      front: front, destinationBundleID: destinationBundleID,
       focus: {
         PasteService.readKeyboardFocus(cap: PasteService.keyboardFocusReadCapSeconds, admit: nil)
       },

@@ -50,7 +50,7 @@ struct LearnFromEditsWiringTests {
       pasteCompletionRegistry: registry, telemetry: telemetry,
       legacyLedgerDirectory: dir, legacyCleanup: cleanup, osMajor: 27,
       observer: observer, scheduler: ObserverClock(),
-      activeApplications: {
+      activeApplications: { _ in
         [ActiveApplication(pid: 42, bundleID: "com.apple.Notes", isFocusOwner: false)]
       },
       selectJudgeForTests: nil, debugExportPath: nil)
