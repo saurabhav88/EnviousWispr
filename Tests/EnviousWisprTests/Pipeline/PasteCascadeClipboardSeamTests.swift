@@ -119,4 +119,33 @@ struct PasteCascadeClipboardSeamTests {
     #expect(first.string(forType: .string) == "first")
     #expect(second.string(forType: .string) == "second")
   }
+
+  // #3437: the Undo notice compares the board against THIS receipt, so it must be the count the
+  // Tier 3 write returned, and a later write by anyone else must not move it.
+  @Test("Tier 3 returns the change count of its own write as the delivery's receipt (#3437)")
+  func tierThreeReturnsItsOwnReceipt() async throws {
+    let board = NSPasteboard.withUniqueName()
+    defer { board.releaseGlobally() }
+    let executor = PasteCascadeExecutor(pasteboard: board, policy: .baseline)
+    let before = board.changeCount
+
+    let result = await executor.deliver(request("the held words"))
+
+    let receipt = try #require(result.fallbackClipboardChangeCount)
+    #expect(result.tier == .clipboardOnly)
+    #expect(board.string(forType: .string) == "the held words")
+    #expect(receipt == board.changeCount, "the receipt is the count right after the write")
+    #expect(receipt > before)
+    board.clearContents()
+    board.setString("someone else's copy", forType: .string)
+    #expect(result.fallbackClipboardChangeCount == receipt)
+    #expect(board.changeCount != receipt, "a later write is visible against the receipt")
+  }
+
+  @Test("A request is a dictation unless it says otherwise (#3437)")
+  func originDefaultsToDictation() {
+    #expect(request("x").origin == .dictation)
+    #expect(PasteDeliveryOrigin.escapeRecoveryUndo.rawValue == "escape_recovery_undo")
+    #expect(PasteDeliveryOrigin.dictation.reportedValue == nil)
+  }
 }

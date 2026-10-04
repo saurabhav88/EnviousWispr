@@ -5,9 +5,8 @@ import Foundation
 /// What the Escape Recovery pill will need in order to paste, frozen before the
 /// driver clears its session context (#2087).
 ///
-/// **Nothing writes one yet.** Chunk 7 adds the capture at the terminal, chunk 8
-/// the pill that reads it. The sentences below describe the contract this type
-/// exists to keep, not behaviour the app performs today.
+/// Production captures this payload at the recovery terminal, before clearing
+/// the session context. The pill consumes it through the completion slot.
 ///
 /// **Not the text, by design.** It carries an id, so the presenter can re-read at
 /// press time and a row deleted or expired in the meantime resolves to nothing
@@ -32,11 +31,45 @@ public final class CancelUndoPayload {
   /// The specific field, when one was resolvable. Nil is normal and not a
   /// failure: the paste cascade already handles an app-only target.
   public let targetElement: AXUIElement?
+  /// #3437: the target app's focused window recorded at record start when no field was captured
+  /// (#3304), so the Undo delivery's window gate protects the same window dictation's would.
+  package let targetWindow: AXUIElement?
+  /// #3437: the take facts Smart Insertion reads, frozen when the take was held so the Undo
+  /// delivery repairs the text exactly as this take's own delivery would have.
+  package let takeFacts: InsertionTakeFacts
 
-  public init(transcriptID: UUID, targetApp: NSRunningApplication?, targetElement: AXUIElement?) {
+  package init(
+    transcriptID: UUID, targetApp: NSRunningApplication?, targetElement: AXUIElement?,
+    targetWindow: AXUIElement?, takeFacts: InsertionTakeFacts
+  ) {
     self.transcriptID = transcriptID
     self.targetApp = targetApp
     self.targetElement = targetElement
+    self.targetWindow = targetWindow
+    self.takeFacts = takeFacts
+  }
+}
+
+/// The take facts Smart Insertion reads that exist only during the take: whether a snippet
+/// expanded, the language inputs and the protected spellings. Dictation reads them live after the
+/// caret; the Escape Recovery Undo delivery supplies the values frozen when the take was held
+/// (#3437).
+package struct InsertionTakeFacts: Sendable, Equatable {
+  package let snippetFired: Bool
+  package let lockedLanguageCode: String?
+  package let engineDetectsLanguage: Bool
+  package let engineReportedLanguage: String?
+  package let protectedSpellings: Set<String>
+
+  package init(
+    snippetFired: Bool, lockedLanguageCode: String?, engineDetectsLanguage: Bool,
+    engineReportedLanguage: String?, protectedSpellings: Set<String>
+  ) {
+    self.snippetFired = snippetFired
+    self.lockedLanguageCode = lockedLanguageCode
+    self.engineDetectsLanguage = engineDetectsLanguage
+    self.engineReportedLanguage = engineReportedLanguage
+    self.protectedSpellings = protectedSpellings
   }
 }
 

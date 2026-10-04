@@ -1476,7 +1476,6 @@ package final class WisprBootstrapper {
           return path.hasSuffix("/EnviousWispr")
         }))
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
-      application: presentationEffects.application,
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
       recordingOverlay: recordingOverlay,

@@ -1,3 +1,5 @@
+import AppKit
+import EnviousWisprCore
 import EnviousWisprPipeline
 import EnviousWisprServices
 import EnviousWisprStorage
@@ -54,26 +56,39 @@ enum EscapeRecoveryWiring {
   @MainActor
   static func pasteAction(
     coordinator: TranscriptCoordinator,
-    application: any ApplicationActivating,
+    overlay: (any RetainedPasteNoticeHosting)?,
+    settingsAtPress: @escaping @MainActor () -> HeldDeliverySettings,
     report: @escaping (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void
   ) -> (CancelUndoPayload) -> Void {
-    { [weak coordinator] payload in
+    { [weak coordinator, weak overlay] payload in
       guard let coordinator else { return }
-      EscapeRecoveryPasteAction.paste(
-        payload: payload,
-        restorable: { coordinator.restorableHeldRow(id: $0) },
-        // #2465: this is a DELIVERY, so it claims the board like every other one. The three
-        // remaining general-board writers in this app — History copy, onboarding error copy,
-        // diagnostics path copy — are the user deliberately copying in our own UI, which is a
-        // foreign write like any other and lands in the documented undecidable case rather than
-        // here.
-        copyToClipboard: {
-          ClipboardCleanup.deliveryClaimsBoard()
-          PasteService.copyToClipboard($0)
-        },
-        dispatchPaste: { PasteService.simulatePaste() },
-        report: report,
-        retarget: EscapeRecoveryPasteAction.liveRetarget(application: application))
+      // #3437: snapshotted HERE, synchronously at the press and before any await, so the
+      // delivery uses the settings as they stood when the user asked.
+      let settings = settingsAtPress()
+      Task { @MainActor in
+        await EscapeRecoveryPasteAction.paste(
+          payload: payload,
+          restorable: { coordinator.restorableHeldRow(id: $0) },
+          deliver: { text, payload, takeID in
+            await HeldTextDelivery.deliver(
+              text: text, targetApp: payload.targetApp, targetElement: payload.targetElement,
+              targetWindow: payload.targetWindow, takeID: takeID, facts: payload.takeFacts,
+              settings: settings,
+              onRetained: { takeID, changeCount, reportShown in
+                EscapeRecoveryNotice.show(
+                  identity: takeID, receipt: changeCount, reason: nil, host: overlay,
+                  reportShown: reportShown)
+              })
+          },
+          presentNotice: { result, takeID, transcriptID in
+            EscapeRecoveryNotice.show(
+              identity: takeID ?? transcriptID.uuidString,
+              receipt: result.fallbackClipboardChangeCount,
+              reason: result.outcome == .accessibilityDenied ? "ax_denied" : nil, host: overlay,
+              reportShown: { _ in })
+          },
+          report: report)
+      }
     }
   }
 
@@ -106,5 +121,53 @@ enum EscapeRecoveryWiring {
   @MainActor
   static func wire(_ history: TranscriptCoordinator) -> PrepareEscapeRecovery {
     writer()
+  }
+}
+
+/// The Copied notice after an Escape Recovery Undo that ended on the clipboard (#3437).
+///
+/// The SAME guarded request the late dictation notice uses (`retainedClipboardFallback`): the
+/// reducer admits it only while no recording or processing pill is up and the slot is empty, so a
+/// restore finishing late can never replace a newer dictation's pill or publish a recording-ended
+/// effect. Mirrors `RetainedPasteNotice.retained` without its latest-take test: Undo is not a newly
+/// accepted take.
+@MainActor
+enum EscapeRecoveryNotice {
+
+  /// Shows the notice only while the board still holds THIS delivery's write (its `receipt`),
+  /// checked before admission and again at a deferred first render. `reportShown` is completed
+  /// exactly once, on every path, with the director's actual verdict.
+  static func show(
+    identity: String, receipt: Int?, reason: String?, host: (any RetainedPasteNoticeHosting)?,
+    reportShown: @escaping @MainActor (Bool) -> Void,
+    boardChangeCount: @escaping @MainActor () -> Int = { NSPasteboard.general.changeCount }
+  ) {
+    guard let receipt, boardChangeCount() == receipt, let host else {
+      Self.log(shown: false, why: "stale", reason: reason)
+      reportShown(false)
+      return
+    }
+    let request = PillRequest.retainedClipboardFallback(
+      takeID: identity, isStillWanted: { boardChangeCount() == receipt })
+    host.present(request) { result in
+      switch result {
+      case .presented:
+        Self.log(shown: true, why: "presented", reason: reason)
+        reportShown(true)
+      case .notPresented:
+        Self.log(shown: false, why: "refused", reason: reason)
+        reportShown(false)
+      }
+    }
+  }
+
+  /// One app.log line per notice decision, for Live UAT: the verdict and why, never text.
+  private static func log(shown: Bool, why: String, reason: String?) {
+    let suffix = reason.map { " reason=\($0)" } ?? ""
+    Task {
+      await AppLogger.shared.log(
+        "ESCAPE_RECOVERY_NOTICE shown=\(shown) why=\(why)\(suffix)", level: .info,
+        category: "EscapeRecovery")
+    }
   }
 }

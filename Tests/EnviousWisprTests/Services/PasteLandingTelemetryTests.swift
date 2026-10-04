@@ -33,11 +33,13 @@ struct PasteLandingTelemetryTests {
       ax.reads = [.text("Hello")]
       ax.selectedRange = .range(location: 5, length: 0)
     }
-    func prepare(tier: PasteTier = .cgEvent, takeID: String?) -> PasteArrivalCapture? {
+    func prepare(tier: PasteTier = .cgEvent, takeID: String?, origin: String? = nil)
+      -> PasteArrivalCapture?
+    {
       PasteArrivalCapture.prepare(
         .init(
           tier: tier, pid: 42, takeID: takeID, bundleID: "com.apple.TextEdit",
-          payload: "send the draft to Maya"),
+          payload: "send the draft to Maya", origin: origin),
         capturedTarget: PastedRegionFakeAX.field(42), restoringCapturedTimeoutTo: 0, ax: ax,
         scheduler: clock, report: { self.rows.append($0) }, log: { self.lines.append($0) })
     }
@@ -130,6 +132,16 @@ struct PasteLandingTelemetryTests {
     #expect(rig.lines.count == 1 && rig.lines[0].hasPrefix("PASTE_LANDING tier=cgevent observed=absent"))
   }
 
+  @Test("A session prepared for an Undo restore carries origin on its row; a dictation row has none (#3437)")
+  func originRidesTheRow() throws {
+    let undo = Rig()
+    undo.ran(try prepared(undo.prepare(takeID: "TAKE-U", origin: "escape_recovery_undo")))
+    #expect(undo.rows.map(\.origin) == ["escape_recovery_undo"])
+    let dictation = Rig()
+    dictation.ran(try prepared(dictation.prepare(takeID: "TAKE-D")))
+    #expect(dictation.rows.count == 1 && dictation.rows[0].origin == nil)
+  }
+
   // MARK: The emitter's payload (DEBUG hook, read synchronously)
 
   #if DEBUG
@@ -192,6 +204,17 @@ struct PasteLandingTelemetryTests {
       #expect(raw["late_check_status"] as? String == "found")
       #expect(raw["late_found_ms"] as? Int == 640)
       #expect(raw.count == 10)
+    }
+
+    @Test("An Undo restore's row adds origin as an eleventh key; nothing else changes (#3437)")
+    func rawOrigin() throws {
+      let undo = PasteArrivalObservation(
+        takeID: "TAKE-RAW", tier: "cgevent", landing: .absent, appClass: .native,
+        hostExposedFocus: true, targetWindow: .unknown, beforeMs: 3, resolveMs: 312,
+        lateCheck: .completedNoHit, origin: "escape_recovery_undo")
+      let raw = try #require(rawRows { PasteArrivalCapture.liveReport(undo) }.first)
+      #expect(raw.count == 11)
+      #expect(raw["origin"] as? String == "escape_recovery_undo")
     }
 
     @Test("No text, bundle id or manual-accessibility flag leaves in the payload")

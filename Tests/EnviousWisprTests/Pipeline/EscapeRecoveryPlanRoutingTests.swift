@@ -170,7 +170,7 @@ struct EscapeRecoveryPlanRoutingTests {
     let handler = makeHandler(recorder)
     let transcript = Transcript(text: "held, not pasted")
     let payload = CancelUndoPayload(
-      transcriptID: transcript.id, targetApp: nil, targetElement: nil)
+      transcriptID: transcript.id, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
 
     handler.handle(
       to: PipelineState.complete,

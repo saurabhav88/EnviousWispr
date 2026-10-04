@@ -7,6 +7,17 @@ import Foundation
   import CryptoKit
 #endif
 
+/// #3437: who asked for a delivery. Observation only: it never changes a route. The raw value is
+/// what logs and telemetry carry; dictation is the default and is omitted from both.
+internal enum PasteDeliveryOrigin: String, Sendable {
+  case dictation
+  /// The Escape Recovery pill's Undo, delivering text held from an earlier take.
+  case escapeRecoveryUndo = "escape_recovery_undo"
+
+  /// The value logs and telemetry carry, or nil for an ordinary dictation.
+  var reportedValue: String? { self == .dictation ? nil : rawValue }
+}
+
 /// Input for a paste delivery operation. Captures session-scoped target info.
 @MainActor
 internal struct PasteDeliveryRequest {
@@ -58,6 +69,8 @@ internal struct PasteDeliveryRequest {
   /// and the delivery is key-paste only with no landing retention (plan §3 step 9), so it can never
   /// both paste and show the Copied notice. Defaulted so existing constructions keep compiling.
   var recordedWindow: AXUIElement? = nil
+  /// #3437: who asked for this delivery. Defaulted so dictation constructions are unchanged.
+  var origin: PasteDeliveryOrigin = .dictation
 }
 
 /// Typed outcome of a paste delivery operation. Authoritative input for both
@@ -144,6 +157,10 @@ internal struct PasteDeliveryResult {
   /// in PR A: nothing reads its landing to decide anything; the wiring keeps a key tier's session
   /// alive until its one report, and the delivery event hands it to #996.
   var arrivalCapture: PasteArrivalCapture? = nil
+  /// #3437: the general board's change count returned by THIS delivery's Tier 3 write, the receipt
+  /// a later notice compares against to know the board still holds this text. Nil when Tier 3 did
+  /// not write. Never read from the board after the fact.
+  var fallbackClipboardChangeCount: Int? = nil
 
   var pasteTierLabel: String {
     if case .clipboardOnlyAccessibilityDenied = outcome {
@@ -512,7 +529,8 @@ internal final class PasteCascadeExecutor {
     PasteArrivalCapture.prepare(
       .init(
         tier: tier, pid: app.processIdentifier, takeID: request.takeID,
-        bundleID: app.bundleIdentifier, payload: payloadText),
+        bundleID: app.bundleIdentifier, payload: payloadText,
+        origin: request.origin.reportedValue),
       capturedTarget: request.targetElement,
       restoringCapturedTimeoutTo: tier1BoundTheTarget ? PasteService.axMessagingTimeoutSeconds : 0,
       ax: landingAX, scheduler: landingScheduler)
@@ -645,6 +663,8 @@ internal final class PasteCascadeExecutor {
     let bundleID = capture.context.bundleID
     guard PasteLandingPolicy.routeMayRetain(bundleID: bundleID, tier: tier) else { return nil }
     let takeID = request.takeID
+    // #3437: snapshotted from THIS request, never read from the executor later.
+    let origin = request.origin.reportedValue
     let onRetained = self.onRetained
     return ClipboardCleanup.LandingCheck(
       decision: { await capture.landingDecision() },
@@ -665,7 +685,8 @@ internal final class PasteCascadeExecutor {
           guard once.claim() else { return }
           TelemetryService.shared.pasteLandingRetained(
             takeID: takeID, tier: tierLabel, appClass: classLabel,
-            outcome: outcome == .yielded ? "yielded" : "retained", pillShown: shown)
+            outcome: outcome == .yielded ? "yielded" : "retained", pillShown: shown,
+            origin: origin)
         }
         guard case .retained(let changeCount) = outcome, let takeID, let onRetained else {
           report(false)
@@ -725,6 +746,8 @@ internal final class PasteCascadeExecutor {
     var committedArrivalCapture: PasteArrivalCapture? = nil
     // #3121: the captured field's window, resolved by the first key tier's activation and reused.
     var targetWindow: PasteTargetWindow? = nil
+    // #3437: the receipt of the Tier 3 write, if it ran.
+    var fallbackClipboardChangeCount: Int? = nil
 
     // Three-way classification of the focused element (PR #220 design intent,
     // restored for Chromium/Electron contenteditable inputs — see #277).
@@ -983,7 +1006,7 @@ internal final class PasteCascadeExecutor {
         let reason = "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(elapsed)"
         tierFailures["activation"] = reason
         emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
-        logWindowRefusal(stage: "activation", reason: reason, bundleId: bundleId)
+        logWindowRefusal(stage: "activation", reason: reason, bundleId: bundleId, origin: request.origin)
       } else if activated {
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
@@ -1007,7 +1030,8 @@ internal final class PasteCascadeExecutor {
         // what is left of this gate's budget.
         let gate = dispatchGate(
           app: app, target: activation.target, element: request.targetElement,
-          tier1BoundTheTarget: tier1BoundTheTarget, takeID: request.takeID, bundleId: bundleId)
+          tier1BoundTheTarget: tier1BoundTheTarget, takeID: request.takeID, bundleId: bundleId,
+          origin: request.origin)
         // Cloud review rounds 2 and 4 (PR #2451): both activation AND
         // `payloadAtCommitBoundary`'s own AX re-reads above can move focus off
         // the omnibox before the CGEvent fires. Checking after activation but
@@ -1041,7 +1065,7 @@ internal final class PasteCascadeExecutor {
           let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["cgevent"] = reason
           emitTierFailureBreadcrumb(stage: "cgevent", reason: reason, bundleId: bundleId)
-          logWindowRefusal(stage: "cgevent", reason: reason, bundleId: bundleId)
+          logWindowRefusal(stage: "cgevent", reason: reason, bundleId: bundleId, origin: request.origin)
         } else if !chromiumOmniboxStillFocused {
           // Refuse the blind paste rather than guess where it lands — the same
           // "not confident enough to act automatically" floor PR #220 already
@@ -1140,7 +1164,8 @@ internal final class PasteCascadeExecutor {
         // #3121 R2-1: the settle above is not proof the app, or the field's window, came front.
         let gate = dispatchGate(
           app: app, target: activation.target, element: request.targetElement,
-          tier1BoundTheTarget: tier1BoundTheTarget, takeID: request.takeID, bundleId: bundleId)
+          tier1BoundTheTarget: tier1BoundTheTarget, takeID: request.takeID, bundleId: bundleId,
+          origin: request.origin)
         // #2297 cloud review round 3: Tier 2b never consulted the omnibox-focus
         // decision at all — the force-activate and settle sleep above can move
         // focus exactly as `activate(app)` does for Tier 2, and a blind
@@ -1169,7 +1194,7 @@ internal final class PasteCascadeExecutor {
           let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["applescript"] = reason
           emitTierFailureBreadcrumb(stage: "applescript", reason: reason, bundleId: bundleId)
-          logWindowRefusal(stage: "applescript", reason: reason, bundleId: bundleId)
+          logWindowRefusal(stage: "applescript", reason: reason, bundleId: bundleId, origin: request.origin)
         } else if !chromiumOmniboxStillFocusedForAppleScript {
           // Cloud review round 5 (same shape, Tier 2b): `.appleScript` must NOT
           // be recorded as attempted here — `pasteViaAppleScript` is never
@@ -1262,7 +1287,7 @@ internal final class PasteCascadeExecutor {
         let reason = "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(activation.elapsed)"
         tierFailures["activation"] = reason
         emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
-        logWindowRefusal(stage: "activation", reason: reason, bundleId: bundleId)
+        logWindowRefusal(stage: "activation", reason: reason, bundleId: bundleId, origin: request.origin)
       } else if activation.activated {
         // Put our text on the clipboard BEFORE probing enabled-state: apps grey
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
@@ -1311,7 +1336,8 @@ internal final class PasteCascadeExecutor {
             // AX step before AXPress, and `.menuPaste` counts as attempted only once it passes.
             let gate = dispatchGate(
               app: app, target: activation.target, element: request.targetElement,
-              tier1BoundTheTarget: false, takeID: request.takeID, bundleId: bundleId)
+              tier1BoundTheTarget: false, takeID: request.takeID, bundleId: bundleId,
+          origin: request.origin)
             // `dispatchGate` read the destination last (the front app, or the confirmed focus owner
             // with the captured field, #3423); no AX step follows it before AXPress.
             let dispatchRefusal = gate.refusal
@@ -1320,7 +1346,7 @@ internal final class PasteCascadeExecutor {
               let reason = "target_window_not_confirmed(\(windowRefusal))"
               tierFailures["menu_paste"] = reason
               emitTierFailureBreadcrumb(stage: "menu_paste", reason: reason, bundleId: bundleId)
-              logWindowRefusal(stage: "menu_paste", reason: reason, bundleId: bundleId)
+              logWindowRefusal(stage: "menu_paste", reason: reason, bundleId: bundleId, origin: request.origin)
             } else {
               tiersAttempted.append(.menuPaste)
               if PasteService.pressMenuItem(menuItem) {
@@ -1386,7 +1412,8 @@ internal final class PasteCascadeExecutor {
       // ways to say so — it never snapshots and never restores. A Quick Add takeover in flight would
       // have read this payload as the target app's Copy response and then restored over it.
       ClipboardCleanup.deliveryClaimsBoard()
-      PasteService.copyToClipboard(request.legacyText, to: self.pasteboard)
+      fallbackClipboardChangeCount = PasteService.copyToClipboardReturningChangeCount(
+        request.legacyText, to: self.pasteboard)
       // An earlier route may have SUBMITTED the contextual payload and failed.
       // What the user can now paste by hand is this legacy text, so that is what
       // the record has to say (Codex review r4) — otherwise the field reports a
@@ -1506,7 +1533,7 @@ internal final class PasteCascadeExecutor {
     emitPasteTelemetry(
       outcome: outcome, tierFailures: tierFailures, focusClass: menuProbe?.focusClassLabel,
       axDeclineReason: axDeclineReason?.rawValue,
-      axSettability: axSettability?.telemetryValue)
+      axSettability: axSettability?.telemetryValue, origin: request.origin)
 
     // #2652. Evidence wherever a before-image exists AND something was actually submitted to the
     // destination.
@@ -1535,6 +1562,7 @@ internal final class PasteCascadeExecutor {
       result.copiesSetterReached = copiesSetterReached
     }
     result.arrivalCapture = committedArrivalCapture
+    result.fallbackClipboardChangeCount = fallbackClipboardChangeCount
     return result
   }
 
@@ -1705,7 +1733,8 @@ internal final class PasteCascadeExecutor {
   /// re-check that follows it shares (`remainingGateSeconds`). Nil means dispatch may proceed.
   func dispatchGate(
     app: NSRunningApplication, target: PasteTargetWindow, element: AXUIElement?,
-    tier1BoundTheTarget: Bool, takeID: String?, bundleId: String
+    tier1BoundTheTarget: Bool, takeID: String?, bundleId: String,
+    origin: PasteDeliveryOrigin = .dictation
   ) -> DispatchGate {
     let budget = PasteLandingPrepareBudget(scheduler: landingScheduler, ax: landingAX)
     defer { restoreCapturedTimeout(element, tier1BoundTheTarget: tier1BoundTheTarget) }
@@ -1719,7 +1748,7 @@ internal final class PasteCascadeExecutor {
     let decision = PasteTargetWindowGate.decide(
       target: target, element: element, pid: app.processIdentifier, ax: landingAX,
       admit: budget.admit)
-    logGateDecision(decision, target: target, takeID: takeID, bundleId: bundleId)
+    logGateDecision(decision, target: target, takeID: takeID, bundleId: bundleId, origin: origin)
     let refusal: PasteTargetWindowGate.Refusal?
     if case .refuse(let reason) = decision { refusal = reason } else { refusal = nil }
     // The window read can take the whole budget; the user can switch apps meanwhile, and the
@@ -1793,7 +1822,8 @@ internal final class PasteCascadeExecutor {
   /// so overlay UI and telemetry both derive from the same typed outcome.
   private func emitPasteTelemetry(
     outcome: PasteDeliveryOutcome, tierFailures: [String: String], focusClass: String?,
-    axDeclineReason: String? = nil, axSettability: String? = nil
+    axDeclineReason: String? = nil, axSettability: String? = nil,
+    origin: PasteDeliveryOrigin
   ) {
     switch outcome {
     case .delivered:
@@ -1809,7 +1839,8 @@ internal final class PasteCascadeExecutor {
         accessibilityTrusted: accessibilityTrusted,
         targetDiagnostics: diagnostics,
         tierFailures: tierFailures,
-        focusClass: focusClass
+        focusClass: focusClass,
+        origin: origin
       )
       if Self.isExpectedNonTextRefusal(
         tiersAttempted: tierStrings,
@@ -1847,7 +1878,8 @@ internal final class PasteCascadeExecutor {
         accessibilityTrusted: true,
         targetDiagnostics: diagnostics,
         tierFailures: tierFailures,
-        focusClass: nil
+        focusClass: nil,
+        origin: origin
       )
       let err = HeartPathError.pasteCascadeClipboardFallback(
         tiersAttempted: tierStrings,
@@ -1858,26 +1890,27 @@ internal final class PasteCascadeExecutor {
     case .cgEventCreationFailed(let accessibilityTrusted):
       let err = HeartPathError.pasteCGEventCreationFailed(
         accessibilityTrusted: accessibilityTrusted)
-      SentryBreadcrumb.captureError(
-        err,
-        category: .pasteFailed,
-        stage: "paste",
-        extra: [
-          "paste.outcome": "cgevent_creation_failed",
-          "paste.accessibility_trusted": accessibilityTrusted,
-          "paste.cgevent_failed": true,
-          "paste.tier_failures": tierFailures,
-        ]
-      )
+      var extra: [String: Any] = [
+        "paste.outcome": "cgevent_creation_failed",
+        "paste.accessibility_trusted": accessibilityTrusted,
+        "paste.cgevent_failed": true,
+        "paste.tier_failures": tierFailures,
+      ]
+      // #3437: omitted for dictation, so its shape is unchanged.
+      if let origin = origin.reportedValue { extra["paste.origin"] = origin }
+      SentryBreadcrumb.captureError(err, category: .pasteFailed, stage: "paste", extra: extra)
     case .clipboardOnlyAccessibilityDenied(let targetBundleID):
+      var data: [String: Any] = [
+        "target_bundle_id": targetBundleID ?? "unknown",
+        "paste.accessibility_trusted": false,
+      ]
+      // #3437: omitted for dictation, so its shape is unchanged.
+      if let origin = origin.reportedValue { data["paste.origin"] = origin }
       SentryBreadcrumb.add(
         stage: "paste",
         message: "paste.outcome=clipboard_only_ax_denied",
         level: .info,
-        data: [
-          "target_bundle_id": targetBundleID ?? "unknown",
-          "paste.accessibility_trusted": false,
-        ]
+        data: data
       )
     }
   }
@@ -1943,7 +1976,8 @@ internal final class PasteCascadeExecutor {
     accessibilityTrusted: Bool,
     targetDiagnostics: PasteElementDiagnostics,
     tierFailures: [String: String],
-    focusClass: String? = nil
+    focusClass: String? = nil,
+    origin: PasteDeliveryOrigin = .dictation
   ) -> [String: Any] {
     var extra: [String: Any] = [
       "paste.tiers_attempted": tiersAttempted,
@@ -1969,6 +2003,9 @@ internal final class PasteCascadeExecutor {
     if let focusClass {
       extra["paste.focus_class"] = focusClass
     }
+    // #3437: an Undo restore's fallback stays visible without reading as a dictation paste
+    // failure. Omitted for dictation, so dictation's event shape is unchanged.
+    if let origin = origin.reportedValue { extra["paste.origin"] = origin }
     return extra
   }
 
@@ -1979,10 +2016,13 @@ internal final class PasteCascadeExecutor {
   /// #3121: the one local line for a key paste refused by the window gate, so a support read of
   /// `app.log` (and the Live UAT) can see WHY a dictation went to the clipboard; the breadcrumb and
   /// `paste.tier_failures` reach Sentry only.
-  private func logWindowRefusal(stage: String, reason: String, bundleId: String) {
+  private func logWindowRefusal(
+    stage: String, reason: String, bundleId: String, origin: PasteDeliveryOrigin
+  ) {
+    let originSuffix = origin.reportedValue.map { " origin=\($0)" } ?? ""
     Task.detached {
       await AppLogger.shared.log(
-        "WINDOW_GATE refused stage=\(stage) reason=\(reason) bundle_id=\(bundleId)",
+        "WINDOW_GATE refused stage=\(stage) reason=\(reason) bundle_id=\(bundleId)\(originSuffix)",
         level: .info, category: "PasteCascade")
     }
   }
@@ -1992,7 +2032,7 @@ internal final class PasteCascadeExecutor {
   /// text. Silent for `.none`, which reads nothing.
   private func logGateDecision(
     _ decision: PasteTargetWindowGate.Decision, target: PasteTargetWindow, takeID: String?,
-    bundleId: String
+    bundleId: String, origin: PasteDeliveryOrigin
   ) {
     let kind: String
     switch target {
@@ -2007,9 +2047,10 @@ internal final class PasteCascadeExecutor {
     case .refuse(let refusal): result = "refuse_\(refusal.rawValue)"
     }
     let take = takeID ?? "none"
+    let originSuffix = origin.reportedValue.map { " origin=\($0)" } ?? ""
     Task.detached {
       await AppLogger.shared.log(
-        "WINDOW_GATE dispatch target=\(kind) result=\(result) take_id=\(take) bundle_id=\(bundleId)",
+        "WINDOW_GATE dispatch target=\(kind) result=\(result) take_id=\(take) bundle_id=\(bundleId)\(originSuffix)",
         level: .info, category: "PasteCascade")
     }
   }

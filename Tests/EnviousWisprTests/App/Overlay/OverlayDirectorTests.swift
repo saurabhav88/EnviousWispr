@@ -462,7 +462,7 @@ struct OverlayDirectorTests {
       d.present(
         .escapeRecovery(
           payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil),
+            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
           onPaste: { restored.append($0.transcriptID) })))
 
     d.dismissCurrent(.announced)
@@ -486,7 +486,7 @@ struct OverlayDirectorTests {
       d.present(
         .escapeRecovery(
           payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil),
+            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
           onPaste: { restored.append($0.transcriptID) })))
 
     Self.record(d, level: 0.3)
@@ -515,7 +515,7 @@ struct OverlayDirectorTests {
       d.present(
         .escapeRecovery(
           payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil),
+            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
           onPaste: { _ in pressed.append(.pasteEscapeRecovery(transcriptID: transcript)) })))
 
     try host.sendUserActionThroughRoot(

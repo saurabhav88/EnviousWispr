@@ -92,7 +92,7 @@ struct EscapeRecoverySpoolReleaseTests {
       historySaved: true,
       historySaveReason: nil,
       escapeRecoveryCompletion: .saved(
-        CancelUndoPayload(transcriptID: row.id, targetApp: nil, targetElement: nil)))
+        CancelUndoPayload(transcriptID: row.id, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)))
   }
 
   @Test("a kept recovery deletes this take's audio spool")

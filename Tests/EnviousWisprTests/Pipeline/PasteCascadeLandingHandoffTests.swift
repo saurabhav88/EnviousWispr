@@ -190,6 +190,26 @@ struct PasteCascadeLandingHandoffTests {
       #expect(rows.first?["pill_shown"] as? Bool == false)
     }
 
+    @Test("An Undo restore's retained and yielded rows carry origin; the request's value is snapshotted (#3437)")
+    func undoRowsCarryOrigin() throws {
+      var undo = request()
+      undo.origin = .escapeRecoveryUndo
+      let calls = Calls()
+      let check = try #require(executor(calls).landingCheck(for: try capture(), request: undo))
+      // Mutating the caller's copy after the check exists must not change what the row says.
+      undo.origin = .dictation
+      _ = retainedRows { check.onOutcome(.retained(changeCount: 7)) }
+      let report = try #require(calls.reports.first)
+      let retained = try #require(retainedRows { report(false) }.first)
+      #expect(retained["origin"] as? String == "escape_recovery_undo")
+      #expect(retained.count == 6)
+
+      let yieldedCheck = try #require(
+        executor(Calls()).landingCheck(for: try capture(), request: { var r = request(); r.origin = .escapeRecoveryUndo; return r }()))
+      let yielded = try #require(retainedRows { yieldedCheck.onOutcome(.yielded) }.first)
+      #expect(yielded["origin"] as? String == "escape_recovery_undo")
+    }
+
     @Test("A retained miss with no take id has no pill to show: one row, pill_shown false, no take id")
     func retainedWithoutTakeIDIsReportedNotShown() throws {
       let calls = Calls()

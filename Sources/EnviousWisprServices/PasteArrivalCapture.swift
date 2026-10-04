@@ -285,12 +285,14 @@ package struct PasteArrivalObservation: Sendable, Equatable {
   /// Dispatch to the landing decision.
   package let resolveMs: Int
   package let lateCheck: PasteArrivalLateCheck
+  /// #3437: who asked for the paste (`escape_recovery_undo`), or nil for an ordinary dictation.
+  package let origin: String?
 
   package init(
     takeID: String?, tier: String, landing: PasteArrivalLanding,
     appClass: TelemetryService.LearnFromEditsTelemetry.AppClass, hostExposedFocus: Bool,
     targetWindow: PasteLandingTargetWindow, beforeMs: Int, resolveMs: Int,
-    lateCheck: PasteArrivalLateCheck
+    lateCheck: PasteArrivalLateCheck, origin: String? = nil
   ) {
     self.takeID = takeID
     self.tier = tier
@@ -301,6 +303,7 @@ package struct PasteArrivalObservation: Sendable, Equatable {
     self.beforeMs = beforeMs
     self.resolveMs = resolveMs
     self.lateCheck = lateCheck
+    self.origin = origin
   }
 }
 
@@ -327,13 +330,20 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     package let bundleID: String?
     /// The text this tier submitted (possibly context-adjusted), which is what the field receives.
     package let payload: String
+    /// #3437: who asked for the paste (`escape_recovery_undo`), or nil for an ordinary dictation.
+    /// Carried on the report.
+    package let origin: String?
 
-    package init(tier: PasteTier, pid: pid_t, takeID: String?, bundleID: String?, payload: String) {
+    package init(
+      tier: PasteTier, pid: pid_t, takeID: String?, bundleID: String?, payload: String,
+      origin: String? = nil
+    ) {
       self.tier = tier
       self.pid = pid
       self.takeID = takeID
       self.bundleID = bundleID
       self.payload = payload
+      self.origin = origin
     }
   }
 
@@ -865,7 +875,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     let observation = PasteArrivalObservation(
       takeID: context.takeID, tier: context.tier.rawValue, landing: landing, appClass: appClass,
       hostExposedFocus: hostExposedFocus, targetWindow: targetWindow, beforeMs: beforeMs,
-      resolveMs: resolveMs, lateCheck: lateCheck)
+      resolveMs: resolveMs, lateCheck: lateCheck, origin: context.origin)
     log(logLine(observation))
     reporter(observation)
     finish()
@@ -891,7 +901,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       takeID: o.takeID, tier: o.tier, observed: o.landing.observed, reason: o.landing.reason,
       appClass: o.appClass.rawValue, hostExposedFocus: o.hostExposedFocus,
       targetWindow: o.targetWindow.rawValue, beforeMs: o.beforeMs, resolveMs: o.resolveMs,
-      lateCheckStatus: o.lateCheck.status, lateFoundMs: lateFoundMs)
+      lateCheckStatus: o.lateCheck.status, lateFoundMs: lateFoundMs, origin: o.origin)
   }
 
   /// Returns once the session has finished: reported, or cancelled before commit. The one thing an

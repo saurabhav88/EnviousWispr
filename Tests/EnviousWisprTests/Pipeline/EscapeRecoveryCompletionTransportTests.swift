@@ -35,7 +35,7 @@ struct EscapeRecoveryCompletionTransportTests {
     let slot = EscapeRecoveryCompletionSlot()
     let id = UUID()
     slot.put(
-      .saved(CancelUndoPayload(transcriptID: id, targetApp: nil, targetElement: nil)))
+      .saved(CancelUndoPayload(transcriptID: id, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)))
 
     #expect(slot.take()?.payload?.transcriptID == id)
     #expect(
@@ -78,7 +78,7 @@ struct EscapeRecoveryCompletionTransportTests {
     }
     #expect(
       EscapeRecoveryCompletion.saved(
-        CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+        CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
       ).outcome == .saved)
   }
 
@@ -90,7 +90,7 @@ struct EscapeRecoveryCompletionTransportTests {
       let h = makeDriver()
       let id = UUID()
       h.driver.putEscapeRecoveryCompletionForTesting(
-        .saved(CancelUndoPayload(transcriptID: id, targetApp: nil, targetElement: nil)))
+        .saved(CancelUndoPayload(transcriptID: id, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)))
 
       #expect(h.driver.takeEscapeRecoveryCompletion()?.payload?.transcriptID == id)
       #expect(h.driver.takeEscapeRecoveryCompletion() == nil)
@@ -165,7 +165,7 @@ struct EscapeRecoveryCompletionTransportTests {
     // MARK: Helpers
 
     private func samplePayload() -> CancelUndoPayload {
-      CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone)
     }
 
     private struct Harness {
@@ -218,4 +218,12 @@ struct EscapeRecoveryCompletionTransportTests {
       }
     }
   #endif
+}
+
+extension InsertionTakeFacts {
+  /// Test fixture for a held take whose Smart Insertion facts the case does not exercise: no
+  /// snippet, no locked or reported language, no detection, no protected words.
+  static let testNone = InsertionTakeFacts(
+    snippetFired: false, lockedLanguageCode: nil, engineDetectsLanguage: false,
+    engineReportedLanguage: nil, protectedSpellings: [])
 }

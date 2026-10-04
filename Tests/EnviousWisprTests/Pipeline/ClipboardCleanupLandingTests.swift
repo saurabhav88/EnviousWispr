@@ -310,6 +310,81 @@ struct ClipboardCleanupLandingTests {
     }
   }
 
+  // MARK: #3437: an Undo restore and a new dictation overlap on one board
+
+  /// A newer delivery supersedes an Undo-shaped pending cleanup.
+  /// These cases prove cleanup silence and final clipboard state with restoration
+  /// on/off. They do not observe the payload consumed by a queued paste.
+  @Test(
+    "Restore on: a dictation delivered while an Undo cleanup waits supersedes it (#3437)")
+  func dictationSupersedesAWaitingUndoCleanupRestoreOn() async throws {
+    try await withCleanCleanupThrowing {
+      let undoFake = FakeLanding()
+      let outcomes = Outcomes()
+      let pb = board(holding: Self.user)
+      let undoSnapshot = ClipboardCleanup.snapshotForDelivery(from: pb)
+      put("the held words ", on: pb)
+      #expect(pb.string(forType: .string) == "the held words ", "the board holds the submitted payload")
+      ClipboardCleanup.scheduleRestore(
+        undoSnapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
+        landing: check(undoFake, legacy: "the held words ", into: outcomes))
+      try await undoFake.waitUntilAsked()
+      let undoTask = try #require(ClipboardCleanup.pendingTaskForTests())
+
+      let inherited = ClipboardCleanup.snapshotForDelivery(from: pb)
+      put("the new dictation ", on: pb)
+      #expect(pb.string(forType: .string) == "the new dictation ", "the board holds the submitted payload")
+      let dictationFake = FakeLanding()
+      ClipboardCleanup.scheduleRestore(
+        inherited, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
+        landing: check(dictationFake, legacy: "the new dictation ", into: outcomes))
+
+      undoFake.publish(.absent)
+      try await finished(undoTask)
+      try await dictationFake.waitUntilAsked()
+      #expect(outcomes.all.isEmpty, "the superseded Undo cleanup reported")
+      #expect(pb.string(forType: .string) == "the new dictation ")
+
+      dictationFake.publish(.found(.sameField))
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(pb.string(forType: .string) == Self.user, "the user's own clipboard comes back")
+      #expect(outcomes.all.isEmpty)
+    }
+  }
+
+  @Test(
+    "Restore off: a dictation delivered while an Undo cleanup waits leaves its own text (#3437)")
+  func dictationSupersedesAWaitingUndoCleanupRestoreOff() async throws {
+    try await withCleanCleanupThrowing {
+      let undoFake = FakeLanding()
+      let outcomes = Outcomes()
+      let pb = board(holding: Self.user)
+      put("the held words ", on: pb)
+      ClipboardCleanup.scheduleLegacyRewrite(
+        legacyText: "the held words ", submittedChangeCount: pb.changeCount, tier: .cgEvent, on: pb,
+        landing: check(undoFake, legacy: "the held words ", into: outcomes))
+      try await undoFake.waitUntilAsked()
+      let undoTask = try #require(ClipboardCleanup.pendingTaskForTests())
+
+      put("the new dictation ", on: pb)
+      let dictationFake = FakeLanding()
+      ClipboardCleanup.scheduleLegacyRewrite(
+        legacyText: "the new dictation ", submittedChangeCount: pb.changeCount, tier: .cgEvent,
+        on: pb, landing: check(dictationFake, legacy: "the new dictation ", into: outcomes))
+
+      undoFake.publish(.absent)
+      try await finished(undoTask)
+      try await dictationFake.waitUntilAsked()
+      #expect(outcomes.all.isEmpty, "the superseded Undo cleanup reported")
+      #expect(pb.string(forType: .string) == "the new dictation ")
+
+      dictationFake.publish(.found(.sameField))
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(pb.string(forType: .string) == "the new dictation ", "the latest delivery's text stays")
+      #expect(outcomes.all.isEmpty)
+    }
+  }
+
   @Test("A cancelled waiting cleanup does nothing when its decision arrives")
   func cancelledCleanupIsSilent() async throws {
     try await withCleanCleanupThrowing {
