@@ -17,24 +17,21 @@ struct AIPolishProviderPicker: View {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
-  @Environment(EGOneRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @State private var isOpen = false
 
   static let menuWidth: CGFloat = 380
 
-  private var inputs: ProviderStatusInputs {
-    ProviderStatusInputs(
-      egOneInstall: egOne.installState, egOneHealth: egOne.health,
-      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
-      s1MiniHealth: localPolishRuntimes.s1Mini.health,
-      appleStatus: aiAvailability.latestReport?.overallStatus,
-      appleIsChecking: aiAvailability.isChecking,
+  /// The dropdown rows' facts. Every row reads the coordinator's verdict with its provider,
+  /// and the mapping keeps a verdict about another provider from counting.
+  private var facts: PolishSetupFacts {
+    .live(
+      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
       validationProvider: llmDiscovery.stateProvider,
       cloudValidation: llmDiscovery.keyValidationState,
       openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,
       claudeKeySaved: model.claudeKeySaved,
-      ollamaSetup: setup.ollamaSetup.setupState)
+      ollamaModel: settings.ollamaModel)
   }
 
   private func status(for provider: LLMProvider) -> ProviderStatus? {
@@ -42,7 +39,7 @@ struct AIPolishProviderPicker: View {
     return ProviderStatusMapping.status(
       for: provider,
       context: ProviderStatusContext(selected: selected, healthApplies: selected),
-      inputs: inputs)
+      facts: facts)
   }
 
   var body: some View {

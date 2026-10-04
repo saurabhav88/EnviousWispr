@@ -13,9 +13,10 @@ import Security
 /// this engine", and its answers are deliberately reassuring where a state is transient —
 /// a cloud key that is present but never validated reads "Not checked", which is correct to
 /// display and says nothing about whether the run may start. This answers "may the run
-/// start", and the two disagree on real states. They read the SAME coordinator values, so a
-/// new engine must be added to both; both are exhaustive switches over `LLMProvider`, which
-/// is what makes the compiler ask rather than a reader remembering to.
+/// start", and the two disagree on real states. They read the SAME facts
+/// (`PolishSetupFacts`, #3438), so a new engine must be added to both; both are exhaustive
+/// switches over `LLMProvider`, which is what makes the compiler ask rather than a reader
+/// remembering to.
 ///
 /// Pure and value-typed on purpose: `FileImportPolishGateTests` walks the whole grid with no
 /// app running.
@@ -88,24 +89,6 @@ enum FileImportPolishBlock: Equatable {
   }
 }
 
-/// What the Keychain said about this provider's stored key. Three states, never two: the
-/// `Bool?` these come from uses `nil` for "not read yet, or the read failed", and collapsing
-/// that into "absent" is how a locked Keychain becomes a false "needs a key".
-enum FileImportSavedKeyState: Equatable {
-  case present
-  case absent
-  case unknown
-
-  /// From `ProviderSetupModel`'s per-provider `Bool?`.
-  static func from(_ saved: Bool?) -> FileImportSavedKeyState {
-    switch saved {
-    case .some(true): return .present
-    case .some(false): return .absent
-    case nil: return .unknown
-    }
-  }
-}
-
 enum FileImportPolishGate {
   /// The decision composed from the LIVE coordinators, for `provider`. One composer for the
   /// two callers that must agree: the Transcribe a File screen (Continue and Start) and the
@@ -118,7 +101,7 @@ enum FileImportPolishGate {
   @MainActor
   static func readiness(
     provider: LLMProvider,
-    savedKey: FileImportSavedKeyState,
+    savedKey: SavedKeyState,
     hasUnsavedKeyDraft: Bool,
     importOllamaModel: String,
     llmDiscovery: LLMModelDiscoveryCoordinator,
@@ -126,22 +109,21 @@ enum FileImportPolishGate {
     aiAvailability: AIAvailabilityCoordinator,
     setup: SetupCoordinator
   ) -> FileImportPolishReadiness {
-    readiness(
+    // The caller's one saved-key read goes in this provider's slot; no other slot is read.
+    let saved = savedKey.asSavedFlag
+    return readiness(
       provider: provider,
-      savedKey: savedKey,
-      hasUnsavedKeyDraft: hasUnsavedKeyDraft,
-      keyValidation: llmDiscovery.stateProvider == provider
-        ? llmDiscovery.keyValidationState : .idle,
-      egOneInstall: localPolishRuntimes.egOne.installState,
-      egOneHealth: localPolishRuntimes.egOne.health,
-      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
-      s1MiniHealth: localPolishRuntimes.s1Mini.health,
-      appleStatus: aiAvailability.latestReport?.overallStatus,
-      ollamaSetup: setup.ollamaSetup.setupState,
-      // The import's own OLLAMA field, never the effective model, and present in the
-      // daemon's own list, not merely remembered. See `ollamaModelIsArmed(_:downloaded:)`.
-      ollamaModelIsArmed: ollamaModelIsArmed(
-        importOllamaModel, downloaded: setup.ollamaSetup.downloadedModels.map(\.exactName)))
+      facts: .live(
+        localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
+        validationProvider: llmDiscovery.stateProvider,
+        cloudValidation: llmDiscovery.keyValidationState,
+        openAIKeySaved: provider == .openAI ? saved : nil,
+        geminiKeySaved: provider == .gemini ? saved : nil,
+        claudeKeySaved: provider == .claude ? saved : nil,
+        // The import's own OLLAMA field, never the effective model, and present in the
+        // daemon's own list, not merely remembered. See `ollamaModelIsArmed(_:downloaded:)`.
+        ollamaModel: importOllamaModel),
+      hasUnsavedKeyDraft: hasUnsavedKeyDraft)
   }
 
   /// The probes the gate's inputs depend on that nothing runs by itself: Ollama's daemon
@@ -173,7 +155,7 @@ enum FileImportPolishGate {
   /// them; a thrown read answers `.unknown`.
   @MainActor
   static func savedKey(for provider: LLMProvider, keychain: KeychainManager)
-    -> FileImportSavedKeyState
+    -> SavedKeyState
   {
     let id: String
     switch provider {
@@ -191,21 +173,14 @@ enum FileImportPolishGate {
     }
   }
 
-  /// The whole decision, as a pure function of the same coordinator states
-  /// `ProviderStatusMapping.status` reads, plus the two facts a status chip has no reason to
-  /// carry: whether the Keychain read succeeded, and whether an Ollama model is armed.
+  /// The whole decision, as a pure function of the same facts `ProviderStatusMapping.status`
+  /// reads, plus the one fact a status chip has no reason to carry: whether a key was typed
+  /// and not saved. `keyValidation` counts only when the verdict is about THIS provider: the
+  /// coordinator is shared with the AI Polish page, which may have validated another.
   static func readiness(
     provider: LLMProvider,
-    savedKey: FileImportSavedKeyState,
-    hasUnsavedKeyDraft: Bool,
-    keyValidation: LLMModelDiscoveryCoordinator.KeyValidationState,
-    egOneInstall: EGOneInstallState,
-    egOneHealth: EGOneHealth,
-    s1MiniInstall: EGOneInstallState,
-    s1MiniHealth: EGOneHealth,
-    appleStatus: AIAvailabilityStatus?,
-    ollamaSetup: OllamaSetupState,
-    ollamaModelIsArmed: Bool
+    facts: PolishSetupFacts,
+    hasUnsavedKeyDraft: Bool
   ) -> FileImportPolishReadiness {
     switch provider {
     case .none:
@@ -213,16 +188,17 @@ enum FileImportPolishGate {
       // still gets numbers, dates, saved words and filler removal.
       return .ready
     case .egOne:
-      return localServer(install: egOneInstall, health: egOneHealth)
+      return localServer(install: facts.egOneInstall, health: facts.egOneHealth)
     case .s1Mini:
-      return localServer(install: s1MiniInstall, health: s1MiniHealth)
+      return localServer(install: facts.s1MiniInstall, health: facts.s1MiniHealth)
     case .appleIntelligence:
-      return apple(appleStatus)
+      return apple(facts.appleStatus)
     case .openAI, .gemini, .claude:
       return cloud(
-        savedKey: savedKey, hasUnsavedDraft: hasUnsavedKeyDraft, validation: keyValidation)
+        savedKey: facts.savedKeyState(for: provider), hasUnsavedDraft: hasUnsavedKeyDraft,
+        validation: facts.validation(for: provider))
     case .ollama:
-      return ollama(ollamaSetup, modelIsArmed: ollamaModelIsArmed)
+      return ollama(facts.ollamaSetup, modelIsArmed: facts.ollamaModel == .installed)
     }
   }
 
@@ -280,7 +256,7 @@ enum FileImportPolishGate {
   // and refusing on it would block every user who has a working key and has not pressed
   // Refresh this session.
   private static func cloud(
-    savedKey: FileImportSavedKeyState, hasUnsavedDraft: Bool,
+    savedKey: SavedKeyState, hasUnsavedDraft: Bool,
     validation: LLMModelDiscoveryCoordinator.KeyValidationState
   ) -> FileImportPolishReadiness {
     if case .validating = validation { return .blocked(.checking) }

@@ -990,7 +990,7 @@ struct TranscribeFileView: View {
   /// editor renders a state and this decides an outcome; a view that reported its own
   /// readiness would be a second authority on the same question.
   private func readiness(for provider: LLMProvider) -> FileImportPolishReadiness {
-    let savedKey: FileImportSavedKeyState
+    let savedKey: SavedKeyState
     // Whether the field was TYPED IN since it was last loaded or saved, which is not the
     // same fact as the SAVED one: polish reads the Keychain, so a key nobody pressed Save
     // on does not run.

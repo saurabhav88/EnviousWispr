@@ -25,12 +25,13 @@ struct AIPolishCopyTests {
     ProviderStatusMapping.status(
       for: provider,
       context: ProviderStatusContext(selected: selected, healthApplies: selected),
-      inputs: ProviderStatusInputs(
+      facts: PolishSetupFacts(
         egOneInstall: install, egOneHealth: health, s1MiniInstall: install,
-        s1MiniHealth: health, appleStatus: apple, appleIsChecking: appleChecking,
-        validationProvider: provider, cloudValidation: cloud,
+        s1MiniHealth: health, appleStatus: apple, appleFailureReasons: [],
+        appleIsChecking: appleChecking,
+        validationProvider: provider, cloudValidation: cloud, credentialRevisions: [:], cloudVerdict: nil,
         openAIKeySaved: keySaved, geminiKeySaved: keySaved, claudeKeySaved: keySaved,
-        ollamaSetup: ollama)
+        ollamaSetup: ollama, ollamaModel: .installed)
     )?.label
   }
 

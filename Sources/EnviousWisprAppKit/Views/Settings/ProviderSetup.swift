@@ -441,20 +441,17 @@ struct ProviderSetupSection: View {
 
 // MARK: - Status (#3385)
 
-/// The status mapping's inputs for this surface. The validation verdict counts only when it
-/// is about THIS surface's provider (`stateIsAboutThisSurface`).
-private var statusInputs: ProviderStatusInputs {
-  ProviderStatusInputs(
-    egOneInstall: egOne.installState, egOneHealth: egOne.health,
-    s1MiniInstall: localPolishRuntimes.s1Mini.installState,
-    s1MiniHealth: localPolishRuntimes.s1Mini.health,
-    appleStatus: aiAvailability.latestReport?.overallStatus,
-    appleIsChecking: aiAvailability.isChecking,
+/// The setup facts for this surface (#3438: shared with the import gate and the setup
+/// warnings). The validation verdict counts only when it is about THIS surface's provider
+/// (`stateIsAboutThisSurface`).
+private var statusFacts: PolishSetupFacts {
+  .live(
+    localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
     validationProvider: stateIsAboutThisSurface ? llmDiscovery.stateProvider : nil,
     cloudValidation: surfaceValidation,
     openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,
     claudeKeySaved: model.claudeKeySaved,
-    ollamaSetup: setup.ollamaSetup.setupState)
+    ollamaModel: surfaceOllamaModel)
 }
 
 /// The chosen provider's status, as the card on the AI Polish page shows it. Health only
@@ -463,7 +460,7 @@ private var currentProviderStatus: ProviderStatus? {
   ProviderStatusMapping.status(
     for: provider,
     context: ProviderStatusContext(selected: true, healthApplies: surface == .dictation),
-    inputs: statusInputs)
+    facts: statusFacts)
 }
 
 /// Whether the CONFIRMED-persisted key for the current provider read back
@@ -481,34 +478,22 @@ private var currentProviderStatus: ProviderStatus? {
 /// "say nothing", which is right for the missing-key nudge and leaves this case with no
 /// surface at all. It needs one, because the import's Continue gate blocks on it and a
 /// user staring at a disabled button deserves both the reason and a way to ask again.
-private var savedKeyIsUnknownForCurrentProvider: Bool {
-  switch provider {
-  case .openAI: return model.openAIKeySaved == nil
-  case .gemini: return model.geminiKeySaved == nil
-  case .claude: return model.claudeKeySaved == nil
-  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
-  }
-}
+private var savedKeyIsUnknownForCurrentProvider: Bool { currentSavedKey == .unknown }
 
-private var savedKeyIsEmptyForCurrentProvider: Bool {
+private var savedKeyIsEmptyForCurrentProvider: Bool { currentSavedKey == .absent }
+
+private var savedKeyIsPresentForCurrentProvider: Bool { currentSavedKey == .present }
+
+/// The current provider's saved-key fact, read from the shared facts; nil for a provider
+/// that stores no key.
+private var currentSavedKey: SavedKeyState? {
   switch provider {
-  case .openAI: return model.openAIKeySaved == false
-  case .gemini: return model.geminiKeySaved == false
-  case .claude: return model.claudeKeySaved == false
+  case .openAI, .gemini, .claude: return .from(statusFacts.savedKey(for: provider))
   // #2651: enumerated rather than `default:`. No key is stored for these, so
   // the missing-key notice must stay suppressed. A NEW cloud provider on a
   // `default:` arm would never show that notice, which is the direction that
   // hides a real problem from the user.
-  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
-  }
-}
-
-private var savedKeyIsPresentForCurrentProvider: Bool {
-  switch provider {
-  case .openAI: return model.openAIKeySaved == true
-  case .gemini: return model.geminiKeySaved == true
-  case .claude: return model.claudeKeySaved == true
-  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return nil
   }
 }
 

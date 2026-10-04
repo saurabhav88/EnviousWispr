@@ -19,7 +19,7 @@ struct FileImportPolishGateTests {
   /// only the one fact it is about.
   private static func readiness(
     provider: LLMProvider,
-    savedKey: FileImportSavedKeyState = .present,
+    savedKey: SavedKeyState = .present,
     hasUnsavedKeyDraft: Bool = false,
     keyValidation: LLMModelDiscoveryCoordinator.KeyValidationState = .idle,
     egOneInstall: EGOneInstallState = .installed(version: "1.1"),
@@ -31,12 +31,18 @@ struct FileImportPolishGateTests {
     ollamaModelIsArmed: Bool = true
   ) -> FileImportPolishReadiness {
     FileImportPolishGate.readiness(
-      provider: provider, savedKey: savedKey, hasUnsavedKeyDraft: hasUnsavedKeyDraft,
-      keyValidation: keyValidation,
-      egOneInstall: egOneInstall, egOneHealth: egOneHealth,
-      s1MiniInstall: s1MiniInstall, s1MiniHealth: s1MiniHealth,
-      appleStatus: appleStatus, ollamaSetup: ollamaSetup,
-      ollamaModelIsArmed: ollamaModelIsArmed)
+      provider: provider,
+      facts: PolishSetupFacts(
+        egOneInstall: egOneInstall, egOneHealth: egOneHealth,
+        s1MiniInstall: s1MiniInstall, s1MiniHealth: s1MiniHealth,
+        appleStatus: appleStatus, appleFailureReasons: [], appleIsChecking: false,
+        // The verdict passed in is about the provider under test, as the live composer
+        // arranges it.
+        validationProvider: provider, cloudValidation: keyValidation, credentialRevisions: [:], cloudVerdict: nil,
+        openAIKeySaved: savedKey.asSavedFlag, geminiKeySaved: savedKey.asSavedFlag,
+        claudeKeySaved: savedKey.asSavedFlag,
+        ollamaSetup: ollamaSetup, ollamaModel: ollamaModelIsArmed ? .installed : .notInstalled),
+      hasUnsavedKeyDraft: hasUnsavedKeyDraft)
   }
 
   /// The finding itself, on all three cloud engines rather than the one the founder had
@@ -208,7 +214,7 @@ struct FileImportPolishGateTests {
   @Test("no card says a cloud engine is ready while the gate is blocking it")
   func theSubtitleAgreesWithTheGate() {
     for provider in LLMProvider.allCases {
-      for savedKey in [FileImportSavedKeyState.present, .absent, .unknown] {
+      for savedKey in [SavedKeyState.present, .absent, .unknown] {
         for ollama in [OllamaSetupState.ready, .notInstalled] {
           let verdict = Self.readiness(
             provider: provider, savedKey: savedKey, ollamaSetup: ollama)

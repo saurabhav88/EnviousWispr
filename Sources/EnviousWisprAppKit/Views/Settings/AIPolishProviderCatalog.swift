@@ -14,35 +14,8 @@ import SwiftUI
 // watch runs only while Ollama is on screen. Every word below is one the app can stand behind
 // for the provider and context it is shown in.
 
-/// Everything the status words read, captured once per render so the card and every dropdown
-/// row see the same snapshot.
-struct ProviderStatusInputs {
-  let egOneInstall: EGOneInstallState
-  let egOneHealth: EGOneHealth
-  let s1MiniInstall: EGOneInstallState
-  let s1MiniHealth: EGOneHealth
-  let appleStatus: AIAvailabilityStatus?
-  let appleIsChecking: Bool
-  /// The provider the coordinator's verdict belongs to; another provider's verdict is never
-  /// evidence about this one.
-  let validationProvider: LLMProvider?
-  let cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState
-  /// The CONFIRMED saved-key read per cloud provider: true present, false absent, nil when the
-  /// Keychain read failed or has not answered.
-  let openAIKeySaved: Bool?
-  let geminiKeySaved: Bool?
-  let claudeKeySaved: Bool?
-  let ollamaSetup: OllamaSetupState
-
-  func savedKey(for provider: LLMProvider) -> Bool? {
-    switch provider {
-    case .openAI: return openAIKeySaved
-    case .gemini: return geminiKeySaved
-    case .claude: return claudeKeySaved
-    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return nil
-    }
-  }
-}
+// The facts it reads are `PolishSetupFacts` (PolishSetupFacts.swift), shared with the import
+// gate and the setup warnings so the three can disagree on policy but never on facts (#3438).
 
 /// Where a status is shown. `selected` is the provider the surface has chosen;
 /// `healthApplies` is true only where the engine's live health is actually probed (the chosen
@@ -60,24 +33,24 @@ struct ProviderStatusContext: Equatable {
 /// nil means "say nothing": a stale or never-observed state is not shown as if it were current.
 enum ProviderStatusMapping {
   static func status(
-    for provider: LLMProvider, context: ProviderStatusContext, inputs: ProviderStatusInputs
+    for provider: LLMProvider, context: ProviderStatusContext, facts: PolishSetupFacts
   ) -> ProviderStatus? {
     switch provider {
     case .egOne:
       return local(
-        install: inputs.egOneInstall, health: inputs.egOneHealth,
+        install: facts.egOneInstall, health: facts.egOneHealth,
         healthApplies: context.selected && context.healthApplies)
     case .s1Mini:
       return local(
-        install: inputs.s1MiniInstall, health: inputs.s1MiniHealth,
+        install: facts.s1MiniInstall, health: facts.s1MiniHealth,
         healthApplies: context.selected && context.healthApplies)
     case .appleIntelligence:
       return apple(
-        inputs.appleStatus, isChecking: context.selected && inputs.appleIsChecking)
+        facts.appleStatus, isChecking: context.selected && facts.appleIsChecking)
     case .ollama:
-      return ollama(inputs.ollamaSetup, selected: context.selected)
+      return ollama(facts.ollamaSetup, selected: context.selected)
     case .openAI, .gemini, .claude:
-      return cloud(provider, selected: context.selected, inputs: inputs)
+      return cloud(provider, selected: context.selected, facts: facts)
     case .none:
       return ProviderStatus(
         label: String(
@@ -228,9 +201,9 @@ enum ProviderStatusMapping {
   // verdict is about it. `.invalid` carries every failure (a rejected key, no network, a
   // provider error), so it reads "Check failed" with the reason in the row, never "Key invalid".
   private static func cloud(
-    _ provider: LLMProvider, selected: Bool, inputs: ProviderStatusInputs
+    _ provider: LLMProvider, selected: Bool, facts: PolishSetupFacts
   ) -> ProviderStatus {
-    guard let saved = inputs.savedKey(for: provider) else {
+    guard let saved = facts.savedKey(for: provider) else {
       return ProviderStatus(
         label: String(
           localized: "Could not check",
@@ -242,14 +215,14 @@ enum ProviderStatusMapping {
         label: String(localized: "Key needed", comment: "AI Polish provider status chip."),
         tone: .unavailable)
     }
-    guard selected, inputs.validationProvider == provider else {
+    guard selected, facts.validationProvider == provider else {
       return ProviderStatus(
         label: String(
           localized: "Key saved",
           comment: "AI Polish provider status chip: an API key is saved but was not checked here."),
         tone: .unavailable)
     }
-    switch inputs.cloudValidation {
+    switch facts.cloudValidation {
     case .idle:
       return ProviderStatus(
         label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
