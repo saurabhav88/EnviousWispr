@@ -812,57 +812,22 @@ struct KernelFinalizationWiring {
         // request built below (and `caretContextOutcome`'s `no_target` check)
         // both observe the recovered element too, not just this read.
         //
-        // No `terminalBudget` here: that budget's own design deliberately
-        // exempts non-terminal apps from a tighter cap, and reusing it for the
-        // retry would silently reintroduce exactly that squeeze. The retry
-        // keeps the standard `PasteService.axMessagingTimeoutSeconds` bound.
+        // #3437: the retry itself lives in `retryDeliveryTarget`, shared with the
+        // Escape Recovery Undo delivery so both resolve a held target the same way.
         var caretCaptureRetried = false
         var caretCaptureRetryMs: Double?
         let caretContext: PasteService.CaretContext? = {
           guard config?.smartInsertion == true else { return nil }
-          // Whole-diff review (P2): `isTerminated` is checked before reading the
-          // pid, not after. If the target app quit between record-start and
-          // delivery, its pid can be reclaimed by an unrelated new process —
-          // querying a dead app's OWN stored pid at that point would resolve to
-          // whatever now holds it, and a coincidentally text-field-shaped
-          // element there could receive the user's dictated text. A terminated
-          // app can never be the one the user is dictating into.
-          if context.targetElement == nil, let app = context.targetApp, !app.isTerminated {
-            let pid = app.processIdentifier
-            caretCaptureRetried = true
-            let started = currentTime()
-            let recovered = focusedElementInTargetApp(pid)
-            caretCaptureRetryMs = (currentTime() - started) * 1000
-            // Whole-diff review (P1): adopt the recovered element ONLY when it
-            // is a usable text-insertion target. `context.targetElement == nil`
-            // classifies as `.missing` at the paste layer, which STILL attempts
-            // Tier 2 blind Cmd+V (#277's Chromium lazy-AX fallback — the reason
-            // pasting itself already works today even when caret repair
-            // silently no-ops). A recovered element that is NOT a text field
-            // (e.g. Chrome reporting a container/AXWebArea mid-warm-up)
-            // classifies as `.nonText` instead, which skips Tier 2 entirely and
-            // falls to clipboard-only — turning a today-working automatic paste
-            // into one requiring a manual Cmd+V. Keeping a non-text recovery
-            // discarded (not adopted) preserves that existing fallback exactly.
-            // Whole-diff review round 5 (P2): re-checked AFTER the query, not
-            // only before it. `app.isTerminated` is bound to this specific
-            // process instance (not merely a pid number), so if the app died
-            // WHILE `focusedElementInTargetApp` was blocked and its pid was
-            // immediately reclaimed, the pre-query check above cannot see
-            // that — the query can return a real, plausible text field
-            // belonging to the REPLACEMENT process. This narrows that window
-            // to the query's own duration; it does not claim to close it
-            // completely, matching this plan's disclosed same-app-not-same-
-            // window residual-risk posture elsewhere (§2.2, §7).
-            // #3304: with a recorded window, the recovered field must also be proven to sit in
-            // it (an unreadable answer rejects), and liveness is re-checked after that read too.
-            // A rejection keeps today's missing-target delivery, now protected by that window.
-            if let recovered, !app.isTerminated, isRetryTargetUsable(recovered),
-              context.targetWindow.map({ recoveredIsInRecordedWindow(recovered, $0) }) ?? true,
-              !app.isTerminated
-            {
-              context.targetElement = recovered
-            }
+          if context.targetElement == nil {
+            let retry = Self.retryDeliveryTarget(
+              app: context.targetApp, recordedWindow: context.targetWindow,
+              currentTime: currentTime,
+              focusedElementInTargetApp: focusedElementInTargetApp,
+              isRetryTargetUsable: isRetryTargetUsable,
+              recoveredIsInRecordedWindow: recoveredIsInRecordedWindow)
+            caretCaptureRetried = retry.retried
+            caretCaptureRetryMs = retry.queryMs
+            if let recovered = retry.element { context.targetElement = recovered }
           }
           guard let element = context.targetElement else { return nil }
           return readCaretContext(element, terminalBudget, { terminalRefusal = $0 })
@@ -1357,6 +1322,77 @@ struct KernelFinalizationWiring {
     sleepTicks = { ticks in
       try? await Task.sleep(for: .seconds(Double(ticks) * Self.tickDurationSeconds))
     }
+  }
+
+  /// What `retryDeliveryTarget` found: the adopted field (nil when nothing usable was recovered),
+  /// whether the focused-element query was ATTEMPTED (true even when it returned nil or was
+  /// rejected), and how long that one query took.
+  struct DeliveryTargetRetry {
+    let element: AXUIElement?
+    let retried: Bool
+    let queryMs: Double?
+  }
+
+  /// #1980 / #3304: the delivery-time retry of a record-start capture that found no field. Call it
+  /// only when the captured element is nil and Smart Insertion is on; a captured element is never
+  /// replaced. #3437: shared by the dictation delivery and the Escape Recovery Undo delivery.
+  ///
+  /// No `terminalBudget` here: that budget's own design deliberately
+  /// exempts non-terminal apps from a tighter cap, and reusing it for the
+  /// retry would silently reintroduce exactly that squeeze. The retry
+  /// keeps the standard `PasteService.axMessagingTimeoutSeconds` bound.
+  static func retryDeliveryTarget(
+    app: NSRunningApplication?, recordedWindow: AXUIElement?,
+    currentTime: @MainActor () -> TimeInterval,
+    focusedElementInTargetApp: @MainActor (pid_t) -> AXUIElement?,
+    isRetryTargetUsable: @MainActor (AXUIElement) -> Bool,
+    recoveredIsInRecordedWindow: @MainActor (AXUIElement, AXUIElement) -> Bool
+  ) -> DeliveryTargetRetry {
+    // Whole-diff review (P2): `isTerminated` is checked before reading the
+    // pid, not after. If the target app quit between record-start and
+    // delivery, its pid can be reclaimed by an unrelated new process —
+    // querying a dead app's OWN stored pid at that point would resolve to
+    // whatever now holds it, and a coincidentally text-field-shaped
+    // element there could receive the user's dictated text. A terminated
+    // app can never be the one the user is dictating into.
+    guard let app, !app.isTerminated else {
+      return DeliveryTargetRetry(element: nil, retried: false, queryMs: nil)
+    }
+    let pid = app.processIdentifier
+    let started = currentTime()
+    let recovered = focusedElementInTargetApp(pid)
+    let queryMs = (currentTime() - started) * 1000
+    // Whole-diff review (P1): adopt the recovered element ONLY when it
+    // is a usable text-insertion target. `context.targetElement == nil`
+    // classifies as `.missing` at the paste layer, which STILL attempts
+    // Tier 2 blind Cmd+V (#277's Chromium lazy-AX fallback — the reason
+    // pasting itself already works today even when caret repair
+    // silently no-ops). A recovered element that is NOT a text field
+    // (e.g. Chrome reporting a container/AXWebArea mid-warm-up)
+    // classifies as `.nonText` instead, which skips Tier 2 entirely and
+    // falls to clipboard-only — turning a today-working automatic paste
+    // into one requiring a manual Cmd+V. Keeping a non-text recovery
+    // discarded (not adopted) preserves that existing fallback exactly.
+    // Whole-diff review round 5 (P2): re-checked AFTER the query, not
+    // only before it. `app.isTerminated` is bound to this specific
+    // process instance (not merely a pid number), so if the app died
+    // WHILE `focusedElementInTargetApp` was blocked and its pid was
+    // immediately reclaimed, the pre-query check above cannot see
+    // that — the query can return a real, plausible text field
+    // belonging to the REPLACEMENT process. This narrows that window
+    // to the query's own duration; it does not claim to close it
+    // completely, matching this plan's disclosed same-app-not-same-
+    // window residual-risk posture elsewhere (§2.2, §7).
+    // #3304: with a recorded window, the recovered field must also be proven to sit in
+    // it (an unreadable answer rejects), and liveness is re-checked after that read too.
+    // A rejection keeps today's missing-target delivery, now protected by that window.
+    if let recovered, !app.isTerminated, isRetryTargetUsable(recovered),
+      recordedWindow.map({ recoveredIsInRecordedWindow(recovered, $0) }) ?? true,
+      !app.isTerminated
+    {
+      return DeliveryTargetRetry(element: recovered, retried: true, queryMs: queryMs)
+    }
+    return DeliveryTargetRetry(element: nil, retried: true, queryMs: queryMs)
   }
 
   /// #145: did the user actually GET the ITN floor? True when ITN changed the
