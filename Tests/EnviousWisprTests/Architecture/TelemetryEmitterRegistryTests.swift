@@ -137,14 +137,14 @@ struct TelemetryEmitterRegistryTests {
   /// on card rows only and listed in TAKE_KEYED_EVENTS; reader the "Polish setup prompts"
   /// funnel). Derived by removing that one line from the printed site list: the rest hashes to
   /// the previous value (the #3423 value after the rebase onto it).
-  /// #3437 (rebased onto #3438): `pasteLandingObserved` and `pasteLandingRetained` gained `origin:`, which changes the
-  /// enclosing-function identity of those two existing sites. No new site, no new event, same
+  /// #3437 (rebased onto #3438): `pasteLandingObserved` and `pasteLandingRetained` gained
+  /// `origin:`, which changes the enclosing-function identity of those two existing sites. No new site, no new event, same
   /// cadences and treatments. Checklist: existing rows, +0 rows; one closed String
   /// (`escape_recovery_undo`) present only on an Escape Recovery Undo restore and omitted for
   /// dictation, no content; reader separates restores from dictation landings; registry rows
   /// unchanged.
   static let sitesFingerprint =
-    "5039b2fc0388170dc17a60745f3568c9aaad211a15c999d23dc8d5948efc552a"
+    "3af49b1682214f211d0e03167a88b16a8f2b880bc96336c1caedf7b4dfd8de49"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
