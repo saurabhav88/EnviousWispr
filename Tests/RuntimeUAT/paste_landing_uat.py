@@ -1635,7 +1635,8 @@ def launch_panel(field):
     """Starts the fixture with `field` focused, by its executable (never `open`, which could
     activate it), and waits for its own report that the panel is key on that field."""
     import tempfile
-    close_panel()
+    if not close_panel():
+        raise u.Aborted("previous launcher fixture did not exit; refusing to replace its handle")
     app = build_launcher()
     FIXTURE["run"] = tempfile.mkdtemp(prefix=f"ew-uat-3423-{field}-{u.RUN_ID}-")
     FIXTURE["proc"] = subprocess.Popen(
@@ -1890,14 +1891,31 @@ def verify_launcher_learning(base, text):
     added = u.wait_for("the save", lambda: LEARN_ADDED.search(u.log_since(learn_base))
                        or LEARN_SAVE_FAILED.search(u.log_since(learn_base)), deadline=10.0)
     after = lf.file_snapshot(lf.WORDS)
-    new_text = (after.get("bytes") or b"").decode("utf-8", "replace")
-    old_text = (before.get("bytes") or b"").decode("utf-8", "replace")
     u.check("launcher_tier2: the correction was saved (learn_added)",
             bool(added) and LEARN_ADDED.search(u.log_since(learn_base)) is not None,
             u.log_since(learn_base)[-300:])
-    u.check("launcher_tier2: the word file now holds Markus",
-            new_text.count("Markus") > old_text.count("Markus"),
-            f"before={old_text.count('Markus')} after={new_text.count('Markus')}")
+    entry_before, entry_after = learned_entry(before), learned_entry(after)
+    u.check("launcher_tier2: the word file holds Markus with Marcus as a learned alias",
+            entry_after is not None and entry_after != entry_before,
+            f"before={entry_before} after={entry_after}")
+
+
+def learned_entry(snapshot, canonical="Markus", heard="Marcus"):
+    """The word-file entry whose canonical is `canonical` and which carries `heard` as a LEARNED
+    alias (`aliases` and `learnedAliases`, the sparkle's source), or None. Parsed, never a text
+    count: the word may appear elsewhere in the file, and learning may extend an existing entry."""
+    import learn_from_edits_uat as lf
+    entries = lf.keyed(snapshot.get("parsed") if snapshot.get("exists") else None, "words") or {}
+    for entry in entries.values():
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("canonical", "")).casefold() != canonical.casefold():
+            continue
+        aliases = {str(a).casefold() for a in entry.get("aliases") or []}
+        learned = {str(a).casefold() for a in entry.get("learnedAliases") or []}
+        if heard.casefold() in aliases and heard.casefold() in learned:
+            return entry
+    return None
 
 
 def restore_words():
@@ -1908,17 +1926,17 @@ def restore_words():
     snap = WORDS["snap"]
     if snap is None:
         return True
-    if lf.verify_restore(lf.WORDS, snap, "words")[0]:
-        WORDS["snap"] = None
-        return True
+    # Stopped FIRST, even when the bytes already match: a queued save or the in-memory list could
+    # still write the learned word back after the restore.
     lf.stop_app()
     lf.file_restore(lf.WORDS, snap)
     ok, detail = lf.verify_restore(lf.WORDS, snap, "words")
     print(f"    word file restore: {detail}")
-    subprocess.run(["open", "-n", lf.APP], check=False)
+    relaunched = subprocess.run(["open", "-n", lf.APP], check=False).returncode == 0
+    print(f"    dev app relaunched: {relaunched}")
     if ok:
         WORDS["snap"] = None
-    return ok
+    return ok and relaunched
 
 
 def phase_launcher_dismissed():
@@ -2025,15 +2043,16 @@ def phase_savesheet():
     doc = u.new_textedit_doc(f"3423-savesheet-{u.RUN_ID}")
     u.require_front(TEXTEDIT, "savesheet: document open")
     si.press_key("s", cmd=True)
-    if not u.wait_for("the Save sheet's name field", lambda: focused_value()[1] == "AXTextField",
-                      deadline=5.0):
-        u.record("savesheet: observation", "INCONCLUSIVE", f"no focused text field: {focused_value()}")
-        return
-    owner, _, before = focused_value()
-    si.press_key("a", cmd=True)
-    si.press_key("delete")
-    base = u.log_size()
     try:
+        if not u.wait_for("the Save sheet's name field",
+                          lambda: focused_value()[1] == "AXTextField", deadline=5.0):
+            u.record("savesheet: observation", "INCONCLUSIVE",
+                     f"no focused text field: {focused_value()}")
+            return
+        owner, _, before = focused_value()
+        si.press_key("a", cmd=True)
+        si.press_key("delete")
+        base = u.log_size()
         take("savesheet", base, bundle=TEXTEDIT, expect_landing=False)
         time.sleep(1.0)
         owner_after, role, after = focused_value()

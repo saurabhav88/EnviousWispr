@@ -303,6 +303,63 @@ class LauncherHarness(unittest.TestCase):
                          [("classifier", "accepted", "1", "1", "AAAA-1")])
         self.assertEqual(h.LEARN_ADDED.findall("learn_added state=new_word"), ["new_word"])
 
+    def test_learned_entry_reads_the_parsed_word_not_text(self):
+        def snap(words):
+            return {"exists": True, "parsed": {"version": 1, "words": words}}
+        unrelated = snap([{"id": "1", "canonical": "Note", "aliases": ["Markus Marcus"],
+                           "learnedAliases": []}])
+        self.assertIsNone(h.learned_entry(unrelated), "the text elsewhere is not an entry")
+        typed = snap([{"id": "2", "canonical": "Markus", "aliases": ["Marcus"], "learnedAliases": []}])
+        self.assertIsNone(h.learned_entry(typed), "a hand-typed alias is not a learned one")
+        gained = snap([{"id": "2", "canonical": "Markus", "aliases": ["Marcus"],
+                        "learnedAliases": ["Marcus"]}])
+        self.assertIsNotNone(h.learned_entry(gained), "an existing word gaining the learned alias")
+        self.assertNotEqual(h.learned_entry(gained), h.learned_entry(typed))
+        self.assertIsNone(h.learned_entry({"exists": False}))
+
+    def test_restore_words_stops_the_app_before_restoring_even_when_bytes_match(self):
+        import learn_from_edits_uat as lf
+        calls = []
+        saved = (h.WORDS["snap"], lf.stop_app, lf.file_restore, lf.verify_restore, h.subprocess.run)
+        try:
+            h.WORDS["snap"] = {"exists": True}
+            lf.stop_app = lambda: calls.append("stop")
+            lf.file_restore = lambda path, snap: calls.append("restore")
+            lf.verify_restore = lambda path, snap, kind: (calls.append("verify") or (True, "equal"))
+
+            class Done:
+                returncode = 0
+            h.subprocess.run = lambda *a, **k: calls.append("open") or Done()
+            self.assertTrue(h.restore_words())
+            self.assertEqual(calls, ["stop", "restore", "verify", "open"])
+            self.assertIsNone(h.WORDS["snap"])
+        finally:
+            (h.WORDS["snap"], lf.stop_app, lf.file_restore, lf.verify_restore,
+             h.subprocess.run) = saved
+
+    def test_a_surviving_fixture_blocks_the_next_launch_and_keeps_its_handle(self):
+        class Survivor:
+            def poll(self):
+                return None
+            def wait(self, timeout=None):
+                raise TimeoutError
+            def terminate(self):
+                pass
+            def kill(self):
+                pass
+        saved = (dict(h.FIXTURE), h.panel_command)
+        try:
+            survivor = Survivor()
+            h.FIXTURE["proc"] = survivor
+            h.panel_command = lambda name, text="": None
+            with self.assertRaises(h.u.Aborted):
+                h.launch_panel("B")
+            self.assertIs(h.FIXTURE["proc"], survivor)
+        finally:
+            h.FIXTURE.clear()
+            h.FIXTURE.update(saved[0])
+            h.panel_command = saved[1]
+
     def test_restore_words_is_a_no_op_without_a_snapshot(self):
         saved = h.WORDS["snap"]
         try:
