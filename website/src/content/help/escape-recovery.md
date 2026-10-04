@@ -6,14 +6,16 @@ section: "Recording"
 order: 6
 keywords: ["escape recovery", "cancelled by mistake", "i cancelled by accident", "get my dictation back", "undo cancel", "recover a cancelled recording", "keep a cancelled recording", "pressed escape by mistake", "lost what i said", "accidental cancel", "dictation cancelled", "undo button", "deleted in 23h", "cancelled recording disappeared"]
 related: ["canceling-a-recording", "transcript-history"]
-updated: 2026-09-29
+updated: 2026-10-04
 deflection: "can_resolve"
 ---
 Escape Recovery keeps a recording when you cancel it with your cancel keybind, instead of throwing it away. It is on from the start. If you cancelled by mistake, press **Undo** on the **Dictation cancelled** notice, or find the text in your History.
 
 ### I cancelled by mistake. How do I get my dictation back?
 
-EnviousWispr shows a small **Dictation cancelled** notice with an **Undo** button. Press **Undo** and the text goes into the app you were dictating into.
+EnviousWispr shows a small **Dictation cancelled** notice with an **Undo** button. Press **Undo** and EnviousWispr tries to put your text back in the box you were dictating into.
+
+If EnviousWispr cannot reach that box, you see **Copied. Press ⌘V to paste**: click where you want the text and press ⌘V. Undo cannot switch back to a browser tab you have left, so go back to that tab yourself, click the box and press ⌘V.
 
 If you miss the notice, the text is waiting in **Settings** > **History** for 24 hours. Open the entry and press **Paste** to put it into the app you are in now.
 
