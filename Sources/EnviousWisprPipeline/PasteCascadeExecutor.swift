@@ -1890,26 +1890,27 @@ internal final class PasteCascadeExecutor {
     case .cgEventCreationFailed(let accessibilityTrusted):
       let err = HeartPathError.pasteCGEventCreationFailed(
         accessibilityTrusted: accessibilityTrusted)
-      SentryBreadcrumb.captureError(
-        err,
-        category: .pasteFailed,
-        stage: "paste",
-        extra: [
-          "paste.outcome": "cgevent_creation_failed",
-          "paste.accessibility_trusted": accessibilityTrusted,
-          "paste.cgevent_failed": true,
-          "paste.tier_failures": tierFailures,
-        ]
-      )
+      var extra: [String: Any] = [
+        "paste.outcome": "cgevent_creation_failed",
+        "paste.accessibility_trusted": accessibilityTrusted,
+        "paste.cgevent_failed": true,
+        "paste.tier_failures": tierFailures,
+      ]
+      // #3437: omitted for dictation, so its shape is unchanged.
+      if let origin = origin.reportedValue { extra["paste.origin"] = origin }
+      SentryBreadcrumb.captureError(err, category: .pasteFailed, stage: "paste", extra: extra)
     case .clipboardOnlyAccessibilityDenied(let targetBundleID):
+      var data: [String: Any] = [
+        "target_bundle_id": targetBundleID ?? "unknown",
+        "paste.accessibility_trusted": false,
+      ]
+      // #3437: omitted for dictation, so its shape is unchanged.
+      if let origin = origin.reportedValue { data["paste.origin"] = origin }
       SentryBreadcrumb.add(
         stage: "paste",
         message: "paste.outcome=clipboard_only_ax_denied",
         level: .info,
-        data: [
-          "target_bundle_id": targetBundleID ?? "unknown",
-          "paste.accessibility_trusted": false,
-        ]
+        data: data
       )
     }
   }
