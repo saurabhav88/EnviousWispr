@@ -169,6 +169,20 @@ struct PasteTelemetryPayloadTests {
         == "value_settable__selected_text_not_settable")
   }
 
+  @Test("paste.origin is absent for dictation and names an Undo restore (#3437)")
+  func originKeyOnlyForUndo() {
+    let dictation = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      tiersAttempted: [], focus: .nonText, targetBundleID: "com.apple.finder",
+      accessibilityTrusted: true, targetDiagnostics: .unavailable, tierFailures: [:])
+    #expect(dictation["paste.origin"] == nil)
+    let undo = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      tiersAttempted: [], focus: .nonText, targetBundleID: "com.apple.finder",
+      accessibilityTrusted: true, targetDiagnostics: .unavailable, tierFailures: [:],
+      origin: .escapeRecoveryUndo)
+    #expect(undo["paste.origin"] as? String == "escape_recovery_undo")
+    #expect(Set(undo.keys).subtracting(dictation.keys) == ["paste.origin"])
+  }
+
   @Test("expected-refusal predicate fails closed across documented decision boundaries")
   func expectedRefusalMatrix() {
     let cases: [([String], PasteFocusClassification, String?, String?, Bool)] = [

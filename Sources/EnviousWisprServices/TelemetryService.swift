@@ -1058,7 +1058,7 @@ public final class TelemetryService {
   public func pasteLandingObserved(
     takeID: String?, tier: String, observed: String, reason: String, appClass: String,
     hostExposedFocus: Bool, targetWindow: String, beforeMs: Int, resolveMs: Int,
-    lateCheckStatus: String, lateFoundMs: Int?
+    lateCheckStatus: String, lateFoundMs: Int?, origin: String? = nil
   ) {
     var props: [String: Any] = [
       "tier": tier, "observed": observed, "reason": reason, "app_class": appClass,
@@ -1067,6 +1067,8 @@ public final class TelemetryService {
     ]
     if let lateFoundMs { props["late_found_ms"] = lateFoundMs }
     if let takeID { props["take_id"] = takeID }
+    // #3437: present only for an Escape Recovery Undo restore; a dictation row is unchanged.
+    if let origin { props["origin"] = origin }
     #if DEBUG
       // The raw dictionary too: the typed projection below drops any value of another type, so an
       // exact-shape test reading only it could pass with an extra array on the wire.
@@ -1091,12 +1093,15 @@ public final class TelemetryService {
   /// bundle id or window. Owner: `PasteCascadeExecutor.landingCheck`. Reader: the #3106 release
   /// review (the app PostHog events fact in the analytics operations knowledge).
   public func pasteLandingRetained(
-    takeID: String?, tier: String, appClass: String, outcome: String, pillShown: Bool
+    takeID: String?, tier: String, appClass: String, outcome: String, pillShown: Bool,
+    origin: String? = nil
   ) {
     var props: [String: Any] = [
       "tier": tier, "app_class": appClass, "outcome": outcome, "pill_shown": pillShown,
     ]
     if let takeID { props["take_id"] = takeID }
+    // #3437: present only for an Escape Recovery Undo restore; a dictation row is unchanged.
+    if let origin { props["origin"] = origin }
     #if DEBUG
       testRawPropertiesHook?("paste.landing_retained", props)
       testEventHook?(
