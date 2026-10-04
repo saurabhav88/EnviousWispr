@@ -3,57 +3,81 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import SwiftUI
 
-// MARK: - Provider status (single at-a-glance authority)
+// MARK: - Provider status (one authority for the card and the dropdown)
 //
-// #1286 Phase 2. The rail's detail header shows exactly ONE status light per
-// selected engine. To avoid a sixth ad-hoc status mapping, this file owns the
-// single summary mapping (`ProviderStatusMapping.status`) that reads the SAME
-// coordinator values the existing inline controls read in `AIPolishSettingsView`
-// (EG-1 install/health, Apple availability, cloud key validation, Ollama setup).
-// The inline controls keep their detailed, actionable UI (refresh, download,
-// per-gate diagnostics); this chip is the "can I use this engine right now?"
-// summary. Partial-consolidation, not a takeover (plan §3c).
+// #1286 introduced one summary mapping so the page never carried a sixth ad-hoc status
+// switch. #3385 (founder's Claude Design, 2026-10-03) shows a status on the provider card AND
+// on every row of the provider dropdown, so the same mapping now answers for providers that
+// are not selected too. That is where most of the honesty lives: only the SELECTED local
+// engine is health-probed (`ProviderSetupLifecycle`), the key-validation coordinator holds ONE
+// provider's verdict (`LLMModelDiscoveryCoordinator.stateProvider`), and the Ollama status
+// watch runs only while Ollama is on screen. Every word below is one the app can stand behind
+// for the provider and context it is shown in.
 
-/// The one place engine → (label, tone) is decided. Pure function of the
-/// coordinator states, so `ProviderStatusMappingTests` can exercise every
-/// engine's state grid without a running app. Switches on the provider FIRST
-/// and reads ONLY that provider's own coordinator state — a cloud key state
-/// never reaches an Apple/EG-1/Ollama branch and vice versa (plan §3, Codex r2:
-/// provider-first, no cross-provider leak).
+/// Everything the status words read, captured once per render so the card and every dropdown
+/// row see the same snapshot.
+struct ProviderStatusInputs {
+  let egOneInstall: EGOneInstallState
+  let egOneHealth: EGOneHealth
+  let s1MiniInstall: EGOneInstallState
+  let s1MiniHealth: EGOneHealth
+  let appleStatus: AIAvailabilityStatus?
+  let appleIsChecking: Bool
+  /// The provider the coordinator's verdict belongs to; another provider's verdict is never
+  /// evidence about this one.
+  let validationProvider: LLMProvider?
+  let cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState
+  /// The CONFIRMED saved-key read per cloud provider: true present, false absent, nil when the
+  /// Keychain read failed or has not answered.
+  let openAIKeySaved: Bool?
+  let geminiKeySaved: Bool?
+  let claudeKeySaved: Bool?
+  let ollamaSetup: OllamaSetupState
+
+  func savedKey(for provider: LLMProvider) -> Bool? {
+    switch provider {
+    case .openAI: return openAIKeySaved
+    case .gemini: return geminiKeySaved
+    case .claude: return claudeKeySaved
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return nil
+    }
+  }
+}
+
+/// Where a status is shown. `selected` is the provider the surface has chosen;
+/// `healthApplies` is true only where the engine's live health is actually probed (the chosen
+/// engine on the AI Polish page, never on Transcribe a File, which may not start the server).
+struct ProviderStatusContext: Equatable {
+  let selected: Bool
+  let healthApplies: Bool
+
+  static let unselected = ProviderStatusContext(selected: false, healthApplies: false)
+}
+
+/// The one place provider -> (label, tone) is decided. Pure, so `ProviderStatusMappingTests`
+/// can walk every state for a selected and an unselected provider. Switches on the provider
+/// FIRST and reads only that provider's own state (no cross-provider leak, Codex r2 of #1286).
+/// nil means "say nothing": a stale or never-observed state is not shown as if it were current.
 enum ProviderStatusMapping {
   static func status(
-    for provider: LLMProvider,
-    egOneInstall: EGOneInstallState,
-    egOneHealth: EGOneHealth,
-    // #2649: REQUIRED, with no default value on purpose. A defaulted argument
-    // has no token at the call site, so no grep could find the sites still
-    // passing a placeholder, and the arm below would render a confident label
-    // for a state nobody supplied. Chunk 3 replaces what the call site hands in
-    // here; until then the call site passes the literal truth, which is that
-    // nothing is installed.
-    s1MiniInstall: EGOneInstallState,
-    s1MiniHealth: EGOneHealth,
-    appleStatus: AIAvailabilityStatus?,
-    cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState,
-    cloudKeyPresent: Bool = false,
-    ollamaSetup: OllamaSetupState
-  ) -> ProviderStatus {
+    for provider: LLMProvider, context: ProviderStatusContext, inputs: ProviderStatusInputs
+  ) -> ProviderStatus? {
     switch provider {
     case .egOne:
-      return localServer(install: egOneInstall, health: egOneHealth)
-    case .appleIntelligence:
-      return apple(appleStatus)
-    case .openAI, .gemini, .claude:
-      return cloud(cloudValidation, keyPresent: cloudKeyPresent)
-    case .ollama:
-      return ollama(ollamaSetup)
+      return local(
+        install: inputs.egOneInstall, health: inputs.egOneHealth,
+        healthApplies: context.selected && context.healthApplies)
     case .s1Mini:
-      // #2649: the SAME install-then-health renderer EG-1 uses, reading
-      // S1-mini's OWN state. Sharing the renderer is safe because the lifecycle
-      // is identical — a download, then a bundled server that is up or is not —
-      // while the STATE is separate, so a cloud key or EG-1's health can never
-      // reach this arm.
-      return localServer(install: s1MiniInstall, health: s1MiniHealth)
+      return local(
+        install: inputs.s1MiniInstall, health: inputs.s1MiniHealth,
+        healthApplies: context.selected && context.healthApplies)
+    case .appleIntelligence:
+      return apple(
+        inputs.appleStatus, isChecking: context.selected && inputs.appleIsChecking)
+    case .ollama:
+      return ollama(inputs.ollamaSetup, selected: context.selected)
+    case .openAI, .gemini, .claude:
+      return cloud(provider, selected: context.selected, inputs: inputs)
     case .none:
       return ProviderStatus(
         label: String(
@@ -62,39 +86,31 @@ enum ProviderStatusMapping {
     }
   }
 
-  // A bundled-server engine: install lifecycle first, health only once
-  // installed — mirrors the inline `egOneStatusContent` switch (installState
-  // first, health inside the `.installed` case). So the chip and the inline row
-  // read the same authority.
-  //
-  // #2649 renamed this from `egOne`. It now serves EG-1 and S1-mini, which have
-  // the same lifecycle and separate state; a name claiming one of them would be
-  // wrong at the exact place a reader looks for the truth.
-  private static func localServer(
-    install: EGOneInstallState, health: EGOneHealth
+  // A bundled-server engine. Install state is a stable fact for any row. Health is added
+  // only where it was probed: an unselected engine sits at its default not-running reading,
+  // which would label every installed engine "Not working".
+  private static func local(
+    install: EGOneInstallState, health: EGOneHealth, healthApplies: Bool
   ) -> ProviderStatus {
     switch install {
     case .notInstalled:
       return ProviderStatus(
         label: String(localized: "Not installed", comment: "AI Polish provider status chip."),
-        tone: .needsSetup)
-    // #2109: an interrupted first install. The user chose to stop and their
-    // progress is kept, so this is a setup state, never an error.
+        tone: .unavailable)
+    // #2109: an interrupted first install. The user chose to stop and their progress is kept,
+    // so this is a setup state, never an error.
     case .paused:
       return ProviderStatus(
-        label: String(localized: "Paused", comment: "AI Polish provider status chip."),
+        label: String(localized: "Download paused", comment: "AI Polish provider status chip."),
         tone: .needsSetup)
-    // A working older model is on disk but the pinned one is not, so cleanup
-    // is genuinely off. The chip must AGREE with the detailed row rather than
-    // reassure — this is exactly the silently-off state #2109 exists to
-    // surface, and a calm chip beside an alarmed row is worse than either.
+    // A working older model is on disk but the pinned one is not, so cleanup is genuinely
+    // off. The chip agrees with the detailed row rather than reassuring.
     case .updatePaused:
       return ProviderStatus(
         label: String(localized: "Update paused", comment: "AI Polish provider status chip."),
         tone: .error)
-    // Same agreement rule as `updatePaused` above: when the detailed row says
-    // "Upgrading to EG-1 V1.1", a chip reading "Downloading" describes a
-    // different event beside it. The chip is narrower, not softer.
+    // When the detailed row says "Upgrading to EG-1 V1.2", a chip reading "Downloading"
+    // describes a different event beside it.
     case .downloading(_, let upgrade):
       return ProviderStatus(
         label: upgrade == nil
@@ -110,11 +126,12 @@ enum ProviderStatusMapping {
         label: String(localized: "Needs attention", comment: "AI Polish provider status chip."),
         tone: .error)
     case .installed:
+      let installed = ProviderStatus(
+        label: String(localized: "Installed", comment: "AI Polish provider status chip."),
+        tone: .ready)
+      guard healthApplies else { return installed }
       switch health {
-      case .green:
-        return ProviderStatus(
-          label: String(localized: "Live", comment: "AI Polish provider status chip."), tone: .ready
-        )
+      case .green: return installed
       case .yellow:
         return ProviderStatus(
           label: String(localized: "Starting", comment: "AI Polish provider status chip."),
@@ -127,9 +144,14 @@ enum ProviderStatusMapping {
     }
   }
 
-  // Apple Intelligence: unavailable/degraded/unknown/not-checked all read as the
-  // neutral "unavailable" tone (plan §3); available → ready.
-  private static func apple(_ status: AIAvailabilityStatus?) -> ProviderStatus {
+  // Apple Intelligence: the latest report, which is the last observation for any row.
+  // "Checking" only for a check actually running for the chosen provider.
+  private static func apple(_ status: AIAvailabilityStatus?, isChecking: Bool) -> ProviderStatus {
+    if isChecking {
+      return ProviderStatus(
+        label: String(localized: "Checking", comment: "AI Polish provider status chip."),
+        tone: .needsSetup)
+    }
     switch status {
     case .available:
       return ProviderStatus(
@@ -138,11 +160,11 @@ enum ProviderStatusMapping {
     case .degraded:
       return ProviderStatus(
         label: String(localized: "Degraded", comment: "AI Polish provider status chip."),
-        tone: .unavailable)
+        tone: .needsSetup)
     case .unavailable:
       return ProviderStatus(
         label: String(localized: "Unavailable", comment: "AI Polish provider status chip."),
-        tone: .unavailable)
+        tone: .error)
     case .unknown:
       return ProviderStatus(
         label: String(localized: "Unknown", comment: "AI Polish provider status chip."),
@@ -154,28 +176,87 @@ enum ProviderStatusMapping {
     }
   }
 
-  // Cloud (OpenAI / Gemini): keyed off validation state. `.idle` means we have
-  // not validated this session — which is the normal state when a saved key is
-  // loaded from the Keychain on settings-open (onAppear does not re-validate).
-  // Showing "Key needed" there would falsely alarm a user with a working saved
-  // key, so idle-with-a-key reads as the neutral "Not checked"; only idle with
-  // NO key reads as "Key needed" (cloud review PR #1293, #1286).
-  private static func cloud(
-    _ state: LLMModelDiscoveryCoordinator.KeyValidationState,
-    keyPresent: Bool
-  ) -> ProviderStatus {
+  // Ollama. Chosen: the live setup state, which the status watch keeps current. Not chosen:
+  // the watch is off, so only what does not go stale is said: whether Ollama is installed, and
+  // a download the service is still running.
+  private static func ollama(_ state: OllamaSetupState, selected: Bool) -> ProviderStatus? {
+    let installed = ProviderStatus(
+      label: String(localized: "Installed", comment: "AI Polish provider status chip."),
+      tone: .ready)
+    let notInstalled = ProviderStatus(
+      label: String(localized: "Not installed", comment: "AI Polish provider status chip."),
+      tone: .unavailable)
+    let downloading = ProviderStatus(
+      label: String(localized: "Downloading", comment: "AI Polish provider status chip."),
+      tone: .needsSetup)
     switch state {
-    case .idle:
-      return keyPresent
+    case .detecting:
+      return selected
         ? ProviderStatus(
-          label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
-          tone: .unavailable)
-        : ProviderStatus(
-          label: String(localized: "Key needed", comment: "AI Polish provider status chip."),
+          label: String(localized: "Checking", comment: "AI Polish provider status chip."),
           tone: .needsSetup)
+        : nil
+    case .notInstalled:
+      return notInstalled
+    case .installedNotRunning:
+      return selected
+        ? ProviderStatus(
+          label: String(localized: "Not running", comment: "AI Polish provider status chip."),
+          tone: .needsSetup)
+        : installed
+    case .runningNoModels:
+      return selected
+        ? ProviderStatus(
+          label: String(localized: "No model", comment: "AI Polish provider status chip."),
+          tone: .needsSetup)
+        : installed
+    case .pullingModel:
+      return downloading
+    case .ready:
+      return installed
+    case .error:
+      return selected
+        ? ProviderStatus(
+          label: String(localized: "Error", comment: "AI Polish provider status chip."),
+          tone: .error)
+        : nil
+    }
+  }
+
+  // Cloud. The saved-key read is three-valued; a failed read is said as such, never as "no
+  // key". Validation counts only for the chosen provider AND only when the coordinator's
+  // verdict is about it. `.invalid` carries every failure (a rejected key, no network, a
+  // provider error), so it reads "Check failed" with the reason in the row, never "Key invalid".
+  private static func cloud(
+    _ provider: LLMProvider, selected: Bool, inputs: ProviderStatusInputs
+  ) -> ProviderStatus {
+    guard let saved = inputs.savedKey(for: provider) else {
+      return ProviderStatus(
+        label: String(
+          localized: "Could not check",
+          comment: "AI Polish provider status chip: the saved API key could not be read."),
+        tone: .needsSetup)
+    }
+    guard saved else {
+      return ProviderStatus(
+        label: String(localized: "Key needed", comment: "AI Polish provider status chip."),
+        tone: .unavailable)
+    }
+    guard selected, inputs.validationProvider == provider else {
+      return ProviderStatus(
+        label: String(
+          localized: "Key saved",
+          comment: "AI Polish provider status chip: an API key is saved but was not checked here."),
+        tone: .unavailable)
+    }
+    switch inputs.cloudValidation {
+    case .idle:
+      return ProviderStatus(
+        label: String(localized: "Not checked", comment: "AI Polish provider status chip."),
+        tone: .unavailable)
     case .validating:
       return ProviderStatus(
-        label: String(localized: "Validating", comment: "AI Polish provider status chip."),
+        label: String(localized: "Checking", comment: "AI Polish provider status chip."),
         tone: .needsSetup)
     case .valid:
       return ProviderStatus(
@@ -183,56 +264,24 @@ enum ProviderStatusMapping {
         tone: .ready)
     case .invalid:
       return ProviderStatus(
-        label: String(localized: "Key needed", comment: "AI Polish provider status chip."),
+        label: String(
+          localized: "Check failed",
+          comment: "AI Polish provider status chip: checking the saved API key did not succeed."),
         tone: .error)
-    }
-  }
-
-  // Ollama: setup wizard state.
-  private static func ollama(_ state: OllamaSetupState) -> ProviderStatus {
-    switch state {
-    case .detecting:
-      return ProviderStatus(
-        label: String(localized: "Checking", comment: "AI Polish provider status chip."),
-        tone: .needsSetup)
-    case .notInstalled:
-      return ProviderStatus(
-        label: String(localized: "Not installed", comment: "AI Polish provider status chip."),
-        tone: .needsSetup)
-    case .installedNotRunning:
-      return ProviderStatus(
-        label: String(localized: "Not running", comment: "AI Polish provider status chip."),
-        tone: .needsSetup)
-    case .runningNoModels:
-      return ProviderStatus(
-        label: String(localized: "No model", comment: "AI Polish provider status chip."),
-        tone: .needsSetup)
-    case .pullingModel:
-      return ProviderStatus(
-        label: String(localized: "Downloading", comment: "AI Polish provider status chip."),
-        tone: .needsSetup)
-    case .ready:
-      return ProviderStatus(
-        label: String(localized: "Running", comment: "AI Polish provider status chip."),
-        tone: .ready)
-    case .error:
-      return ProviderStatus(
-        label: String(localized: "Error", comment: "AI Polish provider status chip."), tone: .error)
     }
   }
 }
 
-// MARK: - Rail catalog
+// MARK: - Provider catalog
 
-/// The rail's three founder-approved provider groups (#1914, 2026-08-04).
+/// The three founder-approved provider groups (#1914, 2026-08-04): the dropdown's group
+/// headings and the card's group label.
 ///
-/// The previous binary classification could describe only "this Mac" or
-/// "cloud". That was insufficient for Ollama, whose selected model may run
-/// locally or on Ollama's servers.
+/// The previous binary classification could describe only "this Mac" or "cloud". That was
+/// insufficient for Ollama, whose selected model may run locally or on Ollama's servers.
 ///
-/// This enum centralizes the heading, spoken accessibility phrase, and privacy
-/// line. The rail policy remains provider-level, so `.yourOwnSetup` uses copy
-/// that is accurate for every Ollama model.
+/// This enum centralizes the heading and the spoken accessibility phrase. The policy remains
+/// provider-level, so `.yourOwnSetup` uses copy that is accurate for every Ollama model.
 enum PolishRailGroup: CaseIterable {
   case onThisMac
   case yourOwnSetup
@@ -272,41 +321,17 @@ enum PolishRailGroup: CaseIterable {
       )
     }
   }
-
-  /// The detail header's privacy claim.
-  ///
-  /// `.cloud` drops "only" deliberately: all three cloud providers route through
-  /// the shared `.cloudFixed` prompt family, which conditionally includes the
-  /// active app name and custom word list alongside the transcript
-  /// (`CloudFixedPromptBuilder`), so "text only" was never accurate (#158; the
-  /// terse header was missed by that round's grep and fixed later).
-  ///
-  /// `.yourOwnSetup` states what is true whichever model is armed. It does not
-  /// warn, and it does not discourage the hosted path: per the founder's
-  /// 2026-08-01 doctrine correction this is accuracy, not a privacy warning.
-  var privacyLine: String {
-    switch self {
-    case .onThisMac:
-      return String(
-        localized: "Nothing you dictate leaves this Mac",
-        comment: "AI Polish: privacy line under the selected provider.")
-    case .yourOwnSetup:
-      return String(
-        localized: "Uses your selected Ollama model, local or hosted",
-        comment: "AI Polish: privacy line under the selected provider.")
-    case .cloud:
-      return String(
-        localized: "Sends transcribed text, never audio",
-        comment: "AI Polish: privacy line under the selected provider.")
-    }
-  }
 }
 
-/// One row's presentation data. EG-1 is pinned first and Recommended.
+/// One provider's presentation data: its dropdown row (name, tagline) and its card (name,
+/// short line). EG-1 is pinned first and Recommended. (The "Rail" in these names is historical:
+/// the provider list was a rail until the 2026-10-03 design made it a card with a dropdown.)
 struct PolishRailProvider: Identifiable, Equatable {
   let provider: LLMProvider
   let name: String
   let tagline: String
+  /// The line under the name on the provider card (founder's Claude Design, 2026-10-03).
+  let short: String
   let group: PolishRailGroup
   let recommended: Bool
 
@@ -314,48 +339,58 @@ struct PolishRailProvider: Identifiable, Equatable {
 }
 
 enum PolishRailCatalog {
-  /// Flattened in render order. `providers(in:)` derives group membership from
-  /// this list, and the current rail renders those results.
+  /// Flattened in render order (the dropdown's order). `providers(in:)` derives group
+  /// membership from this list.
   ///
-  /// Every `name` that IS the provider's display name reads
-  /// `LLMProvider.displayName` (#2650) rather than restating it; the one row
-  /// whose name deliberately differs says so where it does.
+  /// Every `name` that IS the provider's display name reads `LLMProvider.displayName`
+  /// (#2650) rather than restating it; the one row whose name deliberately differs says so.
   static let all: [PolishRailProvider] = [
     PolishRailProvider(
       provider: .egOne, name: LLMProvider.egOne.displayName,
       tagline: String(
         localized: "Our tuned model",
         comment: "AI Polish provider list: description under a provider name. EG-1, our own model."),
+      short: String(
+        localized: "Our model for cleaning up dictation on this Mac.",
+        comment: "AI Polish provider card: the line under EG-1's name."),
       group: .onThisMac, recommended: true),
-    PolishRailProvider(
-      provider: .appleIntelligence, name: LLMProvider.appleIntelligence.displayName,
-      tagline: String(
-        localized: "Built into macOS",
-        comment: "AI Polish provider list: description under a provider name. Apple Intelligence."),
-      group: .onThisMac, recommended: false),
-    // #2649. Founder placement: beside EG-1 on this Mac, never above it. EG-1
-    // keeps `recommended`; Apple Intelligence remains what a fresh install
-    // selects. The tagline says what the model IS rather than praising it,
-    // because it is somebody else's model and the licence binds the name.
+    // #2649. Founder placement: beside EG-1 on this Mac, never above it; the 2026-10-03 design
+    // puts it second. EG-1 keeps `recommended`; Apple Intelligence remains what a fresh install
+    // selects. The tagline says what the model IS rather than praising it, because it is
+    // somebody else's model and the licence binds the name.
     PolishRailProvider(
       provider: .s1Mini, name: LLMProvider.s1Mini.displayName,
-      // Founder 2026-09-04: the credit must be READABLE in the rail, and at
-      // 216pt "Small, English, by Superwhisper" truncated to "Small, English,…"
-      // — dropping the one clause the licence requires. Size and language are
-      // said in full on the detail pane; the attribution is what has to survive
-      // here. Capitalisation is fixed by the ADDITIONAL TERM: "Superwhisper",
-      // lower-case w, not "SuperWhisper".
+      // Founder 2026-09-04: the credit must be READABLE wherever the model is listed.
+      // Capitalisation is fixed by the licence's ADDITIONAL TERM: "Superwhisper", lower-case
+      // w, not "SuperWhisper". The card's short line carries the credit too.
       tagline: String(
         localized: "by Superwhisper",
         comment:
           "AI Polish provider list: description under a provider name. Required licence credit; keep Superwhisper as written."
       ),
+      short: String(
+        localized: "Small model by Superwhisper, on this Mac and happiest in English.",
+        comment:
+          "AI Polish provider card: the line under S1-mini's name. Required licence credit; keep Superwhisper as written."
+      ),
+      group: .onThisMac, recommended: false),
+    PolishRailProvider(
+      provider: .appleIntelligence, name: LLMProvider.appleIntelligence.displayName,
+      tagline: String(
+        localized: "Built into macOS",
+        comment: "AI Polish provider list: description under a provider name. Apple Intelligence."),
+      short: String(
+        localized: "On-device polish on supported Macs with macOS 26+.",
+        comment: "AI Polish provider card: the line under Apple Intelligence's name."),
       group: .onThisMac, recommended: false),
     PolishRailProvider(
       provider: .ollama, name: LLMProvider.ollama.displayName,
       tagline: String(
-        localized: "Any open model, local or hosted",
+        localized: "Your models, local or hosted",
         comment: "AI Polish provider list: description under a provider name. Ollama."),
+      short: String(
+        localized: "Your models, local or hosted.",
+        comment: "AI Polish provider card: the line under Ollama's name."),
       group: .yourOwnSetup, recommended: false),
     PolishRailProvider(
       provider: .openAI, name: LLMProvider.openAI.displayName,
@@ -364,10 +399,13 @@ enum PolishRailCatalog {
         comment:
           "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
       ),
+      short: String(
+        localized: "Use your OpenAI API key for cloud polish.",
+        comment: "AI Polish provider card: the line under OpenAI's name."),
       group: .cloud, recommended: false),
-    // Intentionally NOT `LLMProvider.gemini.displayName` ("Gemini"): the rail
-    // carries the vendor so the row reads as a cloud service beside OpenAI and
-    // Claude. `PolishRailCatalogTests` pins this exact copy.
+    // Intentionally NOT `LLMProvider.gemini.displayName` ("Gemini"): the list carries the
+    // vendor so the row reads as a cloud service beside OpenAI and Claude.
+    // `PolishRailCatalogTests` pins this exact copy.
     PolishRailProvider(
       provider: .gemini, name: "Google Gemini",
       tagline: String(
@@ -375,6 +413,9 @@ enum PolishRailCatalog {
         comment:
           "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
       ),
+      short: String(
+        localized: "Use your Gemini API key for cloud polish.",
+        comment: "AI Polish provider card: the line under Google Gemini's name."),
       group: .cloud, recommended: false),
     PolishRailProvider(
       provider: .claude, name: LLMProvider.claude.displayName,
@@ -383,6 +424,9 @@ enum PolishRailCatalog {
         comment:
           "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
       ),
+      short: String(
+        localized: "Use your Claude API key for cloud polish.",
+        comment: "AI Polish provider card: the line under Claude's name."),
       group: .cloud, recommended: false),
   ]
 
@@ -393,21 +437,6 @@ enum PolishRailCatalog {
   static func entry(for provider: LLMProvider) -> PolishRailProvider? {
     all.first { $0.provider == provider }
   }
-}
-
-// MARK: - Layout metrics
-
-/// Fixed measurements for the two-column master-detail. The settings window's
-/// 710pt minimum guarantees both columns fit, so the layout is always
-/// side-by-side and needs no adaptive width measurement.
-enum PolishRailMetrics {
-  /// Fixed rail column width. Sized to fit the longest engine name
-  /// ("Apple Intelligence") beside a 32pt logo tile at full size, while leaving
-  /// the detail column as much room as possible at narrow window widths (the
-  /// rail row name also shrinks slightly before it would ever truncate).
-  static let railWidth: CGFloat = 216
-  /// Gap between the rail and the detail column.
-  static let columnGap: CGFloat = 16
 }
 
 // MARK: - Logo tile
@@ -597,234 +626,4 @@ enum ProviderLogoSVG {
   static let ollama = wrap(
     "M16.361 10.26a.894.894 0 0 0-.558.47l-.072.148.001.207c0 .193.004.217.059.353.076.193.152.312.291.448.24.238.51.3.872.205a.86.86 0 0 0 .517-.436.752.752 0 0 0 .08-.498c-.064-.453-.33-.782-.724-.897a1.06 1.06 0 0 0-.466 0zm-9.203.005c-.305.096-.533.32-.65.639a1.187 1.187 0 0 0-.06.52c.057.309.31.59.598.667.362.095.632.033.872-.205.14-.136.215-.255.291-.448.055-.136.059-.16.059-.353l.001-.207-.072-.148a.894.894 0 0 0-.565-.472 1.02 1.02 0 0 0-.474.007Zm4.184 2c-.131.071-.223.25-.195.383.031.143.157.288.353.407.105.063.112.072.117.136.004.038-.01.146-.029.243-.02.094-.036.194-.036.222.002.074.07.195.143.253.064.052.076.054.255.059.164.005.198.001.264-.03.169-.082.212-.234.15-.525-.052-.243-.042-.28.087-.355.137-.08.281-.219.324-.314a.365.365 0 0 0-.175-.48.394.394 0 0 0-.181-.033c-.126 0-.207.03-.355.124l-.085.053-.053-.032c-.219-.13-.259-.145-.391-.143a.396.396 0 0 0-.193.032zm.39-2.195c-.373.036-.475.05-.654.086-.291.06-.68.195-.951.328-.94.46-1.589 1.226-1.787 2.114-.04.176-.045.234-.045.53 0 .294.005.357.043.524.264 1.16 1.332 2.017 2.714 2.173.3.033 1.596.033 1.896 0 1.11-.125 2.064-.727 2.493-1.571.114-.226.169-.372.22-.602.039-.167.044-.23.044-.523 0-.297-.005-.355-.045-.531-.288-1.29-1.539-2.304-3.072-2.497a6.873 6.873 0 0 0-.855-.031zm.645.937a3.283 3.283 0 0 1 1.44.514c.223.148.537.458.671.662.166.251.26.508.303.82.02.143.01.251-.043.482-.08.345-.332.705-.672.957a3.115 3.115 0 0 1-.689.348c-.382.122-.632.144-1.525.138-.582-.006-.686-.01-.853-.042-.57-.107-1.022-.334-1.35-.68-.264-.28-.385-.535-.45-.946-.03-.192.025-.509.137-.776.136-.326.488-.73.836-.963.403-.269.934-.46 1.422-.512.187-.02.586-.02.773-.002zm-5.503-11a1.653 1.653 0 0 0-.683.298C5.617.74 5.173 1.666 4.985 2.819c-.07.436-.119 1.04-.119 1.503 0 .544.064 1.24.155 1.721.02.107.031.202.023.208a8.12 8.12 0 0 1-.187.152 5.324 5.324 0 0 0-.949 1.02 5.49 5.49 0 0 0-.94 2.339 6.625 6.625 0 0 0-.023 1.357c.091.78.325 1.438.727 2.04l.13.195-.037.064c-.269.452-.498 1.105-.605 1.732-.084.496-.095.629-.095 1.294 0 .67.009.803.088 1.266.095.555.288 1.143.503 1.534.071.128.243.393.264.407.007.003-.014.067-.046.141a7.405 7.405 0 0 0-.548 1.873c-.062.417-.071.552-.071.991 0 .56.031.832.148 1.279L3.42 24h1.478l-.05-.091c-.297-.552-.325-1.575-.068-2.597.117-.472.25-.819.498-1.296l.148-.29v-.177c0-.165-.003-.184-.057-.293a.915.915 0 0 0-.194-.25 1.74 1.74 0 0 1-.385-.543c-.424-.92-.506-2.286-.208-3.451.124-.486.329-.918.544-1.154a.787.787 0 0 0 .223-.531c0-.195-.07-.355-.224-.522a3.136 3.136 0 0 1-.817-1.729c-.14-.96.114-2.005.69-2.834.563-.814 1.353-1.336 2.237-1.475.199-.033.57-.028.776.01.226.04.367.028.512-.041.179-.085.268-.19.374-.431.093-.215.165-.333.36-.576.234-.29.46-.489.822-.729.413-.27.884-.467 1.352-.561.17-.035.25-.04.569-.04.319 0 .398.005.569.04a4.07 4.07 0 0 1 1.914.997c.117.109.398.457.488.602.034.057.095.177.132.267.105.241.195.346.374.43.14.068.286.082.503.045.343-.058.607-.053.943.016 1.144.23 2.14 1.173 2.581 2.437.385 1.108.276 2.267-.296 3.153-.097.15-.193.27-.333.419-.301.322-.301.722-.001 1.053.493.539.801 1.866.708 3.036-.062.772-.26 1.463-.533 1.854a2.096 2.096 0 0 1-.224.258.916.916 0 0 0-.194.25c-.054.109-.057.128-.057.293v.178l.148.29c.248.476.38.823.498 1.295.253 1.008.231 2.01-.059 2.581a.845.845 0 0 0-.044.098c0 .006.329.009.732.009h.73l.02-.074.036-.134c.019-.076.057-.3.088-.516.029-.217.029-1.016 0-1.258-.11-.875-.295-1.57-.597-2.226-.032-.074-.053-.138-.046-.141.008-.005.057-.074.108-.152.376-.569.607-1.284.724-2.228.031-.26.031-1.378 0-1.628-.083-.645-.182-1.082-.348-1.525a6.083 6.083 0 0 0-.329-.7l-.038-.064.131-.194c.402-.604.636-1.262.727-2.04a6.625 6.625 0 0 0-.024-1.358 5.512 5.512 0 0 0-.939-2.339 5.325 5.325 0 0 0-.95-1.02 8.097 8.097 0 0 1-.186-.152.692.692 0 0 1 .023-.208c.208-1.087.201-2.443-.017-3.503-.19-.924-.535-1.658-.98-2.082-.354-.338-.716-.482-1.15-.455-.996.059-1.8 1.205-2.116 3.01a6.805 6.805 0 0 0-.097.726c0 .036-.007.066-.015.066a.96.96 0 0 1-.149-.078A4.857 4.857 0 0 0 12 3.03c-.832 0-1.687.243-2.456.698a.958.958 0 0 1-.148.078c-.008 0-.015-.03-.015-.066a6.71 6.71 0 0 0-.097-.725C8.997 1.392 8.337.319 7.46.048a2.096 2.096 0 0 0-.585-.041Zm.293 1.402c.248.197.523.759.682 1.388.03.113.06.244.069.292.007.047.026.152.041.233.067.365.098.76.102 1.24l.002.475-.12.175-.118.178h-.278c-.324 0-.646.041-.954.124l-.238.06c-.033.007-.038-.003-.057-.144a8.438 8.438 0 0 1 .016-2.323c.124-.788.413-1.501.696-1.711.067-.05.079-.049.157.013zm9.825-.012c.17.126.358.46.498.888.28.854.36 2.028.212 3.145-.019.14-.024.151-.057.144l-.238-.06a3.693 3.693 0 0 0-.954-.124h-.278l-.119-.178-.119-.175.002-.474c.004-.669.066-1.19.214-1.772.157-.623.434-1.185.68-1.382.078-.062.09-.063.159-.012z"
   )
-}
-
-// MARK: - Rail row
-
-/// One selectable engine row: logo tile + name (+ EG-1 star) + tagline. A native
-/// `Button` so it inherits AX button traits + Space/Enter activation; the
-/// explicit label/value/hint + `.accessibilityAction` guarantee VoiceOver reads
-/// "engine name, group, selected" and can activate it (plan §3d).
-struct ProviderRailRow: View {
-  let entry: PolishRailProvider
-  let isSelected: Bool
-  let namespace: Namespace.ID
-  let onSelect: () -> Void
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  /// See `SettingsHover.respondsToPointer`.
-  @Environment(\.isEnabled) private var environmentEnabled
-  @State private var pointerInside = false
-
-  /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
-  private var hovering: Bool {
-    SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
-  }
-
-  /// Whole values chosen by state, never "Selected" glued to ", recommended" (#3142).
-  private var selectionValue: String {
-    switch (isSelected, entry.recommended) {
-    case (true, true):
-      return String(
-        localized: "Selected, recommended",
-        comment: "VoiceOver: an AI Polish provider that is chosen and is the recommended one.")
-    case (true, false): return SettingsCopy.selectedValue
-    case (false, true):
-      return String(
-        localized: "Recommended",
-        comment: "VoiceOver: the recommended AI Polish provider, not chosen.")
-    case (false, false): return ""
-    }
-  }
-
-  var body: some View {
-    Button(action: onSelect) {
-      HStack(spacing: 12) {
-        ProviderLogoTile(provider: entry.provider, size: 32, isSelected: isSelected)
-        VStack(alignment: .leading, spacing: 2) {
-          HStack(spacing: 6) {
-            Text(entry.name)
-              .font(.system(size: 14, weight: .semibold))
-              .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
-              .lineLimit(1)
-              .minimumScaleFactor(0.85)
-            if entry.recommended {
-              Image(systemName: "star.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(Color.stAccent)
-            }
-          }
-          // Up to three lines: German taglines ("Jedes offene Modell, lokal oder gehostet") do not
-          // fit the fixed rail width on one or two (#3142 5C walkthrough).
-          Text(entry.tagline)
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
-            .lineLimit(3)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        Spacer(minLength: 0)
-      }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 11)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      // ONE moving highlight (matchedGeometryEffect) so selection glides between
-      // rows. Only the selected row renders it; SwiftUI interpolates position on
-      // the animated selection change. Solid accent fill + stroke stay the
-      // primary selected signal (high-contrast / differentiate-without-colour);
-      // the brand rainbow is an ADDITIVE tint on the same edge. #1298.
-      .background {
-        if isSelected {
-          RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(Color.stAccentLight)
-            .overlay(
-              RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.stAccent, lineWidth: 1.5)
-            )
-            .overlay(
-              RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.obRainbow, lineWidth: 1.5)
-                .opacity(0.5)
-            )
-            .matchedGeometryEffect(id: "railSelection", in: namespace)
-        }
-      }
-      // #2447. The scale below was this rail's ONLY hover, and it is gated on
-      // reduce-motion -- so the users who turn motion off had no hover at all on
-      // the one control in the window that had any. A transform is a nice
-      // secondary cue and a poor sole one: it says "something is happening here"
-      // without saying WHAT is under the pointer, and it is the first thing an
-      // accessibility setting removes. The tint carries the meaning and survives;
-      // the scale stays as the flourish it was always meant to be.
-      .settingsHoverRow(cornerRadius: 10)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    // Subtle hover lift. scaleEffect is a render transform applied AFTER layout,
-    // so the row's frame and hover hit-region do not move (no jitter loop); it
-    // only grows (1.006), never shrinks. Gated on reduce-motion. #1298.
-    .scaleEffect(hovering && !reduceMotion ? 1.006 : 1.0)
-    .onHover { pointerInside = $0 }
-    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
-    .accessibilityElement(children: .combine)
-    .accessibilityAddTraits(.isButton)
-    .accessibilityLabel("\(entry.name), \(entry.group.accessibilityPhrase)")
-    .accessibilityValue(selectionValue)
-    .accessibilityHint("Selects \(entry.name) for AI polish")
-    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    .accessibilityAction { onSelect() }
-  }
-}
-
-// MARK: - Rail
-
-/// The grouped vertical rail (#1914: three groups). Writes the selection
-/// through the same `settings.llmProvider` setter the old dropdown used — no new
-/// state home (plan §3b).
-struct ProviderRail: View {
-  @Binding var selection: LLMProvider
-  /// Shared namespace so the single selection highlight glides between rows
-  /// (matchedGeometryEffect) instead of jumping. #1298.
-  @Namespace private var selectionNS
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 5) {
-      // #1914: driven by `PolishRailGroup.allCases` and the catalog, never by
-      // hard-coded blocks. Adding a group is a case, not a fourth copy of this
-      // pattern, and the heading text has one owner.
-      ForEach(Array(PolishRailGroup.allCases.enumerated()), id: \.element) { index, group in
-        groupHeader(group.heading)
-          .padding(.top, index == 0 ? 0 : 14)
-        ForEach(PolishRailCatalog.providers(in: group)) { row(for: $0) }
-      }
-    }
-    .padding(10)
-    .background(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .fill(Color.stSectionBg)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .strokeBorder(Color.stDivider, lineWidth: 1)
-    )
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("AI polish engine")
-  }
-
-  private func row(for entry: PolishRailProvider) -> some View {
-    ProviderRailRow(
-      entry: entry,
-      isSelected: selection == entry.provider,
-      namespace: selectionNS,
-      onSelect: {
-        // State commits immediately; the spring only animates the highlight
-        // glide. Gated on reduce-motion (instant end state).
-        withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82)) {
-          selection = entry.provider
-        }
-      })
-  }
-
-  private func groupHeader(_ title: String) -> some View {
-    Text(title.uppercased())
-      .font(.stSectionHeader)
-      .tracking(0.9)
-      .foregroundStyle(Color.stAccent)
-      .padding(.horizontal, 12)
-      .padding(.bottom, 3)
-      .accessibilityHidden(true)
-  }
-}
-
-// MARK: - Detail header
-
-/// The identity header above the selected engine's existing setup content:
-/// 32pt logo, name, EG-1 "Recommended" pill, privacy sub-line, and exactly ONE
-/// status chip (the single `providerStatus` summary). The "Recommended" pill is
-/// a visual badge only — it never changes the selection (plan §3 honesty).
-struct ProviderDetailHeader: View {
-  let entry: PolishRailProvider
-  let status: ProviderStatus
-
-  // #1914: the privacy claim lives on `PolishRailGroup`. The current heading,
-  // accessibility label, and detail line all read the same group-owned policy.
-  private var privacyLine: String { entry.group.privacyLine }
-
-  var body: some View {
-    HStack(alignment: .center, spacing: 12) {
-      ProviderLogoTile(provider: entry.provider, size: 32, isSelected: true)
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 7) {
-          Text(entry.name)
-            .settingsRowTitle()
-          if entry.recommended {
-            Text("Recommended")
-              .font(.system(size: 14, weight: .semibold))
-              .foregroundStyle(Color.stAccent)
-              .padding(.horizontal, 8)
-              .padding(.vertical, 2)
-              .background(
-                Capsule().fill(Color.stAccentLight))
-          }
-        }
-        Text("\(entry.tagline) · \(privacyLine)")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          // Every row's second clause IS the privacy claim, so truncating any
-          // of them cuts the trust-relevant copy — which is the reason Ollama
-          // was already exempt. Keying that exemption on the GROUP made it a
-          // stand-in for "is this line long", and the two agreed only until a
-          // longer tagline arrived: S1-mini's credit to Superwhisper is 15
-          // characters more than the next longest on-this-Mac row, and the
-          // header rendered "Nothing you dictate l…" (founder, 2026-09-04).
-          // Nothing here caps a line, so no future tagline can truncate a
-          // promise. Rows that fit stay one line; SwiftUI wraps only what must.
-          .lineLimit(nil)
-          .fixedSize(horizontal: false, vertical: true)
-          .truncationMode(.tail)
-      }
-      Spacer(minLength: 8)
-      ProviderStatusChip(status: status)
-    }
-    .padding(.vertical, 2)
-  }
 }

@@ -15,28 +15,34 @@ import Testing
 struct ProviderStatusMappingTests {
 
   // Neutral "everything nominal" inputs for the engines NOT under test, so a
-  // per-engine assertion isolates the one coordinator that should matter.
+  // per-engine assertion isolates the one coordinator that should matter. Defaults describe
+  // the provider as the CHOSEN one with its verdict about it; the unselected tests below say so.
   private func status(
     for provider: LLMProvider,
+    selected: Bool = true,
     egOneInstall: EGOneInstallState = .installed(version: "1"),
     egOneHealth: EGOneHealth = .green,
     s1MiniInstall: EGOneInstallState = .installed(version: "1"),
     s1MiniHealth: EGOneHealth = .green,
     appleStatus: AIAvailabilityStatus? = .available,
+    appleIsChecking: Bool = false,
+    validationProvider: LLMProvider? = nil,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState = .valid,
-    cloudKeyPresent: Bool = false,
+    cloudKeySaved: Bool? = true,
     ollamaSetup: OllamaSetupState = .ready
-  ) -> ProviderStatus {
+  ) -> ProviderStatus? {
     ProviderStatusMapping.status(
       for: provider,
-      egOneInstall: egOneInstall,
-      egOneHealth: egOneHealth,
-      s1MiniInstall: s1MiniInstall,
-      s1MiniHealth: s1MiniHealth,
-      appleStatus: appleStatus,
-      cloudValidation: cloudValidation,
-      cloudKeyPresent: cloudKeyPresent,
-      ollamaSetup: ollamaSetup)
+      context: ProviderStatusContext(selected: selected, healthApplies: selected),
+      inputs: ProviderStatusInputs(
+        egOneInstall: egOneInstall, egOneHealth: egOneHealth,
+        s1MiniInstall: s1MiniInstall, s1MiniHealth: s1MiniHealth,
+        appleStatus: appleStatus, appleIsChecking: appleIsChecking,
+        validationProvider: validationProvider ?? provider,
+        cloudValidation: cloudValidation,
+        openAIKeySaved: cloudKeySaved, geminiKeySaved: cloudKeySaved,
+        claudeKeySaved: cloudKeySaved,
+        ollamaSetup: ollamaSetup))
   }
 
   // MARK: - S1-mini (#2649: same renderer as EG-1, separate state)
@@ -44,11 +50,11 @@ struct ProviderStatusMappingTests {
   /// S1-mini and EG-1 share `localServer`, so the rows that matter are the ones
   /// proving they do NOT share state. A single-engine assertion cannot tell a
   /// correct arm from one reading its neighbour's coordinator.
-  @Test("S1-mini not installed → Not installed / needs-setup")
+  @Test("S1-mini not installed → Not installed / neutral")
   func s1MiniNotInstalled() {
     let s = status(for: .s1Mini, s1MiniInstall: .notInstalled)
-    #expect(s.label == "Not installed")
-    #expect(s.tone == .needsSetup)
+    #expect(s?.label == "Not installed")
+    #expect(s?.tone == .unavailable)
   }
 
   @Test("S1-mini reads its own state, never EG-1's")
@@ -57,13 +63,13 @@ struct ProviderStatusMappingTests {
     let healthy = status(
       for: .s1Mini, egOneInstall: .notInstalled, egOneHealth: .red(reason: "eg1 down"),
       s1MiniInstall: .installed(version: "1"), s1MiniHealth: .green)
-    #expect(healthy.tone == .ready)
+    #expect(healthy?.tone == .ready)
 
     // And the reverse, so neither direction can leak.
     let egOneHealthy = status(
       for: .egOne, egOneInstall: .installed(version: "1"), egOneHealth: .green,
       s1MiniInstall: .notInstalled, s1MiniHealth: .red(reason: "s1 down"))
-    #expect(egOneHealthy.tone == .ready)
+    #expect(egOneHealthy?.tone == .ready)
   }
 
   @Test("S1-mini installed but unhealthy is not reported as ready")
@@ -71,16 +77,16 @@ struct ProviderStatusMappingTests {
     let s = status(
       for: .s1Mini, s1MiniInstall: .installed(version: "1"),
       s1MiniHealth: .red(reason: "server down"))
-    #expect(s.tone != .ready)
+    #expect(s?.tone != .ready)
   }
 
   // MARK: - EG-1 (install lifecycle first, health once installed)
 
-  @Test("EG-1 not installed → Not installed / needs-setup")
+  @Test("EG-1 not installed → Not installed / neutral")
   func egOneNotInstalled() {
     let s = status(for: .egOne, egOneInstall: .notInstalled)
-    #expect(s.label == "Not installed")
-    #expect(s.tone == .needsSetup)
+    #expect(s?.label == "Not installed")
+    #expect(s?.tone == .unavailable)
   }
 
   // MARK: - Paused states (#2109)
@@ -88,11 +94,11 @@ struct ProviderStatusMappingTests {
   /// An interrupted FIRST install. The user chose to stop and their progress
   /// is kept, so the chip must read as setup-pending, never as an error —
   /// this used to arrive here as `.failed` and paint the error tone.
-  @Test("EG-1 paused → Paused / needs-setup")
+  @Test("EG-1 paused → Download paused / needs-setup")
   func egOnePaused() {
     let s = status(for: .egOne, egOneInstall: .paused)
-    #expect(s.label == "Paused")
-    #expect(s.tone == .needsSetup)
+    #expect(s?.label == "Download paused")
+    #expect(s?.tone == .needsSetup)
   }
 
   /// A working older revision is on disk but the pinned one is not, so AI
@@ -104,8 +110,8 @@ struct ProviderStatusMappingTests {
   func egOneUpdatePausedReadsAsNeedingAttention(_ resumable: Bool) {
     let s = status(
       for: .egOne, egOneInstall: .updatePaused(resumable: resumable, targetVersion: "1.1"))
-    #expect(s.label == "Update paused")
-    #expect(s.tone == .error)
+    #expect(s?.label == "Update paused")
+    #expect(s?.tone == .error)
   }
 
   /// Two-way control on the pair above: the two paused states must NOT collapse
@@ -117,8 +123,8 @@ struct ProviderStatusMappingTests {
     let paused = status(for: .egOne, egOneInstall: .paused)
     let updatePaused = status(
       for: .egOne, egOneInstall: .updatePaused(resumable: true, targetVersion: "1.1"))
-    #expect(paused.label != updatePaused.label)
-    #expect(paused.tone != updatePaused.tone)
+    #expect(paused?.label != updatePaused?.label)
+    #expect(paused?.tone != updatePaused?.tone)
   }
 
   // MARK: - Rail and row agreement (#2109)
@@ -152,7 +158,7 @@ struct ProviderStatusMappingTests {
       let chip = status(for: .egOne, egOneInstall: state, egOneHealth: .green)
       let isInstalled: Bool = { if case .installed = state { return true } else { return false } }()
       #expect(
-        (chip.tone == .ready) == isInstalled,
+        (chip?.tone == .ready) == isInstalled,
         "\(state): chip ready tone must track installed exactly")
     }
   }
@@ -163,7 +169,7 @@ struct ProviderStatusMappingTests {
   func attentionStatesOfferAnAction() {
     for state in Self.everyEGOneState {
       let chip = status(for: .egOne, egOneInstall: state, egOneHealth: .green)
-      guard chip.tone == .error || chip.tone == .needsSetup else { continue }
+      guard chip?.tone == .error || chip?.tone == .needsSetup else { continue }
       let row = egOneRow(state)
       // `verifying` is the one legitimate exception: it is transient and
       // resolves on its own, so there is nothing for the user to do.
@@ -301,27 +307,27 @@ struct ProviderStatusMappingTests {
   @Test("EG-1 downloading → Downloading / needs-setup")
   func egOneDownloading() {
     let s = status(for: .egOne, egOneInstall: .downloading(fractionCompleted: 0.4, upgrade: nil))
-    #expect(s.label == "Downloading")
-    #expect(s.tone == .needsSetup)
+    #expect(s?.label == "Downloading")
+    #expect(s?.tone == .needsSetup)
   }
 
   @Test("EG-1 verifying → Verifying / needs-setup")
   func egOneVerifying() {
     let s = status(for: .egOne, egOneInstall: .verifying)
-    #expect(s.tone == .needsSetup)
+    #expect(s?.tone == .needsSetup)
   }
 
   @Test("EG-1 download failed → error")
   func egOneFailed() {
     let s = status(for: .egOne, egOneInstall: .failed(.network))
-    #expect(s.tone == .error)
+    #expect(s?.tone == .error)
   }
 
-  @Test("EG-1 installed + green → Live / ready")
+  @Test("EG-1 installed + green → Installed / ready")
   func egOneLive() {
     let s = status(for: .egOne, egOneInstall: .installed(version: "1"), egOneHealth: .green)
-    #expect(s.label == "Live")
-    #expect(s.tone == .ready)
+    #expect(s?.label == "Installed")
+    #expect(s?.tone == .ready)
   }
 
   @Test("EG-1 installed + yellow → Starting / needs-setup")
@@ -329,7 +335,7 @@ struct ProviderStatusMappingTests {
     let s = status(
       for: .egOne, egOneInstall: .installed(version: "1"),
       egOneHealth: .yellow(reason: "starting"))
-    #expect(s.tone == .needsSetup)
+    #expect(s?.tone == .needsSetup)
   }
 
   @Test("EG-1 installed + red → Not working / error")
@@ -337,23 +343,23 @@ struct ProviderStatusMappingTests {
     let s = status(
       for: .egOne, egOneInstall: .installed(version: "1"),
       egOneHealth: .red(reason: "crashed_twice"))
-    #expect(s.label == "Not working")
-    #expect(s.tone == .error)
+    #expect(s?.label == "Not working")
+    #expect(s?.tone == .error)
   }
 
   // MARK: - Apple Intelligence
 
   @Test("Apple available → ready")
   func appleAvailable() {
-    #expect(status(for: .appleIntelligence, appleStatus: .available).tone == .ready)
+    #expect(status(for: .appleIntelligence, appleStatus: .available)?.tone == .ready)
   }
 
-  @Test("Apple degraded/unavailable/unknown/nil → unavailable tone")
+  @Test("Apple degraded / unavailable / unknown / nil each keep their own tone")
   func appleNonReady() {
-    #expect(status(for: .appleIntelligence, appleStatus: .degraded).tone == .unavailable)
-    #expect(status(for: .appleIntelligence, appleStatus: .unavailable).tone == .unavailable)
-    #expect(status(for: .appleIntelligence, appleStatus: .unknown).tone == .unavailable)
-    #expect(status(for: .appleIntelligence, appleStatus: nil).tone == .unavailable)
+    #expect(status(for: .appleIntelligence, appleStatus: .degraded)?.tone == .needsSetup)
+    #expect(status(for: .appleIntelligence, appleStatus: .unavailable)?.tone == .error)
+    #expect(status(for: .appleIntelligence, appleStatus: .unknown)?.tone == .unavailable)
+    #expect(status(for: .appleIntelligence, appleStatus: nil)?.tone == .unavailable)
   }
 
   // MARK: - Cloud (OpenAI / Gemini share the mapping)
@@ -362,21 +368,34 @@ struct ProviderStatusMappingTests {
   func cloudValid() {
     for p in [LLMProvider.openAI, .gemini, .claude] {
       let s = status(for: p, cloudValidation: .valid)
-      #expect(s.label == "Key valid")
-      #expect(s.tone == .ready)
+      #expect(s?.label == "Key valid")
+      #expect(s?.tone == .ready)
     }
   }
 
   @Test("Cloud validating → needs-setup")
   func cloudValidating() {
-    #expect(status(for: .openAI, cloudValidation: .validating).tone == .needsSetup)
+    #expect(status(for: .openAI, cloudValidation: .validating)?.tone == .needsSetup)
   }
 
-  @Test("Cloud idle with NO key → Key needed / needs-setup")
+  @Test("Cloud with NO saved key → Key needed, selected or not, whatever the verdict")
   func cloudIdleNoKey() {
-    let s = status(for: .gemini, cloudValidation: .idle, cloudKeyPresent: false)
-    #expect(s.label == "Key needed")
-    #expect(s.tone == .needsSetup)
+    for selected in [true, false] {
+      for validation: LLMModelDiscoveryCoordinator.KeyValidationState in [.idle, .valid] {
+        let s = status(for: .gemini, selected: selected, cloudValidation: validation, cloudKeySaved: false)
+        #expect(s?.label == "Key needed")
+        #expect(s?.tone == .unavailable)
+      }
+    }
+  }
+
+  @Test("Cloud with an unreadable saved key → Could not check, never Key needed")
+  func cloudUnknownKey() {
+    for selected in [true, false] {
+      let s = status(for: .claude, selected: selected, cloudKeySaved: nil)
+      #expect(s?.label == "Could not check")
+      #expect(s?.tone == .needsSetup)
+    }
   }
 
   @Test("Cloud idle WITH a saved key → neutral Not checked, never a false Key needed")
@@ -384,42 +403,82 @@ struct ProviderStatusMappingTests {
     // A saved key loaded on settings-open leaves validation .idle; the chip must
     // not alarm the user with "Key needed" (cloud review PR #1293).
     for p in [LLMProvider.openAI, .gemini, .claude] {
-      let s = status(for: p, cloudValidation: .idle, cloudKeyPresent: true)
-      #expect(s.label == "Not checked")
-      #expect(s.tone == .unavailable)
+      let s = status(for: p, cloudValidation: .idle, cloudKeySaved: true)
+      #expect(s?.label == "Not checked")
+      #expect(s?.tone == .unavailable)
     }
   }
 
-  @Test("Cloud invalid → Key needed / error")
+  @Test("Cloud invalid → Check failed / error, never a claim that the key was rejected")
   func cloudInvalid() {
-    let s = status(for: .openAI, cloudValidation: .invalid("bad key"))
-    #expect(s.label == "Key needed")
-    #expect(s.tone == .error)
+    let s = status(for: .openAI, cloudValidation: .invalid("Network error: offline"))
+    #expect(s?.label == "Check failed")
+    #expect(s?.tone == .error)
+  }
+
+  @Test("An unselected cloud provider or another provider's verdict says only Key saved")
+  func cloudVerdictStaysWithItsProvider() {
+    #expect(status(for: .openAI, selected: false, cloudValidation: .valid)?.label == "Key saved")
+    #expect(
+      status(for: .openAI, validationProvider: .gemini, cloudValidation: .valid)?.label
+        == "Key saved")
+    #expect(
+      status(for: .openAI, validationProvider: .gemini, cloudValidation: .invalid("x"))?.label
+        == "Key saved")
   }
 
   // MARK: - Ollama
 
-  @Test("Ollama ready → Running / ready")
+  @Test("Ollama ready → Installed / ready")
   func ollamaRunning() {
     let s = status(for: .ollama, ollamaSetup: .ready)
-    #expect(s.label == "Running")
-    #expect(s.tone == .ready)
+    #expect(s?.label == "Installed")
+    #expect(s?.tone == .ready)
   }
 
   @Test("Ollama not-installed/not-running/no-model/pulling/detecting → needs-setup")
   func ollamaNeedsSetup() {
-    #expect(status(for: .ollama, ollamaSetup: .detecting).tone == .needsSetup)
-    #expect(status(for: .ollama, ollamaSetup: .notInstalled).tone == .needsSetup)
-    #expect(status(for: .ollama, ollamaSetup: .installedNotRunning).tone == .needsSetup)
-    #expect(status(for: .ollama, ollamaSetup: .runningNoModels).tone == .needsSetup)
+    #expect(status(for: .ollama, ollamaSetup: .detecting)?.tone == .needsSetup)
+    #expect(status(for: .ollama, ollamaSetup: .notInstalled)?.tone == .unavailable)
+    #expect(status(for: .ollama, ollamaSetup: .installedNotRunning)?.tone == .needsSetup)
+    #expect(status(for: .ollama, ollamaSetup: .runningNoModels)?.tone == .needsSetup)
     #expect(
-      status(for: .ollama, ollamaSetup: .pullingModel(progress: 0.2, status: "x")).tone
+      status(for: .ollama, ollamaSetup: .pullingModel(progress: 0.2, status: "x"))?.tone
         == .needsSetup)
+  }
+
+  @Test("An unselected Ollama says only what does not go stale")
+  func ollamaUnselected() {
+    #expect(status(for: .ollama, selected: false, ollamaSetup: .detecting) == nil)
+    #expect(status(for: .ollama, selected: false, ollamaSetup: .error("x")) == nil)
+    #expect(status(for: .ollama, selected: false, ollamaSetup: .notInstalled)?.label == "Not installed")
+    for state: OllamaSetupState in [.installedNotRunning, .runningNoModels, .ready] {
+      #expect(status(for: .ollama, selected: false, ollamaSetup: state)?.label == "Installed")
+    }
+    #expect(
+      status(for: .ollama, selected: false, ollamaSetup: .pullingModel(progress: 0.2, status: "x"))?
+        .label == "Downloading")
+  }
+
+  @Test("An unselected local engine reports its install state, never its unprobed health")
+  func localUnselectedIgnoresHealth() {
+    for health: EGOneHealth in [.red(reason: "not_running"), .yellow(reason: "not_started"), .green] {
+      let s = status(for: .egOne, selected: false, egOneHealth: health)
+      #expect(s?.label == "Installed")
+      #expect(s?.tone == .ready)
+    }
+  }
+
+  @Test("Apple says Checking only for a check running for the chosen provider")
+  func appleChecking() {
+    #expect(status(for: .appleIntelligence, appleIsChecking: true)?.label == "Checking")
+    #expect(
+      status(for: .appleIntelligence, selected: false, appleIsChecking: true)?.label == "Available")
   }
 
   @Test("Ollama error → error")
   func ollamaError() {
-    #expect(status(for: .ollama, ollamaSetup: .error("boom")).tone == .error)
+    #expect(status(for: .ollama, ollamaSetup: .error("boom"))?.tone == .error)
   }
 
   // MARK: - No cross-provider leak
@@ -428,32 +487,32 @@ struct ProviderStatusMappingTests {
   func cloudStateDoesNotLeak() {
     // Cloud is .invalid (an error state) but the OTHER engines are nominal.
     #expect(
-      status(for: .egOne, cloudValidation: .invalid("x")).tone == .ready,
+      status(for: .egOne, cloudValidation: .invalid("x"))?.tone == .ready,
       "EG-1 stays Live regardless of a broken cloud key")
     #expect(
-      status(for: .appleIntelligence, cloudValidation: .invalid("x")).tone == .ready,
+      status(for: .appleIntelligence, cloudValidation: .invalid("x"))?.tone == .ready,
       "Apple stays Available regardless of a broken cloud key")
     #expect(
-      status(for: .ollama, cloudValidation: .invalid("x")).tone == .ready,
+      status(for: .ollama, cloudValidation: .invalid("x"))?.tone == .ready,
       "Ollama stays Running regardless of a broken cloud key")
   }
 
   @Test("A blocking EG-1 state does NOT change cloud/Apple/Ollama results")
   func egOneStateDoesNotLeak() {
     #expect(
-      status(for: .openAI, egOneInstall: .notInstalled).tone == .ready,
+      status(for: .openAI, egOneInstall: .notInstalled)?.tone == .ready,
       "OpenAI stays Key valid regardless of EG-1 not being installed")
     #expect(
-      status(for: .appleIntelligence, egOneHealth: .red(reason: "x")).tone == .ready,
+      status(for: .appleIntelligence, egOneHealth: .red(reason: "x"))?.tone == .ready,
       "Apple stays Available regardless of EG-1 health")
     #expect(
-      status(for: .ollama, egOneInstall: .notInstalled).tone == .ready,
+      status(for: .ollama, egOneInstall: .notInstalled)?.tone == .ready,
       "Ollama stays Running regardless of EG-1 not being installed")
   }
 
   @Test("Off provider → neutral, never a real engine status")
   func offProvider() {
-    #expect(status(for: .none).tone == .unavailable)
+    #expect(status(for: .none)?.tone == .unavailable)
   }
 
   /// An UPGRADE download must be distinguishable from a FIRST install while the

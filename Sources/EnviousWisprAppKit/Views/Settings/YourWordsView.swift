@@ -81,9 +81,8 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
   /// row's padding, the 32pt tile and the gap, a tagline gets roughly 132pt,
   /// which is about eighteen characters at this size. Longer copy truncates —
   /// measured 2026-08-29, when "Ready-made word lists" rendered as "Ready-made
-  /// word l...". `ProviderRailRow` has the same constraint and lives with a
-  /// truncated Ollama line; there is no reason to inherit that here when the
-  /// shorter phrasing is just as true.
+  /// word l...". The shorter phrasing is just as true, so there is no reason to
+  /// live with a truncated line.
   var tagline: String {
     switch self {
     case .yourWords:
@@ -145,16 +144,16 @@ struct YourWordsView: View {
       // #3385: the banner became the shared heading and row (tracker A5).
       DictionarySettingsHeading(isEnabled: $settings.wordCorrectionEnabled)
 
-      HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
+      HStack(alignment: .top, spacing: DictionaryRailMetrics.columnGap) {
         DictionaryTabRail(selection: $selectedTab)
-          // `PolishRailMetrics.railWidth`, the SAME 216pt the AI Polish rail
-          // uses, because these rows now carry the same content it does — a
-          // 32pt tile, a name, and a tagline. The previous 168pt was chosen
+          // 216pt, the width the AI Polish rail used (until #3385 made that
+          // list a dropdown), because these rows carry the same content it
+          // did: a 32pt tile, a name, and a tagline. The previous 168pt was chosen
           // for a row that was an icon and one word, and it truncated the
           // longest tab to "Vocabulary P..." at the window size the founder
           // actually runs (measured 2026-08-29 at 1115pt wide, nowhere near
           // the 750pt minimum the narrower value was defending).
-          .frame(width: PolishRailMetrics.railWidth, alignment: .leading)
+          .frame(width: DictionaryRailMetrics.railWidth, alignment: .leading)
 
         // `ScrollViewReader` so a paged list can return to its first row.
         //
@@ -367,19 +366,21 @@ struct YourWordsView: View {
 /// menu for dictionary looks janky compared to the ai polish sub menue"). Four
 /// pills floating directly on the page background have no container, so the
 /// empty space beneath the last tab belongs to nothing and the rail stops
-/// looking like an object. `ProviderRail` solves the identical problem with a
-/// `stSectionBg` fill, a `stDivider` border, radius 14 and 10pt of padding, and
-/// the approved mockup (`.subnav-card`, `height:fit-content`) draws exactly
-/// that. These are the same four values, read off `ProviderRail.body`.
-///
-/// Still its own type rather than a reuse of `ProviderRail`: that rail is
-/// hard-wired to `PolishRailCatalog` and `LLMProvider`, and its rows draw a
-/// `ProviderLogoTile` carrying six brand marks. What is shared is the visual
-/// vocabulary, not the data model.
+/// looking like an object. The AI Polish provider rail solved the identical
+/// problem with a `stSectionBg` fill, a `stDivider` border, radius 14 and 10pt of
+/// padding, and the approved mockup (`.subnav-card`, `height:fit-content`) draws
+/// exactly that. These are the same four values.
+/// Fixed measurements for the Dictionary tab rail and the gap beside it. The settings window's
+/// 750pt minimum guarantees both columns fit, so the layout needs no adaptive measurement.
+enum DictionaryRailMetrics {
+  static let railWidth: CGFloat = 216
+  static let columnGap: CGFloat = 16
+}
+
 private struct DictionaryTabRail: View {
   @Binding var selection: DictionaryTab
   /// One highlight that GLIDES between rows rather than four that blink,
-  /// matching `ProviderRail`'s `selectionNS`.
+  /// as the AI Polish provider rail did.
   @Namespace private var selectionNS
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -441,8 +442,7 @@ private struct DictionaryTabRow: View {
             .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
             .lineLimit(1)
             // The rail is sized for the longest label, but a user can shrink
-            // the window; shrink the text a little before truncating it, the
-            // way `ProviderRailRow` does for "Apple Intelligence".
+            // the window; shrink the text a little before truncating it.
             .minimumScaleFactor(0.85)
           Text(tab.tagline)
             .font(.stHelper)

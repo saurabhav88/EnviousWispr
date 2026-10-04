@@ -931,15 +931,9 @@ struct TranscribeFileView: View {
     // what is separate is only WHICH engine each screen selected. The founder's ruling was
     // "Keep it on the page", because sending someone to another screen to switch a feature
     // on and then back again is the experience this replaces.
-    ProviderSetupSection(model: setupModel, part: .detail, surface: .fileImport)
-    // Ollama's catalog is a long list, so it sits full width below the editor rather than
-    // inside it, exactly as it does on the AI Polish page. The editor's own copy says "the
-    // list below", so leaving it out would point at nothing.
-    if settings.effectiveFileImportLLMProvider == .ollama,
-      ProviderSetupVisibility.showsManageModels(setup)
-    {
-      ProviderSetupSection(model: setupModel, part: .manageModels, surface: .fileImport)
-    }
+    // #3385: the same card as the AI Polish page, so Ollama's model list opens from its
+    // Download more models card here too.
+    ProviderSetupSection(model: setupModel, surface: .fileImport)
     // #2772: the ONLY way out of an override. Without it, one curious tap on a second
     // engine is permanent, and a user who wants their imports to simply track their
     // dictation engine again has nothing to press. Shown only when there is something to
@@ -1140,8 +1134,8 @@ struct TranscribeFileView: View {
     } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
-          // #2772 finding 6: the real brand mark, from the one tile the AI Polish rail
-          // already draws. The founder's words were "we already have them in the software".
+          // #2772 finding 6: the real brand mark, from the one tile the AI Polish provider
+          // card already draws. The founder's words were "we already have them in the software".
           ProviderLogoTile(provider: choice.provider, size: 26, isSelected: selected)
           Spacer(minLength: 4)
           Image(systemName: selected ? "checkmark.circle.fill" : "circle")

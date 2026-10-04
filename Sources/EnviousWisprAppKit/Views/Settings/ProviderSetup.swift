@@ -11,11 +11,11 @@ import SwiftUI
 /// so a second host can render the same thing.
 ///
 /// **Why the split is here.** `AIPolishSettingsView` was doing two jobs. Job A is
-/// SELECTION: a master toggle and a rail that writes `settings.llmProvider`. Job B is
+/// SELECTION: a master toggle and a provider picker that writes `settings.llmProvider`. Job B is
 /// SETUP: the key field, the model picker, the Ollama wizard, the availability status and
 /// the explainers, plus five lifecycle handlers that arm and disarm the coordinators
 /// behind them. Job A is per-surface — Transcribe a File picks its engine with six cards,
-/// not a rail. Job B is identical wherever it appears, and #2772 finding 9 is that the
+/// not a dropdown. Job B is identical wherever it appears, and #2772 finding 9 is that the
 /// import wizard had no way to reach it.
 ///
 /// **Chunk 1 moved code and changed NO behaviour**, so the port could be reviewed as a
@@ -25,12 +25,11 @@ import SwiftUI
 /// hosted on Transcribe a File edits and arms the IMPORT's choice. Both default to
 /// `.dictation`, so the AI Polish host reads the same as before.
 ///
-/// **Four pieces, because the layout has two holes and they are not adjacent.** The
-/// detail column sits beside the rail; the Ollama catalog is full width BELOW it. One
-/// `View` cannot fill two non-adjacent holes, so `ProviderSetupSection` renders whichever
-/// `Part` the host asks for, sharing every helper. The lifecycle is a `ViewModifier` so
-/// each host attaches it to its own container, one implementation, and `ProviderSetupModel`
-/// is the state both parts and the modifier read.
+/// **Three pieces.** `ProviderSetupSection` is the provider's own card (#3385: one card,
+/// with the Ollama catalog in a Models sheet opened from it, where it used to be a second,
+/// full-width part). The lifecycle is a `ViewModifier` so each host attaches it to its own
+/// always-mounted container, one implementation, and `ProviderSetupModel` is the state the
+/// card and the modifier read.
 ///
 /// **It composes; it does not manage.** `SetupCoordinator`, `LLMModelDiscoveryCoordinator`,
 /// `AIAvailabilityCoordinator` and `KeychainManager` stay authoritative. Nothing here
@@ -166,24 +165,11 @@ final class ProviderSetupModel {
   /// the exact id that was requested even if the list re-renders underneath the dialog.
   var pendingOllamaDownload: String?
 
+  /// Whether the Ollama Models sheet is open. The download confirmation must present above
+  /// the sheet while it is open and from the page otherwise, never from both (#3385).
+  var modelsSheetOpen = false
+
   init() {}
-}
-
-// MARK: - Manage Models visibility
-
-/// `@MainActor` because both `SetupCoordinator` and `ProviderSetupModel` are, and this
-/// reads them synchronously. Swift 6 refuses the nonisolated form, which is the correct
-/// answer: these are UI reads on UI state.
-@MainActor
-enum ProviderSetupVisibility {
-  /// Whether the full Ollama catalog section is offered. Read by the HOST, because the
-  /// section is the host's sibling of the detail column, not a child of it.
-  static func showsManageModels(_ setup: SetupCoordinator) -> Bool {
-    switch setup.ollamaSetup.setupState {
-    case .ready, .pullingModel, .runningNoModels: return true
-    default: return false
-    }
-  }
 }
 
 // MARK: - Ollama download request / confirm
@@ -192,8 +178,8 @@ enum ProviderSetupVisibility {
 /// the REQUEST comes from a catalog row and the CONFIRM comes from the dialog, which the
 /// lifecycle modifier owns. Two copies is how the two buttons would come to disagree,
 /// which is the defect #1950 fixed.
-/// `@MainActor` for the same reason as `ProviderSetupVisibility`: it mutates the model and
-/// calls into `OllamaSetupService`, both main-actor-isolated.
+/// `@MainActor` because it mutates the model and calls into `OllamaSetupService`, both
+/// main-actor-isolated.
 @MainActor
 enum ProviderSetupDownloads {
   /// #1950: the ONE way a local model gets downloaded from this screen.
@@ -305,15 +291,7 @@ enum ProviderSetupKeys {
 // MARK: - The editor
 
 struct ProviderSetupSection: View {
-  /// Which hole in the host's layout this instance fills. See the type's note: the two are
-  /// not adjacent, so they cannot be one view.
-  enum Part {
-    case detail
-    case manageModels
-  }
-
   let model: ProviderSetupModel
-  let part: Part
 
   /// Which screen's choice this instance edits. Defaults to dictation so every existing
   /// call site keeps its behaviour without restating it.
@@ -330,6 +308,16 @@ struct ProviderSetupSection: View {
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
   private var keychainManager: KeychainManager { keychainManagerEnv! }
+
+  /// Whether the API key field shows the key in plain text. Local presentation only: reset
+  /// when the provider changes or the key is cleared, and the draft itself never moves.
+  @State private var revealsKey = false
+  /// Which field-style dropdown is open, if any.
+  @State private var modelMenuOpen = false
+  /// The Models sheet's search text. Filters rows only; counts, selection and downloads are
+  /// the service's and never change with it.
+  @State private var modelSearch = ""
+  @FocusState private var keyFieldFocused: Bool
 
   // MARK: - The surface's three coupled values (#2772 chunk 3)
 
@@ -394,10 +382,6 @@ struct ProviderSetupSection: View {
       for: provider, cloudModel: surfaceCloudModel, ollamaModel: surfaceOllamaModel)
   }
 
-  private var surfaceModelBinding: Binding<String> {
-    Binding(get: { surfaceCloudModel }, set: { setCloudModel($0) })
-  }
-
   // MARK: - Discovery state, only when it is about THIS surface (#2772 chunk 3)
 
   /// `LLMModelDiscoveryCoordinator` holds one provider's catalog and one key verdict, and
@@ -420,374 +404,341 @@ struct ProviderSetupSection: View {
     stateIsAboutThisSurface && llmDiscovery.isDiscoveringModels
   }
 
+  /// #3385 (founder's Claude Design, 2026-10-03): "<NAME> · only for this model", then ONE card
+  /// whose rows depend on the provider and which always ends with the WHY USE block. The same
+  /// card renders on the AI Polish page and on Transcribe a File's Polish step; the surface
+  /// decides what each choice writes and what this card may start.
   var body: some View {
-    switch part {
-    case .detail:
-      providerDetailPane
-    case .manageModels:
-      BrandedSection(
-        header: LocalizedStringResource(
-          "Manage Models", comment: "AI Polish, Ollama: heading of the model download list.")
+    if let entry = PolishRailCatalog.entry(for: provider) {
+      VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
+        PolishSectionHeading(providerName: entry.name)
+        if surface == .fileImport {
+          Text(SettingsCopy.frozenPerImport)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
+            .padding(.leading, 4)
+        }
+        PolishSectionCard {
+          providerRows
+          PolishRowDivider()
+          PolishIndented { whyBlock }
+        }
+      }
+      .onChange(of: provider) { _, _ in
+        revealsKey = false
+        modelMenuOpen = false
+      }
+      .sheet(
+        isPresented: Binding(
+          get: { model.modelsSheetOpen },
+          set: { model.modelsSheetOpen = $0 })
       ) {
-        BrandedRow(showDivider: false) {
-          ollamaModelCatalogView
-        }
+        modelsSheet
       }
     }
   }
 
-  private var isCloudProvider: Bool {
-    provider == .openAI || provider == .gemini
-      || provider == .claude
+
+// MARK: - Status (#3385)
+
+/// The status mapping's inputs for this surface. The validation verdict counts only when it
+/// is about THIS surface's provider (`stateIsAboutThisSurface`).
+private var statusInputs: ProviderStatusInputs {
+  ProviderStatusInputs(
+    egOneInstall: egOne.installState, egOneHealth: egOne.health,
+    s1MiniInstall: localPolishRuntimes.s1Mini.installState,
+    s1MiniHealth: localPolishRuntimes.s1Mini.health,
+    appleStatus: aiAvailability.latestReport?.overallStatus,
+    appleIsChecking: aiAvailability.isChecking,
+    validationProvider: stateIsAboutThisSurface ? llmDiscovery.stateProvider : nil,
+    cloudValidation: surfaceValidation,
+    openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,
+    claudeKeySaved: model.claudeKeySaved,
+    ollamaSetup: setup.ollamaSetup.setupState)
+}
+
+/// The chosen provider's status, as the card on the AI Polish page shows it. Health only
+/// where this card may start the engine (dictation).
+private var currentProviderStatus: ProviderStatus? {
+  ProviderStatusMapping.status(
+    for: provider,
+    context: ProviderStatusContext(selected: true, healthApplies: surface == .dictation),
+    inputs: statusInputs)
+}
+
+/// Whether the CONFIRMED-persisted key for the current provider read back
+/// empty (as opposed to `nil` unknown or `true` present) — the sole trigger
+/// for the missing-key notice in `cloudRows`. Extracted to a plain computed
+/// property (not inlined as a `switch` inside the `@ViewBuilder` body)
+/// because a `@ViewBuilder` context requires every statement to produce a
+/// `View`; a bare value-assigning `switch` does not.
+/// Explicit `== false` (not `!x`): `nil` (unknown) and `true` (confirmed
+/// present) must both suppress the notice, only a confirmed-empty read
+/// shows it.
+/// The THIRD state: a read that failed, so we do not know whether a key is stored.
+///
+/// #2772 chunk 3. `savedKeyIsEmptyForCurrentProvider` below deliberately treats `nil` as
+/// "say nothing", which is right for the missing-key nudge and leaves this case with no
+/// surface at all. It needs one, because the import's Continue gate blocks on it and a
+/// user staring at a disabled button deserves both the reason and a way to ask again.
+private var savedKeyIsUnknownForCurrentProvider: Bool {
+  switch provider {
+  case .openAI: return model.openAIKeySaved == nil
+  case .gemini: return model.geminiKeySaved == nil
+  case .claude: return model.claudeKeySaved == nil
+  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
   }
+}
 
-  private var showModelSection: Bool {
-    // EG-1 excluded: one fixed first-party model, no model picker (#1271).
-    // S1-mini excluded for the same reason (#2649): it is one bundled model, so
-    // a picker offers a choice that does not exist. Left in, it rendered
-    // Ollama's discovery dropdown on the S1-mini pane showing the lower-case
-    // Ollama model id, which also reads as the wrong name for the model.
-    provider != .none && provider != .appleIntelligence
-      && provider != .egOne && provider != .s1Mini
+private var savedKeyIsEmptyForCurrentProvider: Bool {
+  switch provider {
+  case .openAI: return model.openAIKeySaved == false
+  case .gemini: return model.geminiKeySaved == false
+  case .claude: return model.claudeKeySaved == false
+  // #2651: enumerated rather than `default:`. No key is stored for these, so
+  // the missing-key notice must stay suppressed. A NEW cloud provider on a
+  // `default:` arm would never show that notice, which is the direction that
+  // hides a real problem from the user.
+  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
   }
+}
 
+private var savedKeyIsPresentForCurrentProvider: Bool {
+  switch provider {
+  case .openAI: return model.openAIKeySaved == true
+  case .gemini: return model.geminiKeySaved == true
+  case .claude: return model.claudeKeySaved == true
+  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+  }
+}
 
-  // MARK: - Provider rail (#1286)
+/// Whether the key on screen differs from the stored one, by the persisted digest the import
+/// gate also compares (never "the field is non-empty", which is true for every saved key).
+private var keyDraftIsEdited: Bool {
+  switch provider {
+  case .openAI: return model.openAIKeyEdited
+  case .gemini: return model.geminiKeyEdited
+  case .claude: return model.claudeKeyEdited
+  case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+  }
+}
 
-  /// The single at-a-glance status for the selected engine, read from the same
-  /// coordinators the inline controls use (no cross-provider leak). Rendered
-  /// once, in the detail header.
-  private var currentProviderStatus: ProviderStatus {
-    let cloudKeyPresent: Bool
-    switch provider {
-    case .openAI: cloudKeyPresent = !model.openAIKey.isEmpty
-    case .gemini: cloudKeyPresent = !model.geminiKey.isEmpty
-    case .claude: cloudKeyPresent = !model.claudeKey.isEmpty
-    // #2651: enumerated rather than `default:`. These providers carry no API
-    // key, so "no key present" is the true answer and
-    // `ProviderStatusMapping.status` ignores it for them. A NEW cloud provider
-    // reaching a `default:` would have read as permanently key-less.
-    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: cloudKeyPresent = false
+// MARK: - The card's rows (#3385)
+
+/// The setup rows for the chosen provider. Behaviour, setters and side effects are the
+/// ones the stacked cards had; only the layout changed.
+@ViewBuilder
+private var providerRows: some View {
+  switch provider {
+  case .openAI, .gemini, .claude:
+    cloudRows
+  case .ollama:
+    ollamaSetupContent
+  case .appleIntelligence:
+    appleIntelligenceStatus
+  // Both bundled engines render the SAME card (#2649). Written as two explicit branches
+  // rather than one derived runtime because the pairing of runtime to descriptor is what
+  // must not slip: handing EG-1's runtime an S1-mini descriptor would offer a 484 MB
+  // download for a 2.9 GB model, and nothing downstream would notice.
+  case .egOne:
+    LocalEngineStatusCard(
+      runtime: egOne, engine: .egOne, allowsRuntimeActivation: surface == .dictation
+    ) {
+      egOne.removeModel()
+      // Removing the selected engine must move the user somewhere that
+      // works, or polish silently stops. Apple Intelligence is what a fresh
+      // install selects, so it is where a removal lands.
+      //
+      // BOTH surfaces (#2772). The engine is shared; removing it from the import page
+      // while dictation still selected it left dictation pointing at nothing, and
+      // `EGOneRuntime.removeModel` then refused the file removal because its
+      // `isActiveProvider` still reported dictation's selection. Found by Codex.
+      // EVERY surface that selects the removed engine moves, whichever page the removal
+      // ran from; a following import follows dictation's move. The first version moved
+      // dictation only when run from the import page, which left an import OVERRIDE on
+      // the engine when the removal ran from AI Polish. Found by the cloud review.
+      if settings.llmProvider == .egOne { settings.llmProvider = .appleIntelligence }
+      if settings.fileImportLLMProvider == .egOne {
+        settings.fileImportLLMProvider = .appleIntelligence
+      }
+    } middle: {
+      EmptyView()
     }
-    return ProviderStatusMapping.status(
-      for: provider,
-      egOneInstall: egOne.installState,
-      egOneHealth: egOne.health,
-      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
-      s1MiniHealth: localPolishRuntimes.s1Mini.health,
-      appleStatus: aiAvailability.latestReport?.overallStatus,
-      cloudValidation: surfaceValidation,
-      cloudKeyPresent: cloudKeyPresent,
-      ollamaSetup: setup.ollamaSetup.setupState)
-  }
-
-  /// Whether the CONFIRMED-persisted key for the current provider read back
-  /// empty (as opposed to `nil` unknown or `true` present) — the sole trigger
-  /// for the missing-key notice in `providerSubConfig`. Extracted to a plain
-  /// computed property (not inlined as a `switch` inside the `@ViewBuilder`
-  /// body) because a `@ViewBuilder` context requires every statement to
-  /// produce a `View`; a bare value-assigning `switch` does not.
-  /// Explicit `== false` (not `!x`): `nil` (unknown) and `true` (confirmed
-  /// present) must both suppress the notice, only a confirmed-empty read
-  /// shows it.
-  /// The THIRD state: a read that failed, so we do not know whether a key is stored.
-  ///
-  /// #2772 chunk 3. `savedKeyIsEmptyForCurrentProvider` below deliberately treats `nil` as
-  /// "say nothing", which is right for the missing-key nudge and leaves this case with no
-  /// surface at all. It needs one, because the import's Continue gate blocks on it and a
-  /// user staring at a disabled button deserves both the reason and a way to ask again.
-  private var savedKeyIsUnknownForCurrentProvider: Bool {
-    switch provider {
-    case .openAI: return model.openAIKeySaved == nil
-    case .gemini: return model.geminiKeySaved == nil
-    case .claude: return model.claudeKeySaved == nil
-    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+  case .s1Mini:
+    LocalEngineStatusCard(
+      runtime: localPolishRuntimes.s1Mini, engine: .s1Mini,
+      allowsRuntimeActivation: surface == .dictation
+    ) {
+      localPolishRuntimes.s1Mini.removeModel()
+      if settings.llmProvider == .s1Mini { settings.llmProvider = .appleIntelligence }
+      if settings.fileImportLLMProvider == .s1Mini {
+        settings.fileImportLLMProvider = .appleIntelligence
+      }
+    } middle: {
+      // #2649: S1-mini is one model with three dials. They are text at the top of every
+      // request, not model variants, so they are rows of their own rather than a model
+      // picker (which this engine does not show). Shown before installation too, so the
+      // style can be set up front.
+      if S1ControlCardVisibility.shows(provider: provider, effectiveModel: surfaceEffectiveModel) {
+        PolishRowDivider()
+        s1ControlRows
+      }
     }
+  case .none:
+    EmptyView()
   }
+}
 
-  private var savedKeyIsEmptyForCurrentProvider: Bool {
-    switch provider {
-    case .openAI: return model.openAIKeySaved == false
-    case .gemini: return model.geminiKeySaved == false
-    case .claude: return model.claudeKeySaved == false
-    // #2651: enumerated rather than `default:`. No key is stored for these, so
-    // the missing-key notice must stay suppressed. A NEW cloud provider on a
-    // `default:` arm would never show that notice, which is the direction that
-    // hides a real problem from the user.
-    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+/// A cloud provider: the missing-key band, the API key row and what the provider receives,
+/// then the model row.
+@ViewBuilder
+private var cloudRows: some View {
+  // #1455: proactive nudge, not reactive, scoped narrowly to the one
+  // unambiguous case: nothing is actually SAVED yet. Deliberately NOT
+  // keyed off the provider status tone (Codex r1 + r2 findings):
+  // `.needsSetup` also covers mid-validation and `.error` also covers a
+  // transient network/provider failure while checking a perfectly good
+  // saved key — this banner's flat "without a key" wording would be false
+  // in both. Also deliberately NOT keyed off the live `model.openAIKey`/
+  // `model.geminiKey` text (Codex r3 finding): those track what's TYPED, not
+  // what's PERSISTED, and polish reads only from Keychain — a user who
+  // types but never clicks Save, or whose save fails, would wrongly lose
+  // the warning before cleanup is actually usable. Also deliberately NOT a
+  // live Keychain re-read inside the body (Codex r4 finding): `retrieve()`
+  // does side-effecting legacy-key migration + file I/O + telemetry, so
+  // running it on every render (every keystroke) redoes that work and can
+  // re-report a failed legacy cleanup repeatedly; a locked/unavailable
+  // Keychain would also read as a false "definitely no key" rather than
+  // "couldn't check." `model.openAIKeySaved`/`model.geminiKeySaved` cache a CONFIRMED
+  // read, updated only at the 3 real mutation points.
+  if savedKeyIsEmptyForCurrentProvider {
+    PolishBand(
+      text:
+        "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
+      systemImage: "exclamationmark.triangle")
+  }
+  // #2772 chunk 3, plan §7: the Keychain would not answer. Saying "you have no key"
+  // here would be a false accusation against a user whose key is fine, so this states
+  // the real situation and offers the same read again. Both surfaces get it, because
+  // the Keychain is shared and so is the failure.
+  if savedKeyIsUnknownForCurrentProvider {
+    PolishRow(
+      icon: "questionmark.circle", iconTint: .stWarning,
+      title: String(
+        localized: "We could not check your saved key on this Mac.",
+        comment: "AI Polish: the saved API key could not be read from the Keychain.")
+    ) {
+      SettingsActionButton(
+        title: LocalizedStringResource(
+          "Check again", comment: "AI Polish: reads the saved API key again."),
+        isEnabled: true, emphasis: .quiet, size: .medium
+      ) {
+        ProviderSetupKeys.load(into: model, using: keychainManager)
+      }
     }
+    PolishRowDivider()
   }
-
-  /// Rail + detail as the two-column master-detail from the approved mockup:
-  /// a fixed-width rail on the left, the selected engine's detail on the right.
-  /// Always side-by-side (no `HSplitView`, which clips under width pressure —
-  /// `hsplitview-never-compresses`); the detail column flexes for wider windows.
-  ///
-  /// At the settings window's 710pt minimum the usable content width is smaller
-  /// than the window (the ~200pt NavigationSplitView sidebar + divider and the
-  /// SettingsContentView horizontal padding come off the top), so the detail
-  /// column is compact but still functional there; it opens up as the window
-  /// widens. The rail is intentionally narrow to hand the detail as much of
-
-  @ViewBuilder
-  private var providerDetailPane: some View {
-    @Bindable var settings = settings
-    VStack(alignment: .leading, spacing: 14) {
-      if let entry = PolishRailCatalog.entry(for: provider) {
-        ProviderDetailHeader(entry: entry, status: currentProviderStatus)
-      }
-
-      detailCard {
-        providerSubConfig
-      }
-
-      // #2649: S1-mini is one model with three dials. They are text at the top
-      // of every request, not model variants, so they live in a card of their
-      // own rather than in the model picker (which this engine does not show).
-      if S1ControlCardVisibility.shows(
-        provider: provider, effectiveModel: surfaceEffectiveModel)
-      {
-        detailCard(label: S1ControlCopy.cardLabel) {
-          s1ControlRows
-          FrozenPerRecordingFootnote(text: frozenSettingsFootnote)
-        }
-      }
-
-      if showModelSection {
-        detailCard(
-          label: String(
-            localized: "Model", comment: "AI Polish: card title above the model picker.")
-        ) {
-          modelSelectorRow
-          FrozenPerRecordingFootnote(text: frozenSettingsFootnote)
-        }
-      }
-
-      detailCard(label: providerExplainerHeader) {
-        providerExplainer
-      }
-
-    }
+  apiKeyRow
+  PolishIndented {
+    Text(activeKeyDescriptor.privacySentence)
+      .font(.stRowHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
   }
+  PolishRowDivider()
+  modelSelectorRow
+}
 
-  /// A titled card in the detail column: an optional uppercase label above a
-  /// bordered content box, matching the mockup's stacked-card detail.
-  @ViewBuilder
-  private func detailCard(
-    label: String? = nil, @ViewBuilder content: () -> some View
-  ) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if let label, !label.isEmpty {
-        Text(label.uppercased())
-          .font(.stSectionHeader)
-          .tracking(0.6)
-          .foregroundStyle(Color.stAccent)
-      }
-      VStack(alignment: .leading, spacing: 10) {
-        content()
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(16)
-      .background(
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .fill(Color.stSectionBg)
+/// The three S1-mini control-line pickers (#2649). Each writes its own stored
+/// setting so one change emits one delta. Every option label maps to exactly
+/// one trained value; the enum is what keeps an untrained token off the wire.
+@ViewBuilder
+private var s1ControlRows: some View {
+  @Bindable var settings = settings
+  // The dials are ONE shared setting; on Transcribe a File a change reaches the next file
+  // and the next dictation, and the page says so (#2772).
+  // An S1-mini pulled into Ollama has no S1-mini card or WHY block above its dials, so the
+  // licence's credit ("S1-mini" by "Superwhisper") is given here.
+  if surface == .dictation, provider == .ollama {
+    PolishIndented {
+      Text(
+        String(
+          localized: "\(LLMProvider.s1Mini.displayName) by Superwhisper",
+          comment:
+            "AI Polish, Ollama: credit above the writing-style dials when the Ollama model is S1-mini. %@ is S1-mini. Keep Superwhisper as written."
+        )
       )
-      .overlay(
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .strokeBorder(Color.stDivider, lineWidth: 1)
-      )
+      .font(.stRowHelper)
+      .foregroundStyle(Color.stTextSecondary)
     }
   }
-
-  /// The setup content for the selected engine (API key, Ollama wizard, Apple
-  /// status, or EG-1 status). Behavior, setters, and side effects unchanged;
-  /// only the container moved into the detail column (#1286).
-  @ViewBuilder
-  private var providerSubConfig: some View {
-    if isCloudProvider {
-      // #1455: proactive nudge, not reactive, scoped narrowly to the one
-      // unambiguous case: nothing is actually SAVED yet. Deliberately NOT
-      // keyed off `currentProviderStatus.tone` (Codex r1 + r2 findings):
-      // `.needsSetup` also covers mid-validation and `.error` also covers a
-      // transient network/provider failure while checking a perfectly good
-      // saved key — this banner's flat "without a key" wording would be false
-      // in both. Also deliberately NOT keyed off the live `model.openAIKey`/
-      // `model.geminiKey` text (Codex r3 finding): those track what's TYPED, not
-      // what's PERSISTED, and polish reads only from Keychain — a user who
-      // types but never clicks Save, or whose save fails, would wrongly lose
-      // the warning before cleanup is actually usable. Also deliberately NOT a
-      // live Keychain re-read inside the body (Codex r4 finding): `retrieve()`
-      // does side-effecting legacy-key migration + file I/O + telemetry, so
-      // running it on every render (every keystroke) redoes that work and can
-      // re-report a failed legacy cleanup repeatedly; a locked/unavailable
-      // Keychain would also read as a false "definitely no key" rather than
-      // "couldn't check." `model.openAIKeySaved`/`model.geminiKeySaved` cache a CONFIRMED
-      // read, updated only at the 3 real mutation points.
-      // Explicit `== false` (not `!x`): `nil` (unknown) and `true` (confirmed
-      // present) must both suppress the notice, only a confirmed-empty read
-      // shows it. See `savedKeyIsEmptyForCurrentProvider` for why this reads
-      // a computed property rather than an inline switch (ViewBuilder body).
-      if savedKeyIsEmptyForCurrentProvider {
-        InsetNotice(
-          text:
-            "Dictation still works, but without a key, cleanup falls back to your raw, unedited text every time.",
-          systemImage: "exclamationmark.triangle",
-          tint: .stWarning
-        )
-      }
-      // #2772 chunk 3, plan §7: the Keychain would not answer. Saying "you have no key"
-      // here would be a false accusation against a user whose key is fine, so this states
-      // the real situation and offers the same read again. Both surfaces get it, because
-      // the Keychain is shared and so is the failure.
-      if savedKeyIsUnknownForCurrentProvider {
-        InsetNotice(
-          text: "We could not check your saved key on this Mac.",
-          systemImage: "questionmark.circle",
-          tint: .stWarning
-        )
-        Button("Check again") {
-          ProviderSetupKeys.load(into: model, using: keychainManager)
-        }
-        .buttonStyle(.link)
-        .font(.stHelper)
-      }
-      apiKeyRow
-      if provider == .openAI {
-        Link(
-          "Get your free API key at platform.openai.com",
-          destination: URL(string: "https://platform.openai.com/api-keys")!
-        )
-        .font(.stHelper)
-      } else if provider == .gemini {
-        Link(
-          "Get your free API key at aistudio.google.com",
-          destination: URL(string: "https://aistudio.google.com/apikey")!
-        )
-        .font(.stHelper)
-      }
+  if surface == .fileImport {
+    PolishIndented {
+      Text(S1ControlCopy.fileImportIntro)
+        .font(.stRowHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
-    if provider == .ollama {
-      ollamaSetupContent
-    }
-    if provider == .appleIntelligence {
-      appleIntelligenceStatus
-    }
-    // Both bundled engines render the SAME card (#2649). Written as two
-    // explicit branches rather than one derived runtime because the pairing of
-    // runtime to descriptor is what must not slip: handing EG-1's runtime an
-    // S1-mini descriptor would offer a 484 MB download for a 2.9 GB model, and
-    // nothing downstream would notice.
-    if provider == .egOne {
-      LocalEngineStatusCard(
-        runtime: egOne, engine: .egOne, allowsRuntimeActivation: surface == .dictation
+  }
+  PolishRow(
+    icon: "textformat", title: S1ControlCopy.stylingLabel, subtitle: S1ControlCopy.stylingShort,
+    adaptsTrailing: true
+  ) {
+    BrandedSegmentedPicker(
+      options: S1Styling.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+      selection: $settings.s1MiniStyling
+    )
+    .frame(maxWidth: PolishSectionLayout.dialWidth)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(Text(S1ControlCopy.stylingLabel))
+  }
+  PolishRowDivider()
+  PolishRow(
+    icon: "list.bullet", title: S1ControlCopy.structureLabel,
+    subtitle: S1ControlCopy.structureShort, adaptsTrailing: true
+  ) {
+    BrandedSegmentedPicker(
+      options: S1Structure.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+      selection: $settings.s1MiniStructure
+    )
+    .frame(maxWidth: PolishSectionLayout.dialWidth)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(Text(S1ControlCopy.structureLabel))
+  }
+  PolishRowDivider()
+  PolishRow(
+    icon: "envelope", title: S1ControlCopy.contextLabel, subtitle: S1ControlCopy.contextShort,
+    adaptsTrailing: true
+  ) {
+    BrandedSegmentedPicker(
+      options: S1Context.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+      selection: $settings.s1MiniContext
+    )
+    .frame(maxWidth: PolishSectionLayout.dialWidth)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(Text(S1ControlCopy.contextLabel))
+  }
+}
+/// The model row (cloud and Ollama): a field-style dropdown of the discovered models and,
+/// beside it, Refresh, or Prepare for a local Ollama model on the dictation surface.
+@ViewBuilder
+private var modelSelectorRow: some View {
+  PolishRow(
+    icon: "cpu", title: String(localized: "Model", comment: "AI Polish: the model row's title."),
+    subtitle: modelRowSubtitle, adaptsTrailing: true
+  ) {
+    HStack(spacing: 8) {
+      SettingsDropdownField(
+        value: modelFieldLabel, isOpen: modelMenuOpen,
+        width: PolishSectionLayout.controlColumn,
+        spokenTitle: String(localized: "Model", comment: "AI Polish: the model row's title."),
+        isEnabled: !surfaceDiscoveredModels.isEmpty
       ) {
-        egOne.removeModel()
-        // Removing the selected engine must move the user somewhere that
-        // works, or polish silently stops. Apple Intelligence is what a fresh
-        // install selects, so it is where a removal lands.
-        //
-        // BOTH surfaces (#2772). The engine is shared; removing it from the import page
-        // while dictation still selected it left dictation pointing at nothing, and
-        // `EGOneRuntime.removeModel` then refused the file removal because its
-        // `isActiveProvider` still reported dictation's selection. Found by Codex.
-        // EVERY surface that selects the removed engine moves, whichever page the removal
-        // ran from; a following import follows dictation's move. The first version moved
-        // dictation only when run from the import page, which left an import OVERRIDE on
-        // the engine when the removal ran from AI Polish. Found by the cloud review.
-        if settings.llmProvider == .egOne { settings.llmProvider = .appleIntelligence }
-        if settings.fileImportLLMProvider == .egOne {
-          settings.fileImportLLMProvider = .appleIntelligence
-        }
+        modelMenuOpen.toggle()
       }
-    }
-    if provider == .s1Mini {
-      LocalEngineStatusCard(
-        runtime: localPolishRuntimes.s1Mini, engine: .s1Mini,
-        allowsRuntimeActivation: surface == .dictation
+      .settingsDropdown(
+        isPresented: $modelMenuOpen, width: PolishSectionLayout.controlColumn, maxHeight: 320
       ) {
-        localPolishRuntimes.s1Mini.removeModel()
-        if settings.llmProvider == .s1Mini { settings.llmProvider = .appleIntelligence }
-        if settings.fileImportLLMProvider == .s1Mini {
-          settings.fileImportLLMProvider = .appleIntelligence
-        }
-      }
-    }
-  }
-
-  /// The three S1-mini control-line pickers (#2649). Each writes its own stored
-  /// setting so one change emits one delta. Every option label maps to exactly
-  /// one trained value; the enum is what keeps an untrained token off the wire.
-  @ViewBuilder
-  private var s1ControlRows: some View {
-    @Bindable var settings = settings
-    VStack(alignment: .leading, spacing: 14) {
-      Text(S1ControlCopy.intro(for: surface))
-        .settingsReadingCopy()
-
-      VStack(alignment: .leading, spacing: 6) {
-        Text(S1ControlCopy.stylingLabel).settingsRowLabel()
-        BrandedSegmentedPicker(
-          options: S1Styling.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
-          selection: $settings.s1MiniStyling)
-        Text(S1ControlCopy.stylingHint).font(.stHelper).foregroundStyle(.stTextSecondary)
-      }
-
-      VStack(alignment: .leading, spacing: 6) {
-        Text(S1ControlCopy.structureLabel).settingsRowLabel()
-        BrandedSegmentedPicker(
-          options: S1Structure.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
-          selection: $settings.s1MiniStructure)
-        Text(S1ControlCopy.structureHint).font(.stHelper).foregroundStyle(.stTextSecondary)
-      }
-
-      VStack(alignment: .leading, spacing: 6) {
-        Text(S1ControlCopy.contextLabel).settingsRowLabel()
-        BrandedSegmentedPicker(
-          options: S1Context.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
-          selection: $settings.s1MiniContext)
-        Text(S1ControlCopy.contextHint).font(.stHelper).foregroundStyle(.stTextSecondary)
-      }
-    }
-  }
-
-  /// The model picker row (cloud + Ollama), lifted into the detail column.
-  @ViewBuilder
-  private var modelSelectorRow: some View {
-    @Bindable var settings = settings
-    HStack {
-      Picker("Model", selection: surfaceModelBinding) {
-        if surfaceDiscoveredModels.isEmpty
-          && !surfaceIsDiscovering
-        {
-          Text(
-            surfaceCloudModel.isEmpty
-              ? (provider == .ollama
-                ? String(
-                  localized: "No models found",
-                  comment: "AI Polish model picker: Ollama has no models downloaded.")
-                : String(
-                  localized: "Save API key to discover models",
-                  comment:
-                    "AI Polish model picker: a cloud provider's models appear after its key is saved."
-                ))
-              : surfaceCloudModel
-          )
-          .tag(surfaceCloudModel)
-        }
-
-        // #1914: models exist and none is armed. Without a row carrying the
-        // empty tag the Picker has no selection to render and simply draws
-        // blank, which reads as broken rather than as a state the user can act
-        // on. This is the settings-side half of the "no polish model selected"
-        // pill: the notice says it during dictation, this says it at rest.
-        //
-        // Mutually exclusive with the branch above, which already emits an
-        // empty-tagged row when discovery came back empty. Two rows sharing one
-        // tag would make the Picker's selection ambiguous.
-        if !surfaceDiscoveredModels.isEmpty && surfaceCloudModel.isEmpty {
-          Text("No model selected").tag("")
-        }
-
         modelPickerSections
       }
 
@@ -802,26 +753,61 @@ struct ProviderSetupSection: View {
       // import's run loads its own model when it starts.
       if surface == .dictation, provider == .ollama, !selectedOllamaModelIsRemote {
         ollamaWarmupIndicator
-      } else if surfaceIsDiscovering {
-        ProgressView()
-          .controlSize(.small)
       } else {
-        Button {
+        PolishIconButton(
+          systemName: "arrow.clockwise",
+          help: String(
+            localized: "Refresh available models",
+            comment: "AI Polish: re-checks the key and reloads the model list."),
+          isSpinning: surfaceIsDiscovering
+        ) {
           Task {
             await llmDiscovery.validateKeyAndDiscoverModels(
               provider: provider, settings: settings, surface: surface)
           }
-        } label: {
-          Image(systemName: "arrow.clockwise")
-            .settingsHoverQuiet()
         }
-        .buttonStyle(.borderless)
-        .help("Refresh available models")
-        .accessibilityLabel("Refresh available models")
       }
     }
   }
+}
 
+private var modelRowSubtitle: String {
+  switch provider {
+  case .ollama:
+    return String(
+      localized:
+        "Local models stay on this Mac; hosted models send text to Ollama's servers. Prepare loads a local model into memory ahead of your next dictation.",
+      comment: "AI Polish, Ollama: the line under the Model row's title.")
+  default:
+    return String(
+      localized: "Choose the model used to polish your text.",
+      comment: "AI Polish, cloud provider: the line under the Model row's title.")
+  }
+}
+
+/// What the closed dropdown says: the chosen model, "No model selected" when models exist
+/// and none is armed (#1914: a blank field reads as broken), or why there are none yet.
+private var modelFieldLabel: String {
+  if surfaceDiscoveredModels.isEmpty {
+    if surfaceIsDiscovering {
+      return String(
+        localized: "Refreshing models…",
+        comment: "AI Polish model menu: models are being loaded.")
+    }
+    if !surfaceCloudModel.isEmpty { return surfaceCloudModel }
+    return provider == .ollama
+      ? String(
+        localized: "No models found",
+        comment: "AI Polish model picker: Ollama has no models downloaded.")
+      : String(
+        localized: "Save API key to discover models",
+        comment:
+          "AI Polish model picker: a cloud provider's models appear after its key is saved.")
+  }
+  if surfaceCloudModel.isEmpty { return String(localized: "No model selected") }
+  return surfaceDiscoveredModels.first { $0.id == surfaceCloudModel }?.localizedDisplayName
+    ?? surfaceCloudModel
+}
   // MARK: - API Key Row
 
   /// Per-provider label, placeholder, Keychain id, and privacy sentence for
@@ -835,6 +821,10 @@ struct ProviderSetupSection: View {
     let keychainId: String
     let accessibilityLabel: String
     let privacySentence: String
+    /// The line under the key's name: what this provider receives (#3385).
+    var keyShort: String = ""
+    /// Where to get a key, when the provider has a page for it.
+    var keyLink: (title: String, url: URL)?
   }
 
   private var activeKeyDescriptor: APIKeyDescriptor {
@@ -854,7 +844,15 @@ struct ProviderSetupSection: View {
             "OpenAI polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
           comment:
             "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
-        )
+        ),
+        keyShort: String(
+          localized: "Sends text and dictation context to OpenAI.",
+          comment: "AI Polish: the line under the OpenAI API key's name."),
+        keyLink: (
+          String(
+            localized: "Get your free API key at platform.openai.com",
+            comment: "AI Polish: link to the OpenAI API key page."),
+          URL(string: "https://platform.openai.com/api-keys")!)
       )
     case .gemini:
       return APIKeyDescriptor(
@@ -870,7 +868,15 @@ struct ProviderSetupSection: View {
             "Gemini polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
           comment:
             "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
-        )
+        ),
+        keyShort: String(
+          localized: "Sends text and dictation context to Google.",
+          comment: "AI Polish: the line under the Google Gemini API key's name."),
+        keyLink: (
+          String(
+            localized: "Get your free API key at aistudio.google.com",
+            comment: "AI Polish: link to the Gemini API key page."),
+          URL(string: "https://aistudio.google.com/apikey")!)
       )
     case .claude:
       // Claude's privacy sentence does not reuse OpenAI/Gemini's "store:
@@ -893,7 +899,15 @@ struct ProviderSetupSection: View {
         privacySentence: String(
           localized:
             "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept.",
-          comment: "AI Polish: what a cloud provider receives, shown under its API key field.")
+          comment: "AI Polish: what a cloud provider receives, shown under its API key field."),
+        keyShort: String(
+          localized: "Sends text and dictation context to Anthropic.",
+          comment: "AI Polish: the line under the Claude API key's name."),
+        keyLink: (
+          String(
+            localized: "Get your Claude API key",
+            comment: "AI Polish: link to the Claude Platform API key page."),
+          URL(string: "https://platform.claude.com/settings/keys")!)
       )
     // #2651: enumerated rather than `default:`. The empty descriptor is only
     // safe because `apiKeyRow` renders for cloud providers alone, and that
@@ -903,15 +917,6 @@ struct ProviderSetupSection: View {
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       return APIKeyDescriptor(
         label: "", placeholder: "", keychainId: "", accessibilityLabel: "", privacySentence: "")
-    }
-  }
-
-  /// Which run freezes this editor's settings, in the host's words: a recording on the AI
-  /// Polish page, a cleanup on Transcribe a File. The sentence said "recording" on both.
-  private var frozenSettingsFootnote: String {
-    switch surface {
-    case .dictation: return SettingsCopy.frozenPerRecording
-    case .fileImport: return SettingsCopy.frozenPerImport
     }
   }
 
@@ -949,607 +954,822 @@ struct ProviderSetupSection: View {
     }
   }
 
-  @ViewBuilder
-  private var apiKeyRow: some View {
-    let descriptor = activeKeyDescriptor
-    VStack(alignment: .leading, spacing: 6) {
-      Text(descriptor.label)
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-      HStack(spacing: 8) {
-        SecureField(descriptor.placeholder, text: activeKeyBinding)
-          .textFieldStyle(.roundedBorder)
-          .accessibilityLabel(descriptor.accessibilityLabel)
-          .onChange(of: activeKeyBinding.wrappedValue) { _, _ in
-            dismissStaleFailureStatus()
+/// The API key row: the key's name, what it sends, where to get one; then the field (with a
+/// show/hide eye), Save and Clear, and the badge under them. At narrow widths the controls drop
+/// under the text so the field keeps a usable width (founder-feedback item 24).
+@ViewBuilder
+private var apiKeyRow: some View {
+  let descriptor = activeKeyDescriptor
+  PolishRow(
+    icon: "key", title: descriptor.label, subtitle: descriptor.keyShort,
+    detail: {
+      if let link = descriptor.keyLink {
+        Link(link.title, destination: link.url)
+          .font(.stHelper).tint(Color.stAccent)
+          .padding(.top, 2)
+      }
+    },
+    trailing: {
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 8) {
+          keyField(descriptor)
+          SettingsActionButton(
+            title: LocalizedStringResource(
+              "Save", comment: "AI Polish: button that saves the API key."),
+            isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited,
+            emphasis: .filled, size: .medium
+          ) {
+            let provider = provider
+            let key = activeKeyBinding.wrappedValue
+            guard saveKey(key: key, keychainId: descriptor.keychainId) else { return }
+            setKeySaved(!key.isEmpty)
+            Task {
+              await llmDiscovery.validateKeyAndDiscoverModels(
+                provider: provider, settings: settings, surface: surface, source: .save)
+            }
           }
-
+          // Clear destroys a stored key, so it is offered only when one is stored, and in
+          // the destructive style so it never reads like an inert button.
+          if savedKeyIsPresentForCurrentProvider {
+            SettingsActionButton(
+              title: LocalizedStringResource(
+                "Clear", comment: "AI Polish: button that deletes the saved API key."),
+              isEnabled: true, emphasis: .destructive, size: .medium
+            ) {
+              guard clearKey(keychainId: descriptor.keychainId) else { return }
+              activeKeyBinding.wrappedValue = ""
+              setKeySaved(false)
+              revealsKey = false
+              llmDiscovery.reset()
+            }
+          }
+        }
         validationBadge
-
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Save", comment: "AI Polish: button that saves the API key."),
-          isEnabled: !activeKeyBinding.wrappedValue.isEmpty, emphasis: .filled
-        ) {
-          let provider = provider
-          let key = activeKeyBinding.wrappedValue
-          guard saveKey(key: key, keychainId: descriptor.keychainId) else { return }
-          setKeySaved(!key.isEmpty)
-          Task {
-            await llmDiscovery.validateKeyAndDiscoverModels(
-              provider: provider, settings: settings, surface: surface, source: .save)
-          }
-        }
-
-        // Save genuinely disables on an empty field and Clear destroys a stored
-        // key, and on this page the system styles drew both, plus the enabled
-        // Save, in the same grey. The red `foregroundStyle` on Clear was the
-        // only thing separating a destructive action from an inert one.
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Clear", comment: "AI Polish: button that deletes the saved API key."),
-          isEnabled: true, emphasis: .destructive
-        ) {
-          guard clearKey(keychainId: descriptor.keychainId) else { return }
-          activeKeyBinding.wrappedValue = ""
-          setKeySaved(false)
-          llmDiscovery.reset()
-        }
       }
+    },
+    adaptsTrailing: true)
+}
 
-      Text(descriptor.privacySentence)
-        .settingsReadingCopy()
+/// The key field: secure by default, plain text while the eye is on. Both are the same
+/// binding, so switching never moves or loses the draft, and the field keeps focus.
+private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
+  HStack(spacing: 6) {
+    Group {
+      if revealsKey {
+        TextField(descriptor.placeholder, text: activeKeyBinding)
+      } else {
+        SecureField(descriptor.placeholder, text: activeKeyBinding)
+      }
+    }
+    .textFieldStyle(.plain)
+    .font(.system(size: 14, design: .monospaced))
+    .focused($keyFieldFocused)
+    .accessibilityLabel(descriptor.accessibilityLabel)
+    .onChange(of: activeKeyBinding.wrappedValue) { _, _ in
+      dismissStaleFailureStatus()
+    }
+    if !activeKeyBinding.wrappedValue.isEmpty {
+      Button {
+        revealsKey.toggle()
+      } label: {
+        Image(systemName: revealsKey ? "eye.slash" : "eye")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(Color.stTextSecondary)
+          .settingsHoverQuiet()
+      }
+      .buttonStyle(.plain)
+      .help(revealKeyTitle)
+      .accessibilityLabel(revealKeyTitle)
     }
   }
+  .settingsFieldChrome(focused: $keyFieldFocused)
+  .frame(minWidth: 180, maxWidth: 260)
+}
 
-  // MARK: - Validation Badge
+private var revealKeyTitle: String {
+  revealsKey
+    ? String(localized: "Hide key", comment: "AI Polish: hides the API key text.")
+    : String(localized: "Show key", comment: "AI Polish: shows the API key text.")
+}
 
-  @ViewBuilder
-  private var validationBadge: some View {
-    if case .failed(let message) = model.keyStoreStatus {
-      Text(message)
-        .font(.stHelper)
-        .foregroundStyle(.stError)
-    } else {
-      switch surfaceValidation {
-      case .idle:
-        if model.keyStoreStatus == .saved {
-          Text("Saved!", comment: "Settings > AI Polish: the API key was saved.")
-            .font(.stHelper)
-            .foregroundStyle(.stSuccess)
-        }
-      case .validating:
-        HStack(spacing: 4) {
-          ProgressView()
-            .controlSize(.mini)
-          Text("Validating…")
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
-        }
-      case .valid:
-        HStack(spacing: 4) {
-          Image(systemName: "checkmark.circle.fill")
-            .foregroundStyle(.stSuccess)
-          Text("Valid")
-            .font(.stHelper)
-            .foregroundStyle(.stSuccess)
-        }
-      case .invalid(let message):
-        HStack(spacing: 4) {
-          Image(systemName: "xmark.circle.fill")
-            .foregroundStyle(.stError)
-          Text(message)
-            .font(.stHelper)
-            .foregroundStyle(.stError)
-        }
+// MARK: - Validation Badge
+
+/// What happened to the SAVED key, or that the draft is not saved yet. A storage failure
+/// keeps its real sentence; a failed check keeps the coordinator's reason, which covers a
+/// network or provider failure as well as a refused key, so it is never reworded as "rejected".
+@ViewBuilder
+private var validationBadge: some View {
+  if case .failed(let message) = model.keyStoreStatus {
+    keyBadge(message, tone: .stError)
+  } else if keyDraftIsEdited {
+    keyBadge(
+      String(
+        localized: "Not saved yet",
+        comment: "AI Polish: the API key in the field differs from the saved one."),
+      tone: .stTextSecondary)
+  } else {
+    switch surfaceValidation {
+    case .idle:
+      if model.keyStoreStatus == .saved {
+        keyBadge(
+          String(localized: "Saved!", comment: "Settings > AI Polish: the API key was saved."),
+          tone: .stSuccess)
       }
+    case .validating:
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.mini)
+        Text("Validating…")
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+      }
+    case .valid:
+      keyBadge(
+        String(
+          localized: "Key valid · saved in your Keychain",
+          comment: "AI Polish: the saved API key was checked and works."),
+        tone: .stSuccess)
+    case .invalid(let message):
+      keyBadge(message, tone: .stError)
     }
   }
+}
 
-  // MARK: - Model Picker Sections (#617)
+private func keyBadge(_ text: String, tone: Color) -> some View {
+  HStack(alignment: .firstTextBaseline, spacing: 6) {
+    Circle().fill(tone).frame(width: 7, height: 7)
+    Text(text)
+      .font(.stHelper)
+      .foregroundStyle(tone)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+}
+// MARK: - Model menu (#617, #1914, #3385)
 
-  /// Labeled groups of discovered models. Empty groups are suppressed.
-  /// Locked rows are disabled so a user can't pick something the API will reject.
-  ///
-  /// #1914: the split moved into `OllamaModelPickerPresentation` so the hosted
-  /// group is production policy a test can hold, not three inline filters.
-  @ViewBuilder
-  private var modelPickerSections: some View {
-    let groups = OllamaModelPickerPresentation.groups(
-      from: surfaceDiscoveredModels, provider: provider)
+/// The model menu's groups. Empty groups are suppressed; locked rows are shown but cannot be
+/// chosen, so nobody picks something the API will reject.
+///
+/// Ollama (#3385 design): ON THIS MAC with each model's measured verdict, then the hosted
+/// models under their dated tier headings. Cloud: the models our classifier recognises as
+/// the fast tier carry "Fast tier · recommended for cleanup"; others carry no note, because
+/// "not recognised" says nothing about size, speed or cost.
+@ViewBuilder
+private var modelPickerSections: some View {
+  let groups = OllamaModelPickerPresentation.groups(
+    from: surfaceDiscoveredModels, provider: provider)
 
-    if !groups.recommended.isEmpty {
-      Section("Recommended for cleanup") {
-        ForEach(groups.recommended) { model in
-          Text(model.localizedDisplayName).tag(model.id)
-        }
-      }
+  if provider == .ollama {
+    let local = groups.recommended + groups.other
+    if !local.isEmpty {
+      SettingsDropdownHeading(
+        title: String(
+          localized: "On this Mac",
+          comment: "AI Polish, Ollama model menu: heading for models that run on this Mac."))
+      ForEach(local) { modelRow($0) }
     }
-    if !groups.other.isEmpty {
-      Section("Other available models") {
-        ForEach(groups.other) { model in
-          Text(model.localizedDisplayName).tag(model.id)
-        }
-      }
-    }
-    // #1914: hosted models stay fully selectable. The group states where they
-    // run so the choice is visible while scanning; it is not a warning and not
-    // a gate. What the app will not do is choose one FOR the user.
-    //
-    // #1956: and it splits into the same free and paid buckets as Manage Models,
-    // from the same snapshot, so the two surfaces cannot disagree.
+    // #1914: hosted models stay fully selectable. The group states where they run so the
+    // choice is visible while scanning; it is not a warning and not a gate.
+    // #1956: split into the same free and paid buckets as the Models list, from the same
+    // snapshot, and the DATE travels with the tier claim; an expired snapshot falls back
+    // to one neutral heading with no tier claim.
     if !groups.hosted.isEmpty {
       if let tiers = OllamaModelPickerPresentation.hostedTiers(groups.hosted) {
-        // The DATE travels with the tier claim on this surface too. A picker
-        // section header is the only text a dropdown affords, so it carries the
-        // date inline rather than on its own line as the list does. Without it
-        // this surface presents a dated snapshot as if it were current, which is
-        // the one thing the snapshot design promises never to do.
         if !tiers.free.isEmpty {
-          Section(
-            OllamaModelPickerPresentation.tierSectionTitle(
-              OllamaModelPickerPresentation.freeVerifiedGroupTitle, checkedAt: tiers.checkedAt)
-          ) {
-            ForEach(tiers.free) { model in
-              Text(model.localizedDisplayName).tag(model.id)
-            }
-          }
+          SettingsDropdownHeading(
+            title: OllamaModelPickerPresentation.tierSectionTitle(
+              OllamaModelPickerPresentation.freeVerifiedGroupTitle, checkedAt: tiers.checkedAt),
+            showsDivider: !local.isEmpty)
+          ForEach(tiers.free) { modelRow($0) }
         }
         if !tiers.mayNeedPaid.isEmpty {
-          Section(
-            OllamaModelPickerPresentation.tierSectionTitle(
-              OllamaModelPickerPresentation.mayNeedPaidGroupTitle, checkedAt: tiers.checkedAt)
-          ) {
-            ForEach(tiers.mayNeedPaid) { model in
-              Text(model.localizedDisplayName).tag(model.id)
-            }
-          }
+          SettingsDropdownHeading(
+            title: OllamaModelPickerPresentation.tierSectionTitle(
+              OllamaModelPickerPresentation.mayNeedPaidGroupTitle, checkedAt: tiers.checkedAt),
+            showsDivider: !local.isEmpty || !tiers.free.isEmpty)
+          ForEach(tiers.mayNeedPaid) { modelRow($0) }
         }
       } else {
-        // Snapshot expired or undateable: one neutral hosted section, no tier
-        // claim. Same degradation as the Manage Models list.
-        Section(OllamaModelPickerPresentation.hostedGroupTitle) {
-          ForEach(groups.hosted) { model in
-            Text(model.localizedDisplayName).tag(model.id)
-          }
-        }
+        SettingsDropdownHeading(
+          title: OllamaModelPickerPresentation.hostedGroupTitle, showsDivider: !local.isEmpty)
+        ForEach(groups.hosted) { modelRow($0) }
       }
     }
-    let locked = groups.locked
-    if !locked.isEmpty {
-      Section("Not available with your API key") {
-        ForEach(locked) { model in
-          HStack {
-            Image(systemName: "lock.fill").font(.caption2)
-            Text(model.localizedDisplayName)
-          }
-          .tag(model.id)
-          .selectionDisabled(true)
-        }
-      }
-    }
+  } else {
+    ForEach(groups.recommended) { modelRow($0) }
+    ForEach(groups.other) { modelRow($0) }
   }
+  if !groups.locked.isEmpty {
+    SettingsDropdownHeading(
+      title: String(
+        localized: "Not available with your API key",
+        comment: "AI Polish model menu: heading for models the user's API key cannot use."),
+      showsDivider: true)
+    ForEach(groups.locked) { modelRow($0, isEnabled: false) }
+  }
+}
 
-  // MARK: - Provider Explainer ("Why use ___")
+private func modelRow(_ info: LLMModelInfo, isEnabled: Bool = true) -> some View {
+  let isChosen = info.id == surfaceCloudModel
+  let note = modelNote(info)
+  let verdict: OllamaModelVerdict? =
+    provider == .ollama && !info.isRemote ? OllamaModelVerdicts.verdict(for: info.id) : nil
+  return SettingsDropdownRow(
+    isChosen: isChosen,
+    spokenTitle: [info.localizedDisplayName, verdict?.label, note]
+      .compactMap { $0 }.joined(separator: ", "),
+    isEnabled: isEnabled,
+    action: {
+      setCloudModel(info.id)
+      modelMenuOpen = false
+    },
+    leading: {
+      if !isEnabled {
+        Image(systemName: "lock.fill")
+          .font(.system(size: 11))
+          .foregroundStyle(Color.stTextSecondary)
+      }
+    },
+    title: info.localizedDisplayName, titleIsCode: true,
+    subtitle: {
+      if let note {
+        Text(note).font(.stHelper).foregroundStyle(Color.stTextSecondary).lineLimit(1)
+      }
+    },
+    trailing: {
+      if let verdict {
+        OllamaVerdictChip(verdict: verdict)
+      }
+    })
+}
 
-  /// The "Why use ___" card label for every engine (#1286). Cloud reuses the
-  /// existing #617 header.
-  private var providerExplainerHeader: String {
-    switch provider {
-    case .openAI, .gemini: return cloudProviderExplainerHeader
-    // Claude does NOT join the OpenAI/Gemini shared arm above — it gets its
-    // own header, the same pattern Apple Intelligence/Ollama/EG-1 already
-    // use, so `cloudProviderExplainerHeader`'s internal ternary never needs
-    // a third arm (issue #158, plan §3).
-    case .claude:
-      return String(
-        localized: "Why use Claude", comment: "AI Polish: card title explaining a provider.")
-    case .appleIntelligence:
-      return String(
-        localized: "Why use Apple Intelligence",
-        comment: "AI Polish: card title explaining a provider.")
-    // #1914: renamed with the rail row. "Local" became false the moment Ollama
-    // could run a model on its own servers.
-    case .ollama:
-      return String(
-        localized: "Why use Ollama", comment: "AI Polish: card title explaining a provider.")
-    case .egOne:
-      return String(
-        localized: "Why use EG-1", comment: "AI Polish: card title explaining a provider.")
-    // The exact name is licence-bound, so it comes from one place rather than
-    // being retyped per surface.
-    case .s1Mini:
-      return String(
+/// The line under a model in the menu. Hosted Ollama models say where they run; a cloud
+/// model our classifier recognises as the fast tier says so; nothing else is claimed.
+private func modelNote(_ info: LLMModelInfo) -> String? {
+  if provider == .ollama {
+    return info.isRemote
+      ? String(
+        localized: "Hosted by Ollama · text is sent to Ollama's servers",
+        comment: "AI Polish, Ollama model menu: the line under a hosted model.")
+      : nil
+  }
+  return AIPolishModelClassifier.isRecommendedForCleanup(info.id)
+    ? String(
+      localized: "Fast tier · recommended for cleanup",
+      comment: "AI Polish, cloud model menu: the line under a model recognised as the fast tier.")
+    : nil
+}
+// MARK: - WHY USE block (#1286, #3385)
+
+/// The "WHY USE <X>" block that closes every provider's card. The founder's 2026-10-03
+/// design wording, minus every claim our own measurements do not support (plan decision 12):
+/// no prices, no blanket speed claims, no hardware-ranked quality claims, no promise of heavy
+/// rewriting (polish is cleanup, `llm-contract.md`), and local-privacy sentences scoped to
+/// that provider's polish. No em or en dashes in any of these strings.
+@ViewBuilder
+private var whyBlock: some View {
+  switch provider {
+  case .egOne:
+    PolishWhyBlock(
+      title: String(
+        localized: "Why use EG-1", comment: "AI Polish: card title explaining a provider."),
+      paragraphs: [
+        PolishWhyParagraph(
+          lead: nil,
+          body: String(
+            localized:
+              "EG-1 is our own model, built for cleaning up dictation. Its polish runs on this Mac and works offline, with no API key and no per-use cost.",
+            comment: "AI Polish, Why use EG-1: first paragraph.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "When to pick something else.",
+            comment: "AI Polish, Why use EG-1: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "For the smallest download and mostly short English dictation, S1-mini is lighter. For long recordings or code, a cloud model is a step up.",
+            comment: "AI Polish, Why use EG-1: when another engine fits better.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "How long?", comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "Handles dictations up to about \(LocalEngineDescriptor.egOne.dictationMinutes) minutes.",
+            comment:
+              "AI Polish, Why use EG-1: the longest dictation it polishes whole. %lld is a number of minutes."
+          )),
+      ])
+  case .s1Mini:
+    // The licence carries an ADDITIONAL TERM requiring the exact string "S1-mini" by
+    // "Superwhisper" wherever the model is identified, so the name comes from `displayName`
+    // and the maker is credited in the first sentence.
+    //
+    // And it must not oversell. The model is a NORMALIZER: measured English-only in practice
+    // (it never translates, but it resolves a spoken self-correction in only 6 of the 25
+    // languages our transcription supports), so the copy says English rather than implying
+    // parity.
+    PolishWhyBlock(
+      title: String(
         localized: "Why use \(LLMProvider.s1Mini.displayName)",
-        comment: "AI Polish: card title explaining a provider. %@ is the model name, S1-mini.")
-    case .none: return ""
-    }
+        comment: "AI Polish: card title explaining a provider. %@ is the model name, S1-mini."),
+      paragraphs: [
+        PolishWhyParagraph(
+          lead: nil,
+          body: String(
+            localized:
+              "\(LLMProvider.s1Mini.displayName) by Superwhisper is a small cleanup model that runs on this Mac and works offline, with no API key to manage.",
+            comment:
+              "AI Polish, Why use S1-mini: first paragraph. %@ is the model name, S1-mini. Keep Superwhisper as written."
+          )),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Best fit.", comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "Short dictation in English. Tone, structure, and context let you steer how formal the result reads. Best for dictations up to about \(LocalEngineDescriptor.s1Mini.dictationMinutes) minutes.",
+            comment:
+              "AI Polish, Why use S1-mini: what it is best at. %lld is a number of minutes.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Other languages?",
+            comment: "AI Polish, Why use S1-mini: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence.",
+            comment: "AI Polish, Why use S1-mini: how it handles other languages.")),
+      ])
+  case .appleIntelligence:
+    PolishWhyBlock(
+      title: String(
+        localized: "Why use Apple Intelligence",
+        comment: "AI Polish: card title explaining a provider."),
+      paragraphs: [
+        PolishWhyParagraph(
+          lead: nil,
+          body: String(
+            localized:
+              "Apple Intelligence polish uses Apple's on-device model, built into macOS. It needs no API key, and your text stays on this Mac for this step.",
+            comment: "AI Polish, Why use Apple Intelligence: first paragraph.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Best fit.", comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "Short dictation: punctuation, capitalization, and filler words. For longer recordings, lists, or code, EG-1 or a cloud model does better. Handles dictations up to about 8 minutes.",
+            comment: "AI Polish, Why use Apple Intelligence: what it is best at.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Not available?",
+            comment: "AI Polish, Why use Apple Intelligence: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "Apple Intelligence needs macOS 26 or later, a supported Mac, and Apple Intelligence turned on in System Settings. The status above says what this Mac reports.",
+            comment: "AI Polish, Why use Apple Intelligence: when it is not available.")),
+      ],
+      link: (
+        String(
+          localized: "About Apple Intelligence",
+          comment: "AI Polish: link to Apple's Apple Intelligence support page."),
+        URL(string: "https://support.apple.com/en-us/121115")!
+      ))
+  case .ollama:
+    // #1914: Ollama can run models on its own servers, so the local claim is scoped to local
+    // polish. Stating which is which is accuracy, not a warning: per the 2026-08-01 doctrine
+    // correction there is no discouragement of the hosted path.
+    PolishWhyBlock(
+      title: String(
+        localized: "Why use Ollama", comment: "AI Polish: card title explaining a provider."),
+      paragraphs: [
+        PolishWhyParagraph(
+          lead: nil,
+          body: String(
+            localized:
+              "Ollama runs open models you choose. Local polish runs on this Mac; hosted polish sends text to Ollama's servers.",
+            comment: "AI Polish, Why use Ollama: first paragraph.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Picking the right model.",
+            comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "qwen2.5:3b did best in our cleanup tests, but may follow dictated instructions. \(OllamaModelVerdicts.nonEnglishCaveat) How long a dictation it handles depends on the model you choose.",
+            comment:
+              "AI Polish, Why use Ollama: which model to pick. Keep qwen2.5:3b as written. %@ is a sentence about other languages."
+          )),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Model missing?",
+            comment: "AI Polish, Why use Ollama: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "EnviousWispr only lists models Ollama already has. Use Browse models, or run ollama pull in Terminal.",
+            comment:
+              "AI Polish, Why use Ollama: where to get another model. Keep ollama pull as written.")
+        ),
+      ],
+      link: (
+        String(
+          localized: "Ollama model library", comment: "AI Polish: link to Ollama's model library."),
+        URL(string: "https://ollama.com/library")!
+      ))
+  case .openAI:
+    PolishWhyBlock(
+      title: String(
+        localized: "Why use OpenAI", comment: "AI Polish: card title explaining a provider."),
+      paragraphs: [
+        PolishWhyParagraph(
+          lead: nil,
+          body: String(
+            localized:
+              "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key and pay OpenAI for what you use.",
+            comment: "AI Polish, Why use OpenAI: first paragraph.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Picking the right model.",
+            comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "For dictation cleanup, look for mini in the name. Those are tuned for fast, light tasks.",
+            comment: "AI Polish, Why use OpenAI: which model to pick. Keep mini as written.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Missing models?",
+            comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "Your key lists the models your OpenAI account can use, and EnviousWispr leaves out kinds of model it cannot use for cleanup. Some models need a verified organization or a higher usage tier.",
+            comment: "AI Polish, Why use OpenAI: why a model may be missing.")),
+      ],
+      link: (
+        String(
+          localized: "OpenAI rate limits by tier",
+          comment: "AI Polish: link to OpenAI's rate limits page."),
+        URL(string: "https://platform.openai.com/docs/guides/rate-limits")!
+      ))
+  case .gemini:
+    PolishWhyBlock(
+      title: String(
+        localized: "Why use Gemini", comment: "AI Polish: card title explaining a provider."),
+      paragraphs: [
+        PolishWhyParagraph(
+          lead: nil,
+          body: String(
+            localized:
+              "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, and the free tier is generous for personal use.",
+            comment: "AI Polish, Why use Gemini: first paragraph.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Picking the right model.",
+            comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks.",
+            comment: "AI Polish, Why use Gemini: which model to pick. Keep Flash as written.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Locked models?",
+            comment: "AI Polish, Why use Gemini: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status.",
+            comment: "AI Polish, Why use Gemini: why a model may be locked.")),
+      ],
+      link: (
+        String(
+          localized: "Gemini API rate limits by tier",
+          comment: "AI Polish: link to Google's Gemini rate limits page."),
+        URL(string: "https://ai.google.dev/gemini-api/docs/rate-limits")!
+      ))
+  case .claude:
+    PolishWhyBlock(
+      title: String(
+        localized: "Why use Claude", comment: "AI Polish: card title explaining a provider."),
+      paragraphs: [
+        PolishWhyParagraph(
+          lead: nil,
+          body: String(
+            localized:
+              "Apple Intelligence cleans up short dictation well. Claude is a step up for longer recordings, lists, and code. You bring your own API key and pay per use.",
+            comment: "AI Polish, Why use Claude: first paragraph.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Picking the right model.",
+            comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized: "Haiku is the recommended starting point for dictation cleanup.",
+            comment: "AI Polish, Why use Claude: which model to pick. Keep Haiku as written.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "API access.", comment: "AI Polish, Why use Claude: bold lead-in."),
+          body: String(
+            localized:
+              "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription.",
+            comment: "AI Polish, Why use Claude: chat plans do not include API access.")),
+        PolishWhyParagraph(
+          lead: String(
+            localized: "Missing models?",
+            comment: "AI Polish, Why use: bold lead-in of a paragraph."),
+          body: String(
+            localized:
+              "Those aren't blocked by EnviousWispr. Model access and limits depend on your Anthropic account's usage tier.",
+            comment: "AI Polish, Why use Claude: why a model may be missing.")),
+      ],
+      link: (
+        String(
+          localized: "Claude API rate limits",
+          comment: "AI Polish: link to Anthropic's rate limits page."),
+        URL(string: "https://docs.anthropic.com/en/api/rate-limits")!
+      ))
+  case .none:
+    EmptyView()
   }
+}
+// MARK: - Ollama Setup
 
-  /// The explainer body per engine. Cloud reuses the existing #617 copy; the
-  /// on-device engines get parallel copy so all five match (#1286). No em or
-  /// en dashes in any of these strings.
-  @ViewBuilder
-  private var providerExplainer: some View {
-    switch provider {
-    case .openAI, .gemini:
-      cloudProviderExplainer
-    case .claude:
-      claudeExplainer
-    case .appleIntelligence:
-      appleIntelligenceExplainer
-    case .ollama:
-      ollamaExplainer
-    case .egOne:
-      egOneExplainer
-    case .s1Mini:
-      s1MiniExplainer
-    case .none:
+/// Ollama's rows (#3385): the Install / Start / Model steps, one row for the current setup
+/// state, and once running the Server and Model rows. Every state the service can report
+/// keeps a row, including the two the design did not draw (checking, error).
+@ViewBuilder
+private var ollamaSetupContent: some View {
+  let state = setup.ollamaSetup.setupState
+  if let step = Self.ollamaStepIndex(state) {
+    OllamaStepper(current: step)
+  }
+  switch state {
+  case .detecting:
+    PolishRow(
+      icon: "magnifyingglass", showsSpinner: true,
+      title: String(
+        localized: "Checking Ollama installation...",
+        comment: "AI Polish, Ollama: the app is checking whether Ollama is installed.")
+    ) {
       EmptyView()
     }
-  }
 
-  @ViewBuilder
-  private var egOneExplainer: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text(
-        "EG-1 is the model we trained ourselves, tuned only for cleaning up dictation. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage."
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "One model, no choices. There are no sizes to pick and no per-use cost. We maintain EG-1 and keep improving it, so you get consistent cleanup without tuning anything."
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about \(LocalEngineDescriptor.egOne.dictationMinutes) minutes."
-      )
-      .settingsReadingCopy()
-    }
-  }
-
-  /// #2649. Three paragraphs, matching the shape every other on-device engine
-  /// uses. Two constraints shaped this copy rather than taste:
-  ///
-  /// The licence carries an ADDITIONAL TERM requiring the exact string "S1-mini"
-  /// by "Superwhisper" wherever the model is identified, so the name comes from
-  /// `displayName` and the maker is credited in the first sentence rather than
-  /// buried. Nothing here may be reworded in a way that drops either.
-  ///
-  /// And it must not oversell. The model is a NORMALIZER, not a general writing
-  /// model: it cleans a transcript and does nothing else. Measured English-only
-  /// in practice — it never translates, but it resolves a spoken self-correction
-  /// in only 6 of the 25 languages our transcription supports — so the copy says
-  /// English rather than implying parity.
-  @ViewBuilder
-  private var s1MiniExplainer: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text(
-        "\(LLMProvider.s1Mini.displayName) by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage."
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence."
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "When to use it. Pick \(LLMProvider.s1Mini.displayName) if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about \(LocalEngineDescriptor.s1Mini.dictationMinutes) minutes."
-      )
-      .settingsReadingCopy()
-    }
-  }
-
-  @ViewBuilder
-  private var claudeExplainer: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text(
-        "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs finish in one to two seconds. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends your text to Anthropic under your API account."
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "A Claude Pro, Max, Team, or Enterprise chat subscription does not include API access. Create a separate API key in Claude Platform and add prepaid credits before using it here; Anthropic bills API usage separately from a chat subscription."
-      )
-      .settingsReadingCopy()
-
-      Link(
-        "Get your Claude API key",
-        destination: URL(string: "https://platform.claude.com/settings/keys")!
-      )
-      .font(.stHelper)
-    }
-  }
-
-  @ViewBuilder
-  private var appleIntelligenceExplainer: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text(
-        "Apple Intelligence uses Apple's on-device model, built into macOS. It is free, needs no API key, and nothing you dictate leaves your Mac. It is a solid choice for short, everyday dictation."
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better. Handles dictations up to about 8 minutes."
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "Requires macOS 26 or later. On earlier versions this option is unavailable and your text is pasted exactly as transcribed."
-      )
-      .settingsReadingCopy()
-    }
-  }
-
-  @ViewBuilder
-  private var ollamaExplainer: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      // #1914: this used to say "Nothing you dictate leaves your device" without
-      // qualification. Ollama can now run models on its own servers, and a user
-      // who picks one has that sentence quietly broken for them. Stating which
-      // is which is accuracy, not a warning — per the 2026-08-01 doctrine
-      // correction there is no interstitial and no discouragement of the hosted
-      // path, and the audio never leaves the Mac on either.
-      Text(
-        """
-        Ollama is a free tool you install once. Models on your Mac need no API key and \
-        no per-use cost, and they keep your dictation on your Mac. Ollama also offers \
-        hosted models, which run on Ollama's servers. Those are listed separately below \
-        and are never selected for you. A hosted model needs you signed in to Ollama, \
-        and some of them need a paid Ollama plan.
-        """
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "These are general open models, not tuned for dictation the way EG-1 is. Quality depends on the model you download, and larger models run slower. You pick and manage the models yourself in the list below."
-      )
-      .settingsReadingCopy()
-
-      Text(
-        "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose."
-      )
-      .settingsReadingCopy()
-    }
-  }
-
-  private var cloudProviderExplainerHeader: String {
-    provider == .openAI
-      ? String(localized: "Why use OpenAI", comment: "AI Polish: card title explaining a provider.")
-      : String(localized: "Why use Gemini", comment: "AI Polish: card title explaining a provider.")
-  }
-
-  @ViewBuilder
-  private var cloudProviderExplainer: some View {
-    if provider == .openAI {
-      VStack(alignment: .leading, spacing: 10) {
-        Text(
-          "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account."
-        )
-        .settingsReadingCopy()
-
-        Text(
-          "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job."
-        )
-        .settingsReadingCopy()
-
-        Text(
-          "Locked models? Those aren't blocked by EnviousWispr. Your OpenAI API key doesn't currently have access to them. OpenAI gates some models behind spend tier or organization verification."
-        )
-        .settingsReadingCopy()
-
-        Link(
-          "How OpenAI model availability works by usage tier",
-          destination: URL(
-            string:
-              "https://help.openai.com/en/articles/10362446-api-model-availability-by-usage-tier-and-verification-status"
-          )!
-        )
-        .font(.stHelper)
-      }
-    } else if provider == .gemini {
-      VStack(alignment: .leading, spacing: 10) {
-        Text(
-          "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account."
-        )
-        .settingsReadingCopy()
-
-        Text(
-          "Picking the right model. Gemini sells two sizes inside each generation. For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks. Pro models are overkill: slightly smarter on hard reasoning, slower and pricier on a job that doesn't need it."
-        )
-        .settingsReadingCopy()
-
-        Text(
-          "Locked models? Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status."
-        )
-        .settingsReadingCopy()
-
-        Link(
-          "Gemini API rate limits by tier",
-          destination: URL(string: "https://ai.google.dev/gemini-api/docs/rate-limits")!
-        )
-        .font(.stHelper)
-      }
-    }
-  }
-
-  // MARK: - Ollama Setup
-
-  @ViewBuilder
-  private var ollamaSetupContent: some View {
-    switch setup.ollamaSetup.setupState {
-    case .detecting:
-      HStack {
-        ProgressView()
-          .controlSize(.small)
-        Text("Checking Ollama installation...")
-          .foregroundStyle(Color.stTextSecondary)
-      }
-
-    case .notInstalled:
-      VStack(alignment: .leading, spacing: 8) {
-        ollamaStepIndicators(current: 1)
-
-        Text(
-          // #1914: "No cloud" was unconditional and is no longer true for every
-          // model Ollama can run. This is the not-installed step, where the only
-          // thing on offer IS a local download, so the accurate claim is about
-          // what installing gets you rather than about Ollama as a whole.
-          "Ollama runs AI models on your Mac. No API keys, completely free."
-        )
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-
-        HStack {
-          SettingsActionButton(
-            title: LocalizedStringResource(
-              "Download Ollama", comment: "AI Polish, Ollama setup: opens the Ollama download page."
-            ),
-            isEnabled: true, emphasis: .filled
-          ) {
-            if let url = URL(string: "https://ollama.com/download") {
-              NSWorkspace.shared.open(url)
-            }
+  case .notInstalled:
+    PolishRow(
+      icon: "arrow.down.circle",
+      title: String(
+        localized: "Install Ollama", comment: "AI Polish, Ollama setup: the current step."),
+      // #1914: "No cloud" was unconditional and is no longer true for every model Ollama
+      // can run. This is the not-installed step, where the only thing on offer IS a local
+      // download, so the accurate claim is about what installing gets you.
+      subtitle: String(
+        localized:
+          "Ollama runs AI models on your Mac. No API keys, completely free. After installing, come back and click refresh.",
+        comment: "AI Polish, Ollama setup: what installing Ollama gets you."),
+      adaptsTrailing: true
+    ) {
+      HStack(spacing: 8) {
+        SettingsActionButton(
+          title: LocalizedStringResource(
+            "Download Ollama", comment: "AI Polish, Ollama setup: opens the Ollama download page."
+          ),
+          isEnabled: true, emphasis: .filled, size: .medium
+        ) {
+          if let url = URL(string: "https://ollama.com/download") {
+            NSWorkspace.shared.open(url)
           }
-
-          ollamaRefreshButton()
         }
-
-        Text("After installing, come back and click refresh.")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
+        ollamaRefreshButton()
       }
+    }
 
-    case .installedNotRunning:
-      VStack(alignment: .leading, spacing: 8) {
-        ollamaStepIndicators(current: 2)
-
-        Text("Ollama is installed but isn't running yet.")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-
-        HStack {
-          SettingsActionButton(
-            title: LocalizedStringResource(
-              "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
-            isEnabled: true, emphasis: .filled
-          ) {
-            setup.ollamaSetup.startServer()
-          }
-
-          ollamaRefreshButton()
+  case .installedNotRunning:
+    PolishRow(
+      icon: "play.circle",
+      title: String(
+        localized: "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
+      subtitle: String(
+        localized: "Ollama is installed but isn't running yet. Or run `ollama serve` in Terminal.",
+        comment:
+          "AI Polish, Ollama setup: Ollama is installed and stopped. Keep ollama serve as written."
+      ),
+      adaptsTrailing: true
+    ) {
+      HStack(spacing: 8) {
+        SettingsActionButton(
+          title: LocalizedStringResource(
+            "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
+          isEnabled: true, emphasis: .filled, size: .medium
+        ) {
+          setup.ollamaSetup.startServer()
         }
-
-        Text("Or run `ollama serve` in Terminal.")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
+        ollamaRefreshButton()
       }
+    }
 
-    case .runningNoModels:
-      VStack(alignment: .leading, spacing: 8) {
-        ollamaStepIndicators(current: 3)
-
-        Text("Ollama needs a language model to polish your text.")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-
-        HStack {
-          // #1956: the SECOND control that can reach `pullModel`, and the one my
-          // catalog-row sweep missed (review r4). The service has one pull slot,
-          // so if this is pressed while a hosted Add is still probing, the
-          // resolution's own pull arrives second and cancels this download. Both
-          // pull entry points now read the same signal — which #2447 makes
-          // legible, because the system prominent style drew the probing and the
-          // ready states in the same grey.
-          SettingsActionButton(
-            title: "Download \(surfaceOllamaModel)",
-            isEnabled: !hostedAddIsResolving,
-            emphasis: .filled
-          ) {
-            // #1950: through the funnel, not straight to `pullModel`. The shipped default is a
-            // recommended model so this normally downloads immediately, but a user who has changed
-            // the setting to something that failed every test gets asked first.
-            ProviderSetupDownloads.request(
-              surfaceOllamaModel, model: model, setup: setup)
-          }
-
-          ollamaRefreshButton()
+  case .runningNoModels:
+    PolishRow(
+      icon: "arrow.down.circle",
+      title: String(
+        localized: "Download a model", comment: "AI Polish, Ollama setup: the current step."),
+      subtitle: noModelSubtitle, adaptsTrailing: true
+    ) {
+      HStack(spacing: 8) {
+        // #1956: the SECOND control that can reach `pullModel`. The service has one pull
+        // slot, so if this is pressed while a hosted Add is still probing, the resolution's
+        // own pull arrives second and cancels this download. Both pull entry points read
+        // the same signal.
+        SettingsActionButton(
+          title: "Download \(surfaceOllamaModel)",
+          isEnabled: !hostedAddIsResolving,
+          emphasis: .filled, size: .medium
+        ) {
+          // #1950: through the funnel, not straight to `pullModel`. The shipped default is a
+          // recommended model so this normally downloads immediately, but a user who has
+          // changed the setting to something that failed every test gets asked first.
+          ProviderSetupDownloads.request(surfaceOllamaModel, model: model, setup: setup)
         }
-
-        Text("About 2 GB download. Runs entirely on your Mac.")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
+        ollamaRefreshButton()
       }
+    }
+    PolishRowDivider()
+    ollamaBrowseModelsCard
 
-    case .pullingModel(let progress, let status):
-      VStack(alignment: .leading, spacing: 8) {
-        // #1956: reads the service rather than hard-coding, so a hosted Add is
-        // not announced as a download on the one panel that fills the pane.
-        ollamaStepIndicators(current: 3, currentLabel: setup.ollamaSetup.pullStepLabel)
-
-        ProgressView(value: progress)
-          .progressViewStyle(.linear)
-
-        HStack {
-          Text(status)
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
-            .lineLimit(1)
-          Spacer()
+  case .pullingModel(let progress, let status):
+    PolishRow(
+      icon: "arrow.down.circle",
+      // #1956: reads the service rather than hard-coding, so a hosted Add is not announced
+      // as a download.
+      title: setup.ollamaSetup.pullStepLabel,
+      subtitle: status,
+      detail: {
+        PolishProgressBar(fraction: progress)
+          .padding(.top, 6)
+      },
+      trailing: {
+        HStack(spacing: 10) {
           if progress > 0 {
             Text("\(Int(progress * 100))%")
               .font(.stHelper)
               .monospacedDigit()
               .foregroundStyle(Color.stTextSecondary)
           }
-          Button("Cancel") {
+          PolishTextAction(title: String(localized: "Cancel")) {
             setup.ollamaSetup.cancelPull()
           }
-          .controlSize(.small)
-          .buttonStyle(.borderless)
-          .foregroundStyle(.stError)
         }
-      }
+      })
+    PolishRowDivider()
+    ollamaBrowseModelsCard
 
-    case .ready:
-      HStack {
-        Text("Status:")
-        Spacer()
-        Label("Running", systemImage: "checkmark.circle.fill")
-          .foregroundStyle(.stSuccess)
-
+  case .ready:
+    PolishRow(
+      icon: "server.rack",
+      title: String(localized: "Server", comment: "AI Polish, Ollama: the server row's title."),
+      subtitle: OllamaSetupService.serverAddress
+    ) {
+      HStack(spacing: 10) {
+        ProviderStatusChip(
+          status: ProviderStatus(
+            label: String(
+              localized: "Running", comment: "AI Polish, Ollama: the server is running."),
+            tone: .ready))
         ollamaRefreshButton()
       }
+    }
+    PolishRowDivider()
+    modelSelectorRow
+    // #2649: an S1-mini the user pulled into Ollama gets the same control line from the same
+    // persisted picks (`DefaultPromptPlanner.family`), so its dials show here too.
+    if S1ControlCardVisibility.shows(provider: provider, effectiveModel: surfaceEffectiveModel) {
+      PolishRowDivider()
+      s1ControlRows
+    }
+    PolishRowDivider()
+    ollamaBrowseModelsCard
 
-      Text("You're all set! Select a model above.")
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-
-    case .error(let message):
-      VStack(alignment: .leading, spacing: 8) {
-        Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
-          .foregroundStyle(.stWarning)
-
-        Text(message)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-
-        Button("Try Again") {
-          Task {
-            await setup.ollamaSetup.detectState(trigger: "try_again")
-            if case .ready = setup.ollamaSetup.setupState {
-              await llmDiscovery.validateKeyAndDiscoverModels(
-                provider: .ollama, settings: settings, surface: surface)
-            }
+  case .error(let message):
+    PolishRow(
+      icon: "exclamationmark.triangle", iconTint: .stWarning,
+      title: String(
+        localized: "Something went wrong", comment: "AI Polish, Ollama: an unexpected error."),
+      subtitle: message
+    ) {
+      SettingsActionButton(
+        title: LocalizedStringResource(
+          "Try Again", comment: "AI Polish, Ollama: checks the Ollama setup again."),
+        isEnabled: true, emphasis: .quiet, size: .medium
+      ) {
+        Task {
+          await setup.ollamaSetup.detectState(trigger: "try_again")
+          if case .ready = setup.ollamaSetup.setupState {
+            await llmDiscovery.validateKeyAndDiscoverModels(
+              provider: .ollama, settings: settings, surface: surface)
           }
         }
-        .controlSize(.small)
       }
     }
   }
+}
 
+/// Which of the three steps is current: Install, Start, Model; 4 when all are done. nil
+/// where no step applies yet (still checking) or the state is an error.
+static func ollamaStepIndex(_ state: OllamaSetupState) -> Int? {
+  switch state {
+  case .notInstalled: return 1
+  case .installedNotRunning: return 2
+  case .runningNoModels, .pullingModel: return 3
+  case .ready: return 4
+  case .detecting, .error: return nil
+  }
+}
+
+/// The no-model step names the size of the model it offers, read from the catalog rather
+/// than a literal: the old "About 2 GB" was a guess for whatever the default happened to be.
+private var noModelSubtitle: String {
+  let intro = String(
+    localized: "Ollama needs a language model to polish your text.",
+    comment: "AI Polish, Ollama setup: no model is installed yet.")
+  let canonical = OllamaSetupService.canonicalModelName(surfaceOllamaModel)
+  guard
+    let entry = setup.ollamaSetup.dynamicCatalog.first(where: {
+      OllamaSetupService.canonicalModelName($0.name) == canonical
+    }), !entry.isRemote
+  else { return intro }
+  return intro + " "
+    + String(
+      localized: "\(entry.downloadSize) download. Runs entirely on your Mac.",
+      comment:
+        "AI Polish, Ollama setup: the size of the model offered. %@ is a size such as ~1.9 GB."
+    )
+}
+
+/// "Download more models": opens the Models sheet. Offered wherever the old inline list
+/// was (no model yet, downloading, running), so a fresh user keeps the way to every model.
+private var ollamaBrowseModelsCard: some View {
+  let counts = OllamaCatalogPresentation.installedCount(from: setup.ollamaSetup.dynamicCatalog)
+  return Button {
+    model.modelsSheetOpen = true
+  } label: {
+    HStack(spacing: 12) {
+      Image(systemName: "arrow.down.to.line")
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(Color.stAccent)
+        .frame(width: 32, height: 32)
+        .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 8))
+      VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 8) {
+          Text(
+            String(
+              localized: "Download more models",
+              comment: "AI Polish, Ollama: title of the card that opens the model list.")
+          )
+          .font(.stRowLabel)
+          .foregroundStyle(Color.stTextPrimary)
+          Text(
+            OllamaCatalogPresentation.installedCountText(
+              installed: counts.installed, total: counts.total)
+          )
+          .font(.system(size: 14, weight: .semibold))
+          .foregroundStyle(Color.stAccent)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 1)
+          .background(Capsule().fill(Color.stAccentLight))
+        }
+        Text(
+          String(
+            localized: "Pull a local model from Ollama. Nothing downloads on its own.",
+            comment: "AI Polish, Ollama: the line under Download more models.")
+        )
+        .font(.stRowHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      HStack(spacing: 4) {
+        Text(
+          String(
+            localized: "Browse models", comment: "AI Polish, Ollama: opens the model list."))
+        Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
+      }
+      .font(.system(size: 14, weight: .semibold))
+      .foregroundStyle(Color.white)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 6)
+      .background(Capsule().fill(Color.stAccentSolid))
+    }
+    .padding(12)
+    .background(
+      RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color.stAccent.opacity(0.06))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 11, style: .continuous)
+        .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
+        .allowsHitTesting(false)
+    )
+    .settingsHoverRow(cornerRadius: 11)
+    .contentShape(Rectangle())
+  }
+  .buttonStyle(.plain)
+  .padding(.horizontal, PolishSectionLayout.rowPaddingH)
+  .padding(.vertical, PolishSectionLayout.rowPaddingV)
+  .accessibilityLabel(
+    String(
+      localized: "Browse models", comment: "AI Polish, Ollama: opens the model list.")
+  )
+  .accessibilityValue(
+    OllamaCatalogPresentation.installedCountText(
+      installed: counts.installed, total: counts.total))
+}
   // MARK: - EG-1 native model (#1271)
 
 
@@ -1558,86 +1778,68 @@ struct ProviderSetupSection: View {
 
   // MARK: - Apple Intelligence Status
 
+  /// One row: what this Mac reports, its live model and capacity when available, the real
+  /// reason when not, the status word and a re-check (#3385). "Not available on this Mac" is
+  /// said only for a report that IS unavailable; a degraded, unknown or missing report keeps
+  /// its own word rather than being read as unavailable.
   @ViewBuilder
   private var appleIntelligenceStatus: some View {
-    // The "no internet or API key" pitch lives in the "Why use Apple
-    // Intelligence" card now (#1286); this card is just the status row.
-    HStack {
-      Text("Status:")
-      Spacer()
-      aiStatusLabel
-      Button {
-        aiAvailability.debouncedCheck()
-      } label: {
-        Image(systemName: "arrow.clockwise")
-          .settingsHoverQuiet()
+    let report = aiAvailability.latestReport
+    let isAvailable = report?.overallStatus == .available
+    PolishRow(
+      icon: isAvailable ? "checkmark.circle" : "exclamationmark.triangle",
+      iconTint: isAvailable ? .stAccent : .stWarning,
+      title: report?.overallStatus == .unavailable
+        ? String(
+          localized: "Not available on this Mac",
+          comment: "AI Polish, Apple Intelligence: the status row's title when this Mac reports it unavailable.")
+        : String(localized: "Status", comment: "AI Polish, Apple Intelligence: the status row's title."),
+      subtitle: appleStatusLine(report)
+    ) {
+      HStack(spacing: 10) {
+        if let status = currentProviderStatus {
+          ProviderStatusChip(status: status)
+        }
+        PolishIconButton(
+          systemName: "arrow.clockwise",
+          help: String(
+            localized: "Check Apple Intelligence availability",
+            comment: "AI Polish, Apple Intelligence: re-checks availability."),
+          isSpinning: aiAvailability.isChecking
+        ) {
+          aiAvailability.debouncedCheck()
+        }
       }
-      .buttonStyle(.borderless)
-      .disabled(aiAvailability.isChecking)
-      .help("Check Apple Intelligence availability")
-      .accessibilityLabel("Check Apple Intelligence availability")
     }
-
-    // Which Apple on-device model is running, and its live shared capacity
-    // (#2834). Only meaningful once Apple Intelligence is actually usable.
-    // "AFM 2"/"AFM 3" naming and the live token count both from #2795 (see
-    // AppleIntelligenceConnector.isOnAFM3ModelGeneration / .currentContextWindowTokens).
-    if let report = aiAvailability.latestReport, report.overallStatus == .available {
-      HStack {
-        Text(
-          "Model: \(AppleIntelligenceConnector.isOnAFM3ModelGeneration ? "AFM 3" : "AFM 2") · Capacity: \(AppleIntelligenceConnector.currentContextWindowTokens.formatted()) tokens"
-        )
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-        Spacer()
-      }
-      .help(
-        "Tokens are shared between the model's setup instructions, your dictation, and its answer.")
-    }
-
-    // "Why?" detail text
-    if let report = aiAvailability.latestReport,
-      report.overallStatus != .available
-    {
-      Text(report.userVisibleMessage)
-        .font(.stHelper)
-        .foregroundStyle(Color.stTextSecondary)
-    }
+    .help(
+      isAvailable
+        ? "Tokens are shared between the model's setup instructions, your dictation, and its answer."
+        : "")
 
     #if DEBUG
       // Debug section — dev builds only. Wrapped with `#if DEBUG` (not just the
       // `isDebugModeEnabled` runtime check) so a release binary inheriting a
       // persisted-true flag from a prior dev session cannot reach
       // `aiDebugSection`.
-      if settings.isDebugModeEnabled, let report = aiAvailability.latestReport {
-        aiDebugSection(report: report)
+      if settings.isDebugModeEnabled, let report {
+        PolishIndented { aiDebugSection(report: report) }
       }
     #endif
   }
 
-  @ViewBuilder
-  private var aiStatusLabel: some View {
-    if aiAvailability.isChecking {
-      ProgressView().controlSize(.small)
-    } else if let report = aiAvailability.latestReport {
-      switch report.overallStatus {
-      case .available:
-        Label("Available", systemImage: "checkmark.circle.fill")
-          .foregroundStyle(.stSuccess)
-      case .degraded:
-        Label("Degraded", systemImage: "exclamationmark.triangle.fill")
-          .foregroundStyle(.stWarning)
-      case .unavailable:
-        Label("Unavailable", systemImage: "xmark.circle.fill")
-          .foregroundStyle(.stError)
-      case .unknown:
-        Label("Unknown", systemImage: "questionmark.circle")
-          .foregroundStyle(Color.stTextSecondary)
-      }
-    } else {
-      Text("Not checked")
-        .foregroundStyle(Color.stTextSecondary)
-    }
+  /// Which Apple on-device model is running and its live shared capacity (#2834, #2795: "AFM 2"
+  /// / "AFM 3" naming and the live token count), only once Apple Intelligence is usable; the
+  /// report's own reason otherwise.
+  private func appleStatusLine(_ report: AppleIntelligenceAvailabilityReport?) -> String? {
+    guard let report else { return nil }
+    guard report.overallStatus == .available else { return report.userVisibleMessage }
+    let model = AppleIntelligenceConnector.isOnAFM3ModelGeneration ? "AFM 3" : "AFM 2"
+    return String(
+      localized:
+        "Model: \(model) · Capacity: \(AppleIntelligenceConnector.currentContextWindowTokens.formatted()) tokens · nothing is sent to Apple's servers",
+      comment:
+        "AI Polish, Apple Intelligence: the model in use and its capacity. The first %@ is a model name such as AFM 3, the second a number of tokens."
+    )
   }
 
   #if DEBUG
@@ -1711,7 +1913,57 @@ struct ProviderSetupSection: View {
     }
   #endif
 
-  // MARK: - Ollama Model Catalog
+  // MARK: - Ollama Models sheet (#3385)
+
+  /// The Models sheet: what used to be the inline Manage Models list, opened from Download
+  /// more models. Search filters the rows only. Every action is the list's own, so a download
+  /// still goes through the confirmation funnel, one download runs at a time, and a removal
+  /// still repairs the selection on both surfaces. The confirmation presents above the sheet
+  /// while it is open (`OllamaDownloadConfirmation`).
+  private var modelsSheet: some View {
+    VStack(spacing: 0) {
+      HStack {
+        Text(String(localized: "Models", comment: "AI Polish, Ollama: the model list sheet's title."))
+          .font(.stRowTitle)
+          .foregroundStyle(Color.stTextPrimary)
+          .accessibilityAddTraits(.isHeader)
+        Spacer()
+        SettingsSheetCloseButton(
+          accessibilityTitle: String(
+            localized: "Close Models", comment: "AI Polish, Ollama: closes the model list sheet.")
+        ) {
+          model.modelsSheetOpen = false
+        }
+      }
+      .padding(.horizontal, 18)
+      .padding(.vertical, 14)
+      Divider().overlay(Color.stDivider)
+
+      ScrollView(.vertical) {
+        ollamaModelCatalogView
+          .padding(.horizontal, 18)
+          .padding(.vertical, 14)
+      }
+
+      Divider().overlay(Color.stDivider)
+      HStack {
+        Spacer()
+        SettingsActionButton(
+          title: LocalizedStringResource(
+            "Done", comment: "AI Polish, Ollama: closes the model list sheet."),
+          isEnabled: true, emphasis: .filled, size: .medium, shortcut: .defaultAction
+        ) {
+          model.modelsSheetOpen = false
+        }
+      }
+      .padding(.horizontal, 18)
+      .padding(.vertical, 12)
+    }
+    .frame(width: 560, height: 600)
+    .background(Color.stSectionBg)
+    .onDisappear { modelSearch = "" }
+    .modifier(OllamaDownloadConfirmation(model: model, setup: setup, isActive: true))
+  }
 
   @ViewBuilder
   private var ollamaModelCatalogView: some View {
@@ -1732,8 +1984,24 @@ struct ProviderSetupSection: View {
     // not this wiring — if this view stopped calling it, they would still pass,
     // so the rendered grouping is a Live UAT item.
     let groups = OllamaCatalogPresentation.groups(from: catalog)
+    let query = modelSearch.trimmingCharacters(in: .whitespaces).lowercased()
+    let matches: (OllamaModelCatalogEntry) -> Bool = {
+      query.isEmpty || $0.name.lowercased().contains(query)
+        || $0.displayName.lowercased().contains(query)
+    }
+    let local = groups.local.filter(matches)
 
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(
+        String(
+          localized:
+            "Our verdicts come from testing each model on dictation cleanup. Downloads happen only when you ask.",
+          comment: "AI Polish, Ollama: the introduction at the top of the model list sheet.")
+      )
+      .font(.stRowHelper)
+      .foregroundStyle(Color.stTextBody)
+      .fixedSize(horizontal: false, vertical: true)
+
       // #1950: stated ONCE, above the list, because it is true of local polish rather than of any
       // one model. The best local result is 3 of 7 non-English cases and seven of the twelve
       // models we measured pass zero of 7, so putting it only on the rows that fail worst would
@@ -1744,14 +2012,19 @@ struct ProviderSetupSection: View {
         .foregroundStyle(Color.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
-      ForEach(groups.local) { entry in
-        ollamaCatalogRow(
-          entry, isPulling: isPulling, isLastInGroup: entry.id == groups.local.last?.id)
+      OllamaModelSearchField(text: $modelSearch)
+
+      ForEach(local) { entry in
+        ollamaCatalogRow(entry, isPulling: isPulling, isLastInGroup: entry.id == local.last?.id)
       }
 
-      ollamaHostedSection(groups.hosted, isPulling: isPulling)
+      // A search that matches no hosted model hides the hosted section rather than letting its
+      // "none available right now" notice describe the search as Ollama's answer.
+      let hosted = groups.hosted.filter(matches)
+      if query.isEmpty || !hosted.isEmpty {
+        ollamaHostedSection(hosted, isPulling: isPulling)
+      }
     }
-    .padding(.top, 4)
   }
 
   /// #1956: the hosted group, including WHY it has no rows when it has none.
@@ -1927,39 +2200,33 @@ struct ProviderSetupSection: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
-        VStack(alignment: .leading, spacing: 1) {
-          HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
+          HStack(spacing: 8) {
             Text(entry.displayName)
-              .font(.stHelper)
+              .font(.system(size: 14, weight: .semibold, design: .monospaced))
+              .foregroundStyle(Color.stTextPrimary)
             // #1914, extended by #1950: verdict, note AND size are all suppressed for a hosted
             // model. Each is meaningless for something that is not on this disk: a cloud row's
             // reported `size` is manifest-only (316 bytes for a 158-billion-parameter model), so
             // showing it is worse than showing nothing, and a hosted id carries no measured
             // verdict to show.
             if OllamaCatalogPresentation.showsSizeAndQuality(entry) {
-              // #1950: the verdict comes from `OllamaModelVerdicts`, never from the entry. The
-              // switch is exhaustive with no `@unknown default` because the verdict enum is
-              // `package` and this target is in the same package, so adding a case is a compile
-              // error here rather than a silent fall through to a default colour.
-              let verdict = OllamaModelVerdicts.verdict(for: entry.name)
-              Text("(\(verdict.label))")
-                .font(.stHelper)
-                .foregroundStyle(Self.verdictColor(verdict))
+              // #1950: the verdict comes from `OllamaModelVerdicts`, never from the entry.
+              OllamaVerdictChip(verdict: OllamaModelVerdicts.verdict(for: entry.name))
             }
           }
           if OllamaCatalogPresentation.showsSizeAndQuality(entry) {
-            Text("\(entry.parameterCount) · \(entry.downloadSize)")
-              .font(.stHelper)
-              .foregroundStyle(Color.stTextSecondary)
             // #1950: the "what goes wrong" clause, from the same authority as the label. Empty for
             // a model we have not measured and for EG-1, so the row simply says nothing rather
             // than implying a reading we do not have.
             let note = OllamaModelVerdicts.entry(for: entry.name).note
-            if !note.isEmpty {
-              Text(note)
-                .font(.stHelper)
-                .foregroundStyle(Color.stTextSecondary)
-            }
+            Text(
+              [note.isEmpty ? nil : note, "\(entry.parameterCount) · \(entry.downloadSize)"]
+                .compactMap { $0 }.joined(separator: " · ")
+            )
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
           }
         }
 
@@ -1990,6 +2257,12 @@ struct ProviderSetupSection: View {
             .buttonStyle(.borderless)
           }
         } else if entry.isDownloaded, OllamaCatalogPresentation.showsDeleteAction(entry) {
+          ProviderStatusChip(
+            status: ProviderStatus(
+              label: String(
+                localized: "Installed",
+                comment: "AI Polish, Ollama model list: the model is on this Mac."),
+              tone: .ready))
           Button {
             // #1305: sequence delete → discovery refresh so the model picker
             // (and the armed selection, via applyDiscoveredModels) never
@@ -2013,7 +2286,7 @@ struct ProviderSetupSection: View {
               }
             }
           } label: {
-            Text("Delete")
+            Text(String(localized: "Remove", comment: "AI Polish, Ollama model list: removes a downloaded model from this Mac."))
               .foregroundStyle(.stError)
               .settingsHoverQuiet(tint: .stError)
           }
@@ -2054,6 +2327,8 @@ struct ProviderSetupSection: View {
           .disabled(isPulling || hostedAddIsResolving)
         }
       }
+      // The row's plain actions (Download, Add, Cancel, Remove) at the Settings 14pt floor.
+      .font(.stHelper)
       .padding(.vertical, 2)
 
       // #1956: beneath its own row, never a pane-wide banner, and never removing
@@ -2139,36 +2414,12 @@ struct ProviderSetupSection: View {
     }
   }
 
-  @ViewBuilder
-  private func ollamaStepIndicators(current: Int, currentLabel: String? = nil) -> some View {
-    HStack(spacing: 12) {
-      if current > 1 {
-        Label("Installed", systemImage: "checkmark.circle.fill")
-          .foregroundStyle(.stSuccess)
-          .font(.stHelper)
-      }
-      if current > 2 {
-        Label("Running", systemImage: "checkmark.circle.fill")
-          .foregroundStyle(.stSuccess)
-          .font(.stHelper)
-      }
-
-      let stepLabels = [
-        String(localized: "Install Ollama", comment: "AI Polish, Ollama setup: the current step."),
-        String(localized: "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
-        String(
-          localized: "Download a Model", comment: "AI Polish, Ollama setup: the current step."),
-      ]
-      let label = currentLabel ?? stepLabels[current - 1]
-      Label(label, systemImage: "\(current).circle.fill")
-        .foregroundStyle(Color.stAccent)
-        .font(.stSectionHeader)
-    }
-  }
-
-  @ViewBuilder
   private func ollamaRefreshButton() -> some View {
-    Button {
+    PolishIconButton(
+      systemName: "arrow.clockwise",
+      help: String(
+        localized: "Re-check Ollama status", comment: "AI Polish, Ollama: checks Ollama again.")
+    ) {
       Task {
         await setup.ollamaSetup.detectState()
         if case .ready = setup.ollamaSetup.setupState {
@@ -2176,13 +2427,7 @@ struct ProviderSetupSection: View {
             provider: .ollama, settings: settings, surface: surface)
         }
       }
-    } label: {
-      Image(systemName: "arrow.clockwise")
-        .settingsHoverQuiet()
     }
-    .buttonStyle(.borderless)
-    .help("Re-check Ollama status")
-    .accessibilityLabel("Re-check Ollama status")
   }
 
   // MARK: - Ollama Warm-up Indicator
@@ -2199,40 +2444,171 @@ struct ProviderSetupSection: View {
       .first { $0.canonicalName == canonical }?.facts.isRemote ?? false
   }
 
+  /// Prepare: loads the chosen local model into memory ahead of the next dictation. The four
+  /// states are the service's own (`OllamaWarmupState`), each with its own glyph and words.
   @ViewBuilder
   private var ollamaWarmupIndicator: some View {
     let currentModel = OllamaSetupService.canonicalModelName(surfaceCloudModel)
     switch setup.ollamaSetup.warmupState {
     case .warming(let model) where model == currentModel:
-      ProgressView()
-        .controlSize(.small)
-        .help("Preparing model for faster responses...")
+      PolishIconButton(
+        systemName: "bolt",
+        help: String(
+          localized: "Preparing model for faster responses...",
+          comment: "AI Polish, Ollama: the model is being loaded into memory."),
+        isSpinning: true
+      ) {}
     case .warm(let model, let expires) where model == currentModel && Date() < expires:
-      Image(systemName: "checkmark.circle.fill")
-        .foregroundStyle(.stSuccess)
-        .help("Model is ready")
+      PolishIconButton(
+        systemName: "checkmark",
+        help: String(
+          localized: "Model is ready", comment: "AI Polish, Ollama: the model is loaded."),
+        isEnabled: false
+      ) {}
     case .failed(let model) where model == currentModel:
-      Button {
+      PolishIconButton(
+        systemName: "exclamationmark.triangle",
+        help: String(
+          localized: "Couldn't prepare model. Click to retry.",
+          comment: "AI Polish, Ollama: loading the model failed; clicking tries again.")
+      ) {
         setup.ollamaSetup.warmUpModel(surfaceCloudModel)
-      } label: {
-        Image(systemName: "exclamationmark.triangle")
-          .foregroundStyle(.stWarning)
       }
-      .buttonStyle(.borderless)
-      .help("Couldn't prepare model. Click to retry.")
-      .accessibilityLabel("Retry preparing model")
     default:
-      Button {
+      PolishIconButton(
+        systemName: "bolt",
+        help: String(localized: "Prepare model", comment: "AI Polish, Ollama: loads the model now.")
+      ) {
         guard !surfaceCloudModel.isEmpty else { return }
         setup.ollamaSetup.warmUpModel(surfaceCloudModel)
-      } label: {
-        Image(systemName: "arrow.clockwise")
-          .settingsHoverQuiet()
       }
-      .buttonStyle(.borderless)
-      .help("Prepare model")
-      .accessibilityLabel("Prepare model")
     }
+  }
+}
+
+/// The download confirmation for a model that failed every cleanup test (#1950), as one
+/// modifier so the page and the Models sheet present the SAME dialog. `isActive` keeps it to
+/// one presenter: the sheet while it is open, the page otherwise (#3385).
+///
+/// The model id IS the state and every dismissal path routes through one setter: Cancel,
+/// Escape and clicking outside all land in the `set` closure and clear it. A separate
+/// Boolean would leave the id set after a dismissal nobody handled, and the next
+/// confirmation would fire on a stale model.
+struct OllamaDownloadConfirmation: ViewModifier {
+  let model: ProviderSetupModel
+  let setup: SetupCoordinator
+  let isActive: Bool
+
+  func body(content: Content) -> some View {
+    content.confirmationDialog(
+      "This model did not pass any of our cleanup tests.",
+      isPresented: Binding(
+        get: { isActive && model.pendingOllamaDownload != nil },
+        set: { presented in if !presented { model.pendingOllamaDownload = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("Download anyway") { ProviderSetupDownloads.confirmPending(model: model, setup: setup) }
+      // Empty action deliberately, matching `CustomWordEditSheet` and `TranscriptHistoryView`.
+      // SwiftUI sets `isPresented` false on dismissal, which invokes the setter above and clears
+      // the id. Clearing it here too would mean two paths doing one job.
+      Button("Cancel", role: .cancel) {}
+    }
+  }
+}
+
+/// The Models sheet's search field.
+struct OllamaModelSearchField: View {
+  @Binding var text: String
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(Color.stTextSecondary)
+        .accessibilityHidden(true)
+      TextField(
+        String(localized: "Search models", comment: "AI Polish, Ollama: the model list's search field."),
+        text: $text
+      )
+      .textFieldStyle(.plain)
+      .font(.stBody)
+      .focused($focused)
+    }
+    .settingsFieldChrome(focused: $focused)
+  }
+}
+
+/// A measured verdict as the design's chip (#1950 verdicts, #3385 chip).
+struct OllamaVerdictChip: View {
+  let verdict: OllamaModelVerdict
+
+  var body: some View {
+    let tint = ProviderSetupSection.verdictColor(verdict)
+    Text(verdict.label)
+      .font(.system(size: 14, weight: .semibold))
+      .foregroundStyle(tint)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 1)
+      .background(Capsule().fill(tint.opacity(0.14)))
+  }
+}
+
+/// The Install / Start / Model steps (#3385). A finished step is a green filled circle, the
+/// current one solid accent, the rest outlined; `current` 4 means all three are done.
+struct OllamaStepper: View {
+  let current: Int
+
+  private static let labels = [
+    String(localized: "Install", comment: "AI Polish, Ollama setup: the first step."),
+    String(localized: "Start", comment: "AI Polish, Ollama setup: the second step."),
+    String(localized: "Model", comment: "AI Polish, Ollama setup: the third step."),
+  ]
+
+  var body: some View {
+    HStack(spacing: 10) {
+      ForEach(Array(Self.labels.enumerated()), id: \.offset) { index, label in
+        let number = index + 1
+        let done = number < current
+        let isCurrent = number == current
+        HStack(spacing: 8) {
+          Text("\(number)")
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(done || isCurrent ? Color.white : Color.stTextSecondary)
+            .frame(width: 24, height: 24)
+            .background(
+              Circle().fill(
+                done ? Color.stSuccess : (isCurrent ? Color.stAccentSolid : Color.clear))
+            )
+            .overlay(
+              Circle().strokeBorder(
+                done || isCurrent ? Color.clear : Color.stInputBorder, lineWidth: 1.5))
+          Text(label)
+            .font(.system(size: 14, weight: isCurrent ? .semibold : .regular))
+            .foregroundStyle(isCurrent ? Color.stTextPrimary : Color.stTextSecondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+          String(
+            localized: "Step \(number), \(label)",
+            comment: "VoiceOver: an Ollama setup step. %lld is its number, %@ its name."))
+        .accessibilityValue(
+          done
+            ? String(localized: "Done", comment: "VoiceOver: an Ollama setup step that is finished.")
+            : (isCurrent ? String(localized: "Current step", comment: "VoiceOver: the Ollama setup step to do now.") : ""))
+        if number < Self.labels.count {
+          Rectangle()
+            .fill(Color.stDivider)
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+        }
+      }
+    }
+    .padding(.horizontal, PolishSectionLayout.rowPaddingH)
+    .padding(.top, 12)
+    .padding(.bottom, 4)
   }
 }
 
@@ -2241,8 +2617,8 @@ struct ProviderSetupSection: View {
 /// The five handlers and the one confirmation dialog, as a modifier so every host attaches
 /// the SAME implementation to its own container.
 ///
-/// It has to live on a container that is always mounted, not on the detail column: the
-/// column disappears when AI Polish is switched off, and `onChange(of:)` still has to see
+/// It has to live on a container that is always mounted, not on the provider's card: the
+/// card disappears when AI Polish is switched off, and `onChange(of:)` still has to see
 /// the move to `.none`.
 struct ProviderSetupLifecycle: ViewModifier {
   let model: ProviderSetupModel
@@ -2287,29 +2663,12 @@ struct ProviderSetupLifecycle: ViewModifier {
 
   func body(content: Content) -> some View {
     content
-    // #1950: ONE confirmation for both local download entry points, mounted here on the shared
-    // container rather than per button, because two dialogs bound to the same state is how the two
-    // buttons would come to behave differently.
-    //
-    // Presented from a Binding COMPUTED off `model.pendingOllamaDownload`, so the id is the only stored
-    // state and every dismissal path routes through one setter: Cancel, Escape and clicking outside
-    // all land in the `set` closure and clear it. A separate `@State` Boolean would leave the id
-    // set after a dismissal nobody handled, and the next confirmation would fire on a stale model.
-    .confirmationDialog(
-      "This model did not pass any of our cleanup tests.",
-      isPresented: Binding(
-        get: { model.pendingOllamaDownload != nil },
-        set: { presented in if !presented { model.pendingOllamaDownload = nil } }
-      ),
-      titleVisibility: .visible
-    ) {
-      Button("Download anyway") { ProviderSetupDownloads.confirmPending(model: model, setup: setup) }
-      // Empty action deliberately, matching `CustomWordEditSheet` and `TranscriptHistoryView`.
-      // SwiftUI sets `isPresented` false on dismissal, which invokes the setter above and clears the
-      // id. Clearing it here too would mean two paths doing one job, and would contradict the claim
-      // that every dismissal routes through one setter.
-      Button("Cancel", role: .cancel) {}
-    }
+    // #1950: ONE confirmation for both local download entry points, mounted on the shared
+    // container rather than per button, because two dialogs bound to the same state is how the
+    // two buttons would come to behave differently. While the Models sheet is open the sheet
+    // presents it instead, because a dialog on the page cannot appear above a sheet (#3385).
+    .modifier(
+      OllamaDownloadConfirmation(model: model, setup: setup, isActive: !model.modelsSheetOpen))
     .onAppear {
       ProviderSetupKeys.load(into: model, using: keychainManager)
       if provider == .ollama {
@@ -2394,8 +2753,8 @@ struct ProviderSetupLifecycle: ViewModifier {
         Task { await setup.ollamaSetup.detectState(trigger: "provider_switch") }
         // #1956: the hosted catalog does not depend on the daemon at all, so it
         // must load on SELECTION rather than on readiness. A daemon running with
-        // zero models settles in `.runningNoModels`, which Manage Models still
-        // displays — so gating the fetch on `.ready` alone left the hosted list
+        // zero models settles in `.runningNoModels`, where the Models sheet is still
+        // offered — so gating the fetch on `.ready` alone left the hosted list
         // permanently unloaded with no Retry on exactly the fresh-install path
         // this issue exists to fix. Single-flight and the 15-minute window
         // absorb the overlap with the other two triggers.

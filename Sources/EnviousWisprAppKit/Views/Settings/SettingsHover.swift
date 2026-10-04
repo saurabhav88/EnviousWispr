@@ -158,7 +158,7 @@ private struct SettingsHoverRowModifier: ViewModifier {
 /// brightens the fill instead. Neither branch removes the resting border: both
 /// overlay on top of it.
 ///
-/// The pre-existing card hover (`AIPolishProviderRail`) reached for a scale
+/// The pre-existing card hover (the AI Polish provider rail) reached for a scale
 /// effect for the same "a fill is invisible here" reason, and a scale effect is
 /// suppressed entirely under Reduce Motion, taking the affordance with it. That
 /// is the trade this modifier exists to avoid.

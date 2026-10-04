@@ -210,7 +210,7 @@ enum AIPolishModelClassifier {
 
 /// #1914: how the MODEL SELECTION DROPDOWN is split into sections.
 ///
-/// Sibling of `OllamaCatalogPresentation`, which owns the Manage Models list.
+/// Sibling of `OllamaCatalogPresentation`, which owns the Models sheet list.
 /// Two types rather than one because they answer different questions about
 /// different row types: that one partitions `OllamaModelCatalogEntry` (things
 /// you can download and delete), this one partitions `LLMModelInfo` (things you
@@ -239,18 +239,18 @@ enum OllamaModelPickerPresentation {
     let locked: [LLMModelInfo]
   }
 
-  /// One heading, one string. Sharing it with the Manage Models list is the
+  /// One heading, one string. Sharing it with the Models sheet list is the
   /// point: two spellings of the same fact is how the two surfaces would come
   /// to describe the same model differently.
   static var hostedGroupTitle: String { OllamaCatalogPresentation.hostedGroupTitle }
 
-  /// The same two tier headings the Manage Models list uses, for the same reason
+  /// The same two tier headings the Models sheet list uses, for the same reason
   /// the hosted heading is shared.
   static var freeVerifiedGroupTitle: String { OllamaCatalogPresentation.freeVerifiedGroupTitle }
   static var mayNeedPaidGroupTitle: String { OllamaCatalogPresentation.mayNeedPaidGroupTitle }
 
   /// #1956: the dropdown's hosted rows, split into the same three buckets the
-  /// user sees in Manage Models — installed locally, free cloud, paid cloud
+  /// user sees in the Models sheet — installed locally, free cloud, paid cloud
   /// (founder request 2026-08-06).
   ///
   /// The tier decision itself is NOT made here. It comes from
@@ -270,7 +270,7 @@ enum OllamaModelPickerPresentation {
 
   /// A picker section header that carries its own verification date.
   ///
-  /// The Manage Models list renders the date on a separate line under the
+  /// The Models sheet list renders the date on a separate line under the
   /// heading; a `Picker` `Section` header is a single string, so it goes inline.
   /// Same text, same UTC zone, one owner — `OllamaCatalogPresentation` still
   /// formats it, so the two surfaces cannot drift on wording or time zone.
@@ -314,7 +314,7 @@ enum OllamaModelPickerPresentation {
       //
       // Only `.recommended` earns the heading. `.firstParty` deliberately does not: EG-1 makes no
       // claim in this vocabulary, and putting it under "Recommended for cleanup" would be inventing
-      // one. Same authority the Manage Models list reads, so the two surfaces cannot disagree.
+      // one. Same authority the Models sheet list reads, so the two surfaces cannot disagree.
       if provider == .ollama {
         if OllamaModelVerdicts.verdict(for: model.id) == .recommended {
           recommended.append(model)
@@ -374,7 +374,10 @@ struct AIPolishSettingsView: View {
                 )
               )
                 .settingsRowTitle()
-              Text("Automatically fix grammar, punctuation, and formatting.")
+              Text(
+                String(
+                  localized: "Fixes grammar, punctuation and formatting",
+                  comment: "AI Polish: the line under Enable AI Polish."))
                 .settingsReadingCopy()
             }
           }
@@ -382,28 +385,25 @@ struct AIPolishSettingsView: View {
         }
       }
 
-      // ── Engine picker: master-detail rail lifted onto the page so
-      // the rail and the detail read as elevated cards, not dark-on-dark
-      // nested boxes (#1286 polish pass). Same `llmProvider` setter.
+      // ── #3385 (founder's Claude Design, 2026-10-03): the MODEL heading, one provider card
+      // that opens the provider list, then the chosen provider's own section. Same
+      // `llmProvider` setter the provider rail used.
       if settings.llmProvider != .none {
-        HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
-          ProviderRail(
-            selection: Binding(
-              get: { settings.llmProvider },
-              set: { settings.llmProvider = $0 }))
-            .frame(width: PolishRailMetrics.railWidth, alignment: .leading)
-          ProviderSetupSection(model: setupModel, part: .detail)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
+          SettingsSectionHeading(
+            resolvedTitle: String(
+              localized: "Model", comment: "AI Polish: heading above the provider card."
+            ).uppercased()
+          ) {
+            Text(SettingsCopy.frozenPerRecording)
+              .font(.stHelper)
+              .foregroundStyle(Color.stTextSecondary)
+              .multilineTextAlignment(.trailing)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          AIPolishProviderPicker(model: setupModel)
         }
-      }
-
-      // Manage Models for Ollama stays a full-width section below the rail —
-      // the one exception to the single-column detail (the catalog is a long
-      // list). Its selected-model setup + explainer live in the detail column.
-      if settings.llmProvider == .ollama,
-        ProviderSetupVisibility.showsManageModels(setup)
-      {
-        ProviderSetupSection(model: setupModel, part: .manageModels)
+        ProviderSetupSection(model: setupModel)
       }
     }
     .modifier(ProviderSetupLifecycle(model: setupModel))
@@ -436,54 +436,35 @@ enum S1ControlCardVisibility {
 /// The option labels are a total function over each enum, so adding a trained
 /// value cannot leave a segment without a name.
 enum S1ControlCopy {
-  static let cardLabel = String(
-    localized: "Writing style", comment: "AI Polish, S1-mini writing-style card: the card title.")
-  static let intro = String(
-    localized:
-      "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. Change them any time; a new pick applies to your next dictation.",
-    comment:
-      "AI Polish, S1-mini writing-style card: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written."
-  )
   /// The three dials are ONE shared setting. On the Transcribe a File page a change reaches
-  /// the next file and, because it is shared, the next dictation too; the dictation sentence
-  /// named only the dictation (#2772). Found by the cloud review of PR #2786.
-  static func intro(for surface: ProviderSetupSurface) -> String {
-    switch surface {
-    case .dictation: return intro
-    case .fileImport:
-      return String(
-        localized:
-          "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. They are shared with dictation. Change them any time; a new pick applies to your next file and your next dictation.",
-        comment:
-          "AI Polish, S1-mini writing-style card on Transcribe a File: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written."
-      )
-    }
-  }
+  /// the next file and, because it is shared, the next dictation too, so that page says so
+  /// above the dials (#2772, found by the cloud review of PR #2786). The AI Polish page shows
+  /// no introduction (#3385 design); the maker's credit there is on the provider card and in
+  /// the WHY block.
+  static let fileImportIntro = String(
+    localized:
+      "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. They are shared with dictation. Change them any time; a new pick applies to your next file and your next dictation.",
+    comment:
+      "AI Polish, S1-mini writing-style card on Transcribe a File: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written."
+  )
 
   static let stylingLabel = String(
     localized: "Tone", comment: "AI Polish, S1-mini writing-style card: the tone setting's name.")
-  static let stylingHint = String(
-    localized:
-      "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text.",
-    comment: "AI Polish, S1-mini writing-style card: explains the tone options.")
+  static let stylingShort = String(
+    localized: "Choose how formal your text sounds.",
+    comment: "AI Polish, S1-mini: the line under Tone.")
   static let structureLabel = String(
     localized: "Structure",
     comment: "AI Polish, S1-mini writing-style card: the structure setting's name.")
-  static let structureHint = String(
-    localized:
-      "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences.",
-    comment:
-      "AI Polish, S1-mini writing-style card: explains the structure options. Lists and Prose are the option names."
-  )
+  static let structureShort = String(
+    localized: "Keep sentences or turn spoken items into lists.",
+    comment: "AI Polish, S1-mini: the line under Structure.")
   static let contextLabel = String(
     localized: "Context",
     comment: "AI Polish, S1-mini writing-style card: the context setting's name.")
-  static let contextHint = String(
-    localized:
-      "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else.",
-    comment:
-      "AI Polish, S1-mini writing-style card: explains the context options. Email is an option name."
-  )
+  static let contextShort = String(
+    localized: "Format dictated greetings and sign-offs as email.",
+    comment: "AI Polish, S1-mini: the line under Context.")
 
   static func label(for styling: S1Styling) -> String {
     switch styling {

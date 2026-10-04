@@ -76,7 +76,7 @@ struct LocalEngineHealthCopyTests {
     let produced = try Self.producedReasons()
     var defaulted: [String] = []
     for reason in produced.yellow.sorted() {
-      let copy = LocalEngineStatusCard.detail(for: .yellow(reason: reason))
+      let copy = LocalEngineHealthCopy.detail(for: .yellow(reason: reason))
       // `downloading` and `verifying` deliberately render nothing: the progress
       // chrome above them already says what is happening.
       if reason == "downloading" || reason == "verifying" {
@@ -96,7 +96,7 @@ struct LocalEngineHealthCopyTests {
     let redFallback = "Not running. Use the refresh button to try again."
     var defaulted: [String] = []
     for reason in produced.red.sorted() {
-      let copy = LocalEngineStatusCard.detail(for: .red(reason: reason))
+      let copy = LocalEngineHealthCopy.detail(for: .red(reason: reason))
       if copy == redFallback || copy == nil { defaulted.append(reason) }
     }
     #expect(
@@ -109,10 +109,10 @@ struct LocalEngineHealthCopyTests {
   @Test("the reasons the founder hit say something true")
   func theRegressionReasonsAreHonest() {
     #expect(
-      LocalEngineStatusCard.detail(for: .yellow(reason: "not_started"))
+      LocalEngineHealthCopy.detail(for: .yellow(reason: "not_started"))
         == "Starting the model. This takes a few seconds.")
     #expect(
-      LocalEngineStatusCard.detail(for: .yellow(reason: "download_paused"))
+      LocalEngineHealthCopy.detail(for: .yellow(reason: "download_paused"))
         == "Download paused. Resume anytime.")
   }
 
@@ -121,6 +121,6 @@ struct LocalEngineHealthCopyTests {
   @Test("an unknown reason still reaches the generic line")
   func theFallbackStillWorks() {
     #expect(
-      LocalEngineStatusCard.detail(for: .yellow(reason: "invented_at_runtime")) == Self.fallback)
+      LocalEngineHealthCopy.detail(for: .yellow(reason: "invented_at_runtime")) == Self.fallback)
   }
 }

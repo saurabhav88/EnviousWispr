@@ -60,13 +60,12 @@ struct MicrophoneDevicePicker: View {
     .fixedSize()
     .accessibilityLabel(String(localized: DictationSettingsCopy.Microphone.inputDeviceTitle))
     .accessibilityValue([presentation.deviceName ?? placeholder, detail].compactMap { $0 }.joined(separator: ", "))
-    .popover(isPresented: $isOpen, arrowEdge: .bottom) {
+    .settingsDropdown(isPresented: $isOpen, width: Self.width) {
       menu
     }
   }
 
-  private var menu: some View {
-    VStack(alignment: .leading, spacing: 2) {
+  @ViewBuilder private var menu: some View {
       choice(
         tag: "", icon: "arrow.triangle.2.circlepath", title: String(localized: "Auto"),
         subtitle: String(
@@ -89,58 +88,33 @@ struct MicrophoneDevicePicker: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 10)
         .padding(.bottom, 4)
-    }
-    .padding(8)
-    .frame(width: Self.width)
-    // Solid, as in the mockup; the default popover material let the page show through.
-    .presentationBackground(Color.stSectionBg)
   }
 
-  /// One row: a check and the accent for the chosen one, the device's connection icon, its
-  /// name and the line under it. The button's VoiceOver name is the menu's former item title,
-  /// "<name> · <connection>", so a choice reads the same as before.
+  /// One row: the device's connection icon, its name and the line under it. The button's
+  /// VoiceOver name is the menu's former item title, "<name> · <connection>", so a choice reads
+  /// the same as before.
   private func choice(
     tag: String, icon: String, title: String, subtitle: String?, spokenTitle: String
   ) -> some View {
     let isChosen = selection == tag
-    return Button {
-      selection = tag
-      isOpen = false
-    } label: {
-      HStack(spacing: 10) {
-        Image(systemName: "checkmark")
-          .font(.system(size: 11, weight: .bold))
-          .foregroundStyle(Color.stAccent)
-          .opacity(isChosen ? 1 : 0)
-          .accessibilityHidden(true)
+    return SettingsDropdownRow(
+      isChosen: isChosen, spokenTitle: spokenTitle,
+      action: {
+        selection = tag
+        isOpen = false
+      },
+      leading: {
         Image(systemName: icon)
           .font(.system(size: 14, weight: .medium))
           .foregroundStyle(isChosen ? Color.stAccent : Color.stTextSecondary)
           .frame(width: 18)
-          .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 1) {
-          Text(title)
-            .font(.stRowLabel)
-            .foregroundStyle(isChosen ? Color.stAccent : Color.stTextPrimary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-          if let subtitle {
-            Text(subtitle).font(.stHelper).foregroundStyle(Color.stTextSecondary).lineLimit(1)
-          }
+      },
+      title: title,
+      subtitle: {
+        if let subtitle {
+          Text(subtitle).font(.stHelper).foregroundStyle(Color.stTextSecondary).lineLimit(1)
         }
-        Spacer(minLength: 0)
-      }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 7)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 8).fill(isChosen ? Color.stAccentLight : Color.clear))
-      .settingsHoverRow(cornerRadius: 8)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel(spokenTitle)
-    .accessibilityAddTraits(isChosen ? [.isButton, .isSelected] : .isButton)
+      })
   }
 
   /// "Auto · Built-in", "Built-in", "Auto", or nothing: the selection rule and

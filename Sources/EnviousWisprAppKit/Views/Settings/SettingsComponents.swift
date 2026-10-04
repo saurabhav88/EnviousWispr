@@ -1098,8 +1098,9 @@ enum SettingsCopy {
   static let notSelectedValue = String(
     localized: "Not selected", comment: "VoiceOver: the value of an option that is not chosen.")
   static let frozenPerRecording = String(
-    localized: "Changes made during a recording apply to the next recording.",
-    comment: "Settings: notice that a change made while recording takes effect next time.")
+    localized: "Changes apply to the next recording",
+    comment:
+      "AI Polish: the note beside the Model heading. A change made while recording takes effect next time.")
   /// The same rule on the Transcribe a File page, where the run that freezes settings is a
   /// cleanup, not a recording (#2772). Found by the cloud review of PR #2786.
   static let frozenPerImport = String(
@@ -1140,19 +1141,6 @@ struct BrandedRow<Content: View>: View {
 
 // MARK: - Frozen-per-recording footnote
 
-/// Static helper text for settings sections whose values freeze at recording
-/// start via `DictationSessionConfig`. Placed in a `BrandedSection`'s footer
-/// slot or inline under affected controls.
-struct FrozenPerRecordingFootnote: View {
-  /// The dictation sentence unless the host says otherwise; the shared provider editor passes
-  /// `SettingsCopy.frozenPerImport` when hosted on the Transcribe a File page.
-  var text: String = SettingsCopy.frozenPerRecording
-  var body: some View {
-    Text(text)
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
-  }
-}
 
 // MARK: - Branded Toggle Style
 
@@ -1728,7 +1716,7 @@ extension EngineCard where Footer == EmptyView {
 
 // MARK: - Status chip
 
-// Moved here from `AIPolishProviderRail.swift` by #2154, unrenamed.
+// Moved here from the AI Polish provider file by #2154, unrenamed.
 //
 // AI Polish had the only "can I use this right now?" indicator in Settings, and
 // Live Preview needed the same thing. The first draft of #2154 proposed BUILDING
@@ -1779,7 +1767,7 @@ struct ProviderStatusChip: View {
 
   /// Whether this chip is the HEADLINE state of its surface.
   ///
-  /// **Defaulted off, so `AIPolishProviderRail` is byte-identical.** There it is
+  /// **Defaulted off, so the AI Polish provider card is unchanged.** There it is
   /// one badge among many rows and the quiet microcopy treatment is right.
   ///
   /// On the Live Preview status bar it is the opposite: the label is the single

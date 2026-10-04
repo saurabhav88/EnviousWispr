@@ -341,8 +341,7 @@ struct FileImportPolishGateTests {
     #expect(SettingsCopy.frozenPerImport.contains("next file"))
     #expect(!SettingsCopy.frozenPerImport.contains("recording"))
     #expect(SettingsCopy.frozenPerRecording.contains("next recording"))
-    #expect(S1ControlCopy.intro(for: .fileImport).contains("next file"))
-    #expect(S1ControlCopy.intro(for: .fileImport).contains("shared with dictation"))
-    #expect(S1ControlCopy.intro(for: .dictation) == S1ControlCopy.intro)
+    #expect(S1ControlCopy.fileImportIntro.contains("next file"))
+    #expect(S1ControlCopy.fileImportIntro.contains("shared with dictation"))
   }
 }

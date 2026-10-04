@@ -11,10 +11,10 @@ struct S1ControlCopyTests {
 
   static var everyString: [String] {
     [
-      S1ControlCopy.cardLabel, S1ControlCopy.intro,
-      S1ControlCopy.stylingLabel, S1ControlCopy.stylingHint,
-      S1ControlCopy.structureLabel, S1ControlCopy.structureHint,
-      S1ControlCopy.contextLabel, S1ControlCopy.contextHint,
+      S1ControlCopy.fileImportIntro,
+      S1ControlCopy.stylingLabel, S1ControlCopy.stylingShort,
+      S1ControlCopy.structureLabel, S1ControlCopy.structureShort,
+      S1ControlCopy.contextLabel, S1ControlCopy.contextShort,
     ]
       + S1Styling.allCases.map(S1ControlCopy.label(for:))
       + S1Structure.allCases.map(S1ControlCopy.label(for:))
@@ -30,12 +30,12 @@ struct S1ControlCopyTests {
   }
 
   /// The licence requires exactly "S1-mini" by "Superwhisper" wherever the
-  /// model is identified. The intro is where this card identifies it.
+  /// model is identified. The import page's intro is where the dials identify it.
   @Test("the intro credits the maker under the licensed spelling")
   func introCreditsTheMaker() {
-    #expect(S1ControlCopy.intro.contains("Superwhisper"))
-    #expect(S1ControlCopy.intro.contains(LLMProvider.s1Mini.displayName))
-    #expect(!S1ControlCopy.intro.contains("SuperWhisper"))
+    #expect(S1ControlCopy.fileImportIntro.contains("Superwhisper"))
+    #expect(S1ControlCopy.fileImportIntro.contains(LLMProvider.s1Mini.displayName))
+    #expect(!S1ControlCopy.fileImportIntro.contains("SuperWhisper"))
   }
 
   /// Who sees the card (#2649 cloud review P2). An S1-mini pulled into Ollama

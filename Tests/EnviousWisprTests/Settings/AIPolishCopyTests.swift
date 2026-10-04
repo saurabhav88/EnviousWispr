@@ -13,25 +13,32 @@ struct AIPolishCopyTests {
 
   private func chip(
     _ provider: LLMProvider,
+    selected: Bool = true,
     install: EGOneInstallState = .installed(version: "1"),
     health: EGOneHealth = .green,
     apple: AIAvailabilityStatus? = .available,
+    appleChecking: Bool = false,
     cloud: LLMModelDiscoveryCoordinator.KeyValidationState = .valid,
-    keyPresent: Bool = false,
+    keySaved: Bool? = true,
     ollama: OllamaSetupState = .ready
-  ) -> String {
+  ) -> String? {
     ProviderStatusMapping.status(
-      for: provider, egOneInstall: install, egOneHealth: health, s1MiniInstall: install,
-      s1MiniHealth: health, appleStatus: apple, cloudValidation: cloud,
-      cloudKeyPresent: keyPresent, ollamaSetup: ollama
-    ).label
+      for: provider,
+      context: ProviderStatusContext(selected: selected, healthApplies: selected),
+      inputs: ProviderStatusInputs(
+        egOneInstall: install, egOneHealth: health, s1MiniInstall: install,
+        s1MiniHealth: health, appleStatus: apple, appleIsChecking: appleChecking,
+        validationProvider: provider, cloudValidation: cloud,
+        openAIKeySaved: keySaved, geminiKeySaved: keySaved, claudeKeySaved: keySaved,
+        ollamaSetup: ollama)
+    )?.label
   }
 
   @Test("every status chip keeps its English")
   func statusChips() {
     #expect(chip(.none) == "Off")
     #expect(chip(.egOne, install: .notInstalled) == "Not installed")
-    #expect(chip(.egOne, install: .paused) == "Paused")
+    #expect(chip(.egOne, install: .paused) == "Download paused")
     #expect(
       chip(.egOne, install: .updatePaused(resumable: true, targetVersion: "2")) == "Update paused")
     #expect(
@@ -40,7 +47,8 @@ struct AIPolishCopyTests {
       chip(.egOne, install: .downloading(fractionCompleted: 0.1, upgrade: .named("2")))
         == "Upgrading")
     #expect(chip(.egOne, install: .verifying) == "Verifying")
-    #expect(chip(.egOne, health: .green) == "Live")
+    #expect(chip(.egOne, install: .failed(.network)) == "Needs attention")
+    #expect(chip(.egOne, health: .green) == "Installed")
     #expect(chip(.egOne, health: .yellow(reason: "starting")) == "Starting")
     #expect(chip(.egOne, health: .red(reason: "crashed_twice")) == "Not working")
     #expect(chip(.appleIntelligence, apple: .available) == "Available")
@@ -48,67 +56,84 @@ struct AIPolishCopyTests {
     #expect(chip(.appleIntelligence, apple: .unavailable) == "Unavailable")
     #expect(chip(.appleIntelligence, apple: .unknown) == "Unknown")
     #expect(chip(.appleIntelligence, apple: nil) == "Not checked")
-    #expect(chip(.openAI, cloud: .idle, keyPresent: true) == "Not checked")
-    #expect(chip(.openAI, cloud: .idle, keyPresent: false) == "Key needed")
-    #expect(chip(.openAI, cloud: .validating) == "Validating")
+    #expect(chip(.appleIntelligence, appleChecking: true) == "Checking")
+    #expect(chip(.openAI, cloud: .idle) == "Not checked")
+    #expect(chip(.openAI, keySaved: false) == "Key needed")
+    #expect(chip(.openAI, keySaved: nil) == "Could not check")
+    #expect(chip(.openAI, selected: false) == "Key saved")
+    #expect(chip(.openAI, cloud: .validating) == "Checking")
     #expect(chip(.openAI, cloud: .valid) == "Key valid")
-    #expect(chip(.openAI, cloud: .invalid("x")) == "Key needed")
+    #expect(chip(.openAI, cloud: .invalid("x")) == "Check failed")
     #expect(chip(.ollama, ollama: .detecting) == "Checking")
     #expect(chip(.ollama, ollama: .notInstalled) == "Not installed")
     #expect(chip(.ollama, ollama: .installedNotRunning) == "Not running")
     #expect(chip(.ollama, ollama: .runningNoModels) == "No model")
     #expect(chip(.ollama, ollama: .pullingModel(progress: 0, status: "")) == "Downloading")
-    #expect(chip(.ollama, ollama: .ready) == "Running")
+    #expect(chip(.ollama, ollama: .ready) == "Installed")
     #expect(chip(.ollama, ollama: .error("x")) == "Error")
   }
 
-  @Test("the provider groups keep their headings, spoken phrases and privacy lines")
+  @Test("the provider groups keep their headings and spoken phrases")
   func railGroups() {
     #expect(PolishRailGroup.allCases.map(\.heading) == ["On this Mac", "Your own setup", "Cloud"])
     #expect(
       PolishRailGroup.allCases.map(\.accessibilityPhrase) == [
         "on this Mac", "your own setup", "cloud",
       ])
-    #expect(
-      PolishRailGroup.allCases.map(\.privacyLine) == [
-        "Nothing you dictate leaves this Mac",
-        "Uses your selected Ollama model, local or hosted",
-        "Sends transcribed text, never audio",
-      ])
   }
 
-  @Test("the S1-mini writing-style card keeps every sentence and option name")
+  @Test("the provider card keeps each provider's line, and S1-mini's credits Superwhisper")
+  func cardLines() {
+    #expect(
+      PolishRailCatalog.all.map(\.short) == [
+        "Our model for cleaning up dictation on this Mac.",
+        "Small model by Superwhisper, on this Mac and happiest in English.",
+        "On-device polish on supported Macs with macOS 26+.",
+        "Your models, local or hosted.",
+        "Use your OpenAI API key for cloud polish.",
+        "Use your Gemini API key for cloud polish.",
+        "Use your Claude API key for cloud polish.",
+      ])
+    #expect(SettingsCopy.frozenPerRecording == "Changes apply to the next recording")
+  }
+
+  @Test("the S1-mini writing-style rows keep every sentence and option name")
   func writingStyleCard() {
-    #expect(S1ControlCopy.cardLabel == "Writing style")
     #expect(
-      S1ControlCopy.intro
-        == "Superwhisper trained S1-mini on these three settings. Change them any time; a new pick applies to your next dictation."
-    )
-    #expect(
-      S1ControlCopy.intro(for: .fileImport)
+      S1ControlCopy.fileImportIntro
         == "Superwhisper trained S1-mini on these three settings. They are shared with dictation. Change them any time; a new pick applies to your next file and your next dictation."
     )
     #expect(S1ControlCopy.stylingLabel == "Tone")
-    #expect(
-      S1ControlCopy.stylingHint
-        == "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text."
-    )
+    #expect(S1ControlCopy.stylingShort == "Choose how formal your text sounds.")
     #expect(S1ControlCopy.structureLabel == "Structure")
-    #expect(
-      S1ControlCopy.structureHint
-        == "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences."
-    )
+    #expect(S1ControlCopy.structureShort == "Keep sentences or turn spoken items into lists.")
     #expect(S1ControlCopy.contextLabel == "Context")
-    #expect(
-      S1ControlCopy.contextHint
-        == "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else."
-    )
+    #expect(S1ControlCopy.contextShort == "Format dictated greetings and sign-offs as email.")
     #expect(
       S1Styling.allCases.map(S1ControlCopy.label(for:)) == [
         "Casual", "Semi-casual", "Semi-formal", "Formal",
       ])
     #expect(S1Structure.allCases.map(S1ControlCopy.label(for:)) == ["Prose", "Lists"])
     #expect(S1Context.allCases.map(S1ControlCopy.label(for:)) == ["General", "Email"])
+  }
+
+  @Test("the Download more models count says how many local models are on this Mac")
+  func installedCount() {
+    func entry(_ name: String, downloaded: Bool, remote: Bool = false) -> OllamaModelCatalogEntry {
+      OllamaModelCatalogEntry(
+        name: name, displayName: name, parameterCount: "", downloadSize: "",
+        isDownloaded: downloaded, isRemote: remote)
+    }
+    let catalog = [
+      entry("a", downloaded: true), entry("b", downloaded: false), entry("c", downloaded: true),
+      entry("h", downloaded: true, remote: true),
+    ]
+    let counts = OllamaCatalogPresentation.installedCount(from: catalog)
+    #expect(counts.installed == 2)
+    #expect(counts.total == 3)
+    #expect(
+      OllamaCatalogPresentation.installedCountText(installed: 2, total: 3)
+        == "2 of 3 installed on this Mac")
   }
 
   @Test("each paused-upgrade row is one whole sentence, named or not")
@@ -169,7 +194,7 @@ struct AIPolishCopyTests {
       ("something_new", "Something needs attention. Try the refresh button."),
     ]
     for (reason, expected) in yellow {
-      #expect(LocalEngineStatusCard.detail(for: .yellow(reason: reason)) == expected)
+      #expect(LocalEngineHealthCopy.detail(for: .yellow(reason: reason)) == expected)
     }
     let red: [(String, String)] = [
       ("download_required", "Download the model to get started."),
@@ -183,7 +208,7 @@ struct AIPolishCopyTests {
       ("something_new", "Not running. Use the refresh button to try again."),
     ]
     for (reason, expected) in red {
-      #expect(LocalEngineStatusCard.detail(for: .red(reason: reason)) == expected)
+      #expect(LocalEngineHealthCopy.detail(for: .red(reason: reason)) == expected)
     }
   }
 
