@@ -274,15 +274,15 @@ class LauncherHarness(unittest.TestCase):
 
     def setUp(self):
         self.saved_state = h.panel_state
-        self.saved_doc = h.u.doc_text
+        self.saved_field = h.u.field_text
 
     def tearDown(self):
         h.panel_state = self.saved_state
-        h.u.doc_text = self.saved_doc
+        h.u.field_text = self.saved_field
 
     def script(self, fields, doc=""):
         h.panel_state = lambda: {"fields": fields}
-        h.u.doc_text = lambda path: doc
+        h.u.field_text = lambda path: doc
 
     def statuses(self, results):
         return {name: status for name, status, _ in results}
@@ -333,10 +333,72 @@ class LauncherHarness(unittest.TestCase):
             statuses = self.statuses(results)
         self.assertEqual(statuses["t: record start targeted the panel (TARGET_FOCUS disagree)"], "FAIL")
 
-    def test_doubled_and_empty_takes_are_not_single(self):
-        self.assertTrue(h.single_take_text(h.SENTENCE))
-        self.assertFalse(h.single_take_text(h.SENTENCE + " " + h.SENTENCE))
-        self.assertFalse(h.single_take_text(""))
+    DEBUG = ("CORRECTION_DEBUG [RAW ASR] please send the quarterly summary to marcus by friday afternoon\n"
+             "CORRECTION_DEBUG [Word Correction] no change\n"
+             "CORRECTION_DEBUG [LLM Polish] IN:  please send the quarterly summary\n"
+             "CORRECTION_DEBUG [LLM Polish] OUT: Please send the quarterly summary to Marcus by "
+             "Friday afternoon.\n")
+
+    def test_submitted_text_is_the_last_logged_output(self):
+        final = "Please send the quarterly summary to Marcus by Friday afternoon."
+        self.assertEqual(h.submitted_text(self.DEBUG), final)
+        raw_only = "CORRECTION_DEBUG [RAW ASR] hello there\nCORRECTION_DEBUG [Filler Removal] no change\n"
+        self.assertEqual(h.submitted_text(raw_only), "hello there")
+        self.assertIsNone(h.submitted_text("nothing logged"))
+
+    def test_exact_insertion_rejects_doubled_truncated_and_partial_repeats(self):
+        final = h.submitted_text(self.DEBUG)
+        cases = {final: "PASS", final + " " + final: "FAIL", final[:-12]: "FAIL",
+                 final + " Friday afternoon.": "FAIL", "": "FAIL"}
+        for field, want in cases.items():
+            with Results() as results:
+                h.verify_exact("t", field, self.DEBUG, h.LAUNCHER_SENTENCE)
+                exact = {n: st for n, st, _ in results}["t: the field holds the submitted text exactly once"]
+            self.assertEqual(exact, want, repr(field))
+
+    def test_an_unreadable_read_is_not_an_empty_field(self):
+        self.assertTrue(h.readable_empty(""))
+        self.assertFalse(h.readable_empty(None))
+        self.assertFalse(h.readable_empty("x"))
+        self.script({"A": "", "B": h.SENTENCE}, doc=None)
+        with Results() as results:
+            h.verify_launcher("t", self.LOG, "B", "cgevent", host_doc="doc")
+            host = {n: st for n, st, _ in results}[
+                "t: nothing landed in the TextEdit document behind the panel"]
+        self.assertEqual(host, "FAIL", "an unreadable document proves nothing")
+
+    def test_close_panel_confirms_each_stop_and_keeps_a_survivor(self):
+        class Proc:
+            def __init__(self, dies_on):
+                self.dies_on, self.alive, self.calls = dies_on, True, []
+            def poll(self):
+                return None if self.alive else 0
+            def wait(self, timeout=None):
+                if self.alive:
+                    raise TimeoutError
+            def terminate(self):
+                self.calls.append("terminate")
+                if self.dies_on == "terminate":
+                    self.alive = False
+            def kill(self):
+                self.calls.append("kill")
+                if self.dies_on == "kill":
+                    self.alive = False
+        saved = (dict(h.FIXTURE), h.panel_command)
+        try:
+            h.panel_command = lambda name, text="": None  # the quit command is ignored here
+            for dies_on, want_ok, want_calls in [("terminate", True, ["terminate"]),
+                                                 ("kill", True, ["terminate", "kill"]),
+                                                 ("never", False, ["terminate", "kill"])]:
+                proc = Proc(dies_on)
+                h.FIXTURE["proc"] = proc
+                self.assertEqual(h.close_panel(), want_ok, dies_on)
+                self.assertEqual(proc.calls, want_calls, dies_on)
+                self.assertEqual(h.FIXTURE["proc"] is None, want_ok, "a survivor's handle is kept")
+        finally:
+            h.FIXTURE.clear()
+            h.FIXTURE.update(saved[0])
+            h.panel_command = saved[1]
 
     def test_precondition_refuses_a_focus_owner_that_is_not_the_panel(self):
         class Proc:

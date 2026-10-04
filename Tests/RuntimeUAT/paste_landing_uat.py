@@ -208,7 +208,7 @@ TAKE_STUCK = {"stuck": False}
 
 
 def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landing=True,
-         before_hold=None, before_release=None):
+         before_hold=None, before_release=None, sentence=None):
     """One silent push-to-talk take into whatever `bundle` (Chrome unless given) has focused.
     Returns every landing line and paste-cascade line written since `base`.
 
@@ -240,7 +240,7 @@ def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landin
             before_hold()  # raises Aborted when the phase's own precondition no longer holds
         hold["entered"] = True
         # `before_release` runs while the key is still held, just before the stop (#3304).
-        w.record_tts(SENTENCE, before_release=before_release)
+        w.record_tts(sentence or SENTENCE, before_release=before_release)
         hold["completed"] = True
         time.sleep(2.0)  # settle: a second, unrequested take would start inside this window (#3107)
         virtual, transports = take_was_virtual(base)
@@ -1592,6 +1592,12 @@ LEARN_SKIPPED = re.compile(r"learn_skipped reason=(\w+) take=(\S+)")
 LEARN_ENDED = re.compile(r"learn_observation_ended reason=(\w+) settled_bursts=(\d+) .*?take=(\S+)")
 LEARN_SETTLE = "learn_settle trigger="
 FIXTURE = {"app": None, "proc": None, "run": None}
+# Plan section 11.1: the launcher takes speak these, never the shared `SENTENCE`.
+LAUNCHER_SENTENCE = "Please send the quarterly summary to Marcus by Friday afternoon."
+LAUNCHER_CONTINUATION = "then ask whether the budget review moved"
+DEBUG_TEXT = re.compile(r"CORRECTION_DEBUG \[([^\]]+)\] (?:OUT: )?(.*)$", re.M)
+AX_WRITE_SUCCEEDED = re.compile(
+    r"step=ax_direct_write started_at=\S+ elapsed_ms=\S+ outcome=succeeded bundle_id=(\S+)")
 
 
 def build_launcher():
@@ -1643,18 +1649,22 @@ def launch_panel(field):
 
 
 def close_panel():
-    """Quits THIS run's fixture process (the Popen handle's own pid), then forgets it."""
+    """Quits THIS run's fixture process (the Popen handle's own pid): the quit command, then
+    terminate, then kill, each confirmed by `wait`. Forgets the handle only once the process is
+    gone; False (handle kept) when even the kill could not be confirmed."""
     proc = FIXTURE["proc"]
-    if proc is not None and proc.poll() is None:
-        try:
-            panel_command("quit")
-            proc.wait(timeout=5)
-        except Exception:
-            proc.terminate()
+    if proc is None:
+        return True
+    if proc.poll() is None:
+        for stop in (lambda: panel_command("quit"), proc.terminate, proc.kill):
             try:
+                stop()
                 proc.wait(timeout=5)
+                break
             except Exception:
-                proc.kill()
+                continue
+    if proc.poll() is None:
+        return False
     FIXTURE["proc"] = None
     return True
 
@@ -1688,10 +1698,27 @@ def launcher_precondition(host, field):
     return check
 
 
-def single_take_text(value):
-    """True when `value` holds the dictation once (5+ of the sentence's 7 words, under 1.5x its
-    length): a doubled paste roughly doubles the text."""
-    return u.sentence_overlap(value) >= 5 and len(value) < 1.5 * len(SENTENCE)
+def submitted_text(log_text):
+    """The take's final text as the pipeline logged it: the last `OUT:` (or the raw recogniser
+    line) in the take's own log window, in log order. Independent of the destination's text, so a
+    field holding it exactly proves one whole insertion; a doubled, truncated or partly repeated
+    paste does not match. Nil when the window logged no text."""
+    texts = [text.strip() for step, text in DEBUG_TEXT.findall(log_text)
+             if text.strip() and text.strip() != "no change" and not text.startswith("IN:")]
+    return texts[-1] if texts else None
+
+
+def words_heard(text, sentence):
+    """How many of `sentence`'s words the take's text holds: a guard that the take recognised
+    what was spoken, never the insertion verdict."""
+    want = {w.strip(".,").lower() for w in sentence.split()}
+    return len(want & {w.strip(".,").lower() for w in (text or "").split()})
+
+
+def readable_empty(value):
+    """True only for a READ that returned an empty string; an unreadable read (None) is not
+    evidence that nothing landed."""
+    return isinstance(value, str) and value == ""
 
 
 def take_id_in(text):
@@ -1715,9 +1742,21 @@ def verify_launcher(name, text, field, want_tier, host_doc=None):
     u.check(f"{name}: the other panel field is untouched", fields.get(other) == "",
             repr(fields.get(other)))
     if host_doc is not None:
+        host_value = u.field_text(host_doc)
         u.check(f"{name}: nothing landed in the TextEdit document behind the panel",
-                u.doc_text(host_doc) == "", repr(u.doc_text(host_doc)[:80]))
+                readable_empty(host_value), repr(host_value))
     return fields.get(field, "")
+
+
+def verify_exact(name, field_value, log_text, sentence):
+    """The field holds exactly the take's submitted text, once."""
+    submitted = submitted_text(log_text)
+    u.check(f"{name}: the take recognised the spoken sentence",
+            words_heard(submitted, sentence) >= len(sentence.split()) - 3, repr(submitted))
+    u.check(f"{name}: the field holds the submitted text exactly once",
+            submitted is not None and (field_value or "").strip() == submitted,
+            f"field={field_value!r} submitted={submitted!r}")
+    return submitted
 
 
 def launcher_host(name):
@@ -1734,13 +1773,29 @@ def phase_launcher_tier1():
     try:
         base = u.log_size()
         take("launcher_tier1", base, bundle=TEXTEDIT, expect_landing=False,
-             before_hold=launcher_precondition(TEXTEDIT, "A"))
-        u.wait_for("the dictation in field A", lambda: single_take_text(
-            panel_state().get("fields", {}).get("A", "")), deadline=15.0)
+             before_hold=launcher_precondition(TEXTEDIT, "A"), sentence=LAUNCHER_SENTENCE)
+        u.wait_for("the dictation in field A",
+                   lambda: panel_state().get("fields", {}).get("A", ""), deadline=15.0)
         text = u.log_since(base)
         value = verify_launcher("launcher_tier1", text, "A", "ax_direct", host_doc=host)
-        u.check("launcher_tier1: field A holds the dictation once", single_take_text(value),
-                f"{u.sentence_overlap(value)}/7 {value[:80]!r}")
+        first = verify_exact("launcher_tier1", value, text, LAUNCHER_SENTENCE)
+        # The continuation: a second take into the same field, after the first one's sentence. The
+        # field must hold both submitted texts joined by exactly one space, once each.
+        base2 = u.log_size()
+        take("launcher_tier1 continuation", base2, bundle=TEXTEDIT, expect_landing=False,
+             before_hold=launcher_precondition(TEXTEDIT, "A"), sentence=LAUNCHER_CONTINUATION)
+        text2 = u.log_since(base2)
+        second = submitted_text(text2)
+        u.wait_for("the continuation in field A", lambda: len(
+            panel_state().get("fields", {}).get("A", "")) > len(value), deadline=15.0)
+        joined = panel_state().get("fields", {}).get("A", "")
+        u.check("launcher_tier1: the continuation joins the first take once, with one space",
+                first is not None and second is not None
+                and joined.strip() == f"{first} {second}",
+                f"field={joined!r} first={first!r} second={second!r}")
+        tiers = [t for t, app in CASCADE.findall(text2) if app.strip() == LAUNCHER]
+        u.check("launcher_tier1: the continuation also pasted into the panel's app",
+                tiers == ["ax_direct"], str(CASCADE.findall(text2)))
     finally:
         close_panel()
 
@@ -1755,11 +1810,15 @@ def phase_launcher_tier2():
         u.set_clipboard_text(sentinel)
         base = u.log_size()
         lines, _ = take("launcher_tier2", base, bundle=TEXTEDIT, expect_landing=True,
-                        before_hold=launcher_precondition(TEXTEDIT, "B"))
+                        before_hold=launcher_precondition(TEXTEDIT, "B"), sentence=LAUNCHER_SENTENCE)
         text = u.log_since(base)
         value = verify_launcher("launcher_tier2", text, "B", "cgevent", host_doc=host)
-        u.check("launcher_tier2: field B holds the dictation once", single_take_text(value),
-                f"{u.sentence_overlap(value)}/7 {value[:80]!r}")
+        verify_exact("launcher_tier2", value, text, LAUNCHER_SENTENCE)
+        # Tier 1 really ran and wrote, and the write changed nothing (field B ignores Accessibility
+        # writes): the cascade only reaches `cgevent` after a verified no-mutation write, and the
+        # field holding the text exactly once rules out the write having landed too.
+        u.check("launcher_tier2: Tier 1 wrote to the panel field first, and the key paste followed",
+                AX_WRITE_SUCCEEDED.findall(text) == [LAUNCHER], str(AX_WRITE_SUCCEEDED.findall(text)))
         u.check("launcher_tier2: activation was skipped for the panel's app",
                 text.count(ACTIVATION_SKIPPED) == 1, str(text.count(ACTIVATION_SKIPPED)))
         landing = [l for l in lines if l[3] == LAUNCHER]
@@ -1784,7 +1843,8 @@ def verify_launcher_learning(base, text):
     real dictionary (`custom-words.json` is compared byte for byte). The saved-entry proof is the
     founder's manual Raycast check (plan section 11.1)."""
     if u.defaults_value("learnFromEdits") in ("0", "false"):
-        u.skip("launcher_tier2: learning observes the panel", "Self-Learning Dictionary is off")
+        u.record("launcher_tier2: learning proof", "INCONCLUSIVE",
+                 "Self-Learning Dictionary is off; required proof was not exercised")
         return
     take_id = take_id_in(text)
     words = os.path.expanduser("~/Library/Application Support/EnviousWispr/custom-words.json")
@@ -1812,6 +1872,8 @@ def verify_launcher_learning(base, text):
     after = open(words, "rb").read() if os.path.exists(words) else None
     u.check("launcher_tier2: the founder's dictionary file is unchanged", before == after,
             "custom-words.json changed")
+    u.record("launcher_tier2: saved correction", "INCONCLUSIVE",
+             "Observation only; required pending/learned entry was not verified")
 
 
 def phase_launcher_dismissed():
@@ -1827,7 +1889,8 @@ def phase_launcher_dismissed():
                 raise u.Aborted("launcher_dismissed: the panel did not close")
 
         take("launcher_dismissed", base, bundle=TEXTEDIT, expect_landing=False,
-             before_hold=launcher_precondition(TEXTEDIT, "B"), before_release=dismiss)
+             before_hold=launcher_precondition(TEXTEDIT, "B"), before_release=dismiss,
+             sentence=LAUNCHER_SENTENCE)
         text = u.log_since(base)
         focus = TARGET_FOCUS.findall(text)
         u.check("launcher_dismissed: record start targeted the panel",
@@ -1840,11 +1903,14 @@ def phase_launcher_dismissed():
         fields = panel_state().get("fields", {})
         u.check("launcher_dismissed: nothing landed in the closed panel",
                 fields.get("A") == "" and fields.get("B") == "", str(fields))
+        host_value = u.field_text(host)
         u.check("launcher_dismissed: nothing landed in the TextEdit document",
-                u.doc_text(host) == "", repr(u.doc_text(host)[:80]))
+                readable_empty(host_value), repr(host_value))
         board = u.clipboard_text() or ""
+        submitted = submitted_text(text)
         u.check("launcher_dismissed: the dictation is on the clipboard (the Copied fallback)",
-                u.sentence_overlap(board) >= 5, repr(board[:80]))
+                submitted is not None and board.strip() == submitted,
+                f"board={board[:80]!r} submitted={submitted!r}")
     finally:
         close_panel()
 
@@ -1868,8 +1934,7 @@ def phase_appswap():
             raise u.Aborted("appswap: Chrome did not come front")
 
     take("appswap", base, bundle=TEXTEDIT, expect_landing=False, before_release=swap)
-    u.wait_for("the dictation in document A", lambda: single_take_text(u.doc_text(doc)),
-               deadline=15.0)
+    u.wait_for("the dictation in document A", lambda: u.doc_text(doc), deadline=15.0)
     text = u.log_since(base)
     focus = TARGET_FOCUS.findall(text)
     u.check("appswap: record start agreed (TextEdit front and focus owner)",
@@ -1878,10 +1943,9 @@ def phase_appswap():
     u.check("appswap: one paste into TextEdit, not clipboard-only",
             len(tiers) == 1 and tiers[0][1] == TEXTEDIT and tiers[0][0] != "clipboard_only",
             str(tiers))
-    u.check("appswap: document A holds the dictation once", single_take_text(u.doc_text(doc)),
-            repr(u.doc_text(doc)[:80]))
-    u.check("appswap: nothing landed in Chrome's text box", (textbox_value() or "") == "",
-            repr(textbox_value()))
+    verify_exact("appswap", u.field_text(doc), text, SENTENCE)
+    decoy = textbox_value()
+    u.check("appswap: nothing landed in Chrome's text box", readable_empty(decoy), repr(decoy))
     if restore_on:
         u.check("appswap: the previous clipboard is back (restore on)",
                 u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,

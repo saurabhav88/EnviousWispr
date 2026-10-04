@@ -7,9 +7,10 @@
 //
 // Two real text controls, so one take exercises each paste route:
 // - field A accepts Accessibility writes, so the paste's direct write (Tier 1, `ax_direct`) lands.
-// - field B is typed into normally but reports its text as NOT settable through Accessibility, so
-//   Tier 1 declines before writing and the take reaches the key paste (Tier 2, `cgevent`), the
-//   route the ENVIOUSWISPR-6G report ended on.
+// - field B is typed into normally but ignores Accessibility writes: the write call reports
+//   success and the text and character count stay unchanged, so Tier 1 verifies no mutation and
+//   the take reaches the key paste (Tier 2, `cgevent`), the route the ENVIOUSWISPR-6G report
+//   ended on. (Measured 2026-10-03: `AXSelectedText` still reads as settable.)
 //
 // Usage: LauncherPanel <run-dir> <A|B>
 // The fixture writes `<run-dir>/state.json` (atomically, on every change and every 100 ms):
