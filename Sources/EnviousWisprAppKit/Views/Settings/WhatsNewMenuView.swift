@@ -208,6 +208,10 @@ struct WhatsNewGiftGlyph: View {
   let isUnread: Bool
 
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// The shimmer redraws 30 times a second while notes are unread. Behind another app's
+  /// window nobody sees it, so it holds still there instead of spending the frames
+  /// (#3385 performance follow-up).
+  @Environment(\.controlActiveState) private var activeState
 
   private static let rainbowColors: [Color] = [
     Color(red: 1.0, green: 0.165, blue: 0.251),
@@ -220,7 +224,10 @@ struct WhatsNewGiftGlyph: View {
 
   var body: some View {
     if isUnread {
-      TimelineView(.animation(minimumInterval: reduceMotion ? 1.0 : (1.0 / 30.0))) { context in
+      TimelineView(
+        .animation(
+          minimumInterval: reduceMotion ? 1.0 : (1.0 / 30.0), paused: activeState == .inactive)
+      ) { context in
         let t = context.date.timeIntervalSinceReferenceDate
         let phase = reduceMotion ? 0.25 : (t.truncatingRemainder(dividingBy: 3.0) / 3.0)
 

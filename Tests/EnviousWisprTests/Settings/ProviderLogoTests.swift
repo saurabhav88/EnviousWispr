@@ -15,6 +15,7 @@ import Testing
 struct ProviderLogoTests {
 
   @Test("Each brand SVG builds a valid template image")
+  @MainActor
   func brandMarksBuild() {
     for svg in [
       ProviderLogoSVG.openAI, ProviderLogoSVG.gemini, ProviderLogoSVG.ollama,
@@ -27,7 +28,19 @@ struct ProviderLogoTests {
     }
   }
 
+  /// The provider list draws seven tiles and redraws on every status change; each mark is
+  /// parsed once, then reused (#3385 performance follow-up).
+  @Test("a mark is parsed once and then reused")
+  @MainActor
+  func marksAreParsedOnce() {
+    let first = ProviderLogoSVG.templateImage(ProviderLogoSVG.claude)
+    let second = ProviderLogoSVG.templateImage(ProviderLogoSVG.claude)
+    #expect(first != nil)
+    #expect(first === second)
+  }
+
   @Test("Garbage SVG → nil, so the tile can fall back to a monogram")
+  @MainActor
   func garbageFallsBack() {
     #expect(ProviderLogoSVG.templateImage("not an svg at all") == nil)
     #expect(ProviderLogoSVG.templateImage("") == nil)

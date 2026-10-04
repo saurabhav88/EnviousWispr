@@ -553,11 +553,20 @@ struct ProviderLogoTile: View {
 /// used nominatively — solely to identify the provider being configured,
 /// monochrome, no endorsement.
 enum ProviderLogoSVG {
+  /// Each mark is parsed once per launch. The provider list draws seven tiles at a time and
+  /// redraws on every status change, and parsing SVG on every redraw was work for nothing.
+  /// A failed parse is cached as nil too, so it is not retried on every redraw either.
+  @MainActor private static var cache: [String: NSImage?] = [:]
+
+  @MainActor
   static func templateImage(_ svg: String) -> NSImage? {
-    guard let data = svg.data(using: .utf8), let image = NSImage(data: data),
-      image.isValid
-    else { return nil }
-    image.isTemplate = true
+    if let cached = cache[svg] { return cached }
+    var image: NSImage?
+    if let data = svg.data(using: .utf8), let parsed = NSImage(data: data), parsed.isValid {
+      parsed.isTemplate = true
+      image = parsed
+    }
+    cache[svg] = image
     return image
   }
 

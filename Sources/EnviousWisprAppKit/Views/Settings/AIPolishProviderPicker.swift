@@ -48,8 +48,16 @@ struct AIPolishProviderPicker: View {
   var body: some View {
     if let entry = PolishRailCatalog.entry(for: settings.llmProvider) {
       card(entry)
-        .settingsDropdown(isPresented: $isOpen, width: Self.menuWidth) {
-          menu
+        // The list opens under the card's LEADING edge, as in the design. A popover centres
+        // on its anchor, so the anchor is a clear strip as wide as the list, pinned to the
+        // card's bottom-left corner.
+        .overlay(alignment: .bottomLeading) {
+          Color.clear
+            .frame(width: Self.menuWidth, height: 1)
+            .allowsHitTesting(false)
+            .settingsDropdown(isPresented: $isOpen, width: Self.menuWidth) {
+              menu
+            }
         }
     }
   }
