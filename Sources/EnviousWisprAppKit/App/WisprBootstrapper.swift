@@ -1611,12 +1611,14 @@ package final class WisprBootstrapper {
         openPermissions: openPermissionsWindow,
         // #3438: evaluated live as the menu is built (the monitor is bound later; until it is,
         // nothing shows).
-        polishSetupNeeded: { [polishSetupMonitorHolder] in
-          guard let monitor = polishSetupMonitorHolder.monitor else { return false }
+        polishSetupWarning: { [polishSetupMonitorHolder] in
+          guard let monitor = polishSetupMonitorHolder.monitor else { return nil }
           _ = monitor.currentContext()
-          return monitor.shows(.menu)
+          return monitor.shows(.menu) ? monitor.promptSubject : nil
         },
-        openAIPolish: {
+        openAIPolish: { [polishSetupMonitorHolder] subject in
+          // The menu line is the only way here; report what it showed when it was built.
+          polishSetupMonitorHolder.monitor?.recordPrompt(.menu, .finishSetup, subject: subject)
           navigationCoordinator.request(.aiPolish)
           appWindowCoordinator.showWindow()
         },

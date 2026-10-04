@@ -165,6 +165,8 @@ final class PolishSetupMonitor {
 
   @ObservationIgnored private let readInputs: @MainActor () -> PolishSetupInputs
   @ObservationIgnored private let ollamaRefresh: OllamaOffPageRefresh?
+  /// Where `polish_setup.prompt` rows go. Production sends them; tests collect them.
+  @ObservationIgnored private let reportPrompt: @MainActor (PolishSetupPromptEvent) -> Void
   @ObservationIgnored private var observing = false
   @ObservationIgnored private var observationGeneration: UInt64 = 0
   /// Moves on every change of the chosen configuration, including a return to an earlier one.
@@ -179,10 +181,12 @@ final class PolishSetupMonitor {
 
   init(
     readInputs: @escaping @MainActor () -> PolishSetupInputs,
-    ollamaRefresh: OllamaOffPageRefresh? = nil
+    ollamaRefresh: OllamaOffPageRefresh? = nil,
+    reportPrompt: @escaping @MainActor (PolishSetupPromptEvent) -> Void = { $0.send() }
   ) {
     self.readInputs = readInputs
     self.ollamaRefresh = ollamaRefresh
+    self.reportPrompt = reportPrompt
   }
 
   // MARK: - What surfaces read
@@ -205,6 +209,25 @@ final class PolishSetupMonitor {
   func acknowledge(_ surface: PolishSetupSurface, in token: PolishSetupEpisodeToken) {
     reconcile()
     episodes.acknowledge(surface, in: token)
+  }
+
+  /// What a surface showing now is about: the eligible problem and the provider of the episode
+  /// that has it. A surface takes this when it shows and reports with that copy.
+  var promptSubject: PolishSetupPromptSubject? {
+    guard let problem = episodes.eligibleProblem, let episode = episodes.episode else {
+      return nil
+    }
+    return PolishSetupPromptSubject(problem: problem, provider: episode.configuration.provider)
+  }
+
+  /// One `polish_setup.prompt` row about `subject`, as the surface had it when it showed. Never
+  /// rebuilt from live settings: the person may have changed model since.
+  func recordPrompt(
+    _ surface: PolishSetupPromptEvent.Surface, _ action: PolishSetupPromptEvent.Action,
+    subject: PolishSetupPromptSubject, takeID: UUID? = nil
+  ) {
+    reportPrompt(
+      PolishSetupPromptEvent(surface: surface, action: action, subject: subject, takeID: takeID))
   }
 
   func cardTicket() -> PolishSetupCardTicket? {

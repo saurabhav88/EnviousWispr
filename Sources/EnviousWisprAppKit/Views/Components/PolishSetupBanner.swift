@@ -9,14 +9,16 @@ struct PolishSetupBanner: View {
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
   var body: some View {
-    if monitor.shows(.banner), let problem = monitor.eligibleProblem,
+    if monitor.shows(.banner), let subject = monitor.promptSubject,
       let episode = monitor.currentEpisode
     {
-      content(problem: problem, episode: episode)
+      content(subject: subject, episode: episode)
     }
   }
 
-  private func content(problem: PolishSetupProblem, episode: PolishSetupEpisodeToken)
+  /// `subject` and `episode` are what this banner was drawn with; both buttons answer about
+  /// them, never about whatever is true when the button is pressed.
+  private func content(subject: PolishSetupPromptSubject, episode: PolishSetupEpisodeToken)
     -> some View
   {
     HStack(spacing: 10) {
@@ -25,7 +27,7 @@ struct PolishSetupBanner: View {
         .imageScale(.medium)
         .accessibilityHidden(true)
 
-      Text(PolishSetupSurfaceCopy.banner(reason: PolishSetupSurfaceCopy.shortReason(problem)))
+      Text(PolishSetupSurfaceCopy.banner(reason: PolishSetupSurfaceCopy.shortReason(subject.problem)))
         .font(.callout)
         .foregroundStyle(.primary)
         .fixedSize(horizontal: false, vertical: true)
@@ -35,6 +37,7 @@ struct PolishSetupBanner: View {
       Button(PolishSetupLeaveDialogContent.Copy.finishSetup) {
         // Through the window's request path, which the leave guard also covers. Not an
         // answer: the banner stays until the setup is finished or it is closed.
+        monitor.recordPrompt(.banner, .finishSetup, subject: subject)
         navigationCoordinator.request(.aiPolish)
       }
       .buttonStyle(.borderedProminent)
@@ -44,6 +47,7 @@ struct PolishSetupBanner: View {
       Button {
         // The episode captured when this banner was drawn; an old close never answers a newer
         // problem.
+        monitor.recordPrompt(.banner, .closed, subject: subject)
         monitor.acknowledge(.banner, in: episode)
       } label: {
         Image(systemName: "xmark")

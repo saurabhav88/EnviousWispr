@@ -121,6 +121,7 @@ struct UnifiedWindowView: View {
     {
       pendingLeaveID &+= 1
       pendingLeave = request
+      polishSetupMonitor.recordPrompt(.leaveDialog, .shown, subject: request.promptSubject)
       return
     }
     commit(intent)
@@ -138,6 +139,9 @@ struct UnifiedWindowView: View {
   private func respond(_ action: PolishSetupLeaveAction, to id: UInt64) {
     guard id == pendingLeaveID, let request = pendingLeave else { return }
     pendingLeave = nil
+    // Reported as pressed, before the guard judges it against the live state.
+    polishSetupMonitor.recordPrompt(
+      .leaveDialog, action.promptAction, subject: request.promptSubject)
     switch PolishSetupLeaveGuard.resolve(
       action, request: request, monitor: polishSetupMonitor,
       previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,

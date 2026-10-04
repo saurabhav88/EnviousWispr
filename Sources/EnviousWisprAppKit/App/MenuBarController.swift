@@ -578,7 +578,7 @@ final class MenuBarController: NSObject {
 
     // #3438: the chosen AI polish model is not set up. A reminder, not an error: dictation still
     // works (basic cleanup only), so the icon does not change and the line has no dismissal.
-    if state.onboardingComplete, state.showPolishSetupWarning {
+    if state.onboardingComplete, let subject = state.polishSetupWarning {
       let polishItem = NSMenuItem(
         title: PolishSetupSurfaceCopy.menuLine,
         action: #selector(openAIPolishAction),
@@ -589,6 +589,8 @@ final class MenuBarController: NSObject {
           localized: "AI polish needs setup",
           comment: "Menu bar menu, VoiceOver: the icon beside the AI polish setup line."))
       polishItem.target = self
+      // What the line was about when the menu was built; the click reports this.
+      polishItem.representedObject = subject
       polishItem.identifier = MenuBarItemID.polishSetup
       menu.addItem(polishItem)
     }
@@ -742,7 +744,7 @@ final class MenuBarController: NSObject {
       installEnabled: pending != nil && !installRefused,
       appearancePreference: settings.appearancePreference,
       pasteLastShortcut: Self.shortcutLabel(for: .pasteLast, bindings: settings.shortcutBindings),
-      showPolishSetupWarning: actions.polishSetupNeeded(),
+      polishSetupWarning: actions.polishSetupWarning(),
       lastDictation: actions.lastDictation().map {
         LastDictationMenuState(
           rowID: $0.id, preview: LastDictationMenuState.preview(of: $0.text),
@@ -795,9 +797,11 @@ final class MenuBarController: NSObject {
     actions.openTranscribeFile()
   }
 
-  /// #3438: the AI polish setup line opens Settings on AI Polish.
-  @objc private func openAIPolishAction() {
-    actions.openAIPolish()
+  /// #3438: the AI polish setup line opens Settings on AI Polish, reporting what the line
+  /// showed when the menu was built (even if the setup was finished since).
+  @objc private func openAIPolishAction(_ sender: NSMenuItem) {
+    guard let subject = sender.representedObject as? PolishSetupPromptSubject else { return }
+    actions.openAIPolish(subject)
   }
 
   /// #1047: set the window-appearance preference from the Appearance submenu.
@@ -920,10 +924,11 @@ struct MenuBarActions: Sendable {
   /// Open the unified window on the Transcribe a File page (#2772).
   let openTranscribeFile: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
-  /// #3438: whether the AI polish setup line shows, evaluated live by the warning monitor at
-  /// the moment the menu is built; and what clicking it does (open Settings on AI Polish).
-  let polishSetupNeeded: @MainActor () -> Bool
-  let openAIPolish: @MainActor () -> Void
+  /// #3438: what the AI polish setup line is about, or nil when it does not show, evaluated live
+  /// by the warning monitor at the moment the menu is built; and what clicking it does (open
+  /// Settings on AI Polish), given what the line showed.
+  let polishSetupWarning: @MainActor () -> PolishSetupPromptSubject?
+  let openAIPolish: @MainActor (PolishSetupPromptSubject) -> Void
   let toggleRecording: @MainActor () async -> Void
   let quit: @MainActor () -> Void
   /// The newest reusable dictation, for the Paste Last row (#3106). A snapshot for rendering.
@@ -1056,9 +1061,9 @@ struct MenuBarViewState: Equatable {
   var appearancePreference: AppearancePreference = .system
   /// #3106: the Paste Last chord as readable text, or nil when `.pasteLast` does not own it.
   var pasteLastShortcut: String? = nil
-  /// #3438: the chosen AI polish model's setup is unfinished (monitor's menu surface). Display
-  /// only; deliberately not read by `iconState`.
-  var showPolishSetupWarning: Bool = false
+  /// #3438: what the chosen AI polish model's unfinished setup is (monitor's menu surface), or
+  /// nil. Display only; deliberately not read by `iconState`.
+  var polishSetupWarning: PolishSetupPromptSubject? = nil
   /// #3106: the Paste Last row's content, or nil when nothing may be reused (row disabled).
   var lastDictation: LastDictationMenuState? = nil
 }

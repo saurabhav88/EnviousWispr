@@ -35,11 +35,17 @@ struct PolishSetupLeaveRequest: Equatable {
   var intent: SettingsNavigationIntent
   let episode: PolishSetupEpisodeToken
   let problem: PolishSetupProblem
+  /// The provider that had `problem` when the question was raised; reported with every answer.
+  let provider: LLMProvider
   /// The provider chosen when this AI Polish visit began, offered as "Go back to" only when it
   /// differs from the current one and is fully set up now.
   let goBackProvider: LLMProvider?
   /// The current cloud provider has no saved key and the person typed one without saving.
   let keyNotSaved: Bool
+
+  var promptSubject: PolishSetupPromptSubject {
+    PolishSetupPromptSubject(problem: problem, provider: provider)
+  }
 }
 
 /// What a button does. Every action is judged against the live state when pressed.
@@ -337,9 +343,10 @@ enum PolishSetupLeaveGuard {
     guard current == .aiPolish, intent.page != .aiPolish else { return nil }
     // A live read: the dialog is about the state now, not the last observed one.
     _ = monitor.currentContext()
-    guard monitor.shows(.leaveDialog), let problem = monitor.eligibleProblem,
+    guard monitor.shows(.leaveDialog), let subject = monitor.promptSubject,
       let episode = monitor.currentEpisode
     else { return nil }
+    let problem = subject.problem
     var goBack: LLMProvider?
     if let previous = previousProvider, previous != currentProvider, previous != .none,
       monitor.readiness(for: previous) == .noProblem
@@ -349,8 +356,8 @@ enum PolishSetupLeaveGuard {
     let keyIsMissing: Bool
     if case .cloudKeyMissing = problem { keyIsMissing = true } else { keyIsMissing = false }
     return PolishSetupLeaveRequest(
-      intent: intent, episode: episode, problem: problem, goBackProvider: goBack,
-      keyNotSaved: keyIsMissing && keyNotSaved)
+      intent: intent, episode: episode, problem: problem, provider: subject.provider,
+      goBackProvider: goBack, keyNotSaved: keyIsMissing && keyNotSaved)
   }
 
   /// What pressing `action` on `request` does now. Every button is validated against the live

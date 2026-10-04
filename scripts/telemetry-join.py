@@ -145,6 +145,9 @@ TAKE_KEYED_EVENTS = (
     # #3106 PR B. At most one row per take whose checked miss kept the dictation (or yielded to
     # the user's copy), keyed by the same snapshotted take id; pill_shown is the overlay's verdict.
     "paste.landing_retained",
+    # #3438. Only card rows carry the key (the take whose skipped polish raised the card); leave
+    # dialog, banner and menu rows are not about one take and carry none by design.
+    "polish_setup.prompt",
     "recording.cap_warning_shown",
 )
 

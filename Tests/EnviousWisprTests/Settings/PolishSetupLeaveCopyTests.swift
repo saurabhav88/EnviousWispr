@@ -15,7 +15,7 @@ struct PolishSetupLeaveCopyTests {
     PolishSetupLeaveDialogContent.make(
       for: PolishSetupLeaveRequest(
         intent: .sidebar(.history), episode: PolishSetupEpisodeToken(rawValue: 1),
-        problem: problem, goBackProvider: goBack, keyNotSaved: keyNotSaved))
+        problem: problem, provider: .openAI, goBackProvider: goBack, keyNotSaved: keyNotSaved))
   }
 
   @Test("a missing cloud key, with and without Go back, and with an unsaved draft")

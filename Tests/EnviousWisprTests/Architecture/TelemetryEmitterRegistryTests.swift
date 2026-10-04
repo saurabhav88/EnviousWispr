@@ -130,8 +130,15 @@ struct TelemetryEmitterRegistryTests {
   /// per-take cadence and treatment. Checklist (plan section 8): existing row, +0 rows, one closed
   /// five-value String omitted when unknown, no content; reader is the #3423 seven-day query
   /// (`analytics-operations.md` FACT: app-posthog-events); registry row unchanged.
+  /// #3438: one NEW event, `polish_setup.prompt`, one site in `polishSetupPrompt`
+  /// (per_user_action, keep; checklist: one row per setup warning shown (leave dialog, card) or
+  /// button pressed, only for people whose chosen AI polish model is not set up; closed surface,
+  /// action, problem tag and provider enum name as String, no key, model name or text; `take_id`
+  /// on card rows only and listed in TAKE_KEYED_EVENTS; reader the "Polish setup prompts"
+  /// funnel). Derived by removing that one line from the printed site list: the rest hashes to
+  /// the previous value (#3423 value, after rebase).
   static let sitesFingerprint =
-    "362c4285e9db72966f57e2c4b57bf09e37cfba452e097951e6eb1886aca96bad"
+    "1cc92cf35e58e7c5f749dd9cb00d979385196275e2ed6ad2abf3a58ecd938826"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

@@ -1016,6 +1016,32 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("dictation.last_reused", properties: props)
   }
 
+  /// An AI polish setup warning was shown or answered (#3438 M2). One row per showing (leave
+  /// dialog, card) or per press (every surface). Menu and banner rows are presses only.
+  ///
+  /// Closed values only: the surface, the action, the setup problem tag and the provider's
+  /// enum name. `take_id` only on card rows, to join the take that raised the card. Never a key,
+  /// a model name, an error message or any text. Reader: the "Polish setup prompts" funnel by
+  /// surface and action per day, checked in the post-release review.
+  public func polishSetupPrompt(
+    surface: String, action: String, problem: String, provider: String, takeID: String?
+  ) {
+    var props: [String: Any] = [
+      "surface": surface, "action": action, "problem": problem, "provider": provider,
+    ]
+    if let takeID { props["take_id"] = takeID }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "polish_setup.prompt",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("polish_setup.prompt", properties: props)
+  }
+
   /// A committed key paste's arrival session ended (#3106). One row per committed session.
   ///
   /// What the one shared reader observed in the destination field, never whether the paste
