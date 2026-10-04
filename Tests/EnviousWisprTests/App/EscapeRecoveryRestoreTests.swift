@@ -381,7 +381,11 @@ struct EscapeRecoveryRestoreTests {
     context.recordStartTarget(
       front: front, focus: .focused(element: field, ownerPID: owner.processIdentifier),
       trusted: true, captureWindow: { _ in nil }, ownerApplication: { _ in owner },
-      isEligibleOwner: { _ in true }, ownPID: -2)
+      // Raycast's policy, modeled without changing a running app's.
+      isEligibleOwner: { _ in
+        KernelSessionContext.isEligibleOwner(activationPolicy: .accessory, isTerminated: false)
+      },
+      ownPID: -2)
     try #require(context.focusOwnerState == .disagree)
     try #require(context.targetApp == owner, "the launcher's app was substituted")
 
