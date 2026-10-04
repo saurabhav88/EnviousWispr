@@ -360,7 +360,7 @@ struct HeldTextDeliveryTests {
   @Test(
     "Two restores ending on one board: each consumed its own text; only the latest receipt is fresh",
     arguments: [false, true])
-  func interleavedRestoresKeepTheirOwnReceipts(restoreClipboard: Bool) async throws {
+  func sequentialRestoresKeepTheirOwnReceipts(restoreClipboard: Bool) async throws {
     let calls = Calls()
     let board = NSPasteboard.withUniqueName()
     defer { board.releaseGlobally() }
