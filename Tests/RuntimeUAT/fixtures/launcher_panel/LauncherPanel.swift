@@ -75,6 +75,16 @@ final class Fixture: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
+    // An Edit menu with Paste, so Command+V pastes into the focused field as it does in a real
+    // launcher; without one the key equivalent has no handler and a key paste could never land.
+    let editMenu = NSMenu(title: "Edit")
+    editMenu.addItem(
+      withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+    editItem.submenu = editMenu
+    let mainMenu = NSMenu()
+    mainMenu.addItem(editItem)
+    NSApp.mainMenu = mainMenu
     panel = KeyPanel(
       contentRect: NSRect(x: 480, y: 420, width: 520, height: 170),
       styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)

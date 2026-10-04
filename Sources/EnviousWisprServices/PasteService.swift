@@ -2282,9 +2282,15 @@ public enum PasteService {
   /// unconditionally, which was worse than the defect it replaced: it pasted
   /// whatever the real board held into the frontmost app. Production passes
   /// `.general`, where the skip is unreachable and behaviour is unchanged.
+  ///
+  /// `postKeystroke` posts the Cmd+V; nil posts it at the annotated session tap, which the window
+  /// server delivers to the FRONT application. A destination that owns the keyboard focus without
+  /// being front (a non-activating launcher panel, #3423) never receives that post, so its caller
+  /// passes a poster aimed at the destination's process instead.
   public static func pasteToActiveApp(
     _ text: String,
-    to pasteboard: NSPasteboard = .general
+    to pasteboard: NSPasteboard = .general,
+    postKeystroke: (() -> Bool)? = nil
   ) -> PasteDispatchResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
     let accessibilityTrusted = AXIsProcessTrusted()
@@ -2319,7 +2325,7 @@ public enum PasteService {
       )
     }
 
-    guard dispatchCmdV() else {
+    guard (postKeystroke ?? dispatchCmdV)() else {
       Task {
         await AppLogger.shared.log(
           "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=false, clipboardWrite=\(clipboardWriteSuccess) — Failed to create CGEvent",

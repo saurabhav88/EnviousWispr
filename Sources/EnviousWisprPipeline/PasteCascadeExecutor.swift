@@ -1075,7 +1075,10 @@ internal final class PasteCascadeExecutor {
             submissionLedger.append(submissionToken(tier: .cgEvent, text: payload.text))
           #endif
           let dispatchResult = PasteService.pasteToActiveApp(
-            payload.text, to: self.pasteboard)
+            payload.text, to: self.pasteboard,
+            postKeystroke: Self.keystrokeProcess(ownerPath: gate.ownerPath, app: app).map { pid in
+              { MainActor.assumeIsolated { Self.postPasteChord(at: pid) } }
+            })
           submittedClipboardChangeCount = dispatchResult.changeCount
           switch dispatchResult {
           case .dispatched:
@@ -1741,6 +1744,28 @@ internal final class PasteCascadeExecutor {
   /// `ownerPathOnly`: the dispatch was admitted as the focus owner, so only a fresh confirmed owner
   /// passes; a destination that turned front meanwhile skipped the front path's omnibox re-check
   /// and is refused (Copied, today's outcome for a launcher).
+  /// The process the Tier 2 Cmd+V is aimed at, or nil for the session tap (#3423).
+  ///
+  /// A Cmd+V posted at the annotated session tap goes to the FRONT application. On the owner path
+  /// the destination owns the keyboard focus without being front, so that post lands in the app
+  /// behind the panel. Measured 2026-10-04 with the launcher fixture over TextEdit: a key posted at
+  /// the annotated session tap was typed into TextEdit; the same key posted at the panel's pid was
+  /// typed into the panel's focused field. The owner path therefore aims at the destination's pid;
+  /// the front path keeps the session tap unchanged.
+  static func keystrokeProcess(ownerPath: Bool, app: NSRunningApplication) -> pid_t? {
+    ownerPath ? app.processIdentifier : nil
+  }
+
+  /// Command+V at one process, bracketed by `flagsChanged` events so Command is never left latched
+  /// (`SyntheticCopyChord`). The key is the one that means "v" under Command on the active layout,
+  /// so a Dvorak user's panel gets Paste and never another shortcut; an unreadable layout posts
+  /// nothing (the creation-failure path). True when posted; posted is not delivered, and the
+  /// landing check judges the outcome.
+  static func postPasteChord(at pid: pid_t) -> Bool {
+    guard let key = SyntheticCopyChord.keyCode(for: "v") else { return false }
+    return SyntheticCopyChord.post(at: pid, copyKeyCode: key) != .notPosted
+  }
+
   static func appFrontRefusal(_ activity: DestinationActivity, ownerPathOnly: Bool) -> String? {
     switch activity {
     case .focusOwner(elementConfirmed: true): nil

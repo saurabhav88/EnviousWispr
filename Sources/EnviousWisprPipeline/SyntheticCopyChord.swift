@@ -146,6 +146,12 @@ enum SyntheticCopyChord {
   /// Returns nil rather than a guess when the layout cannot be read; the caller decides what to do
   /// with that, and what it does is documented at the call site rather than hidden here.
   static func copyKeyCode() -> CGKeyCode? {
+    keyCode(for: "c")
+  }
+
+  /// Which virtual key means `desired` under Command on the active ASCII-capable layout; the
+  /// resolution `copyKeyCode()` documents, for any letter (#3423 uses it for Paste's "v").
+  static func keyCode(for desired: Character) -> CGKeyCode? {
     guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
       let rawLayout = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
     else { return nil }
@@ -184,7 +190,7 @@ enum SyntheticCopyChord {
             forKeyCode: candidate, layoutData: layoutData, keyboardType: keyboardType,
             modifierState: modifierState)
         else { continue }
-        if produced == "c" { return candidate }
+        if produced == desired { return candidate }
       }
     }
     return nil

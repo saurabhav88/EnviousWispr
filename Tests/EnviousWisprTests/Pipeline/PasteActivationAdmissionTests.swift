@@ -139,4 +139,22 @@ struct PasteActivationAdmissionTests {
       "the front path's last check is front-only: today's refusal")
     #expect(ax.keyboardFocusReads == 0)
   }
+
+  @Test("owner admission selects a process PID; front admission selects the legacy route")
+  func keystrokeAimsAtTheAdmittedPath() {
+    ax.frontmost = 7
+    ax.keyboardFocus = .focused(element: field, ownerPID: pid)
+    let owner = gate(executor(Effects()))
+    #expect(owner.ownerPath)
+    #expect(
+      PasteCascadeExecutor.keystrokeProcess(ownerPath: owner.ownerPath, app: app) == pid,
+      "a session-tap Cmd+V would reach the front app behind the panel")
+
+    ax.frontmost = pid
+    let front = gate(executor(Effects()))
+    #expect(!front.ownerPath)
+    #expect(
+      PasteCascadeExecutor.keystrokeProcess(ownerPath: front.ownerPath, app: app) == nil,
+      "an ordinary front app keeps today's session-tap Cmd+V")
+  }
 }
