@@ -1,8 +1,6 @@
-import EnviousWisprServices
 import Foundation
 import Testing
 
-@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
@@ -26,7 +24,7 @@ struct ProviderStatusMappingTests {
     s1MiniHealth: EGOneHealth = .green,
     appleStatus: AIAvailabilityStatus? = .available,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState = .valid,
-    cloudKeyPresent: Bool? = true,
+    cloudKeyPresent: Bool = false,
     ollamaSetup: OllamaSetupState = .ready
   ) -> ProviderStatus {
     ProviderStatusMapping.status(
@@ -39,64 +37,6 @@ struct ProviderStatusMappingTests {
       cloudValidation: cloudValidation,
       cloudKeyPresent: cloudKeyPresent,
       ollamaSetup: ollamaSetup)
-  }
-
-  @Test("Unknown saved keys never claim validation or absence")
-  func unknownSavedKey() {
-    for validation in [LLMModelDiscoveryCoordinator.KeyValidationState.idle, .valid, .invalid("locked")] {
-      let result = status(for: .openAI, cloudValidation: validation, cloudKeyPresent: nil)
-      #expect(result.label == "Not checked")
-      #expect(result.tone == .unavailable)
-    }
-  }
-
-  @Test("Rail reads saved keys and applies validation only to its recorded provider")
-  func savedKeySnapshot() {
-    let snapshot = ProviderStatusSnapshot(
-      egOneInstall: .installed(version: "1"), egOneHealth: .green,
-      s1MiniInstall: .notInstalled, s1MiniHealth: .red(reason: "download_required"),
-      appleStatus: nil, validationProvider: .openAI, cloudValidation: .valid,
-      openAIKeySaved: true, geminiKeySaved: true, claudeKeySaved: nil,
-      ollamaSetup: .ready)
-    #expect(snapshot.status(for: .openAI).label == "Key valid")
-    #expect(snapshot.status(for: .gemini).label == "Not checked")
-    #expect(snapshot.status(for: .claude).label == "Not checked")
-    #expect(snapshot.status(for: .egOne).label == "Live")
-    #expect(snapshot.status(for: .s1Mini).label == "Not installed")
-  }
-
-  @Test("A draft cannot make an absent saved key usable")
-  @MainActor
-  func absentSavedKeyIgnoresDraft() throws {
-    let defaults = try #require(TestDefaults.suite("ew.rail.\(UUID().uuidString)"))
-    let model = ProviderSetupModel()
-    model.openAIKey = "unsaved-test-draft"
-    model.openAIKeySaved = false
-
-    let keys = KeychainManager(
-      backend: .legacyFiles,
-      legacyStore: FileLegacyKeyStore(
-        storageDirectory: FileManager.default.temporaryDirectory
-          .appendingPathComponent(UUID().uuidString)))
-    let setup = SetupCoordinator(
-      asrManager: RouterTestASRManager(),
-      whisperKitSetup: WhisperKitSetupService(
-        engineMutationScope: .alwaysAllowedForTesting),
-      preloadAction: {}, ollamaStatusProbe: { _ in })
-    let egOne = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)
-    let s1 = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil,
-      defaults: defaults, provider: .s1Mini)
-    let snapshot = ProviderStatusSnapshot.capture(
-      model: model, egOne: egOne,
-      runtimes: LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1),
-      availability: AIAvailabilityCoordinator(),
-      discovery: LLMModelDiscoveryCoordinator(
-        keychainManager: keys, cacheDefaults: defaults),
-      setup: setup)
-
-    #expect(snapshot.status(for: .openAI).label == "Key needed")
   }
 
   // MARK: - S1-mini (#2649: same renderer as EG-1, separate state)
