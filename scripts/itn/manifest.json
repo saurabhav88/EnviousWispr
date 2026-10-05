@@ -153,5 +153,28 @@
     ],
     "replacement": "+",
     "note": "Lowers ONLY the reviewed phone-prefix refusal entries (typed shapes, ids, versions, hashes). Pending entries and other categories are never emitted."
+  },
+  "ordinalRefusals": {
+    "category": "ordinal",
+    "refusalsFile": "refusals/de.json",
+    "schemaFile": "review-data.schema.json",
+    "requiredEntries": [
+      "ref-ordinal-001",
+      "ref-ordinal-002",
+      "ref-ordinal-003",
+      "ref-ordinal-004",
+      "ref-ordinal-005",
+      "ref-ordinal-006"
+    ],
+    "allowedShapes": [
+      "ordinal_word_without_following_noun",
+      "ordinal_word_before_fraction_noun",
+      "ordinal_word_in_fixed_phrase",
+      "ordinal_word_in_proper_name",
+      "ordinal_word_in_date_phrase",
+      "ordinal_adverb"
+    ],
+    "writtenSuffix": ".",
+    "note": "Lowers ONLY the reviewed ordinal refusal entries (context shapes and literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted; the entries are not a context lexicon."
   }
 }

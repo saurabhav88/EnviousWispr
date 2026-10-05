@@ -30,6 +30,10 @@ A bounded ORDINAL extraction is declared per CLDR source in the manifest (`ordin
   excluded (negative, decimal, scale rules and the undeclared `-s` / `-m` inflections). A rule that
   fits none of those fails the run.
 
+A third, separate output (manifest `ordinalRefusals`) lowers the reviewed ORDINAL refusal entries the
+  same way, keeping context-shape entries and literal-phrase entries distinct. No output carries a
+  context lexicon: the reviewed entries supply tokens and shapes, not complete phrases.
+
 A second, separate output lowers the REVIEWED phone-prefix refusal entries (manifest `phonePrefix`):
   the reviewed entries of one category in refusals/de.json, checked against their semantic hashes,
   versions and the closed shape vocabulary of review-data.schema.json, emitted as typed rows with
@@ -69,6 +73,7 @@ ROOT = HERE.parent.parent
 DEFAULT_MANIFEST = HERE / "manifest.json"
 DEFAULT_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift"
 DEFAULT_PHONE_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanPhonePrefixData.swift"
+DEFAULT_ORDINAL_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanOrdinalData.swift"
 
 SOFT_HYPHEN = "­"
 ROLE_ORDER = ["zero", "unit", "teen", "tens"]
@@ -497,45 +502,62 @@ def load_refusal_hash():
     return module.refusal_hash
 
 
-def build_phone(manifest, base):
-    """The reviewed phone-prefix refusal entries as typed rows, or None when not declared."""
-    decl = manifest.get("phonePrefix")
+def refusal_inputs(manifest, base, key, required_keys):
+    """The declaration, the reviewed entries of its category and the closed shape vocabulary, with
+    the required set checked. Shared by every reviewed-refusal lowering."""
+    decl = manifest.get(key)
     if decl is None:
         return None
-    for key in ("category", "refusalsFile", "schemaFile", "requiredEntries", "replacement"):
-        if not decl.get(key):
-            raise GenerationError(f"phonePrefix: manifest field {key} is empty")
+    for field in required_keys:
+        if not decl.get(field):
+            raise GenerationError(f"{key}: manifest field {field} is empty")
     try:
         data = json.loads((base / decl["refusalsFile"]).read_text(encoding="utf-8"))
         schema = json.loads((base / decl["schemaFile"]).read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise GenerationError(f"phonePrefix: cannot read refusal inputs: {exc}")
+        raise GenerationError(f"{key}: cannot read refusal inputs: {exc}")
     shapes = schema.get("x-closed-vocabulary", {}).get("context_shape")
     reviewed = data.get("reviewed_entries")
     pending = data.get("pending_entries")
     if not shapes or not isinstance(reviewed, list) or not isinstance(pending, list):
-        raise GenerationError("phonePrefix: refusal file or schema lacks the expected lists")
-    refusal_hash = load_refusal_hash()
+        raise GenerationError(f"{key}: refusal file or schema lacks the expected lists")
     category = decl["category"]
     required = list(decl["requiredEntries"])
     chosen = [e for e in reviewed if e.get("category") == category]
     ids = sorted(e.get("id", "") for e in chosen)
     if ids != sorted(required) or len(set(ids)) != len(ids):
         raise GenerationError(
-            f"phonePrefix: reviewed {category} entries {ids} are not the required set "
-            f"{sorted(required)}")
+            f"{key}: reviewed {category} entries {ids} are not the required set {sorted(required)}")
+    return decl, chosen, shapes, sum(1 for e in pending if e.get("category") == category)
+
+
+def check_reviewed(entry, key, refusal_hash):
+    where = f"{key}:{entry['id']}"
+    if entry.get("panel_status") != "panel-reviewed":
+        raise GenerationError(f"{where}: status {entry.get('panel_status')!r} is not reviewed")
+    ref = entry.get("review_ref") or ""
+    if ref != f"refusal-ledger:{entry['id']}:v{entry.get('version')}":
+        raise GenerationError(f"{where}: review_ref {ref!r} does not name version "
+                              f"{entry.get('version')}")
+    if entry.get("content_sha256") != refusal_hash(entry):
+        raise GenerationError(f"{where}: content_sha256 does not match the reviewed fields")
+    return where, ref
+
+
+def build_phone(manifest, base):
+    """The reviewed phone-prefix refusal entries as typed rows, or None when not declared."""
+    loaded = refusal_inputs(manifest, base, "phonePrefix",
+                            ("category", "refusalsFile", "schemaFile", "requiredEntries",
+                             "replacement"))
+    if loaded is None:
+        return None
+    decl, chosen, shapes, pending_excluded = loaded
+    refusal_hash = load_refusal_hash()
+    category = decl["category"]
     rows, triggers = [], None
     for entry in sorted(chosen, key=lambda e: e["id"]):
-        where = f"phonePrefix:{entry['id']}"
+        where, ref = check_reviewed(entry, "phonePrefix", refusal_hash)
         match = entry.get("match") or {}
-        if entry.get("panel_status") != "panel-reviewed":
-            raise GenerationError(f"{where}: status {entry.get('panel_status')!r} is not reviewed")
-        ref = entry.get("review_ref") or ""
-        if ref != f"refusal-ledger:{entry['id']}:v{entry.get('version')}":
-            raise GenerationError(f"{where}: review_ref {ref!r} does not name version "
-                                  f"{entry.get('version')}")
-        if entry.get("content_sha256") != refusal_hash(entry):
-            raise GenerationError(f"{where}: content_sha256 does not match the reviewed fields")
         if match.get("kind") != "context_shape" or match.get("context_shape") not in shapes:
             raise GenerationError(f"{where}: unsupported shape {match.get('context_shape')!r}")
         tokens = [normalize_spoken(t) for t in match.get("tokens") or []]
@@ -556,9 +578,125 @@ def build_phone(manifest, base):
         "replacement": decl["replacement"],
         "triggers": triggers,
         "rows": rows,
-        "pending_excluded": sum(1 for e in pending if e.get("category") == category),
+        "pending_excluded": pending_excluded,
         "refusalsFile": decl["refusalsFile"],
     }
+
+
+def build_ordinal(manifest, base):
+    """The reviewed ordinal refusal entries (context shapes and literal phrases) as typed rows,
+    or None when not declared."""
+    loaded = refusal_inputs(manifest, base, "ordinalRefusals",
+                            ("category", "refusalsFile", "schemaFile", "requiredEntries",
+                             "allowedShapes", "writtenSuffix"))
+    if loaded is None:
+        return None
+    decl, chosen, shapes, pending_excluded = loaded
+    allowed = list(decl["allowedShapes"])
+    unknown = [a for a in allowed if a not in shapes]
+    if unknown:
+        raise GenerationError(f"ordinalRefusals: allowedShapes {unknown} are outside the closed "
+                              "vocabulary")
+    refusal_hash = load_refusal_hash()
+    rows, seen_shapes, seen_phrases = [], set(), set()
+    for entry in sorted(chosen, key=lambda e: e["id"]):
+        where, ref = check_reviewed(entry, "ordinalRefusals", refusal_hash)
+        match = entry.get("match") or {}
+        kind = match.get("kind")
+        tokens = [normalize_spoken(t) for t in match.get("tokens") or []]
+        if kind == "context_shape":
+            shape = match.get("context_shape")
+            if shape not in allowed:
+                raise GenerationError(f"{where}: unsupported shape {shape!r}")
+            if shape in seen_shapes:
+                raise GenerationError(f"{where}: two required entries share shape {shape!r}")
+            seen_shapes.add(shape)
+            if not tokens or any(not t or re.search(r"\s", t) for t in tokens):
+                raise GenerationError(f"{where}: tokens must be non-empty single words")
+            swift_kind = "contextShape"
+        elif kind == "literal_phrase":
+            shape = None
+            if match.get("context_shape") is not None:
+                raise GenerationError(f"{where}: a literal phrase carries no context shape")
+            if not tokens or any(not re.fullmatch(r"\S+( \S+)*", t) for t in tokens):
+                raise GenerationError(f"{where}: phrases must be non-empty words joined by "
+                                      "single spaces")
+            for phrase in tokens:
+                if phrase in seen_phrases:
+                    raise GenerationError(f"{where}: phrase {phrase!r} appears twice")
+                seen_phrases.add(phrase)
+            swift_kind = "literalPhrase"
+        else:
+            raise GenerationError(f"{where}: unsupported match kind {kind!r}")
+        rows.append({"id": entry["id"], "version": entry["version"],
+                     "contentSHA256": entry["content_sha256"], "reasonCode": entry["reason_code"],
+                     "kind": swift_kind, "contextShape": shape, "tokens": tokens,
+                     "reviewRef": ref})
+    return {
+        "category": decl["category"],
+        "writtenSuffix": decl["writtenSuffix"],
+        "rows": rows,
+        "pending_excluded": pending_excluded,
+        "refusalsFile": decl["refusalsFile"],
+    }
+
+
+def ordinal_inventory_lines(result):
+    shapes = sum(1 for r in result["rows"] if r["kind"] == "contextShape")
+    phrases = len(result["rows"]) - shapes
+    return [
+        "Source-to-output inventory (reviewed refusal lowering only, not ordinal grammar):",
+        f"  source {result['refusalsFile']}: reviewed entries of category {result['category']}",
+        f"  emitted: {len(result['rows'])} reviewed entries ({shapes} context shapes, {phrases} "
+        "literal phrase entries), each checked against its semantic hash, its version and the "
+        "allowed shapes",
+        f"  excluded: {result['pending_excluded']} pending entries of this category, every "
+        "other category",
+        f"  written suffix: {result['writtenSuffix']!r}",
+    ]
+
+
+def emit_ordinal(result):
+    out = ["// GENERATED by scripts/itn/generate.py from scripts/itn/manifest.json. DO NOT EDIT.",
+           "// Regenerate with scripts/itn/generate.py; scripts/itn/generate.py --check verifies it.",
+           "//"]
+    out += ["// " + line for line in ordinal_inventory_lines(result)]
+    out += [
+        "//",
+        "// Reviewed refusal data only (#1677). It is not an ordinal grammar, and it carries no",
+        "// context lexicon: the reviewed entries supply tokens and shapes, not complete phrases.",
+        "",
+        "enum GermanOrdinalData {",
+        "  /// One reviewed refusal entry, exactly as the panel approved it.",
+        "  struct Refusal: Equatable {",
+        "    enum Kind: String, Equatable { case contextShape, literalPhrase }",
+        "    let id: String",
+        "    let version: Int",
+        "    let contentSHA256: String",
+        "    let reasonCode: String",
+        "    let kind: Kind",
+        "    /// The reviewed context shape; nil for a literal-phrase entry.",
+        "    let contextShape: String?",
+        "    /// Folded single words for a context shape; folded word sequences for a phrase entry.",
+        "    let tokens: [String]",
+        "    let reviewRef: String",
+        "  }",
+        "",
+        f"  static let writtenSuffix = {swift_string(result['writtenSuffix'])}",
+        "",
+        "  static let refusals: [Refusal] = [",
+    ]
+    for r in result["rows"]:
+        shape = "nil" if r["contextShape"] is None else swift_string(r["contextShape"])
+        tokens = ", ".join(swift_string(t) for t in r["tokens"])
+        out.append(
+            f"    Refusal(id: {swift_string(r['id'])}, version: {r['version']}, "
+            f"contentSHA256: {swift_string(r['contentSHA256'])}, "
+            f"reasonCode: {swift_string(r['reasonCode'])}, kind: .{r['kind']}, "
+            f"contextShape: {shape}, tokens: [{tokens}], "
+            f"reviewRef: {swift_string(r['reviewRef'])}),")
+    out += ["  ]", "}", ""]
+    return "\n".join(out)
 
 
 def phone_inventory_lines(result):
@@ -806,6 +944,14 @@ def generate_phone_bytes(manifest_path):
     return None if result is None else emit_phone(result).encode("utf-8")
 
 
+def generate_ordinal_bytes(manifest_path):
+    """The ordinal-refusal output, or None when the manifest declares none."""
+    manifest_path = Path(manifest_path)
+    manifest = load_manifest(manifest_path)
+    result = build_ordinal(manifest, manifest_path.parent)
+    return None if result is None else emit_ordinal(result).encode("utf-8")
+
+
 def write_atomically(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -824,13 +970,16 @@ def write_atomically(path, data):
 # Modes
 
 
-def run_check(manifest_path, out_path, phone_out_path):
-    """Verifies BOTH generated files without rewriting either."""
+def run_check(manifest_path, out_path, phone_out_path, ordinal_out_path):
+    """Verifies EVERY declared generated file without rewriting any of them."""
     with tempfile.TemporaryDirectory(prefix="itn-check-") as tmp:
         pairs = [(generate_bytes(manifest_path), out_path)]
         phone = generate_phone_bytes(manifest_path)
         if phone is not None:
             pairs.append((phone, phone_out_path))
+        ordinal = generate_ordinal_bytes(manifest_path)
+        if ordinal is not None:
+            pairs.append((ordinal, ordinal_out_path))
         for index, (fresh, committed) in enumerate(pairs):
             regenerated = Path(tmp) / f"fresh-{index}.swift"
             write_atomically(regenerated, fresh)
@@ -877,6 +1026,7 @@ def main(argv=None):
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--phone-out", default=str(DEFAULT_PHONE_OUT))
+    parser.add_argument("--ordinal-out", default=str(DEFAULT_ORDINAL_OUT))
     mode = parser.add_mutually_exclusive_group()
     for flag in ("--check", "--self-test", "--refresh", "--inventory"):
         mode.add_argument(flag, action="store_true")
@@ -887,23 +1037,31 @@ def main(argv=None):
         if args.refresh:
             run_refresh(args.manifest)
         elif args.check:
-            run_check(args.manifest, args.out, args.phone_out)
+            run_check(args.manifest, args.out, args.phone_out, args.ordinal_out)
         elif args.inventory:
             manifest = load_manifest(args.manifest)
             print("\n".join(inventory_lines(build(manifest, Path(args.manifest).parent))))
             phone = build_phone(manifest, Path(args.manifest).parent)
             if phone is not None:
                 print("\n".join(phone_inventory_lines(phone)))
+            ordinal = build_ordinal(manifest, Path(args.manifest).parent)
+            if ordinal is not None:
+                print("\n".join(ordinal_inventory_lines(ordinal)))
         else:
-            # Build and validate BOTH outputs before publishing either, so a failure writes nothing.
+            # Build and validate EVERY output before publishing any, so a failure writes nothing.
             data = generate_bytes(args.manifest)
             phone = generate_phone_bytes(args.manifest)
+            ordinal = generate_ordinal_bytes(args.manifest)
             write_atomically(args.out, data)
             print(f"wrote {args.out} ({len(data)} bytes, sha256 {hashlib.sha256(data).hexdigest()})")
             if phone is not None:
                 write_atomically(args.phone_out, phone)
                 print(f"wrote {args.phone_out} ({len(phone)} bytes, sha256 "
                       f"{hashlib.sha256(phone).hexdigest()})")
+            if ordinal is not None:
+                write_atomically(args.ordinal_out, ordinal)
+                print(f"wrote {args.ordinal_out} ({len(ordinal)} bytes, sha256 "
+                      f"{hashlib.sha256(ordinal).hexdigest()})")
     except GenerationError as exc:
         print(f"generate.py: {exc}", file=sys.stderr)
         return 1

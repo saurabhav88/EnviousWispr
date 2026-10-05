@@ -584,11 +584,13 @@ struct LanguageNumberParserTests {
     let own: Set<String> = [
       "LanguageNumberGrammar.swift", "LanguageNumberParser.swift", "LanguageProtectedSpans.swift",
       "LanguageTextEdit.swift", "LanguagePhonePrefixRules.swift", "LanguagePhonePrefixPass.swift",
+      "LanguageOrdinalRules.swift", "LanguageOrdinalPass.swift",
     ]
     let names = [
       "LanguageNumberGrammar", "LanguageNumberParser", "LanguageProtectedSpans",
       "LanguageTextEditor", "LanguageTextSnapshot", "LanguageTextEdit", "LanguagePhonePrefixPass",
-      "LanguagePhonePrefixRules",
+      "LanguagePhonePrefixRules", "LanguageOrdinalPass", "LanguageOrdinalRules",
+      "LanguageOrdinalContextEvidence",
     ]
     var scanned = 0
     var callers: [String] = []
@@ -608,6 +610,7 @@ struct LanguageNumberParserTests {
       + [
         "LanguageNumberParserTests.swift", "LanguageProtectedSpansTests.swift",
         "ITNDevelopmentFixtureSupport.swift", "LanguagePhonePrefixPassTests.swift",
+        "LanguageOrdinalPassTests.swift",
       ].map { root.appending(path: "Tests/EnviousWisprTests/PostProcessing/\($0)") }
     for url in newFiles {
       let text = try String(contentsOf: url, encoding: .utf8)

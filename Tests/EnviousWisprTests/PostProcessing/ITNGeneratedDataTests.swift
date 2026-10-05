@@ -208,6 +208,29 @@ struct ITNGeneratedDataTests {
     }
   }
 
+  @Test("the generated reviewed ordinal refusals carry their identity, kinds and tokens")
+  func ordinalRefusalData() {
+    typealias Ordinal = GermanOrdinalData
+    #expect(Ordinal.writtenSuffix == ".")
+    #expect(
+      Ordinal.refusals.map(\.id) == [
+        "ref-ordinal-001", "ref-ordinal-002", "ref-ordinal-003", "ref-ordinal-004",
+        "ref-ordinal-005", "ref-ordinal-006",
+      ])
+    #expect(Ordinal.refusals.map(\.version) == [1, 1, 2, 2, 1, 2])
+    #expect(
+      Ordinal.refusals.map(\.contextShape) == [
+        "ordinal_adverb", "ordinal_word_in_date_phrase", "ordinal_word_in_fixed_phrase", nil,
+        "ordinal_word_without_following_noun", "ordinal_word_in_proper_name",
+      ])
+    #expect(Ordinal.refusals.filter { $0.kind == .literalPhrase }.map(\.id) == ["ref-ordinal-004"])
+    for refusal in Ordinal.refusals {
+      #expect(refusal.reviewRef == "refusal-ledger:\(refusal.id):v\(refusal.version)")
+      #expect(refusal.contentSHA256.count == 64)
+      #expect(refusal.tokens.isEmpty == false)
+    }
+  }
+
   @Test("only the named grammar adapter reads the generated data, and the registry stays empty")
   func notReachableFromRuntime() throws {
     #expect(LanguageRuleRegistry.production.count == 0)
@@ -254,5 +277,19 @@ struct ITNGeneratedDataTests {
     #expect(
       phoneReaders.sorted() == ["LanguagePhonePrefixRules.swift"],
       "the only reader of the phone data must be the rules adapter; found: \(phoneReaders)")
+
+    // And the reviewed ordinal refusals have exactly one reader: the ordinal rules adapter.
+    var ordinalReaders: [String] = []
+    let third = try #require(
+      FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+    for case let file as URL in third where file.pathExtension == "swift" {
+      let text = try String(contentsOf: file, encoding: .utf8)
+      if text.contains("GermanOrdinalData"), file.lastPathComponent != "GermanOrdinalData.swift" {
+        ordinalReaders.append(file.lastPathComponent)
+      }
+    }
+    #expect(
+      ordinalReaders.sorted() == ["LanguageOrdinalRules.swift"],
+      "the only reader of the ordinal data must be the rules adapter; found: \(ordinalReaders)")
   }
 }

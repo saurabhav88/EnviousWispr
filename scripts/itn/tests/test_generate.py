@@ -23,6 +23,8 @@ REAL_OUTPUT = (HERE.parent.parent.parent
                / "Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift")
 REAL_PHONE_OUTPUT = (HERE.parent.parent.parent
                      / "Sources/EnviousWisprPostProcessing/Generated/GermanPhonePrefixData.swift")
+REAL_ORDINAL_OUTPUT = (HERE.parent.parent.parent
+                       / "Sources/EnviousWisprPostProcessing/Generated/GermanOrdinalData.swift")
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
@@ -420,6 +422,262 @@ class PhoneFailureTests(unittest.TestCase):
     def test_a_declaration_without_a_required_key_fails(self):
         fixture = PhoneFixture(self, declaration={"replacement": ""})
         self.assert_fails_and_writes_nothing(fixture, "replacement is empty")
+
+
+ORDINAL_IDS = ["ref-ordinal-001", "ref-ordinal-002", "ref-ordinal-003"]
+ORDINAL_SHAPES = ["ordinal_adverb", "ordinal_word_in_date_phrase", "ordinal_word_without_following_noun"]
+
+
+def ordinal_entry(entry_id, version=1, kind="context_shape", shape="ordinal_adverb",
+                  tokens=("erstens", "zweitens"), category="ordinal", **over):
+    entry = {"id": entry_id, "category": category, "reason_code": "reason_" + entry_id[-3:],
+             "match": {"kind": kind, "tokens": list(tokens),
+                       "context_shape": shape if kind == "context_shape" else None},
+             "required_context": "none", "region_limit": "fixture limit",
+             "evidence_ids": ["E-FIXTURE"], "supporting_row_ids": ["de-ordinal-ctl-001"],
+             "panel_status": "panel-reviewed", "review_ref": f"refusal-ledger:{entry_id}:v{version}",
+             "version": version}
+    entry.update(over)
+    entry["content_sha256"] = over.get("content_sha256") or phone_stamp(entry)
+    return entry
+
+
+def default_ordinal_entries():
+    return [
+        ordinal_entry("ref-ordinal-001", shape="ordinal_adverb", tokens=("Erstens", "zweitens")),
+        ordinal_entry("ref-ordinal-002", version=2, kind="literal_phrase", tokens=("Ein Drittel", "ein viertel")),
+        ordinal_entry("ref-ordinal-003", shape="ordinal_word_without_following_noun",
+                      tokens=("erste", "zweite")),
+    ]
+
+
+class OrdinalRefusalFixture(Fixture):
+    """A Fixture that declares the ordinal-refusal lowering over a throwaway refusal file."""
+
+    def __init__(self, test, entries=None, pending=None, other=None, declaration=None, phone=False):
+        super().__init__(test)
+        (self.dir / "refusals").mkdir()
+        data = {"schema_version": 1, "language": "de",
+                "reviewed_entries": (entries if entries is not None else default_ordinal_entries())
+                + (other or []) + (default_phone_entries() if phone else []),
+                "pending_entries": pending or []}
+        self.write("refusals/de.json", json.dumps(data, ensure_ascii=False))
+        self.write("review-data.schema.json", json.dumps(
+            {"x-closed-vocabulary": {"context_shape": PHONE_SHAPES + ORDINAL_SHAPES
+                                     + ["ordinal_word_before_fraction_noun"]}}))
+        self.declaration = {"category": "ordinal", "refusalsFile": "refusals/de.json",
+                            "schemaFile": "review-data.schema.json", "requiredEntries": ORDINAL_IDS,
+                            "allowedShapes": ORDINAL_SHAPES + ["ordinal_word_before_fraction_noun"],
+                            "writtenSuffix": "."}
+        self.declaration.update(declaration or {})
+        self.phone = phone
+        self.phone_out = self.dir / "out" / "GermanPhonePrefixData.swift"
+        self.ordinal_out = self.dir / "out" / "GermanOrdinalData.swift"
+
+    def generate(self, *extra):
+        overrides = {"ordinalRefusals": self.declaration}
+        if self.phone:
+            overrides["phonePrefix"] = {"category": "phone_country_prefix",
+                                        "refusalsFile": "refusals/de.json",
+                                        "schemaFile": "review-data.schema.json",
+                                        "requiredEntries": PHONE_IDS, "replacement": "+"}
+        manifest = self.manifest(**overrides)
+        return run("--manifest", str(manifest), "--out", str(self.out), "--phone-out",
+                   str(self.phone_out), "--ordinal-out", str(self.ordinal_out), *extra)
+
+
+class RealOrdinalRefusalTests(unittest.TestCase):
+    def test_real_output_carries_the_six_reviewed_entries_with_distinct_kinds(self):
+        text = REAL_ORDINAL_OUTPUT.read_text(encoding="utf-8")
+        rows = text.split("static let refusals")[1]
+        self.assertEqual(rows.count("    Refusal(id:"), 6)
+        self.assertEqual(rows.count("kind: .contextShape"), 5)
+        self.assertEqual(rows.count("kind: .literalPhrase"), 1)
+        for expected in (
+            'id: "ref-ordinal-004", version: 2,',
+            'tokens: ["ein drittel", "ein viertel", "ein fünftel", "ein zehntel", "ein achtel"]',
+            'contextShape: "ordinal_word_in_date_phrase"',
+            'contextShape: "ordinal_word_in_proper_name"',
+            'contextShape: "ordinal_word_in_fixed_phrase"',
+            'contextShape: "ordinal_word_without_following_noun"',
+            'contextShape: "ordinal_adverb"',
+            'reviewRef: "refusal-ledger:ref-ordinal-006:v2"',
+        ):
+            self.assertIn(expected, rows)
+        self.assertIn('static let writtenSuffix = "."', text)
+        # The vocabulary shape without a reviewed entry is never manufactured.
+        self.assertNotIn("ordinal_word_before_fraction_noun", rows)
+        for other in ("ref-clock", "ref-phone"):
+            self.assertNotIn(other, text)
+
+    def test_three_outputs_are_reproducible_and_leave_the_others_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            outs = [[Path(tmp) / f"{name}{i}.swift" for name in ("n", "p", "o")] for i in (1, 2)]
+            for number, phone, ordinal in outs:
+                self.assertEqual(run("--out", str(number), "--phone-out", str(phone),
+                                     "--ordinal-out", str(ordinal)).returncode, 0)
+            for a, b in zip(*outs):
+                self.assertEqual(a.read_bytes(), b.read_bytes())
+            self.assertEqual(outs[0][0].read_bytes(), REAL_OUTPUT.read_bytes())
+            self.assertEqual(outs[0][1].read_bytes(), REAL_PHONE_OUTPUT.read_bytes())
+            self.assertEqual(outs[0][2].read_bytes(), REAL_ORDINAL_OUTPUT.read_bytes())
+
+    def test_the_real_check_verifies_all_three_files(self):
+        result = run("--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("check ok"), 3)
+
+    def test_the_manifest_declares_the_six_required_entries(self):
+        manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+        self.assertEqual(
+            manifest["ordinalRefusals"]["requiredEntries"],
+            ["ref-ordinal-001", "ref-ordinal-002", "ref-ordinal-003", "ref-ordinal-004",
+             "ref-ordinal-005", "ref-ordinal-006"])
+        self.assertEqual(manifest["ordinalRefusals"]["writtenSuffix"], ".")
+
+
+class OrdinalRefusalFixtureTests(unittest.TestCase):
+    def test_canonical_entries_produce_the_independent_literal_output(self):
+        fixture = OrdinalRefusalFixture(self)
+        result = fixture.generate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = fixture.ordinal_out.read_text(encoding="utf-8")
+        for entry in default_ordinal_entries():
+            match = entry["match"]
+            kind = "contextShape" if match["kind"] == "context_shape" else "literalPhrase"
+            shape = "nil" if match["context_shape"] is None else f'"{match["context_shape"]}"'
+            tokens = ", ".join(f'"{t.lower()}"' for t in match["tokens"])
+            line = (f'    Refusal(id: "{entry["id"]}", version: {entry["version"]}, '
+                    f'contentSHA256: "{entry["content_sha256"]}", '
+                    f'reasonCode: "{entry["reason_code"]}", kind: .{kind}, '
+                    f'contextShape: {shape}, tokens: [{tokens}], reviewRef: "{entry["review_ref"]}"),')
+            self.assertIn(line, text)
+        self.assertIn("emitted: 3 reviewed entries (2 context shapes, 1 literal phrase entries)", text)
+
+    def test_pending_and_other_category_entries_are_never_emitted(self):
+        pending = [ordinal_entry("ref-ordinal-009", panel_status="pending", review_ref=None)]
+        other = [phone_entry("ref-phone-001", "plus_between_operands")]
+        fixture = OrdinalRefusalFixture(self, pending=pending, other=other)
+        self.assertEqual(fixture.generate().returncode, 0)
+        text = fixture.ordinal_out.read_text(encoding="utf-8")
+        self.assertNotIn("ref-ordinal-009", text)
+        self.assertNotIn("ref-phone-001", text)
+        self.assertIn("excluded: 1 pending entries of this category", text)
+
+    def test_check_covers_three_files_and_fails_on_drift_in_the_ordinal_file_alone(self):
+        fixture = OrdinalRefusalFixture(self, phone=True)
+        self.assertEqual(fixture.generate().returncode, 0)
+        ok = fixture.generate("--check")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertEqual(ok.stdout.count("check ok"), 3)
+        fixture.ordinal_out.write_text(
+            fixture.ordinal_out.read_text(encoding="utf-8") + "// drift\n", encoding="utf-8")
+        drifted = fixture.ordinal_out.read_bytes()
+        bad = fixture.generate("--check")
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn("GermanOrdinalData.swift", bad.stderr)
+        self.assertEqual(fixture.ordinal_out.read_bytes(), drifted)
+
+    def test_a_declaration_adds_nothing_to_the_other_outputs(self):
+        plain = Fixture(self)
+        plain.generate()
+        with_ordinal = OrdinalRefusalFixture(self)
+        with_ordinal.generate()
+        self.assertEqual(plain.out.read_bytes(), with_ordinal.out.read_bytes())
+        self.assertFalse(with_ordinal.phone_out.exists())
+
+
+class OrdinalRefusalFailureTests(unittest.TestCase):
+    def assert_fails_and_writes_nothing(self, fixture, needle):
+        result = fixture.generate()
+        self.assertNotEqual(result.returncode, 0, "must fail nonzero")
+        self.assertIn(needle, result.stderr)
+        for path in (fixture.out, fixture.phone_out, fixture.ordinal_out):
+            self.assertFalse(path.exists(), f"a failed run must not create {path.name}")
+
+    def replace(self, index, entry):
+        entries = default_ordinal_entries()
+        entries[index] = entry
+        return entries
+
+    def test_a_changed_reviewed_field_with_the_old_hash_fails(self):
+        entries = default_ordinal_entries()
+        entries[0]["region_limit"] = "changed after review"
+        self.assert_fails_and_writes_nothing(OrdinalRefusalFixture(self, entries=entries), "content_sha256")
+
+    def test_a_review_ref_naming_another_version_fails(self):
+        entries = self.replace(1, ordinal_entry("ref-ordinal-002", version=2, kind="literal_phrase",
+                                                tokens=("ein drittel",),
+                                                review_ref="refusal-ledger:ref-ordinal-002:v1"))
+        self.assert_fails_and_writes_nothing(OrdinalRefusalFixture(self, entries=entries), "review_ref")
+
+    def test_an_entry_that_is_not_reviewed_fails(self):
+        entries = self.replace(0, ordinal_entry("ref-ordinal-001", panel_status="pending"))
+        self.assert_fails_and_writes_nothing(OrdinalRefusalFixture(self, entries=entries), "not reviewed")
+
+    def test_a_shape_outside_the_allowed_list_fails(self):
+        entries = self.replace(0, ordinal_entry("ref-ordinal-001", shape="plus_between_operands"))
+        self.assert_fails_and_writes_nothing(OrdinalRefusalFixture(self, entries=entries), "unsupported shape")
+
+    def test_a_literal_phrase_carrying_a_shape_fails(self):
+        entry = ordinal_entry("ref-ordinal-002", kind="literal_phrase", tokens=("ein drittel",))
+        entry["match"]["context_shape"] = "ordinal_adverb"
+        entry["content_sha256"] = phone_stamp(entry)
+        self.assert_fails_and_writes_nothing(
+            OrdinalRefusalFixture(self, entries=self.replace(1, entry)), "carries no context shape")
+
+    def test_malformed_phrases_and_tokens_fail(self):
+        for index, kind, tokens, needle in (
+            (1, "literal_phrase", ("ein  drittel",), "single spaces"),
+            (1, "literal_phrase", (), "single spaces"),
+            (1, "literal_phrase", ("",), "single spaces"),
+            (0, "context_shape", ("zwei worte",), "single words"),
+            (0, "context_shape", (), "single words"),
+        ):
+            with self.subTest(index=index, tokens=tokens):
+                entry = ordinal_entry(f"ref-ordinal-00{index + 1}", kind=kind, tokens=tokens)
+                self.assert_fails_and_writes_nothing(
+                    OrdinalRefusalFixture(self, entries=self.replace(index, entry)), needle)
+
+    def test_two_entries_sharing_a_shape_or_a_phrase_fail(self):
+        entries = self.replace(2, ordinal_entry("ref-ordinal-003", shape="ordinal_adverb"))
+        self.assert_fails_and_writes_nothing(OrdinalRefusalFixture(self, entries=entries), "share shape")
+        entries = default_ordinal_entries() + [
+            ordinal_entry("ref-ordinal-004", kind="literal_phrase", tokens=("ein drittel",))]
+        fixture = OrdinalRefusalFixture(
+            self, entries=entries, declaration={"requiredEntries": ORDINAL_IDS + ["ref-ordinal-004"]})
+        self.assert_fails_and_writes_nothing(fixture, "appears twice")
+
+    def test_an_unsupported_match_kind_fails(self):
+        entry = ordinal_entry("ref-ordinal-001")
+        entry["match"]["kind"] = "regex"
+        entry["content_sha256"] = phone_stamp(entry)
+        self.assert_fails_and_writes_nothing(
+            OrdinalRefusalFixture(self, entries=self.replace(0, entry)), "unsupported match kind")
+
+    def test_a_missing_or_extra_required_entry_fails(self):
+        self.assert_fails_and_writes_nothing(
+            OrdinalRefusalFixture(self, entries=default_ordinal_entries()[:2]), "required set")
+        extra = default_ordinal_entries() + [ordinal_entry("ref-ordinal-007", shape="ordinal_adverb")]
+        self.assert_fails_and_writes_nothing(OrdinalRefusalFixture(self, entries=extra), "required set")
+
+    def test_allowed_shapes_outside_the_vocabulary_or_missing_fail(self):
+        self.assert_fails_and_writes_nothing(
+            OrdinalRefusalFixture(self, declaration={"allowedShapes": ["ordinal_anything"]}),
+            "outside the closed vocabulary")
+        self.assert_fails_and_writes_nothing(
+            OrdinalRefusalFixture(self, declaration={"allowedShapes": []}), "allowedShapes is empty")
+
+    def test_a_failing_phone_declaration_blocks_the_ordinal_output_too(self):
+        entries = default_ordinal_entries()
+        fixture = OrdinalRefusalFixture(self, entries=entries, phone=True)
+        # Break only the phone side: change a reviewed phone field without restamping its hash.
+        data = json.loads((fixture.dir / "refusals/de.json").read_text(encoding="utf-8"))
+        for entry in data["reviewed_entries"]:
+            if entry["id"] == "ref-phone-001":
+                entry["region_limit"] = "changed"
+        fixture.write("refusals/de.json", json.dumps(data, ensure_ascii=False))
+        self.assert_fails_and_writes_nothing(fixture, "content_sha256")
 
 
 class RealOrdinalTests(unittest.TestCase):
