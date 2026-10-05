@@ -212,6 +212,8 @@ struct PolishSetupCardPresenterTests {
         PolishSetupPromptEvent(
           surface: .card, action: .shown, subject: Self.openAIKeyMissing, takeID: take)
       ])
+    // Drawing the card spent the episode's allowance, before any button answered (#3442 row 44).
+    #expect(fx.monitor.cardTicket() == nil, "a drawn card left the allowance unspent")
     // The same episode: no second card, even for a later take.
     fx.overlay.pressNotNow()
     Self.conclude(fx)
@@ -230,6 +232,18 @@ struct PolishSetupCardPresenterTests {
     Self.conclude(fx, result: .skippedWithNotice, evidence: .cloudKeyUnreadable, tag: nil)
     Self.conclude(fx, result: .failed, evidence: .cloudKeyRejectedClassified, tag: nil)
     #expect(fx.overlay.requests == 0)
+    // The monitor's own intake and ticket also refuse those takes, so ask the card's own
+    // yes-or-no directly: an unconfirmed problem is declined for every skipping result, and the
+    // same outcome with a confirmed problem is accepted (#3442 row 43).
+    for result in [PolishTakeResult.skippedWithNotice, .failed, .skippedSilently] {
+      func outcome(_ tag: PolishSetupProblemTag?) -> PolishTakeOutcome {
+        PolishTakeOutcome(
+          takeID: UUID().uuidString, context: fx.monitor.freezeTakeContext(), result: result,
+          evidence: .cloudKeyMissing, setupProblem: tag, observedAt: .now)
+      }
+      #expect(PolishSetupCardPresenter.isCandidate(outcome(nil)) == false)
+      #expect(PolishSetupCardPresenter.isCandidate(outcome(.cloudKeyMissing)))
+    }
   }
 
   @Test("readiness alone never raises the card")
