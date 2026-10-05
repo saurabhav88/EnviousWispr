@@ -1,7 +1,7 @@
 import EnviousWisprCore
 
 /// The set of languages that have a vetted rule set (#1677). **Empty in production until the
-/// generator PR adds the first German rows.**
+/// first language rule set passes its acceptance gates and is explicitly registered.**
 ///
 /// Owns exactly one question: "does this explicit non-English language value have a vetted rule
 /// set?". It holds no resolver, no second language key and no inventory of what the neutral address

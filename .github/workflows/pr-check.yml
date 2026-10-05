@@ -731,10 +731,10 @@ jobs:
           # step a hand edit, a source change or a generator change that no longer
           # reproduces a committed file would pass every other lane, because the Swift
           # tests read the committed bytes, not the generator. --check regenerates all four
-          # outputs in a temp dir and byte-compares; it reads only files already in the
-          # checkout and makes no network request (--refresh is the only download path and
-          # is never run here). The unittest pattern names the one generator suite, so
-          # discovery cannot reach the acceptance corpus. Needs only python3 and the stdlib.
+          # outputs in a temp dir and byte-compares them. Normal generation and --check
+          # use local inputs. The suite's --refresh rejection test fails on an unpinned
+          # fixture before any network request. Narrow discovery selects generator tests,
+          # not corpus-validator tests. Needs only python3 and the stdlib.
           python3 scripts/itn/generate.py --check
           python3 -m unittest discover -s scripts/itn/tests -p 'test_generate.py'
 

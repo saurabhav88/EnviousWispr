@@ -1,6 +1,6 @@
 # German language data for the inverse text normalizer (#1677)
 
-Developer notes for `scripts/itn/`. This directory turns pinned public sources and reviewed expectation data into four committed Swift data files. **Nothing here is reachable from dictation today:** the production registry is empty and the German passes are not called by any shipped code path. Customer behavior has not changed.
+Developer notes for `scripts/itn/`. This directory turns pinned public sources and reviewed refusal data into four committed Swift data files. **Nothing here is reachable from dictation today:** the production registry is empty and the German passes are not called by any shipped code path. Dictation behavior is unchanged; bundled third-party notices gain CLDR and NeMo attribution.
 
 ## What is here
 
@@ -9,7 +9,7 @@ Developer notes for `scripts/itn/`. This directory turns pinned public sources a
 | `generate.py` | Offline generator. Reads the pinned files listed in `manifest.json`, `refusals/de.json` and `review-data.schema.json`, and takes the one refusal-hash definition from `validate-review-data.py`. It reads no corpus file. Writes four files. |
 | `manifest.json` | Every source: upstream repo, tag, commit, path, SHA-256, license and license hash; plus the declared ordinal, phone-prefix and clock-idiom extractions. |
 | `sources/cldr/`, `sources/nemo/` | The pinned upstream bytes and their license texts. |
-| `refusals/de.json` | Reviewed refusal entries (cases that must stay as written), each with a semantic hash. |
+| `refusals/de.json` | Reviewed and pending refusal entries. Only reviewed entries with a bound version, review reference and semantic hash may be lowered. |
 | `review-data.schema.json`, `validate-review-data.py` | Well-formedness checks for the expectation rows and refusals. |
 | `corpus/` | Frozen German expectation rows: development, controls and acceptance (holdout). |
 | `tests/` | Generator tests (`test_generate.py`) and validator tests (`test_review_data.py`). |
@@ -28,7 +28,7 @@ CI (`build-check` in `.github/workflows/pr-check.yml`, step "Language data gener
 Do not run these in CI or as a routine check:
 
 - `generate.py --refresh` downloads the pinned URLs and verifies their hashes. It is the only network path.
-- `generate.py --self-test` and `validate-review-data.py --frozen` read the full corpus, including the acceptance file. See "The acceptance corpus" below.
+- `generate.py --self-test`, discovery that includes `test_review_data.py`, and `validate-review-data.py` with or without `--frozen` read the acceptance corpus. Keep them out of routine and CI checks while ordinal acceptance content is reserved.
 
 ## The four outputs
 
@@ -48,7 +48,7 @@ Never edit a generated file by hand. Change the manifest, a source or a reviewed
 | Unicode CLDR `common/rbnf/de.xml` | `release-48-2`, commit `11299982335beb974c1c63c45265184e759c0f41` | Unicode License v3 |
 | NVIDIA NeMo text-processing German number tables | `r1.2.0`, commit `7efa127d968c081793ebf11fa94dfb4257302d48` | Apache-2.0 |
 
-Both texts and their notices are in `THIRD-PARTY-NOTICES.txt`; `scripts/ci/gen-third-party-notices.sh --check` keeps them in sync. Only lexical data is used. Every hash is in `manifest.json`; the generator refuses a file whose bytes differ from its pin.
+Both licence texts are in `THIRD-PARTY-NOTICES.txt` (and in the copy bundled for the app's Open Source Licenses screen); `scripts/ci/gen-third-party-notices.sh --check` verifies that each component's name, version, licence and URL appear there and that the app copy matches the root file. It does not diff the licence text against `scripts/itn/sources/*/LICENSE`. Pinned CLDR rule data and NeMo TSV data are used; neither vendor's ITN implementation is embedded. Every hash is in `manifest.json`; the generator refuses a file whose bytes differ from its pin.
 
 ## Reproducibility
 
@@ -61,7 +61,7 @@ The generated data is read by exactly one adapter per output (`LanguageNumberGra
 ## What this does not establish
 
 - **Generator integrity is not linguistic correctness.** A passing `--check` says the committed files equal what the pinned inputs produce. It does not say a German sentence converts correctly.
-- **Phone prefix and clock idiom missed the acceptance bar** (59 of 59 fresh conversions per engine, zero added change). Both stay pending, not declined.
+- **Phone prefix and clock idiom missed conversion acceptance:** neither reached 59/59 fresh conversion sentences per engine. Phone also missed the measurement's preregistered zero-added-change criterion; that does not mean every changed control was damaged. Both remain pending, not declined.
 - **Ordinal is pending.** It lacks German calendar and month data, a grounded fixed-expression policy and proper-name clearance. No ordinal acceptance was measured.
 - **Existing controls are regression controls.** They guided development, so they are not independent controls. The independent-control gate is unresolved.
 - **The WhisperKit file runner is not the shipping backend.** It sets `wordTimestamps = false` and skips the backend's 500 ms silence padding. Results from it are indicative, not proof of shipped output.
@@ -70,6 +70,6 @@ The generated data is read by exactly one adapter per output (`LanguageNumberGra
 
 ## The acceptance corpus
 
-`corpus/de-holdout.jsonl` holds fresh conversion rows kept apart so a pass could be measured on text nobody tuned against. The phone and clock rows have now been used once to measure the first passes; they are exposed. Do not tune a pass, an expectation or a refusal against them, and do not reuse them as a development oracle. A later change needs prospective, newly frozen acceptance material. The ordinal rows have not been read by any code, test or generator; keep it that way until their missing authorities exist.
+`corpus/de-holdout.jsonl` holds fresh conversion rows kept apart so a pass could be measured on text nobody tuned against. The phone and clock rows have now been used once to measure the first passes; they are exposed. Do not tune a pass, an expectation or a refusal against them, and do not reuse them as a development oracle. A later change needs prospective, newly frozen acceptance material. Ordinal holdout has not been used for acceptance scoring or tuning. Do not inspect it or let it guide implementation; preserve it for a mechanism frozen after its required authorities are established.
 
-The acceptance measurement receipt and raw outputs are kept outside the repository (ignored `docs/audits/`), not as tracked files.
+The acceptance measurement receipt and raw outputs live in the main checkout's ignored `docs/audits/`; they are not committed files.
