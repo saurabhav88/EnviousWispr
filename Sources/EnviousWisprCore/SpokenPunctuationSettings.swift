@@ -10,8 +10,9 @@ import Foundation
 /// `startWordOverrides` is SPARSE: it holds only the languages the user changed, keyed by lowercased
 /// ISO base code (`"de"`). The default start word for a language comes from `SpokenPunctuationRules`
 /// (also in Core), so a default we ever change reaches every user who never customised. Every value
-/// stored here has passed `SpokenPunctuationStartWord.validate`; a caller that loads persisted data
-/// re-validates before constructing this value.
+/// stored here has passed `SpokenPunctuationStartWord.validate`, or is the empty string, which is the
+/// user's choice of NO start word for that language (command words then work bare). A caller that
+/// loads persisted data re-validates before constructing this value.
 public struct SpokenPunctuationSettings: Sendable, Equatable {
   public var enabled: Bool
   public var startWordOverrides: [String: String]
@@ -41,7 +42,8 @@ public struct SpokenPunctuationSettings: Sendable, Equatable {
 public enum SpokenPunctuationStartWord {
 
   public enum Refusal: String, Sendable, Equatable {
-    /// Nothing left after trimming.
+    /// Nothing left after trimming. The settings store does not surface this to the Start word field:
+    /// a blank field there means "no start word" and is accepted.
     case empty
     /// More than one token (whitespace inside).
     case notOneToken
@@ -76,7 +78,7 @@ public enum SpokenPunctuationStartWord {
   public static func validate(
     _ raw: String, language: String, spokenForms: [String]
   ) -> Outcome {
-    // NFC first: a decomposed "Place" typed on some keyboards must match NFC text from the engine,
+    // NFC first: a decomposed "Insère" typed on some keyboards must match NFC text from the engine,
     // and every length and character check below is defined on the NFC form.
     let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping

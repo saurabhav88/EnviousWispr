@@ -87,7 +87,8 @@ package enum SpokenPunctuationRules {
   }
 
   /// The start word in force for each supported language: the override when there is one, else the
-  /// default. An override of `""` means the user chose NO start word, and is returned as `""`. The single place that derives it, used by every consumer that needs the whole set
+  /// default. An override of `""` means the user chose NO start word and is returned as `""`. The
+  /// single place that derives it, used by every consumer that needs the whole set
   /// (recovery capture, file import freeze, the cleanup step, the Settings row). An override for an
   /// unsupported language is ignored.
   package static func effectiveStartWords(overrides: [String: String]) -> [String: String] {
