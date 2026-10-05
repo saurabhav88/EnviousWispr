@@ -296,4 +296,50 @@ public enum InverseTextNormalizationGate {
     }
     return backendSupportsLID ? "lid_backend_nil" : nil
   }
+
+  /// Which cleanup a take receives (#1677). The single answer the step and the eval harness both
+  /// ask, instead of each deciding "is this English?" for itself.
+  public enum Route: Sendable, Equatable {
+    /// The English engine runs, exactly as before.
+    case english
+    /// The take's explicit non-English language has a vetted rule set: the language-neutral subset
+    /// plus that language's passes, never the English lexicon. Carries the canonical base code.
+    case language(String)
+    /// The language-neutral subset only, with the legacy skip bucket
+    /// (`language_vetoed`, `non_english`, `lid_backend_nil`) that telemetry already reports.
+    case neutral(String)
+  }
+
+  /// Pure routing over the shipped (currently EMPTY) rule-set registry.
+  ///
+  /// **Precedence is the legacy gate's, not a second predicate:** `skipReason` decides first and
+  /// stays the only owner of veto-first, the exact lowercase `en` / `en-` / `en_` English test, the
+  /// treatment of every explicit non-English value (including one `LanguageNormalizer.baseCode`
+  /// rejects), and the fact that only raw nil or empty consults `backendSupportsLID`. The registry
+  /// is consulted ONLY for an explicit non-English value (`non_english`); a veto, a missing language
+  /// and an English value can never become `.language`. A missing registry entry fails closed to
+  /// `.neutral("non_english")`.
+  public static func route(language: String?, englishVetoed: Bool, backendSupportsLID: Bool)
+    -> Route
+  {
+    route(
+      language: language, englishVetoed: englishVetoed, backendSupportsLID: backendSupportsLID,
+      registry: .production)
+  }
+
+  /// The same route over an injected registry, for tests. `package` so no caller outside this
+  /// package can register a language.
+  package static func route(
+    language: String?, englishVetoed: Bool, backendSupportsLID: Bool,
+    registry: LanguageRuleRegistry
+  ) -> Route {
+    guard
+      let skip = skipReason(
+        language: language, englishVetoed: englishVetoed, backendSupportsLID: backendSupportsLID)
+    else { return .english }
+    if skip == "non_english", let set = registry.ruleSet(forLanguage: language) {
+      return .language(set.baseCode)
+    }
+    return .neutral(skip)
+  }
 }

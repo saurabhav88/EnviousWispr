@@ -80,18 +80,23 @@ struct InverseTextNormalizationRouteTests {
   func gatePrecedenceMatrix() {
     var checked = 0
     var mismatches: [String] = []
-    var table: [String] = ["label | veto | LID | expected | actual"]
+    var table: [String] = ["label | veto | LID | expected | legacy skipReason | route"]
     for row in Self.rows {
       for veto in [false, true] {
         for lid in [false, true] {
           let expected: String? = veto ? Self.vetoed : (lid ? row.withLID : row.noLID)
-          let actual = InverseTextNormalizationGate.skipReason(
+          let legacy = InverseTextNormalizationGate.skipReason(
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
+          let route = InverseTextNormalizationGate.route(
+            language: row.language, englishVetoed: veto, backendSupportsLID: lid)
+          // The production registry is EMPTY, so no row may ever route to `.language`.
+          let expectedRoute: InverseTextNormalizationGate.Route =
+            expected.map { .neutral($0) } ?? .english
           checked += 1
           table.append(
-            "\(row.label.debugDescription) | \(veto) | \(lid) | \(expected ?? "run") | \(actual ?? "run")"
+            "\(row.label.debugDescription) | \(veto) | \(lid) | \(expected ?? "run") | \(legacy ?? "run") | \(route)"
           )
-          if actual != expected {
+          if legacy != expected || route != expectedRoute {
             mismatches.append("\(row.label.debugDescription) veto=\(veto) lid=\(lid)")
           }
         }
@@ -102,7 +107,63 @@ struct InverseTextNormalizationRouteTests {
       "ROUTE-CHARACTERIZATION rows=\(Self.rows.count) checked=\(checked) mismatches=\(mismatches.count)"
     )
     #expect(checked == Self.rows.count * 4)
-    #expect(mismatches.isEmpty, "gate disagrees with the literal table: \(mismatches)")
+    #expect(mismatches.isEmpty, "gate or route disagrees with the literal table: \(mismatches)")
+  }
+
+  // MARK: Injected registry
+
+  /// A registry holding de, no (from `nb`), zh (from `cmn`) and pt, to prove the route's lookup
+  /// without registering anything in production.
+  private static let injected: LanguageRuleRegistry = {
+    let sets = ["de", "nb", "cmn", "pt-BR"].compactMap { LanguageRuleSet(language: $0) }
+    return try! LanguageRuleRegistry(sets)
+  }()
+
+  @Test("with a registered language the route selects it by canonical base code")
+  func injectedRegistryRoutes() {
+    func route(_ language: String?, veto: Bool = false, lid: Bool = false)
+      -> InverseTextNormalizationGate.Route
+    {
+      InverseTextNormalizationGate.route(
+        language: language, englishVetoed: veto, backendSupportsLID: lid, registry: Self.injected)
+    }
+    #expect(Self.injected.count == 4)
+    // Canonical, regional, mixed-case and alias lookups.
+    #expect(route("de") == .language("de"))
+    #expect(route("de-DE") == .language("de"))
+    #expect(route("DE") == .language("de"))
+    #expect(route("pt_BR") == .language("pt"))
+    #expect(route("nb") == .language("no"))
+    #expect(route("nn") == .language("no"))
+    #expect(route("cmn") == .language("zh"))
+    #expect(route("zh-Hans") == .language("zh"))
+    // Veto wins over a registered language, on either backend.
+    #expect(route("de", veto: true) == .neutral("language_vetoed"))
+    #expect(route("de", veto: true, lid: true) == .neutral("language_vetoed"))
+    // Unregistered and rejected values stay neutral, never "unknown".
+    #expect(route("es") == .neutral("non_english"))
+    #expect(route("und") == .neutral("non_english"))
+    #expect(route("abcd") == .neutral("non_english"))
+    #expect(route(" ") == .neutral("non_english"))
+    // English never becomes a language route, nor does a padded English value.
+    #expect(route("en") == .english)
+    #expect(route("en-US") == .english)
+    #expect(route(" en") == .neutral("non_english"))
+    // Only raw nil and empty consult the backend, and never reach the registry.
+    #expect(route(nil) == .english)
+    #expect(route("") == .english)
+    #expect(route(nil, lid: true) == .neutral("lid_backend_nil"))
+    #expect(route("", lid: true) == .neutral("lid_backend_nil"))
+  }
+
+  /// A drift guard, not product coverage: the shipped registry lists no language until the
+  /// generator PR adds vetted rows, so today no take can reach `.language`.
+  @Test("the production registry is empty", .tags(.driftGuard))
+  func productionRegistryIsEmpty() {
+    #expect(LanguageRuleRegistry.production.count == 0)
+    for code in ["de", "es", "fr", "ru", "nl", "pt", "it", "pl", "no", "zh"] {
+      #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: code) == nil, "\(code)")
+    }
   }
 
   /// The rows that claim "baseCode rejects this" must keep rejecting it, and the alias rows must
