@@ -147,4 +147,4 @@ EnviousWispr already punctuates for you, so spoken punctuation competes with tha
 
 ### Type a backslash
 
-Saying "backslash" types `\` only when **Spoken punctuation** is on. If you use [Snippets](/help/using-snippets/), a saved snippet wins when its words follow your snippet keyword, which is `backslash` unless you changed it. A saved snippet wins over a start word command in the same way.
+In English, saying "backslash" types `\` only when **Spoken punctuation** is on. If you use [Snippets](/help/using-snippets/), a saved snippet wins when its words follow your snippet keyword, which is `backslash` unless you changed it. A saved snippet wins over a start word command in the same way.

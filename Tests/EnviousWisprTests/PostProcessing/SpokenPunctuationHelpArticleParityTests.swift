@@ -88,7 +88,7 @@ struct SpokenPunctuationHelpArticleParityTests {
     var tables: [[String]] = []
     var current: [String] = []
     for line in section {
-      if line.hasPrefix("|") {
+      if line.contains("|") {
         current.append(line)
       } else if current.isEmpty == false {
         tables.append(current)
@@ -278,6 +278,12 @@ struct SpokenPunctuationHelpArticleParityTests {
     }
     #expect(throws: ContractError.malformedRow("#### Test", line: "| a b | . | extra |")) {
       try Self.parseTable(markdown: Self.table(["| a b | . | extra |"]), heading: "#### Test")
+    }
+    // A line the website renders as a row without a leading pipe must not slip past the parser.
+    #expect(throws: ContractError.malformedRow("#### Test", line: "Setze extra | .")) {
+      try Self.parseTable(
+        markdown: Self.table(["| Setze Punkt | . |"]) + "Setze extra | .\n",
+        heading: "#### Test")
     }
     #expect(throws: ContractError.duplicateRow("#### Test", say: "a b")) {
       try Self.parseTable(
