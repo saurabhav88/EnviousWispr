@@ -25,14 +25,14 @@
   },
   "dependencies": {
     "@astrojs/rss": "^4.0.19",
-    "@astrojs/sitemap": "^3.7.3",
+    "@astrojs/sitemap": "^3.7.4",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/plus-jakarta-sans": "^5.3.0",
-    "astro": "^7.2.9",
+    "astro": "^7.3.5",
     "github-slugger": "2.0.0",
     "minisearch": "^7.2.0"
   },
   "devDependencies": {
-    "wrangler": "^4.131.0"
+    "wrangler": "^4.142.0"
   }
 }
