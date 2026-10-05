@@ -136,6 +136,20 @@ struct YourWordsView: View {
   // Outcome-to-message mapping is shared with `BulkDeleteConfirmSheet` so both
   // export entry points present the identical copy (#1703).
   @State private var exportNotice: CustomWordsExportNotice?
+  /// Measured heights behind `pinsListControls`.
+  @State private var paneHeight: CGFloat = 0
+  @State private var pinnedHeaderHeight: CGFloat = 0
+
+  /// Whether the Your Words controls stay at the top while the words scroll.
+  ///
+  /// Only while they take at most half the pane. In a short window the
+  /// controls wrap onto several lines and the Dictionary heading takes its
+  /// share too, so a pinned header could cover the whole pane and leave no
+  /// word visible (review, PR #3460). Unpinned, they scroll away as they
+  /// always did, and the words are reachable again.
+  private var pinsListControls: Bool {
+    pinnedHeaderHeight > 0 && pinnedHeaderHeight <= paneHeight / 2
+  }
 
   var body: some View {
     @Bindable var settings = settings
@@ -170,7 +184,15 @@ struct YourWordsView: View {
         // Your Words list has had the same defect since it shipped.
         ScrollViewReader { proxy in
           ScrollView {
-            VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+            // Lazy only for `pinnedViews`: the Your Words card's controls are a
+            // section header that stays at the top while its words scroll
+            // (when it fits: `pinsListControls`).
+            // Spacing 0 so the header and the words meet as one card; the
+            // notices above them carry their own gap (`yourWordsBanners`).
+            LazyVStack(
+              alignment: .leading, spacing: 0,
+              pinnedViews: pinsListControls ? [.sectionHeaders] : []
+            ) {
               selectedTabContent
             }
             .padding(.bottom, SettingsLayout.contentBottom)
@@ -181,6 +203,12 @@ struct YourWordsView: View {
             }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          .background(
+            GeometryReader { proxy in
+              Color.clear.onAppear { paneHeight = proxy.size.height }
+                .onChange(of: proxy.size.height) { _, height in paneHeight = height }
+            })
+          .onPreferenceChange(DictionaryPinnedHeaderHeightKey.self) { pinnedHeaderHeight = $0 }
           .environment(\.dictionaryScrollToTop) {
             withAnimation(.easeOut(duration: 0.18)) {
               proxy.scrollTo(Self.topAnchor, anchor: .top)
@@ -243,6 +271,30 @@ struct YourWordsView: View {
   private var selectedTabContent: some View {
     switch selectedTab {
     case .yourWords:
+      yourWordsBanners
+      // The three page actions are handed to the list card rather than drawn
+      // above it. They used to be their own right-aligned row, with the word
+      // count on a third row below that, so the pane opened as three stacked
+      // bands and the buttons belonged to nothing (founder, 2026-08-29: they
+      // "push the whole UI down, making it look disjointed and not unified").
+      // Count and actions are one bar now: what you have, and what you can do
+      // to it.
+      // Not wrapped in a stack: the section inside must be a direct child of
+      // the pane's `LazyVStack` for its header to pin.
+      CustomTermsSection { actionButtons }
+    case .vocabularyPacks:
+      VocabPacksSection()
+    case .learnFrom:
+      LearningSection()
+    case .quickAdd:
+      QuickAddTeachingSection()
+    }
+  }
+
+  /// The notices above the Your Words list. They scroll away; the list's own
+  /// controls are what stay pinned.
+  private var yourWordsBanners: some View {
+    VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
       // Launch-time load failure (#1646): honest banner instead of a silent
       // empty list. Two distinct situations, two distinct messages.
       if let failure = customWordsCoordinator.wordsLoadFailureAtLaunch {
@@ -266,22 +318,14 @@ struct YourWordsView: View {
           onCancel: { customWordsCoordinator.cancelBulkImportEnrichment?() }
         )
       }
-
-      // The three page actions are handed to the list card rather than drawn
-      // above it. They used to be their own right-aligned row, with the word
-      // count on a third row below that, so the pane opened as three stacked
-      // bands and the buttons belonged to nothing (founder, 2026-08-29: they
-      // "push the whole UI down, making it look disjointed and not unified").
-      // Count and actions are one bar now: what you have, and what you can do
-      // to it.
-      CustomTermsSection { actionButtons }
-    case .vocabularyPacks:
-      VocabPacksSection()
-    case .learnFrom:
-      LearningSection()
-    case .quickAdd:
-      QuickAddTeachingSection()
     }
+    // Space below only when a notice is showing; otherwise the card starts at
+    // the top of the pane, where it always has.
+    .padding(
+      .bottom,
+      customWordsCoordinator.wordsLoadFailureAtLaunch != nil
+        || customWordsCoordinator.pendingEnrichmentCount > 0
+        ? SettingsLayout.sectionSpacing : 0)
   }
 
   /// The Your Words tab's three page-level actions, factored out so

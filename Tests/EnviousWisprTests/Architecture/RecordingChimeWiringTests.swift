@@ -70,9 +70,7 @@ struct RecordingChimeWiringTests {
           $0.calledExpression.as(MemberAccessExprSyntax.self)?.base?.trimmedDescription == "inUseBadge"
         }.flatMap { $0.arguments.first?.expression.trimmedDescription } ?? ""
     }
-    shape.gestures = memberCalls(
-      in: card,
-      named: ["onTapGesture", "gesture", "simultaneousGesture", "highPriorityGesture"])
+    shape.gestures = memberCallNames(in: card, where: isPressHandler).sorted()
     return shape
   }
 
@@ -90,12 +88,16 @@ struct RecordingChimeWiringTests {
       "\(shape)")
   }
 
-  @Test("a Button nested in the other, Select inside Preview, or a card gesture is seen")
+  @Test("a Button nested in the other, Select inside Preview, or any card press handler is seen")
   func cardShapeControl() throws {
     let fixture = Parser.parse(
       source: """
         struct RecordingChimeCard: View {
-          var body: some View { ZStack { selectButton; previewButton }.onTapGesture { onSelect() } }
+          var body: some View {
+            ZStack { selectButton; previewButton }
+              .onTapGesture { onSelect() }
+              .onLongPressGesture(minimumDuration: 0) { onSelect() }
+          }
           private var previewButton: some View {
             Button(action: onPreview) { Button(action: onSelect) { Text("x") } }
           }
@@ -106,7 +108,7 @@ struct RecordingChimeWiringTests {
     #expect(shape.bodyChildren == ["selectButton", "previewButton"])
     #expect(shape.previewButtons == 2)
     #expect(shape.previewReferencesSelect)
-    #expect(shape.gestures == ["onTapGesture"])
+    #expect(shape.gestures == ["onLongPressGesture", "onTapGesture"])
     #expect(shape.badgeOpacity == "0")
   }
 
@@ -187,10 +189,18 @@ struct RecordingChimeWiringTests {
       .filter { $0.trimmedDescription.contains("Task<") }
       .flatMap { $0.bindings.map { $0.pattern.trimmedDescription } }
     /// `activePreviewTask?.cancel()` as a real call statement among `statements`.
+    /// A cancel that follows an unconditional `return` or `throw` in the same list never runs, so it
+    /// does not count; an exit inside a nested closure or branch is not unconditional.
     func cancels(_ statements: CodeBlockItemListSyntax?) -> Bool {
-      statements?.contains { item in
-        item.item.as(FunctionCallExprSyntax.self)?.trimmedDescription == "activePreviewTask?.cancel()"
-      } ?? false
+      for item in statements ?? [] {
+        if item.item.as(FunctionCallExprSyntax.self)?.trimmedDescription
+          == "activePreviewTask?.cancel()"
+        {
+          return true
+        }
+        if SourceReachability.exitsUnconditionally(item) { return false }
+      }
+      return false
     }
     let disappear = memberCallNodes(in: page, named: "onDisappear").contains {
       cancels($0.trailingClosure?.statements)
@@ -296,6 +306,58 @@ struct RecordingChimeWiringTests {
     #expect(wiring.dictationCancels == false, "a cancel under `!isActive` counted")
   }
 
+  @Test("a cancel after a return, in either place, is not a cancel")
+  func cancelAfterAnEarlyExitControl() throws {
+    let fixture = Parser.parse(
+      source: """
+        struct RecordingSoundsSettingsView: View {
+          @State private var activePreviewTask: Task<Void, Never>?
+          var body: some View {
+            RecordingChimesContent(isDictationActive: liveRecordingState.isDictationActive)
+            .onDisappear {
+              if true { return }
+              activePreviewTask?.cancel()
+            }
+            .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
+              if isActive {
+                if (true) { return }
+                activePreviewTask?.cancel()
+              }
+            }
+          }
+        }
+        """)
+    let wiring = try #require(Self.pageWiring(in: fixture))
+    #expect(wiring.disappearCancels == false, "a cancel behind an early return counted")
+    #expect(wiring.dictationCancels == false, "a cancel behind an early return counted")
+  }
+
+  @Test("a return inside a nested closure does not hide a real cancel")
+  func nestedReturnKeepsTheCancel() throws {
+    let fixture = Parser.parse(
+      source: """
+        struct RecordingSoundsSettingsView: View {
+          @State private var activePreviewTask: Task<Void, Never>?
+          var body: some View {
+            RecordingChimesContent(isDictationActive: liveRecordingState.isDictationActive)
+            .onDisappear {
+              values.forEach { _ in return }
+              activePreviewTask?.cancel()
+            }
+            .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
+              if isActive {
+                if other { return }
+                activePreviewTask?.cancel()
+              }
+            }
+          }
+        }
+        """)
+    let wiring = try #require(Self.pageWiring(in: fixture))
+    #expect(wiring.disappearCancels, "a nested closure's return hid a cancel that runs")
+    #expect(wiring.dictationCancels, "a conditional return hid a cancel that can run")
+  }
+
   // MARK: - Extractors
 
   static func structDecl(_ name: String, in tree: some SyntaxProtocol) -> StructDeclSyntax? {
@@ -343,8 +405,26 @@ struct RecordingChimeWiringTests {
     }
   }
 
-  static func memberCalls(in node: some SyntaxProtocol, named names: Set<String>) -> [String] {
-    names.sorted().flatMap { name in memberCallNodes(in: node, named: name).map { _ in name } }
+  /// Names of the calls `x.name(...)` under `node` that `isMatch` accepts, one per call.
+  static func memberCallNames(in node: some SyntaxProtocol, where isMatch: (String) -> Bool)
+    -> [String]
+  {
+    node.tokens(viewMode: .sourceAccurate).compactMap { token -> String? in
+      guard case .identifier(let name) = token.tokenKind, isMatch(name),
+        let member = token.parent?.parent?.as(MemberAccessExprSyntax.self),
+        member.declName.baseName.text == name,
+        let call = member.parent?.as(FunctionCallExprSyntax.self),
+        call.calledExpression.id == member.id
+      else { return nil }
+      return name
+    }
+  }
+
+  /// Every spelling that can make a card respond to a press outside its two Buttons: any
+  /// `...Gesture` modifier, `onTap...` or `onLongPress...`. A fixed name list let
+  /// `onLongPressGesture` through (#3385 overnight evasion pass, 2026-10-05).
+  static func isPressHandler(_ name: String) -> Bool {
+    name.lowercased().contains("gesture") || name.hasPrefix("onTap") || name.hasPrefix("onLongPress")
   }
 
   static func references(_ name: String, in node: some SyntaxProtocol) -> Bool {

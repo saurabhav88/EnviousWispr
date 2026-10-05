@@ -38,10 +38,9 @@ struct InverseTextNormalizationBudgetTests {
   /// operation task, so the short case releases its executor at the floor.
   private static let slowWorkSeconds: Double = 2.0
 
-  private static func slowWork(_ request: ITNWorkRequest) async -> ITNWorkResult {
+  private static func slowWork(_ text: String, _ spoken: Bool) async -> String {
     try? await Task.sleep(for: .seconds(slowWorkSeconds))  // test-fixture-timer: the deadline itself is under test
-    return ITNWorkResult(
-      text: "CONVERTED:" + String(request.input.prefix(8)), punctuationRulesFired: nil)
+    return "CONVERTED:" + String(text.prefix(8))
   }
 
   @MainActor

@@ -10146,6 +10146,16 @@
         }
       }
     },
+    "Mass edit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehrere auswählen"
+          }
+        }
+      }
+    },
     "Match strictness" : {
       "localizations" : {
         "de" : {
@@ -14848,16 +14858,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sieh den Text schon während des Diktierens."
-          }
-        }
-      }
-    },
-    "Select" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auswählen"
           }
         }
       }

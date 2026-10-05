@@ -54,7 +54,7 @@ struct SettingsNavigationProducerTests {
     let source = try String(
       contentsOf: RepoRoot.url.appending(path: route.file), encoding: .utf8)
     let calls = Self.navigationCalls(in: source, callee: route.callee)
-    let owned = calls.filter { $0.owners.contains(route.owner) }
+    let owned = calls.filter { $0.owners.contains(route.owner) && $0.isReachable }
     #expect(
       owned.count == 1,
       "\(route.name): expected one \(route.callee)(...) owned by \(route.owner), found \(owned.count) in \(calls)"
@@ -110,6 +110,27 @@ struct SettingsNavigationProducerTests {
     #expect(calls.filter { $0.owners.contains("binding:openPermissionsWindow") }.isEmpty)
   }
 
+  @Test("a request that can never run does not satisfy a route")
+  func extractorIgnoresUnreachableCalls() {
+    let fixture = """
+      func wire() {
+        actions(
+          openA: { if false { coordinator.request(.a) } },
+          openB: { let _ = { coordinator.request(.b) } },
+          openC: { if true { return }; coordinator.request(.c) },
+          openD: { if true { coordinator.request(.d) } else { coordinator.request(.e) } },
+          openF: { coordinator.request(.f) },
+          openG: { if (false) { coordinator.request(.g) } },
+          openH: { if !true { coordinator.request(.h) } },
+          openI: { if ( true ) { return }; coordinator.request(.i) })
+      }
+      """
+    let calls = Self.navigationCalls(in: fixture, callee: "request")
+    #expect(calls.count == 9)
+    let live = calls.filter(\.isReachable).map(\.argument)
+    #expect(live == [".d", ".f"], "reachable: \(live)")
+  }
+
   @Test("owners are read through buttons, else branches and properties")
   func extractorReadsEveryOwnerKind() {
     let fixture = """
@@ -148,7 +169,9 @@ struct SettingsNavigationProducerTests {
   struct Call: CustomStringConvertible {
     let argument: String
     let owners: [String]
-    var description: String { "\(argument) in \(owners)" }
+    /// False when the call can never run (see `CallCollector.isReachable`).
+    let isReachable: Bool
+    var description: String { "\(argument) in \(owners)\(isReachable ? "" : " (unreachable)")" }
   }
 
   /// Every `<callee>(<one argument>)` call (`x.request(...)` or bare `navigate(...)`) with the
@@ -188,9 +211,49 @@ struct SettingsNavigationProducerTests {
         calls.append(
           Call(
             argument: argument.expression.trimmedDescription,
-            owners: Self.owners(of: Syntax(node))))
+            owners: Self.owners(of: Syntax(node)),
+            isReachable: Self.isReachable(Syntax(node))))
       }
       return .visitChildren
+    }
+
+    /// False when the call cannot run: under a constant-false `if` (or the else of a constant-true
+    /// one), after an unconditional `return` or `throw` in an enclosing block, or inside a closure
+    /// bound to `_`. Owner names alone cannot see any of these (#3385 overnight evasion pass,
+    /// 2026-10-05: all three left the route test green).
+    static func isReachable(_ node: Syntax) -> Bool {
+      var child = node
+      var current = node.parent
+      while let parent = current {
+        if let ifExpr = parent.as(IfExprSyntax.self) {
+          let condition = ifExpr.conditions.trimmedDescription
+          let value = SourceReachability.constant(condition)
+          if Syntax(ifExpr.body) == child, value == false { return false }
+          if let elseBody = ifExpr.elseBody, Syntax(elseBody) == child, value == true {
+            return false
+          }
+        }
+        if let item = parent.as(CodeBlockItemSyntax.self),
+          let list = item.parent?.as(CodeBlockItemListSyntax.self)
+        {
+          for earlier in list {
+            if earlier.id == item.id { break }
+            if SourceReachability.exitsUnconditionally(earlier) { return false }
+          }
+        }
+        if let closure = parent.as(ClosureExprSyntax.self), !isReceived(closure) { return false }
+        child = parent
+        current = parent.parent
+      }
+      return true
+    }
+
+    /// A closure that something receives: an argument, a trailing closure, a named binding's
+    /// value, or anything else that hands it on. `let _ = { ... }` receives nothing.
+    private static func isReceived(_ closure: ClosureExprSyntax) -> Bool {
+      guard let initializer = closure.parent?.as(InitializerClauseSyntax.self) else { return true }
+      return initializer.parent?.as(PatternBindingSyntax.self)?.pattern.is(WildcardPatternSyntax.self)
+        != true
     }
 
     static func owners(of node: Syntax) -> [String] {

@@ -335,7 +335,7 @@ struct SpokenPunctuationRoutingTests {
   func nonEnglishTimeout() async throws {
     var timeouts: [[String: Any]] = []
     let step = InverseTextNormalizationStep(
-      work: Self.slowWork, onTimeoutForTesting: { timeouts.append($0) })
+      requestWork: Self.slowWork, onTimeoutForTesting: { timeouts.append($0) })
     step.spokenPunctuation = Self.on
     step.backendSupportsLID = true
     let input = "Frage B Bindestrich 2 Setze Punkt Code"
@@ -347,12 +347,12 @@ struct SpokenPunctuationRoutingTests {
     #expect(run.punctuationRulesFired == nil, "the abandoned run's count is discarded")
     #expect(run.changed == false)
     #expect(timeouts.count == 1)
-    #expect(timeouts.first?["route"] as? String == "language_neutral")
+    #expect(timeouts.first?["route"] as? String == "neutral")
   }
 
   @Test("A hung non-English run with nothing attempted is not reported as a punctuation timeout")
   func nonEnglishTimeoutWithoutAnAttempt() async throws {
-    let step = InverseTextNormalizationStep(work: Self.slowWork)
+    let step = InverseTextNormalizationStep(requestWork: Self.slowWork)
     step.spokenPunctuation = Self.off
     step.backendSupportsLID = true
     let input = "Frage B Bindestrich 2 Setze Punkt Code"
@@ -365,14 +365,14 @@ struct SpokenPunctuationRoutingTests {
   func englishTimeout() async throws {
     var timeouts: [[String: Any]] = []
     let step = InverseTextNormalizationStep(
-      work: Self.slowWork, onTimeoutForTesting: { timeouts.append($0) })
+      requestWork: Self.slowWork, onTimeoutForTesting: { timeouts.append($0) })
     step.spokenPunctuation = Self.on
     let input = "meet at three thirty"
     let out = try await step.process(ctx(input, language: "en"))
     #expect(out.text == input)
     #expect(step.lastRun?.punctuationStatus == nil)
     #expect(timeouts.count == 1)
-    #expect(timeouts.first?["route"] == nil, "the English breadcrumb is unchanged")
+    #expect(timeouts.first?["route"] as? String == "english", "the English breadcrumb names its route")
   }
 
   // MARK: - The snapshot is taken before the hop
@@ -413,7 +413,7 @@ struct SpokenPunctuationRoutingTests {
   func inFlightRunKeepsItsSnapshot() async throws {
     let gate = Gate()
     let seen = Seen()
-    let step = InverseTextNormalizationStep(work: { request in
+    let step = InverseTextNormalizationStep(requestWork: { request in
       seen.add(request)
       await gate.enter()
       return ITNWorkResult(text: request.input, punctuationRulesFired: 0)
@@ -445,7 +445,7 @@ struct SpokenPunctuationRoutingTests {
   @Test("The request carries the exact sentinels of the take")
   func requestCarriesSentinels() async throws {
     let seen = Seen()
-    let step = InverseTextNormalizationStep(work: { request in
+    let step = InverseTextNormalizationStep(requestWork: { request in
       seen.add(request)
       return ITNWorkResult(text: request.input, punctuationRulesFired: 0)
     })

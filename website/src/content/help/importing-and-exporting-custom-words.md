@@ -6,7 +6,7 @@ section: "Dictionary"
 order: 3
 keywords: ["import", "export", "backup my words", "csv", "move to a new mac", "transfer", "share my word list", "switch from another dictation app", "bring my words over", "delete several words", "remove many words"]
 related: ["adding-custom-words", "using-snippets"]
-updated: 2026-09-29
+updated: 2026-10-04
 deflection: "can_resolve"
 ---
 Your custom words are the names and specialised words you have taught EnviousWispr. You can back them up, move them to another Mac, or bring them in from another dictation app. Every control on this page is under **Settings** > **Dictionary** > **Your Words**.
@@ -53,6 +53,6 @@ To use the file on another Mac, install EnviousWispr there, open **Settings** > 
 
 You can select a group of words instead of deleting them one at a time.
 
-1. **Turn on selection.** Click **Select**, above your list of words.
+1. **Turn on selection.** Click **Mass edit**, beside the search box above your list of words.
 2. **Choose the words.** Tick the box next to every word you want to remove.
 3. **Delete them.** Click **Delete…** to remove all the ticked words at once.

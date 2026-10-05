@@ -1,0 +1,49 @@
+import EnviousWisprCore
+
+/// The set of languages that have a vetted rule set (#1677). **Empty in production until the
+/// generator PR adds the first German rows.**
+///
+/// Owns exactly one question: "does this explicit non-English language value have a vetted rule
+/// set?". It holds no resolver, no second language key and no inventory of what the neutral address
+/// tables cover: neutral coverage (`addressWordPairs`, `spokenURLWords`) never registers a language
+/// and never enables language passes (plan §3c). A missing entry fails closed to the neutral route.
+///
+/// Immutable and `Sendable`: the production table is a static constant and a test builds its own
+/// value through the package initialiser, so nothing registers at runtime and nothing mutates a
+/// shared registry.
+package struct LanguageRuleRegistry: Sendable {
+
+  package enum RegistryError: Error, Equatable {
+    /// Two rule sets canonicalise to the same base code (for example `nb` and `no`).
+    case duplicate(baseCode: String)
+  }
+
+  private let sets: [String: LanguageRuleSet]
+
+  /// The shipped registry. Statically empty: `production.count == 0` is guarded by a test.
+  package static let production = LanguageRuleRegistry(validatedSets: [:])
+
+  private init(validatedSets: [String: LanguageRuleSet]) {
+    self.sets = validatedSets
+  }
+
+  /// Builds a registry from rule sets whose keys were already made canonical and non-English by
+  /// `LanguageRuleSet.init`. Refuses a conflicting pair rather than letting the later one win.
+  package init(_ ruleSets: [LanguageRuleSet]) throws {
+    var table: [String: LanguageRuleSet] = [:]
+    for set in ruleSets {
+      if table[set.baseCode] != nil { throw RegistryError.duplicate(baseCode: set.baseCode) }
+      table[set.baseCode] = set
+    }
+    self.sets = table
+  }
+
+  package var count: Int { sets.count }
+
+  /// The rule set for an explicit language value, or nil. Canonicalises through
+  /// `LanguageNormalizer.baseCode`; English and rejected values never match.
+  package func ruleSet(forLanguage language: String?) -> LanguageRuleSet? {
+    guard let code = LanguageNormalizer.baseCode(language), code != "en" else { return nil }
+    return sets[code]
+  }
+}
