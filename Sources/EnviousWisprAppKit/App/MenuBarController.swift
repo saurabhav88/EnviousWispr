@@ -403,6 +403,26 @@ final class MenuBarController: NSObject {
 
     menu.addItem(.separator())
 
+    // #3454: first, in its own group (founder 2026-10-04): opens the app's window on History, its
+    // first page (was "Settings...", which opened Dictation > Engine). No key equivalent: Cmd+, means Settings, and it only ever worked while
+    // this menu was open.
+    let openAppItem = NSMenuItem(
+      title: String(
+        localized: "Open \(AppConstants.appName)",
+        comment: "Menu bar menu: opens the app's main window on History. %@ is the app name, EnviousWispr."),
+      action: #selector(openMainWindowAction),
+      keyEquivalent: "")
+    openAppItem.image = NSImage(
+      systemSymbolName: "macwindow",
+      accessibilityDescription: String(
+        localized: "menu.openApp.icon", defaultValue: "Window",
+        comment: "Menu bar menu, VoiceOver: the icon beside Open EnviousWispr."))
+    openAppItem.target = self
+    openAppItem.identifier = MenuBarItemID.openApp
+    menu.addItem(openAppItem)
+
+    menu.addItem(.separator())
+
     // Record / Stop
     let isRecording = state.pipelineState == .recording
     let recordTitle =
@@ -426,8 +446,50 @@ final class MenuBarController: NSObject {
     recordItem.isEnabled = !(state.pipelineState.isActive && !isRecording)
     menu.addItem(recordItem)
 
-    // Quick Add (#2412). Beside Start Recording because both act on what the user is doing RIGHT
-    // NOW, and above the Settings separator because neither is configuration.
+    // Transcribe a File (#2772): the founder asked for it in the first UAT round of the
+    // import wizard. Opens the unified window on that page; the page itself does the rest.
+    // Directly under Start Recording: the two ways to get words in share a group (founder
+    // 2026-10-04, #3454; before that it followed the shortcut rows, #2811).
+    let transcribeFileItem = NSMenuItem(
+      title: String(
+        localized: "Transcribe a File...", comment: "Menu bar menu: opens Transcribe a File."),
+      action: #selector(openTranscribeFileAction), keyEquivalent: "")
+    transcribeFileItem.image = NSImage(
+      systemSymbolName: "doc.badge.plus",
+      accessibilityDescription: String(
+        localized: "Transcribe a File",
+        comment: "Menu bar menu, VoiceOver: the icon beside Transcribe a File."))
+    transcribeFileItem.target = self
+    transcribeFileItem.identifier = MenuBarItemID.transcribeFile
+    menu.addItem(transcribeFileItem)
+
+    // Auto-stop on silence indicator
+    if state.vadAutoStop {
+      let autoStopTitle =
+        isRecording
+        ? String(
+          localized:
+            "Auto-stop: Active (\(String(format: "%.1fs", locale: .current, state.vadSilenceTimeout)) silence)",
+          comment:
+            "Menu bar menu: auto-stop is watching this recording. %@ is the silence length, such as 1.5s."
+        )
+        : String(
+          localized: "Auto-stop on silence: On",
+          comment: "Menu bar menu: auto-stop on silence is switched on.")
+      let autoStopItem = NSMenuItem(title: autoStopTitle, action: nil, keyEquivalent: "")
+      autoStopItem.image = NSImage(
+        systemSymbolName: "waveform.badge.minus",
+        accessibilityDescription: String(
+          localized: "Auto-stop on silence",
+          comment: "Menu bar menu, VoiceOver: the icon beside the auto-stop line."))
+      autoStopItem.isEnabled = false
+      menu.addItem(autoStopItem)
+    }
+
+    menu.addItem(.separator())
+
+    // Quick Add (#2412) and Paste Last Dictation: the two shortcut helpers, their own group under
+    // the ways to get words in (founder 2026-10-04, #3454). Neither is configuration.
     let quickAdd = Self.quickAddItem(
       state.quickAdd, fallbackEnabled: state.quickAddFallbackEnabled)
     // **No key equivalent, deliberately** — see `shortcutLabel`. The chord rides in the
@@ -496,46 +558,6 @@ final class MenuBarController: NSObject {
       preview.isEnabled = false
       preview.indentationLevel = 1
       menu.addItem(preview)
-    }
-
-    // Transcribe a File (#2772): the founder asked for it in the first UAT round of the
-    // import wizard. Opens the unified window on that page; the page itself does the rest.
-    // Sits with the other two ways to get words in (#2811, founder 2026-09-12), above the
-    // divider, not with the Settings group below it.
-    let transcribeFileItem = NSMenuItem(
-      title: String(
-        localized: "Transcribe a File...", comment: "Menu bar menu: opens Transcribe a File."),
-      action: #selector(openTranscribeFileAction), keyEquivalent: "")
-    transcribeFileItem.image = NSImage(
-      systemSymbolName: "doc.badge.plus",
-      accessibilityDescription: String(
-        localized: "Transcribe a File",
-        comment: "Menu bar menu, VoiceOver: the icon beside Transcribe a File."))
-    transcribeFileItem.target = self
-    transcribeFileItem.identifier = MenuBarItemID.transcribeFile
-    menu.addItem(transcribeFileItem)
-
-    // Auto-stop on silence indicator
-    if state.vadAutoStop {
-      let autoStopTitle =
-        isRecording
-        ? String(
-          localized:
-            "Auto-stop: Active (\(String(format: "%.1fs", locale: .current, state.vadSilenceTimeout)) silence)",
-          comment:
-            "Menu bar menu: auto-stop is watching this recording. %@ is the silence length, such as 1.5s."
-        )
-        : String(
-          localized: "Auto-stop on silence: On",
-          comment: "Menu bar menu: auto-stop on silence is switched on.")
-      let autoStopItem = NSMenuItem(title: autoStopTitle, action: nil, keyEquivalent: "")
-      autoStopItem.image = NSImage(
-        systemSymbolName: "waveform.badge.minus",
-        accessibilityDescription: String(
-          localized: "Auto-stop on silence",
-          comment: "Menu bar menu, VoiceOver: the icon beside the auto-stop line."))
-      autoStopItem.isEnabled = false
-      menu.addItem(autoStopItem)
     }
 
     // Accessibility warning — shown only when paste is unavailable and not dismissed.
@@ -626,24 +648,6 @@ final class MenuBarController: NSObject {
     microphoneItem.submenu = microphoneSubmenu
     microphoneItem.identifier = MenuBarItemID.microphone
     menu.addItem(microphoneItem)
-
-    // #3454: opens the app's window on History, its first page (was "Settings...", which opened
-    // Dictation > Engine). No key equivalent: Cmd+, means Settings, and it only ever worked while
-    // this menu was open.
-    let openAppItem = NSMenuItem(
-      title: String(
-        localized: "Open \(AppConstants.appName)",
-        comment: "Menu bar menu: opens the app's main window on History. %@ is the app name, EnviousWispr."),
-      action: #selector(openMainWindowAction),
-      keyEquivalent: "")
-    openAppItem.image = NSImage(
-      systemSymbolName: "macwindow",
-      accessibilityDescription: String(
-        localized: "menu.openApp.icon", defaultValue: "Window",
-        comment: "Menu bar menu, VoiceOver: the icon beside Open EnviousWispr."))
-    openAppItem.target = self
-    openAppItem.identifier = MenuBarItemID.openApp
-    menu.addItem(openAppItem)
 
     // Appearance submenu (System / Light / Dark) — checkmark on the current
     // preference. Mirrors the Settings → Appearance picker (#1047).

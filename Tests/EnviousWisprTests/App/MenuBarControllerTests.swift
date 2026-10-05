@@ -152,13 +152,15 @@ struct MenuBarControllerTests {
         "Parakeet v3 — LLM Deactivated",  // status line
         "Version: \(AppConstants.appVersion)",
         "",  // separator
+        "Open \(AppConstants.appName)",  // #3454, was "Settings..."; first, its own group
+        "",  // separator
         "Start Recording",
+        "Transcribe a File...",  // #2772; the two ways to get words in share a group (#3454)
+        "",  // separator
         "Add to Dictionary  \u{2303}\u{2325} W",  // #2412, disabled; the chord rides in the title
         "Paste Last Dictation",  // #3106, disabled: this fixture has nothing to reuse
-        "Transcribe a File...",  // #2772, opens the window on that page; above the divider (#2811)
         "",  // separator
         "Microphone",  // #3454 submenu parent
-        "Open \(AppConstants.appName)",  // #3454, was "Settings..."
         "Appearance",  // #1047 submenu parent
         "",  // separator
         "Help Center",  // #3454; no updater in this fixture, so no Check for Updates below it
@@ -172,9 +174,11 @@ struct MenuBarControllerTests {
     #expect(menu.items[1].isEnabled == false)
     // Separators are separators.
     #expect(menu.items[2].isSeparatorItem)
+    #expect(menu.items[4].isSeparatorItem)
     #expect(menu.items[7].isSeparatorItem)
-    #expect(menu.items[11].isSeparatorItem)
+    #expect(menu.items[10].isSeparatorItem)
     #expect(menu.items[13].isSeparatorItem)
+    #expect(menu.items[15].isSeparatorItem)
     // #3454: Open EnviousWispr carries no key equivalent (Cmd+, means Settings); Quit carries "q".
     #expect(item(menu, id: MenuBarItemID.openApp)?.keyEquivalent == "")
     #expect(item(menu, id: MenuBarItemID.quit)?.keyEquivalent == "q")
