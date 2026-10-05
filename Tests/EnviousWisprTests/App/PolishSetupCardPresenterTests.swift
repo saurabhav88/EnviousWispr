@@ -232,15 +232,18 @@ struct PolishSetupCardPresenterTests {
     Self.conclude(fx, result: .skippedWithNotice, evidence: .cloudKeyUnreadable, tag: nil)
     Self.conclude(fx, result: .failed, evidence: .cloudKeyRejectedClassified, tag: nil)
     #expect(fx.overlay.requests == 0)
-    // The monitor's own intake refuses those takes before the card sees them, so offer the
-    // unconfirmed outcomes to the card directly: it must decline on its own (#3442 row 43).
+    // The monitor's own intake and ticket also refuse those takes, so ask the card's own
+    // yes-or-no directly: an unconfirmed problem is declined for every skipping result, and the
+    // same outcome with a confirmed problem is accepted (#3442 row 43).
     for result in [PolishTakeResult.skippedWithNotice, .failed, .skippedSilently] {
-      let outcome = PolishTakeOutcome(
-        takeID: UUID().uuidString, context: fx.monitor.freezeTakeContext(), result: result,
-        evidence: .cloudKeyUnreadable, setupProblem: nil, observedAt: .now)
-      fx.card.offer(after: outcome, dataLossDisclosureScheduled: false)
+      func outcome(_ tag: PolishSetupProblemTag?) -> PolishTakeOutcome {
+        PolishTakeOutcome(
+          takeID: UUID().uuidString, context: fx.monitor.freezeTakeContext(), result: result,
+          evidence: .cloudKeyMissing, setupProblem: tag, observedAt: .now)
+      }
+      #expect(PolishSetupCardPresenter.isCandidate(outcome(nil)) == false)
+      #expect(PolishSetupCardPresenter.isCandidate(outcome(.cloudKeyMissing)))
     }
-    #expect(fx.overlay.requests == 0, "the card offered itself for an unconfirmed problem")
   }
 
   @Test("readiness alone never raises the card")
