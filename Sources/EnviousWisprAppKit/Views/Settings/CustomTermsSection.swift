@@ -13,7 +13,7 @@ private struct BulkDeleteRequest: Identifiable {
 /// Phase 4 (#634) — Custom Terms section. Search + pagination + per-term Edit.
 /// Reads `frequencyUsed` from Phase 3a/b for "used N times" subtitle (omitted
 /// when frequency is 0 to avoid the "0 times" looks-like-a-bug case). Bible §10.2.
-/// Bulk select/delete (#1703): a "Select" mode lets several of the user's own
+/// Bulk select/delete (#1703): a "Mass edit" mode lets several of the user's own
 /// words be checked off and removed in one action.
 struct CustomTermsSection<Actions: View>: View {
   /// The page-level actions (Add word / Import / Export), rendered on the same
@@ -83,10 +83,26 @@ struct CustomTermsSection<Actions: View>: View {
   }
 
   var body: some View {
+    // The controls stay put while the words scroll (founder, 2026-10-04: lock
+    // the search bar and filters so only the words move). One card drawn as two
+    // halves: the top half is the section HEADER, which the Dictionary pane's
+    // `LazyVStack(pinnedViews: .sectionHeaders)` pins to its top edge; the
+    // words are the section's content and scroll underneath it.
+    Section {
+      listCard
+    } header: {
+      headerCard
+    }
+  }
+
+  /// Top half of the card: count and page actions, search, category filters,
+  /// and the bulk-delete bar. Everything that acts on the list, so all of it
+  /// stays reachable while the words scroll.
+  private var headerCard: some View {
     // #2492: no "Your Words" repeated here — the left sub-menu's selected
     // tab already says it. The count moved INSIDE the card as the first row,
     // beside the actions, so the eyebrow above the card is gone too.
-    BrandedSection {
+    CardHalf(edge: .top) {
       // The top bar: what you have on the left, what you can do on the right,
       // one line. Founder, 2026-08-29 — the count and the three buttons "should
       // all be on one line to create a cleaner UI".
@@ -195,7 +211,53 @@ struct CustomTermsSection<Actions: View>: View {
           }
         }
       }
+    }
+    // The pane pins this header only while it fits (`YourWordsView`), so it
+    // reports its own height.
+    .background(
+      GeometryReader { proxy in
+        Color.clear.preference(key: DictionaryPinnedHeaderHeightKey.self, value: proxy.size.height)
+      })
+    // The page's modifiers ride on the header, which is always rendered;
+    // a modifier on the `Section` itself would wrap it and lose the pinning.
+    // Every page starts at its first row. Keyed on the page rather than fired
+    // from the buttons, so it also covers the clamps that reset to page one
+    // when a search or category filter shortens the list.
+    .onChange(of: currentPage) { _, _ in scrollToTop() }
+    .onChange(of: allWords) { _, newWords in
+      // Prune against current ELIGIBILITY, not merely current ID existence:
+      // if a live refresh replaces an already-selected ID with a word that
+      // still exists but is no longer the user's own, drop it too (#1703).
+      selectedIDs.formIntersection(CustomTermListPolicy.selectableIDs(in: newWords))
+    }
+    .sheet(item: $editingWord) { word in
+      CustomWordEditSheet(
+        word: word,
+        wordSuggestionService: customWordsCoordinator.suggestionService,
+        onSave: { updated in
+          customWordsCoordinator.update(updated)
+        },
+        onDelete: {
+          customWordsCoordinator.remove(id: word.id)
+        }
+      )
+    }
+    .sheet(item: $pendingBulkDelete) { request in
+      BulkDeleteConfirmSheet(
+        ids: request.ids,
+        onDeleted: {
+          selectedIDs.subtract(request.ids)
+          isSelecting = false
+          pendingBulkDelete = nil
+        },
+        onCancel: { pendingBulkDelete = nil }
+      )
+    }
+  }
 
+  /// Bottom half of the card: the words themselves and the page controls.
+  private var listCard: some View {
+    CardHalf(edge: .bottom) {
       // List or empty state
       if pagedWords.isEmpty {
         BrandedRow(showDivider: false) {
@@ -241,39 +303,6 @@ struct CustomTermsSection<Actions: View>: View {
           }
         }
       }
-    }
-    // Every page starts at its first row. Keyed on the page rather than fired
-    // from the buttons, so it also covers the clamps that reset to page one
-    // when a search or category filter shortens the list.
-    .onChange(of: currentPage) { _, _ in scrollToTop() }
-    .onChange(of: allWords) { _, newWords in
-      // Prune against current ELIGIBILITY, not merely current ID existence:
-      // if a live refresh replaces an already-selected ID with a word that
-      // still exists but is no longer the user's own, drop it too (#1703).
-      selectedIDs.formIntersection(CustomTermListPolicy.selectableIDs(in: newWords))
-    }
-    .sheet(item: $editingWord) { word in
-      CustomWordEditSheet(
-        word: word,
-        wordSuggestionService: customWordsCoordinator.suggestionService,
-        onSave: { updated in
-          customWordsCoordinator.update(updated)
-        },
-        onDelete: {
-          customWordsCoordinator.remove(id: word.id)
-        }
-      )
-    }
-    .sheet(item: $pendingBulkDelete) { request in
-      BulkDeleteConfirmSheet(
-        ids: request.ids,
-        onDeleted: {
-          selectedIDs.subtract(request.ids)
-          isSelecting = false
-          pendingBulkDelete = nil
-        },
-        onCancel: { pendingBulkDelete = nil }
-      )
     }
   }
 
@@ -415,7 +444,7 @@ struct CustomTermsSection<Actions: View>: View {
     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
   }
 
-  /// Trailing controls in the search row: "Select" when idle (only offered
+  /// Trailing controls in the search row: "Mass edit" when idle (only offered
   /// if there is anything selectable in the current filtered set), or
   /// "Select All"/"Deselect All" + "Cancel" while selecting.
   @ViewBuilder
@@ -436,7 +465,9 @@ struct CustomTermsSection<Actions: View>: View {
         isSelecting = false
       }
     } else if !filteredSelectableIDs.isEmpty {
-      SettingsActionButton(title: "Select", isEnabled: true) {
+      // "Mass edit", not "Select": founder, 2026-10-04, people did not read
+      // "Select" as the way to act on many words at once.
+      SettingsActionButton(title: "Mass edit", isEnabled: true) {
         isSelecting = true
       }
     }
@@ -460,5 +491,52 @@ struct CustomTermsSection<Actions: View>: View {
         )
     }
     return categoryLabel
+  }
+}
+
+/// The height of the Your Words controls that the Dictionary pane pins.
+struct DictionaryPinnedHeaderHeightKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// One half of a `BrandedSection`-style card: the same fill, radius and
+/// hairline, with the corners and border only on its own outer edge. Two halves
+/// stacked with no gap draw one card, which lets the top half be pinned while
+/// the bottom half scrolls under it.
+private struct CardHalf<Content: View>: View {
+  enum Edge { case top, bottom }
+
+  let edge: Edge
+  @ViewBuilder let content: Content
+
+  init(edge: Edge, @ViewBuilder content: () -> Content) {
+    self.edge = edge
+    self.content = content()
+  }
+
+  private var shape: UnevenRoundedRectangle {
+    let r = SettingsLayout.sectionRadius
+    return edge == .top
+      ? UnevenRoundedRectangle(topLeadingRadius: r, topTrailingRadius: r)
+      : UnevenRoundedRectangle(bottomLeadingRadius: r, bottomTrailingRadius: r)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      content
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    // Opaque: the pinned top half covers the words scrolling beneath it.
+    .background(Color.stSectionBg)
+    .overlay(
+      // The border runs one point past the open edge, and the clip below cuts
+      // it there, so the seam between the halves carries no line of its own.
+      shape
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+        .padding(edge == .top ? .bottom : .top, -1)
+        .allowsHitTesting(false)
+    )
+    .clipShape(shape)
   }
 }
