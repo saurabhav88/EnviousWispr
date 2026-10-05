@@ -101,15 +101,16 @@ extension InverseTextNormalizer {
         continue
       }
       // A recogniser that heard a question or a sentence end before the command may already have
-      // written a mark on the word before the start word ("Wie geht es dir? Setze Fragezeichen",
-      // measured with Parakeet v3 on spoken German, Spanish and Italian). The command REPLACES that
-      // mark so the user never gets two. Only a lone mark after a letter or digit is replaced (an
-      // ellipsis or "?!" is kept), and only for a mark command: a break keeps the sentence end it
-      // follows.
-      // Never a mark this loop wrote itself: after a directly adjacent command the gap is empty and
-      // `out` ends with the previous replacement, so consecutive commands still stack.
+      // written the SAME mark on the word before the start word ("Wie geht es dir? Setze
+      // Fragezeichen", measured with Parakeet v3 on spoken German, Spanish, Italian and French).
+      // One mark is what the user asked for, so the duplicate is dropped. Only an IDENTICAL mark
+      // is dropped, and only when it follows a letter or digit: a different mark ("z.B. Setze
+      // Komma", "1. Setze Komma") is kept, because the pass cannot tell whether the recogniser or
+      // the user wrote it. Never a break command, an ellipsis, a `?!` run, or the mark the
+      // previous command wrote: after a directly adjacent command the gap is empty and `out` ends
+      // with that replacement, so consecutive commands still stack.
       if rule.command != .lineBreak, rule.command != .paragraphBreak, fired == 0 || !gap.isEmpty {
-        Self.dropRecogniserMark(&out)
+        Self.dropDuplicateRecogniserMark(&out, duplicating: rule.replacement)
       }
       out += rule.replacement
       fired += 1
@@ -200,11 +201,14 @@ extension InverseTextNormalizer {
     return key
   }
 
-  /// Remove one recogniser mark (`. , ! ? ; :`, with the space French writes before `? ! : ;`) that
-  /// sits directly after a letter or digit at the end of `out`. Leaves ellipses, `?!` runs and a mark
-  /// after anything else alone.
-  private static func dropRecogniserMark(_ out: inout String) {
-    guard let mark = out.last, ".,!?;:".contains(mark) else { return }
+  /// Remove ONE mark at the end of `out` that equals `replacement` (the single mark character the
+  /// command is about to write), with the space French writes before `? ! : ;`, when it sits directly
+  /// after a letter or digit. Anything else, including a different mark, an ellipsis and a `?!` run,
+  /// is left alone.
+  private static func dropDuplicateRecogniserMark(_ out: inout String, duplicating replacement: String) {
+    guard replacement.count == 1, let mark = out.last, ".,!?;:".contains(mark),
+      String(mark) == replacement
+    else { return }
     var rest = Substring(out).dropLast()
     if "?!:;".contains(mark), let space = rest.last,
       space == " " || space == "\u{00A0}" || space == "\u{202F}"

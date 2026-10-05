@@ -232,19 +232,34 @@ struct MultilingualSpokenPunctuationTests {
     "A mark the recogniser wrote around a command is replaced, never doubled",
     arguments: [
       ("de", "Wie geht es dir? Setze Fragezeichen.", "Wie geht es dir?"),
-      ("de", "Das ist toll. Setze Ausrufezeichen.", "Das ist toll!"),
+      ("de", "Das ist toll! Setze Ausrufezeichen.", "Das ist toll!"),
       ("de", "Wie geht es dir Setze Fragezeichen?", "Wie geht es dir?"),
       ("de", "Toll Setze Ausrufezeichen!", "Toll!"),
       ("de", "Hallo, Setze Komma wie geht es dir", "Hallo, wie geht es dir"),
       ("de", "Es kostet 5. Setze Punkt", "Es kostet 5."),
       ("fr", "Comment \u{00E7}a va ? Ins\u{00E8}re point d'interrogation", "Comment \u{00E7}a va?"),
       ("fr", "Comment \u{00E7}a va Ins\u{00E8}re point d'interrogation ?", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va\u{00A0}? Ins\u{00E8}re point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va\u{202F}? Ins\u{00E8}re point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va Ins\u{00E8}re point d'interrogation\u{00A0}?", "Comment \u{00E7}a va?"),
+      ("fr", "C'est super Ins\u{00E8}re point d'exclamation\u{202F}!", "C'est super!"),
       ("fr", "C'est super Ins\u{00E8}re point d'exclamation !", "C'est super!"),
       ("es", "\u{00BF}C\u{00F3}mo est\u{00E1}s? Pon signo de interrogaci\u{00F3}n.", "\u{00BF}C\u{00F3}mo est\u{00E1}s?"),
       ("it", "Come stai? Metti punto interrogativo", "Come stai?"),
     ])
   func recogniserMarksAroundACommand(language: String, input: String, expected: String) {
     #expect(Self.text(input, language) == expected)
+  }
+
+  /// The pass cannot tell whether the recogniser or the user wrote a mark that DIFFERS from the one the
+  /// command writes, so it keeps it: an abbreviation's dot, a list marker, a decimal, a different mark.
+  @Test("A different mark before the start word is kept, never deleted")
+  func differentMarksBeforeTheStartWordAreKept() {
+    #expect(Self.text("z.B. Setze Komma weiter") == "z.B., weiter")
+    #expect(Self.text("1. Setze Komma weiter") == "1., weiter")
+    #expect(Self.text("3.14 Setze Punkt") == "3.14.")
+    #expect(Self.text("Das ist toll. Setze Ausrufezeichen.") == "Das ist toll.!")
+    #expect(Self.text("Wie geht es dir. Setze Fragezeichen") == "Wie geht es dir.?")
   }
 
   @Test("A line break keeps the sentence end it follows, and a lone ellipsis is not a recogniser mark")
