@@ -354,15 +354,12 @@ class TestSession:
             return settings_win
 
         # Not open — open via menu
-        settings_item = find_menu_item_via_menu(self.pid, "Settings...", verbose=self.verbose)
-        if settings_item is not None:
-            perform_action(settings_item, "AXPress")
-        else:
-            # SAFETY: activate first so Cmd+, lands on EnviousWispr, not a
-            # frontmost app (which would open that app's preferences instead).
-            activate_app(self.pid)
-            time.sleep(0.05)
-            press_key("comma", cmd=True)
+        # #3454: the menu item is "Open EnviousWispr" (it opens the window on History) and has no
+        # Cmd+, any more, so there is no keyboard fallback: a missing item is an error.
+        settings_item = find_menu_item_via_menu(self.pid, "Open EnviousWispr", verbose=self.verbose)
+        if settings_item is None:
+            raise RuntimeError("the menu bar menu has no Open EnviousWispr item")
+        perform_action(settings_item, "AXPress")
         time.sleep(1.0)
 
         settings_win = _find_app_window(self.pid, timeout=3.0)
@@ -924,15 +921,12 @@ class TestContext:
         if self.session:
             return self.session.ensure_settings_open(verbose=self.verbose)
         # Fallback without session
-        settings_item = find_menu_item_via_menu(self.pid, "Settings...", verbose=self.verbose)
-        if settings_item is not None:
-            perform_action(settings_item, "AXPress")
-        else:
-            # SAFETY: activate first so Cmd+, lands on EnviousWispr, not a
-            # frontmost app (which would open that app's preferences instead).
-            activate_app(self.pid)
-            time.sleep(0.05)
-            press_key("comma", cmd=True)
+        # #3454: the menu item is "Open EnviousWispr" (it opens the window on History) and has no
+        # Cmd+, any more, so there is no keyboard fallback: a missing item is an error.
+        settings_item = find_menu_item_via_menu(self.pid, "Open EnviousWispr", verbose=self.verbose)
+        if settings_item is None:
+            raise RuntimeError("the menu bar menu has no Open EnviousWispr item")
+        perform_action(settings_item, "AXPress")
         time.sleep(1.0)
         return _find_app_window(self.pid, timeout=3.0)
 
@@ -1261,7 +1255,7 @@ def test_esc_no_clipboard(ctx):
 @uat_test("settings_window_opens", suite="settings", context="settings")
 def test_settings_opens(ctx):
     """GIVEN the app is running,
-    WHEN Settings... is activated via menu,
+    WHEN Open EnviousWispr is activated via menu,
     THEN the Settings window appears."""
     settings_win = ctx.ensure_settings_open()
     if settings_win is None:

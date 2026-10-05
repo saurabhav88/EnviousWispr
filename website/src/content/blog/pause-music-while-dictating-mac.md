@@ -29,7 +29,7 @@ The usual fix is to reach for the pause key before every dictation and remember 
 
 ## The setting: Media during dictation
 
-Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Microphone**. Above Microphone readiness is **Media during dictation**, with four choices:
+Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Dictation Settings** > **Microphone**. Above Microphone readiness is **Media during dictation**, with four choices:
 
 | Choice | What it does while you dictate | When you stop |
 |---|---|---|

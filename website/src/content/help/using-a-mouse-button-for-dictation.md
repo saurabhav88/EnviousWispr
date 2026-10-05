@@ -15,7 +15,7 @@ Most extra buttons on a gaming mouse can start dictation. The **Keybinds** page 
 
 The keybind box shows exactly what EnviousWispr receives from a button.
 
-1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Keybinds**.
+1. **Open Keybinds.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Keybinds**.
 2. **Select the keybind box.** Click the **Recording keybind** box.
 3. **Press one of the extra buttons on your mouse.** Use a side button or a thumb button, not left or right click.
 

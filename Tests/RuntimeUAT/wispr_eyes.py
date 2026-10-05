@@ -219,7 +219,11 @@ def _ui_terms(text):
     terms = [text]
     for table in _ui_tables():
         shown = table.get({"Send feedback": "feedback.title",
-                           "Send feedback: your message is waiting": "feedback.help.waiting"}.get(text, text))
+                           "Send feedback: your message is waiting": "feedback.help.waiting",
+                           # #3454: the menu item's key is the format "Open %@" (the app name).
+                           "Open EnviousWispr": "Open %@"}.get(text, text))
+        if isinstance(shown, str):
+            shown = shown.replace("%@", "EnviousWispr")
         if isinstance(shown, str) and shown not in terms:
             terms.append(shown)
     return terms
@@ -586,9 +590,11 @@ def _ax():
 
 
 def _open_settings():
-    settings_item = _find_match(_app, "Settings...", "AXMenuItem", exact=True)
+    # #3454: the menu bar item that opens the window is "Open EnviousWispr" (was "Settings...").
+    settings_item = _find_match(_app, "Open EnviousWispr", "AXMenuItem", exact=True)
     if not settings_item:
-        raise NavigationError("the Settings window is not open and no Settings... item was found")
+        raise NavigationError(
+            "the Settings window is not open and no Open EnviousWispr item was found")
     perform_action(settings_item, "AXPress")
     print("Auto-opened Settings")
 

@@ -1605,9 +1605,21 @@ package final class WisprBootstrapper {
       actions: MenuBarActions(
         addSelectedWord: { quickAdd.beginFromMenuBar(selection: $0, context: $1) },
         continueOnboarding: { appWindowCoordinator.openOnboardingWindow() },
-        openSettings: {
-          navigationCoordinator.request(.dictation(.engine))
+        openMainWindow: {
+          navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
+        },
+        openHelpCenter: {
+          if let url = URL(string: HelpCenter.rootURL) { NSWorkspace.shared.open(url) }
+        },
+        // #3454: the Settings dropdown's own titles ("<name> · <connection>"), read as the menu opens.
+        microphoneChoices: {
+          audioDeviceList.availableInputDevices.map { device in
+            MicrophoneMenuChoice(
+              uid: device.uid,
+              title: MicrophoneDevicePicker.optionTitle(
+                for: device, transportToken: AudioDeviceEnumerator.transportLabel(for: device.id)))
+          }
         },
         openTranscribeFile: {
           navigationCoordinator.request(.transcribeFile)

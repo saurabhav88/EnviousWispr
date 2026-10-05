@@ -27,9 +27,11 @@ If your Mac's input is not a real microphone, EnviousWispr records from an avail
 
 Choose a device and EnviousWispr uses it whatever your Mac is set to. This helps if you keep ending up on the wrong microphone. The picker then shows that device's name in place of **Auto**.
 
-1. Click the EnviousWispr icon in the menu bar and choose **Settings**, or press Cmd+,.
-2. Click **Microphone** in the sidebar.
+1. Click the EnviousWispr icon in the menu bar and choose **Open EnviousWispr**.
+2. Click **Dictation Settings** in the sidebar, then **Microphone**.
 3. Choose your microphone from the list.
+
+You can also switch without opening the window: click the EnviousWispr icon in the menu bar, choose **Microphone**, and pick **Auto** or a microphone. It is the same choice as the list in Dictation Settings.
 
 ### My audio interface records from the wrong input
 

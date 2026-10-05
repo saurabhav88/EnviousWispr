@@ -37,5 +37,5 @@ Four things happen while EnviousWispr works. Knowing them saves you wondering wh
 
 - Speak at your normal speed. Slowing down or over-enunciating does not help.
 - On your first dictation after opening the app, pause for a beat after pressing the key. Once the microphone has been used recently, EnviousWispr also captures the half second before you press, so later dictations do not need that pause.
-- Finished dictations are saved in History, so you can go back and find one later. Click the menu bar icon, choose **Settings...**, then **History**. If saving fails, EnviousWispr tells you.
+- Finished dictations are saved in History, so you can go back and find one later. Click the menu bar icon and choose **Open EnviousWispr**; the window opens on **History**. If saving fails, EnviousWispr tells you.
 - If you press your cancel keybind by mistake, Escape by default, the dictation is kept and offered back to you with an **Undo** button. Read [_Escape Recovery_](/help/escape-recovery/).

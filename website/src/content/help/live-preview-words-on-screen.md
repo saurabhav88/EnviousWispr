@@ -23,8 +23,8 @@ Your dictation is not affected when the preview is empty, and an empty preview n
 
 ### Turn Live Preview on or off
 
-1. **Open settings.** Click the EnviousWispr menu bar icon and select **Settings**, or press Cmd+,.
-2. **Open Live Preview.** Under **Record** in the sidebar, click **Live Preview**.
+1. **Open EnviousWispr.** Click the EnviousWispr menu bar icon and select **Open EnviousWispr**.
+2. **Open Live Preview.** Click **Dictation Settings** in the sidebar, then **Live Preview**.
 3. **Use the switch.** It sits at the right end of the status bar at the top of the page. It has no label of its own.
 
 On a Mac that cannot run the selected engine, you get the ordinary recording bar while you dictate, and the status bar on this page says why.

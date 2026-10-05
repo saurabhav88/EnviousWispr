@@ -36,7 +36,7 @@ A single recording can last up to one hour. EnviousWispr warns you one minute be
 
 You can have EnviousWispr end a recording after a pause in your speech. The [auto-stop guide](/help/voice-activity-detection-and-auto-stop/) covers it in full.
 
-1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
-2. Open **Transcription**.
+1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
+2. Open **Dictation Settings**, then **Engine**.
 3. Under **Auto-Stop**, switch on **Stop recording on silence**. It is off by default.
 4. Use the **Pause duration** slider to choose how long a pause ends the recording, from half a second to three seconds.

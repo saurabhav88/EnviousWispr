@@ -28,7 +28,7 @@ Fast is the default, it is faster, and it covers 25 European languages. If your 
 
 ### Switch to another engine
 
-1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
+1. **Open the engine settings.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Dictation Settings** > **Engine**.
 2. **Pick your engine.** Click the **Fast** card for Parakeet or the **All Languages** card for WhisperKit. Each card names the model it runs.
 3. **Download the model.** The first time you choose All Languages, click **Download WhisperKit Model**. The model does not download on its own, and it takes about 1.5 GB of storage.
 

@@ -13,7 +13,7 @@ When EnviousWispr keeps misspelling a name or a specialised word, add it to your
 
 ### Add a word it keeps getting wrong
 
-1. **Open your words.** Click the EnviousWispr icon in your menu bar, choose **Settings**, then go to **Dictionary** > **Your Words**.
+1. **Open your words.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, then go to **Dictionary** > **Your Words**.
 2. **Add the word.** Click **Add word** and type the exact spelling you want to appear.
 
 From then on, when you speak that word, EnviousWispr writes your spelling. If it writes "Chat G P T", adding "ChatGPT" fixes that in every dictation.

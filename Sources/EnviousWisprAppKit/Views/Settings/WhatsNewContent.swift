@@ -79,6 +79,22 @@ enum WhatsNewContent {
       version: "2.5.3"
     ),
 
+    // #3454: the menu bar menu's Microphone submenu, "Settings..." renamed "Open EnviousWispr"
+    // (opens on History, no Cmd+,) and the Help Center item.
+    Entry(
+      id: "menu-bar-menu-shortcuts",
+      icon: "menubar.rectangle",
+      title: "A quicker menu bar menu",
+      description:
+        "The menu bar menu now has a few shortcuts:",
+      bullets: [
+        "Microphone: switch microphones without opening the app",
+        "Open EnviousWispr: replaces Settings and opens on your History",
+        "Help Center: opens the help website",
+      ],
+      version: "2.5.3"
+    ),
+
     // MARK: - v2.5.2
 
     // #3269: the two privacy switches (Settings > Permissions > Privacy, both ON by default;

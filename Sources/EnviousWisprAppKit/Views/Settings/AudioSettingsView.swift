@@ -54,10 +54,7 @@ struct AudioSettingsView: View {
       resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID)
     let inputDeviceSelection = Binding<String>(
       get: { settingsManager.preferredInputDeviceIDOverride },
-      set: { newValue in
-        settingsManager.preferredInputDeviceIDOverride = newValue
-        settingsManager.selectedInputDeviceUID = newValue
-      }
+      set: { settingsManager.chooseInputDevice(uid: $0) }
     )
     // #2664: the socket control sits on the SAME line as the device picker,
     // sized to its own text (founder, 2026-09-05: a full-width segmented bar

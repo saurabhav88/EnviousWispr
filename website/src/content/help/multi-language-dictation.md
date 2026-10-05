@@ -24,7 +24,7 @@ To lock a language, switch off **Auto-detect language**, then click **Change** a
 
 If your language is not one of the 25 the Fast engine covers, switch to All Languages.
 
-1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
+1. **Open the engine settings.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Dictation Settings** > **Engine**.
 2. **Select All Languages.** Click the **All Languages** card. If you have not downloaded its model yet, click **Download WhisperKit Model**.
 3. **Choose your language.** Switch off **Auto-detect language**, then click **Change** and pick your language. You can also leave auto-detect on.
 

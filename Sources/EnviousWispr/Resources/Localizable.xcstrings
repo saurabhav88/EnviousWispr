@@ -8258,6 +8258,17 @@
         }
       }
     },
+    "Help Center" : {
+      "comment" : "Menu bar menu: opens the help website in the browser.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe-Center"
+          }
+        }
+      }
+    },
     "Help us catch broken updates." : {
       "localizations" : {
         "de" : {
@@ -10210,7 +10221,7 @@
       }
     },
     "Microphone" : {
-      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nSetup permissions: title of the microphone permission row.",
+      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nMenu bar menu: the submenu for choosing the microphone used for recording.\nSetup permissions: title of the microphone permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12115,6 +12126,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einmalige Einrichtung"
+          }
+        }
+      }
+    },
+    "Open %@" : {
+      "comment" : "Menu bar menu: opens the app's main window on History. %@ is the app name, EnviousWispr.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ öffnen"
           }
         }
       }
@@ -15027,28 +15049,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Tastenkürzel wird eingerichtet"
-          }
-        }
-      }
-    },
-    "Settings" : {
-      "comment" : "Menu bar menu, VoiceOver: the icon beside Settings.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einstellungen"
-          }
-        }
-      }
-    },
-    "Settings..." : {
-      "comment" : "Menu bar menu: opens Settings.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einstellungen..."
           }
         }
       }
@@ -22107,6 +22107,60 @@
         }
       }
     },
+    "menu.helpCenter.icon" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Help Center.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Help"
+          }
+        }
+      }
+    },
+    "menu.microphone.icon" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Microphone.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Microphone"
+          }
+        }
+      }
+    },
+    "menu.openApp.icon" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside Open EnviousWispr.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Window"
+          }
+        }
+      }
+    },
     "menu.quickAdd.addSelection" : {
       "comment" : "Menu bar menu: adds the selected word to Your Words. %@ is the selected text; use this language's quotation marks.",
       "extractionState" : "extracted_with_value",
@@ -22898,6 +22952,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neuigkeiten und Nach Updates suchen -> die Geschenk-Schaltfläche „Neuigkeiten & Updates“"
+          }
+        }
+      }
+    },
+    "whatsNew.menu-bar-menu-shortcuts.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry menu-bar-menu-shortcuts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein schnelleres Menü in der Menüleiste"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A quicker menu bar menu"
+          }
+        }
+      }
+    },
+    "whatsNew.menu-bar-menu-shortcuts.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry menu-bar-menu-shortcuts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Menü in der Menüleiste bietet jetzt ein paar Schnellzugriffe:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The menu bar menu now has a few shortcuts:"
+          }
+        }
+      }
+    },
+    "whatsNew.menu-bar-menu-shortcuts.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Mikrofon“: Mikrofon wechseln, ohne die App zu öffnen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microphone: switch microphones without opening the app"
+          }
+        }
+      }
+    },
+    "whatsNew.menu-bar-menu-shortcuts.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„EnviousWispr öffnen“: ersetzt „Einstellungen“ und öffnet die App auf der Seite „Verlauf“"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open EnviousWispr: replaces Settings and opens on your History"
+          }
+        }
+      }
+    },
+    "whatsNew.menu-bar-menu-shortcuts.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Hilfe-Center“: öffnet die Hilfe-Website"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help Center: opens the help website"
           }
         }
       }

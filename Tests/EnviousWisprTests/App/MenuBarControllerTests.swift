@@ -20,7 +20,7 @@ import Testing
 /// the concrete `final` homes. Action dispatch is exercised through the real
 /// `@objc` selector wired into each rendered menu item.
 @MainActor
-@Suite("MenuBarController")
+@Suite("MenuBarController", .tags(.productOutcome))
 struct MenuBarControllerTests {
 
   /// Populates the `NSApp` global before any SUT line touches it
@@ -152,13 +152,18 @@ struct MenuBarControllerTests {
         "Parakeet v3 — LLM Deactivated",  // status line
         "Version: \(AppConstants.appVersion)",
         "",  // separator
+        "Open \(AppConstants.appName)",  // #3454, was "Settings..."; first, its own group
+        "",  // separator
         "Start Recording",
+        "Transcribe a File...",  // #2772; the two ways to get words in share a group (#3454)
+        "",  // separator
         "Add to Dictionary  \u{2303}\u{2325} W",  // #2412, disabled; the chord rides in the title
         "Paste Last Dictation",  // #3106, disabled: this fixture has nothing to reuse
-        "Transcribe a File...",  // #2772, opens the window on that page; above the divider (#2811)
         "",  // separator
-        "Settings...",
+        "Microphone",  // #3454 submenu parent
         "Appearance",  // #1047 submenu parent
+        "",  // separator
+        "Help Center",  // #3454; no updater in this fixture, so no Check for Updates below it
         "",  // separator
         "Quit \(AppConstants.appName)",
       ],
@@ -169,10 +174,13 @@ struct MenuBarControllerTests {
     #expect(menu.items[1].isEnabled == false)
     // Separators are separators.
     #expect(menu.items[2].isSeparatorItem)
+    #expect(menu.items[4].isSeparatorItem)
     #expect(menu.items[7].isSeparatorItem)
     #expect(menu.items[10].isSeparatorItem)
-    // Settings carries the comma key-equivalent; Quit carries "q".
-    #expect(item(menu, id: MenuBarItemID.settings)?.keyEquivalent == ",")
+    #expect(menu.items[13].isSeparatorItem)
+    #expect(menu.items[15].isSeparatorItem)
+    // #3454: Open EnviousWispr carries no key equivalent (Cmd+, means Settings); Quit carries "q".
+    #expect(item(menu, id: MenuBarItemID.openApp)?.keyEquivalent == "")
     #expect(item(menu, id: MenuBarItemID.quit)?.keyEquivalent == "q")
     // Every actionable item targets the controller. Submenu parents (e.g.
     // Appearance) are excluded: AppKit assigns them a system `submenuAction:`
@@ -183,6 +191,76 @@ struct MenuBarControllerTests {
         actionable.target as AnyObject? === controller,
         "\(actionable.title) should target the MenuBarController")
     }
+  }
+
+  @Test("renderMenu: with an updater, Check for Updates sits under Help Center (#3454)")
+  func renderMenuUpdaterBelowHelpCenter() {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(into: menu, state: fixture(pipelineState: .idle, hasUpdater: true))
+    let help = menu.items.firstIndex { $0.identifier == MenuBarItemID.helpCenter }
+    let update = menu.items.firstIndex { $0.identifier == MenuBarItemID.checkForUpdates }
+    #expect(help != nil && update == help.map { $0 + 1 })
+    #expect(menu.items.last?.identifier == MenuBarItemID.quit)
+    #expect(menu.items[menu.items.count - 2].isSeparatorItem)
+  }
+
+  @Test(
+    "renderMenu: Microphone submenu lists Auto then the inputs, checkmark on the saved choice (#3454)",
+    arguments: [
+      ("", "Auto", true), ("usb-uid", "USB Mic · USB", true),
+      // A saved choice no input matches (before reconciliation) checks no row, as in Settings.
+      ("gone-uid", nil as String?, false),
+    ] as [(String, String?, Bool)])
+  func renderMenuMicrophoneSubmenu(selection: String, checkedTitle: String?, anyChecked: Bool) {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle,
+        microphoneChoices: [
+          MicrophoneMenuChoice(uid: "builtin-uid", title: "MacBook Pro Microphone · Built-in"),
+          MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB"),
+          // No UID: its key would be Auto's "", so the menu leaves it out.
+          MicrophoneMenuChoice(uid: "", title: "Nameless"),
+        ],
+        microphoneSelection: selection))
+
+    let submenu = item(menu, id: MenuBarItemID.microphone)?.submenu
+    #expect(
+      submenu?.items.map(\.title) == ["Auto", "MacBook Pro Microphone · Built-in", "USB Mic · USB"])
+    #expect(submenu?.items.map { $0.representedObject as? String } == ["", "builtin-uid", "usb-uid"])
+    let checked = submenu?.items.filter { $0.state == .on }.map(\.title) ?? []
+    #expect(checked == (anyChecked ? [checkedTitle ?? ""] : []))
+    for sub in submenu?.items ?? [] {
+      #expect(sub.target as AnyObject? === controller, "\(sub.title) should target the controller")
+    }
+  }
+
+  @Test("Microphone submenu: picking a row saves it through the shared owner, Auto included (#3454)")
+  func microphoneSubmenuSavesTheChoice() {
+    let name = "ew.menuMicrophoneTest." + UUID().uuidString
+    let defaults = TestDefaults.suite(name)!
+    defaults.removePersistentDomain(forName: name)
+    let settings = SettingsManager(defaults: defaults)
+    let controller = makeController(settings: settings)
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle,
+        microphoneChoices: [MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB")]))
+    let rows = item(menu, id: MenuBarItemID.microphone)?.submenu?.items ?? []
+    #expect(rows.count == 2)
+
+    perform(rows.last)
+    #expect(settings.preferredInputDeviceIDOverride == "usb-uid")
+    #expect(settings.selectedInputDeviceUID == "usb-uid")
+
+    perform(rows.first)
+    #expect(settings.preferredInputDeviceIDOverride == "")
+    #expect(settings.selectedInputDeviceUID == "")
   }
 
   @Test(
@@ -288,9 +366,9 @@ struct MenuBarControllerTests {
     let line = lines.first
     #expect(line?.title == "Finish setting up AI polish")
     #expect(line?.isEnabled == true)
-    // It sits in the warning area, above Settings.
+    // It sits in the warning area, above the Microphone submenu (#3454).
     let lineIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.polishSetup }
-    let settingsIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.settings }
+    let settingsIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.microphone }
     #expect(lineIndex != nil && settingsIndex != nil && lineIndex! < settingsIndex!)
     perform(line)
     #expect(spy.fired == ["openAIPolish"])
@@ -794,15 +872,20 @@ struct MenuBarControllerTests {
     perform(item(menu, id: MenuBarItemID.continueSetup))
     #expect(spy.fired == ["continueOnboarding"])
 
-    perform(item(menu, id: MenuBarItemID.settings))
-    #expect(spy.fired == ["continueOnboarding", "openSettings"])
+    perform(item(menu, id: MenuBarItemID.openApp))
+    #expect(spy.fired == ["continueOnboarding", "openMainWindow"])
 
     // #2772: the drop-down entry opens the window on the Transcribe a File page.
     perform(item(menu, id: MenuBarItemID.transcribeFile))
-    #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile"])
+    #expect(spy.fired == ["continueOnboarding", "openMainWindow", "openTranscribeFile"])
+
+    // #3454: Help Center opens the help website.
+    perform(item(menu, id: MenuBarItemID.helpCenter))
+    #expect(spy.fired == ["continueOnboarding", "openMainWindow", "openTranscribeFile", "openHelpCenter"])
 
     perform(item(menu, id: MenuBarItemID.quit))
-    #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile", "quit"])
+    #expect(
+      spy.fired == ["continueOnboarding", "openMainWindow", "openTranscribeFile", "openHelpCenter", "quit"])
 
     // toggleRecording dispatches through an async Task — yield so it runs.
     perform(item(menu, id: MenuBarItemID.record))
@@ -849,7 +932,9 @@ struct MenuBarControllerTests {
       (MenuBarItemID.transcribeFile, "Transcribe a File..."),
       (MenuBarItemID.accessibilityWarning, "Paste disabled — Accessibility required"),
       (MenuBarItemID.microphoneWarning, "Dictation disabled — Microphone access required"),
-      (MenuBarItemID.settings, "Settings..."),
+      (MenuBarItemID.microphone, "Microphone"),
+      (MenuBarItemID.openApp, "Open \(AppConstants.appName)"),
+      (MenuBarItemID.helpCenter, "Help Center"),
       (MenuBarItemID.appearance, "Appearance"),
       (MenuBarItemID.quit, "Quit \(AppConstants.appName)"),
     ]
@@ -881,7 +966,9 @@ struct MenuBarControllerTests {
     quickAddContext: SelectionReader.AcquisitionContext = .init(
       pid: 501, bundleIdentifier: "com.apple.TextEdit", focusedSubrole: nil),
     quickAddFallbackEnabled: Bool = true,
-    polishSetupWarning: PolishSetupPromptSubject? = nil
+    polishSetupWarning: PolishSetupPromptSubject? = nil,
+    microphoneChoices: [MicrophoneMenuChoice] = [],
+    microphoneSelection: String = ""
   ) -> MenuBarViewState {
     var state = MenuBarViewState(
       quickAddShortcut: quickAddShortcut,
@@ -903,10 +990,14 @@ struct MenuBarControllerTests {
       appearancePreference: appearancePreference
     )
     state.polishSetupWarning = polishSetupWarning
+    state.microphoneChoices = microphoneChoices
+    state.microphoneSelection = microphoneSelection
     return state
   }
 
-  private func makeController(spy: ActionSpy = ActionSpy()) -> MenuBarController {
+  private func makeController(
+    spy: ActionSpy = ActionSpy(), settings: SettingsManager = SettingsManager()
+  ) -> MenuBarController {
     let asrManager = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
     // Shared lightweight audio fake from DictationRuntimeTestSupport (same
     // test target). MenuBarController never reads `audioLevel` in these tests
@@ -923,7 +1014,6 @@ struct MenuBarControllerTests {
     let liveRecordingState = LiveRecordingState(
       kernelDriver: parakeet, whisperKitKernelDriver: whisperKit,
       audioCapture: audioCapture, asrManager: asrManager)
-    let settings = SettingsManager()
     let backendMetadata = BackendMetadata(
       settings: settings,
       llmDiscovery: LLMModelDiscoveryCoordinator(keychainManager: KeychainManager()),
@@ -955,7 +1045,9 @@ struct MenuBarControllerTests {
           spy.fired.append("addSelectedWord:pid:\(context.pid.map(String.init) ?? "none")")
         },
         continueOnboarding: { spy.fired.append("continueOnboarding") },
-        openSettings: { spy.fired.append("openSettings") },
+        openMainWindow: { spy.fired.append("openMainWindow") },
+        openHelpCenter: { spy.fired.append("openHelpCenter") },
+        microphoneChoices: { [] },
         openTranscribeFile: { spy.fired.append("openTranscribeFile") },
         openPermissions: { spy.fired.append("openPermissions") },
         polishSetupWarning: { spy.polishSetupWarning },

@@ -13,7 +13,7 @@ In **Toggle** mode you press your recording keybind once to start recording and 
 
 ### Switch to Toggle mode
 
-1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
+1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Keybinds**.
 3. Under **1. Choose recording mode**, pick **Toggle**.
 
