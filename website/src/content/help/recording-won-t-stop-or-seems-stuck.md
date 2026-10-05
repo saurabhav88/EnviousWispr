@@ -26,8 +26,8 @@ A single recording can last up to one hour. You get a warning one minute before 
 
 You can have EnviousWispr end a recording after a period of silence.
 
-1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
-2. Open **Transcription**.
+1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
+2. Open **Dictation Settings**, then **Engine**.
 3. Switch on **Stop recording on silence**. It is off by default.
 4. Use the slider next to the switch to set how long the pause has to be, from half a second to three seconds.
 

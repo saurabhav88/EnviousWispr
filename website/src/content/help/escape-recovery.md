@@ -30,7 +30,7 @@ In Push to Talk, three quick presses of your recording keybind cancel a hands-fr
 
 ### Turn Escape Recovery on or off
 
-1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
+1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Keybinds**.
 3. Find **Escape Recovery** under **Cancel Recording** and switch it on or off.
 

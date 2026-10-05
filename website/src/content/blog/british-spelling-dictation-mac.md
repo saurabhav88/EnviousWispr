@@ -35,7 +35,7 @@ The two engines EnviousWispr runs on your Mac, Parakeet and WhisperKit, both beh
 
 ## How to switch to British spelling
 
-**Turn off auto-detect.** Click the EnviousWispr icon in your menu bar, choose **Settings**, go to **Transcription**, and under **Language** switch off **Auto-detect language**.
+**Turn off auto-detect.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, go to **Dictation Settings** > **Engine**, and switch off **Auto-detect language**.
 
 **Choose English (UK).** Click **Change** and pick **English (UK)**, directly under English. Its line reads "British spelling: colour, organise, centre".
 

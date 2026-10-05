@@ -9,7 +9,7 @@ related: ["transcribe-a-file", "transcribe-a-file-speaker-labels", "clipboard-pr
 updated: 2026-09-29
 deflection: "can_resolve"
 ---
-EnviousWispr saves everything it transcribes so you can find it again later. To see it, click the EnviousWispr icon in your menu bar, choose **Settings...**, and go to **History**.
+EnviousWispr saves everything it transcribes so you can find it again later. To see it, click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**. The window opens on **History**.
 
 ### What History holds
 

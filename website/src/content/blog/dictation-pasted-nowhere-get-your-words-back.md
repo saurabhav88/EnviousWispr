@@ -51,7 +51,7 @@ When every delivery method fails, your words are put on the clipboard and a noti
 
 **2. Paste from the clipboard.** If you saw the Copied notice and have not copied anything since, Command V works too. If there was no notice, your clipboard may hold what you copied before, so use Paste Last Dictation instead.
 
-**3. Open History.** EnviousWispr saves your dictations on your Mac in History (a recording with no speech in it is not saved). Click the EnviousWispr icon in your menu bar, choose **Settings**, go to **History**, find the dictation, and copy or paste it from there. History is also where a cancelled recording can be kept, which is covered in the [History feature page](/features/history/).
+**3. Open History.** EnviousWispr saves your dictations on your Mac in History (a recording with no speech in it is not saved). Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr** (the window opens on **History**), find the dictation, and copy or paste it from there. History is also where a cancelled recording can be kept, which is covered in the [History feature page](/features/history/).
 
 ## Saying it once, using it twice
 

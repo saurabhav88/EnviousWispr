@@ -13,7 +13,7 @@ Your keybind is the key you hold or press to record, and you can change it to wh
 
 ### Change the key that starts dictation
 
-1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Keybinds**.
+1. **Open Keybinds.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Keybinds**.
 2. **Select the keybind box.** Click the **Recording keybind** box.
 3. **Press your new keys.** Press the keys you want to use.
 

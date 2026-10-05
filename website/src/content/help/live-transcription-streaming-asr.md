@@ -15,8 +15,8 @@ Faster Transcription makes EnviousWispr turn your speech into text while you are
 
 ### Turn Faster Transcription on or off
 
-1. **Open settings.** Click the EnviousWispr menu bar icon and select **Settings**.
-2. **Go to Transcription.** Click **Transcription**.
+1. **Open EnviousWispr.** Click the EnviousWispr menu bar icon and select **Open EnviousWispr**.
+2. **Go to Engine.** Click **Dictation Settings**, then **Engine**.
 3. **Use the switch.** Switch **Faster Transcription** on or off. The question mark beside it explains what changes for the engine you are on.
 
 Nothing looks different in your document while you record. Only the timing of the work changes. It can pause the Universal Live Preview engine while you speak.

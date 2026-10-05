@@ -15,8 +15,8 @@ Transcribe a File takes an audio or video file you already have and gives you ba
 
 There are two ways in.
 
-- **From the sidebar.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and click **Transcribe a File** in the sidebar.
-- **From the menu bar.** Click the EnviousWispr icon and choose **Transcribe a File...**. It sits with the other ways to get words in, above the settings items.
+- **From the sidebar.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and click **Transcribe a File** in the sidebar.
+- **From the menu bar.** Click the EnviousWispr icon and choose **Transcribe a File...**. It sits with the other ways to get words in, above **Microphone** and **Open EnviousWispr**.
 
 ### Which files can I transcribe?
 

@@ -23,7 +23,7 @@ A short sound confirms when recording starts and stops. To switch it off, go to 
 
 ### Switch to Push to Talk
 
-1. Click the EnviousWispr icon in your menu bar and choose **Settings**.
+1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Keybinds**.
 3. Under **1. Choose recording mode**, pick **Push to Talk**.
 

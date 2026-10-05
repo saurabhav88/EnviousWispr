@@ -13,7 +13,7 @@ Found a bug or have an idea? You can tell us from inside EnviousWispr. Every mes
 
 ## How do I send feedback?
 
-1. **Open the EnviousWispr window.** Click the EnviousWispr icon in the menu bar and choose **Settings**, or click EnviousWispr in the Dock.
+1. **Open the EnviousWispr window.** Click the EnviousWispr icon in the menu bar and choose **Open EnviousWispr**, or click EnviousWispr in the Dock.
 2. **Click the bug button.** It sits at the top right of the window, beside **Record**. A small **Send feedback** form opens.
 3. **Write what happened.** Describe what you saw, or what you would like EnviousWispr to do. The more specific, the better: which app you were dictating into, what you said, and what came out. A message can be up to 4,000 characters.
 4. **Add your email if you want a reply.** The email field is optional. Leave it empty and your message is still sent, but we cannot write back.

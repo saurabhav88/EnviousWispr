@@ -14,8 +14,8 @@ EnviousWispr removes spoken noises like "um", "uh", "hmm" and "er" from your dic
 
 Turn the setting off if you would rather keep your spoken hesitations.
 
-1. Click the EnviousWispr menu bar icon and choose **Settings**, or press Cmd+,.
-2. Click **Transcription**.
+1. Click the EnviousWispr menu bar icon and choose **Open EnviousWispr**.
+2. Click **Dictation Settings**, then **Engine**.
 3. Turn off **Remove filler words (um, uh, hmm...)**.
 
 Your next dictation keeps every noise in the text.
