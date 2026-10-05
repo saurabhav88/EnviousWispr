@@ -235,7 +235,13 @@ struct MultilingualSpokenPunctuationTests {
     #expect(Self.text("alpha Setze Komma beta gamma. delta") == "alpha, beta gamma. delta")
     #expect(Self.text("alpha Setze Punkt beta gamma. delta") == "alpha. Beta gamma. delta")
     #expect(Self.text("alpha Setze Punkt 42 beta") == "alpha. 42 beta")
-    #expect(Self.text("alpha Setze Punkt «beta»") == "alpha. «beta»")
+    #expect(Self.text("alpha Setze Punkt «beta»") == "alpha. «Beta»")
+    #expect(Self.text("alpha Setze Punkt\nbeta") == "alpha.\nBeta")
+    #expect(Self.text("alpha Setze Punkt ßeta") == "alpha. SSeta")
+    #expect(
+      Self.apply("alpha Setze Punkt «zzsnip42»", sentinels: ["zzsnip42"]).text
+        == "alpha. «zzsnip42»")
+    #expect(Self.text("alpha Pon punto ¿cómo", "es") == "alpha. ¿Cómo")
   }
 
   @Test("An accented first letter is capitalised")
@@ -296,15 +302,17 @@ struct MultilingualSpokenPunctuationTests {
     #expect(Self.scalars(result.text) == Self.scalars("à demain."))
   }
 
-  @Test("Decomposed TEXT does not match an accented form: a missed command, never a corrupted word")
-  func decomposedTextIsAMissedCommand() {
-    let decomposed = "alpha Inse\u{0300}re point beta"
-    let result = Self.apply(decomposed, "fr")
-    #expect(Self.scalars(result.text) == Self.scalars(decomposed))
-    #expect(result.rulesFired == 0)
-  }
+  @Test("Decomposed commands match without normalising the surrounding text")
+  func decomposedCommandsMatch() {
+    let prefix = "cafe\u{0301}"
+    let french = Self.apply("\(prefix) Inse\u{0300}re point beta", "fr")
+    #expect(Self.scalars(french.text) == Self.scalars("\(prefix). Beta"))
+    #expect(french.rulesFired == 1)
 
-  // MARK: - Languages without a table
+    let spanish = Self.apply("alpha Pon nuevo pa\u{0301}rrafo beta", "es")
+    #expect(Self.scalars(spanish.text) == Self.scalars("alpha\n\nBeta"))
+    #expect(spanish.rulesFired == 1)
+  }
 
   @Test(
     "A language with no table, English included, is never given another table",

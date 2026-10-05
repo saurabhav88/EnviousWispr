@@ -45,11 +45,13 @@ extension InverseTextNormalizer {
   ///   "point"), and shortest-first would turn `Insère point d'interrogation` into `. d'interrogation`.
   ///
   /// After a rewrite that produces `.`, `?`, `!`, a line break or a paragraph break, the first letter
-  /// of the next word is uppercased (all four languages capitalise sentence starts), and only there.
-  /// Other sentence starts are never touched. A protected sentinel is skipped.
+  /// of the next word is uppercased (all four languages capitalise sentence starts), and only there:
+  /// whitespace and opening punctuation (a quote, a bracket, Spanish `¿` `¡`) before the word are
+  /// skipped. Other sentence starts are never touched. A protected sentinel is skipped.
   ///
-  /// Input is assumed NFC, which is what the engines emit. A decomposed (NFD) text does not match an
-  /// accented command form: that is a MISSED command, never a corrupted word.
+  /// Canonically composed and decomposed spellings of a command form or start word both match. Text
+  /// outside the matched commands keeps its original representation: the pass never normalises the
+  /// transcript.
   package func applyStartWordPunctuation(
     _ text: String, language: String, startWord: String, protectedSentinels: [String]
   ) -> SpokenPunctuationResult {
@@ -150,7 +152,16 @@ extension InverseTextNormalizer {
       if character == "'" {
         pattern += #"['\x{2019}]"#
       } else {
-        pattern += NSRegularExpression.escapedPattern(for: String(character))
+        // Match both canonical spellings of an accented letter, so decomposed text is not a missed
+        // command, without normalising the surrounding transcript.
+        let composed = String(character).precomposedStringWithCanonicalMapping
+        let decomposed = composed.decomposedStringWithCanonicalMapping
+        let escaped = NSRegularExpression.escapedPattern(for: composed)
+        if Array(composed.unicodeScalars) == Array(decomposed.unicodeScalars) {
+          pattern += escaped
+        } else {
+          pattern += "(?:" + escaped + "|" + NSRegularExpression.escapedPattern(for: decomposed) + ")"
+        }
       }
     }
     return pattern
@@ -161,7 +172,7 @@ extension InverseTextNormalizer {
   private static func formKey(_ text: String) -> String {
     var key = ""
     var previousWasSpace = false
-    for character in text.lowercased() {
+    for character in text.precomposedStringWithCanonicalMapping.lowercased() {
       if character == " " || character == "\t" || character == "\u{00A0}" {
         if !previousWasSpace { key.append(" ") }
         previousWasSpace = true
@@ -176,13 +187,14 @@ extension InverseTextNormalizer {
   // MARK: - Capitalisation
 
   /// Uppercase the first letter of `gap` when it is the start of the word after a rewrite.
-  /// `pending` stays true only while the gap is horizontal whitespace, because the word has not
-  /// started yet; any other first character settles it, capitalised or not.
+  /// Whitespace and opening punctuation before the word are skipped. `pending` stays true only while
+  /// the gap holds nothing but those, because the word has not started yet; any other first
+  /// character settles it, capitalised or not.
   private static func capitalizing(_ gap: String, sentinels: [String], pending: inout Bool)
     -> String
   {
     var index = gap.startIndex
-    while index < gap.endIndex, isHorizontalSpace(gap[index]) {
+    while index < gap.endIndex, isWhitespaceOrOpening(gap[index]) {
       index = gap.index(after: index)
     }
     if index == gap.endIndex { return gap }
@@ -190,13 +202,18 @@ extension InverseTextNormalizer {
     let rest = gap[index...]
     if sentinels.contains(where: { !$0.isEmpty && rest.hasPrefix($0) }) { return gap }
     let character = gap[index]
-    let upper = String(character).uppercased()
-    // A letter whose uppercase form is longer than one character (ß becomes SS) is left as written.
-    guard character.isLowercase, upper.count == 1 else { return gap }
-    return String(gap[..<index]) + upper + String(gap[gap.index(after: index)...])
+    guard character.isLowercase else { return gap }
+    return String(gap[..<index]) + String(character).uppercased()
+      + String(gap[gap.index(after: index)...])
   }
 
-  private static func isHorizontalSpace(_ character: Character) -> Bool {
-    character == " " || character == "\t" || character == "\u{00A0}"
+  /// Whitespace, or a character that opens a quotation or a bracket (`"`, `'`, `«`, `(`, `¿`, `¡`).
+  private static func isWhitespaceOrOpening(_ character: Character) -> Bool {
+    if character.isWhitespace || character == "\"" || character == "'" { return true }
+    if character == "\u{00BF}" || character == "\u{00A1}" { return true }
+    return character.unicodeScalars.allSatisfy {
+      $0.properties.generalCategory == .openPunctuation
+        || $0.properties.generalCategory == .initialPunctuation
+    }
   }
 }
