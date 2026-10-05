@@ -11196,13 +11196,13 @@
         }
       }
     },
-    "No start word. A command word becomes a mark wherever you say it, even inside a normal sentence." : {
-      "comment" : "Speech engine settings, Start word row: shown while the field is blank, because every command word then becomes a mark.",
+    "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence." : {
+      "comment" : "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kein Startwort. Ein Befehlswort wird überall zum Zeichen, wo du es sagst, auch mitten in einem normalen Satz."
+            "value" : "Wenn du das Feld leer lässt, gibt es kein Startwort. Befehlswörter werden überall zu Zeichen, wo du sie sagst, auch mitten in einem normalen Satz."
           }
         }
       }

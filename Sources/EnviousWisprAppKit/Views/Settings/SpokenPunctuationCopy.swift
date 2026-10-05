@@ -72,9 +72,9 @@ enum SpokenPunctuationCopy {
     comment: "Speech engine settings, Start word row: how to turn the start word off.")
   static let noStartWordWarning = String(
     localized:
-      "No start word. A command word becomes a mark wherever you say it, even inside a normal sentence.",
+      "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence.",
     comment:
-      "Speech engine settings, Start word row: shown while the field is blank, because every command word then becomes a mark."
+      "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark."
   )
   static let noStartWordPlaceholder = String(
     localized: "None",

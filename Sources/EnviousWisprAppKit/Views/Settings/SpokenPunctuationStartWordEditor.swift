@@ -77,6 +77,12 @@ final class SpokenPunctuationStartWordEditor {
   /// True while the picked language has NO start word, the user's choice of a blank field.
   var hasNoStartWord: Bool { effectiveWord.isEmpty }
 
+  /// True while the stored word is blank OR the field is blank and not yet committed, so the warning
+  /// is on screen before a blank can be committed by switching language or leaving the page.
+  var showsNoStartWordWarning: Bool {
+    hasNoStartWord || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
   /// True while the picked language has a word of the user's own, which is when Reset does something.
   var isCustomised: Bool { settings.spokenPunctuation.startWordOverrides[language] != nil }
 

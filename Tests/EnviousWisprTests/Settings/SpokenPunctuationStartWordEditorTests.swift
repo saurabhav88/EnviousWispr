@@ -251,6 +251,18 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
   }
 
+  @Test("The no-start-word warning shows for a blank draft before it is committed")
+  func warningShowsForABlankDraft() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    #expect(editor.showsNoStartWordWarning == false)
+    editor.userEdited("")
+    #expect(editor.hasNoStartWord == false, "nothing is committed yet")
+    #expect(editor.showsNoStartWordWarning)
+    editor.userEdited("Sprich")
+    #expect(editor.showsNoStartWordWarning == false)
+  }
+
   @Test("A blank field is the choice of no start word, and Reset brings the default back")
   func blankFieldMeansNoStartWord() {
     let settings = Self.freshSettings()
@@ -262,7 +274,7 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(editor.draft == "")
     #expect(editor.isCustomised)
     #expect(settings.spokenPunctuation.startWordOverrides == ["de": ""])
-    #expect(editor.exampleCommand == "neuer Absatz" || editor.exampleCommand == "Punkt")
+    #expect(editor.exampleCommand == "Punkt")
 
     editor.reset()
     #expect(editor.hasNoStartWord == false)

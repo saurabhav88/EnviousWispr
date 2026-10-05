@@ -77,7 +77,7 @@ struct SpokenPunctuationStartWordRow: View {
           .foregroundStyle(.stError)
           .fixedSize(horizontal: false, vertical: true)
       }
-      if editor.hasNoStartWord {
+      if editor.showsNoStartWordWarning {
         Label(SpokenPunctuationCopy.noStartWordWarning, systemImage: "exclamationmark.triangle.fill")
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
