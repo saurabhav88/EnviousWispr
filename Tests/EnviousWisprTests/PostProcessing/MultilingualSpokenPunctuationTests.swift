@@ -272,6 +272,10 @@ struct MultilingualSpokenPunctuationTests {
   @Test("Two commands in a row still stack: the second never eats the first's mark")
   func adjacentCommandsStack() {
     #expect(Self.text("alpha Setze Komma Setze Punkt beta") == "alpha,. Beta")
+    // Identical marks are the case the guard exists for: without it the second command would read the
+    // first command's own mark as a recogniser duplicate and drop it.
+    #expect(Self.text("alpha Setze Punkt Setze Punkt beta") == "alpha.. Beta")
+    #expect(Self.text("alpha Setze Komma Setze Komma beta") == "alpha,, beta")
   }
 
   @Test("A dot glued to the next token is not absorbed")
