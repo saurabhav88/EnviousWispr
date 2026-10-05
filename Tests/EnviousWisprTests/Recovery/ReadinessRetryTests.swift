@@ -238,7 +238,7 @@ struct ReadinessRetryTelemetryContractTests {
         settings: RecordingSettingsSnapshot(
           backendType: .parakeet, backendSupportsLanguageDetection: false,
           languageMode: .auto, wordCorrectionEnabled: false, fillerRemovalEnabled: false,
-          emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
+          emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
           customWordsVersion: nil, llmProvider: "none", llmModel: "",
           polishPromptVersion: nil, s1Control: nil, englishSpelling: nil),
         appVersion: "1.0.0", createdAt: Date(timeIntervalSince1970: 0))

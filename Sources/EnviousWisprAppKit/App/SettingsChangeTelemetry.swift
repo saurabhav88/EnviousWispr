@@ -51,6 +51,11 @@ enum SettingsProjection {
     case contactsSync = "contacts_sync"
     case emojiFormatter = "emoji_formatter"
     case spokenPunctuation = "spoken_punctuation"
+    /// #2450: whether any language's start word has been customised (`default` / `customised`).
+    /// A coarse shape, never the word the user typed. Written by the same `SettingKey` as the
+    /// switch, so each logical coalesces and suppresses its own net no-ops: flipping the switch
+    /// never reports a customisation, and editing a word never reports the switch.
+    case spokenPunctuationStartWord = "spoken_punctuation_start_word"
     case crashRecovery = "crash_recovery"
     /// #996: whether the "remember this correction?" card is on. Instrumented because
     /// adoption of a default-ON toggle is measured by who turns it OFF, and that
@@ -154,7 +159,7 @@ enum SettingsProjection {
     case .fillerRemovalEnabled: return [.fillerRemoval]
     case .contactsSyncOnLaunchEnabled: return [.contactsSync]
     case .emojiFormatterEnabled: return [.emojiFormatter]
-    case .spokenPunctuationEnabled: return [.spokenPunctuation]
+    case .spokenPunctuation: return [.spokenPunctuation, .spokenPunctuationStartWord]
     case .crashRecoveryEnabled: return [.crashRecovery]
     case .learnFromEdits: return [.learnFromEdits]
     case .languageMode: return [.languageMode]
@@ -248,7 +253,9 @@ enum SettingsProjection {
     case .fillerRemoval: return onOff(settings.fillerRemovalEnabled)
     case .contactsSync: return onOff(settings.contactsSyncOnLaunchEnabled)
     case .emojiFormatter: return onOff(settings.emojiFormatterEnabled)
-    case .spokenPunctuation: return onOff(settings.spokenPunctuationEnabled)
+    case .spokenPunctuation: return onOff(settings.spokenPunctuation.enabled)
+    case .spokenPunctuationStartWord:
+      return settings.spokenPunctuation.startWordOverrides.isEmpty ? "default" : "customised"
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
     case .learnFromEdits: return onOff(settings.learnFromEdits)
     case .languageMode: return languageModeLabel(settings.languageMode)

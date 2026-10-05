@@ -8,8 +8,8 @@ import Foundation
 /// site cannot forget half of it.
 ///
 /// `startWordOverrides` is SPARSE: it holds only the languages the user changed, keyed by lowercased
-/// ISO base code (`"de"`). The default start word for a language comes from the rules table owned by
-/// PostProcessing, so a default we ever change reaches every user who never customised. Every value
+/// ISO base code (`"de"`). The default start word for a language comes from `SpokenPunctuationRules`
+/// (also in Core), so a default we ever change reaches every user who never customised. Every value
 /// stored here has passed `SpokenPunctuationStartWord.validate`; a caller that loads persisted data
 /// re-validates before constructing this value.
 public struct SpokenPunctuationSettings: Sendable, Equatable {
@@ -28,9 +28,9 @@ public struct SpokenPunctuationSettings: Sendable, Equatable {
 
 /// #2450: the single owner of "is this an acceptable start word".
 ///
-/// Pure. It receives the language's complete spoken command forms as DATA, so Core never imports the
-/// PostProcessing table that owns them (PostProcessing already imports Core) and never carries a
-/// second copy of it. The settings boundary supplies the forms from `SpokenPunctuationRules`.
+/// Pure. It receives the language's complete spoken command forms as DATA, so the function itself
+/// depends on no table and stays testable with any set of forms. Callers supply them from
+/// `SpokenPunctuationRules`, which now lives beside it in Core.
 ///
 /// Ambiguous input is REFUSED, not coerced: a start word that is two words, or a word with a digit in
 /// it, has no single right reading, so the field keeps the last valid value instead of guessing.
@@ -53,6 +53,9 @@ public enum SpokenPunctuationStartWord {
     case tooLong
     /// Equals one of the language's command forms, or the first word of one.
     case collidesWithCommand
+    /// The language has no command table, so it has no start word. Never produced by `validate`
+    /// (which is handed forms as data); produced by the settings boundary that looks the forms up.
+    case unsupportedLanguage
   }
 
   public enum Outcome: Sendable, Equatable {

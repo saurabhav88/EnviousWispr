@@ -70,7 +70,7 @@ struct FileImportRunnerTests {
       RecordingSettingsSnapshot(
         backendType: .parakeet, backendSupportsLanguageDetection: false,
         languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
-        emojiFormatterEnabled: false, spokenPunctuationEnabled: false, llmProvider: "none",
+        emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, llmProvider: "none",
         llmModel: "none", s1Control: nil, englishSpelling: spelling)
     }
     let british = FileImportRunner(keychainManager: KeychainManager())
@@ -110,7 +110,7 @@ struct FileImportRunnerTests {
   static let egOneSnapshot = RecordingSettingsSnapshot(
     backendType: .parakeet, backendSupportsLanguageDetection: false,
     languageMode: .auto, wordCorrectionEnabled: false, fillerRemovalEnabled: false,
-    emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
+    emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
     llmProvider: LLMProvider.egOne.rawValue, llmModel: LLMProvider.egOneModelName, s1Control: nil,
     englishSpelling: nil)
 

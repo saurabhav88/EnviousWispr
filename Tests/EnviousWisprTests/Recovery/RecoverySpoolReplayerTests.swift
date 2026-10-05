@@ -136,7 +136,7 @@ struct RecoverySpoolReplayerTests {
       wordCorrectionEnabled: false,
       fillerRemovalEnabled: false,
       emojiFormatterEnabled: false,
-      spokenPunctuationEnabled: false,
+      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
       customWordsVersion: nil,
       llmProvider: "none",
       llmModel: "",

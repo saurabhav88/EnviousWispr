@@ -450,7 +450,7 @@ struct SpeechEngineSettingsView: View {
             // The panel's 280pt footnote plus its 16pt padding each side.
             .frame(width: 312, alignment: .leading)
           } control: {
-            Toggle("", isOn: $settings.spokenPunctuationEnabled)
+            Toggle("", isOn: $settings.spokenPunctuation.enabled)
             .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
             .fixedSize()

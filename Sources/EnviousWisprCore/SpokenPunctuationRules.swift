@@ -2,6 +2,13 @@ import Foundation
 
 /// #2450: the spoken-punctuation command grammar for the four languages that need a start word.
 ///
+/// **Lives in Core, not beside the matcher.** The settings store (`EnviousWisprServices`) has to validate
+/// a persisted start word against these forms when it loads, and it sits below PostProcessing in the
+/// target graph, so the tables are shared data in the lowest module every consumer can see, the same
+/// reason `LanguageNormalizer` is here. Matching and transformation stay in PostProcessing
+/// (`applyStartWordPunctuation`). Moved from PostProcessing in the same change that introduced it
+/// (founder-approved placement correction, 2026-10-04).
+///
 /// **Sole owner of "which spoken phrase becomes which mark" for `de`, `fr`, `es` and `it`, and of each
 /// language's default start word.** English is deliberately NOT here: it keeps its bare-word table,
 /// `InverseTextNormalizer.punct`, byte for byte, with its own toggle position and default.
@@ -73,6 +80,53 @@ package enum SpokenPunctuationRules {
     case "it": return "Metti"
     default: return nil
     }
+  }
+
+  /// The start word in force for each supported language: the override when there is one, else the
+  /// default. The single place that derives it, used by every consumer that needs the whole set
+  /// (recovery capture, file import freeze, the cleanup step, the Settings row). An override for an
+  /// unsupported language is ignored.
+  package static func effectiveStartWords(overrides: [String: String]) -> [String: String] {
+    var words: [String: String] = [:]
+    for language in supportedLanguages {
+      words[language] = overrides[language] ?? defaultStartWord(for: language)
+    }
+    return words
+  }
+
+  /// Validate a language-keyed map of start words: the one rule both the persisted settings loader and
+  /// the recovery snapshot reader use, so neither carries its own copy.
+  ///
+  /// Each entry stands alone. A key that is not a supported language, and a word that is empty,
+  /// malformed, over-long or colliding with a command form, are dropped without touching the others.
+  /// Keys are normalised to the base code (`de-DE` becomes `de`) and processed in sorted order so two
+  /// keys that normalise alike resolve the same way every run. Accepted words are trimmed and NFC.
+  ///
+  /// - Parameter dropDefaults: `true` for the settings store, which is SPARSE (a word equal to the
+  ///   language's default, ignoring case, is "not customised" and is dropped). `false` for a
+  ///   recovery or import snapshot, which records the EFFECTIVE word per language and must keep it
+  ///   even when it equals today's default, so a later change of default cannot alter a replay.
+  package static func validatedStartWords(_ raw: [String: String], dropDefaults: Bool)
+    -> [String: String]
+  {
+    var result: [String: String] = [:]
+    for key in raw.keys.sorted() {
+      guard let value = raw[key],
+        let code = LanguageNormalizer.baseCode(key),
+        let forms = spokenForms(for: code)
+      else { continue }
+      guard
+        case .accepted(let word) = SpokenPunctuationStartWord.validate(
+          value, language: code, spokenForms: forms)
+      else { continue }
+      if dropDefaults, let defaultWord = defaultStartWord(for: code),
+        word.lowercased() == defaultWord.lowercased()
+      {
+        continue
+      }
+      result[code] = word
+    }
+    return result
   }
 
   /// Every spoken form of a language, for start-word collision checks. `nil` when unsupported.

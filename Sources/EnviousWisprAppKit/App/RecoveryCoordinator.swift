@@ -319,7 +319,10 @@ final class RecoveryCoordinator {
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
-      spokenPunctuationEnabled: settings.spokenPunctuationEnabled,
+      spokenPunctuationEnabled: settings.spokenPunctuation.enabled,
+      // #2450: the EFFECTIVE start word per language in force for this take, replayed on recovery.
+      spokenPunctuationStartWords: SpokenPunctuationRules.effectiveStartWords(
+        overrides: settings.spokenPunctuation.startWordOverrides),
       llmProvider: settings.llmProvider.rawValue,
       llmModel: resolvedModel,
       s1Control: settings.s1Control,

@@ -110,6 +110,8 @@ enum SettingsDefaultValues {
   // add, and they fire on content words ("the grace period expires"). Founder
   // direction 2026-07-25: off for everyone, opt in from Settings.
   static let spokenPunctuationEnabled = false
+  /// Nothing customised: every language uses its default start word (#2450).
+  static let spokenPunctuationStartWordOverrides: [String: String] = [:]
 
   // #1063: crash-recovery audio safety copy. Default ON — every recording is
   // protected by an encrypted, auto-deleted-on-success spool. Off means never

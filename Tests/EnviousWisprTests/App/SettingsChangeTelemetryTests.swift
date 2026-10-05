@@ -129,6 +129,96 @@ import Testing
       #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "on")
     }
 
+    // MARK: - #2450 spoken punctuation start word
+
+    /// Both logicals ride the one `SettingKey`, and each coalesces and suppresses its own net no-ops.
+    /// The positive controls are what make the negative assertions mean something: each test also
+    /// shows the OTHER logical's delta is the one that did fire.
+    @Test("Both spoken-punctuation logicals route from the one setting key")
+    func spokenPunctuationRoutesBothLogicals() {
+      #expect(
+        SettingsProjection.logicals(for: .spokenPunctuation) == [
+          .spokenPunctuation, .spokenPunctuationStartWord,
+        ])
+    }
+
+    @Test("Turning the switch on reports the switch and never a customisation")
+    func spokenPunctuationSwitchAlone() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.spokenPunctuation.enabled = true
+      telemetry.flush()
+
+      let switchDeltas = deltas(box, setting: "spoken_punctuation")
+      #expect(switchDeltas.count == 1)
+      #expect(switchDeltas.first?.stringProps["from"] == "off")
+      #expect(switchDeltas.first?.stringProps["to"] == "on")
+      #expect(deltas(box, setting: "spoken_punctuation_start_word").isEmpty)
+    }
+
+    @Test("Customising a start word reports default to customised, never the switch or the word")
+    func spokenPunctuationStartWordDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+      telemetry.flush()
+
+      let wordDeltas = deltas(box, setting: "spoken_punctuation_start_word")
+      #expect(wordDeltas.count == 1)
+      #expect(wordDeltas.first?.stringProps["from"] == "default")
+      #expect(wordDeltas.first?.stringProps["to"] == "customised")
+      #expect(wordDeltas.first?.stringProps["source"] == "user")
+      #expect(deltas(box, setting: "spoken_punctuation").isEmpty)
+
+      // The typed word must appear in NO property of any bucket.
+      for event in box.all {
+        let values = Array(event.stringProps.values) + Array(event.stringProps.keys)
+        #expect(values.allSatisfy { !$0.contains("Diktiere") }, "event: \(event.name)")
+      }
+    }
+
+    @Test("A to B on a start word is a net no-op, and a reset reports customised to default")
+    func spokenPunctuationStartWordCoarseDeltas() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+      telemetry.flush()
+      box.clear()
+
+      settings.commitSpokenPunctuationStartWord("Schreibe", language: "de")
+      telemetry.flush()
+      #expect(
+        deltas(box, setting: "spoken_punctuation_start_word").isEmpty,
+        "customised to customised is the same coarse shape")
+
+      settings.resetSpokenPunctuationStartWord(language: "de")
+      telemetry.flush()
+      let reset = deltas(box, setting: "spoken_punctuation_start_word")
+      #expect(reset.count == 1)
+      #expect(reset.first?.stringProps["from"] == "customised")
+      #expect(reset.first?.stringProps["to"] == "default")
+    }
+
+    @Test("The settings baseline carries both logicals and tracks them")
+    func spokenPunctuationBaseline() {
+      let (settings, _, _, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      let atDefault = SettingsProjection.snapshotConfig(settings)
+      #expect(atDefault["spoken_punctuation"] == "off")
+      #expect(atDefault["spoken_punctuation_start_word"] == "default")
+
+      settings.spokenPunctuation.enabled = true
+      settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+      let changed = SettingsProjection.snapshotConfig(settings)
+      #expect(changed["spoken_punctuation"] == "on")
+      #expect(changed["spoken_punctuation_start_word"] == "customised")
+      #expect(changed.values.allSatisfy { !$0.contains("Diktiere") })
+    }
+
     // MARK: - #1987 toggle hotkey identity fan-out
 
     @Test("Binding the Globe key emits an identity delta while shape stays a no-op")

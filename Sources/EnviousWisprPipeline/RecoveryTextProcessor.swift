@@ -42,6 +42,8 @@ public final class RecoveryTextProcessor {
   /// `applySettings` wrote. `internal`, reached only via `@testable`; the same
   /// seam shape `LLMPolishStep.makePolisher` offers, and a read, never a knob.
   var llmPolishStep: LLMPolishStep { steps.llmPolish }
+  /// The ITN step this replay built, so a test can see which spoken-punctuation setting reached it (#2450).
+  var inverseTextNormalizationStep: InverseTextNormalizationStep { steps.inverseTextNormalization }
   private let runner: TextProcessingRunner
   /// The recording's locked decode language (or nil for auto), applied from the
   /// snapshot. Recovery replays under the ORIGINAL language exactly as the live
@@ -109,9 +111,9 @@ public final class RecoveryTextProcessor {
     steps.emojiFormatter.emojiFormatterEnabled = snapshot.emojiFormatterEnabled
     // #1794: a legacy spool records no preference for this setting, absence is not an
     // affirmative opt-in, and the founder-directed default is OFF. Does NOT depend on
-    // whether the take was ever delivered.
-    steps.inverseTextNormalization.spokenPunctuationEnabled =
-      snapshot.spokenPunctuationEnabled ?? false
+    // whether the take was ever delivered. #2450: the recorded effective start words travel
+    // with it (`RecordingSettingsSnapshot.spokenPunctuationSettings` owns the reading).
+    steps.inverseTextNormalization.spokenPunctuation = snapshot.spokenPunctuationSettings
     // Match the live ITN language gate: a LID engine with unknown language skips
     // ITN rather than rewriting possibly-non-English text. Sourced from the
     // record-time capability, never an engine-identity literal (Codex PR0 P2).

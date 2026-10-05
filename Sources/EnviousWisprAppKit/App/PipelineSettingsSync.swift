@@ -182,8 +182,8 @@ final class PipelineSettingsSync {
     whisperKitKernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
     whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
-    kernelDriver.spokenPunctuationEnabled = settings.spokenPunctuationEnabled
-    whisperKitKernelDriver.spokenPunctuationEnabled = settings.spokenPunctuationEnabled
+    kernelDriver.spokenPunctuation = settings.spokenPunctuation
+    whisperKitKernelDriver.spokenPunctuation = settings.spokenPunctuation
 
     audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
@@ -330,12 +330,12 @@ final class PipelineSettingsSync {
     case .fillerRemovalEnabled:
       kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
       whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-    case .spokenPunctuationEnabled:
+    case .spokenPunctuation:
       // Live-mutable, matching its three Cleanup siblings above. A take already in
       // text processing keeps the value it started with (the step snapshots before
       // its actor hop); the next take uses the new value.
-      kernelDriver.spokenPunctuationEnabled = settings.spokenPunctuationEnabled
-      whisperKitKernelDriver.spokenPunctuationEnabled = settings.spokenPunctuationEnabled
+      kernelDriver.spokenPunctuation = settings.spokenPunctuation
+      whisperKitKernelDriver.spokenPunctuation = settings.spokenPunctuation
     case .isDebugModeEnabled:
       Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
     case .debugLogLevel:

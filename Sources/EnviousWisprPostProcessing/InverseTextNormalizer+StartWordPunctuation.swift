@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// What `applyStartWordPunctuation` produced: the text, and how many commands it rewrote.

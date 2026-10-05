@@ -66,10 +66,14 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// setting. Only the nine bare mark rewrites and the backslash joiner are gated; the spoken
   /// slash is read in both switch positions (#3038, `InverseTextNormalizer.slashReading`).
   ///
-  /// Default `false` — the safe state for a step built in isolation (tests, and
+  /// #2450: the whole setting as one value, the switch plus the per-language start words. This
+  /// chunk reads only `enabled` (the English route is unchanged); the start words are carried so the
+  /// routing chunk can use them without a second plumbing change.
+  ///
+  /// Default `.off` — the safe state for a step built in isolation (tests, and
   /// recovery before `applySettings` runs), and it matches the shipped product
   /// default. Seeded and live-updated through `KernelDictationDriver`'s façade.
-  var spokenPunctuationEnabled: Bool = false
+  var spokenPunctuation: SpokenPunctuationSettings = .off
 
   /// Per-session capability hint wired by `KernelFinalizationWiring` from
   /// `adapter.capabilities.supportsLanguageDetection` — NOT an engine-identity
@@ -190,7 +194,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // landing mid-run must not tear this take, which completes under the value it
     // started with (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property).
     let work = self.work
-    let spokenPunctuation = self.spokenPunctuationEnabled
+    let spokenPunctuationSnapshot = self.spokenPunctuation
     // `withDeadline` is a FIRST-CLAIM RACE on a shared executor, so a take still queued for a
     // cooperative thread can burn the budget without the engine ever running, and `latency_ms`
     // alone reads ~500 either way (#1946 measured that dependence for the ordered siblings).
@@ -205,7 +209,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let start = CFAbsoluteTimeGetCurrent()
     let maybeConverted = await withDeadline(seconds: deadline) {
       engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
-      return await work(input, spokenPunctuation)
+      return await work(input, spokenPunctuationSnapshot.enabled)
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
     guard let converted = maybeConverted else {
