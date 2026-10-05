@@ -23,7 +23,20 @@
         "%spellout-cardinal-masculine",
         "%spellout-cardinal-feminine"
       ],
-      "note": "Canonical <rbnfRules> text block of rulesetGrouping SpelloutRules; the deprecated per-rule <ruleset> elements are not read."
+      "note": "Canonical <rbnfRules> text block of rulesetGrouping SpelloutRules; the deprecated per-rule <ruleset> elements are not read.",
+      "ordinal": {
+        "base": "%spellout-ordinal",
+        "irregularBelow": 9,
+        "inflectionRulesets": [
+          "%spellout-ordinal-n",
+          "%spellout-ordinal-r"
+        ],
+        "excludedRulesets": [
+          "%spellout-ordinal-s",
+          "%spellout-ordinal-m"
+        ],
+        "note": "Bounded ordinal extraction: irregular forms below 9, the regular suffix rules below 100 and the -n and -r inflections. Every other ordinal rule (negative, decimal, scale, -s, -m) is counted as deliberately excluded."
+      }
     },
     {
       "id": "nemo-de-zero",

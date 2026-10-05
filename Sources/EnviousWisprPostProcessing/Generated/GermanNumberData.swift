@@ -10,11 +10,12 @@
 //   source nemo-de-ties: NVIDIA/NeMo-text-processing r1.2.0 7efa127d968c nemo_text_processing/text_normalization/de/data/numbers/ties.tsv sha256 11488cc9fb17 (Apache-2.0)
 //   source nemo-de-quantities: NVIDIA/NeMo-text-processing r1.2.0 7efa127d968c nemo_text_processing/text_normalization/de/data/numbers/quantities.tsv sha256 7a5b0981709d (Apache-2.0)
 //   included: NeMo zero, digit, ones, teen, ties, quantities; CLDR rulesets %spellout-numbering, %spellout-cardinal-masculine, %spellout-cardinal-feminine
-//   excluded: CLDR cardinal-neuter/-n/-r/-s/-m, spellout-numbering-year, all ordinal rulesets, the NeMo fraction, money, measure, time, date and electronic data
+//   excluded: CLDR cardinal-neuter/-n/-r/-s/-m, spellout-numbering-year, the ordinal rules outside the declared extraction (negative, decimal and scale rules, the -s and -m inflections), the NeMo fraction, money, measure, time, date and electronic data
 //   normalization: NFC; lower-case spoken forms; U+00AD removed from CLDR literals (28 in the selected rules); NeMo tens digit times ten; ones.tsv weight column ignored
 //   atom entries read: 49; merged atoms: 30 (17 backed by two sources); by role zero 1, unit 11, teen 10, tens 8
 //   quantity words (NeMo, no stated value): 11
 //   CLDR rules parsed: 70 = 19 atoms + 51 instructions (every selected rule accounted for)
+//   CLDR ordinal rules parsed: 36 = 9 atoms + 2 suffix rules + 2 inflections + 23 excluded (every ordinal rule accounted for)
 //   collisions: identical mappings merged with provenance; any one-spoken-form, two-value conflict in a role fails the run
 //
 // Candidate lexical data only (#1677). It is not a vetted rule set, nothing in runtime
@@ -55,6 +56,30 @@ enum GermanNumberData {
     let ruleset: String
     let selector: String
     let tokens: [Token]
+  }
+
+  /// An irregular ordinal form read from the base ordinal ruleset (spoken word, value).
+  struct OrdinalAtom: Equatable {
+    let spoken: String
+    let value: Int
+    let sources: [String]
+  }
+
+  /// A regular ordinal: the cardinal of `cardinalRuleset` followed by `suffix`, for every
+  /// value from `fromValue` up to the next rule's `fromValue` (or the end of the range).
+  struct OrdinalSuffixRule: Equatable {
+    let fromValue: Int
+    let cardinalRuleset: String
+    let suffix: String
+    let source: String
+  }
+
+  /// A declared inflection of the base ordinal: the base form followed by `suffix`.
+  struct OrdinalInflection: Equatable {
+    let ruleset: String
+    let baseRuleset: String
+    let suffix: String
+    let source: String
   }
 
   static let sourceIDs: [String] = [
@@ -166,5 +191,27 @@ enum GermanNumberData {
     Rule(ruleset: "%spellout-cardinal-feminine", selector: "1000000000000000", tokens: [.literal("eine Billiarde"), .optionalOpen, .literal(" "), .remainder, .optionalClose]),
     Rule(ruleset: "%spellout-cardinal-feminine", selector: "2000000000000000", tokens: [.quotientRule("%spellout-cardinal-feminine"), .literal(" Billiarden"), .optionalOpen, .literal(" "), .remainder, .optionalClose]),
     Rule(ruleset: "%spellout-cardinal-feminine", selector: "1000000000000000000", tokens: [.redirectFormat("#,##0")]),
+  ]
+
+  static let ordinalAtoms: [OrdinalAtom] = [
+    OrdinalAtom(spoken: "nullte", value: 0, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+    OrdinalAtom(spoken: "erste", value: 1, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+    OrdinalAtom(spoken: "zweite", value: 2, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+    OrdinalAtom(spoken: "dritte", value: 3, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+    OrdinalAtom(spoken: "vierte", value: 4, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+    OrdinalAtom(spoken: "fünfte", value: 5, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+    OrdinalAtom(spoken: "sechste", value: 6, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+    OrdinalAtom(spoken: "siebte", value: 7, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+    OrdinalAtom(spoken: "achte", value: 8, sources: ["cldr-de-rbnf#%spellout-ordinal"]),
+  ]
+
+  static let ordinalSuffixRules: [OrdinalSuffixRule] = [
+    OrdinalSuffixRule(fromValue: 9, cardinalRuleset: "%spellout-numbering", suffix: "te", source: "cldr-de-rbnf#%spellout-ordinal"),
+    OrdinalSuffixRule(fromValue: 20, cardinalRuleset: "%spellout-numbering", suffix: "ste", source: "cldr-de-rbnf#%spellout-ordinal"),
+  ]
+
+  static let ordinalInflections: [OrdinalInflection] = [
+    OrdinalInflection(ruleset: "%spellout-ordinal-n", baseRuleset: "%spellout-ordinal", suffix: "n", source: "cldr-de-rbnf#%spellout-ordinal-n"),
+    OrdinalInflection(ruleset: "%spellout-ordinal-r", baseRuleset: "%spellout-ordinal", suffix: "r", source: "cldr-de-rbnf#%spellout-ordinal-r"),
   ]
 }

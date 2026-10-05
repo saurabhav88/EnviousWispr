@@ -23,6 +23,13 @@ Two source classes, each keeping its own meaning:
   spoken word, and an unsupported construct in a selected ruleset fails the run: nothing is
   dropped silently. Parsed-rule count must equal atoms plus instructions.
 
+A bounded ORDINAL extraction is declared per CLDR source in the manifest (`ordinal`): the base
+  ordinal ruleset's irregular literal forms and its regular suffix rules below 100, plus the
+  declared inflection rulesets (`-n`, `-r`). Every rule of every `%spellout-ordinal*` ruleset is
+  accounted for: kept as an ordinal atom, suffix rule or inflection, or counted as deliberately
+  excluded (negative, decimal, scale rules and the undeclared `-s` / `-m` inflections). A rule that
+  fits none of those fails the run.
+
 Normalization operations (all recorded in the generated inventory): Unicode NFC; lower-casing of
 spoken forms; removal of U+00AD SOFT HYPHEN from CLDR literals (a hyphenation hint, not a
 spoken character); tens digit times ten; the ones.tsv weight column ignored.
@@ -298,6 +305,81 @@ def parse_cldr(source, base):
     return atoms, rules, parsed_total, soft_hyphens
 
 
+def parse_cldr_ordinals(source, base, cardinal_rulesets):
+    """The bounded ordinal extraction declared in the manifest, or None when none is declared.
+
+    Returns atoms, suffix rules, inflections and the count of deliberately excluded rules; the
+    four counts must sum to the number of rules in every ordinal ruleset."""
+    decl = source.get("ordinal")
+    if not decl:
+        return None
+    rulesets = read_rbnf_rules(source, base)
+    base_name = decl.get("base")
+    inflection_names = decl.get("inflectionRulesets") or []
+    excluded_names = decl.get("excludedRulesets") or []
+    irregular_below = decl.get("irregularBelow")
+    if not base_name or not isinstance(irregular_below, int) or irregular_below < 1:
+        raise GenerationError(f"{source['id']}: ordinal declaration needs base and irregularBelow")
+    declared = {base_name, *inflection_names, *excluded_names}
+    for name in sorted(declared):
+        if name not in rulesets:
+            raise GenerationError(f"{source['id']}: ordinal ruleset {name} not found")
+    for name in rulesets:
+        if name.startswith("%spellout-ordinal") and name not in declared:
+            raise GenerationError(f"{source['id']}: ordinal ruleset {name} is neither declared "
+                                  f"nor excluded in the manifest")
+    atoms, suffix_rules, inflections, excluded, parsed = [], [], [], [], 0
+    for selector, body, where in rulesets[base_name]:
+        parsed += 1
+        tokens = tokenize_body(body, where)
+        kinds = [kind for kind, _ in tokens]
+        if re.fullmatch(r"\d+", selector) and int(selector) < irregular_below:
+            if kinds != ["literal"] or re.search(r"\s", tokens[0][1]):
+                raise GenerationError(f"{where}: irregular ordinal {selector} must be one literal word")
+            atoms.append({"spoken": normalize_spoken(tokens[0][1]), "value": int(selector),
+                          "sources": [f"{source['id']}#{base_name}"]})
+        elif re.fullmatch(r"\d+", selector) and int(selector) < 100:
+            if kinds != ["redirect", "literal"] or tokens[0][1] not in cardinal_rulesets:
+                raise GenerationError(f"{where}: ordinal suffix rule {selector} must be a "
+                                      f"selected cardinal ruleset followed by one literal")
+            suffix_rules.append({"fromValue": int(selector), "cardinalRuleset": tokens[0][1],
+                                 "suffix": normalize_spoken(tokens[1][1]),
+                                 "source": f"{source['id']}#{base_name}"})
+        elif selector in ("-x", "x.x") or (re.fullmatch(r"\d+", selector) and int(selector) >= 100):
+            excluded.append((base_name, selector))
+        else:
+            raise GenerationError(f"{where}: ordinal rule {selector!r} fits no declared class")
+    for name in inflection_names:
+        for selector, body, where in rulesets[name]:
+            parsed += 1
+            tokens = tokenize_body(body, where)
+            if selector in ("-x", "x.x"):
+                excluded.append((name, selector))
+            elif selector == "0" and [k for k, _ in tokens] == ["redirect", "literal"] \
+                    and tokens[0][1] == base_name:
+                inflections.append({"ruleset": name, "baseRuleset": base_name,
+                                    "suffix": normalize_spoken(tokens[1][1]),
+                                    "source": f"{source['id']}#{name}"})
+            else:
+                raise GenerationError(f"{where}: inflection rule {selector!r} fits no declared class")
+    for name in excluded_names:
+        for selector, _, _ in rulesets[name]:
+            parsed += 1
+            excluded.append((name, selector))
+    if sorted(a["value"] for a in atoms) != list(range(irregular_below)):
+        raise GenerationError(f"{source['id']}: irregular ordinals must cover 0..{irregular_below - 1}")
+    if not suffix_rules or not inflections:
+        raise GenerationError(f"{source['id']}: ordinal extraction found no suffix rule or inflection")
+    if parsed != len(atoms) + len(suffix_rules) + len(inflections) + len(excluded):
+        raise GenerationError(f"{source['id']}: ordinal rules parsed {parsed} but accounted for "
+                              f"{len(atoms) + len(suffix_rules) + len(inflections) + len(excluded)}")
+    suffix_rules.sort(key=lambda r: r["fromValue"])
+    inflections.sort(key=lambda r: r["ruleset"])
+    return {"atoms": atoms, "suffixRules": suffix_rules, "inflections": inflections,
+            "excluded": len(excluded), "parsed": parsed,
+            "excludedRulesets": list(excluded_names)}
+
+
 # --------------------------------------------------------------------------------------------
 # Merge and cross-checks
 
@@ -356,7 +438,7 @@ def cross_check(atoms, quantity_words, rules):
 def build(manifest, base):
     verify_sources(manifest, base)
     entries, quantity_words, rules, rule_counts, soft_hyphens = [], [], [], {}, 0
-    nemo_ids, cldr_ids = [], []
+    nemo_ids, cldr_ids, ordinals = [], [], None
     for source in manifest["sources"]:
         kind = source.get("kind")
         if kind == "nemo-tsv":
@@ -371,6 +453,11 @@ def build(manifest, base):
             soft_hyphens += soft
             rule_counts[source["id"]] = (parsed, len(atoms), len(source_rules))
             cldr_ids.append(source["id"])
+            found = parse_cldr_ordinals(source, base, source.get("rulesets") or [])
+            if found is not None:
+                if ordinals is not None:
+                    raise GenerationError("only one CLDR source may declare an ordinal extraction")
+                ordinals = found
         else:
             raise GenerationError(f"{source['id']}: unknown source kind {kind!r}")
     atoms = merge_atoms(entries)
@@ -387,6 +474,7 @@ def build(manifest, base):
         "words": words,
         "rules": rules,
         "rule_counts": rule_counts,
+        "ordinals": ordinals,
         "raw_atom_entries": len(entries),
         "soft_hyphens_removed": soft_hyphens,
     }
@@ -432,8 +520,9 @@ def inventory_lines(result):
     lines += [
         f"  included: NeMo zero, digit, ones, teen, ties, quantities; CLDR rulesets "
         f"{', '.join(next(s for s in result['sources'] if s['kind'] == 'cldr-rbnf')['rulesets'])}",
-        "  excluded: CLDR cardinal-neuter/-n/-r/-s/-m, spellout-numbering-year, all ordinal "
-        "rulesets, the NeMo fraction, money, measure, time, date and electronic data",
+        "  excluded: CLDR cardinal-neuter/-n/-r/-s/-m, spellout-numbering-year, the ordinal "
+        "rules outside the declared extraction (negative, decimal and scale rules, the -s and -m "
+        "inflections), the NeMo fraction, money, measure, time, date and electronic data",
         "  normalization: NFC; lower-case spoken forms; U+00AD removed from CLDR literals "
         f"({result['soft_hyphens_removed']} in the selected rules); NeMo tens digit times ten; "
         "ones.tsv weight column ignored",
@@ -445,6 +534,12 @@ def inventory_lines(result):
     for source_id, (parsed, atom_count, rule_count) in sorted(result["rule_counts"].items()):
         lines.append(f"  CLDR rules parsed: {parsed} = {atom_count} atoms + {rule_count} "
                      "instructions (every selected rule accounted for)")
+    ordinals = result.get("ordinals")
+    if ordinals:
+        lines.append(
+            f"  CLDR ordinal rules parsed: {ordinals['parsed']} = {len(ordinals['atoms'])} atoms + "
+            f"{len(ordinals['suffixRules'])} suffix rules + {len(ordinals['inflections'])} "
+            f"inflections + {ordinals['excluded']} excluded (every ordinal rule accounted for)")
     lines.append("  collisions: identical mappings merged with provenance; any one-spoken-form, "
                  "two-value conflict in a role fails the run")
     return lines
@@ -497,6 +592,35 @@ def emit(result):
         "    let tokens: [Token]",
         "  }",
         "",
+    ]
+    if result.get("ordinals"):
+        out += [
+            "  /// An irregular ordinal form read from the base ordinal ruleset (spoken word, value).",
+            "  struct OrdinalAtom: Equatable {",
+            "    let spoken: String",
+            "    let value: Int",
+            "    let sources: [String]",
+            "  }",
+            "",
+            "  /// A regular ordinal: the cardinal of `cardinalRuleset` followed by `suffix`, for every",
+            "  /// value from `fromValue` up to the next rule's `fromValue` (or the end of the range).",
+            "  struct OrdinalSuffixRule: Equatable {",
+            "    let fromValue: Int",
+            "    let cardinalRuleset: String",
+            "    let suffix: String",
+            "    let source: String",
+            "  }",
+            "",
+            "  /// A declared inflection of the base ordinal: the base form followed by `suffix`.",
+            "  struct OrdinalInflection: Equatable {",
+            "    let ruleset: String",
+            "    let baseRuleset: String",
+            "    let suffix: String",
+            "    let source: String",
+            "  }",
+            "",
+        ]
+    out += [
         "  static let sourceIDs: [String] = [",
     ]
     out += [f"    {swift_string(s['id'])}," for s in result["sources"]]
@@ -514,7 +638,26 @@ def emit(result):
         tokens = ", ".join(swift_token(k, t) for k, t in r["tokens"])
         out.append(f"    Rule(ruleset: {swift_string(r['ruleset'])}, "
                    f"selector: {swift_string(r['selector'])}, tokens: [{tokens}]),")
-    out += ["  ]", "}", ""]
+    out += ["  ]"]
+    ordinals = result.get("ordinals")
+    if ordinals:
+        out += ["", "  static let ordinalAtoms: [OrdinalAtom] = ["]
+        for a in sorted(ordinals["atoms"], key=lambda a: a["value"]):
+            sources = ", ".join(swift_string(s) for s in a["sources"])
+            out.append(f"    OrdinalAtom(spoken: {swift_string(a['spoken'])}, value: {a['value']}, "
+                       f"sources: [{sources}]),")
+        out += ["  ]", "", "  static let ordinalSuffixRules: [OrdinalSuffixRule] = ["]
+        for r in ordinals["suffixRules"]:
+            out.append(f"    OrdinalSuffixRule(fromValue: {r['fromValue']}, "
+                       f"cardinalRuleset: {swift_string(r['cardinalRuleset'])}, "
+                       f"suffix: {swift_string(r['suffix'])}, source: {swift_string(r['source'])}),")
+        out += ["  ]", "", "  static let ordinalInflections: [OrdinalInflection] = ["]
+        for r in ordinals["inflections"]:
+            out.append(f"    OrdinalInflection(ruleset: {swift_string(r['ruleset'])}, "
+                       f"baseRuleset: {swift_string(r['baseRuleset'])}, "
+                       f"suffix: {swift_string(r['suffix'])}, source: {swift_string(r['source'])}),")
+        out += ["  ]"]
+    out += ["}", ""]
     return "\n".join(out)
 
 

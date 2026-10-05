@@ -45,6 +45,26 @@ CLDR_RULES = """%spellout-numbering:
 """
 
 
+ORDINAL_RULES = """%spellout-ordinal:
+-x: minus >>;
+x.x: =#,##0.#=;
+0: nullte;
+1: erste;
+2: zweite;
+3: dritte;
+9: =%spellout-numbering=te;
+20: =%spellout-numbering=ste;
+100: <%spellout-numbering<­hundert>>;
+%spellout-ordinal-n:
+-x: minus >>;
+x.x: =#,##0.#=;
+0: =%spellout-ordinal=n;
+"""
+
+ORDINAL_DECLARATION = {"base": "%spellout-ordinal", "irregularBelow": 4,
+                       "inflectionRulesets": ["%spellout-ordinal-n"], "excludedRulesets": []}
+
+
 def cldr_xml(rules):
     return ("<?xml version='1.0' encoding='UTF-8' ?>\n<ldml><rbnf>"
             "<rulesetGrouping type='SpelloutRules'><rbnfRules><![CDATA[\n"
@@ -60,7 +80,7 @@ class Fixture:
     """A throwaway manifest plus pinned source files; every mutation re-hashes honestly unless
     a test deliberately corrupts a hash."""
 
-    def __init__(self, test, nemo=None, cldr=None, extra_nemo=None):
+    def __init__(self, test, nemo=None, cldr=None, extra_nemo=None, ordinal=None):
         self.dir = Path(tempfile.mkdtemp(prefix="itn-fixture-"))
         test.addCleanup(shutil.rmtree, self.dir, True)
         (self.dir / "sources").mkdir()
@@ -75,9 +95,13 @@ class Fixture:
             self.write(f"sources/{kind}.tsv", body)
             self.sources.append(self.entry(f"nemo-{kind}", "nemo-tsv", f"sources/{kind}.tsv",
                                            nemoKind=kind.split("-")[0]))
-        self.write("sources/de.xml", cldr_xml(cldr if cldr is not None else CLDR_RULES))
+        base_rules = cldr if cldr is not None else CLDR_RULES
+        if ordinal is not None:
+            base_rules += ordinal[0]
+        self.write("sources/de.xml", cldr_xml(base_rules))
+        extra = {"ordinal": ordinal[1]} if ordinal is not None and ordinal[1] is not None else {}
         self.sources.append(self.entry("cldr-de", "cldr-rbnf", "sources/de.xml",
-                                       rulesets=["%spellout-numbering"]))
+                                       rulesets=["%spellout-numbering"], **extra))
         self.out = self.dir / "out" / "GermanNumberData.swift"
 
     def write(self, rel, text):
@@ -147,6 +171,76 @@ class RealSourcesTests(unittest.TestCase):
         self.assertEqual(parsed, atoms + rules)
 
 
+class RealOrdinalTests(unittest.TestCase):
+    def test_every_real_ordinal_rule_is_accounted_for(self):
+        result = run("--inventory")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        match = re.search(r"CLDR ordinal rules parsed: (\d+) = (\d+) atoms \+ (\d+) suffix rules "
+                          r"\+ (\d+) inflections \+ (\d+) excluded", result.stdout)
+        self.assertIsNotNone(match, result.stdout)
+        parsed, atoms, suffix, inflections, excluded = map(int, match.groups())
+        self.assertEqual((atoms, suffix, inflections), (9, 2, 2))
+        self.assertGreater(excluded, 0)
+        self.assertEqual(parsed, atoms + suffix + inflections + excluded)
+
+    def test_real_output_carries_the_independently_known_ordinal_forms(self):
+        text = REAL_OUTPUT.read_text(encoding="utf-8")
+        for line in (
+            '    OrdinalAtom(spoken: "erste", value: 1, sources: ["cldr-de-rbnf#%spellout-ordinal"]),',
+            '    OrdinalAtom(spoken: "dritte", value: 3, sources: ["cldr-de-rbnf#%spellout-ordinal"]),',
+            '    OrdinalAtom(spoken: "siebte", value: 7, sources: ["cldr-de-rbnf#%spellout-ordinal"]),',
+            '    OrdinalAtom(spoken: "achte", value: 8, sources: ["cldr-de-rbnf#%spellout-ordinal"]),',
+            '    OrdinalSuffixRule(fromValue: 9, cardinalRuleset: "%spellout-numbering", suffix: "te", source: "cldr-de-rbnf#%spellout-ordinal"),',
+            '    OrdinalSuffixRule(fromValue: 20, cardinalRuleset: "%spellout-numbering", suffix: "ste", source: "cldr-de-rbnf#%spellout-ordinal"),',
+            '    OrdinalInflection(ruleset: "%spellout-ordinal-n", baseRuleset: "%spellout-ordinal", suffix: "n", source: "cldr-de-rbnf#%spellout-ordinal-n"),',
+            '    OrdinalInflection(ruleset: "%spellout-ordinal-r", baseRuleset: "%spellout-ordinal", suffix: "r", source: "cldr-de-rbnf#%spellout-ordinal-r"),',
+        ):
+            self.assertIn(line, text)
+        self.assertNotIn("%spellout-ordinal-s", text.split("static let ordinalAtoms")[1])
+        self.assertNotIn("%spellout-ordinal-m", text.split("static let ordinalAtoms")[1])
+
+    def test_the_manifest_declares_the_bounded_extraction(self):
+        manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+        cldr = [s for s in manifest["sources"] if s["kind"] == "cldr-rbnf"]
+        self.assertEqual(len(cldr), 1)
+        self.assertEqual(cldr[0]["ordinal"]["inflectionRulesets"],
+                         ["%spellout-ordinal-n", "%spellout-ordinal-r"])
+        self.assertEqual(cldr[0]["ordinal"]["excludedRulesets"],
+                         ["%spellout-ordinal-s", "%spellout-ordinal-m"])
+
+
+class FixtureOrdinalTests(unittest.TestCase):
+    def test_a_declared_extraction_produces_the_independent_literal_output(self):
+        fixture = Fixture(self, ordinal=(ORDINAL_RULES, ORDINAL_DECLARATION))
+        result = fixture.generate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = fixture.out.read_text(encoding="utf-8")
+        for line in (
+            '    OrdinalAtom(spoken: "nullte", value: 0, sources: ["cldr-de#%spellout-ordinal"]),',
+            '    OrdinalAtom(spoken: "dritte", value: 3, sources: ["cldr-de#%spellout-ordinal"]),',
+            '    OrdinalSuffixRule(fromValue: 9, cardinalRuleset: "%spellout-numbering", suffix: "te", source: "cldr-de#%spellout-ordinal"),',
+            '    OrdinalSuffixRule(fromValue: 20, cardinalRuleset: "%spellout-numbering", suffix: "ste", source: "cldr-de#%spellout-ordinal"),',
+            '    OrdinalInflection(ruleset: "%spellout-ordinal-n", baseRuleset: "%spellout-ordinal", suffix: "n", source: "cldr-de#%spellout-ordinal-n"),',
+        ):
+            self.assertIn(line, text)
+        self.assertIn("CLDR ordinal rules parsed: 12 = 4 atoms + 2 suffix rules + 1 inflections "
+                      "+ 5 excluded", text)
+
+    def test_no_declaration_emits_no_ordinal_tables(self):
+        fixture = Fixture(self)
+        self.assertEqual(fixture.generate().returncode, 0)
+        text = fixture.out.read_text(encoding="utf-8")
+        self.assertNotIn("ordinalAtoms", text)
+        self.assertNotIn("OrdinalAtom", text)
+
+    def test_two_generations_with_an_ordinal_declaration_are_identical(self):
+        fixture = Fixture(self, ordinal=(ORDINAL_RULES, ORDINAL_DECLARATION))
+        fixture.generate()
+        first = fixture.out.read_bytes()
+        fixture.generate()
+        self.assertEqual(fixture.out.read_bytes(), first)
+
+
 class FixtureGenerationTests(unittest.TestCase):
     def test_canonical_small_inputs_produce_the_independent_literal_output(self):
         fixture = Fixture(self)
@@ -207,7 +301,7 @@ class FixtureGenerationTests(unittest.TestCase):
         self.assertEqual(fixture.out.read_bytes(), first)
 
 
-class FailureTests(unittest.TestCase):
+class FailureAssertions:
     def assert_fails_and_writes_nothing(self, fixture, needle):
         before = fixture.out.read_bytes() if fixture.out.exists() else None
         result = fixture.generate()
@@ -215,6 +309,9 @@ class FailureTests(unittest.TestCase):
         self.assertIn(needle, result.stderr)
         after = fixture.out.read_bytes() if fixture.out.exists() else None
         self.assertEqual(before, after, "a failed run must not change or create the output")
+
+
+class FailureTests(FailureAssertions, unittest.TestCase):
 
     def test_a_pinned_hash_mismatch_fails_before_any_output(self):
         fixture = Fixture(self)
@@ -300,6 +397,55 @@ class FailureTests(unittest.TestCase):
     def test_an_empty_table_is_never_published(self):
         fixture = Fixture(self, nemo={"quantities": ""})
         self.assert_fails_and_writes_nothing(fixture, "empty")
+
+
+class OrdinalFailureTests(FailureAssertions, unittest.TestCase):
+
+    def declared(self, rules=ORDINAL_RULES, declaration=None):
+        return Fixture(self, ordinal=(rules, declaration or dict(ORDINAL_DECLARATION)))
+
+    def test_an_ordinal_ruleset_that_is_not_declared_fails(self):
+        extra = ORDINAL_RULES + "%spellout-ordinal-s:\n0: =%spellout-ordinal=s;\n"
+        self.assert_fails_and_writes_nothing(self.declared(extra), "neither declared")
+
+    def test_declaring_a_missing_ordinal_ruleset_fails(self):
+        declaration = dict(ORDINAL_DECLARATION, excludedRulesets=["%spellout-ordinal-nope"])
+        self.assert_fails_and_writes_nothing(self.declared(declaration=declaration), "not found")
+
+    def test_an_ordinal_rule_that_fits_no_class_fails(self):
+        rules = ORDINAL_RULES.replace("100: <%spellout-numbering<­hundert>>;\n",
+                                      "100: <%spellout-numbering<­hundert>>;\n50/2: nope;\n")
+        self.assert_fails_and_writes_nothing(self.declared(rules), "fits no declared class")
+
+    def test_an_irregular_ordinal_with_substitution_syntax_fails(self):
+        rules = ORDINAL_RULES.replace("3: dritte;", "3: =%spellout-numbering=te;")
+        self.assert_fails_and_writes_nothing(self.declared(rules), "one literal word")
+
+    def test_a_gap_in_the_irregular_forms_fails(self):
+        rules = ORDINAL_RULES.replace("2: zweite;\n", "")
+        self.assert_fails_and_writes_nothing(self.declared(rules), "must cover")
+
+    def test_a_suffix_rule_pointing_at_an_unselected_cardinal_ruleset_fails(self):
+        rules = ORDINAL_RULES.replace("9: =%spellout-numbering=te;", "9: =%spellout-other=te;")
+        self.assert_fails_and_writes_nothing(self.declared(rules), "selected cardinal ruleset")
+
+    def test_an_inflection_that_does_not_redirect_the_base_fails(self):
+        rules = ORDINAL_RULES.replace("0: =%spellout-ordinal=n;", "0: =%spellout-numbering=n;")
+        self.assert_fails_and_writes_nothing(self.declared(rules), "fits no declared class")
+
+    def test_a_declaration_without_a_base_fails(self):
+        declaration = dict(ORDINAL_DECLARATION)
+        del declaration["base"]
+        self.assert_fails_and_writes_nothing(self.declared(declaration=declaration), "needs base")
+
+    def test_an_excluded_ruleset_is_counted_not_dropped(self):
+        extra = ORDINAL_RULES + "%spellout-ordinal-s:\n-x: minus >>;\n0: =%spellout-ordinal=s;\n"
+        declaration = dict(ORDINAL_DECLARATION, excludedRulesets=["%spellout-ordinal-s"])
+        fixture = self.declared(extra, declaration)
+        self.assertEqual(fixture.generate().returncode, 0)
+        text = fixture.out.read_text(encoding="utf-8")
+        self.assertIn("CLDR ordinal rules parsed: 14 = 4 atoms + 2 suffix rules + 1 inflections "
+                      "+ 7 excluded", text)
 
 
 class ModeTests(unittest.TestCase):

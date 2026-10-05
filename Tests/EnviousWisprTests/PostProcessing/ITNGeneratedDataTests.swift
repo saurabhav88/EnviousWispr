@@ -9,9 +9,13 @@ import Testing
 // checks pin what the compiled table must look like and prove nothing reaches it at runtime.
 //
 // EVIDENCE BOUNDARY: they prove generation integrity (finite invariants, known atom values from an
-// independent literal list, clean literals, no runtime reader). They prove NOTHING about whether
-// any German sentence converts correctly: the table is candidate lexical data, not a vetted rule
-// set, and the production `LanguageRuleRegistry` stays empty.
+// independent literal list, clean literals, and that exactly one adapter reads the data). They
+// prove NOTHING about whether any German sentence converts correctly: the table is candidate
+// lexical data, not a vetted rule set, and the production `LanguageRuleRegistry` stays empty.
+//
+// Chunk 3 deliberately moves the data from "read by nothing" to "read by one grammar adapter,
+// whose output no runtime caller uses yet": `LanguageNumberGrammar.swift` is the only allowed
+// reader, and the reachability test below still fails on any other one.
 
 @Suite("Generated German number data (#1677)", .tags(.driftGuard))
 struct ITNGeneratedDataTests {
@@ -157,7 +161,35 @@ struct ITNGeneratedDataTests {
     }
   }
 
-  @Test("nothing outside the generated file reads the generated data, and the registry stays empty")
+  @Test("the bounded ordinal extraction carries independently known forms and provenance")
+  func ordinalExtraction() {
+    let known: [(spoken: String, value: Int)] = [
+      ("erste", 1), ("zweite", 2), ("dritte", 3), ("vierte", 4), ("fünfte", 5), ("sechste", 6),
+      ("siebte", 7), ("achte", 8),
+    ]
+    for item in known {
+      let matches = Data.ordinalAtoms.filter {
+        $0.spoken.unicodeScalars.elementsEqual(item.spoken.unicodeScalars)
+      }
+      #expect(matches.count == 1, "\(item.spoken)")
+      #expect(matches.first?.value == item.value, "\(item.spoken)")
+    }
+    #expect(Data.ordinalAtoms.map(\.value) == Array(0...8))
+    #expect(Data.ordinalSuffixRules.map(\.fromValue) == [9, 20])
+    #expect(Data.ordinalSuffixRules.map(\.suffix) == ["te", "ste"])
+    #expect(Data.ordinalSuffixRules.allSatisfy { $0.cardinalRuleset == "%spellout-numbering" })
+    #expect(Data.ordinalInflections.map(\.suffix) == ["n", "r"])
+    for source in Data.ordinalAtoms.flatMap(\.sources)
+      + Data.ordinalSuffixRules.map(\.source) + Data.ordinalInflections.map(\.source)
+    {
+      let id = source.split(separator: "#", maxSplits: 1).first.map(String.init) ?? source
+      #expect(Data.sourceIDs.contains(id), "unknown ordinal source \(source)")
+    }
+    // The -s and -m inflections are deliberately outside the extraction.
+    #expect(Data.ordinalInflections.contains { $0.suffix == "s" || $0.suffix == "m" } == false)
+  }
+
+  @Test("only the named grammar adapter reads the generated data, and the registry stays empty")
   func notReachableFromRuntime() throws {
     #expect(LanguageRuleRegistry.production.count == 0)
     let sources = URL(fileURLWithPath: #filePath)
@@ -185,6 +217,9 @@ struct ITNGeneratedDataTests {
       }
     }
     #expect(scanned > 100, "the scan must actually read the source tree (read \(scanned))")
-    #expect(readers.isEmpty, "unexpected readers of GermanNumberData: \(readers)")
+    let names = readers.map { URL(fileURLWithPath: $0).lastPathComponent }.sorted()
+    #expect(
+      names == ["LanguageNumberGrammar.swift"],
+      "the only reader must be the grammar adapter; found: \(readers)")
   }
 }
