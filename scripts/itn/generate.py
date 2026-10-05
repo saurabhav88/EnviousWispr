@@ -30,6 +30,12 @@ A bounded ORDINAL extraction is declared per CLDR source in the manifest (`ordin
   excluded (negative, decimal, scale rules and the undeclared `-s` / `-m` inflections). A rule that
   fits none of those fails the run.
 
+A second, separate output lowers the REVIEWED phone-prefix refusal entries (manifest `phonePrefix`):
+  the reviewed entries of one category in refusals/de.json, checked against their semantic hashes,
+  versions and the closed shape vocabulary of review-data.schema.json, emitted as typed rows with
+  their ids, versions, hashes and review references. Pending entries and other categories are
+  never read into the output; a missing, extra or malformed required entry fails the whole run.
+
 Normalization operations (all recorded in the generated inventory): Unicode NFC; lower-casing of
 spoken forms; removal of U+00AD SOFT HYPHEN from CLDR literals (a hyphenation hint, not a
 spoken character); tens digit times ten; the ones.tsv weight column ignored.
@@ -62,6 +68,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 DEFAULT_MANIFEST = HERE / "manifest.json"
 DEFAULT_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift"
+DEFAULT_PHONE_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanPhonePrefixData.swift"
 
 SOFT_HYPHEN = "­"
 ROLE_ORDER = ["zero", "unit", "teen", "tens"]
@@ -480,6 +487,130 @@ def build(manifest, base):
     }
 
 
+def load_refusal_hash():
+    """The refusal entry hash has ONE definition: the review-data validator's."""
+    import importlib.util
+    path = HERE / "validate-review-data.py"
+    spec = importlib.util.spec_from_file_location("validate_review_data", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.refusal_hash
+
+
+def build_phone(manifest, base):
+    """The reviewed phone-prefix refusal entries as typed rows, or None when not declared."""
+    decl = manifest.get("phonePrefix")
+    if decl is None:
+        return None
+    for key in ("category", "refusalsFile", "schemaFile", "requiredEntries", "replacement"):
+        if not decl.get(key):
+            raise GenerationError(f"phonePrefix: manifest field {key} is empty")
+    try:
+        data = json.loads((base / decl["refusalsFile"]).read_text(encoding="utf-8"))
+        schema = json.loads((base / decl["schemaFile"]).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise GenerationError(f"phonePrefix: cannot read refusal inputs: {exc}")
+    shapes = schema.get("x-closed-vocabulary", {}).get("context_shape")
+    reviewed = data.get("reviewed_entries")
+    pending = data.get("pending_entries")
+    if not shapes or not isinstance(reviewed, list) or not isinstance(pending, list):
+        raise GenerationError("phonePrefix: refusal file or schema lacks the expected lists")
+    refusal_hash = load_refusal_hash()
+    category = decl["category"]
+    required = list(decl["requiredEntries"])
+    chosen = [e for e in reviewed if e.get("category") == category]
+    ids = sorted(e.get("id", "") for e in chosen)
+    if ids != sorted(required) or len(set(ids)) != len(ids):
+        raise GenerationError(
+            f"phonePrefix: reviewed {category} entries {ids} are not the required set "
+            f"{sorted(required)}")
+    rows, triggers = [], None
+    for entry in sorted(chosen, key=lambda e: e["id"]):
+        where = f"phonePrefix:{entry['id']}"
+        match = entry.get("match") or {}
+        if entry.get("panel_status") != "panel-reviewed":
+            raise GenerationError(f"{where}: status {entry.get('panel_status')!r} is not reviewed")
+        ref = entry.get("review_ref") or ""
+        if ref != f"refusal-ledger:{entry['id']}:v{entry.get('version')}":
+            raise GenerationError(f"{where}: review_ref {ref!r} does not name version "
+                                  f"{entry.get('version')}")
+        if entry.get("content_sha256") != refusal_hash(entry):
+            raise GenerationError(f"{where}: content_sha256 does not match the reviewed fields")
+        if match.get("kind") != "context_shape" or match.get("context_shape") not in shapes:
+            raise GenerationError(f"{where}: unsupported shape {match.get('context_shape')!r}")
+        tokens = [normalize_spoken(t) for t in match.get("tokens") or []]
+        if not tokens or any(not t or re.search(r"\s", t) for t in tokens):
+            raise GenerationError(f"{where}: trigger tokens must be non-empty single words")
+        if triggers is None:
+            triggers = tokens
+        elif tokens != triggers:
+            raise GenerationError(f"{where}: trigger tokens {tokens} differ from {triggers}")
+        rows.append({"id": entry["id"], "version": entry["version"],
+                     "contentSHA256": entry["content_sha256"], "reasonCode": entry["reason_code"],
+                     "contextShape": match["context_shape"], "reviewRef": ref})
+    shape_names = [r["contextShape"] for r in rows]
+    if len(set(shape_names)) != len(shape_names):
+        raise GenerationError("phonePrefix: two required entries share one context shape")
+    return {
+        "category": category,
+        "replacement": decl["replacement"],
+        "triggers": triggers,
+        "rows": rows,
+        "pending_excluded": sum(1 for e in pending if e.get("category") == category),
+        "refusalsFile": decl["refusalsFile"],
+    }
+
+
+def phone_inventory_lines(result):
+    return [
+        "Source-to-output inventory (reviewed refusal lowering only, not telephone grammar):",
+        f"  source {result['refusalsFile']}: reviewed entries of category {result['category']}",
+        f"  emitted: {len(result['rows'])} reviewed entries, each checked against its semantic "
+        "hash, its version and the closed shape vocabulary",
+        f"  excluded: {result['pending_excluded']} pending entries of this category, every "
+        "other category",
+        f"  trigger tokens: {', '.join(result['triggers'])}; replacement {result['replacement']!r}",
+    ]
+
+
+def emit_phone(result):
+    out = ["// GENERATED by scripts/itn/generate.py from scripts/itn/manifest.json. DO NOT EDIT.",
+           "// Regenerate with scripts/itn/generate.py; scripts/itn/generate.py --check verifies it.",
+           "//"]
+    out += ["// " + line for line in phone_inventory_lines(result)]
+    out += [
+        "//",
+        "// Reviewed refusal data only (#1677). It is not a telephone grammar and makes no claim",
+        "// that a German sentence converts correctly.",
+        "",
+        "enum GermanPhonePrefixData {",
+        "  /// One reviewed refusal entry, exactly as the panel approved it.",
+        "  struct Refusal: Equatable {",
+        "    let id: String",
+        "    let version: Int",
+        "    let contentSHA256: String",
+        "    let reasonCode: String",
+        "    let contextShape: String",
+        "    let reviewRef: String",
+        "  }",
+        "",
+        f"  static let replacement = {swift_string(result['replacement'])}",
+        "",
+        "  static let triggerTokens: [String] = [",
+    ]
+    out += [f"    {swift_string(t)}," for t in result["triggers"]]
+    out += ["  ]", "", "  static let refusals: [Refusal] = ["]
+    for r in result["rows"]:
+        out.append(
+            f"    Refusal(id: {swift_string(r['id'])}, version: {r['version']}, "
+            f"contentSHA256: {swift_string(r['contentSHA256'])}, "
+            f"reasonCode: {swift_string(r['reasonCode'])}, "
+            f"contextShape: {swift_string(r['contextShape'])}, "
+            f"reviewRef: {swift_string(r['reviewRef'])}),")
+    out += ["  ]", "}", ""]
+    return "\n".join(out)
+
+
 def swift_string(text):
     out = []
     for ch in text:
@@ -667,6 +798,14 @@ def generate_bytes(manifest_path):
     return emit(build(manifest, manifest_path.parent)).encode("utf-8")
 
 
+def generate_phone_bytes(manifest_path):
+    """The phone-prefix output, or None when the manifest declares none."""
+    manifest_path = Path(manifest_path)
+    manifest = load_manifest(manifest_path)
+    result = build_phone(manifest, manifest_path.parent)
+    return None if result is None else emit_phone(result).encode("utf-8")
+
+
 def write_atomically(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -685,15 +824,22 @@ def write_atomically(path, data):
 # Modes
 
 
-def run_check(manifest_path, out_path):
+def run_check(manifest_path, out_path, phone_out_path):
+    """Verifies BOTH generated files without rewriting either."""
     with tempfile.TemporaryDirectory(prefix="itn-check-") as tmp:
-        regenerated = Path(tmp) / "GermanNumberData.swift"
-        write_atomically(regenerated, generate_bytes(manifest_path))
-        if not Path(out_path).is_file():
-            raise GenerationError(f"committed output {out_path} is missing")
-        if regenerated.read_bytes() != Path(out_path).read_bytes():
-            raise GenerationError(f"{out_path} differs from a fresh regeneration; run generate.py")
-    print(f"check ok: {out_path} matches a fresh regeneration")
+        pairs = [(generate_bytes(manifest_path), out_path)]
+        phone = generate_phone_bytes(manifest_path)
+        if phone is not None:
+            pairs.append((phone, phone_out_path))
+        for index, (fresh, committed) in enumerate(pairs):
+            regenerated = Path(tmp) / f"fresh-{index}.swift"
+            write_atomically(regenerated, fresh)
+            if not Path(committed).is_file():
+                raise GenerationError(f"committed output {committed} is missing")
+            if regenerated.read_bytes() != Path(committed).read_bytes():
+                raise GenerationError(f"{committed} differs from a fresh regeneration; run generate.py")
+    for _, committed in pairs:
+        print(f"check ok: {committed} matches a fresh regeneration")
 
 
 def run_refresh(manifest_path):
@@ -730,6 +876,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
+    parser.add_argument("--phone-out", default=str(DEFAULT_PHONE_OUT))
     mode = parser.add_mutually_exclusive_group()
     for flag in ("--check", "--self-test", "--refresh", "--inventory"):
         mode.add_argument(flag, action="store_true")
@@ -740,14 +887,23 @@ def main(argv=None):
         if args.refresh:
             run_refresh(args.manifest)
         elif args.check:
-            run_check(args.manifest, args.out)
+            run_check(args.manifest, args.out, args.phone_out)
         elif args.inventory:
             manifest = load_manifest(args.manifest)
             print("\n".join(inventory_lines(build(manifest, Path(args.manifest).parent))))
+            phone = build_phone(manifest, Path(args.manifest).parent)
+            if phone is not None:
+                print("\n".join(phone_inventory_lines(phone)))
         else:
+            # Build and validate BOTH outputs before publishing either, so a failure writes nothing.
             data = generate_bytes(args.manifest)
+            phone = generate_phone_bytes(args.manifest)
             write_atomically(args.out, data)
             print(f"wrote {args.out} ({len(data)} bytes, sha256 {hashlib.sha256(data).hexdigest()})")
+            if phone is not None:
+                write_atomically(args.phone_out, phone)
+                print(f"wrote {args.phone_out} ({len(phone)} bytes, sha256 "
+                      f"{hashlib.sha256(phone).hexdigest()})")
     except GenerationError as exc:
         print(f"generate.py: {exc}", file=sys.stderr)
         return 1

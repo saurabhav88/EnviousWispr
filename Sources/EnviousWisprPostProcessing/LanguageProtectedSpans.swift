@@ -87,7 +87,9 @@ enum LanguageProtectedSpans {
 
   // MARK: Chunking
 
-  private struct Chunk {
+  /// A whitespace-delimited chunk of the original text with its UTF-16 range. Exposed read-only
+  /// so a pass can walk the same chunks protection uses instead of re-implementing them.
+  struct Chunk {
     let range: Range<Int>
     let text: String
     let hasDecimalDigit: Bool
@@ -99,7 +101,7 @@ enum LanguageProtectedSpans {
 
   /// Splits on the Unicode White_Space property, by scalar: grapheme-cluster whitespace tests
   /// disagree with it for a combining mark after a space.
-  private static func chunks(of text: String) -> [Chunk] {
+  static func chunks(of text: String) -> [Chunk] {
     var result: [Chunk] = []
     var offset = 0
     var start: Int?
@@ -193,12 +195,26 @@ enum LanguageProtectedSpans {
     "cny", "inr", "euro", "euros", "dollar", "cent", "franken", "rappen", "pfund",
   ]
 
-  private static let units: Set<String> = [
-    "%", "‰", "°", "°c", "°f", "prozent", "grad", "uhr", "km", "m", "cm", "mm", "kg", "g", "mg",
+  /// Units that make a number a temperature or a percentage. One authority: `units` is built from
+  /// this set and `otherUnits`, so no pass keeps its own copy.
+  private static let temperatureAndPercentUnits: Set<String> = [
+    "%", "‰", "°", "°c", "°f", "prozent", "grad",
+  ]
+
+  private static let otherUnits: Set<String> = [
+    "uhr", "km", "m", "cm", "mm", "kg", "g", "mg",
     "t", "l", "ml", "h", "min", "s", "ms", "sek", "std", "kb", "mb", "gb", "tb", "hz", "khz",
     "mhz", "ghz", "w", "kw", "kwh", "v", "meter", "kilometer", "zentimeter", "millimeter",
     "kilogramm", "gramm", "liter", "minute", "minuten", "sekunde", "sekunden", "stunde",
     "stunden", "tag", "tage", "tagen", "woche", "wochen", "monat", "monate", "monaten", "jahr",
     "jahre", "jahren",
   ]
+
+  private static let units: Set<String> = temperatureAndPercentUnits.union(otherUnits)
+
+  /// True when a chunk is a written temperature or percentage unit (`Grad`, `°C`, `%`, `Prozent`),
+  /// read from the same authority protection uses. Read-only; protection behavior is unchanged.
+  static func isTemperatureOrPercentUnit(_ chunk: String) -> Bool {
+    temperatureAndPercentUnits.contains(core(chunk))
+  }
 }

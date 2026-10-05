@@ -21,6 +21,8 @@ GENERATOR = HERE.parent / "generate.py"
 REAL_MANIFEST = HERE.parent / "manifest.json"
 REAL_OUTPUT = (HERE.parent.parent.parent
                / "Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift")
+REAL_PHONE_OUTPUT = (HERE.parent.parent.parent
+                     / "Sources/EnviousWisprPostProcessing/Generated/GermanPhonePrefixData.swift")
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
@@ -169,6 +171,255 @@ class RealSourcesTests(unittest.TestCase):
         parsed, atoms, rules = map(int, match.groups())
         self.assertGreater(parsed, 0)
         self.assertEqual(parsed, atoms + rules)
+
+
+PHONE_SHAPES = ["plus_between_operands", "plus_joining_nouns", "plus_before_temperature_or_percent",
+                "plus_not_followed_by_digit", "ordinal_adverb"]
+PHONE_IDS = ["ref-phone-001", "ref-phone-002", "ref-phone-003", "ref-phone-004"]
+
+
+def phone_stamp(entry):
+    """An independent oracle for the reviewed-field hash: the same recipe written out here."""
+    keys = ["category", "reason_code", "match", "required_context", "region_limit", "evidence_ids"]
+    text = json.dumps({k: entry[k] for k in keys}, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def phone_entry(entry_id, shape, version=1, tokens=("plus",), category="phone_country_prefix", **over):
+    entry = {"id": entry_id, "category": category, "reason_code": "reason_" + shape,
+             "match": {"kind": "context_shape", "tokens": list(tokens), "context_shape": shape},
+             "required_context": "none", "region_limit": "fixture limit",
+             "evidence_ids": ["E-FIXTURE"], "supporting_row_ids": ["de-phone-ctl-001"],
+             "panel_status": "panel-reviewed", "review_ref": f"refusal-ledger:{entry_id}:v{version}",
+             "version": version}
+    entry.update(over)
+    entry["content_sha256"] = over.get("content_sha256") or phone_stamp(entry)
+    return entry
+
+
+def default_phone_entries():
+    return [phone_entry(PHONE_IDS[0], PHONE_SHAPES[0], version=2),
+            phone_entry(PHONE_IDS[1], PHONE_SHAPES[1]),
+            phone_entry(PHONE_IDS[2], PHONE_SHAPES[2], version=2),
+            phone_entry(PHONE_IDS[3], PHONE_SHAPES[3])]
+
+
+class PhoneFixture(Fixture):
+    """A Fixture that also declares the phone-prefix lowering over a throwaway refusal file."""
+
+    def __init__(self, test, entries=None, pending=None, other=None, declaration=None, raw=None):
+        super().__init__(test)
+        (self.dir / "refusals").mkdir()
+        data = {"schema_version": 1, "language": "de",
+                "reviewed_entries": (entries if entries is not None else default_phone_entries())
+                + (other or []),
+                "pending_entries": pending or []}
+        self.write("refusals/de.json", raw if raw is not None else json.dumps(data, ensure_ascii=False))
+        self.write("review-data.schema.json", json.dumps(
+            {"x-closed-vocabulary": {"context_shape": PHONE_SHAPES}}))
+        self.declaration = {"category": "phone_country_prefix", "refusalsFile": "refusals/de.json",
+                            "schemaFile": "review-data.schema.json", "requiredEntries": PHONE_IDS,
+                            "replacement": "+"}
+        self.declaration.update(declaration or {})
+        self.phone_out = self.dir / "out" / "GermanPhonePrefixData.swift"
+
+    def generate(self, *extra):
+        manifest = self.manifest(phonePrefix=self.declaration)
+        return run("--manifest", str(manifest), "--out", str(self.out), "--phone-out",
+                   str(self.phone_out), *extra)
+
+
+class RealPhoneTests(unittest.TestCase):
+    def test_real_phone_output_carries_the_four_reviewed_entries_exactly(self):
+        text = REAL_PHONE_OUTPUT.read_text(encoding="utf-8")
+        refusals = text.split("static let refusals")[1]
+        self.assertEqual(refusals.count("    Refusal(id:"), 4)
+        for expected in (
+            'id: "ref-phone-001", version: 2,', 'contextShape: "plus_between_operands"',
+            'id: "ref-phone-002", version: 1,', 'contextShape: "plus_joining_nouns"',
+            'id: "ref-phone-003", version: 2,', 'contextShape: "plus_before_temperature_or_percent"',
+            'id: "ref-phone-004", version: 1,', 'contextShape: "plus_not_followed_by_digit"',
+            'reviewRef: "refusal-ledger:ref-phone-003:v2"',
+        ):
+            self.assertIn(expected, refusals)
+        self.assertIn('static let replacement = "+"', text)
+        self.assertIn('    "plus",', text)
+        for other in ("ref-clock", "ref-ordinal"):
+            self.assertNotIn(other, text)
+
+    def test_two_generations_write_both_files_byte_identically(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = [Path(tmp) / "a.swift", Path(tmp) / "pa.swift"]
+            second = [Path(tmp) / "b.swift", Path(tmp) / "pb.swift"]
+            for out, phone in (first, second):
+                self.assertEqual(run("--out", str(out), "--phone-out", str(phone)).returncode, 0)
+            self.assertEqual(first[0].read_bytes(), second[0].read_bytes())
+            self.assertEqual(first[1].read_bytes(), second[1].read_bytes())
+            self.assertEqual(first[1].read_bytes(), REAL_PHONE_OUTPUT.read_bytes())
+
+    def test_phone_output_carries_no_timestamp_or_checkout_path(self):
+        text = REAL_PHONE_OUTPUT.read_text(encoding="utf-8")
+        self.assertNotIn("/Users/", text)
+        self.assertIsNone(re.search(r"\b20\d\d-\d\d-\d\d\b", text))
+
+    def test_the_real_inventory_names_the_phone_lowering(self):
+        result = run("--inventory")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("emitted: 4 reviewed entries", result.stdout)
+
+    def test_the_manifest_declares_the_four_required_entries(self):
+        manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["phonePrefix"]["requiredEntries"], PHONE_IDS)
+        self.assertEqual(manifest["phonePrefix"]["replacement"], "+")
+
+
+class PhoneFixtureTests(unittest.TestCase):
+    def test_canonical_entries_produce_the_independent_literal_output(self):
+        fixture = PhoneFixture(self)
+        result = fixture.generate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = fixture.phone_out.read_text(encoding="utf-8")
+        expected = default_phone_entries()
+        for entry in expected:
+            line = (f'    Refusal(id: "{entry["id"]}", version: {entry["version"]}, '
+                    f'contentSHA256: "{entry["content_sha256"]}", '
+                    f'reasonCode: "{entry["reason_code"]}", '
+                    f'contextShape: "{entry["match"]["context_shape"]}", '
+                    f'reviewRef: "{entry["review_ref"]}"),')
+            self.assertIn(line, text)
+        self.assertIn('static let replacement = "+"', text)
+        self.assertIn("emitted: 4 reviewed entries", text)
+
+    def test_pending_entries_and_other_categories_are_never_emitted(self):
+        pending = [phone_entry("ref-phone-009", "ordinal_adverb", panel_status="pending",
+                               review_ref=None)]
+        other = [phone_entry("ref-ordinal-001", "ordinal_adverb", category="ordinal")]
+        fixture = PhoneFixture(self, pending=pending, other=other)
+        self.assertEqual(fixture.generate().returncode, 0)
+        text = fixture.phone_out.read_text(encoding="utf-8")
+        self.assertNotIn("ref-phone-009", text)
+        self.assertNotIn("ref-ordinal-001", text)
+        self.assertIn("excluded: 1 pending entries of this category", text)
+
+    def test_a_declaration_makes_no_difference_to_the_number_data_output(self):
+        plain = Fixture(self)
+        plain.generate()
+        with_phone = PhoneFixture(self)
+        with_phone.generate()
+        self.assertEqual(plain.out.read_bytes(), with_phone.out.read_bytes())
+
+    def test_two_generations_with_phone_output_are_identical(self):
+        fixture = PhoneFixture(self)
+        fixture.generate()
+        first = (fixture.out.read_bytes(), fixture.phone_out.read_bytes())
+        fixture.generate()
+        self.assertEqual((fixture.out.read_bytes(), fixture.phone_out.read_bytes()), first)
+
+    def test_check_verifies_both_files_and_never_rewrites_either(self):
+        fixture = PhoneFixture(self)
+        fixture.generate()
+        before = [(f.stat().st_mtime_ns, f.read_bytes()) for f in (fixture.out, fixture.phone_out)]
+        result = fixture.generate("--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("check ok"), 2)
+        self.assertEqual(before, [(f.stat().st_mtime_ns, f.read_bytes())
+                                  for f in (fixture.out, fixture.phone_out)])
+
+    def test_check_fails_on_drift_in_the_phone_file_alone(self):
+        fixture = PhoneFixture(self)
+        fixture.generate()
+        fixture.phone_out.write_text(
+            fixture.phone_out.read_text(encoding="utf-8") + "// drift\n", encoding="utf-8")
+        drifted = fixture.phone_out.read_bytes()
+        number = fixture.out.read_bytes()
+        result = fixture.generate("--check")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("GermanPhonePrefixData.swift", result.stderr)
+        self.assertIn("differs", result.stderr)
+        self.assertEqual((fixture.phone_out.read_bytes(), fixture.out.read_bytes()), (drifted, number))
+
+    def test_check_fails_when_the_phone_file_is_missing(self):
+        fixture = PhoneFixture(self)
+        fixture.generate()
+        fixture.phone_out.unlink()
+        result = fixture.generate("--check")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing", result.stderr)
+
+
+class PhoneFailureTests(unittest.TestCase):
+    def assert_fails_and_writes_nothing(self, fixture, needle):
+        result = fixture.generate()
+        self.assertNotEqual(result.returncode, 0, "must fail nonzero")
+        self.assertIn(needle, result.stderr)
+        self.assertFalse(fixture.out.exists(), "a failed run must not create the number output")
+        self.assertFalse(fixture.phone_out.exists(), "a failed run must not create the phone output")
+
+    def entries_with(self, index, **over):
+        entries = default_phone_entries()
+        base = entries[index]
+        entries[index] = phone_entry(base["id"], base["match"]["context_shape"],
+                                     version=base["version"], **over)
+        return entries
+
+    def test_a_changed_reviewed_field_with_the_old_hash_fails(self):
+        entries = default_phone_entries()
+        entries[0]["region_limit"] = "changed after review"
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, entries=entries), "content_sha256")
+
+    def test_a_review_ref_that_names_another_version_fails(self):
+        entries = self.entries_with(0, review_ref="refusal-ledger:ref-phone-001:v1")
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, entries=entries), "review_ref")
+
+    def test_an_entry_that_is_not_reviewed_fails(self):
+        entries = self.entries_with(1, panel_status="pending")
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, entries=entries), "not reviewed")
+
+    def test_a_shape_outside_the_closed_vocabulary_fails(self):
+        entries = default_phone_entries()
+        entries[3] = phone_entry("ref-phone-004", "plus_anything_goes")
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, entries=entries), "unsupported shape")
+
+    def test_a_literal_phrase_entry_fails(self):
+        entries = self.entries_with(
+            2, match={"kind": "literal_phrase", "tokens": ["plus"], "context_shape": None})
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, entries=entries), "unsupported shape")
+
+    def test_a_missing_required_entry_fails(self):
+        self.assert_fails_and_writes_nothing(
+            PhoneFixture(self, entries=default_phone_entries()[:3]), "required set")
+
+    def test_an_extra_reviewed_entry_of_the_category_fails(self):
+        entries = default_phone_entries() + [phone_entry("ref-phone-005", "ordinal_adverb")]
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, entries=entries), "required set")
+
+    def test_trigger_tokens_that_disagree_fail(self):
+        entries = default_phone_entries()
+        entries[1] = phone_entry("ref-phone-002", "plus_joining_nouns", tokens=("plus", "und"))
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, entries=entries), "differ")
+
+    def test_an_empty_or_multi_word_trigger_fails(self):
+        for tokens in ((), ("",), ("plus und",)):
+            with self.subTest(tokens=tokens):
+                entries = [phone_entry(i, s, tokens=tokens) for i, s in zip(PHONE_IDS, PHONE_SHAPES)]
+                self.assert_fails_and_writes_nothing(
+                    PhoneFixture(self, entries=entries), "single words")
+
+    def test_two_entries_with_one_shape_fail(self):
+        entries = [phone_entry(i, PHONE_SHAPES[0]) for i in PHONE_IDS]
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, entries=entries), "share one context shape")
+
+    def test_malformed_refusal_json_fails(self):
+        self.assert_fails_and_writes_nothing(PhoneFixture(self, raw="{not json"), "cannot read")
+
+    def test_a_missing_refusal_file_fails(self):
+        fixture = PhoneFixture(self, declaration={"refusalsFile": "refusals/nope.json"})
+        self.assert_fails_and_writes_nothing(fixture, "cannot read")
+
+    def test_a_declaration_without_a_required_key_fails(self):
+        fixture = PhoneFixture(self, declaration={"replacement": ""})
+        self.assert_fails_and_writes_nothing(fixture, "replacement is empty")
 
 
 class RealOrdinalTests(unittest.TestCase):

@@ -140,5 +140,18 @@
       "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
       "columns": "one column: scale words with no stated value"
     }
-  ]
+  ],
+  "phonePrefix": {
+    "category": "phone_country_prefix",
+    "refusalsFile": "refusals/de.json",
+    "schemaFile": "review-data.schema.json",
+    "requiredEntries": [
+      "ref-phone-001",
+      "ref-phone-002",
+      "ref-phone-003",
+      "ref-phone-004"
+    ],
+    "replacement": "+",
+    "note": "Lowers ONLY the reviewed phone-prefix refusal entries (typed shapes, ids, versions, hashes). Pending entries and other categories are never emitted."
+  }
 }

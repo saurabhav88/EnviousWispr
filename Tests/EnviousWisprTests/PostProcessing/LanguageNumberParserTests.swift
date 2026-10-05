@@ -583,11 +583,12 @@ struct LanguageNumberParserTests {
       FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
     let own: Set<String> = [
       "LanguageNumberGrammar.swift", "LanguageNumberParser.swift", "LanguageProtectedSpans.swift",
-      "LanguageTextEdit.swift",
+      "LanguageTextEdit.swift", "LanguagePhonePrefixRules.swift", "LanguagePhonePrefixPass.swift",
     ]
     let names = [
       "LanguageNumberGrammar", "LanguageNumberParser", "LanguageProtectedSpans",
-      "LanguageTextEditor", "LanguageTextSnapshot", "LanguageTextEdit",
+      "LanguageTextEditor", "LanguageTextSnapshot", "LanguageTextEdit", "LanguagePhonePrefixPass",
+      "LanguagePhonePrefixRules",
     ]
     var scanned = 0
     var callers: [String] = []
@@ -606,7 +607,7 @@ struct LanguageNumberParserTests {
       own.map { sources.appending(path: "EnviousWisprPostProcessing/\($0)") }
       + [
         "LanguageNumberParserTests.swift", "LanguageProtectedSpansTests.swift",
-        "ITNDevelopmentFixtureSupport.swift",
+        "ITNDevelopmentFixtureSupport.swift", "LanguagePhonePrefixPassTests.swift",
       ].map { root.appending(path: "Tests/EnviousWisprTests/PostProcessing/\($0)") }
     for url in newFiles {
       let text = try String(contentsOf: url, encoding: .utf8)

@@ -189,6 +189,25 @@ struct ITNGeneratedDataTests {
     #expect(Data.ordinalInflections.contains { $0.suffix == "s" || $0.suffix == "m" } == false)
   }
 
+  @Test("the generated reviewed phone refusals carry their identity and exactly four shapes")
+  func phonePrefixData() {
+    typealias Phone = GermanPhonePrefixData
+    #expect(Phone.replacement == "+")
+    #expect(Phone.triggerTokens == ["plus"])
+    #expect(Phone.refusals.map(\.id) == ["ref-phone-001", "ref-phone-002", "ref-phone-003", "ref-phone-004"])
+    #expect(Phone.refusals.map(\.version) == [2, 1, 2, 1])
+    #expect(
+      Phone.refusals.map(\.contextShape) == [
+        "plus_between_operands", "plus_joining_nouns", "plus_before_temperature_or_percent",
+        "plus_not_followed_by_digit",
+      ])
+    for refusal in Phone.refusals {
+      #expect(refusal.reviewRef == "refusal-ledger:\(refusal.id):v\(refusal.version)")
+      #expect(refusal.contentSHA256.count == 64)
+      #expect(refusal.contentSHA256.allSatisfy { "0123456789abcdef".contains($0) })
+    }
+  }
+
   @Test("only the named grammar adapter reads the generated data, and the registry stays empty")
   func notReachableFromRuntime() throws {
     #expect(LanguageRuleRegistry.production.count == 0)
@@ -221,5 +240,19 @@ struct ITNGeneratedDataTests {
     #expect(
       names == ["LanguageNumberGrammar.swift"],
       "the only reader must be the grammar adapter; found: \(readers)")
+
+    // The reviewed phone refusals have exactly one reader too: the phone-prefix rules adapter.
+    var phoneReaders: [String] = []
+    let second = try #require(
+      FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+    for case let file as URL in second where file.pathExtension == "swift" {
+      let text = try String(contentsOf: file, encoding: .utf8)
+      if text.contains("GermanPhonePrefixData"), file.lastPathComponent != "GermanPhonePrefixData.swift" {
+        phoneReaders.append(file.lastPathComponent)
+      }
+    }
+    #expect(
+      phoneReaders.sorted() == ["LanguagePhonePrefixRules.swift"],
+      "the only reader of the phone data must be the rules adapter; found: \(phoneReaders)")
   }
 }
