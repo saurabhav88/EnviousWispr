@@ -24,10 +24,13 @@ struct SpokenPunctuationRoutingTests {
   private static let on = SpokenPunctuationSettings(enabled: true, startWordOverrides: [:])
   private static let off = SpokenPunctuationSettings.off
 
-  private func ctx(_ text: String, language: String?, vetoed: Bool = false) -> TextProcessingContext
-  {
+  private func ctx(
+    _ text: String, language: String?, vetoed: Bool = false,
+    source: DictationLanguageResolver.Resolution.Source? = nil
+  ) -> TextProcessingContext {
     var context = TextProcessingContext(text: text, language: language)
     context.englishRulesVetoed = vetoed
+    context.languageSource = source
     return context
   }
 
@@ -156,7 +159,8 @@ struct SpokenPunctuationRoutingTests {
   @Test("A German take with the switch on rewrites the command and reports it")
   func germanRewrites() async throws {
     let step = step(Self.on)
-    let out = try await step.process(ctx("Das ist gut Setze Punkt es geht weiter", language: "de"))
+    let out = try await step.process(
+      ctx("Das ist gut Setze Punkt es geht weiter", language: "de-DE", source: .dictation))
     #expect(out.text == "Das ist gut. Es geht weiter")
     let run = try #require(step.lastRun)
     #expect(run.ran == false)
@@ -164,6 +168,8 @@ struct SpokenPunctuationRoutingTests {
     #expect(run.changed == true)
     #expect(run.punctuationStatus == .rewrote)
     #expect(run.punctuationRulesFired == 1)
+    #expect(run.punctuationLanguage == "de", "the base code, from the resolved language")
+    #expect(run.punctuationResolutionSource == "dictation", "read from the context, never re-resolved")
   }
 
   @Test("The neutral subset runs first, then the commands")
@@ -212,10 +218,12 @@ struct SpokenPunctuationRoutingTests {
   func unsupportedLanguage() async throws {
     let step = step(Self.on)
     let input = "Dit is goed Setze Punkt maar period"
-    let out = try await step.process(ctx(input, language: "nl"))
+    let out = try await step.process(ctx(input, language: "nl", source: .engine))
     #expect(out.text == input)
     #expect(step.lastRun?.punctuationStatus == .unsupported)
     #expect(step.lastRun?.punctuationRulesFired == nil)
+    #expect(step.lastRun?.punctuationLanguage == "nl")
+    #expect(step.lastRun?.punctuationResolutionSource == "engine")
   }
 
   @Test("A vetoed take is unresolved, and a nil language on an LID engine is unresolved")
@@ -223,6 +231,7 @@ struct SpokenPunctuationRoutingTests {
     let vetoed = step(Self.on, lid: false)
     _ = try await vetoed.process(ctx("alpha Setze Punkt beta", language: nil, vetoed: true))
     #expect(vetoed.lastRun?.punctuationStatus == .unresolved)
+    #expect(vetoed.lastRun?.punctuationLanguage == nil, "an unresolved take names no language")
 
     let lidNil = step(Self.on, lid: true)
     let out = try await lidNil.process(ctx("alpha Setze Punkt beta", language: nil))
@@ -259,13 +268,15 @@ struct SpokenPunctuationRoutingTests {
   @Test("An English take takes the English route: no status, bare words as before")
   func englishRoute() async throws {
     let step = step(Self.on)
-    let out = try await step.process(ctx("hello period world", language: "en"))
+    let out = try await step.process(ctx("hello period world", language: "en", source: .locked))
     #expect(out.text == "hello. World")
     let run = try #require(step.lastRun)
     #expect(run.ran == true)
     #expect(run.skipReason == nil)
     #expect(run.punctuationStatus == nil)
     #expect(run.punctuationRulesFired == nil)
+    #expect(run.punctuationLanguage == "en")
+    #expect(run.punctuationResolutionSource == "locked")
   }
 
   @Test("English output is byte-identical to the unchanged normalizer, switch on and off")
@@ -293,6 +304,10 @@ struct SpokenPunctuationRoutingTests {
       out.text.hasPrefix("alpha."), "the English table applies, exactly as before: \(out.text)")
     #expect(out.text.contains("Setze Punkt"), "the start-word pass does not run here")
     #expect(step.lastRun?.punctuationStatus == nil)
+    // The English table ran while the resolved language is still nil, which is exactly why this
+    // field is not just `cleanup_language`.
+    #expect(step.lastRun?.punctuationLanguage == "en")
+    #expect(step.lastRun?.punctuationResolutionSource == nil)
   }
 
   @Test("A later run never inherits the previous run's punctuation metadata")
@@ -303,6 +318,7 @@ struct SpokenPunctuationRoutingTests {
     _ = try await step.process(ctx("hello period world", language: "en"))
     #expect(step.lastRun?.punctuationStatus == nil)
     #expect(step.lastRun?.punctuationRulesFired == nil)
+    #expect(step.lastRun?.punctuationLanguage == "en")
   }
 
   // MARK: - The deadline

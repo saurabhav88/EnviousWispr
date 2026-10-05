@@ -67,7 +67,7 @@ import Testing
       }
     }
 
-    @Test("A transcript the pass never touched omits both keys in every bucket")
+    @Test("A transcript the pass never touched omits all four keys in every bucket")
     func absentFieldsAreOmitted() throws {
       let event = try capture(Transcript(text: "hello"))
       let allKeys =
@@ -75,45 +75,69 @@ import Testing
         .union(event.boolProps.keys)
       #expect(allKeys.contains("punctuation_status") == false)
       #expect(allKeys.contains("punctuation_rules_fired") == false)
-    }
-
-    @Test("The language and its source stay on the existing cleanup fields, not repeated here")
-    func languageAndSourceAreNotDuplicated() throws {
-      var metrics = ExecutionMetrics()
-      metrics.cleanupLanguage = "de"
-      metrics.cleanupLanguageSource = "dictation"
-      metrics.punctuationStatus = "rewrote"
-      metrics.punctuationRulesFired = 1
-      var transcript = Transcript(text: "hello")
-      transcript.metrics = metrics
-
-      let event = try capture(transcript)
-      #expect(event.stringProps["cleanup_language"] == "de")
-      #expect(event.stringProps["cleanup_language_source"] == "dictation")
-      let allKeys =
-        Set(event.stringProps.keys).union(event.intProps.keys).union(event.doubleProps.keys)
-        .union(event.boolProps.keys)
       #expect(allKeys.contains("punctuation_language") == false)
       #expect(allKeys.contains("punctuation_resolution_source") == false)
     }
 
-    @Test("The two new fields survive a Codable round trip and an old blob decodes without them")
+    @Test("The language and the resolver rung arrive as their own properties, independent of the cleanup fields")
+    func languageAndSourceAreTheirOwnProperties() throws {
+      var metrics = ExecutionMetrics()
+      // Deliberately different from the cleanup fields: the English route can run while the
+      // cleanup language was never resolved, and that difference is the reason these exist.
+      metrics.cleanupLanguage = nil
+      metrics.punctuationLanguage = "en"
+      metrics.punctuationResolutionSource = "none"
+      var transcript = Transcript(text: "hello")
+      transcript.metrics = metrics
+
+      let event = try capture(transcript)
+      #expect(event.stringProps["punctuation_language"] == "en")
+      #expect(event.stringProps["punctuation_resolution_source"] == "none")
+      #expect(event.stringProps["cleanup_language"] == nil)
+    }
+
+    @Test("A full non-English report carries all four properties with their wire types")
+    func fullReport() throws {
+      var metrics = ExecutionMetrics()
+      metrics.punctuationStatus = "rewrote"
+      metrics.punctuationRulesFired = 2
+      metrics.punctuationLanguage = "de"
+      metrics.punctuationResolutionSource = "dictation"
+      var transcript = Transcript(text: "hello")
+      transcript.metrics = metrics
+
+      let event = try capture(transcript)
+      #expect(event.stringProps["punctuation_status"] == "rewrote")
+      #expect(event.intProps["punctuation_rules_fired"] == 2)
+      #expect(event.stringProps["punctuation_language"] == "de")
+      #expect(event.stringProps["punctuation_resolution_source"] == "dictation")
+    }
+
+    @Test("The four new fields survive a Codable round trip and an old blob decodes without them")
     func codableIsAdditive() throws {
       var metrics = ExecutionMetrics()
       metrics.punctuationStatus = "ran_no_match"
       metrics.punctuationRulesFired = 0
+      metrics.punctuationLanguage = "fr"
+      metrics.punctuationResolutionSource = "engine"
       let data = try JSONEncoder().encode(metrics)
       let decoded = try JSONDecoder().decode(ExecutionMetrics.self, from: data)
       #expect(decoded.punctuationStatus == "ran_no_match")
       #expect(decoded.punctuationRulesFired == 0)
+      #expect(decoded.punctuationLanguage == "fr")
+      #expect(decoded.punctuationResolutionSource == "engine")
 
       var fields = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
       fields.removeValue(forKey: "punctuationStatus")
       fields.removeValue(forKey: "punctuationRulesFired")
+      fields.removeValue(forKey: "punctuationLanguage")
+      fields.removeValue(forKey: "punctuationResolutionSource")
       let legacy = try JSONSerialization.data(withJSONObject: fields)
       let old = try JSONDecoder().decode(ExecutionMetrics.self, from: legacy)
       #expect(old.punctuationStatus == nil)
       #expect(old.punctuationRulesFired == nil)
+      #expect(old.punctuationLanguage == nil)
+      #expect(old.punctuationResolutionSource == nil)
     }
   }
 

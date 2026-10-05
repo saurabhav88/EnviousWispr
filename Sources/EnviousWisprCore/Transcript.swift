@@ -112,11 +112,14 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var itnLenAfter: Int?
   /// #2450: what the spoken-punctuation start-word pass did for this take, one of a closed
   /// vocabulary (`disabled`, `unresolved`, `unsupported`, `ran_no_match`, `rewrote`, `timed_out`),
-  /// and how many commands it rewrote. Nil on the English route and on transcripts written before
-  /// this field existed (additive optional Codable, back-compatible). A routing fact, never a
-  /// precision claim; metadata only (`telemetry-privacy-boundary`).
+  /// and how many commands it rewrote (both nil on the English route), the language the routing used
+  /// (`en` on the English route) and which resolver rung answered. All nil on transcripts written
+  /// before these fields existed (additive optional Codable, back-compatible). A routing fact,
+  /// never a precision claim; metadata only (`telemetry-privacy-boundary`).
   public var punctuationStatus: String?
   public var punctuationRulesFired: Int?
+  public var punctuationLanguage: String?
+  public var punctuationResolutionSource: String?
   /// #2614: the language the deterministic cleanup chain resolved (base code),
   /// which resolver rung answered (`locked` / `engine` / `dictation` / `none`),
   /// and the text rung's confidence bucket. Nil on pre-#2614 transcripts on disk
@@ -246,6 +249,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     itnLenAfter: Int? = nil,
     punctuationStatus: String? = nil,
     punctuationRulesFired: Int? = nil,
+    punctuationLanguage: String? = nil,
+    punctuationResolutionSource: String? = nil,
     cleanupLanguage: String? = nil,
     cleanupLanguageSource: String? = nil,
     cleanupLanguageBucket: String? = nil,
@@ -315,6 +320,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.itnLenAfter = itnLenAfter
     self.punctuationStatus = punctuationStatus
     self.punctuationRulesFired = punctuationRulesFired
+    self.punctuationLanguage = punctuationLanguage
+    self.punctuationResolutionSource = punctuationResolutionSource
     self.cleanupLanguage = cleanupLanguage
     self.cleanupLanguageSource = cleanupLanguageSource
     self.cleanupLanguageBucket = cleanupLanguageBucket

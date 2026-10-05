@@ -3622,6 +3622,8 @@ extension KernelFinalizationWiringTests {
     #expect(outcome.cleanupLanguage == "de")
     #expect(outcome.punctuationStatus == "rewrote")
     #expect(outcome.punctuationRulesFired == 1)
+    #expect(outcome.punctuationLanguage == "de")
+    #expect(outcome.punctuationResolutionSource == "dictation")
 
     // Hop 3: the metrics the transcript stores, written when the take is delivered (the same
     // order the #2614 rows above use).
@@ -3630,6 +3632,8 @@ extension KernelFinalizationWiringTests {
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.punctuationStatus == "rewrote")
     #expect(metrics.punctuationRulesFired == 1)
+    #expect(metrics.punctuationLanguage == "de")
+    #expect(metrics.punctuationResolutionSource == "dictation")
   }
 
   @Test("#2450 a German take with no command reports ran_no_match and a zero count")
@@ -3658,5 +3662,7 @@ extension KernelFinalizationWiringTests {
     #expect(outcome.cleanupLanguage == "en")
     #expect(outcome.punctuationStatus == nil)
     #expect(outcome.punctuationRulesFired == nil)
+    #expect(outcome.punctuationLanguage == "en", "the English route names its language")
+    #expect(outcome.punctuationResolutionSource == outcome.cleanupLanguageSource)
   }
 }

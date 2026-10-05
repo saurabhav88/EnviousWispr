@@ -125,9 +125,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// setting. Only the nine bare mark rewrites and the backslash joiner are gated; the spoken
   /// slash is read in both switch positions (#3038, `InverseTextNormalizer.slashReading`).
   ///
-  /// #2450: the whole setting as one value, the switch plus the per-language start words. This
-  /// chunk reads only `enabled` (the English route is unchanged); the start words are carried so the
-  /// routing chunk can use them without a second plumbing change.
+  /// #2450: the whole setting is snapshotted before asynchronous work. The English route reads
+  /// only `enabled`; eligible non-English routes also use the validated effective start word.
   ///
   /// Default `.off` — the safe state for a step built in isolation (tests, and
   /// recovery before `applySettings` runs), and it matches the shipped product
@@ -147,9 +146,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   struct RunOutcome: Sendable {
     /// True when the engine actually ran (not gated out by language).
     let ran: Bool
-    /// True when the step changed the text. On a skipped take (`ran == false`) this is the
-    /// language-neutral subset's answer (#3210, `normalizeLanguageNeutral`), which is the only
-    /// thing a skipped take runs.
+    /// True when the step changed the text. When `ran == false`, this includes the
+    /// language-neutral subset and any eligible start-word punctuation rewrite.
     let changed: Bool
     /// `nil` when it ran; otherwise the skip bucket (`non_english` / `lid_backend_nil`).
     let skipReason: String?
@@ -165,6 +163,14 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     /// #2450: the number of commands the start-word pass rewrote. Non-nil only for `rewrote` and
     /// `ran_no_match` (0). A `timed_out` run discards its count.
     let punctuationRulesFired: Int?
+    /// #2450: the language this take's punctuation routing used: `en` on the English route, the
+    /// resolved base code otherwise, nil when unresolved. Not always `cleanup_language`: the
+    /// preserved English route for a nil language on a non-LID engine runs English while the
+    /// resolved language is still nil.
+    let punctuationLanguage: String?
+    /// #2450: which resolver rung answered (`locked`, `engine`, `dictation`, `document`, `none`),
+    /// read from the context, never a second resolver.
+    let punctuationResolutionSource: String?
   }
 
   /// The most recent `process(...)` outcome. Read by `KernelFinalizationWiring`
@@ -275,7 +281,9 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       lastRun = RunOutcome(
         ran: false, changed: output != input, skipReason: skip,
         latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: output.count,
-        punctuationStatus: punctuation.status, punctuationRulesFired: punctuation.rulesFired)
+        punctuationStatus: punctuation.status, punctuationRulesFired: punctuation.rulesFired,
+        punctuationLanguage: LanguageNormalizer.baseCode(context.language),
+        punctuationResolutionSource: context.languageSource?.rawValue)
       guard output != input else { return context }
       var ctx = context
       ctx.text = output
@@ -349,7 +357,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       lastRun = RunOutcome(
         ran: true, changed: false, skipReason: nil,
         latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: lenBefore,
-        punctuationStatus: nil, punctuationRulesFired: nil)
+        punctuationStatus: nil, punctuationRulesFired: nil,
+        punctuationLanguage: "en", punctuationResolutionSource: context.languageSource?.rawValue)
       return context
     }
 
@@ -357,7 +366,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     lastRun = RunOutcome(
       ran: true, changed: changed, skipReason: nil,
       latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: converted.count,
-      punctuationStatus: nil, punctuationRulesFired: nil)
+      punctuationStatus: nil, punctuationRulesFired: nil,
+      punctuationLanguage: "en", punctuationResolutionSource: context.languageSource?.rawValue)
     // Per-step IN:/OUT: + PipelineTiming traces are emitted by `TextProcessingRunner`
     // for every step (DEBUG-gated, local-only) — no duplicate logging here.
     if !changed { return context }
