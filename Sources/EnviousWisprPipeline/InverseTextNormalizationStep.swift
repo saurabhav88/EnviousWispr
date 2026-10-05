@@ -19,6 +19,65 @@ import os
 /// Limb semantics (heart & limbs): never blocks the heart path. The engine is pure CPU,
 /// so it runs OFF the main actor (the `WordCorrectionStep` pattern) and a no-op returns
 /// the input context untouched. Founder Gate-1 (2026-06-02): always ON, no user toggle.
+/// What one deadline-bounded unit of ITN work is asked to do (#2450).
+///
+/// ONE request type for BOTH routes, so the language-neutral route is no longer outside the injected
+/// hook and a test that slows the work exercises the non-English deadline as well as the English one.
+/// Everything the work needs is snapshotted into this value BEFORE the actor hop, so the closure never
+/// reads mutable settings or a context.
+struct ITNWorkRequest: Sendable {
+  enum Route: Sendable, Equatable {
+    /// The full English engine (`normalize`), exactly as before.
+    case english
+    /// The language-neutral subset, then, when `punctuationLanguage` is set, the start-word pass.
+    case languageNeutral
+  }
+
+  let route: Route
+  let input: String
+  /// The whole setting as it stood when the run began. The English route reads only `.enabled`.
+  let spokenPunctuation: SpokenPunctuationSettings
+  /// Non-nil only when the start-word pass is ELIGIBLE for this take: a resolved base language that
+  /// has a table, with the toggle on and no English veto.
+  let punctuationLanguage: String?
+  /// The start word to match for `punctuationLanguage`: the effective word, validated, or the
+  /// language's default when the stored one fails validation.
+  let startWord: String?
+  /// The exact opaque tokens a fired snippet left in the text, from `protectedExpansions`.
+  let protectedSentinels: [String]
+}
+
+/// What a unit of ITN work produced. `punctuationRulesFired` is nil when no punctuation pass ran.
+struct ITNWorkResult: Sendable {
+  let text: String
+  let punctuationRulesFired: Int?
+}
+
+/// The closed vocabulary of `punctuation_status` on `dictation.completed` (#2450). A ROUTING fact:
+/// it says what the start-word pass did, never whether a rewrite was right. English takes carry no
+/// status. `ran_no_match` (the pass ran, nothing matched) and `timed_out` (the pass was abandoned)
+/// are kept apart so a hung run can never read as an ordinary no-op.
+enum SpokenPunctuationStatus: String, Sendable, CaseIterable {
+  /// The toggle is off, so the pass was not attempted.
+  case disabled
+  /// No confident language (nil, a veto, or an LID backend that could not identify one).
+  case unresolved
+  /// A positively identified language that has no table. Never given another language's table.
+  case unsupported
+  case ranNoMatch = "ran_no_match"
+  case rewrote
+  case timedOut = "timed_out"
+}
+
+/// Where the start-word pass stands for one take, decided once from values the step already holds.
+struct PunctuationPlan: Equatable, Sendable {
+  /// Non-nil means the pass WILL be attempted for this language.
+  let attemptLanguage: String?
+  let startWord: String?
+  /// The status to report when the pass is NOT attempted. Nil only when it is attempted.
+  let notAttemptedStatus: SpokenPunctuationStatus?
+}
+
 @MainActor
 final class InverseTextNormalizationStep: TextProcessingStep {
   let name = "Inverse Text Normalization"
@@ -99,6 +158,13 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     /// Character length before / after (edit size is allowed; #253 precedent).
     let lenBefore: Int
     let lenAfter: Int
+    /// #2450: what the start-word pass did for this take. Nil on the English route (no pass exists
+    /// there) and, by design, never inferred from `changed`, which also covers every other ITN
+    /// conversion. Not a precision claim.
+    let punctuationStatus: SpokenPunctuationStatus?
+    /// #2450: the number of commands the start-word pass rewrote. Non-nil only for `rewrote` and
+    /// `ran_no_match` (0). A `timed_out` run discards its count.
+    let punctuationRulesFired: Int?
   }
 
   /// The most recent `process(...)` outcome. Read by `KernelFinalizationWiring`
@@ -106,10 +172,11 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   private(set) var lastRun: RunOutcome?
 
   private let normalizer: InverseTextNormalizer
-  /// The normalization work `withDeadline` runs. Production: `normalizer.normalize`.
+  /// The normalization work `withDeadline` runs, for BOTH routes. Production: `normalizer.normalize`
+  /// on the English route; the language-neutral subset then the start-word pass otherwise (#2450).
   /// Tests inject slow work to exercise the length-scaled budget in milliseconds
   /// (#2770), the same seam shape as `SpeakerLabeler.makeAnalysisTask`.
-  private let work: @Sendable (String, Bool) async -> String
+  private let work: @Sendable (ITNWorkRequest) async -> ITNWorkResult
   /// Test seam only: observes the timeout breadcrumb's extra on THIS instance, so a
   /// test never installs the process-global `captureErrorDelegate`
   /// (`swift-patterns` RULE: tests-no-process-global-mutable-delegate). Production
@@ -118,8 +185,23 @@ final class InverseTextNormalizationStep: TextProcessingStep {
 
   init(normalizer: InverseTextNormalizer = InverseTextNormalizer()) {
     self.normalizer = normalizer
-    self.work = { text, spokenPunctuation in
-      normalizer.normalize(text, spokenPunctuation: spokenPunctuation)
+    self.work = { request in
+      switch request.route {
+      case .english:
+        return ITNWorkResult(
+          text: normalizer.normalize(
+            request.input, spokenPunctuation: request.spokenPunctuation.enabled),
+          punctuationRulesFired: nil)
+      case .languageNeutral:
+        let neutral = normalizer.normalizeLanguageNeutral(request.input)
+        guard let language = request.punctuationLanguage, let startWord = request.startWord else {
+          return ITNWorkResult(text: neutral, punctuationRulesFired: nil)
+        }
+        let result = normalizer.applyStartWordPunctuation(
+          neutral, language: language, startWord: startWord,
+          protectedSentinels: request.protectedSentinels)
+        return ITNWorkResult(text: result.text, punctuationRulesFired: result.rulesFired)
+      }
     }
     self.onTimeoutForTesting = nil
   }
@@ -127,7 +209,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// Test seam only: `work` replaces the normalizer call under the same deadline.
   init(
     normalizer: InverseTextNormalizer = InverseTextNormalizer(),
-    work: @escaping @Sendable (String, Bool) async -> String,
+    work: @escaping @Sendable (ITNWorkRequest) async -> ITNWorkResult,
     onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil
   ) {
     self.normalizer = normalizer
@@ -142,6 +224,13 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // walks storage, and a grapheme can span many units (a family emoji is one
     // grapheme and eleven units). `lenBefore` stays graphemes for telemetry.
     let deadline = Self.deadlineSeconds(forCharacterCount: input.utf16.count)
+    // #2450: snapshot EVERYTHING the work needs, once, before any asynchronous hop. A settings edit
+    // that lands mid-run applies to the NEXT take, and the whole value is read here in one place, so
+    // a run can never see the old switch with new start words. The sentinels are the exact tokens
+    // snippet expansion left in THIS take's text.
+    let work = self.work
+    let spokenPunctuationSnapshot = self.spokenPunctuation
+    let protectedSentinels = context.protectedExpansions.map(\.sentinel)
 
     // Backend-aware language gate (plan §"What changes" #4). On skip, only the
     // language-neutral subset runs (#3210).
@@ -152,10 +241,19 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       // digits joined by a spoken dot or dash word, unpadded dates, and addresses whose at-word
       // and dot-word belong to one language. Same off-main deadline as the full engine; a
       // timeout keeps the input.
-      let neutral = self.normalizer
+      // #2450: the same off-main closure also runs the start-word pass when this take is eligible
+      // (a resolved language with a table, the toggle on, no veto), so one deadline covers both and
+      // a timeout discards BOTH, returning the whole pre-ITN text and never a neutral-only middle.
+      let plan = Self.punctuationPlan(
+        language: context.language, englishVetoed: context.englishRulesVetoed,
+        settings: spokenPunctuationSnapshot)
+      let request = ITNWorkRequest(
+        route: .languageNeutral, input: input, spokenPunctuation: spokenPunctuationSnapshot,
+        punctuationLanguage: plan.attemptLanguage, startWord: plan.startWord,
+        protectedSentinels: protectedSentinels)
       let start = CFAbsoluteTimeGetCurrent()
       let converted = await withDeadline(seconds: deadline) {
-        neutral.normalizeLanguageNeutral(input)
+        await work(request)
       }
       let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
       if converted == nil {
@@ -172,10 +270,12 @@ final class InverseTextNormalizationStep: TextProcessingStep {
           extra: timeoutExtra)
         onTimeoutForTesting?(timeoutExtra)
       }
-      let output = converted ?? input
+      let output = converted?.text ?? input
+      let punctuation = Self.punctuationOutcome(plan: plan, result: converted)
       lastRun = RunOutcome(
         ran: false, changed: output != input, skipReason: skip,
-        latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: output.count)
+        latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: output.count,
+        punctuationStatus: punctuation.status, punctuationRulesFired: punctuation.rulesFired)
       guard output != input else { return context }
       var ctx = context
       ctx.text = output
@@ -190,11 +290,12 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // cap. Snapshot the Sendable engine into a LOCAL first so the `@Sendable`
     // closure does not capture `self` across the actor boundary (Codex r2;
     // `swift-concurrency-patterns` snapshot rule; `withDeadline` precedent #832/#913 PR8).
-    // Snapshot the flag alongside the normalizer BEFORE the actor hop: a toggle
-    // landing mid-run must not tear this take, which completes under the value it
-    // started with (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property).
-    let work = self.work
-    let spokenPunctuationSnapshot = self.spokenPunctuation
+    // The settings value and the work hook were snapshotted at the top of `process`, BEFORE the
+    // actor hop: a toggle landing mid-run must not tear this take, which completes under the value
+    // it started with (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property).
+    let englishRequest = ITNWorkRequest(
+      route: .english, input: input, spokenPunctuation: spokenPunctuationSnapshot,
+      punctuationLanguage: nil, startWord: nil, protectedSentinels: protectedSentinels)
     // `withDeadline` is a FIRST-CLAIM RACE on a shared executor, so a take still queued for a
     // cooperative thread can burn the budget without the engine ever running, and `latency_ms`
     // alone reads ~500 either way (#1946 measured that dependence for the ordered siblings).
@@ -209,10 +310,10 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let start = CFAbsoluteTimeGetCurrent()
     let maybeConverted = await withDeadline(seconds: deadline) {
       engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
-      return await work(input, spokenPunctuationSnapshot.enabled)
+      return await work(englishRequest)
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
-    guard let converted = maybeConverted else {
+    guard let converted = maybeConverted?.text else {
       // Read AFTER `withDeadline` returned, so a closure the timer already beat can still enter
       // and stamp itself — `operationTask.cancel()` cannot stop a synchronous body from being
       // scheduled. Compare the stamp against the NOMINAL BUDGET, not against `elapsedMs`:
@@ -247,14 +348,16 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       onTimeoutForTesting?(timeoutExtra)
       lastRun = RunOutcome(
         ran: true, changed: false, skipReason: nil,
-        latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: lenBefore)
+        latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: lenBefore,
+        punctuationStatus: nil, punctuationRulesFired: nil)
       return context
     }
 
     let changed = converted != input
     lastRun = RunOutcome(
       ran: true, changed: changed, skipReason: nil,
-      latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: converted.count)
+      latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: converted.count,
+      punctuationStatus: nil, punctuationRulesFired: nil)
     // Per-step IN:/OUT: + PipelineTiming traces are emitted by `TextProcessingRunner`
     // for every step (DEBUG-gated, local-only) — no duplicate logging here.
     if !changed { return context }
@@ -281,6 +384,67 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   private func skipReason(language: String?, englishVetoed: Bool) -> String? {
     InverseTextNormalizationGate.skipReason(
       language: language, englishVetoed: englishVetoed, backendSupportsLID: backendSupportsLID)
+  }
+}
+
+// MARK: - Spoken punctuation routing (#2450)
+
+extension InverseTextNormalizationStep {
+
+  /// Decide, from values the step already holds, whether the start-word pass runs for this SKIPPED
+  /// (non-English-route) take, and which word it matches. Pure and static so the whole precedence
+  /// table is one function a test can drive:
+  ///
+  /// | switch | veto | language | result |
+  /// |---|---|---|---|
+  /// | off | any | any | `disabled`, not attempted |
+  /// | on | yes | any | `unresolved`, not attempted |
+  /// | on | no | nil, empty or unrecognised | `unresolved`, not attempted |
+  /// | on | no | resolved, no table | `unsupported`, not attempted |
+  /// | on | no | resolved, has a table | attempted with the validated effective word |
+  ///
+  /// English never reaches here (the English route has no pass and reports no status). A positively
+  /// identified language with no table is never given another language's table, and a nil language
+  /// is never guessed.
+  ///
+  /// **A stored start word that fails validation does not widen matching.** The effective word is
+  /// re-validated against the language's complete forms; if it is refused (an invalid programmatic
+  /// override that bypassed `commitSpokenPunctuationStartWord`), the language's DEFAULT start word is
+  /// used instead, never the invalid one.
+  nonisolated static func punctuationPlan(
+    language: String?, englishVetoed: Bool, settings: SpokenPunctuationSettings
+  ) -> PunctuationPlan {
+    func notAttempted(_ status: SpokenPunctuationStatus) -> PunctuationPlan {
+      PunctuationPlan(attemptLanguage: nil, startWord: nil, notAttemptedStatus: status)
+    }
+    guard settings.enabled else { return notAttempted(.disabled) }
+    if englishVetoed { return notAttempted(.unresolved) }
+    guard let base = LanguageNormalizer.baseCode(language) else { return notAttempted(.unresolved) }
+    guard let forms = SpokenPunctuationRules.spokenForms(for: base),
+      let defaultWord = SpokenPunctuationRules.defaultStartWord(for: base)
+    else { return notAttempted(.unsupported) }
+
+    var startWord = defaultWord
+    if let effective = SpokenPunctuationRules.effectiveStartWords(
+      overrides: settings.startWordOverrides)[base],
+      case .accepted(let validated) = SpokenPunctuationStartWord.validate(
+        effective, language: base, spokenForms: forms)
+    {
+      startWord = validated
+    }
+    return PunctuationPlan(attemptLanguage: base, startWord: startWord, notAttemptedStatus: nil)
+  }
+
+  /// The status and count to report once the work has finished, or timed out (`result == nil`).
+  /// "Not attempted", "attempted and matched nothing" and "attempted and abandoned" stay three
+  /// different answers, and an abandoned run discards its count.
+  nonisolated static func punctuationOutcome(plan: PunctuationPlan, result: ITNWorkResult?)
+    -> (status: SpokenPunctuationStatus?, rulesFired: Int?)
+  {
+    guard plan.attemptLanguage != nil else { return (plan.notAttemptedStatus, nil) }
+    guard let result else { return (.timedOut, nil) }
+    let fired = result.punctuationRulesFired ?? 0
+    return (fired > 0 ? .rewrote : .ranNoMatch, fired)
   }
 }
 

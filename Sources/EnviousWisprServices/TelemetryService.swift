@@ -384,6 +384,8 @@ public final class TelemetryService {
       itnLatencyMs: m?.itnLatencyMs,
       itnLenBefore: m?.itnLenBefore,
       itnLenAfter: m?.itnLenAfter,
+      punctuationStatus: m?.punctuationStatus,
+      punctuationRulesFired: m?.punctuationRulesFired,
       cleanupLanguage: m?.cleanupLanguage,
       cleanupLanguageSource: m?.cleanupLanguageSource,
       cleanupLanguageBucket: m?.cleanupLanguageBucket,
@@ -1859,6 +1861,7 @@ public final class TelemetryService {
     itnRan: Bool? = nil, itnChanged: Bool? = nil, itnFloorDelivered: Bool? = nil,
     itnSkipReason: String? = nil, itnLatencyMs: Double? = nil,
     itnLenBefore: Int? = nil, itnLenAfter: Int? = nil,
+    punctuationStatus: String? = nil, punctuationRulesFired: Int? = nil,
     cleanupLanguage: String? = nil, cleanupLanguageSource: String? = nil,
     cleanupLanguageBucket: String? = nil,
     emojiInInput: Int? = nil, emojiDropped: Int? = nil, emojiRestored: Int? = nil,
@@ -1949,6 +1952,12 @@ public final class TelemetryService {
     if let lat = itnLatencyMs { props["itn_latency_ms"] = lat }  // #2980: Double
     if let lb = itnLenBefore { props["itn_len_before"] = lb }
     if let la = itnLenAfter { props["itn_len_after"] = la }
+    // #2450: what the spoken-punctuation start-word pass did (a closed vocabulary) and how many
+    // commands it rewrote, an Int on the wire. A routing fact on the EXISTING row, never content or
+    // a precision claim; the language and its source are `cleanup_language` and
+    // `cleanup_language_source` below. Absent on the English route.
+    if let ps = punctuationStatus { props["punctuation_status"] = ps }
+    if let pr = punctuationRulesFired { props["punctuation_rules_fired"] = pr }
     // #2614: the language the cleanup chain ran under, its source and bucket
     // (metadata only — `telemetry-privacy-boundary`; never the score).
     if let cl = cleanupLanguage { props["cleanup_language"] = cl }

@@ -84,6 +84,14 @@ struct TelemetryEmitterRegistryTests {
   /// site, no new event, same per-take cadence; two optional properties on the existing
   /// (ungraded) row, present only on English (UK) takes: a closed string and an Int count, no
   /// text, `take_id` unchanged, registry row unchanged.
+  /// #2450: the same single `dictation.completed` site in `dictationCompleted` gained two parameters
+  /// (`punctuationStatus`, `punctuationRulesFired`), which changes its enclosing-function identity.
+  /// Verified from the diff of `TelemetryService.swift`: three hunks, none a `capture` call (a
+  /// forwarded argument pair, the signature, the two property writes), so no new site and no event
+  /// moved. No new event, same per-take cadence; two optional properties on the existing row,
+  /// absent on the English route: a closed status string and an Int count, no text, `take_id`
+  /// unchanged, registry row unchanged. The language and its source were NOT repeated: they already
+  /// ride on `cleanup_language` and `cleanup_language_source` (#2614).
   /// #3105: `learnObservationEnded` gained `unfinishedEdits`, which changes the enclosing-function
   /// identity of the same single `custom_words.learn_observation_ended` site. No new site, no new
   /// event, same once-per-watched-paste cadence; one Int count on the existing row (checklist items
@@ -144,7 +152,7 @@ struct TelemetryEmitterRegistryTests {
   /// dictation, no content; reader separates restores from dictation landings; registry rows
   /// unchanged.
   static let sitesFingerprint =
-    "3af49b1682214f211d0e03167a88b16a8f2b880bc96336c1caedf7b4dfd8de49"
+    "8662ff10450b9e301b4a0fb796a02a05076161ce3c77e876545c233a121b3606"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

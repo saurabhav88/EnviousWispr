@@ -110,6 +110,13 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var itnLatencyMs: Double?
   public var itnLenBefore: Int?
   public var itnLenAfter: Int?
+  /// #2450: what the spoken-punctuation start-word pass did for this take, one of a closed
+  /// vocabulary (`disabled`, `unresolved`, `unsupported`, `ran_no_match`, `rewrote`, `timed_out`),
+  /// and how many commands it rewrote. Nil on the English route and on transcripts written before
+  /// this field existed (additive optional Codable, back-compatible). A routing fact, never a
+  /// precision claim; metadata only (`telemetry-privacy-boundary`).
+  public var punctuationStatus: String?
+  public var punctuationRulesFired: Int?
   /// #2614: the language the deterministic cleanup chain resolved (base code),
   /// which resolver rung answered (`locked` / `engine` / `dictation` / `none`),
   /// and the text rung's confidence bucket. Nil on pre-#2614 transcripts on disk
@@ -237,6 +244,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     itnLatencyMs: Double? = nil,
     itnLenBefore: Int? = nil,
     itnLenAfter: Int? = nil,
+    punctuationStatus: String? = nil,
+    punctuationRulesFired: Int? = nil,
     cleanupLanguage: String? = nil,
     cleanupLanguageSource: String? = nil,
     cleanupLanguageBucket: String? = nil,
@@ -304,6 +313,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.itnLatencyMs = itnLatencyMs
     self.itnLenBefore = itnLenBefore
     self.itnLenAfter = itnLenAfter
+    self.punctuationStatus = punctuationStatus
+    self.punctuationRulesFired = punctuationRulesFired
     self.cleanupLanguage = cleanupLanguage
     self.cleanupLanguageSource = cleanupLanguageSource
     self.cleanupLanguageBucket = cleanupLanguageBucket

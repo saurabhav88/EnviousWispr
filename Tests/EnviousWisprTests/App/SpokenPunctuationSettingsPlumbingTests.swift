@@ -108,9 +108,9 @@ struct SpokenPunctuationSettingsPlumbingTests {
       var all: [Bool] { lock.withLock { flags } }
     }
     let seen = Seen()
-    let step = InverseTextNormalizationStep(work: { text, flag in
-      seen.add(flag)
-      return text
+    let step = InverseTextNormalizationStep(work: { request in
+      seen.add(request.spokenPunctuation.enabled)
+      return ITNWorkResult(text: request.input, punctuationRulesFired: nil)
     })
     let context = TextProcessingContext(text: "hello world", language: nil)
 
