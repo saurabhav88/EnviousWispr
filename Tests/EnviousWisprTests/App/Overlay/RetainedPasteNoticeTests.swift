@@ -68,6 +68,22 @@ struct RetainedPasteNoticeReducerTests {
   }
 }
 
+/// Forwards to the real director and counts the asks. The render-time `isStillWanted` re-check
+/// refuses a stale request too, so what reaches the screen cannot tell "dropped before asking"
+/// from "asked and refused"; only the count can (#3122 row 5, #3451 row 8).
+@MainActor
+private final class CountingHost: RetainedPasteNoticeHosting {
+  let inner: OverlayDirector
+  var asked = 0
+  init(_ inner: OverlayDirector) { self.inner = inner }
+  func present(
+    _ request: PillRequest, onResult: @escaping (PillPresentationResult) -> Void
+  ) -> PillReceipt? {
+    asked += 1
+    return inner.present(request, onResult: onResult)
+  }
+}
+
 @MainActor
 @Suite("Late clipboard notice: owner and render (#3106 PR B)", .tags(.productOutcome))
 struct RetainedPasteNoticeDirectorTests {
@@ -101,22 +117,6 @@ struct RetainedPasteNoticeDirectorTests {
 
   @MainActor
   private final class Board { var count = 10 }
-
-  /// Forwards to the real director and counts the asks. The render-time `isStillWanted` re-check
-  /// refuses a stale request too, so what reaches the screen cannot tell "dropped before asking"
-  /// from "asked and refused"; only the count can (#3122 row 5).
-  @MainActor
-  private final class CountingHost: RetainedPasteNoticeHosting {
-    let inner: OverlayDirector
-    var asked = 0
-    init(_ inner: OverlayDirector) { self.inner = inner }
-    func present(
-      _ request: PillRequest, onResult: @escaping (PillPresentationResult) -> Void
-    ) -> PillReceipt? {
-      asked += 1
-      return inner.present(request, onResult: onResult)
-    }
-  }
 
   private func notice(_ board: Board, _ log: Log) -> RetainedPasteNotice {
     RetainedPasteNotice(boardChangeCount: { board.count })
@@ -276,11 +276,13 @@ struct EscapeRecoveryNoticeTests {
     let log = Log()
     let (d, _) = director(log, deferring: false)
     let board = Board()
-    show(d, receipt: nil, board: board, log: log)
-    show(d, receipt: 9, board: board, log: log)
+    let counting = CountingHost(d)
+    show(counting, receipt: nil, board: board, log: log)
+    show(counting, receipt: 9, board: board, log: log)
     show(nil, receipt: 10, board: board, log: log)
     #expect(isShowing(d) == false)
     #expect(log.shown == [false, false, false])
+    #expect(counting.asked == 0, "a stale receipt must not ask the overlay at all (#3437)")
   }
 
   @Test("The board moves before a deferred first render: the notice never renders")

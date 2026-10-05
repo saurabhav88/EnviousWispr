@@ -217,9 +217,10 @@ struct SetupCoordinatorTests {
   func visibleWatchTakesOver() async {
     let gate = ProbeGate()
     let coord = makeCoordinator(ollamaStatusProbe: { trigger in await gate.park(trigger) })
-    // A watch already running: the request does nothing at all.
+    // A watch already running: the request does nothing at all. The queued task would also stand
+    // down on its own, so only the returned task shows that none was started (#3442 row 12).
     coord.startOllamaStatusWatch()
-    coord.requestOffPageOllamaRefresh()
+    #expect(coord.requestOffPageOllamaRefresh() == nil)
     coord.stopOllamaStatusWatch()
 
     // Requested first, then a pane starts watching before the probe runs: it stands down.
