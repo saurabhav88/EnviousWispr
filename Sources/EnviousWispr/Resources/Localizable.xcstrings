@@ -11202,7 +11202,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn du das Feld leer lässt, gibt es kein Startwort. Befehlswörter werden überall zu Zeichen, wo du sie sagst, auch mitten in einem normalen Satz."
+            "value" : "Wenn du das Feld leer lässt, gibt es kein Startwort. Befehlswörter werden überall dort zu Satzzeichen, wo du sie sagst, auch mitten in einem normalen Satz."
           }
         }
       }
