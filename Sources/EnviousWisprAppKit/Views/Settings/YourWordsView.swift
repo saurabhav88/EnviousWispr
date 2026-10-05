@@ -170,7 +170,11 @@ struct YourWordsView: View {
         // Your Words list has had the same defect since it shipped.
         ScrollViewReader { proxy in
           ScrollView {
-            VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+            // Lazy only for `pinnedViews`: the Your Words card's controls are a
+            // section header that stays at the top while its words scroll.
+            // Spacing 0 so the header and the words meet as one card; the
+            // notices above them carry their own gap (`yourWordsBanners`).
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
               selectedTabContent
             }
             .padding(.bottom, SettingsLayout.contentBottom)
@@ -243,6 +247,30 @@ struct YourWordsView: View {
   private var selectedTabContent: some View {
     switch selectedTab {
     case .yourWords:
+      yourWordsBanners
+      // The three page actions are handed to the list card rather than drawn
+      // above it. They used to be their own right-aligned row, with the word
+      // count on a third row below that, so the pane opened as three stacked
+      // bands and the buttons belonged to nothing (founder, 2026-08-29: they
+      // "push the whole UI down, making it look disjointed and not unified").
+      // Count and actions are one bar now: what you have, and what you can do
+      // to it.
+      // Not wrapped in a stack: the section inside must be a direct child of
+      // the pane's `LazyVStack` for its header to pin.
+      CustomTermsSection { actionButtons }
+    case .vocabularyPacks:
+      VocabPacksSection()
+    case .learnFrom:
+      LearningSection()
+    case .quickAdd:
+      QuickAddTeachingSection()
+    }
+  }
+
+  /// The notices above the Your Words list. They scroll away; the list's own
+  /// controls are what stay pinned.
+  private var yourWordsBanners: some View {
+    VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
       // Launch-time load failure (#1646): honest banner instead of a silent
       // empty list. Two distinct situations, two distinct messages.
       if let failure = customWordsCoordinator.wordsLoadFailureAtLaunch {
@@ -266,22 +294,14 @@ struct YourWordsView: View {
           onCancel: { customWordsCoordinator.cancelBulkImportEnrichment?() }
         )
       }
-
-      // The three page actions are handed to the list card rather than drawn
-      // above it. They used to be their own right-aligned row, with the word
-      // count on a third row below that, so the pane opened as three stacked
-      // bands and the buttons belonged to nothing (founder, 2026-08-29: they
-      // "push the whole UI down, making it look disjointed and not unified").
-      // Count and actions are one bar now: what you have, and what you can do
-      // to it.
-      CustomTermsSection { actionButtons }
-    case .vocabularyPacks:
-      VocabPacksSection()
-    case .learnFrom:
-      LearningSection()
-    case .quickAdd:
-      QuickAddTeachingSection()
     }
+    // Space below only when a notice is showing; otherwise the card starts at
+    // the top of the pane, where it always has.
+    .padding(
+      .bottom,
+      customWordsCoordinator.wordsLoadFailureAtLaunch != nil
+        || customWordsCoordinator.pendingEnrichmentCount > 0
+        ? SettingsLayout.sectionSpacing : 0)
   }
 
   /// The Your Words tab's three page-level actions, factored out so
