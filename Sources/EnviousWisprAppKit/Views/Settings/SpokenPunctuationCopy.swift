@@ -77,7 +77,7 @@ enum SpokenPunctuationCopy {
       "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark."
   )
   static let noStartWordPlaceholder = String(
-    localized: "None",
+    localized: "No start word",
     comment: "Speech engine settings, Start word row: the blank field's placeholder, meaning no start word.")
   static let languagePickerLabel = String(
     localized: "Start word for",

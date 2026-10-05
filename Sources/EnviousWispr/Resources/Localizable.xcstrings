@@ -11207,6 +11207,17 @@
         }
       }
     },
+    "No start word" : {
+      "comment" : "Speech engine settings, Start word row: the blank field's placeholder, meaning no start word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Startwort"
+          }
+        }
+      }
+    },
     "No suggestions available" : {
       "localizations" : {
         "de" : {
