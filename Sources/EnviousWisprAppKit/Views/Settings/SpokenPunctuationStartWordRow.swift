@@ -1,0 +1,147 @@
+import EnviousWisprCore
+import EnviousWisprServices
+import SwiftUI
+
+/// #2450: the "Start word" row, shown under the Spoken punctuation switch while it is on.
+///
+/// A picker chooses which language's start word is edited, and a field edits it. All the editing rules
+/// live in `SpokenPunctuationStartWordEditor`; this view only draws its state. Keyboard, VoiceOver,
+/// focus and the rendered layout are proven by hand in the dev app, not by this file's declarations.
+struct SpokenPunctuationStartWordRow: View {
+  @State private var editor: SpokenPunctuationStartWordEditor
+  @FocusState private var fieldFocused: Bool
+
+  init(settings: SettingsManager) {
+    _editor = State(initialValue: SpokenPunctuationStartWordEditor(settings: settings))
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      SettingsRow(
+        icon: "text.cursor",
+        resolvedTitle: SpokenPunctuationCopy.startWordTitle,
+        resolvedShort: SpokenPunctuationCopy.startWordShort,
+        resolvedHelp: SpokenPunctuationCopy.startWordHelp
+      ) {
+        languagePicker
+      }
+      editorBlock
+        // Lines up under the row's title, past its icon (the Unload row's pattern).
+        .padding(.leading, 37)
+    }
+    // The row leaves when the switch turns off or the page closes. A pending draft is settled for
+    // the language it was typed for, never lost into another one.
+    .onDisappear { editor.settleBeforeLeaving() }
+  }
+
+  private var languagePicker: some View {
+    Picker(
+      SpokenPunctuationCopy.languagePickerLabel,
+      selection: Binding(
+        get: { editor.language },
+        set: { editor.selectLanguage($0) })
+    ) {
+      ForEach(SpokenPunctuationStartWordEditor.languages, id: \.self) { code in
+        Text(SpokenPunctuationStartWordEditor.displayName(for: code)).tag(code)
+      }
+    }
+    .labelsHidden()
+    .fixedSize()
+    .accessibilityLabel(Text(SpokenPunctuationCopy.languagePickerLabel))
+  }
+
+  private var editorBlock: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 10) {
+        Text(SpokenPunctuationCopy.languagePickerLabel)
+          .font(.stRowLabel)
+          .foregroundStyle(.stTextPrimary)
+          .accessibilityHidden(true)
+        field
+        if editor.isCustomised {
+          Button(SpokenPunctuationCopy.resetLabel) { editor.reset() }
+            .buttonStyle(.plain)
+            .font(.stHelper)
+            .foregroundStyle(Color.stAccent)
+            .settingsHoverQuiet()
+            .accessibilityLabel(Text(SpokenPunctuationCopy.resetAccessibilityLabel))
+        }
+      }
+      if let example = editor.exampleCommand {
+        Text(SpokenPunctuationCopy.example(command: example))
+          .settingsReadingCopy()
+      }
+      if let reason = editor.rejection {
+        Label(SpokenPunctuationCopy.rejection(reason), systemImage: "exclamationmark.triangle.fill")
+          .font(.stHelper)
+          .foregroundStyle(.stError)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Text(SpokenPunctuationCopy.pickerIsNotDictationLanguage)
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private var field: some View {
+    let rejectionText = editor.rejection.map(SpokenPunctuationCopy.rejection)
+    return TextField(
+      "",
+      text: Binding(
+        get: { editor.draft },
+        set: { editor.userEdited($0) })
+    )
+    .focused($fieldFocused)
+    .settingsFieldChrome(focused: $fieldFocused)
+    .frame(width: 160)
+    .onSubmit { editor.commitDraft() }
+    .onChange(of: fieldFocused) { _, focused in
+      if focused == false { editor.commitDraft() }
+    }
+    .onChange(of: rejectionText) { _, text in
+      if let text { AccessibilityNotification.Announcement(text).post() }
+    }
+    .accessibilityLabel(
+      Text(
+        SpokenPunctuationCopy.fieldAccessibilityLabel(
+          languageName: SpokenPunctuationStartWordEditor.displayName(for: editor.language))
+      )
+    )
+    // The message is tied to the field, not only drawn beside it, so a screen reader reads it
+    // with the field it is about.
+    .accessibilityHint(Text(rejectionText ?? ""))
+  }
+}
+
+/// #2450: what the Spoken punctuation "?" shows. Short guidance and a link to the Help Center article,
+/// which owns the word list; there is no phrase table here.
+struct SpokenPunctuationHelpPanel: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(SpokenPunctuationCopy.toggleDescription)
+        .settingsReadingCopy()
+      Text(SpokenPunctuationCopy.helpStartWord)
+        .settingsReadingCopy()
+      Text(SpokenPunctuationCopy.helpEnglish)
+        .settingsReadingCopy()
+      Text(SpokenPunctuationCopy.helpPolish)
+        .settingsReadingCopy()
+      Text(SpokenPunctuationCopy.helpFootnote)
+        .settingsReadingCopy()
+      if let url = SpokenPunctuationCopy.learnMoreURL {
+        Link(destination: url) {
+          HStack(spacing: 4) {
+            Text(SpokenPunctuationCopy.learnMoreLabel)
+            Image(systemName: "arrow.up.right")
+          }
+          .font(.stHelper)
+        }
+        .foregroundStyle(.stAccent)
+        .accessibilityLabel(Text(SpokenPunctuationCopy.learnMoreAccessibilityLabel))
+      }
+    }
+    .frame(maxWidth: 300, alignment: .leading)
+    .padding(16)
+  }
+}
