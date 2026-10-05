@@ -1,0 +1,454 @@
+{
+  "schema_version": 1,
+  "language": "de",
+  "reviewed_entries": [
+    {
+      "id": "ref-ordinal-001",
+      "category": "ordinal",
+      "reason_code": "adverb_form",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "erstens",
+          "zweitens",
+          "drittens",
+          "viertens"
+        ],
+        "context_shape": "ordinal_adverb"
+      },
+      "required_context": "none",
+      "region_limit": "Refuse only when the ordinal form functions as a sequencing adverb rather than an ordinal adjective or noun.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P74",
+        "E-DUDEN-ORDNUNGSZAHLEN-PUNKT"
+      ],
+      "supporting_row_ids": [
+        "de-ordinal-ctl-004",
+        "de-ordinal-ctl-010",
+        "de-ordinal-ctl-016"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-ordinal-001:v1",
+      "version": 1,
+      "content_sha256": "4c42cfcf6370f57c5b22f77fe3a956a51662845e4d47683ead44de3bc3a7a576"
+    },
+    {
+      "id": "ref-ordinal-002",
+      "category": "ordinal",
+      "reason_code": "date_form_out_of_scope",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "ersten",
+          "dritten",
+          "fünfte",
+          "siebzehnten"
+        ],
+        "context_shape": "ordinal_word_in_date_phrase"
+      },
+      "required_context": "none",
+      "region_limit": "Refuse only when the ordinal occurs as part of a calendar date phrase.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P74",
+        "E-DUDEN-ORDNUNGSZAHLEN-PUNKT"
+      ],
+      "supporting_row_ids": [
+        "de-ordinal-ctl-006",
+        "de-ordinal-ctl-018",
+        "de-ordinal-ctl-029"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-ordinal-002:v1",
+      "version": 1,
+      "content_sha256": "68008f53730d34bf2fbbe3c7335d32733ac0e7d7cfb3741bde94445cb43a16ed"
+    },
+    {
+      "id": "ref-ordinal-005",
+      "category": "ordinal",
+      "reason_code": "no_following_noun",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "erste",
+          "zweite",
+          "vierte",
+          "fünfte"
+        ],
+        "context_shape": "ordinal_word_without_following_noun"
+      },
+      "required_context": "none",
+      "region_limit": "Refuse only when the ordinal is used substantivally without a following noun.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P74"
+      ],
+      "supporting_row_ids": [
+        "de-ordinal-ctl-005",
+        "de-ordinal-ctl-011",
+        "de-ordinal-ctl-017"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-ordinal-005:v1",
+      "version": 1,
+      "content_sha256": "407e88e7be651484a9d06a2037328a93c9e5dde9367deb80f7a0a6e7c3341c41"
+    },
+    {
+      "id": "ref-phone-002",
+      "category": "phone_country_prefix",
+      "reason_code": "plus_conjunction_or_preposition",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "plus"
+        ],
+        "context_shape": "plus_joining_nouns"
+      },
+      "required_context": "none",
+      "region_limit": "Refuse only when plus joins goods, services, fees, or other noun phrases rather than introducing a telephone prefix.",
+      "evidence_ids": [
+        "E-ITU-E123"
+      ],
+      "supporting_row_ids": [
+        "de-phone-ctl-002",
+        "de-phone-ctl-006",
+        "de-phone-ctl-010"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-phone-002:v1",
+      "version": 1,
+      "content_sha256": "26480031f77b0578882adb794153f03b644d17c74dfd5c7cfc1bc9ad1c15068c"
+    },
+    {
+      "id": "ref-phone-004",
+      "category": "phone_country_prefix",
+      "reason_code": "plus_without_digit_sequence",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "plus"
+        ],
+        "context_shape": "plus_not_followed_by_digit"
+      },
+      "required_context": "none",
+      "region_limit": "Refuse only when plus is not followed by a digit sequence that could form a telephone country prefix.",
+      "evidence_ids": [
+        "E-ITU-E123",
+        "E-DUDEN-DAF-P78"
+      ],
+      "supporting_row_ids": [
+        "de-phone-ctl-003",
+        "de-phone-ctl-007",
+        "de-phone-ctl-011"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-phone-004:v1",
+      "version": 1,
+      "content_sha256": "910bb3c2f1aec72182e789d239932fef63f5f4cbd34507c41932cce72d8c5af3"
+    },
+    {
+      "id": "ref-clock-003",
+      "category": "clock_idiom",
+      "reason_code": "fraction_word",
+      "match": {
+        "kind": "literal_phrase",
+        "tokens": [
+          "ein viertel der",
+          "drei viertel eines liters",
+          "ein halbes kilogramm"
+        ],
+        "context_shape": null
+      },
+      "required_context": "none",
+      "region_limit": "Unconditional refusal for these bounded fraction-quantity phrases; do not require or infer the speaker's region.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P78"
+      ],
+      "supporting_row_ids": [
+        "de-clock-ctl-009",
+        "de-clock-ctl-060",
+        "de-clock-ctl-065"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-clock-003:v2",
+      "version": 2,
+      "content_sha256": "89eff1fd38e7d25dcb6a1ed5cb9cdd84b35a25ef0d7b23714a7721353f4bc192"
+    },
+    {
+      "id": "ref-clock-004",
+      "category": "clock_idiom",
+      "reason_code": "no_clock_context",
+      "match": {
+        "kind": "literal_phrase",
+        "tokens": [
+          "halb voll",
+          "halb leer"
+        ],
+        "context_shape": null
+      },
+      "required_context": "none",
+      "region_limit": "No regional condition; refuse these bounded phrases wherever they occur.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P76"
+      ],
+      "supporting_row_ids": [
+        "de-clock-ctl-004",
+        "de-clock-ctl-011"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-clock-004:v2",
+      "version": 2,
+      "content_sha256": "7d5eb9c39db876d0ac7447124746523e3dc8e55aff80e4f23de9d1e5f69018f6"
+    },
+    {
+      "id": "ref-ordinal-003",
+      "category": "ordinal",
+      "reason_code": "fixed_expression",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "erste",
+          "erster",
+          "zweite"
+        ],
+        "context_shape": "ordinal_word_in_fixed_phrase"
+      },
+      "required_context": "none",
+      "region_limit": "Unconditionally refuse ordinal words occurring in these established fixed expressions; ordinary ordinal usage outside such expressions is not covered.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P74"
+      ],
+      "supporting_row_ids": [
+        "de-ordinal-ctl-002",
+        "de-ordinal-ctl-008",
+        "de-ordinal-ctl-014"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-ordinal-003:v2",
+      "version": 2,
+      "content_sha256": "78b79a945ac91169502012e64b56d98dcfdc41cccb53eec432c73a4392dcd153"
+    },
+    {
+      "id": "ref-ordinal-004",
+      "category": "ordinal",
+      "reason_code": "fraction_word",
+      "match": {
+        "kind": "literal_phrase",
+        "tokens": [
+          "ein drittel",
+          "ein viertel",
+          "ein fünftel",
+          "ein zehntel",
+          "ein achtel"
+        ],
+        "context_shape": null
+      },
+      "required_context": "none",
+      "region_limit": "Refuse unconditionally when any listed fraction phrase occurs; do not determine or depend on the speaker's region.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P78"
+      ],
+      "supporting_row_ids": [
+        "de-ordinal-ctl-001",
+        "de-ordinal-ctl-007",
+        "de-ordinal-ctl-013"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-ordinal-004:v2",
+      "version": 2,
+      "content_sha256": "1d8ec26687390be752b03f315d9d875594ed47b9ecef04d177f6cf1b36b53cf2"
+    },
+    {
+      "id": "ref-ordinal-006",
+      "category": "ordinal",
+      "reason_code": "proper_name_or_title",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "achte",
+          "zweite",
+          "erste",
+          "ersten",
+          "siebte",
+          "vierzehnten",
+          "neunten"
+        ],
+        "context_shape": "ordinal_word_in_proper_name"
+      },
+      "required_context": "none",
+      "region_limit": "Within this cell's scope, refuse whenever one of these ordinal forms occurs in a proper name or title; do not condition the refusal on the speaker's region.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P74",
+        "E-DUDEN-ORDNUNGSZAHLEN-PUNKT"
+      ],
+      "supporting_row_ids": [
+        "de-ordinal-ctl-003",
+        "de-ordinal-ctl-009",
+        "de-ordinal-ctl-015"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-ordinal-006:v2",
+      "version": 2,
+      "content_sha256": "0fba7c64d7069c1c4555cf590d93eb34e7e62c8ec288e439fe58feb94eecd740"
+    },
+    {
+      "id": "ref-phone-001",
+      "category": "phone_country_prefix",
+      "reason_code": "plus_arithmetic",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "plus"
+        ],
+        "context_shape": "plus_between_operands"
+      },
+      "required_context": "none",
+      "region_limit": "Refuse every occurrence of plus between numerical operands within this cell, without requiring any regional classification.",
+      "evidence_ids": [
+        "E-ITU-E123",
+        "E-DUDEN-DAF-P78"
+      ],
+      "supporting_row_ids": [
+        "de-phone-ctl-001",
+        "de-phone-ctl-005",
+        "de-phone-ctl-009"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-phone-001:v2",
+      "version": 2,
+      "content_sha256": "c207ff9bd6407413e3608f1e43ce62baacb1bfec74edba093c1f66ee21cc9309"
+    },
+    {
+      "id": "ref-phone-003",
+      "category": "phone_country_prefix",
+      "reason_code": "plus_temperature_or_quantity",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "plus"
+        ],
+        "context_shape": "plus_before_temperature_or_percent"
+      },
+      "required_context": "none",
+      "region_limit": "Refuse every occurrence of plus before a temperature or percentage expression; do not extend this rule to other quantities.",
+      "evidence_ids": [
+        "E-ITU-E123"
+      ],
+      "supporting_row_ids": [
+        "de-phone-ctl-004",
+        "de-phone-ctl-008",
+        "de-phone-ctl-012"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-phone-003:v2",
+      "version": 2,
+      "content_sha256": "83bdfe7aee10a047fe736711a5093b6c4ff0ac6159c8814eb9e2ad5195662bc5"
+    },
+    {
+      "id": "ref-clock-002",
+      "category": "clock_idiom",
+      "reason_code": "duration_not_clock_time",
+      "match": {
+        "kind": "literal_phrase",
+        "tokens": [
+          "halbe stunde",
+          "halben stunde",
+          "viertelstunde",
+          "dreiviertelstunde"
+        ],
+        "context_shape": null
+      },
+      "required_context": "none",
+      "region_limit": "Unconditional for these bounded duration phrases; do not condition the refusal on the speaker's region.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P76"
+      ],
+      "supporting_row_ids": [
+        "de-clock-ctl-001",
+        "de-clock-ctl-008",
+        "de-clock-ctl-028"
+      ],
+      "panel_status": "panel-reviewed",
+      "review_ref": "refusal-ledger:ref-clock-002:v3",
+      "version": 3,
+      "content_sha256": "cf0a81090fa661f7a732e8313387c4aeb815699c7e37f4cfd2643012b00506aa"
+    }
+  ],
+  "pending_entries": [
+    {
+      "id": "ref-clock-005",
+      "category": "clock_idiom",
+      "reason_code": "noon_midnight_boundary",
+      "match": {
+        "kind": "literal_phrase",
+        "tokens": [
+          "halb eins",
+          "viertel nach zwölf"
+        ],
+        "context_shape": null
+      },
+      "required_context": "clock_preposition_before",
+      "region_limit": "Refuse only when the phrase occurs as a clock expression at the noon or midnight boundary.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P76",
+        "E-ATLAS-R7-F11E"
+      ],
+      "supporting_row_ids": [
+        "de-clock-ctl-005",
+        "de-clock-ctl-012",
+        "de-clock-ctl-025"
+      ],
+      "panel_status": "pending",
+      "review_ref": null
+    },
+    {
+      "id": "ref-clock-001",
+      "category": "clock_idiom",
+      "reason_code": "bare_quarter_regional",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "viertel"
+        ],
+        "context_shape": "quarter_word_with_hour_no_direction"
+      },
+      "required_context": "none",
+      "region_limit": "Refuse bare-quarter hour expressions regardless of region: they are outside this cell’s scope, and the language-only route supplies no region.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P76",
+        "E-ATLAS-R7-F11E"
+      ],
+      "supporting_row_ids": [
+        "de-clock-ctl-010",
+        "de-clock-ctl-017",
+        "de-clock-ctl-024"
+      ],
+      "panel_status": "pending",
+      "review_ref": null
+    },
+    {
+      "id": "ref-clock-007",
+      "category": "clock_idiom",
+      "reason_code": "three_quarter_regional",
+      "match": {
+        "kind": "context_shape",
+        "tokens": [
+          "dreiviertel",
+          "drei viertel"
+        ],
+        "context_shape": "three_quarter_word_with_hour"
+      },
+      "required_context": "none",
+      "region_limit": "Unconditionally refuse this three-quarter clock expression within the clock_idiom cell scope; no speaker-region evidence is required or assumed.",
+      "evidence_ids": [
+        "E-DUDEN-DAF-P76",
+        "E-ATLAS-R7-F11E"
+      ],
+      "supporting_row_ids": [
+        "de-clock-ctl-007",
+        "de-clock-ctl-021",
+        "de-clock-ctl-027"
+      ],
+      "panel_status": "pending",
+      "review_ref": null
+    }
+  ]
+}

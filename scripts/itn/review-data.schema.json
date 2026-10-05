@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "scripts/itn/review-data.schema.json",
+  "title": "German expectation rows and refusal data (#1677, PR 2 chunk 2)",
+  "description": "Structural contract for scripts/itn/corpus/de-*.jsonl rows and scripts/itn/refusals/de.json. It states WELL-FORMEDNESS only: a row that validates is not thereby linguistically correct, and panel status is a recorded review state, never a measured engine result. scripts/itn/validate-review-data.py implements this subset of JSON Schema (type, required, properties, enum, pattern, items, minItems, minLength, minimum, additionalProperties, anyOf) plus the cross-file checks it documents.",
+  "x-closed-vocabulary": {
+    "category": [
+      "phone_country_prefix",
+      "ordinal",
+      "clock_idiom"
+    ],
+    "split": [
+      "development",
+      "holdout",
+      "control"
+    ],
+    "input_kind": [
+      "spoken_sentence",
+      "already_formatted_synthetic"
+    ],
+    "expected_action": [
+      "convert",
+      "preserve"
+    ],
+    "panel_status": [
+      "draft",
+      "panel-reviewed",
+      "pending"
+    ],
+    "refusal_reason_by_category": {
+      "phone_country_prefix": [
+        "plus_arithmetic",
+        "plus_conjunction_or_preposition",
+        "plus_without_digit_sequence",
+        "plus_temperature_or_quantity",
+        "already_formatted"
+      ],
+      "ordinal": [
+        "fraction_word",
+        "fixed_expression",
+        "proper_name_or_title",
+        "adverb_form",
+        "no_following_noun",
+        "date_form_out_of_scope",
+        "already_formatted"
+      ],
+      "clock_idiom": [
+        "duration_not_clock_time",
+        "fraction_word",
+        "bare_quarter_regional",
+        "three_quarter_regional",
+        "no_clock_context",
+        "noon_midnight_boundary",
+        "prose_not_time",
+        "already_formatted"
+      ]
+    },
+    "context_shape": [
+      "plus_between_operands",
+      "plus_joining_nouns",
+      "plus_not_followed_by_digit",
+      "plus_before_temperature_or_percent",
+      "ordinal_word_without_following_noun",
+      "ordinal_word_before_fraction_noun",
+      "ordinal_word_in_fixed_phrase",
+      "ordinal_word_in_proper_name",
+      "ordinal_word_in_date_phrase",
+      "ordinal_adverb",
+      "quarter_word_with_hour_no_direction",
+      "three_quarter_word_with_hour",
+      "half_word_with_noon_midnight_hour",
+      "quarter_word_with_noon_midnight_hour",
+      "clock_word_before_duration_noun",
+      "half_word_before_adjective_or_noun",
+      "number_word_with_part_of_day",
+      "fraction_quantity_phrase"
+    ],
+    "required_context": [
+      "none",
+      "clock_preposition_before",
+      "digit_sequence_after",
+      "common_noun_after"
+    ],
+    "evidence_ids": [
+      "E-ATLAS-R7-F11E",
+      "E-DUDEN-DAF-P74",
+      "E-DUDEN-DAF-P76",
+      "E-DUDEN-DAF-P78",
+      "E-ITU-E123",
+      "E-DUDEN-ORDNUNGSZAHLEN-PUNKT"
+    ],
+    "match_kind": [
+      "literal_phrase",
+      "context_shape"
+    ]
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "targetSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spoken_span",
+        "value",
+        "written_forms"
+      ],
+      "properties": {
+        "spoken_span": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "written_forms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "drafting_model",
+        "drafting_run",
+        "phase0_anchor_ids",
+        "evidence_ids",
+        "retrieval"
+      ],
+      "properties": {
+        "drafting_model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "drafting_run": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase0_anchor_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "retrieval": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "content_sha256",
+        "language",
+        "category",
+        "split",
+        "spoken_input",
+        "input_kind",
+        "expected_action",
+        "accepted_written_variants",
+        "target_spans",
+        "must_preserve",
+        "refusal_reason",
+        "region_limit",
+        "provenance",
+        "panel_status",
+        "review_ref"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^de-(phone|ordinal|clock)-(dev|hold|ctl)-[0-9]{3}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "de"
+          ]
+        },
+        "category": {
+          "type": "string"
+        },
+        "split": {
+          "type": "string"
+        },
+        "spoken_input": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_kind": {
+          "type": "string"
+        },
+        "expected_action": {
+          "type": "string"
+        },
+        "accepted_written_variants": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "target_spans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/targetSpan"
+          }
+        },
+        "must_preserve": {
+          "$ref": "#/$defs/stringList"
+        },
+        "refusal_reason": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "region_limit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "panel_status": {
+          "type": "string"
+        },
+        "review_ref": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          ]
+        }
+      }
+    },
+    "refusalMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "tokens",
+        "context_shape"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "tokens": {
+          "$ref": "#/$defs/stringList"
+        },
+        "context_shape": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "refusalEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "reason_code",
+        "match",
+        "required_context",
+        "region_limit",
+        "evidence_ids",
+        "supporting_row_ids",
+        "panel_status",
+        "review_ref"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ref-(phone|ordinal|clock)-[0-9]{3}$"
+        },
+        "category": {
+          "type": "string"
+        },
+        "reason_code": {
+          "type": "string"
+        },
+        "match": {
+          "$ref": "#/$defs/refusalMatch"
+        },
+        "required_context": {
+          "type": "string"
+        },
+        "region_limit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "supporting_row_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "panel_status": {
+          "type": "string"
+        },
+        "review_ref": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "refusalFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "language",
+        "reviewed_entries",
+        "pending_entries"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "de"
+          ]
+        },
+        "reviewed_entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/refusalEntry"
+          }
+        },
+        "pending_entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/refusalEntry"
+          }
+        }
+      }
+    }
+  },
+  "x-token-semantics": "match.tokens for kind literal_phrase is a list of ALTERNATIVE phrases; each phrase is lower-case German words separated by single spaces, no punctuation and no pattern characters. For kind context_shape, tokens are trigger words (possibly empty). A refusal is unconditional within this cell's scope: it never depends on establishing the speaker's region, which the language-only route does not supply."
+}
