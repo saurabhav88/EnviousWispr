@@ -1,0 +1,190 @@
+import Foundation
+import Testing
+
+@testable import EnviousWisprPostProcessing
+
+// MARK: - Generated German number data (#1677, PR 2 chunk 1)
+//
+// `GermanNumberData` is emitted by `scripts/itn/generate.py` from pinned CLDR and NeMo files. These
+// checks pin what the compiled table must look like and prove nothing reaches it at runtime.
+//
+// EVIDENCE BOUNDARY: they prove generation integrity (finite invariants, known atom values from an
+// independent literal list, clean literals, no runtime reader). They prove NOTHING about whether
+// any German sentence converts correctly: the table is candidate lexical data, not a vetted rule
+// set, and the production `LanguageRuleRegistry` stays empty.
+
+@Suite("Generated German number data (#1677)", .tags(.driftGuard))
+struct ITNGeneratedDataTests {
+
+  private typealias Data = GermanNumberData
+
+  /// Independent literal expectations, written from German number words and not read back from
+  /// the generated table.
+  private static let knownAtoms: [(spoken: String, value: Int, role: Data.Role)] = [
+    ("null", 0, .zero),
+    ("eins", 1, .unit),
+    ("ein", 1, .unit),
+    ("eine", 1, .unit),
+    ("zwei", 2, .unit),
+    ("sieben", 7, .unit),
+    ("neun", 9, .unit),
+    ("zehn", 10, .teen),
+    ("elf", 11, .teen),
+    ("zwölf", 12, .teen),
+    ("dreizehn", 13, .teen),
+    ("sechzehn", 16, .teen),
+    ("siebzehn", 17, .teen),
+    ("neunzehn", 19, .teen),
+    ("zwanzig", 20, .tens),
+    ("dreißig", 30, .tens),
+    ("vierzig", 40, .tens),
+    ("neunzig", 90, .tens),
+  ]
+
+  @Test("representative atoms carry the independently known value and role")
+  func knownAtomValues() {
+    for known in Self.knownAtoms {
+      let matches = Data.atoms.filter {
+        $0.spoken.unicodeScalars.elementsEqual(known.spoken.unicodeScalars)
+      }
+      #expect(matches.count == 1, "\(known.spoken): one atom expected, found \(matches.count)")
+      #expect(matches.first?.value == known.value, "\(known.spoken)")
+      #expect(matches.first?.role == known.role, "\(known.spoken)")
+    }
+  }
+
+  @Test("each role covers its whole finite value range")
+  func rolesCoverTheirRanges() {
+    func values(_ role: Data.Role) -> Set<Int> {
+      Set(Data.atoms.filter { $0.role == role }.map(\.value))
+    }
+    #expect(values(.zero) == [0])
+    #expect(values(.unit) == Set(1...9))
+    #expect(values(.teen) == Set(10...19))
+    #expect(values(.tens) == Set(stride(from: 20, through: 90, by: 10)))
+  }
+
+  @Test("one spoken form never means two values in one role, and every atom is traceable")
+  func noConflictAndProvenance() {
+    var seen: [String: Int] = [:]
+    for atom in Data.atoms {
+      let key = "\(atom.role.rawValue):\(atom.spoken)"
+      if let value = seen[key] {
+        #expect(value == atom.value, "\(key) means \(value) and \(atom.value)")
+      }
+      seen[key] = atom.value
+      #expect(atom.sources.isEmpty == false, "\(key) has no provenance")
+      for source in atom.sources {
+        let id = source.split(separator: "#", maxSplits: 1).first.map(String.init) ?? source
+        #expect(Data.sourceIDs.contains(id), "\(key) names unknown source \(source)")
+      }
+    }
+    #expect(Data.atoms.count == 30)
+  }
+
+  @Test("spoken forms are precomposed lower-case text with no hidden characters")
+  func spokenFormsAreClean() {
+    let words = Data.atoms.map(\.spoken) + Data.quantityWords.map(\.spoken)
+    #expect(words.isEmpty == false)
+    for word in words {
+      #expect(word.isEmpty == false)
+      let scalars = Array(word.unicodeScalars)
+      #expect(
+        scalars == Array(word.precomposedStringWithCanonicalMapping.unicodeScalars),
+        "\(word) is not NFC")
+      #expect(scalars == Array(word.lowercased().unicodeScalars), "\(word) is not lower-case")
+      #expect(scalars.contains { $0.value == 0x00AD } == false, "\(word) holds a soft hyphen")
+      #expect(word.rangeOfCharacter(from: .whitespacesAndNewlines) == nil, "\(word)")
+    }
+  }
+
+  @Test("the quantity words are the NeMo scale words, once each")
+  func quantityWords() {
+    let spoken = Data.quantityWords.map(\.spoken)
+    #expect(Set(spoken).count == spoken.count)
+    for word in ["million", "millionen", "milliarde", "milliarden", "billion", "billionen"] {
+      #expect(spoken.contains(word), "\(word)")
+    }
+    for quantity in Data.quantityWords {
+      #expect(quantity.sources == ["nemo-de-quantities"])
+    }
+  }
+
+  @Test("composition rules are instructions: well-formed, no substitution syntax in a literal")
+  func rulesAreInstructionsNotWords() {
+    #expect(Data.rules.count == 51)
+    let rulesets = Set(Data.rules.map(\.ruleset))
+    #expect(
+      rulesets == [
+        "%spellout-numbering", "%spellout-cardinal-masculine", "%spellout-cardinal-feminine",
+      ])
+    for rule in Data.rules {
+      var depth = 0
+      for token in rule.tokens {
+        switch token {
+        case .optionalOpen: depth += 1
+        case .optionalClose: depth -= 1
+        case .literal(let text):
+          #expect(text.isEmpty == false)
+          #expect(
+            text.rangeOfCharacter(from: CharacterSet(charactersIn: "<>=[]$\u{00AD}")) == nil,
+            "\(rule.ruleset) \(rule.selector): substitution syntax leaked into a literal")
+        case .quotientRule(let name), .remainderRule(let name), .redirect(let name):
+          #expect(rulesets.contains(name), "\(rule.ruleset) \(rule.selector) points at \(name)")
+        default: break
+        }
+        #expect(depth >= 0 && depth <= 1)
+      }
+      #expect(depth == 0, "\(rule.ruleset) \(rule.selector): unbalanced optional brackets")
+    }
+  }
+
+  @Test("each CLDR tens rule ends in the tens word the NeMo data gives for that value")
+  func tensRulesAgreeWithTensAtoms() {
+    let expected: [(selector: String, word: String)] = [
+      ("20", "zwanzig"), ("30", "dreißig"), ("40", "vierzig"), ("50", "fünfzig"),
+      ("60", "sechzig"), ("70", "siebzig"), ("80", "achtzig"), ("90", "neunzig"),
+    ]
+    for item in expected {
+      let rule = Data.rules.first {
+        $0.ruleset == "%spellout-numbering" && $0.selector == item.selector
+      }
+      guard case .literal(let last)? = rule?.tokens.last else {
+        Issue.record("rule \(item.selector) does not end in a literal")
+        continue
+      }
+      #expect(last.unicodeScalars.elementsEqual(item.word.unicodeScalars), "\(item.selector)")
+    }
+  }
+
+  @Test("nothing outside the generated file reads the generated data, and the registry stays empty")
+  func notReachableFromRuntime() throws {
+    #expect(LanguageRuleRegistry.production.count == 0)
+    let sources = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()  // PostProcessing
+      .deletingLastPathComponent()  // EnviousWisprTests
+      .deletingLastPathComponent()  // Tests
+      .deletingLastPathComponent()  // repo root
+      .appendingPathComponent("Sources")
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: sources.path, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      Issue.record("Sources/ not found beside the tests; the reachability scan could not run")
+      return
+    }
+    let enumerator = try #require(
+      FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+    var scanned = 0
+    var readers: [String] = []
+    for case let file as URL in enumerator where file.pathExtension == "swift" {
+      scanned += 1
+      let text = try String(contentsOf: file, encoding: .utf8)
+      if text.contains("GermanNumberData"), file.lastPathComponent != "GermanNumberData.swift" {
+        readers.append(file.path)
+      }
+    }
+    #expect(scanned > 100, "the scan must actually read the source tree (read \(scanned))")
+    #expect(readers.isEmpty, "unexpected readers of GermanNumberData: \(readers)")
+  }
+}

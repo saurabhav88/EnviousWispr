@@ -183,6 +183,9 @@ scripts/lib/*
 !scripts/lib/xcode-test-run.sh
 !scripts/lib/ci-phase.sh
 !scripts/lib/mic-in-use.swift
+# #1677: the offline German number-data generator, its pinned upstream sources (with their
+# licences), manifest and tests are tracked; the committed generated Swift is what ships.
+!scripts/itn/
 # #3400: the machine-wide claim on the shared dev app, read by build-dev-app.sh.
 !scripts/lib/dev-app-lock.py
 !scripts/lib/dev-app-lock-test.py
