@@ -371,18 +371,24 @@ func loadCorpusObjects(path: String) -> [[String: Any]] {
 }
 
 /// The production pre-polish chain on one input: filler removal, then inverse text
-/// normalization under production's OWN language gate (#2844). Production skips ITN
-/// entirely for a non-English language (`InverseTextNormalizationStep`), so a bench that ran
-/// the English-oriented normalizer on German input was measuring a chain production never
-/// runs. `englishVetoed: false` and `backendSupportsLID: false`: the bench has no resolver
-/// veto and models the Parakeet-class backend, where an explicit language decides alone.
+/// normalization under production's OWN route (#2844, #1677). The route decides which cleanup a
+/// take receives: the English engine for English, the language-neutral subset for another
+/// language (never the English-oriented normalizer, which would be measuring a chain production
+/// never runs), or a vetted language route. `InverseTextNormalizationGate.normalize` is the same
+/// text execution production's step runs, so this harness carries no dispatch of its own.
+///
+/// Since #1677 a non-English take receives production's neutral subset here, where it used to
+/// receive filler-removed text only: a deliberate correction of this harness, not an app change.
+/// `englishVetoed: false` and `backendSupportsLID: false`: the bench has no resolver veto and
+/// models the Parakeet-class backend, where an explicit language decides alone.
 @MainActor
 func preclean(_ text: String, language: String, normalizer: InverseTextNormalizer) -> String {
   let noFillers = FillerRemovalStep.removingFillers(
     from: text, language: language, englishVetoed: false)
-  let itnSkip = InverseTextNormalizationGate.skipReason(
+  let route = InverseTextNormalizationGate.route(
     language: language, englishVetoed: false, backendSupportsLID: false)
-  return itnSkip == nil ? normalizer.normalize(noFillers) : noFillers
+  return InverseTextNormalizationGate.normalize(
+    noFillers, route: route, normalizer: normalizer, spokenPunctuation: false)
 }
 
 func write(record: OutRecord, to sink: FileHandle, encoder: JSONEncoder) {
