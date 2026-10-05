@@ -212,6 +212,12 @@ struct CustomTermsSection<Actions: View>: View {
         }
       }
     }
+    // The pane pins this header only while it fits (`YourWordsView`), so it
+    // reports its own height.
+    .background(
+      GeometryReader { proxy in
+        Color.clear.preference(key: DictionaryPinnedHeaderHeightKey.self, value: proxy.size.height)
+      })
     // The page's modifiers ride on the header, which is always rendered;
     // a modifier on the `Section` itself would wrap it and lose the pinning.
     // Every page starts at its first row. Keyed on the page rather than fired
@@ -486,6 +492,12 @@ struct CustomTermsSection<Actions: View>: View {
     }
     return categoryLabel
   }
+}
+
+/// The height of the Your Words controls that the Dictionary pane pins.
+struct DictionaryPinnedHeaderHeightKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 /// One half of a `BrandedSection`-style card: the same fill, radius and

@@ -136,6 +136,20 @@ struct YourWordsView: View {
   // Outcome-to-message mapping is shared with `BulkDeleteConfirmSheet` so both
   // export entry points present the identical copy (#1703).
   @State private var exportNotice: CustomWordsExportNotice?
+  /// Measured heights behind `pinsListControls`.
+  @State private var paneHeight: CGFloat = 0
+  @State private var pinnedHeaderHeight: CGFloat = 0
+
+  /// Whether the Your Words controls stay at the top while the words scroll.
+  ///
+  /// Only while they take at most half the pane. In a short window the
+  /// controls wrap onto several lines and the Dictionary heading takes its
+  /// share too, so a pinned header could cover the whole pane and leave no
+  /// word visible (review, PR #3460). Unpinned, they scroll away as they
+  /// always did, and the words are reachable again.
+  private var pinsListControls: Bool {
+    pinnedHeaderHeight > 0 && pinnedHeaderHeight <= paneHeight / 2
+  }
 
   var body: some View {
     @Bindable var settings = settings
@@ -171,10 +185,14 @@ struct YourWordsView: View {
         ScrollViewReader { proxy in
           ScrollView {
             // Lazy only for `pinnedViews`: the Your Words card's controls are a
-            // section header that stays at the top while its words scroll.
+            // section header that stays at the top while its words scroll
+            // (when it fits: `pinsListControls`).
             // Spacing 0 so the header and the words meet as one card; the
             // notices above them carry their own gap (`yourWordsBanners`).
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(
+              alignment: .leading, spacing: 0,
+              pinnedViews: pinsListControls ? [.sectionHeaders] : []
+            ) {
               selectedTabContent
             }
             .padding(.bottom, SettingsLayout.contentBottom)
@@ -185,6 +203,12 @@ struct YourWordsView: View {
             }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          .background(
+            GeometryReader { proxy in
+              Color.clear.onAppear { paneHeight = proxy.size.height }
+                .onChange(of: proxy.size.height) { _, height in paneHeight = height }
+            })
+          .onPreferenceChange(DictionaryPinnedHeaderHeightKey.self) { pinnedHeaderHeight = $0 }
           .environment(\.dictionaryScrollToTop) {
             withAnimation(.easeOut(duration: 0.18)) {
               proxy.scrollTo(Self.topAnchor, anchor: .top)
