@@ -156,6 +156,9 @@ struct SpokenPunctuationRoutingTests {
 
   // MARK: - Through the step
 
+  // #2450 integration contract: production routing must preserve this start-word rewrite and its
+  // exact fired count when #1677 registers German. Move punctuation ownership exactly once;
+  // do not weaken this test to accept a missed command when the selected route changes.
   @Test("A German take with the switch on rewrites the command and reports it")
   func germanRewrites() async throws {
     let step = step(Self.on)
