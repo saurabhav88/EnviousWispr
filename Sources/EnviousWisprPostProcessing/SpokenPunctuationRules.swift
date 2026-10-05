@@ -1,0 +1,149 @@
+import Foundation
+
+/// #2450: the spoken-punctuation command grammar for the four languages that need a start word.
+///
+/// **Sole owner of "which spoken phrase becomes which mark" for `de`, `fr`, `es` and `it`, and of each
+/// language's default start word.** English is deliberately NOT here: it keeps its bare-word table,
+/// `InverseTextNormalizer.punct`, byte for byte, with its own toggle position and default.
+///
+/// ## Why a start word
+///
+/// "Punkt" is an ordinary German noun; "Setze Punkt" is a command. Behind a start word an ordinary use of
+/// a command word cannot become a mark, which is the failure a bare-word table has (#1367 measured 43.9%
+/// corruption on real text for bare words). The start word is a user setting (`SpokenPunctuationSettings`)
+/// with the defaults below; this file supplies only the DEFAULT and the forms.
+///
+/// ## Provenance of the rows
+///
+/// Ported from the parked branch `feat/2450-multilingual-spoken-punctuation` (`6478236f`), whose rows
+/// were read off Apple's own dictation behaviour on synthesised clips (83 clips, two rounds, 2026-08-26;
+/// recorded on #2450). They have NOT been re-measured for this change. Rows that were authored rather
+/// than measured are marked at the row. Only the tables are ported: the branch's English half, matcher
+/// and ownership claims are not.
+package enum SpokenPunctuationCommand: String, Sendable, CaseIterable {
+  case period, comma, questionMark, exclamationMark
+  case colon, semicolon, lineBreak, paragraphBreak
+}
+
+/// One command and its spoken forms in one language.
+package struct SpokenPunctuationRule: Sendable, Equatable {
+  package let command: SpokenPunctuationCommand
+  /// Display order. Matching is longest-first and does not depend on this order.
+  package let spokenForms: [String]
+  /// What the command inserts. A line break is `"\n"` and a paragraph break `"\n\n"`.
+  package let replacement: String
+
+  package init(command: SpokenPunctuationCommand, spokenForms: [String], replacement: String) {
+    self.command = command
+    self.spokenForms = spokenForms
+    self.replacement = replacement
+  }
+}
+
+package enum SpokenPunctuationRules {
+
+  /// Languages that have a table, in help-article order.
+  package static let supportedLanguages = ["de", "fr", "es", "it"]
+
+  /// The rules for a language, or `nil` when there is no table for it.
+  ///
+  /// **`nil`, never an empty array, and never English.** A caller must be able to tell "unsupported
+  /// language" from "supported and nothing matched"; collapsing the two is how a positively identified
+  /// Dutch take would silently receive another language's table. Accepts `de`, `de-DE`, `de_DE`, any case.
+  package static func rules(for language: String) -> [SpokenPunctuationRule]? {
+    switch baseCode(language) {
+    case "de": return german
+    case "fr": return french
+    case "es": return spanish
+    case "it": return italian
+    default: return nil
+    }
+  }
+
+  /// The default start word, or `nil` for a language with no table (English included).
+  ///
+  /// Defaults are a public contract: once shipped they are never silently changed, because a user who
+  /// never customised would find their command vocabulary different after an update (plan 3.1).
+  /// Chosen, not measured. Spanish avoids "signo", which already heads "signo de interrogación".
+  package static func defaultStartWord(for language: String) -> String? {
+    switch baseCode(language) {
+    case "de": return "Setze"
+    case "fr": return "Insère"
+    case "es": return "Pon"
+    case "it": return "Metti"
+    default: return nil
+    }
+  }
+
+  /// Every spoken form of a language, for start-word collision checks. `nil` when unsupported.
+  package static func spokenForms(for language: String) -> [String]? {
+    rules(for: language)?.flatMap(\.spokenForms)
+  }
+
+  // MARK: - Tables
+
+  /// German. `Neuabsatz` is what the reporting user actually said (#2450 transcript), so it is in the
+  /// table; a textbook list would carry only "neuer Absatz". `neuen Absatz` is AUTHORED, not measured:
+  /// it is the natural accusative after an imperative ("Setze neuen Absatz"), and behind a start word an
+  /// unrecognised form costs nothing. `Strichpunkt` and `Semikolon` both convert in Apple's model.
+  private static let german: [SpokenPunctuationRule] = [
+    .init(
+      command: .paragraphBreak, spokenForms: ["neuer Absatz", "neuen Absatz", "Neuabsatz"],
+      replacement: "\n\n"),
+    .init(command: .lineBreak, spokenForms: ["neue Zeile"], replacement: "\n"),
+    .init(command: .questionMark, spokenForms: ["Fragezeichen"], replacement: "?"),
+    .init(command: .exclamationMark, spokenForms: ["Ausrufezeichen"], replacement: "!"),
+    .init(command: .colon, spokenForms: ["Doppelpunkt"], replacement: ":"),
+    .init(command: .semicolon, spokenForms: ["Semikolon", "Strichpunkt"], replacement: ";"),
+    .init(command: .comma, spokenForms: ["Komma"], replacement: ","),
+    .init(command: .period, spokenForms: ["Punkt"], replacement: "."),
+  ]
+
+  /// French. **`nouveau paragraphe` is AUTHORED, not measured**: Apple converted both French line-break
+  /// forms and no paragraph form across eight candidates, so there was nothing to read off. It is here
+  /// because French speakers say it and an unrecognised command behind a start word costs nothing.
+  private static let french: [SpokenPunctuationRule] = [
+    .init(command: .paragraphBreak, spokenForms: ["nouveau paragraphe"], replacement: "\n\n"),
+    .init(command: .lineBreak, spokenForms: ["nouvelle ligne", "à la ligne"], replacement: "\n"),
+    .init(command: .questionMark, spokenForms: ["point d'interrogation"], replacement: "?"),
+    .init(command: .exclamationMark, spokenForms: ["point d'exclamation"], replacement: "!"),
+    .init(command: .semicolon, spokenForms: ["point-virgule"], replacement: ";"),
+    .init(command: .colon, spokenForms: ["deux points"], replacement: ":"),
+    .init(command: .comma, spokenForms: ["virgule"], replacement: ","),
+    .init(command: .period, spokenForms: ["point"], replacement: "."),
+  ]
+
+  /// Spanish. Apple emits only the CLOSING `?` and `!`, never the opening `¿` `¡`, so neither does this
+  /// table.
+  private static let spanish: [SpokenPunctuationRule] = [
+    .init(command: .paragraphBreak, spokenForms: ["nuevo párrafo"], replacement: "\n\n"),
+    .init(command: .lineBreak, spokenForms: ["nueva línea"], replacement: "\n"),
+    .init(command: .questionMark, spokenForms: ["signo de interrogación"], replacement: "?"),
+    .init(command: .exclamationMark, spokenForms: ["signo de exclamación"], replacement: "!"),
+    .init(command: .semicolon, spokenForms: ["punto y coma"], replacement: ";"),
+    .init(command: .colon, spokenForms: ["dos puntos"], replacement: ":"),
+    .init(command: .comma, spokenForms: ["coma"], replacement: ","),
+    .init(command: .period, spokenForms: ["punto"], replacement: "."),
+  ]
+
+  /// Italian.
+  private static let italian: [SpokenPunctuationRule] = [
+    .init(command: .paragraphBreak, spokenForms: ["nuovo paragrafo"], replacement: "\n\n"),
+    .init(command: .lineBreak, spokenForms: ["nuova riga"], replacement: "\n"),
+    .init(command: .questionMark, spokenForms: ["punto interrogativo"], replacement: "?"),
+    .init(command: .exclamationMark, spokenForms: ["punto esclamativo"], replacement: "!"),
+    .init(command: .semicolon, spokenForms: ["punto e virgola"], replacement: ";"),
+    .init(command: .colon, spokenForms: ["due punti"], replacement: ":"),
+    .init(command: .comma, spokenForms: ["virgola"], replacement: ","),
+    .init(command: .period, spokenForms: ["punto"], replacement: "."),
+  ]
+
+  /// `de`, `de-DE`, `de_DE` and any casing all name the same table.
+  private static func baseCode(_ language: String) -> String {
+    let lowered = language.lowercased()
+    guard let separator = lowered.firstIndex(where: { $0 == "-" || $0 == "_" }) else {
+      return lowered
+    }
+    return String(lowered[lowered.startIndex..<separator])
+  }
+}

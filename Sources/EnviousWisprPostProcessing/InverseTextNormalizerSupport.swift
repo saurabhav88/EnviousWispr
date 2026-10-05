@@ -79,6 +79,19 @@ func reSub(
   return out
 }
 
+/// `re.finditer(pattern, s)`: every match, in order, as `Match` values, through the same compiled-regex
+/// cache as `reSub`. For a caller that has to read the text AROUND a match while rebuilding the string
+/// (#2450's start-word pass capitalises the word after a rewrite, which a per-match replacement
+/// callback cannot see). Returns `[]` when the pattern does not compile.
+func reMatches(_ pattern: String, _ s: String, caseInsensitive: Bool = true) -> [Match] {
+  let options: NSRegularExpression.Options = caseInsensitive ? [.caseInsensitive] : []
+  guard let re = RegexCache.shared.regex(pattern, options) else { return [] }
+  let ns = s as NSString
+  return re.matches(in: s, range: NSRange(location: 0, length: ns.length)).map {
+    Match(result: $0, ns: ns)
+  }
+}
+
 /// `re.search(pattern, s)` existence — returns the matched substring, or nil.
 func firstMatch(_ pattern: String, _ s: String, caseInsensitive: Bool = true) -> String? {
   let options: NSRegularExpression.Options = caseInsensitive ? [.caseInsensitive] : []
