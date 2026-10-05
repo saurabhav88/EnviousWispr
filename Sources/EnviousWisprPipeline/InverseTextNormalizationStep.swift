@@ -82,15 +82,19 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// `dictation.completed`. Metadata only (counts/lengths/latency/skip-reason) — never
   /// transcript text (`telemetry-privacy-boundary`).
   struct RunOutcome: Sendable {
-    /// True when the engine actually ran (not gated out by language).
+    /// True when the take was ADMITTED to the full English route or to a vetted language route,
+    /// including one that then timed out. False on the neutral route (a language-neutral subset
+    /// only). It states which route the take took, not that an engine finished: a timeout still
+    /// reads true here and is told apart by `changed == false` plus the timeout breadcrumb.
     let ran: Bool
-    /// True when the step changed the text. On a skipped take (`ran == false`) this is the
-    /// language-neutral subset's answer (#3210, `normalizeLanguageNeutral`), which is the only
-    /// thing a skipped take runs.
+    /// True when the step changed the text. On the neutral route this is the language-neutral
+    /// subset's answer (#3210, `normalizeLanguageNeutral`), which is the only thing such a take
+    /// runs. Compares the final text with the input, so an equal-length replacement is a change.
     let changed: Bool
-    /// `nil` when it ran; otherwise the skip bucket (`non_english` / `lid_backend_nil`).
+    /// `nil` on the English and language routes; otherwise the neutral route's skip bucket
+    /// (`non_english` / `lid_backend_nil` / `language_vetoed`).
     let skipReason: String?
-    /// Wall-clock of the engine call in milliseconds; on skip, of the language-neutral subset.
+    /// Wall-clock of the whole work operation in milliseconds, on every route.
     let latencyMs: Double
     /// Character length before / after (edit size is allowed; #253 precedent).
     let lenBefore: Int
@@ -102,10 +106,20 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   private(set) var lastRun: RunOutcome?
 
   private let normalizer: InverseTextNormalizer
-  /// The normalization work `withDeadline` runs. Production: `normalizer.normalize`.
-  /// Tests inject slow work to exercise the length-scaled budget in milliseconds
-  /// (#2770), the same seam shape as `SpeakerLabeler.makeAnalysisTask`.
-  private let work: @Sendable (String, Bool) async -> String
+  /// The rule-set registry the route AND the rule lookup both read, once per take (#1677).
+  /// Production is `.production`, statically empty until the generator PR adds vetted rows; a
+  /// test injects its own immutable value through the package initializer, never a global.
+  private let registry: LanguageRuleRegistry
+  /// Test seam: REPLACES the whole work operation (on every route) under `process`'s deadline.
+  /// Production leaves it nil. Signature kept from #2770 so existing budget tests still compile.
+  private let workOverride: (@Sendable (String, Bool) async -> String)?
+  /// Package test seam: builds the work from the route and rule snapshot `process` prepared
+  /// BEFORE its actor hop, returning the same two-argument work type. Production leaves it nil.
+  private let workFactory:
+    (
+      @Sendable (InverseTextNormalizationGate.Route, LanguageRuleSet?) ->
+        @Sendable (String, Bool) async -> String
+    )?
   /// Test seam only: observes the timeout breadcrumb's extra on THIS instance, so a
   /// test never installs the process-global `captureErrorDelegate`
   /// (`swift-patterns` RULE: tests-no-process-global-mutable-delegate). Production
@@ -114,20 +128,40 @@ final class InverseTextNormalizationStep: TextProcessingStep {
 
   init(normalizer: InverseTextNormalizer = InverseTextNormalizer()) {
     self.normalizer = normalizer
-    self.work = { text, spokenPunctuation in
-      normalizer.normalize(text, spokenPunctuation: spokenPunctuation)
-    }
+    self.registry = .production
+    self.workOverride = nil
+    self.workFactory = nil
     self.onTimeoutForTesting = nil
   }
 
-  /// Test seam only: `work` replaces the normalizer call under the same deadline.
+  /// Test seam only: `work` replaces the whole operation under the same deadline.
   init(
     normalizer: InverseTextNormalizer = InverseTextNormalizer(),
     work: @escaping @Sendable (String, Bool) async -> String,
     onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil
   ) {
     self.normalizer = normalizer
-    self.work = work
+    self.registry = .production
+    self.workOverride = work
+    self.workFactory = nil
+    self.onTimeoutForTesting = onTimeoutForTesting
+  }
+
+  /// Package test seam (#1677): an injected immutable registry and an optional work factory that
+  /// receives the prepared route and rule snapshot. No setter, no global, no public registration.
+  package init(
+    normalizer: InverseTextNormalizer = InverseTextNormalizer(),
+    registry: LanguageRuleRegistry,
+    workFactory: (
+      @Sendable (InverseTextNormalizationGate.Route, LanguageRuleSet?) ->
+        @Sendable (String, Bool) async -> String
+    )? = nil,
+    onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil
+  ) {
+    self.normalizer = normalizer
+    self.registry = registry
+    self.workOverride = nil
+    self.workFactory = workFactory
     self.onTimeoutForTesting = onTimeoutForTesting
   }
 
@@ -139,60 +173,60 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // grapheme and eleven units). `lenBefore` stays graphemes for telemetry.
     let deadline = Self.deadlineSeconds(forCharacterCount: input.utf16.count)
 
-    // Backend-aware language gate (plan §"What changes" #4). On skip, only the
-    // language-neutral subset runs (#3210).
-    if let skip = skipReason(
-      language: context.language, englishVetoed: context.englishRulesVetoed)
-    {
-      // #3210: a take in another language still gets the subset that reads no English words:
-      // digits joined by a spoken dot or dash word, unpadded dates, and addresses whose at-word
-      // and dot-word belong to one language. Same off-main deadline as the full engine; a
-      // timeout keeps the input.
-      let neutral = self.normalizer
-      let start = CFAbsoluteTimeGetCurrent()
-      let converted = await withDeadline(seconds: deadline) {
-        neutral.normalizeLanguageNeutral(input)
+    // ONE route for every take (#1677). Everything the off-main work needs is read HERE, before
+    // any suspension, from the SAME immutable registry value that selected the route: the route,
+    // the matching rule-set snapshot, the normalizer, the punctuation flag and the work itself.
+    // A settings toggle or a registry change landing mid-run cannot tear this take, and nothing
+    // inside the deadline reads `self`, the registry or the language again
+    // (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property; the `withDeadline`
+    // precedent #832/#913 PR8). The route switch below is exhaustive on purpose.
+    let route = InverseTextNormalizationGate.route(
+      language: context.language, englishVetoed: context.englishRulesVetoed,
+      backendSupportsLID: backendSupportsLID, registry: registry)
+    let rules: LanguageRuleSet?
+    let admitted: Bool
+    let skipReason: String?
+    let routeLabel: String
+    switch route {
+    case .english:
+      rules = nil
+      admitted = true
+      skipReason = nil
+      routeLabel = "english"
+    case .language(let code):
+      rules = registry.ruleSet(forLanguage: context.language)
+      admitted = true
+      skipReason = nil
+      routeLabel = "language:\(code)"
+    case .neutral(let reason):
+      rules = nil
+      admitted = false
+      skipReason = reason
+      routeLabel = "neutral"
+    }
+    let spokenPunctuation = self.spokenPunctuationEnabled
+    let work: @Sendable (String, Bool) async -> String
+    if let workOverride {
+      work = workOverride
+    } else if let workFactory {
+      work = workFactory(route, rules)
+    } else {
+      let normalizer = self.normalizer
+      work = { text, spoken in
+        InverseTextNormalizationGate.execute(
+          text, route: route, rules: rules, normalizer: normalizer, spokenPunctuation: spoken)
       }
-      let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
-      if converted == nil {
-        // Same anomaly breadcrumb as the full engine's timeout below, marked with the route, so a
-        // subset that hit the deadline is not read as an ordinary no-op (second-pass review).
-        let timeoutExtra: [String: Any] = [
-          "latency_ms": elapsedMs, "len_before": lenBefore, "deadline_ms": deadline * 1000,
-          "route": "language_neutral",
-        ]
-        SentryBreadcrumb.captureError(
-          TimeoutError(seconds: deadline),
-          category: .inverseNormalizationTimeout,
-          stage: "inverse_text_normalization",
-          extra: timeoutExtra)
-        onTimeoutForTesting?(timeoutExtra)
-      }
-      let output = converted ?? input
-      lastRun = RunOutcome(
-        ran: false, changed: output != input, skipReason: skip,
-        latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: output.count)
-      guard output != input else { return context }
-      var ctx = context
-      ctx.text = output
-      return ctx
     }
 
-    // Pure-CPU regex chain runs OFF the main actor with a TRUE wall-clock deadline.
-    // `withDeadline` ABANDONS a pathological/hung `normalize` at the computed
-    // length-scaled deadline (#2770) and resumes
-    // immediately (unlike `withThrowingTimeout`, whose task-group scope awaits the
-    // losing child — Codex r1 #1), so the heart path's paste is never held past the
-    // cap. Snapshot the Sendable engine into a LOCAL first so the `@Sendable`
-    // closure does not capture `self` across the actor boundary (Codex r2;
-    // `swift-concurrency-patterns` snapshot rule; `withDeadline` precedent #832/#913 PR8).
-    // Snapshot the flag alongside the normalizer BEFORE the actor hop: a toggle
-    // landing mid-run must not tear this take, which completes under the value it
-    // started with (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property).
-    let work = self.work
-    let spokenPunctuation = self.spokenPunctuationEnabled
+    // Pure-CPU regex chain runs OFF the main actor with a TRUE wall-clock deadline, the SAME one
+    // for every route: neutral and language work share this single budget, there is no nested
+    // timeout and no intermediate committed output. `withDeadline` ABANDONS a pathological or
+    // hung operation at the computed length-scaled deadline (#2770) and resumes immediately
+    // (unlike `withThrowingTimeout`, whose task-group scope awaits the losing child — Codex r2
+    // #1), so the heart path's paste is never held past the cap.
+    //
     // `withDeadline` is a FIRST-CLAIM RACE on a shared executor, so a take still queued for a
-    // cooperative thread can burn the budget without the engine ever running, and `latency_ms`
+    // cooperative thread can burn the budget without the work ever running, and `latency_ms`
     // alone reads ~500 either way (#1946 measured that dependence for the ordered siblings).
     // Record when the closure ENTERS, relative to this call's start, so a timeout breadcrumb
     // carries at least that much instead of leaving the next occurrence as undiagnosable as the
@@ -217,9 +251,10 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       // though that entry missed the nominal budget (0.5 s floor, more for a long take, #2770).
       let engineStartMs = engineStart.withLock { $0 }.map { ($0 - start) * 1000 }
       let queueWaitMs = engineStartMs.flatMap { $0 <= deadline * 1000 ? $0 : nil }
-      // Deadline hit — the (pathological) normalize was abandoned; the user gets
-      // the pre-ITN text. Anomaly-only breadcrumb (Gemini: a slow run currently
-      // looks like a fast no-op). Metadata only (`telemetry-privacy-boundary`).
+      // Deadline hit — the (pathological) work was abandoned and the user gets the ENTIRE
+      // pre-ITN text, never a partial neutral or language result. Anomaly-only breadcrumb
+      // (Gemini: a slow run currently looks like a fast no-op). `route` classifies which route
+      // timed out. Metadata only (`telemetry-privacy-boundary`).
       let timeoutExtra: [String: Any] = [
         "latency_ms": elapsedMs,
         "len_before": lenBefore,
@@ -229,11 +264,14 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         // therefore covers both "never entered" and "entered late", and `queue_wait_ms` carries
         // the entry delay only for a qualifying start, -1 otherwise. Read as evidence, not as a
         // verdict: neither field establishes the state at the timer's own decision instant, nor
-        // rules a slow `normalize` in or out, and `latency_ms` includes the caller's resumption
-        // delay — so `latency_ms - queue_wait_ms` is NOT engine execution time. Timing the
-        // engine itself needs a stamp at that decision, inside `withDeadline`.
+        // rules a slow operation in or out, and `latency_ms` includes the caller's resumption
+        // delay — so `latency_ms - queue_wait_ms` is NOT execution time. Timing the work itself
+        // needs a stamp at that decision, inside `withDeadline`.
         "engine_started": queueWaitMs != nil,
         "queue_wait_ms": queueWaitMs ?? -1,
+        // `english`, `neutral` or `language:<canonical base code>`; replaces the old
+        // `language_neutral` value, which only the neutral path carried.
+        "route": routeLabel,
       ]
       SentryBreadcrumb.captureError(
         TimeoutError(seconds: deadline),
@@ -242,14 +280,14 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         extra: timeoutExtra)
       onTimeoutForTesting?(timeoutExtra)
       lastRun = RunOutcome(
-        ran: true, changed: false, skipReason: nil,
+        ran: admitted, changed: false, skipReason: skipReason,
         latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: lenBefore)
       return context
     }
 
     let changed = converted != input
     lastRun = RunOutcome(
-      ran: true, changed: changed, skipReason: nil,
+      ran: admitted, changed: changed, skipReason: skipReason,
       latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: converted.count)
     // Per-step IN:/OUT: + PipelineTiming traces are emitted by `TextProcessingRunner`
     // for every step (DEBUG-gated, local-only) — no duplicate logging here.
@@ -259,7 +297,14 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     ctx.text = converted
     return ctx
   }
+}
 
+/// The step's language route and text execution as pure functions, public so a harness that claims
+/// to feed the model what production feeds it (`scripts/eval/apple_runner --preclean`, #2844, #1677)
+/// asks THIS owner rather than carrying a copy that drifts. The step above is the only production
+/// caller of `route(...)` and `execute(...)`; the legacy buckets and their order are documented on
+/// `skipReason`, which `route` consults first and never reimplements.
+public enum InverseTextNormalizationGate {
   /// Backend-aware language gate. Returns `nil` to RUN, or a skip-reason bucket.
   ///
   /// - The resolver vetoed English rules (#2614): skip (`language_vetoed`). First,
@@ -274,17 +319,6 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   ///   that constant — it reports nil now.) Run for non-LID backends
   ///   (Parakeet-class, legacy English); defensively skip for LID backends
   ///   (WhisperKit), where nil means "couldn't identify" (`lid_backend_nil`).
-  private func skipReason(language: String?, englishVetoed: Bool) -> String? {
-    InverseTextNormalizationGate.skipReason(
-      language: language, englishVetoed: englishVetoed, backendSupportsLID: backendSupportsLID)
-  }
-}
-
-/// The step's language gate as a pure function, public so a harness that claims to feed the
-/// model what production feeds it (`scripts/eval/apple_runner --preclean`, #2844) asks THIS
-/// predicate rather than carrying a copy that drifts. The step above is the only production
-/// caller; the buckets and their order are documented on `skipReason` there.
-public enum InverseTextNormalizationGate {
   public static func skipReason(language: String?, englishVetoed: Bool, backendSupportsLID: Bool)
     -> String?
   {
@@ -341,5 +375,53 @@ public enum InverseTextNormalizationGate {
       return .language(set.baseCode)
     }
     return .neutral(skip)
+  }
+
+  /// The ONE text-execution implementation for every route (#1677): the step's production work
+  /// and the eval harness both run it, so no second dispatch switch exists. It takes an
+  /// already-selected route plus the immutable rule snapshot; it never resolves language and
+  /// never reproduces the route's precedence.
+  ///
+  /// `.language` executes only with a snapshot whose base code matches the route. A forged or
+  /// missing snapshot fails CLOSED to the neutral subset; it never force-unwraps and never falls
+  /// through to the English lexicon.
+  package static func execute(
+    _ text: String, route: Route, rules: LanguageRuleSet?, normalizer: InverseTextNormalizer,
+    spokenPunctuation: Bool
+  ) -> String {
+    switch route {
+    case .english:
+      return normalizer.normalize(text, spokenPunctuation: spokenPunctuation)
+    case .neutral:
+      return normalizer.normalizeLanguageNeutral(text)
+    case .language(let code):
+      guard let rules, rules.baseCode == code else {
+        return normalizer.normalizeLanguageNeutral(text)
+      }
+      return normalizer.normalize(text, language: rules)
+    }
+  }
+
+  /// Public execution facade for callers outside this package.
+  ///
+  /// **Why this one member is public:** the eval harness (`scripts/eval/apple_runner`) is a separate
+  /// package and cannot call a `package` member, and it must run the SAME text execution as
+  /// production instead of carrying its own copy (the #2844 drift this gate already exists to
+  /// prevent). It accepts a route the caller already selected with `route(...)`; it does not
+  /// resolve language or copy the precedence. For `.language` it obtains the production rule-set
+  /// snapshot before executing synchronously, so a route with no vetted production snapshot (which
+  /// is every route today, the registry being empty) runs the neutral subset.
+  public static func normalize(
+    _ text: String, route: Route, normalizer: InverseTextNormalizer, spokenPunctuation: Bool
+  ) -> String {
+    let rules: LanguageRuleSet?
+    if case .language(let code) = route {
+      rules = LanguageRuleRegistry.production.ruleSet(forLanguage: code)
+    } else {
+      rules = nil
+    }
+    return execute(
+      text, route: route, rules: rules, normalizer: normalizer,
+      spokenPunctuation: spokenPunctuation)
   }
 }
