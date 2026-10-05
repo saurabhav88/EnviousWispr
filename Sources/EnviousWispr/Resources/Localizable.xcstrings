@@ -8660,7 +8660,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Im Englischen werden diese Wörter zu Satzzeichen, selbst wenn du das Wort selbst meintest, etwa in „the grace period expires“. „Slash“ funktioniert auch bei ausgeschalteter Einstellung: „slash clear“ wird zu /clear, „command is slash wfp“ zu command is /wfp und „pros slash cons“ zu pros/cons. „slash the budget“ bleibt Text. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen."
+            "value" : "Im Englischen werden diese Wörter zu Satzzeichen, selbst wenn du das Wort selbst meintest, etwa in „the grace period expires“. Der Befehl „slash“ funktioniert auch bei ausgeschalteter Einstellung: „slash clear“ wird zu /clear, „command is slash wfp“ zu command is /wfp und „pros slash cons“ zu pros/cons. „slash the budget“ bleibt als Wörter stehen. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen."
           }
         }
       }
@@ -14140,7 +14140,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Startwort auf den Standard zurücksetzen"
+            "value" : "Startwort auf den Standardwert zurücksetzen"
           }
         }
       }
@@ -16739,7 +16739,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieses Wort ist bereits ein Befehlswort. Das letzte Startwort wurde beibehalten."
+            "value" : "Dieses Wort ist bereits ein Befehlswort. Das bisherige Startwort bleibt erhalten."
           }
         }
       }
@@ -18454,7 +18454,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gib ein Startwort ein. Das letzte wurde beibehalten."
+            "value" : "Gib ein Startwort ein. Das bisherige Startwort bleibt erhalten."
           }
         }
       }
@@ -18823,7 +18823,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nutze mindestens %lld Buchstaben. Das letzte Startwort wurde beibehalten."
+            "value" : "Nutze mindestens %lld Buchstaben. Das bisherige Startwort bleibt erhalten."
           }
         }
       }
@@ -18834,7 +18834,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nutze höchstens %lld Buchstaben. Das letzte Startwort wurde beibehalten."
+            "value" : "Nutze höchstens %lld Buchstaben. Das bisherige Startwort bleibt erhalten."
           }
         }
       }
@@ -18855,7 +18855,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nutze nur Buchstaben. Das letzte Startwort wurde beibehalten."
+            "value" : "Nutze nur Buchstaben. Das bisherige Startwort bleibt erhalten."
           }
         }
       }
@@ -18866,7 +18866,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nutze ein einzelnes Wort ohne Leerzeichen. Das letzte Startwort wurde beibehalten."
+            "value" : "Nutze ein einzelnes Wort ohne Leerzeichen. Das bisherige Startwort bleibt erhalten."
           }
         }
       }

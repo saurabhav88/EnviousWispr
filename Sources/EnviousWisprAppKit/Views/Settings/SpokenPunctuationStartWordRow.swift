@@ -81,6 +81,10 @@ struct SpokenPunctuationStartWordRow: View {
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
+      Text(SpokenPunctuationCopy.helpEnglish)
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
