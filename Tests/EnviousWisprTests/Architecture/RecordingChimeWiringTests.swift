@@ -189,7 +189,8 @@ struct RecordingChimeWiringTests {
       .filter { $0.trimmedDescription.contains("Task<") }
       .flatMap { $0.bindings.map { $0.pattern.trimmedDescription } }
     /// `activePreviewTask?.cancel()` as a real call statement among `statements`.
-    /// A cancel that follows a `return` or `throw` in the same list never runs, so it does not count.
+    /// A cancel that follows an unconditional `return` or `throw` in the same list never runs, so it
+    /// does not count; an exit inside a nested closure or branch is not unconditional.
     func cancels(_ statements: CodeBlockItemListSyntax?) -> Bool {
       for item in statements ?? [] {
         if item.item.as(FunctionCallExprSyntax.self)?.trimmedDescription
@@ -197,10 +198,7 @@ struct RecordingChimeWiringTests {
         {
           return true
         }
-        let exits = item.tokens(viewMode: .sourceAccurate).contains {
-          $0.tokenKind == .keyword(.return) || $0.tokenKind == .keyword(.throw)
-        }
-        if exits { return false }
+        if SourceReachability.exitsUnconditionally(item) { return false }
       }
       return false
     }
@@ -322,7 +320,7 @@ struct RecordingChimeWiringTests {
             }
             .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
               if isActive {
-                if true { return }
+                if (true) { return }
                 activePreviewTask?.cancel()
               }
             }
@@ -332,6 +330,32 @@ struct RecordingChimeWiringTests {
     let wiring = try #require(Self.pageWiring(in: fixture))
     #expect(wiring.disappearCancels == false, "a cancel behind an early return counted")
     #expect(wiring.dictationCancels == false, "a cancel behind an early return counted")
+  }
+
+  @Test("a return inside a nested closure does not hide a real cancel")
+  func nestedReturnKeepsTheCancel() throws {
+    let fixture = Parser.parse(
+      source: """
+        struct RecordingSoundsSettingsView: View {
+          @State private var activePreviewTask: Task<Void, Never>?
+          var body: some View {
+            RecordingChimesContent(isDictationActive: liveRecordingState.isDictationActive)
+            .onDisappear {
+              values.forEach { _ in return }
+              activePreviewTask?.cancel()
+            }
+            .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
+              if isActive {
+                if other { return }
+                activePreviewTask?.cancel()
+              }
+            }
+          }
+        }
+        """)
+    let wiring = try #require(Self.pageWiring(in: fixture))
+    #expect(wiring.disappearCancels, "a nested closure's return hid a cancel that runs")
+    #expect(wiring.dictationCancels, "a conditional return hid a cancel that can run")
   }
 
   // MARK: - Extractors

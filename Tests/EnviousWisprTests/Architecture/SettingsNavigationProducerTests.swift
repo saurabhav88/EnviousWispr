@@ -119,11 +119,14 @@ struct SettingsNavigationProducerTests {
           openB: { let _ = { coordinator.request(.b) } },
           openC: { if true { return }; coordinator.request(.c) },
           openD: { if true { coordinator.request(.d) } else { coordinator.request(.e) } },
-          openF: { coordinator.request(.f) })
+          openF: { coordinator.request(.f) },
+          openG: { if (false) { coordinator.request(.g) } },
+          openH: { if !true { coordinator.request(.h) } },
+          openI: { if ( true ) { return }; coordinator.request(.i) })
       }
       """
     let calls = Self.navigationCalls(in: fixture, callee: "request")
-    #expect(calls.count == 6)
+    #expect(calls.count == 9)
     let live = calls.filter(\.isReachable).map(\.argument)
     #expect(live == [".d", ".f"], "reachable: \(live)")
   }
@@ -224,8 +227,9 @@ struct SettingsNavigationProducerTests {
       while let parent = current {
         if let ifExpr = parent.as(IfExprSyntax.self) {
           let condition = ifExpr.conditions.trimmedDescription
-          if Syntax(ifExpr.body) == child, condition == "false" { return false }
-          if let elseBody = ifExpr.elseBody, Syntax(elseBody) == child, condition == "true" {
+          let value = SourceReachability.constant(condition)
+          if Syntax(ifExpr.body) == child, value == false { return false }
+          if let elseBody = ifExpr.elseBody, Syntax(elseBody) == child, value == true {
             return false
           }
         }
@@ -234,7 +238,7 @@ struct SettingsNavigationProducerTests {
         {
           for earlier in list {
             if earlier.id == item.id { break }
-            if exitsUnconditionally(earlier) { return false }
+            if SourceReachability.exitsUnconditionally(earlier) { return false }
           }
         }
         if let closure = parent.as(ClosureExprSyntax.self), !isReceived(closure) { return false }
@@ -242,18 +246,6 @@ struct SettingsNavigationProducerTests {
         current = parent.parent
       }
       return true
-    }
-
-    private static func exitsUnconditionally(_ item: CodeBlockItemSyntax) -> Bool {
-      func exits(_ list: CodeBlockItemListSyntax) -> Bool {
-        list.contains { $0.item.is(ReturnStmtSyntax.self) || $0.item.is(ThrowStmtSyntax.self) }
-      }
-      if item.item.is(ReturnStmtSyntax.self) || item.item.is(ThrowStmtSyntax.self) { return true }
-      guard
-        let branch = item.item.as(ExpressionStmtSyntax.self)?.expression.as(IfExprSyntax.self)
-          ?? item.item.as(IfExprSyntax.self)
-      else { return false }
-      return branch.conditions.trimmedDescription == "true" && exits(branch.body.statements)
     }
 
     /// A closure that something receives: an argument, a trailing closure, a named binding's
