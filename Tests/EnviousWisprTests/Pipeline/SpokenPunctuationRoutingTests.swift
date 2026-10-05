@@ -74,9 +74,9 @@ struct SpokenPunctuationRoutingTests {
   @Test(
     "An eligible take is attempted under its base language and that language's default word",
     arguments: [
-      ("de", "de", "Setze"), ("de-DE", "de", "Setze"), ("DE", "de", "Setze"),
-      ("fr", "fr", "Insère"), ("fr_FR", "fr", "Insère"),
-      ("es", "es", "Pon"), ("es-419", "es", "Pon"), ("it", "it", "Metti"),
+      ("de", "de", "Diktiere"), ("de-DE", "de", "Diktiere"), ("DE", "de", "Diktiere"),
+      ("fr", "fr", "Place"), ("fr_FR", "fr", "Place"),
+      ("es", "es", "Añade"), ("es-419", "es", "Añade"), ("it", "it", "Metti"),
     ])
   func eligible(language: String, base: String, word: String) {
     let plan = InverseTextNormalizationStep.punctuationPlan(
@@ -88,26 +88,39 @@ struct SpokenPunctuationRoutingTests {
 
   @Test("A valid override is the word that is matched")
   func overrideIsUsed() {
-    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Diktiere"])
+    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
     #expect(
       InverseTextNormalizationStep.punctuationPlan(
         language: "de", englishVetoed: false, settings: settings
-      ).startWord == "Diktiere")
+      ).startWord == "Sprich")
     #expect(
       InverseTextNormalizationStep.punctuationPlan(
         language: "fr", englishVetoed: false, settings: settings
-      ).startWord == "Insère", "another language keeps its default")
+      ).startWord == "Place", "another language keeps its default")
   }
 
   @Test(
     "An invalid override never widens matching: the default word is used instead",
-    arguments: ["Punkt", "zwei Worte", "", "set3", "x", String(repeating: "a", count: 21)])
+    arguments: ["Punkt", "zwei Worte", "set3", "x", String(repeating: "a", count: 21)])
   func invalidOverrideFallsBackToTheDefault(word: String) {
     let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": word])
     let plan = InverseTextNormalizationStep.punctuationPlan(
       language: "de", englishVetoed: false, settings: settings)
     #expect(plan.attemptLanguage == "de")
-    #expect(plan.startWord == "Setze")
+    #expect(plan.startWord == "Diktiere")
+  }
+
+  @Test("A blank override is the choice of no start word and is planned as empty, not the default")
+  func blankOverrideIsPlannedAsNoStartWord() {
+    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": ""])
+    let plan = InverseTextNormalizationStep.punctuationPlan(
+      language: "de", englishVetoed: false, settings: settings)
+    #expect(plan.attemptLanguage == "de")
+    #expect(plan.startWord == "")
+    #expect(
+      InverseTextNormalizationStep.punctuationPlan(
+        language: "fr", englishVetoed: false, settings: settings
+      ).startWord == "Place", "another language keeps its default")
   }
 
   @Test("The status vocabulary is closed and spelled as it is queried")
@@ -121,7 +134,7 @@ struct SpokenPunctuationRoutingTests {
   @Test("Not attempted, matched nothing and abandoned stay three different answers")
   func outcomeMatrix() {
     let attempted = PunctuationPlan(
-      attemptLanguage: "de", startWord: "Setze", notAttemptedStatus: nil)
+      attemptLanguage: "de", startWord: "Diktiere", notAttemptedStatus: nil)
     let skipped = PunctuationPlan(
       attemptLanguage: nil, startWord: nil, notAttemptedStatus: .unsupported)
 
@@ -163,7 +176,7 @@ struct SpokenPunctuationRoutingTests {
   func germanRewrites() async throws {
     let step = step(Self.on)
     let out = try await step.process(
-      ctx("Das ist gut Setze Punkt es geht weiter", language: "de-DE", source: .dictation))
+      ctx("Das ist gut Diktiere Punkt es geht weiter", language: "de-DE", source: .dictation))
     #expect(out.text == "Das ist gut. Es geht weiter")
     let run = try #require(step.lastRun)
     #expect(run.ran == false)
@@ -178,7 +191,7 @@ struct SpokenPunctuationRoutingTests {
   @Test("The neutral subset runs first, then the commands")
   func neutralThenPunctuation() async throws {
     let step = step(Self.on)
-    let out = try await step.process(ctx("Frage B Bindestrich 2 Setze Punkt Code", language: "de"))
+    let out = try await step.process(ctx("Frage B Bindestrich 2 Diktiere Punkt Code", language: "de"))
     #expect(out.text == "Frage B-2. Code")
     #expect(step.lastRun?.punctuationStatus == .rewrote)
   }
@@ -186,8 +199,8 @@ struct SpokenPunctuationRoutingTests {
   @Test("With the switch off the neutral subset still runs and the command stays")
   func switchOffKeepsNeutralAndLeavesTheCommand() async throws {
     let step = step(Self.off)
-    let out = try await step.process(ctx("Frage B Bindestrich 2 Setze Punkt Code", language: "de"))
-    #expect(out.text == "Frage B-2 Setze Punkt Code")
+    let out = try await step.process(ctx("Frage B Bindestrich 2 Diktiere Punkt Code", language: "de"))
+    #expect(out.text == "Frage B-2 Diktiere Punkt Code")
     #expect(step.lastRun?.punctuationStatus == .disabled)
     #expect(step.lastRun?.punctuationRulesFired == nil)
   }
@@ -205,10 +218,10 @@ struct SpokenPunctuationRoutingTests {
   @Test(
     "Each language rewrites under its own word, and regional tags reach the same table",
     arguments: [
-      ("fr", "c'est fini Insère point", "c'est fini."),
-      ("es", "hola Pon coma adiós", "hola, adiós"),
+      ("fr", "c'est fini Place point", "c'est fini."),
+      ("es", "hola Añade coma adiós", "hola, adiós"),
       ("it", "ciao Metti punto interrogativo", "ciao?"),
-      ("de-DE", "alpha Setze Fragezeichen", "alpha?"),
+      ("de-DE", "alpha Diktiere Fragezeichen", "alpha?"),
     ])
   func languages(language: String, input: String, expected: String) async throws {
     let step = step(Self.on)
@@ -220,7 +233,7 @@ struct SpokenPunctuationRoutingTests {
   @Test("A language with no table is reported unsupported and never given another table")
   func unsupportedLanguage() async throws {
     let step = step(Self.on)
-    let input = "Dit is goed Setze Punkt maar period"
+    let input = "Dit is goed Diktiere Punkt maar period"
     let out = try await step.process(ctx(input, language: "nl", source: .engine))
     #expect(out.text == input)
     #expect(step.lastRun?.punctuationStatus == .unsupported)
@@ -232,25 +245,25 @@ struct SpokenPunctuationRoutingTests {
   @Test("A vetoed take is unresolved, and a nil language on an LID engine is unresolved")
   func unresolved() async throws {
     let vetoed = step(Self.on, lid: false)
-    _ = try await vetoed.process(ctx("alpha Setze Punkt beta", language: nil, vetoed: true))
+    _ = try await vetoed.process(ctx("alpha Diktiere Punkt beta", language: nil, vetoed: true))
     #expect(vetoed.lastRun?.punctuationStatus == .unresolved)
     #expect(vetoed.lastRun?.punctuationLanguage == nil, "an unresolved take names no language")
 
     let lidNil = step(Self.on, lid: true)
-    let out = try await lidNil.process(ctx("alpha Setze Punkt beta", language: nil))
-    #expect(out.text == "alpha Setze Punkt beta")
+    let out = try await lidNil.process(ctx("alpha Diktiere Punkt beta", language: nil))
+    #expect(out.text == "alpha Diktiere Punkt beta")
     #expect(lidNil.lastRun?.skipReason == "lid_backend_nil")
     #expect(lidNil.lastRun?.punctuationStatus == .unresolved)
   }
 
   @Test("A custom start word works and the default no longer does")
   func customWord() async throws {
-    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Diktiere"])
+    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
     let custom = step(settings)
-    let out = try await custom.process(ctx("alpha Diktiere Punkt beta", language: "de"))
+    let out = try await custom.process(ctx("alpha Sprich Punkt beta", language: "de"))
     #expect(out.text == "alpha. Beta")
-    let old = try await custom.process(ctx("alpha Setze Punkt beta", language: "de"))
-    #expect(old.text == "alpha Setze Punkt beta")
+    let old = try await custom.process(ctx("alpha Diktiere Punkt beta", language: "de"))
+    #expect(old.text == "alpha Diktiere Punkt beta")
     #expect(custom.lastRun?.punctuationStatus == .ranNoMatch)
   }
 
@@ -262,7 +275,7 @@ struct SpokenPunctuationRoutingTests {
     #expect(
       plain.text == "alpha Punkt Punkt beta",
       "an override that collides with a command must not widen matching")
-    let viaDefault = try await step.process(ctx("alpha Setze Punkt beta", language: "de"))
+    let viaDefault = try await step.process(ctx("alpha Diktiere Punkt beta", language: "de"))
     #expect(viaDefault.text == "alpha. Beta")
   }
 
@@ -302,10 +315,10 @@ struct SpokenPunctuationRoutingTests {
   @Test("A nil language on a non-LID engine still runs the English route, as before")
   func nilLanguageNonLIDIsEnglish() async throws {
     let step = step(Self.on, lid: false)
-    let out = try await step.process(ctx("alpha period beta Setze Punkt gamma", language: nil))
+    let out = try await step.process(ctx("alpha period beta Diktiere Punkt gamma", language: nil))
     #expect(
       out.text.hasPrefix("alpha."), "the English table applies, exactly as before: \(out.text)")
-    #expect(out.text.contains("Setze Punkt"), "the start-word pass does not run here")
+    #expect(out.text.contains("Diktiere Punkt"), "the start-word pass does not run here")
     #expect(step.lastRun?.punctuationStatus == nil)
     // The English table ran while the resolved language is still nil, which is exactly why this
     // field is not just `cleanup_language`.
@@ -316,7 +329,7 @@ struct SpokenPunctuationRoutingTests {
   @Test("A later run never inherits the previous run's punctuation metadata")
   func nothingIsInherited() async throws {
     let step = step(Self.on)
-    _ = try await step.process(ctx("alpha Setze Punkt beta", language: "de"))
+    _ = try await step.process(ctx("alpha Diktiere Punkt beta", language: "de"))
     #expect(step.lastRun?.punctuationStatus == .rewrote)
     _ = try await step.process(ctx("hello period world", language: "en"))
     #expect(step.lastRun?.punctuationStatus == nil)
@@ -341,7 +354,7 @@ struct SpokenPunctuationRoutingTests {
       requestWork: Self.slowWork, onTimeoutForTesting: { timeouts.append($0) })
     step.spokenPunctuation = Self.on
     step.backendSupportsLID = true
-    let input = "Frage B Bindestrich 2 Setze Punkt Code"
+    let input = "Frage B Bindestrich 2 Diktiere Punkt Code"
     let out = try await step.process(ctx(input, language: "de"))
 
     #expect(out.text == input, "the entire pre-ITN text, never a neutral-only middle")
@@ -358,7 +371,7 @@ struct SpokenPunctuationRoutingTests {
     let step = InverseTextNormalizationStep(requestWork: Self.slowWork)
     step.spokenPunctuation = Self.off
     step.backendSupportsLID = true
-    let input = "Frage B Bindestrich 2 Setze Punkt Code"
+    let input = "Frage B Bindestrich 2 Diktiere Punkt Code"
     let out = try await step.process(ctx(input, language: "de"))
     #expect(out.text == input)
     #expect(step.lastRun?.punctuationStatus == .disabled)
@@ -424,10 +437,10 @@ struct SpokenPunctuationRoutingTests {
       return ITNWorkResult(text: request.input, punctuationRulesFired: 0)
     })
     step.backendSupportsLID = true
-    let original = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Diktiere"])
+    let original = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
     step.spokenPunctuation = original
 
-    let context = ctx("alpha Diktiere Punkt beta", language: "de")
+    let context = ctx("alpha Sprich Punkt beta", language: "de")
     let task = Task { @MainActor in try await step.process(context) }
     // Bounded: a `process` that returned or threw before calling the work would otherwise leave this
     // wait suspended forever and hang the suite instead of failing the test.
@@ -453,7 +466,7 @@ struct SpokenPunctuationRoutingTests {
       request.spokenPunctuation == original,
       "the whole value, both halves, as it stood at the start")
     #expect(request.punctuationLanguage == "de")
-    #expect(request.startWord == "Diktiere")
+    #expect(request.startWord == "Sprich")
     #expect(step.lastRun?.punctuationStatus == .ranNoMatch)
   }
 
@@ -535,7 +548,7 @@ struct SpokenPunctuationRoutingTests {
     let result = try await runChain(
       steps,
       ctx(
-        "Bis morgen backslash my sign off Setze Punkt backslash my address Setze Komma danke",
+        "Bis morgen backslash my sign off Diktiere Punkt backslash my address Diktiere Komma danke",
         language: "de"))
 
     let sentinels = result.protectedExpansions.map(\.sentinel)
@@ -554,14 +567,14 @@ struct SpokenPunctuationRoutingTests {
     "A command phrase that is also a saved snippet trigger goes to the snippet, bare it goes to punctuation"
   )
   func snippetBeatsCommandWhenKeywordIsSpoken() async throws {
-    let steps = makeChain(snippets: [Snippet(trigger: "setze punkt", expansion: "STOP")])
+    let steps = makeChain(snippets: [Snippet(trigger: "diktiere punkt", expansion: "STOP")])
     let viaSnippet = try await runChain(
-      steps, ctx("alpha backslash setze punkt beta", language: "de"))
+      steps, ctx("alpha backslash diktiere punkt beta", language: "de"))
     var finished = viaSnippet
     SnippetFinalizer.finalize(&finished)
     #expect(finished.text == "alpha STOP beta")
 
-    let bare = try await runChain(steps, ctx("alpha Setze Punkt beta", language: "de"))
+    let bare = try await runChain(steps, ctx("alpha Diktiere Punkt beta", language: "de"))
     #expect(bare.protectedExpansions.isEmpty)
     #expect(bare.text == "alpha. Beta")
   }
@@ -575,7 +588,7 @@ struct SpokenPunctuationRoutingTests {
         Snippet(trigger: "one", expansion: "FIRST"), Snippet(trigger: "two", expansion: "SECOND"),
       ])
     let result = try await runChain(
-      steps, ctx("a backslash one Setze Punkt backslash two Setze Komma b", language: "de"))
+      steps, ctx("a backslash one Diktiere Punkt backslash two Diktiere Komma b", language: "de"))
     let sentinels = result.protectedExpansions.map(\.sentinel)
     #expect(sentinels.count == 2)
     #expect(
@@ -597,7 +610,7 @@ struct SpokenPunctuationRoutingTests {
       candidateSource: { "EWSNIPcafe" },
       snippets: [Snippet(trigger: "my link", expansion: "example.com")])
     let result = try await runChain(
-      steps, ctx("Schau hier Setze Punkt backslash my link Setze Komma dann", language: "de"))
+      steps, ctx("Schau hier Diktiere Punkt backslash my link Diktiere Komma dann", language: "de"))
     var finished = result
     SnippetFinalizer.finalize(&finished)
     #expect(finished.text == "Schau hier. example.com, dann")

@@ -761,8 +761,9 @@ public final class SettingsManager {
   /// `SpokenPunctuationStartWord.validate` against the language's complete command forms and stores
   /// the accepted NFC word, or REFUSES and leaves the stored value untouched. A word that equals
   /// the language's default (ignoring case) is stored as no override, so the override map stays
-  /// sparse and "customised" means what it says. Returns the validator's outcome so the control can
-  /// show why a word was refused.
+  /// sparse and "customised" means what it says. A blank `raw` stores `""`, the choice of no start
+  /// word, and returns `.accepted("")`. Returns the validator's outcome so the control can show why a
+  /// word was refused.
   @discardableResult
   public func commitSpokenPunctuationStartWord(_ raw: String, language: String)
     -> SpokenPunctuationStartWord.Outcome
@@ -770,6 +771,14 @@ public final class SettingsManager {
     guard let code = LanguageNormalizer.baseCode(language),
       let forms = SpokenPunctuationRules.spokenForms(for: code)
     else { return .refused(.unsupportedLanguage) }
+    // A blank field is the user's choice of NO start word: stored as `""`, accepted, and never
+    // equal to a default. The matcher then reads the language's command words bare.
+    if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      if spokenPunctuation.startWordOverrides[code] != "" {
+        spokenPunctuation.startWordOverrides[code] = ""
+      }
+      return .accepted("")
+    }
     let outcome = SpokenPunctuationStartWord.validate(raw, language: code, spokenForms: forms)
     guard case .accepted(let word) = outcome else { return outcome }
     var overrides = spokenPunctuation.startWordOverrides

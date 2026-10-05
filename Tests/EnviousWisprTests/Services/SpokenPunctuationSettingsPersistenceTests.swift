@@ -58,27 +58,27 @@ struct SpokenPunctuationSettingsPersistenceTests {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
     settings.spokenPunctuation.enabled = true
-    let outcome = settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
-    #expect(outcome == .accepted("Diktiere"))
+    let outcome = settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
+    #expect(outcome == .accepted("Sprich"))
 
     #expect(suite.object(forKey: "spokenPunctuationEnabled") as? Bool == true)
     #expect(
       suite.dictionary(forKey: "spokenPunctuationStartWords") as? [String: String] == [
-        "de": "Diktiere"
+        "de": "Sprich"
       ])
 
     let reloaded = SettingsManager(defaults: suite)
     #expect(reloaded.spokenPunctuation.enabled == true)
-    #expect(reloaded.spokenPunctuation.startWordOverrides == ["de": "Diktiere"])
+    #expect(reloaded.spokenPunctuation.startWordOverrides == ["de": "Sprich"])
   }
 
   @Test("Resetting a language removes its override, and the key when none is left")
   func resetRemovesTheOverride() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     settings.commitSpokenPunctuationStartWord("mets-moi", language: "fr")
-    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Diktiere", "fr": "mets-moi"])
+    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Sprich", "fr": "mets-moi"])
 
     settings.resetSpokenPunctuationStartWord(language: "de")
     #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "mets-moi"])
@@ -95,10 +95,10 @@ struct SpokenPunctuationSettingsPersistenceTests {
   @Test("Typing the default word back stores no override, ignoring case")
   func defaultWordIsNotAnOverride() {
     let settings = SettingsManager(defaults: Self.freshSuite())
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
-    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Diktiere"])
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
+    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Sprich"])
     #expect(
-      settings.commitSpokenPunctuationStartWord("setze", language: "de") == .accepted("setze"))
+      settings.commitSpokenPunctuationStartWord("diktiere", language: "de") == .accepted("diktiere"))
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
   }
 
@@ -113,8 +113,8 @@ struct SpokenPunctuationSettingsPersistenceTests {
   @Test("A regional language tag commits under the base code")
   func regionalTagCommitsUnderBaseCode() {
     let settings = SettingsManager(defaults: Self.freshSuite())
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de-DE")
-    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Diktiere"])
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de-DE")
+    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Sprich"])
   }
 
   // MARK: - Refusals leave the stored value alone
@@ -122,15 +122,14 @@ struct SpokenPunctuationSettingsPersistenceTests {
   @Test(
     "A refused word returns the reason and changes nothing",
     arguments: [
-      ("", "de", SpokenPunctuationStartWord.Refusal.empty),
-      ("zwei Worte", "de", .notOneToken),
+      ("zwei Worte", "de", SpokenPunctuationStartWord.Refusal.notOneToken),
       ("set3", "de", .invalidCharacters),
       ("x", "de", .tooShort),
       (String(repeating: "a", count: 21), "de", .tooLong),
       ("Punkt", "de", .collidesWithCommand),
       ("point", "fr", .collidesWithCommand),
-      ("Diktiere", "nl", .unsupportedLanguage),
-      ("Diktiere", "en", .unsupportedLanguage),
+      ("Sprich", "nl", .unsupportedLanguage),
+      ("Sprich", "en", .unsupportedLanguage),
     ])
   func refusalsChangeNothing(
     raw: String, language: String, reason: SpokenPunctuationStartWord.Refusal
@@ -161,9 +160,9 @@ struct SpokenPunctuationSettingsPersistenceTests {
 
     settings.spokenPunctuation.enabled = true
     #expect(keys == [.spokenPunctuation])
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     #expect(keys == [.spokenPunctuation, .spokenPunctuation])
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     #expect(keys.count == 2, "the same word again is a no-op")
     settings.resetSpokenPunctuationStartWord(language: "de")
     #expect(keys.count == 3)
@@ -179,10 +178,10 @@ struct SpokenPunctuationSettingsPersistenceTests {
     suite.set(true, forKey: "spokenPunctuationEnabled")
     suite.set(
       [
-        "de": "Diktiere",  // valid
+        "de": "Sprich",  // valid
         "fr": "mets-moi",  // valid, hyphen inside
         "es": "punto",  // collides with a Spanish command form
-        "it": "",  // empty
+        "it": "",  // blank: the choice of no start word, kept
         "nl": "Dikteer",  // no table for this language
         "xx": "Wort",  // not a language
         "pl": 42,  // not a string
@@ -190,7 +189,10 @@ struct SpokenPunctuationSettingsPersistenceTests {
     let settings = SettingsManager(defaults: suite)
 
     #expect(settings.spokenPunctuation.enabled == true)
-    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Diktiere", "fr": "mets-moi"])
+    #expect(
+      settings.spokenPunctuation.startWordOverrides == [
+        "de": "Sprich", "fr": "mets-moi", "it": "",
+      ])
   }
 
   @Test("Stored words are re-validated: two tokens, a digit and a long word are all dropped")
@@ -218,9 +220,9 @@ struct SpokenPunctuationSettingsPersistenceTests {
   @Test("A stored word equal to the default is dropped, so the file stays sparse")
   func storedDefaultIsDropped() {
     let suite = Self.freshSuite()
-    suite.set(["de": "setze", "fr": "Diktiere"], forKey: "spokenPunctuationStartWords")
+    suite.set(["de": "diktiere", "fr": "Sprich"], forKey: "spokenPunctuationStartWords")
     let settings = SettingsManager(defaults: suite)
-    #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "Diktiere"])
+    #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "Sprich"])
   }
 
   @Test("A stored regional key loads under the base code, and an accented word is kept")
@@ -242,19 +244,48 @@ struct SpokenPunctuationSettingsPersistenceTests {
   func effectiveWords() {
     #expect(
       SpokenPunctuationRules.effectiveStartWords(overrides: [:])
-        == ["de": "Setze", "fr": "Insère", "es": "Pon", "it": "Metti"])
+        == ["de": "Diktiere", "fr": "Place", "es": "Añade", "it": "Metti"])
     #expect(
-      SpokenPunctuationRules.effectiveStartWords(overrides: ["de": "Diktiere", "nl": "Dikteer"])
-        == ["de": "Diktiere", "fr": "Insère", "es": "Pon", "it": "Metti"])
+      SpokenPunctuationRules.effectiveStartWords(overrides: ["de": "Sprich", "nl": "Dikteer"])
+        == ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"])
   }
 
   @Test("A snapshot keeps an effective word even when it equals today's default")
   func snapshotValidationKeepsDefaults() {
-    let words = ["de": "Setze", "fr": "Diktiere", "es": "punto", "xx": "Wort"]
+    let words = ["de": "Diktiere", "fr": "Sprich", "es": "punto", "xx": "Wort"]
     #expect(
       SpokenPunctuationRules.validatedStartWords(words, dropDefaults: false)
-        == ["de": "Setze", "fr": "Diktiere"])
+        == ["de": "Diktiere", "fr": "Sprich"])
     #expect(
-      SpokenPunctuationRules.validatedStartWords(words, dropDefaults: true) == ["fr": "Diktiere"])
+      SpokenPunctuationRules.validatedStartWords(words, dropDefaults: true) == ["fr": "Sprich"])
+  }
+
+  // MARK: - No start word
+
+  @Test("A blank commit stores no start word, accepts, and survives a restart")
+  func blankCommitStoresNoStartWord() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.commitSpokenPunctuationStartWord("  ", language: "de") == .accepted(""))
+    #expect(settings.spokenPunctuation.startWordOverrides == ["de": ""])
+    #expect(
+      suite.dictionary(forKey: "spokenPunctuationStartWords") as? [String: String] == ["de": ""])
+    let reloaded = SettingsManager(defaults: suite)
+    #expect(reloaded.spokenPunctuation.startWordOverrides == ["de": ""])
+    #expect(
+      SpokenPunctuationRules.effectiveStartWords(
+        overrides: reloaded.spokenPunctuation.startWordOverrides)["de"] == "")
+    reloaded.resetSpokenPunctuationStartWord(language: "de")
+    #expect(reloaded.spokenPunctuation.startWordOverrides.isEmpty)
+  }
+
+  @Test("A recovery or import snapshot keeps a blank start word too")
+  func snapshotKeepsBlankStartWord() {
+    #expect(
+      SpokenPunctuationRules.validatedStartWords(["fr": " ", "de": "Diktiere"], dropDefaults: false)
+        == ["fr": "", "de": "Diktiere"])
+    #expect(
+      SpokenPunctuationRules.validatedStartWords(["fr": " ", "de": "Diktiere"], dropDefaults: true)
+        == ["fr": ""])
   }
 }

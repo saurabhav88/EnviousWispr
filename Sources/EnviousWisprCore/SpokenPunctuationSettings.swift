@@ -76,7 +76,7 @@ public enum SpokenPunctuationStartWord {
   public static func validate(
     _ raw: String, language: String, spokenForms: [String]
   ) -> Outcome {
-    // NFC first: a decomposed "Insère" typed on some keyboards must match NFC text from the engine,
+    // NFC first: a decomposed "Place" typed on some keyboards must match NFC text from the engine,
     // and every length and character check below is defined on the NFC form.
     let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping

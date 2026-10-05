@@ -15,7 +15,7 @@ import Foundation
 ///
 /// ## Why a start word
 ///
-/// "Punkt" is an ordinary German noun; "Setze Punkt" is a command. Behind a start word an ordinary use of
+/// "Punkt" is an ordinary German noun; "Diktiere Punkt" is a command. Behind a start word an ordinary use of
 /// a command word cannot become a mark, which is the failure a bare-word table has (#1367 measured 43.9%
 /// corruption on real text for bare words). The start word is a user setting (`SpokenPunctuationSettings`)
 /// with the defaults below; this file supplies only the DEFAULT and the forms.
@@ -71,19 +71,23 @@ package enum SpokenPunctuationRules {
   ///
   /// Defaults are a public contract: once shipped they are never silently changed, because a user who
   /// never customised would find their command vocabulary different after an update (plan 3.1).
-  /// Chosen, not measured. Spanish avoids "signo", which already heads "signo de interrogación".
+  /// Chosen for how the shipping recogniser writes them: 144 Azure Neural clips (2 voices, 2 sentences, 4 per
+  /// word) through the real Parakeet v3 runner on 2026-10-05 (#2450). The first candidates "Setze", "Insère"
+  /// and "Pon" were heard 0, 0 and 1 times in 4 ("Sätze", "un serre", "con"); "Diktiere", "Place" and
+  /// "Añade" were each heard 4 of 4, and "Metti" stayed 4 of 4. A small synthetic sample, not human
+  /// speech. Spanish avoids "signo", which already heads "signo de interrogación".
   package static func defaultStartWord(for language: String) -> String? {
     switch baseCode(language) {
-    case "de": return "Setze"
-    case "fr": return "Insère"
-    case "es": return "Pon"
+    case "de": return "Diktiere"
+    case "fr": return "Place"
+    case "es": return "Añade"
     case "it": return "Metti"
     default: return nil
     }
   }
 
   /// The start word in force for each supported language: the override when there is one, else the
-  /// default. The single place that derives it, used by every consumer that needs the whole set
+  /// default. An override of `""` means the user chose NO start word, and is returned as `""`. The single place that derives it, used by every consumer that needs the whole set
   /// (recovery capture, file import freeze, the cleanup step, the Settings row). An override for an
   /// unsupported language is ignored.
   package static func effectiveStartWords(overrides: [String: String]) -> [String: String] {
@@ -97,8 +101,10 @@ package enum SpokenPunctuationRules {
   /// Validate a language-keyed map of start words: the one rule both the persisted settings loader and
   /// the recovery snapshot reader use, so neither carries its own copy.
   ///
-  /// Each entry stands alone. A key that is not a supported language, and a word that is empty,
+  /// Each entry stands alone. A key that is not a supported language, and a word that is
   /// malformed, over-long or colliding with a command form, are dropped without touching the others.
+  /// A BLANK value is kept as the empty string: it is the user's choice of NO start word for that
+  /// language (command words then work bare, as English does), and it is never the language default.
   /// Keys are normalised to the base code (`de-DE` becomes `de`) and processed in sorted order so two
   /// keys that normalise alike resolve the same way every run. Accepted words are trimmed and NFC.
   ///
@@ -115,6 +121,10 @@ package enum SpokenPunctuationRules {
         let code = LanguageNormalizer.baseCode(key),
         let forms = spokenForms(for: code)
       else { continue }
+      if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        result[code] = ""
+        continue
+      }
       guard
         case .accepted(let word) = SpokenPunctuationStartWord.validate(
           value, language: code, spokenForms: forms)
@@ -138,7 +148,7 @@ package enum SpokenPunctuationRules {
 
   /// German. `Neuabsatz` is what the reporting user actually said (#2450 transcript), so it is in the
   /// table; a textbook list would carry only "neuer Absatz". `neuen Absatz` is AUTHORED, not measured:
-  /// it is the natural accusative after an imperative ("Setze neuen Absatz"), and behind a start word an
+  /// it is the natural accusative after an imperative ("Diktiere neuen Absatz"), and behind a start word an
   /// unrecognised form costs nothing. `Strichpunkt` and `Semikolon` both convert in Apple's model.
   private static let german: [SpokenPunctuationRule] = [
     .init(

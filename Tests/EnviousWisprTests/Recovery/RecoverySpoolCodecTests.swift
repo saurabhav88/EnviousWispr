@@ -26,7 +26,7 @@ struct RecoverySpoolCodecTests {
       spokenPunctuationEnabled: false,
       // #2450: a NON-default effective word for German, so the round-trip rows prove the field
       // survives rather than that defaults were re-minted on the way back.
-      spokenPunctuationStartWords: ["de": "Diktiere", "fr": "Insère", "es": "Pon", "it": "Metti"],
+      spokenPunctuationStartWords: ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"],
       customWordsVersion: "v3",
       llmProvider: "appleIntelligence",
       llmModel: "apple-intelligence",
@@ -286,7 +286,7 @@ struct RecoverySpoolCodecTests {
     let words = try #require(
       fields["spokenPunctuationStartWords"] as? [String: String],
       "a NEW snapshot must carry the key, or this row tests nothing")
-    #expect(words["de"] == "Diktiere")
+    #expect(words["de"] == "Sprich")
     fields.removeValue(forKey: "spokenPunctuationStartWords")
     let legacy = try JSONSerialization.data(withJSONObject: fields)
     #expect(String(decoding: legacy, as: UTF8.self).contains("spokenPunctuationStartWords") == false)

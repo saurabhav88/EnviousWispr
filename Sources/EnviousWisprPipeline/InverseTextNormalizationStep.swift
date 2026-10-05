@@ -499,11 +499,16 @@ extension InverseTextNormalizationStep {
 
     var startWord = defaultWord
     if let effective = SpokenPunctuationRules.effectiveStartWords(
-      overrides: settings.startWordOverrides)[base],
-      case .accepted(let validated) = SpokenPunctuationStartWord.validate(
-        effective, language: base, spokenForms: forms)
+      overrides: settings.startWordOverrides)[base]
     {
-      startWord = validated
+      if effective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // The user chose NO start word: the pass reads this language's command words bare.
+        startWord = ""
+      } else if case .accepted(let validated) = SpokenPunctuationStartWord.validate(
+        effective, language: base, spokenForms: forms)
+      {
+        startWord = validated
+      }
     }
     return PunctuationPlan(attemptLanguage: base, startWord: startWord, notAttemptedStatus: nil)
   }

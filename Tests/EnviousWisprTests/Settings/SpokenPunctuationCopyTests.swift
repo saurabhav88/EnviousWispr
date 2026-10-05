@@ -94,7 +94,7 @@ struct SpokenPunctuationCopyTests {
         SpokenPunctuationCopy.resetLabel,
         SpokenPunctuationCopy.resetAccessibilityLabel,
         SpokenPunctuationCopy.fieldAccessibilityLabel(languageName: "German"),
-        SpokenPunctuationCopy.example(command: "Setze Punkt"),
+        SpokenPunctuationCopy.example(command: "Diktiere Punkt"),
       ] + refusals.map(SpokenPunctuationCopy.rejection)
     for s in strings {
       #expect(s.contains("\u{2014}") == false, "em-dash in user-facing copy: \(s)")

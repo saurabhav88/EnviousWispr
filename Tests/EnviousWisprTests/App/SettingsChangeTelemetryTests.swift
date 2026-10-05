@@ -162,7 +162,7 @@ import Testing
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
 
-      settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+      settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
       telemetry.flush()
 
       let wordDeltas = deltas(box, setting: "spoken_punctuation_start_word")
@@ -175,7 +175,7 @@ import Testing
       // The typed word must appear in NO property of any bucket.
       for event in box.all {
         let values = Array(event.stringProps.values) + Array(event.stringProps.keys)
-        #expect(values.allSatisfy { !$0.contains("Diktiere") }, "event: \(event.name)")
+        #expect(values.allSatisfy { !$0.contains("Sprich") }, "event: \(event.name)")
       }
     }
 
@@ -184,7 +184,7 @@ import Testing
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
 
-      settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+      settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
       telemetry.flush()
       box.clear()
 
@@ -212,11 +212,11 @@ import Testing
       #expect(atDefault["spoken_punctuation_start_word"] == "default")
 
       settings.spokenPunctuation.enabled = true
-      settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+      settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
       let changed = SettingsProjection.snapshotConfig(settings)
       #expect(changed["spoken_punctuation"] == "on")
       #expect(changed["spoken_punctuation_start_word"] == "customised")
-      #expect(changed.values.allSatisfy { !$0.contains("Diktiere") })
+      #expect(changed.values.allSatisfy { !$0.contains("Sprich") })
     }
 
     // MARK: - #1987 toggle hotkey identity fan-out

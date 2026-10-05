@@ -43,18 +43,18 @@ struct MultilingualSpokenPunctuationTests {
     "German commands convert after the start word",
     arguments: [
       (
-        "wir treffen uns morgen Setze Punkt das Wetter ist gut",
+        "wir treffen uns morgen Diktiere Punkt das Wetter ist gut",
         "wir treffen uns morgen. Das Wetter ist gut"
       ),
       (
-        "wir treffen uns morgen Setze Komma das Wetter ist gut",
+        "wir treffen uns morgen Diktiere Komma das Wetter ist gut",
         "wir treffen uns morgen, das Wetter ist gut"
       ),
-      ("ist das gut Setze Fragezeichen", "ist das gut?"),
-      ("das ist gut Setze Ausrufezeichen", "das ist gut!"),
-      ("hier kommt Setze Doppelpunkt der Rest", "hier kommt: der Rest"),
-      ("erstens Setze Semikolon zweitens", "erstens; zweitens"),
-      ("erstens Setze Strichpunkt zweitens", "erstens; zweitens"),
+      ("ist das gut Diktiere Fragezeichen", "ist das gut?"),
+      ("das ist gut Diktiere Ausrufezeichen", "das ist gut!"),
+      ("hier kommt Diktiere Doppelpunkt der Rest", "hier kommt: der Rest"),
+      ("erstens Diktiere Semikolon zweitens", "erstens; zweitens"),
+      ("erstens Diktiere Strichpunkt zweitens", "erstens; zweitens"),
     ])
   func germanMarks(input: String, expected: String) {
     #expect(Self.text(input) == expected)
@@ -63,10 +63,10 @@ struct MultilingualSpokenPunctuationTests {
   @Test(
     "German line and paragraph breaks, including the form the reporting user said",
     arguments: [
-      ("alpha Setze neue Zeile beta", "alpha\nBeta"),
-      ("alpha Setze neuer Absatz beta", "alpha\n\nBeta"),
-      ("alpha Setze neuen Absatz beta", "alpha\n\nBeta"),
-      ("alpha Setze Neuabsatz beta", "alpha\n\nBeta"),
+      ("alpha Diktiere neue Zeile beta", "alpha\nBeta"),
+      ("alpha Diktiere neuer Absatz beta", "alpha\n\nBeta"),
+      ("alpha Diktiere neuen Absatz beta", "alpha\n\nBeta"),
+      ("alpha Diktiere Neuabsatz beta", "alpha\n\nBeta"),
     ])
   func germanBreaks(input: String, expected: String) {
     #expect(Self.text(input) == expected)
@@ -74,9 +74,9 @@ struct MultilingualSpokenPunctuationTests {
 
   @Test("Case does not matter for the start word or the command")
   func caseVariants() {
-    #expect(Self.text("alpha SETZE PUNKT beta") == "alpha. Beta")
-    #expect(Self.text("alpha setze punkt beta") == "alpha. Beta")
-    #expect(Self.text("alpha sEtZe KoMmA beta") == "alpha, beta")
+    #expect(Self.text("alpha DIKTIERE PUNKT beta") == "alpha. Beta")
+    #expect(Self.text("alpha diktiere punkt beta") == "alpha. Beta")
+    #expect(Self.text("alpha dIkTiErE KoMmA beta") == "alpha, beta")
   }
 
   // MARK: - French, Spanish, Italian
@@ -84,15 +84,15 @@ struct MultilingualSpokenPunctuationTests {
   @Test(
     "French commands, longest form first",
     arguments: [
-      ("c'est fini Insère point", "c'est fini."),
-      ("voulez-vous venir Insère point d'interrogation", "voulez-vous venir?"),
-      ("quelle surprise Insère point d'exclamation", "quelle surprise!"),
-      ("un deux Insère point-virgule trois", "un deux; trois"),
-      ("un deux Insère virgule trois", "un deux, trois"),
-      ("voici la liste Insère deux points les voici", "voici la liste: les voici"),
-      ("alpha Insère nouvelle ligne beta", "alpha\nBeta"),
-      ("alpha Insère à la ligne beta", "alpha\nBeta"),
-      ("alpha Insère nouveau paragraphe beta", "alpha\n\nBeta"),
+      ("c'est fini Place point", "c'est fini."),
+      ("voulez-vous venir Place point d'interrogation", "voulez-vous venir?"),
+      ("quelle surprise Place point d'exclamation", "quelle surprise!"),
+      ("un deux Place point-virgule trois", "un deux; trois"),
+      ("un deux Place virgule trois", "un deux, trois"),
+      ("voici la liste Place deux points les voici", "voici la liste: les voici"),
+      ("alpha Place nouvelle ligne beta", "alpha\nBeta"),
+      ("alpha Place à la ligne beta", "alpha\nBeta"),
+      ("alpha Place nouveau paragraphe beta", "alpha\n\nBeta"),
     ])
   func french(input: String, expected: String) {
     #expect(Self.text(input, "fr") == expected)
@@ -101,21 +101,21 @@ struct MultilingualSpokenPunctuationTests {
   @Test("A typographic apostrophe from the engine still matches a French form")
   func frenchTypographicApostrophe() {
     #expect(
-      Self.text("voulez-vous venir Insère point d\u{2019}interrogation", "fr")
+      Self.text("voulez-vous venir Place point d\u{2019}interrogation", "fr")
         == "voulez-vous venir?")
   }
 
   @Test(
     "Spanish commands, longest form first",
     arguments: [
-      ("hola Pon punto y coma adiós", "hola; adiós"),
-      ("hola Pon punto adiós", "hola. Adiós"),
-      ("hola Pon coma adiós", "hola, adiós"),
-      ("mira esto Pon dos puntos aquí", "mira esto: aquí"),
-      ("quién es Pon signo de interrogación", "quién es?"),
-      ("qué bien Pon signo de exclamación", "qué bien!"),
-      ("alpha Pon nueva línea beta", "alpha\nBeta"),
-      ("alpha Pon nuevo párrafo beta", "alpha\n\nBeta"),
+      ("hola Añade punto y coma adiós", "hola; adiós"),
+      ("hola Añade punto adiós", "hola. Adiós"),
+      ("hola Añade coma adiós", "hola, adiós"),
+      ("mira esto Añade dos puntos aquí", "mira esto: aquí"),
+      ("quién es Añade signo de interrogación", "quién es?"),
+      ("qué bien Añade signo de exclamación", "qué bien!"),
+      ("alpha Añade nueva línea beta", "alpha\nBeta"),
+      ("alpha Añade nuevo párrafo beta", "alpha\n\nBeta"),
     ])
   func spanish(input: String, expected: String) {
     #expect(Self.text(input, "es") == expected)
@@ -164,12 +164,12 @@ struct MultilingualSpokenPunctuationTests {
       "das ist der springende Punkt",
       "wir kommen auf den Punkt",
       "es kostet drei Komma fünf Prozent",
-      "Besetze Punkt",
-      "Setzen Punkt",
-      "Setze dich bitte hin",
-      "Setze Punktuation",
-      "das ist ein Punkt Setze",
-      "Setze",
+      "Rediktiere Punkt",
+      "Diktieren Punkt",
+      "Diktiere mir bitte einen Brief",
+      "Diktiere Punktuation",
+      "das ist ein Punkt Diktiere",
+      "Diktiere",
       "",
     ])
   func germanNearMisses(input: String) {
@@ -180,33 +180,33 @@ struct MultilingualSpokenPunctuationTests {
 
   @Test("A start word split from its command by a line break is not a command")
   func startWordAndCommandNeverSpanALineBreak() {
-    #expect(Self.text("alpha Setze\nPunkt beta") == "alpha Setze\nPunkt beta")
-    #expect(Self.text("alpha Setze\r\nPunkt beta") == "alpha Setze\r\nPunkt beta")
+    #expect(Self.text("alpha Diktiere\nPunkt beta") == "alpha Diktiere\nPunkt beta")
+    #expect(Self.text("alpha Diktiere\r\nPunkt beta") == "alpha Diktiere\r\nPunkt beta")
   }
 
   // MARK: - Whitespace
 
   @Test("Tabs and no-break spaces count as horizontal whitespace")
   func horizontalWhitespaceVariants() {
-    #expect(Self.text("alpha\tSetze\u{00A0}Punkt beta") == "alpha. Beta")
-    #expect(Self.text("alpha   Setze    Komma   beta") == "alpha,   beta")
+    #expect(Self.text("alpha\tDiktiere\u{00A0}Punkt beta") == "alpha. Beta")
+    #expect(Self.text("alpha   Diktiere    Komma   beta") == "alpha,   beta")
   }
 
   @Test("The leading whitespace a match eats never includes a line break")
   func leadingWhitespaceStopsAtALineBreak() {
-    #expect(Self.text("alpha\nSetze Punkt beta") == "alpha\n. Beta")
+    #expect(Self.text("alpha\nDiktiere Punkt beta") == "alpha\n. Beta")
   }
 
   @Test("A line break a command produced survives the next command")
   func consecutiveBreakThenMark() {
-    #expect(Self.text("alpha Setze neue Zeile Setze Punkt beta") == "alpha\n. Beta")
+    #expect(Self.text("alpha Diktiere neue Zeile Diktiere Punkt beta") == "alpha\n. Beta")
   }
 
   @Test("Indentation and list lines around a rewrite are untouched")
   func indentationAndListsAreKept() {
-    #expect(Self.text("- item eins Setze Punkt\n- item zwei") == "- item eins.\n- item zwei")
-    #expect(Self.text("    code Setze Komma weiter") == "    code, weiter")
-    #expect(Self.text("alpha Setze neue Zeile   beta") == "alpha\nBeta")
+    #expect(Self.text("- item eins Diktiere Punkt\n- item zwei") == "- item eins.\n- item zwei")
+    #expect(Self.text("    code Diktiere Komma weiter") == "    code, weiter")
+    #expect(Self.text("alpha Diktiere neue Zeile   beta") == "alpha\nBeta")
   }
 
   // MARK: - Recogniser marks around a command
@@ -214,10 +214,10 @@ struct MultilingualSpokenPunctuationTests {
   @Test(
     "One recogniser period or comma directly after the command is absorbed",
     arguments: [
-      ("Das ist gut Setze Punkt. Es geht weiter", "Das ist gut. Es geht weiter"),
-      ("alpha Setze Komma, und beta", "alpha, und beta"),
-      ("alpha Setze Neuer Absatz. Hallo", "alpha\n\nHallo"),
-      ("alpha Setze Punkt.", "alpha."),
+      ("Das ist gut Diktiere Punkt. Es geht weiter", "Das ist gut. Es geht weiter"),
+      ("alpha Diktiere Komma, und beta", "alpha, und beta"),
+      ("alpha Diktiere Neuer Absatz. Hallo", "alpha\n\nHallo"),
+      ("alpha Diktiere Punkt.", "alpha."),
     ])
   func trailingRecogniserMark(input: String, expected: String) {
     #expect(Self.text(input) == expected)
@@ -225,26 +225,26 @@ struct MultilingualSpokenPunctuationTests {
 
   /// Shapes the shipping recogniser (Parakeet v3) writes around a spoken command, taken from spoken
   /// samples (#2450 second-pass check): it punctuates the clause before the start word as a question
-  /// or a sentence ("dir? Setze Fragezeichen"), ends with its own mark, and writes a French question
+  /// or a sentence ("dir? Diktiere Fragezeichen"), ends with its own mark, and writes a French question
   /// mark after a space. The command REPLACES a mark the recogniser put on the word before it, and
   /// absorbs one it put after. Expected outputs are literal.
   @Test(
     "A mark the recogniser wrote around a command is replaced, never doubled",
     arguments: [
-      ("de", "Wie geht es dir? Setze Fragezeichen.", "Wie geht es dir?"),
-      ("de", "Das ist toll! Setze Ausrufezeichen.", "Das ist toll!"),
-      ("de", "Wie geht es dir Setze Fragezeichen?", "Wie geht es dir?"),
-      ("de", "Toll Setze Ausrufezeichen!", "Toll!"),
-      ("de", "Hallo, Setze Komma wie geht es dir", "Hallo, wie geht es dir"),
-      ("de", "Es kostet 5. Setze Punkt", "Es kostet 5."),
-      ("fr", "Comment \u{00E7}a va ? Ins\u{00E8}re point d'interrogation", "Comment \u{00E7}a va?"),
-      ("fr", "Comment \u{00E7}a va Ins\u{00E8}re point d'interrogation ?", "Comment \u{00E7}a va?"),
-      ("fr", "Comment \u{00E7}a va\u{00A0}? Ins\u{00E8}re point d'interrogation", "Comment \u{00E7}a va?"),
-      ("fr", "Comment \u{00E7}a va\u{202F}? Ins\u{00E8}re point d'interrogation", "Comment \u{00E7}a va?"),
-      ("fr", "Comment \u{00E7}a va Ins\u{00E8}re point d'interrogation\u{00A0}?", "Comment \u{00E7}a va?"),
-      ("fr", "C'est super Ins\u{00E8}re point d'exclamation\u{202F}!", "C'est super!"),
-      ("fr", "C'est super Ins\u{00E8}re point d'exclamation !", "C'est super!"),
-      ("es", "\u{00BF}C\u{00F3}mo est\u{00E1}s? Pon signo de interrogaci\u{00F3}n.", "\u{00BF}C\u{00F3}mo est\u{00E1}s?"),
+      ("de", "Wie geht es dir? Diktiere Fragezeichen.", "Wie geht es dir?"),
+      ("de", "Das ist toll! Diktiere Ausrufezeichen.", "Das ist toll!"),
+      ("de", "Wie geht es dir Diktiere Fragezeichen?", "Wie geht es dir?"),
+      ("de", "Toll Diktiere Ausrufezeichen!", "Toll!"),
+      ("de", "Hallo, Diktiere Komma wie geht es dir", "Hallo, wie geht es dir"),
+      ("de", "Es kostet 5. Diktiere Punkt", "Es kostet 5."),
+      ("fr", "Comment \u{00E7}a va ? Place point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va Place point d'interrogation ?", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va\u{00A0}? Place point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va\u{202F}? Place point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va Place point d'interrogation\u{00A0}?", "Comment \u{00E7}a va?"),
+      ("fr", "C'est super Place point d'exclamation\u{202F}!", "C'est super!"),
+      ("fr", "C'est super Place point d'exclamation !", "C'est super!"),
+      ("es", "\u{00BF}C\u{00F3}mo est\u{00E1}s? Añade signo de interrogaci\u{00F3}n.", "\u{00BF}C\u{00F3}mo est\u{00E1}s?"),
       ("it", "Come stai? Metti punto interrogativo", "Come stai?"),
     ])
   func recogniserMarksAroundACommand(language: String, input: String, expected: String) {
@@ -255,60 +255,60 @@ struct MultilingualSpokenPunctuationTests {
   /// command writes, so it keeps it: an abbreviation's dot, a list marker, a decimal, a different mark.
   @Test("A different mark before the start word is kept, never deleted")
   func differentMarksBeforeTheStartWordAreKept() {
-    #expect(Self.text("z.B. Setze Komma weiter") == "z.B., weiter")
-    #expect(Self.text("1. Setze Komma weiter") == "1., weiter")
-    #expect(Self.text("3.14 Setze Punkt") == "3.14.")
-    #expect(Self.text("Das ist toll. Setze Ausrufezeichen.") == "Das ist toll.!")
-    #expect(Self.text("Wie geht es dir. Setze Fragezeichen") == "Wie geht es dir.?")
+    #expect(Self.text("z.B. Diktiere Komma weiter") == "z.B., weiter")
+    #expect(Self.text("1. Diktiere Komma weiter") == "1., weiter")
+    #expect(Self.text("3.14 Diktiere Punkt") == "3.14.")
+    #expect(Self.text("Das ist toll. Diktiere Ausrufezeichen.") == "Das ist toll.!")
+    #expect(Self.text("Wie geht es dir. Diktiere Fragezeichen") == "Wie geht es dir.?")
   }
 
   @Test("A line break keeps the sentence end it follows, and a lone ellipsis is not a recogniser mark")
   func breakAndEllipsisKeepTheirMarks() {
-    #expect(Self.text("Erste Zeile. Setze neue Zeile zweite") == "Erste Zeile.\nZweite")
-    #expect(Self.text("Moment\u{2026} Setze Punkt") == "Moment\u{2026}.")
-    #expect(Self.text("Wirklich?! Setze Punkt") == "Wirklich?!.")
+    #expect(Self.text("Erste Zeile. Diktiere neue Zeile zweite") == "Erste Zeile.\nZweite")
+    #expect(Self.text("Moment\u{2026} Diktiere Punkt") == "Moment\u{2026}.")
+    #expect(Self.text("Wirklich?! Diktiere Punkt") == "Wirklich?!.")
   }
 
   @Test("Two commands in a row still stack: the second never eats the first's mark")
   func adjacentCommandsStack() {
-    #expect(Self.text("alpha Setze Komma Setze Punkt beta") == "alpha,. Beta")
+    #expect(Self.text("alpha Diktiere Komma Diktiere Punkt beta") == "alpha,. Beta")
     // Identical marks are the case the guard exists for: without it the second command would read the
     // first command's own mark as a recogniser duplicate and drop it.
-    #expect(Self.text("alpha Setze Punkt Setze Punkt beta") == "alpha.. Beta")
-    #expect(Self.text("alpha Setze Komma Setze Komma beta") == "alpha,, beta")
+    #expect(Self.text("alpha Diktiere Punkt Diktiere Punkt beta") == "alpha.. Beta")
+    #expect(Self.text("alpha Diktiere Komma Diktiere Komma beta") == "alpha,, beta")
   }
 
   @Test("A dot glued to the next token is not absorbed")
   func gluedDotIsKept() {
-    #expect(Self.text("alpha Setze Punkt.com") == "alpha..com")
+    #expect(Self.text("alpha Diktiere Punkt.com") == "alpha..com")
   }
 
   // MARK: - Capitalisation
 
   @Test("Capitalisation happens only after a sentence-ending rewrite")
   func capitalisationScope() {
-    #expect(Self.text("alpha Setze Komma beta gamma. delta") == "alpha, beta gamma. delta")
-    #expect(Self.text("alpha Setze Punkt beta gamma. delta") == "alpha. Beta gamma. delta")
-    #expect(Self.text("alpha Setze Punkt 42 beta") == "alpha. 42 beta")
-    #expect(Self.text("alpha Setze Punkt «beta»") == "alpha. «Beta»")
-    #expect(Self.text("alpha Setze Punkt\nbeta") == "alpha.\nBeta")
-    #expect(Self.text("alpha Setze Punkt ßeta") == "alpha. SSeta")
+    #expect(Self.text("alpha Diktiere Komma beta gamma. delta") == "alpha, beta gamma. delta")
+    #expect(Self.text("alpha Diktiere Punkt beta gamma. delta") == "alpha. Beta gamma. delta")
+    #expect(Self.text("alpha Diktiere Punkt 42 beta") == "alpha. 42 beta")
+    #expect(Self.text("alpha Diktiere Punkt «beta»") == "alpha. «Beta»")
+    #expect(Self.text("alpha Diktiere Punkt\nbeta") == "alpha.\nBeta")
+    #expect(Self.text("alpha Diktiere Punkt ßeta") == "alpha. SSeta")
     #expect(
-      Self.apply("alpha Setze Punkt «zzsnip42»", sentinels: ["zzsnip42"]).text
+      Self.apply("alpha Diktiere Punkt «zzsnip42»", sentinels: ["zzsnip42"]).text
         == "alpha. «zzsnip42»")
-    #expect(Self.text("alpha Pon punto ¿cómo", "es") == "alpha. ¿Cómo")
+    #expect(Self.text("alpha Añade punto ¿cómo", "es") == "alpha. ¿Cómo")
   }
 
   @Test("An accented first letter is capitalised")
   func accentedCapital() {
-    #expect(Self.text("alpha Pon punto élite", "es") == "alpha. Élite")
+    #expect(Self.text("alpha Añade punto élite", "es") == "alpha. Élite")
   }
 
   // MARK: - Consecutive commands and text edges
 
   @Test("Consecutive commands")
   func consecutiveCommands() {
-    let result = Self.apply("alpha Setze Punkt Setze neuer Absatz beta")
+    let result = Self.apply("alpha Diktiere Punkt Diktiere neuer Absatz beta")
     #expect(result.text == "alpha.\n\nBeta")
     #expect(result.rulesFired == 2)
   }
@@ -316,11 +316,11 @@ struct MultilingualSpokenPunctuationTests {
   @Test(
     "Commands at the very start and end of the text",
     arguments: [
-      ("Setze Punkt", "."),
-      ("Setze Komma", ","),
-      ("Setze neue Zeile hallo", "\nHallo"),
-      ("hallo Setze Punkt", "hallo."),
-      ("hallo Setze Fragezeichen", "hallo?"),
+      ("Diktiere Punkt", "."),
+      ("Diktiere Komma", ","),
+      ("Diktiere neue Zeile hallo", "\nHallo"),
+      ("hallo Diktiere Punkt", "hallo."),
+      ("hallo Diktiere Fragezeichen", "hallo?"),
     ])
   func edges(input: String, expected: String) {
     #expect(Self.text(input) == expected)
@@ -330,9 +330,9 @@ struct MultilingualSpokenPunctuationTests {
 
   @Test("A custom start word works and the default no longer does")
   func customStartWord() {
-    #expect(Self.apply("alpha Diktiere Punkt beta", start: "Diktiere").text == "alpha. Beta")
+    #expect(Self.apply("alpha Sprich Punkt beta", start: "Sprich").text == "alpha. Beta")
     #expect(
-      Self.apply("alpha Setze Punkt beta", start: "Diktiere").text == "alpha Setze Punkt beta")
+      Self.apply("alpha Diktiere Punkt beta", start: "Sprich").text == "alpha Diktiere Punkt beta")
   }
 
   @Test("A start word with an apostrophe or hyphen is matched literally")
@@ -347,7 +347,7 @@ struct MultilingualSpokenPunctuationTests {
     // Validation would refuse these; the pass must still treat them literally if one ever arrives.
     #expect(Self.apply("alpha Setzex Punkt beta", start: "Setz.").text == "alpha Setzex Punkt beta")
     #expect(
-      Self.apply("alpha Setze Punkt beta", start: "(Setze|alpha)").text == "alpha Setze Punkt beta")
+      Self.apply("alpha Diktiere Punkt beta", start: "(Diktiere|alpha)").text == "alpha Diktiere Punkt beta")
   }
 
   @Test("A decomposed start word is normalised and matches NFC text, and the result is exact")
@@ -360,11 +360,11 @@ struct MultilingualSpokenPunctuationTests {
   @Test("Decomposed commands match without normalising the surrounding text")
   func decomposedCommandsMatch() {
     let prefix = "cafe\u{0301}"
-    let french = Self.apply("\(prefix) Inse\u{0300}re point beta", "fr")
-    #expect(Self.scalars(french.text) == Self.scalars("\(prefix). Beta"))
+    let french = Self.apply("\(prefix) Place a\u{0300} la ligne beta", "fr")
+    #expect(Self.scalars(french.text) == Self.scalars("\(prefix)\nBeta"))
     #expect(french.rulesFired == 1)
 
-    let spanish = Self.apply("alpha Pon nuevo pa\u{0301}rrafo beta", "es")
+    let spanish = Self.apply("alpha Añade nuevo pa\u{0301}rrafo beta", "es")
     #expect(Self.scalars(spanish.text) == Self.scalars("alpha\n\nBeta"))
     #expect(spanish.rulesFired == 1)
   }
@@ -373,8 +373,8 @@ struct MultilingualSpokenPunctuationTests {
     "A language with no table, English included, is never given another table",
     arguments: ["en", "nl", "pl", "xx", ""])
   func unsupportedLanguage(language: String) {
-    let input = "alpha Setze Punkt beta period comma"
-    let result = Self.apply(input, language, start: "Setze")
+    let input = "alpha Diktiere Punkt beta period comma"
+    let result = Self.apply(input, language, start: "Diktiere")
     #expect(result.text == input)
     #expect(result.rulesFired == 0)
   }
@@ -383,13 +383,13 @@ struct MultilingualSpokenPunctuationTests {
     "A regional tag and any casing reach the same table",
     arguments: ["de", "de-DE", "de_DE", "DE", "De-at"])
   func regionalTags(language: String) {
-    #expect(Self.apply("alpha Setze Punkt beta", language, start: "Setze").text == "alpha. Beta")
+    #expect(Self.apply("alpha Diktiere Punkt beta", language, start: "Diktiere").text == "alpha. Beta")
   }
 
-  @Test("An empty or blank start word never matches anything")
+  @Test("An empty or blank start word is the no-start-word choice: commands are read bare")
   func emptyStartWord() {
-    #expect(Self.apply("alpha Punkt beta", start: "").text == "alpha Punkt beta")
-    #expect(Self.apply("alpha  Punkt beta", start: "  ").text == "alpha  Punkt beta")
+    #expect(Self.apply("alpha Punkt beta", start: "").text == "alpha. Beta")
+    #expect(Self.apply("alpha  Punkt beta", start: "  ").text == "alpha. Beta")
   }
 
   // MARK: - Protected sentinels
@@ -398,18 +398,18 @@ struct MultilingualSpokenPunctuationTests {
   func capitalisationSkipsASentinel() {
     let sentinel = "zzsnip42"
     #expect(
-      Self.apply("alpha Setze Punkt zzsnip42 beta", sentinels: [sentinel]).text
+      Self.apply("alpha Diktiere Punkt zzsnip42 beta", sentinels: [sentinel]).text
         == "alpha. zzsnip42 beta")
     // Control: the same text without the sentinel being declared protected IS capitalised.
-    #expect(Self.apply("alpha Setze Punkt zzsnip42 beta").text == "alpha. Zzsnip42 beta")
+    #expect(Self.apply("alpha Diktiere Punkt zzsnip42 beta").text == "alpha. Zzsnip42 beta")
   }
 
   @Test("A sentinel before or after a command is carried through unchanged")
   func sentinelsSurviveAroundCommands() {
     let sentinel = "EWSNIP0123456789abcdef0123456789abcdef"
-    let before = Self.apply("\(sentinel) Setze Punkt beta", sentinels: [sentinel])
+    let before = Self.apply("\(sentinel) Diktiere Punkt beta", sentinels: [sentinel])
     #expect(before.text == "\(sentinel). Beta")
-    let after = Self.apply("alpha Setze Komma \(sentinel) beta", sentinels: [sentinel])
+    let after = Self.apply("alpha Diktiere Komma \(sentinel) beta", sentinels: [sentinel])
     #expect(after.text == "alpha, \(sentinel) beta")
   }
 
@@ -417,18 +417,18 @@ struct MultilingualSpokenPunctuationTests {
 
   @Test("The fired count is exact")
   func firedCounts() {
-    #expect(Self.apply("alpha Setze Punkt beta Setze Komma gamma").rulesFired == 2)
+    #expect(Self.apply("alpha Diktiere Punkt beta Diktiere Komma gamma").rulesFired == 2)
     #expect(
-      Self.apply("alpha Setze Punkt beta Setze Komma gamma Setze Fragezeichen").rulesFired == 3)
+      Self.apply("alpha Diktiere Punkt beta Diktiere Komma gamma Diktiere Fragezeichen").rulesFired == 3)
     #expect(Self.apply("alpha beta gamma").rulesFired == 0)
   }
 
   @Test("A second application changes nothing and fires nothing")
   func idempotence() {
     let inputs = [
-      "alpha Setze Punkt beta Setze Komma gamma",
-      "alpha Setze neuer Absatz beta Setze Fragezeichen",
-      "alpha Setze Punkt. Es geht weiter",
+      "alpha Diktiere Punkt beta Diktiere Komma gamma",
+      "alpha Diktiere neuer Absatz beta Diktiere Fragezeichen",
+      "alpha Diktiere Punkt. Es geht weiter",
     ]
     for input in inputs {
       let once = Self.apply(input)
@@ -479,5 +479,37 @@ struct MultilingualSpokenPunctuationTests {
       let lowered = forms.map { $0.lowercased() }
       #expect(Set(lowered).count == lowered.count, "language: \(language)")
     }
+  }
+
+  // MARK: - No start word (the user cleared the field)
+
+  @Test(
+    "With no start word the command words are read bare, in every language",
+    arguments: [
+      ("de", "Das Wetter ist schön Punkt", "Das Wetter ist schön."),
+      ("de", "Hallo Komma wie geht es dir Fragezeichen", "Hallo, wie geht es dir?"),
+      ("de", "Erste Zeile neue Zeile zweite Zeile", "Erste Zeile\nZweite Zeile"),
+      ("fr", "Comment ça va point d'interrogation", "Comment ça va?"),
+      ("es", "Cómo estás signo de interrogación", "Cómo estás?"),
+      ("it", "Come stai punto interrogativo", "Come stai?"),
+    ])
+  func bareCommandsWithNoStartWord(language: String, input: String, expected: String) {
+    #expect(Self.apply(input, language, start: "").text == expected)
+  }
+
+  @Test("With no start word a command word inside a sentence is a mark: the cost the user chose")
+  func noStartWordConvertsOrdinaryUse() {
+    #expect(Self.apply("Das ist der springende Punkt", "de", start: "").text == "Das ist der springende.")
+    #expect(Self.apply("Drei Komma fünf Prozent", "de", start: "").text == "Drei, fünf Prozent")
+  }
+
+  @Test("With no start word the recogniser's mark around a command is still collapsed once")
+  func noStartWordCollapsesTheRecogniserMark() {
+    #expect(Self.apply("Wie geht es dir? Fragezeichen.", "de", start: "").text == "Wie geht es dir?")
+  }
+
+  @Test("With no start word the word 'Diktiere' is just a word again")
+  func noStartWordLeavesTheOldDefaultAlone() {
+    #expect(Self.apply("Diktiere mir bitte einen Brief", "de", start: "").text == "Diktiere mir bitte einen Brief")
   }
 }

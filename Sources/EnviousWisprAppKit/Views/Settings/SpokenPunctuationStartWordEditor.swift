@@ -74,6 +74,9 @@ final class SpokenPunctuationStartWordEditor {
   /// The start word in force for the picked language: the user's word, else the shipped default.
   var effectiveWord: String { Self.effectiveWord(for: language, settings: settings) }
 
+  /// True while the picked language has NO start word, the user's choice of a blank field.
+  var hasNoStartWord: Bool { effectiveWord.isEmpty }
+
   /// True while the picked language has a word of the user's own, which is when Reset does something.
   var isCustomised: Bool { settings.spokenPunctuation.startWordOverrides[language] != nil }
 
@@ -85,7 +88,7 @@ final class SpokenPunctuationStartWordEditor {
       )?
       .spokenForms.first
     else { return nil }
-    return effectiveWord + " " + form
+    return effectiveWord.isEmpty ? form : effectiveWord + " " + form
   }
 
   // MARK: - Editing

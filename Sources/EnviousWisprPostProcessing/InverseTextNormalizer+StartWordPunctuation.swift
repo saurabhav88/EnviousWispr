@@ -19,8 +19,12 @@ extension InverseTextNormalizer {
 
   /// #2450: spoken punctuation for `de`, `fr`, `es` and `it`, behind a START WORD.
   ///
-  /// "Setze Punkt" becomes `.`; "Punkt" on its own is a noun and is left alone. Returns the input
-  /// byte for byte when the language has no table, the start word is empty, or nothing matches.
+  /// "Diktiere Punkt" becomes `.`; "Punkt" on its own is a noun and is left alone. Returns the input
+  /// byte for byte when the language has no table or nothing matches.
+  ///
+  /// An EMPTY `startWord` is the user's choice of no start word: the command forms are then matched
+  /// bare, like English, so "Punkt" alone becomes `.` wherever it is said, inside a normal sentence
+  /// too. Everything else (marks, breaks, capitalisation) behaves the same.
   ///
   /// - Parameters:
   ///   - language: the RESOLVED dictation language (`de`, `de-DE`, ...). No detection happens here.
@@ -41,9 +45,9 @@ extension InverseTextNormalizer {
   ///   with a stray space.
   /// - One `.` or `,` the recogniser attached directly after the command is consumed (the reporting
   ///   transcript shows `Punkt.` and `Neuer Absatz.`), but only when whitespace or the end follows,
-  ///   so "Setze Punkt.com" keeps its dot.
+  ///   so "Diktiere Punkt.com" keeps its dot.
   /// - Forms are tried LONGEST FIRST: non-English commands nest ("point d'interrogation" contains
-  ///   "point"), and shortest-first would turn `Insère point d'interrogation` into `. d'interrogation`.
+  ///   "point"), and shortest-first would turn `Place point d'interrogation` into `. d'interrogation`.
   ///
   /// After a rewrite that produces `.`, `?`, `!`, a line break or a paragraph break, the first letter
   /// of the next word is uppercased (all four languages capitalise sentence starts), and only there:
@@ -60,7 +64,6 @@ extension InverseTextNormalizer {
     guard let rules = SpokenPunctuationRules.rules(for: language) else { return unchanged }
     let start = startWord.trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping
-    guard !start.isEmpty else { return unchanged }
 
     var ruleByKey: [String: SpokenPunctuationRule] = [:]
     var breakForms: [String] = []
@@ -101,11 +104,11 @@ extension InverseTextNormalizer {
         continue
       }
       // A recogniser that heard a question or a sentence end before the command may already have
-      // written the SAME mark on the word before the start word ("Wie geht es dir? Setze
+      // written the SAME mark on the word before the start word ("Wie geht es dir? Diktiere
       // Fragezeichen", measured with Parakeet v3 on spoken German, Spanish, Italian and French).
       // One mark is what the user asked for, so the duplicate is dropped. Only an IDENTICAL mark
-      // is dropped, and only when it follows a letter or digit: a different mark ("z.B. Setze
-      // Komma", "1. Setze Komma") is kept, because the pass cannot tell whether the recogniser or
+      // is dropped, and only when it follows a letter or digit: a different mark ("z.B. Diktiere
+      // Komma", "1. Diktiere Komma") is kept, because the pass cannot tell whether the recogniser or
       // the user wrote it. Never a break command, an ellipsis, a `?!` run, or the mark the
       // previous command wrote: after a directly adjacent command the gap is empty and `out` ends
       // with that replacement, so consecutive commands still stack.
@@ -144,7 +147,8 @@ extension InverseTextNormalizer {
     let trailingMark = #"(?:(?:[.,!?]|[ \t\x{00A0}\x{202F}][!?])(?=\s|$))?"#
     let breaks = alternation(breakForms)
     let marks = alternation(markForms)
-    return ws + #"*\b"# + literal(start) + ws + "+(?:(" + breaks + #")\b"# + trailingMark + ws
+    let lead = start.isEmpty ? "" : literal(start) + ws + "+"
+    return ws + #"*\b"# + lead + "(?:(" + breaks + #")\b"# + trailingMark + ws
       + "*|(" + marks + #")\b"# + trailingMark + ")"
   }
 

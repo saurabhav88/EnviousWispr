@@ -18,7 +18,7 @@ import Testing
 @Suite("Spoken punctuation plumbing (#2450)", .tags(.productOutcome))
 struct SpokenPunctuationSettingsPlumbingTests {
 
-  private static let allDefaults = ["de": "Setze", "fr": "Insère", "es": "Pon", "it": "Metti"]
+  private static let allDefaults = ["de": "Diktiere", "fr": "Place", "es": "Añade", "it": "Metti"]
 
   private static func freshSettings() -> SettingsManager {
     SettingsManager(defaults: TestDefaults.suite("SP-2450-\(UUID().uuidString)")!)
@@ -69,10 +69,10 @@ struct SpokenPunctuationSettingsPlumbingTests {
   func initialSyncCarriesTheWholeValue() {
     let (sync, settings, parakeet, whisperKit) = makeSync()
     settings.spokenPunctuation.enabled = true
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     sync.applyInitialSettings(settings)
 
-    let expected = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Diktiere"])
+    let expected = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
     #expect(parakeet.spokenPunctuation == expected)
     #expect(whisperKit.spokenPunctuation == expected)
   }
@@ -115,10 +115,10 @@ struct SpokenPunctuationSettingsPlumbingTests {
     let context = TextProcessingContext(text: "hello world", language: nil)
 
     step.spokenPunctuation = SpokenPunctuationSettings(
-      enabled: true, startWordOverrides: ["de": "Diktiere"])
+      enabled: true, startWordOverrides: ["de": "Sprich"])
     _ = try await step.process(context)
     step.spokenPunctuation = SpokenPunctuationSettings(
-      enabled: false, startWordOverrides: ["de": "Diktiere"])
+      enabled: false, startWordOverrides: ["de": "Sprich"])
     _ = try await step.process(context)
 
     #expect(seen.all == [true, false])
@@ -149,15 +149,15 @@ struct SpokenPunctuationSettingsPlumbingTests {
   @Test("A snapshot read-back drops an invalid recorded word and keeps the rest")
   func snapshotReadBackRevalidates() {
     let tampered = snapshot(
-      enabled: true, words: ["de": "Punkt", "fr": "Diktiere", "xx": "Wort", "es": "zwei Worte"])
-    #expect(tampered.spokenPunctuationSettings.startWordOverrides == ["fr": "Diktiere"])
+      enabled: true, words: ["de": "Punkt", "fr": "Sprich", "xx": "Wort", "es": "zwei Worte"])
+    #expect(tampered.spokenPunctuationSettings.startWordOverrides == ["fr": "Sprich"])
   }
 
   // MARK: - Recovery
 
   @Test("A recovered take replays under the start words recorded with it")
   func recoveryAppliesTheRecordedValue() {
-    let recorded = ["de": "Diktiere", "fr": "Insère", "es": "Pon", "it": "Metti"]
+    let recorded = ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"]
     let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
     processor.applySettings(snapshot(enabled: true, words: recorded))
     #expect(
@@ -179,7 +179,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
     let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
     // Poison first, so the nil branch is shown to WRITE the default rather than leave a fresh one.
     processor.inverseTextNormalizationStep.spokenPunctuation = SpokenPunctuationSettings(
-      enabled: true, startWordOverrides: ["de": "Diktiere"])
+      enabled: true, startWordOverrides: ["de": "Sprich"])
     processor.applySettings(snapshot(enabled: nil, words: nil))
     #expect(
       processor.inverseTextNormalizationStep.spokenPunctuation == SpokenPunctuationSettings.off)
@@ -195,13 +195,13 @@ struct SpokenPunctuationSettingsPlumbingTests {
   func importFreezeCapturesEffectiveWords() {
     let settings = Self.freshSettings()
     settings.spokenPunctuation.enabled = true
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
 
     let frozen = FileImportSettingsFreeze.snapshot(settings: settings)
     #expect(frozen.spokenPunctuationEnabled == true)
     #expect(
       frozen.spokenPunctuationStartWords
-        == ["de": "Diktiere", "fr": "Insère", "es": "Pon", "it": "Metti"])
+        == ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"])
   }
 
   @Test("With nothing customised the import freezes all four defaults")
@@ -214,17 +214,17 @@ struct SpokenPunctuationSettingsPlumbingTests {
   @Test("A frozen import is unaffected by a later settings change")
   func importFreezeIsAuthoritative() {
     let settings = Self.freshSettings()
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     let frozen = FileImportSettingsFreeze.snapshot(settings: settings)
     settings.commitSpokenPunctuationStartWord("Schreibe", language: "de")
     settings.spokenPunctuation.enabled = true
-    #expect(frozen.spokenPunctuationStartWords?["de"] == "Diktiere")
+    #expect(frozen.spokenPunctuationStartWords?["de"] == "Sprich")
     #expect(frozen.spokenPunctuationEnabled == false)
   }
 
   @Test("The import runner applies the frozen value to the steps it builds")
   func importRunnerAppliesTheFrozenValue() {
-    let recorded = ["de": "Diktiere", "fr": "Insère", "es": "Pon", "it": "Metti"]
+    let recorded = ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"]
     let runner = FileImportRunner(keychainManager: KeychainManager())
     let steps = runner.makeSteps(settings: snapshot(enabled: true, words: recorded))
     #expect(

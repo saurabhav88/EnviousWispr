@@ -67,6 +67,18 @@ enum SpokenPunctuationCopy {
     localized:
       "Say your start word and then the mark. The start word is what tells a command from an ordinary word. You can set a different word for each language.",
     comment: "Speech engine settings, Start word row: the help behind the question mark.")
+  static let startWordBlankHint = String(
+    localized: "Leave it blank to use no start word.",
+    comment: "Speech engine settings, Start word row: how to turn the start word off.")
+  static let noStartWordWarning = String(
+    localized:
+      "No start word. A command word becomes a mark wherever you say it, even inside a normal sentence.",
+    comment:
+      "Speech engine settings, Start word row: shown while the field is blank, because every command word then becomes a mark."
+  )
+  static let noStartWordPlaceholder = String(
+    localized: "None",
+    comment: "Speech engine settings, Start word row: the blank field's placeholder, meaning no start word.")
   static let languagePickerLabel = String(
     localized: "Start word for",
     comment:
@@ -100,7 +112,7 @@ enum SpokenPunctuationCopy {
     String(
       localized: "Say \"\(command)\" to insert a period.",
       comment:
-        "Speech engine settings, Start word row: an example. The placeholder is a spoken command in the dictation language, for example Setze Punkt; keep it exactly."
+        "Speech engine settings, Start word row: an example. The placeholder is a spoken command in the dictation language, for example Diktiere Punkt; keep it exactly."
     )
   }
 

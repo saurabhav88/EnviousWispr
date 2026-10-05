@@ -3615,7 +3615,7 @@ extension KernelFinalizationWiringTests {
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(outcome: outcome, context: context, steps: punctuationSteps())
 
-    let german = "Ich gehe heute Abend zum See und danach in die Stadt zurück Setze Punkt"
+    let german = "Ich gehe heute Abend zum See und danach in die Stadt zurück Diktiere Punkt"
     let text = try await wiring.processText(german) {}
     #expect(text == "Ich gehe heute Abend zum See und danach in die Stadt zurück.")
     // Hop 1 and 2: the step's run outcome reached the finalization outcome.
@@ -3655,7 +3655,7 @@ extension KernelFinalizationWiringTests {
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(outcome: outcome, context: context, steps: punctuationSteps())
 
-    _ = try await wiring.processText("Ich gehe heute Abend zum See und danach in die Stadt zurück Setze Punkt") {}
+    _ = try await wiring.processText("Ich gehe heute Abend zum See und danach in die Stadt zurück Diktiere Punkt") {}
     #expect(outcome.punctuationStatus == "rewrote")
 
     _ = try await wiring.processText("please send the invoice to the client before the meeting tomorrow") {}

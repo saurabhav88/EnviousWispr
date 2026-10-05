@@ -77,6 +77,17 @@ struct SpokenPunctuationStartWordRow: View {
           .foregroundStyle(.stError)
           .fixedSize(horizontal: false, vertical: true)
       }
+      if editor.hasNoStartWord {
+        Label(SpokenPunctuationCopy.noStartWordWarning, systemImage: "exclamationmark.triangle.fill")
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } else {
+        Text(SpokenPunctuationCopy.startWordBlankHint)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
       Text(SpokenPunctuationCopy.pickerIsNotDictationLanguage)
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
@@ -94,7 +105,8 @@ struct SpokenPunctuationStartWordRow: View {
       "",
       text: Binding(
         get: { editor.draft },
-        set: { editor.userEdited($0) })
+        set: { editor.userEdited($0) }),
+      prompt: Text(SpokenPunctuationCopy.noStartWordPlaceholder)
     )
     .focused($fieldFocused)
     .settingsFieldChrome(focused: $fieldFocused)

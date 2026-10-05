@@ -61,7 +61,7 @@ struct SpokenPunctuationStartWordEditorTests {
   @Test("It shows the default word and a command built from the rules for every language")
   func defaultsAndExamples() throws {
     let expected = [
-      "de": "Setze", "fr": "Insère", "es": "Pon", "it": "Metti",
+      "de": "Diktiere", "fr": "Place", "es": "Añade", "it": "Metti",
     ]
     for code in SpokenPunctuationStartWordEditor.languages {
       let editor = SpokenPunctuationStartWordEditor(settings: Self.freshSettings())
@@ -81,31 +81,30 @@ struct SpokenPunctuationStartWordEditorTests {
   func validCommit() {
     let settings = Self.freshSettings()
     let editor = SpokenPunctuationStartWordEditor(settings: settings)
-    editor.userEdited("  Diktiere ")
+    editor.userEdited("  Sprich ")
     editor.commitDraft()
-    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Diktiere"])
-    #expect(editor.effectiveWord == "Diktiere")
-    #expect(editor.draft == "Diktiere")
+    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Sprich"])
+    #expect(editor.effectiveWord == "Sprich")
+    #expect(editor.draft == "Sprich")
     #expect(editor.rejection == nil)
     #expect(editor.isCustomised)
-    #expect(editor.exampleCommand == "Diktiere Punkt")
+    #expect(editor.exampleCommand == "Sprich Punkt")
   }
 
   @Test("A word equal to the default is stored as no word of the user's own")
   func defaultWordIsNotACustomisation() {
     let settings = Self.freshSettings()
     let editor = SpokenPunctuationStartWordEditor(settings: settings)
-    editor.userEdited("setze")
+    editor.userEdited("diktiere")
     editor.commitDraft()
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
     #expect(editor.isCustomised == false)
-    #expect(editor.draft == "Setze")
+    #expect(editor.draft == "Diktiere")
   }
 
   @Test("Every refusal reverts the field, keeps the stored word and shows its reason")
   func everyRefusalReverts() {
     let cases: [(String, SpokenPunctuationStartWord.Refusal)] = [
-      ("", .empty),
       ("zwei Worte", .notOneToken),
       ("Setze1", .invalidCharacters),
       ("a", .tooShort),
@@ -115,13 +114,13 @@ struct SpokenPunctuationStartWordEditorTests {
     for (input, reason) in cases {
       let settings = Self.freshSettings()
       let editor = SpokenPunctuationStartWordEditor(settings: settings)
-      editor.userEdited("Diktiere")
+      editor.userEdited("Sprich")
       editor.commitDraft()
       editor.userEdited(input)
       editor.commitDraft()
       #expect(editor.rejection == reason, "input \(input.debugDescription)")
-      #expect(editor.draft == "Diktiere", "input \(input.debugDescription)")
-      #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Diktiere"])
+      #expect(editor.draft == "Sprich", "input \(input.debugDescription)")
+      #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Sprich"])
     }
   }
 
@@ -153,11 +152,11 @@ struct SpokenPunctuationStartWordEditorTests {
     settings.onChange = { _ in counter.changes += 1 }
     let editor = SpokenPunctuationStartWordEditor(settings: settings)
 
-    editor.userEdited("Diktiere")
+    editor.userEdited("Sprich")
     editor.commitDraft()
     editor.commitDraft()
     #expect(counter.changes == 1, "one commit, one persisted change")
-    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Diktiere"])
+    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Sprich"])
 
     editor.userEdited("a")
     editor.commitDraft()
@@ -172,11 +171,11 @@ struct SpokenPunctuationStartWordEditorTests {
   func switchKeepsAValidDraftForTheOldLanguage() {
     let settings = Self.freshSettings()
     let editor = SpokenPunctuationStartWordEditor(settings: settings)
-    editor.userEdited("Diktiere")
+    editor.userEdited("Sprich")
     editor.selectLanguage("fr")
-    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Diktiere"])
+    #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Sprich"])
     #expect(editor.language == "fr")
-    #expect(editor.draft == "Insère")
+    #expect(editor.draft == "Place")
     #expect(editor.rejection == nil)
   }
 
@@ -187,7 +186,7 @@ struct SpokenPunctuationStartWordEditorTests {
     editor.userEdited("zwei Worte")
     editor.selectLanguage("es")
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
-    #expect(editor.draft == "Pon")
+    #expect(editor.draft == "Añade")
     #expect(editor.rejection == nil, "the reason was about the old language's input")
   }
 
@@ -195,10 +194,10 @@ struct SpokenPunctuationStartWordEditorTests {
   func switchNeverCrossesLanguages() {
     let settings = Self.freshSettings()
     let editor = SpokenPunctuationStartWordEditor(settings: settings)
-    editor.userEdited("Diktiere")
+    editor.userEdited("Sprich")
     editor.selectLanguage("it")
     #expect(settings.spokenPunctuation.startWordOverrides["it"] == nil)
-    #expect(settings.spokenPunctuation.startWordOverrides["de"] == "Diktiere")
+    #expect(settings.spokenPunctuation.startWordOverrides["de"] == "Sprich")
   }
 
   // MARK: - Reset
@@ -207,7 +206,7 @@ struct SpokenPunctuationStartWordEditorTests {
   func resetRestoresTheDefault() {
     let settings = Self.freshSettings()
     let editor = SpokenPunctuationStartWordEditor(settings: settings)
-    editor.userEdited("Diktiere")
+    editor.userEdited("Sprich")
     editor.commitDraft()
     editor.userEdited("a")
     editor.commitDraft()
@@ -215,16 +214,16 @@ struct SpokenPunctuationStartWordEditorTests {
 
     editor.reset()
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
-    #expect(editor.draft == "Setze")
+    #expect(editor.draft == "Diktiere")
     #expect(editor.rejection == nil)
     #expect(editor.isCustomised == false)
-    #expect(editor.exampleCommand == "Setze Punkt")
+    #expect(editor.exampleCommand == "Diktiere Punkt")
   }
 
   @Test("Reset changes only the picked language")
   func resetIsPerLanguage() {
     let settings = Self.freshSettings()
-    settings.commitSpokenPunctuationStartWord("Diktiere", language: "de")
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     settings.commitSpokenPunctuationStartWord("Schreibe", language: "fr")
     let editor = SpokenPunctuationStartWordEditor(settings: settings)
     editor.reset()
@@ -249,6 +248,25 @@ struct SpokenPunctuationStartWordEditorTests {
     let editor = SpokenPunctuationStartWordEditor(settings: settings)
     editor.userEdited("zwei Worte")
     editor.settleBeforeLeaving()
+    #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
+  }
+
+  @Test("A blank field is the choice of no start word, and Reset brings the default back")
+  func blankFieldMeansNoStartWord() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    editor.userEdited("   ")
+    editor.commitDraft()
+    #expect(editor.rejection == nil)
+    #expect(editor.hasNoStartWord)
+    #expect(editor.draft == "")
+    #expect(editor.isCustomised)
+    #expect(settings.spokenPunctuation.startWordOverrides == ["de": ""])
+    #expect(editor.exampleCommand == "neuer Absatz" || editor.exampleCommand == "Punkt")
+
+    editor.reset()
+    #expect(editor.hasNoStartWord == false)
+    #expect(editor.draft == "Diktiere")
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
   }
 }

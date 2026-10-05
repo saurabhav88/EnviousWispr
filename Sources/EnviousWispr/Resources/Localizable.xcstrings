@@ -9291,6 +9291,17 @@
         }
       }
     },
+    "Leave it blank to use no start word." : {
+      "comment" : "Speech engine settings, Start word row: how to turn the start word off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lass es leer, um kein Startwort zu verwenden."
+          }
+        }
+      }
+    },
     "LLM Deactivated" : {
       "comment" : "Sidebar and menu: no AI polish provider is chosen.",
       "localizations" : {
@@ -11181,6 +11192,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine gesprochenen Varianten"
+          }
+        }
+      }
+    },
+    "No start word. A command word becomes a mark wherever you say it, even inside a normal sentence." : {
+      "comment" : "Speech engine settings, Start word row: shown while the field is blank, because every command word then becomes a mark.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Startwort. Ein Befehlswort wird überall zum Zeichen, wo du es sagst, auch mitten in einem normalen Satz."
           }
         }
       }
@@ -14620,7 +14642,7 @@
       }
     },
     "Say \"%@\" to insert a period." : {
-      "comment" : "Speech engine settings, Start word row: an example. The placeholder is a spoken command in the dictation language, for example Setze Punkt; keep it exactly.",
+      "comment" : "Speech engine settings, Start word row: an example. The placeholder is a spoken command in the dictation language, for example Diktiere Punkt; keep it exactly.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23126,13 +23148,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Setze Punkt\", in French \"Insère point\", in Spanish \"Pon punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before."
+            "value" : "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schalte „Gesprochene Satzzeichen“ unter Diktateinstellungen > Engine ein und sag dann vor dem Zeichen ein Startwort. Auf Deutsch sagst du „Setze Punkt“, auf Französisch „Insère point“, auf Spanisch „Pon punto“ und auf Italienisch „Metti punto“. Du kannst das Startwort für jede Sprache ändern. Englisch funktioniert wie bisher."
+            "value" : "Schalte „Gesprochene Satzzeichen“ unter Diktateinstellungen > Engine ein und sag dann vor dem Zeichen ein Startwort. Auf Deutsch sagst du „Diktiere Punkt“, auf Französisch „Place point“, auf Spanisch „Añade punto“ und auf Italienisch „Metti punto“. Du kannst das Startwort für jede Sprache ändern. Englisch funktioniert wie bisher."
           }
         }
       }

@@ -231,10 +231,10 @@ struct SpokenPunctuationHelpArticleParityTests {
   @Test("A well-formed table parses, with a break label turned into its text")
   func parserAcceptsAGoodTable() throws {
     let rows = try Self.parseTable(
-      markdown: Self.table(["| Setze Punkt | . |", "| Setze neue Zeile | a line break |"]),
+      markdown: Self.table(["| Diktiere Punkt | . |", "| Diktiere neue Zeile | a line break |"]),
       heading: "#### Test")
     #expect(
-      rows == [Row(say: "Setze Punkt", result: "."), Row(say: "Setze neue Zeile", result: "\n")])
+      rows == [Row(say: "Diktiere Punkt", result: "."), Row(say: "Diktiere neue Zeile", result: "\n")])
   }
 
   @Test("A missing heading, a repeated heading, no table and an empty table all fail")
@@ -280,9 +280,9 @@ struct SpokenPunctuationHelpArticleParityTests {
       try Self.parseTable(markdown: Self.table(["| a b | . | extra |"]), heading: "#### Test")
     }
     // A line the website renders as a row without a leading pipe must not slip past the parser.
-    #expect(throws: ContractError.malformedRow("#### Test", line: "Setze extra | .")) {
+    #expect(throws: ContractError.malformedRow("#### Test", line: "Diktiere extra | .")) {
       try Self.parseTable(
-        markdown: Self.table(["| Setze Punkt | . |"]) + "Setze extra | .\n",
+        markdown: Self.table(["| Diktiere Punkt | . |"]) + "Diktiere extra | .\n",
         heading: "#### Test")
     }
     #expect(throws: ContractError.duplicateRow("#### Test", say: "a b")) {
@@ -302,9 +302,9 @@ struct SpokenPunctuationHelpArticleParityTests {
 
   @Test("A wrong accent, a wrong case or a wrong mark is a difference, never normalised away")
   func comparisonIsExact() {
-    let expected = [Row(say: "Insère point", result: ".")]
+    let expected = [Row(say: "Place point", result: ".")]
     #expect([Row(say: "Insere point", result: ".")] != expected)
-    #expect([Row(say: "insère point", result: ".")] != expected)
-    #expect([Row(say: "Insère point", result: ",")] != expected)
+    #expect([Row(say: "place point", result: ".")] != expected)
+    #expect([Row(say: "Place point", result: ",")] != expected)
   }
 }

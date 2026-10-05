@@ -4,7 +4,7 @@ description: "How to dictate slash commands, punctuation marks and emoji, includ
 category: "features"
 section: "Text Processing"
 order: 3
-keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "start word", "German punctuation", "Satzzeichen diktieren", "Setze Punkt", "neuer Absatz", "French punctuation", "Insère point", "Spanish punctuation", "Pon punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages"]
+keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "start word", "German punctuation", "Satzzeichen diktieren", "Diktiere Punkt", "neuer Absatz", "French punctuation", "Place point", "Spanish punctuation", "Añade punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages"]
 related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
 updated: 2026-10-04
@@ -48,13 +48,13 @@ Backslash joins the words on both sides, so "C colon backslash Users" becomes "C
 
 ### Dictate punctuation in German, French, Spanish and Italian
 
-In these four languages the command words are also everyday words. "Punkt" is a noun as well as a full stop. So you say a start word first, and then the command. "Setze Punkt" gives a full stop. "Punkt" on its own stays the word.
+In these four languages the command words are also everyday words. "Punkt" is a noun as well as a full stop. So you say a start word first, and then the command. "Diktiere Punkt" gives a full stop. "Punkt" on its own stays the word.
 
 The default start words are:
 
-- German: **Setze**
-- French: **Insère**
-- Spanish: **Pon**
+- German: **Diktiere**
+- French: **Place**
+- Spanish: **Añade**
 - Italian: **Metti**
 
 Spoken punctuation must be on. It works when your dictation language is German, French, Spanish or Italian, whether you chose the language or EnviousWispr detected it. English works as it does today: say the word on its own.
@@ -67,44 +67,44 @@ Say the start word, then the command, in the language you dictate in. These tabl
 
 | Say this | You get |
 |---|---|
-| Setze Punkt | . |
-| Setze Komma | , |
-| Setze Fragezeichen | ? |
-| Setze Ausrufezeichen | ! |
-| Setze Doppelpunkt | : |
-| Setze Semikolon | ; |
-| Setze Strichpunkt | ; |
-| Setze neue Zeile | a line break |
-| Setze neuer Absatz | a blank line |
-| Setze neuen Absatz | a blank line |
-| Setze Neuabsatz | a blank line |
+| Diktiere Punkt | . |
+| Diktiere Komma | , |
+| Diktiere Fragezeichen | ? |
+| Diktiere Ausrufezeichen | ! |
+| Diktiere Doppelpunkt | : |
+| Diktiere Semikolon | ; |
+| Diktiere Strichpunkt | ; |
+| Diktiere neue Zeile | a line break |
+| Diktiere neuer Absatz | a blank line |
+| Diktiere neuen Absatz | a blank line |
+| Diktiere Neuabsatz | a blank line |
 
 #### French
 
 | Say this | You get |
 |---|---|
-| Insère point | . |
-| Insère virgule | , |
-| Insère point d'interrogation | ? |
-| Insère point d'exclamation | ! |
-| Insère deux points | : |
-| Insère point-virgule | ; |
-| Insère nouvelle ligne | a line break |
-| Insère à la ligne | a line break |
-| Insère nouveau paragraphe | a blank line |
+| Place point | . |
+| Place virgule | , |
+| Place point d'interrogation | ? |
+| Place point d'exclamation | ! |
+| Place deux points | : |
+| Place point-virgule | ; |
+| Place nouvelle ligne | a line break |
+| Place à la ligne | a line break |
+| Place nouveau paragraphe | a blank line |
 
 #### Spanish
 
 | Say this | You get |
 |---|---|
-| Pon punto | . |
-| Pon coma | , |
-| Pon signo de interrogación | ? |
-| Pon signo de exclamación | ! |
-| Pon dos puntos | : |
-| Pon punto y coma | ; |
-| Pon nueva línea | a line break |
-| Pon nuevo párrafo | a blank line |
+| Añade punto | . |
+| Añade coma | , |
+| Añade signo de interrogación | ? |
+| Añade signo de exclamación | ! |
+| Añade dos puntos | : |
+| Añade punto y coma | ; |
+| Añade nueva línea | a line break |
+| Añade nuevo párrafo | a blank line |
 
 #### Italian
 
@@ -129,6 +129,10 @@ Turn on **Spoken punctuation**. A **Start word** row appears under it.
 
 Picking a language here only chooses which start word you edit. It does not change your dictation language.
 
+If your speech engine often writes a different word for your start word, pick another word. A word the engine hears clearly works best.
+
+To use no start word, clear the field and press Return. The field then shows **None**. Every command word of that language now becomes a mark wherever you say it, as English does. In German, "der springende Punkt" then becomes "der springende." and "drei Komma fünf" becomes "drei, fünf". Press **Reset** to bring back the default start word.
+
 Pick a word you would not say in a normal sentence. A start word is one word of 2 to 20 letters. It cannot be a command word, or the first word of one. If your word does not fit, the field goes back to the old start word and tells you why.
 
 When **Remove filler words** is on, sounds such as "uh", "hmm", "mm" and "ah" can be removed before the start word is read. Avoid choosing a filler sound as your start word. Removal depends on the dictation language: German keeps "um" and "er" because they are ordinary German words.
@@ -141,7 +145,7 @@ If you do not see the **Start word** row, check that **Spoken punctuation** is o
 
 In English, with **Spoken punctuation** on, EnviousWispr cannot tell when you meant the word itself. Saying "the grace period expires" puts a full stop in the middle of your sentence.
 
-In German, French, Spanish and Italian a command word stays a word unless the start word comes right before it. A start word of your own can still come up in a normal sentence, so choose one you would not say.
+In German, French, Spanish and Italian a command word stays a word unless the start word comes right before it. A start word of your own can still come up in a normal sentence, so choose one you would not say. If you chose no start word, a command word is a mark every time you say it.
 
 EnviousWispr already punctuates for you, so spoken punctuation competes with that. Turn it on if you need exact control over your punctuation and do not mind fixing the occasional unintended symbol. If it gets in your way, switch **Spoken punctuation** off.
 

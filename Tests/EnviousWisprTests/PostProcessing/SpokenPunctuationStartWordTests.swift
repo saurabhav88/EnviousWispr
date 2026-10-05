@@ -27,7 +27,7 @@ struct SpokenPunctuationStartWordTests {
 
   @Test(
     "Every shipped default start word passes its own validator",
-    arguments: [("de", "Setze"), ("fr", "Insère"), ("es", "Pon"), ("it", "Metti")])
+    arguments: [("de", "Diktiere"), ("fr", "Place"), ("es", "Añade"), ("it", "Metti")])
   func defaultsAreAccepted(language: String, word: String) {
     #expect(SpokenPunctuationRules.defaultStartWord(for: language) == word)
     #expect(Self.validate(word, language) == .accepted(word))
@@ -37,7 +37,7 @@ struct SpokenPunctuationStartWordTests {
 
   @Test("Outer whitespace is trimmed, inner case is kept")
   func trimsOuterWhitespace() {
-    #expect(Self.validate("  Setze \n") == .accepted("Setze"))
+    #expect(Self.validate("  Diktiere \n") == .accepted("Diktiere"))
     #expect(Self.validate("diktiere") == .accepted("diktiere"))
   }
 
@@ -148,11 +148,11 @@ struct SpokenPunctuationStartWordTests {
 
   @Test("Two values differ by enablement and by overrides")
   func equalityTracksBothFields() {
-    let base = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Diktiere"])
+    let base = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
     #expect(
-      base != SpokenPunctuationSettings(enabled: false, startWordOverrides: ["de": "Diktiere"]))
+      base != SpokenPunctuationSettings(enabled: false, startWordOverrides: ["de": "Sprich"]))
     #expect(base != SpokenPunctuationSettings(enabled: true, startWordOverrides: [:]))
     #expect(
-      base == SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Diktiere"]))
+      base == SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"]))
   }
 }
