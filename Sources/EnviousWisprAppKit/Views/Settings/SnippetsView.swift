@@ -16,6 +16,8 @@ struct SnippetsView: View {
   /// `.sheet(item:)` states are not mutually exclusive, and macOS 14 behaviour with two
   /// presented sheets is unverified (plan §3.5).
   @State private var sheetRoute: SnippetsSheetRoute?
+  /// The row under the pointer, so its chevron can light up with the shared row tint.
+  @State private var hoveredSnippetID: Snippet.ID?
   @State private var keywordField = ""
   /// Held here rather than on the coordinator: an export never changes the store, so a failed
   /// one must not sit in the same slot as a failed save and read as though a snippet was lost.
@@ -322,11 +324,21 @@ struct SnippetsView: View {
         Spacer(minLength: 0)
         Image(systemName: "chevron.right")
           .font(.system(size: 12, weight: .semibold))
-          .foregroundStyle(.stTextTertiary)
+          .foregroundStyle(hoveredSnippetID == snippet.id ? Color.stAccent : Color.stTextTertiary)
           .accessibilityHidden(true)
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
+      // Rows run edge to edge inside a card that clips its own corners, so the tint is square.
+      // Without it nothing on the row says it opens the editor.
+      .settingsHoverRow(cornerRadius: 0)
+      .onHover { inside in
+        if inside {
+          hoveredSnippetID = snippet.id
+        } else if hoveredSnippetID == snippet.id {
+          hoveredSnippetID = nil
+        }
+      }
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
