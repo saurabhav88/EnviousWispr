@@ -154,6 +154,22 @@ struct LanguageProtectedSpansTests {
     #expect(found.contains { $0.kind == .measurement }, "\(item.text)")
   }
 
+  @Test("the unit and currency query reads the same tables protection uses, unchanged")
+  func unitQuery() {
+    for word in ["Liter", "Liter,", "kg", "Uhr", "UHR.", "Euro", "€", "°C", "Prozent", "Grad"] {
+      #expect(LanguageProtectedSpans.isMeasurementOrCurrencyUnit(word), "\(word)")
+    }
+    for word in ["Tisch", "halb", "sieben", "morgens", "Leute", "", "um", "ab"] {
+      #expect(LanguageProtectedSpans.isMeasurementOrCurrencyUnit(word) == false, "\(word)")
+    }
+    // Protection and the query agree: a word beside a written number is a second protected span
+    // exactly when the query says it is a unit or currency.
+    for word in ["Liter", "kg", "Uhr", "Euro", "€", "Grad", "Tisch", "Leute", "halb"] {
+      let beside = spans("5 \(word)").count == 2
+      #expect(beside == LanguageProtectedSpans.isMeasurementOrCurrencyUnit(word), "\(word)")
+    }
+  }
+
   @Test("prose with no written structure has no protected span")
   func proseHasNone() {
     for text in [

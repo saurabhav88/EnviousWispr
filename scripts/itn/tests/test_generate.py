@@ -25,6 +25,8 @@ REAL_PHONE_OUTPUT = (HERE.parent.parent.parent
                      / "Sources/EnviousWisprPostProcessing/Generated/GermanPhonePrefixData.swift")
 REAL_ORDINAL_OUTPUT = (HERE.parent.parent.parent
                        / "Sources/EnviousWisprPostProcessing/Generated/GermanOrdinalData.swift")
+REAL_CLOCK_OUTPUT = (HERE.parent.parent.parent
+                     / "Sources/EnviousWisprPostProcessing/Generated/GermanClockIdiomData.swift")
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
@@ -510,22 +512,24 @@ class RealOrdinalRefusalTests(unittest.TestCase):
         for other in ("ref-clock", "ref-phone"):
             self.assertNotIn(other, text)
 
-    def test_three_outputs_are_reproducible_and_leave_the_others_unchanged(self):
+    def test_every_output_is_reproducible_and_leaves_the_others_unchanged(self):
         with tempfile.TemporaryDirectory() as tmp:
-            outs = [[Path(tmp) / f"{name}{i}.swift" for name in ("n", "p", "o")] for i in (1, 2)]
-            for number, phone, ordinal in outs:
+            outs = [[Path(tmp) / f"{name}{i}.swift" for name in ("n", "p", "o", "c")] for i in (1, 2)]
+            for number, phone, ordinal, clock in outs:
                 self.assertEqual(run("--out", str(number), "--phone-out", str(phone),
-                                     "--ordinal-out", str(ordinal)).returncode, 0)
+                                     "--ordinal-out", str(ordinal), "--clock-out",
+                                     str(clock)).returncode, 0)
             for a, b in zip(*outs):
                 self.assertEqual(a.read_bytes(), b.read_bytes())
             self.assertEqual(outs[0][0].read_bytes(), REAL_OUTPUT.read_bytes())
             self.assertEqual(outs[0][1].read_bytes(), REAL_PHONE_OUTPUT.read_bytes())
             self.assertEqual(outs[0][2].read_bytes(), REAL_ORDINAL_OUTPUT.read_bytes())
+            self.assertEqual(outs[0][3].read_bytes(), REAL_CLOCK_OUTPUT.read_bytes())
 
-    def test_the_real_check_verifies_all_three_files(self):
+    def test_the_real_check_verifies_every_generated_file(self):
         result = run("--check")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.count("check ok"), 3)
+        self.assertEqual(result.stdout.count("check ok"), 4)
 
     def test_the_manifest_declares_the_six_required_entries(self):
         manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
@@ -678,6 +682,216 @@ class OrdinalRefusalFailureTests(unittest.TestCase):
                 entry["region_limit"] = "changed"
         fixture.write("refusals/de.json", json.dumps(data, ensure_ascii=False))
         self.assert_fails_and_writes_nothing(fixture, "content_sha256")
+
+
+CLOCK_IDS = ["ref-clock-002", "ref-clock-003", "ref-clock-004"]
+
+CLOCK_TEMPLATES = [
+    {"id": "half", "tokens": ["halb"], "hourOffset": -1, "minute": 30, "inputHours": [2, 12]},
+    {"id": "quarterAfter", "tokens": ["viertel", "nach"], "hourOffset": 0, "minute": 15,
+     "inputHours": [1, 11]},
+]
+
+
+def clock_entry(entry_id, version=1, tokens=("halbe stunde",), category="clock_idiom", **over):
+    entry = {"id": entry_id, "category": category, "reason_code": "reason_" + entry_id[-3:],
+             "match": {"kind": "literal_phrase", "tokens": list(tokens), "context_shape": None},
+             "required_context": "none", "region_limit": "fixture limit",
+             "evidence_ids": ["E-FIXTURE"], "supporting_row_ids": ["de-clock-ctl-001"],
+             "panel_status": "panel-reviewed", "review_ref": f"refusal-ledger:{entry_id}:v{version}",
+             "version": version}
+    entry.update(over)
+    entry["content_sha256"] = over.get("content_sha256") or phone_stamp(entry)
+    return entry
+
+
+def default_clock_entries():
+    return [clock_entry("ref-clock-002", version=3, tokens=("Halbe Stunde", "viertelstunde")),
+            clock_entry("ref-clock-003", version=2, tokens=("ein viertel der",)),
+            clock_entry("ref-clock-004", version=2, tokens=("halb voll", "halb leer"))]
+
+
+class ClockFixture(Fixture):
+    """A Fixture that declares the clock-idiom output over a throwaway refusal file."""
+
+    def __init__(self, test, entries=None, pending=None, other=None, declaration=None):
+        super().__init__(test)
+        (self.dir / "refusals").mkdir()
+        data = {"schema_version": 1, "language": "de",
+                "reviewed_entries": (entries if entries is not None else default_clock_entries())
+                + (other or []),
+                "pending_entries": pending or []}
+        self.write("refusals/de.json", json.dumps(data, ensure_ascii=False))
+        self.write("review-data.schema.json", json.dumps(
+            {"x-closed-vocabulary": {"context_shape": PHONE_SHAPES}}))
+        self.declaration = {"category": "clock_idiom", "refusalsFile": "refusals/de.json",
+                            "schemaFile": "review-data.schema.json", "requiredEntries": CLOCK_IDS,
+                            "templates": CLOCK_TEMPLATES, "anchors": ["um", "Gegen", "für"],
+                            "trailingMarker": "Uhr", "outputSeparator": ":",
+                            "syntaxProvenance": "fixture provenance"}
+        self.declaration.update(declaration or {})
+        self.clock_out = self.dir / "out" / "GermanClockIdiomData.swift"
+        self.phone_out = self.dir / "out" / "GermanPhonePrefixData.swift"
+        self.ordinal_out = self.dir / "out" / "GermanOrdinalData.swift"
+
+    def generate(self, *extra):
+        manifest = self.manifest(clockIdiom=self.declaration)
+        return run("--manifest", str(manifest), "--out", str(self.out), "--phone-out",
+                   str(self.phone_out), "--ordinal-out", str(self.ordinal_out), "--clock-out",
+                   str(self.clock_out), *extra)
+
+
+class RealClockTests(unittest.TestCase):
+    def test_real_output_carries_the_three_reviewed_literal_entries_and_the_syntax_data(self):
+        text = REAL_CLOCK_OUTPUT.read_text(encoding="utf-8")
+        refusals = text.split("static let refusals")[1]
+        self.assertEqual(refusals.count("    Refusal(id:"), 3)
+        for expected in (
+            'id: "ref-clock-002", version: 3,', 'id: "ref-clock-003", version: 2,',
+            'id: "ref-clock-004", version: 2,',
+            'phrases: ["halbe stunde", "halben stunde", "viertelstunde", "dreiviertelstunde"]',
+            'phrases: ["ein viertel der", "drei viertel eines liters", "ein halbes kilogramm"]',
+            'phrases: ["halb voll", "halb leer"]',
+            'reviewRef: "refusal-ledger:ref-clock-002:v3"',
+        ):
+            self.assertIn(expected, refusals)
+        for pending in ("ref-clock-001", "ref-clock-005", "ref-clock-007"):
+            self.assertNotIn(pending, text)
+        self.assertIn('static let trailingMarker = "uhr"', text)
+        self.assertIn('static let outputSeparator = ":"', text)
+        self.assertIn('Template(id: "half", tokens: ["halb"], hourOffset: -1, minute: 30, '
+                      'inputHourLow: 2, inputHourHigh: 12)', text)
+        self.assertIn('Template(id: "quarterAfter", tokens: ["viertel", "nach"], hourOffset: 0, '
+                      'minute: 15, inputHourLow: 1, inputHourHigh: 11)', text)
+        for anchor in ("um", "gegen", "bis", "ab", "für"):
+            self.assertIn(f'    "{anchor}",', text)
+
+    def test_the_manifest_declares_the_three_required_entries_and_both_templates(self):
+        manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+        decl = manifest["clockIdiom"]
+        self.assertEqual(decl["requiredEntries"], CLOCK_IDS)
+        self.assertEqual([t["id"] for t in decl["templates"]], ["half", "quarterAfter"])
+        self.assertEqual(decl["anchors"], ["um", "gegen", "bis", "ab", "für"])
+
+
+class ClockFixtureTests(unittest.TestCase):
+    def test_canonical_input_produces_the_independent_literal_output(self):
+        fixture = ClockFixture(self)
+        result = fixture.generate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = fixture.clock_out.read_text(encoding="utf-8")
+        for entry in default_clock_entries():
+            phrases = ", ".join(f'"{t.lower()}"' for t in entry["match"]["tokens"])
+            line = (f'    Refusal(id: "{entry["id"]}", version: {entry["version"]}, '
+                    f'contentSHA256: "{entry["content_sha256"]}", '
+                    f'reasonCode: "{entry["reason_code"]}", phrases: [{phrases}], '
+                    f'reviewRef: "{entry["review_ref"]}"),')
+            self.assertIn(line, text)
+        self.assertIn('static let trailingMarker = "uhr"', text)
+        self.assertIn('    "gegen",', text)
+        self.assertIn('static let syntaxProvenance = "fixture provenance"', text)
+
+    def test_pending_and_other_category_entries_are_never_emitted(self):
+        pending = [clock_entry("ref-clock-005", panel_status="pending", review_ref=None)]
+        other = [phone_entry("ref-phone-001", "plus_between_operands")]
+        fixture = ClockFixture(self, pending=pending, other=other)
+        self.assertEqual(fixture.generate().returncode, 0)
+        text = fixture.clock_out.read_text(encoding="utf-8")
+        self.assertNotIn("ref-clock-005", text)
+        self.assertNotIn("ref-phone-001", text)
+        self.assertIn("excluded: 1 pending entries of this category", text)
+
+    def test_check_fails_on_drift_in_the_clock_file_alone_and_leaves_it_untouched(self):
+        fixture = ClockFixture(self)
+        self.assertEqual(fixture.generate().returncode, 0)
+        ok = fixture.generate("--check")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        fixture.clock_out.write_text(
+            fixture.clock_out.read_text(encoding="utf-8") + "// drift\n", encoding="utf-8")
+        drifted = fixture.clock_out.read_bytes()
+        bad = fixture.generate("--check")
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn("GermanClockIdiomData.swift", bad.stderr)
+        self.assertEqual(fixture.clock_out.read_bytes(), drifted)
+
+
+class ClockFailureTests(unittest.TestCase):
+    def assert_fails_and_writes_nothing(self, fixture, needle):
+        result = fixture.generate()
+        self.assertNotEqual(result.returncode, 0, "must fail nonzero")
+        self.assertIn(needle, result.stderr)
+        for path in (fixture.out, fixture.clock_out):
+            self.assertFalse(path.exists(), f"a failed run must not create {path.name}")
+
+    def with_template(self, **over):
+        template = dict(CLOCK_TEMPLATES[0], **over)
+        return {"templates": [template, CLOCK_TEMPLATES[1]]}
+
+    def test_reviewed_entry_failures(self):
+        entries = default_clock_entries()
+        entries[0]["region_limit"] = "changed after review"
+        self.assert_fails_and_writes_nothing(ClockFixture(self, entries=entries), "content_sha256")
+        entries = default_clock_entries()
+        entries[1] = clock_entry("ref-clock-003", version=2, review_ref="refusal-ledger:ref-clock-003:v1")
+        self.assert_fails_and_writes_nothing(ClockFixture(self, entries=entries), "review_ref")
+        entries = default_clock_entries()
+        entries[2] = clock_entry("ref-clock-004", version=2, panel_status="pending")
+        self.assert_fails_and_writes_nothing(ClockFixture(self, entries=entries), "not reviewed")
+
+    def test_a_context_shape_or_wrong_kind_entry_fails(self):
+        entry = clock_entry("ref-clock-004", version=2)
+        entry["match"] = {"kind": "context_shape", "tokens": ["halb"],
+                          "context_shape": "ordinal_adverb"}
+        entry["content_sha256"] = phone_stamp(entry)
+        entries = default_clock_entries()
+        entries[2] = entry
+        self.assert_fails_and_writes_nothing(ClockFixture(self, entries=entries), "literal phrases")
+
+    def test_malformed_phrases_and_duplicates_fail(self):
+        for tokens, needle in (
+            (("halb  voll",), "single spaces"), ((), "single spaces"), (("",), "single spaces"),
+        ):
+            with self.subTest(tokens=tokens):
+                entries = default_clock_entries()
+                entries[2] = clock_entry("ref-clock-004", version=2, tokens=tokens)
+                self.assert_fails_and_writes_nothing(ClockFixture(self, entries=entries), needle)
+        entries = default_clock_entries()
+        entries[2] = clock_entry("ref-clock-004", version=2, tokens=("ein viertel der",))
+        self.assert_fails_and_writes_nothing(ClockFixture(self, entries=entries), "appears twice")
+
+    def test_a_missing_or_extra_required_entry_fails(self):
+        self.assert_fails_and_writes_nothing(
+            ClockFixture(self, entries=default_clock_entries()[:2]), "required set")
+        extra = default_clock_entries() + [clock_entry("ref-clock-009")]
+        self.assert_fails_and_writes_nothing(ClockFixture(self, entries=extra), "required set")
+
+    def test_template_failures(self):
+        cases = (
+            (self.with_template(id=""), "unique id"),
+            (self.with_template(tokens=[]), "single words"),
+            (self.with_template(tokens=["halb zwei"]), "single words"),
+            (self.with_template(inputHours=[0, 12]), "inside 1..12"),
+            (self.with_template(inputHours=[7, 3]), "inside 1..12"),
+            (self.with_template(inputHours=[1, 12]), "leave 1..12"),
+            (self.with_template(minute=60), "minute 0..59"),
+            (self.with_template(hourOffset="x"), "hourOffset"),
+        )
+        for declaration, needle in cases:
+            with self.subTest(declaration=declaration["templates"][0]):
+                self.assert_fails_and_writes_nothing(
+                    ClockFixture(self, declaration=declaration), needle)
+        duplicate = {"templates": [CLOCK_TEMPLATES[0], dict(CLOCK_TEMPLATES[0])]}
+        self.assert_fails_and_writes_nothing(ClockFixture(self, declaration=duplicate), "unique id")
+
+    def test_anchor_marker_and_separator_failures(self):
+        for declaration, needle in (
+            ({"anchors": ["um", "um"]}, "anchors"), ({"anchors": ["um zu"]}, "anchors"),
+            ({"anchors": [""]}, "anchors"), ({"trailingMarker": "uhr zeit"}, "trailingMarker"),
+            ({"outputSeparator": "ab"}, "outputSeparator"), ({"outputSeparator": "1"}, "outputSeparator"),
+            ({"syntaxProvenance": ""}, "syntaxProvenance is empty"),
+        ):
+            with self.subTest(declaration=declaration):
+                self.assert_fails_and_writes_nothing(ClockFixture(self, declaration=declaration), needle)
 
 
 class RealOrdinalTests(unittest.TestCase):

@@ -231,6 +231,28 @@ struct ITNGeneratedDataTests {
     }
   }
 
+  @Test("the generated clock syntax data and reviewed refusals carry their identity and provenance")
+  func clockIdiomData() {
+    typealias Clock = GermanClockIdiomData
+    #expect(Clock.templates.map(\.id) == ["half", "quarterAfter"])
+    #expect(Clock.templates.map(\.tokens) == [["halb"], ["viertel", "nach"]])
+    #expect(Clock.templates.map(\.hourOffset) == [-1, 0])
+    #expect(Clock.templates.map(\.minute) == [30, 15])
+    #expect(Clock.templates.map(\.inputHourLow) == [2, 1])
+    #expect(Clock.templates.map(\.inputHourHigh) == [12, 11])
+    #expect(Clock.anchors == ["um", "gegen", "bis", "ab", "für"])
+    #expect(Clock.trailingMarker == "uhr")
+    #expect(Clock.outputSeparator == ":")
+    #expect(Clock.syntaxProvenance.contains("not a reviewed refusal"))
+    #expect(Clock.refusals.map(\.id) == ["ref-clock-002", "ref-clock-003", "ref-clock-004"])
+    #expect(Clock.refusals.map(\.version) == [3, 2, 2])
+    for refusal in Clock.refusals {
+      #expect(refusal.reviewRef == "refusal-ledger:\(refusal.id):v\(refusal.version)")
+      #expect(refusal.contentSHA256.count == 64)
+      #expect(refusal.phrases.isEmpty == false)
+    }
+  }
+
   @Test("only the named grammar adapter reads the generated data, and the registry stays empty")
   func notReachableFromRuntime() throws {
     #expect(LanguageRuleRegistry.production.count == 0)
@@ -291,5 +313,19 @@ struct ITNGeneratedDataTests {
     #expect(
       ordinalReaders.sorted() == ["LanguageOrdinalRules.swift"],
       "the only reader of the ordinal data must be the rules adapter; found: \(ordinalReaders)")
+
+    // And the clock syntax and refusal data have exactly one reader: the clock rules adapter.
+    var clockReaders: [String] = []
+    let fourth = try #require(
+      FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+    for case let file as URL in fourth where file.pathExtension == "swift" {
+      let text = try String(contentsOf: file, encoding: .utf8)
+      if text.contains("GermanClockIdiomData"), file.lastPathComponent != "GermanClockIdiomData.swift" {
+        clockReaders.append(file.lastPathComponent)
+      }
+    }
+    #expect(
+      clockReaders.sorted() == ["LanguageClockIdiomRules.swift"],
+      "the only reader of the clock data must be the rules adapter; found: \(clockReaders)")
   }
 }

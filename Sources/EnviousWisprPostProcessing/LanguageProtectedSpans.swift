@@ -212,6 +212,14 @@ enum LanguageProtectedSpans {
 
   private static let units: Set<String> = temperatureAndPercentUnits.union(otherUnits)
 
+  /// True when a chunk is a written unit or currency word as protection reads them (`Liter`, `kg`,
+  /// `Uhr`, `Euro`, `€`). Read-only over the existing tables; membership and protection behavior
+  /// are unchanged.
+  static func isMeasurementOrCurrencyUnit(_ chunk: String) -> Bool {
+    let word = core(chunk)
+    return units.contains(word) || currencies.contains(word)
+  }
+
   /// True when a chunk is a written temperature or percentage unit (`Grad`, `°C`, `%`, `Prozent`),
   /// read from the same authority protection uses. Read-only; protection behavior is unchanged.
   static func isTemperatureOrPercentUnit(_ chunk: String) -> Bool {

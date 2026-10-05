@@ -176,5 +176,53 @@
     ],
     "writtenSuffix": ".",
     "note": "Lowers ONLY the reviewed ordinal refusal entries (context shapes and literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted; the entries are not a context lexicon."
+  },
+  "clockIdiom": {
+    "category": "clock_idiom",
+    "refusalsFile": "refusals/de.json",
+    "schemaFile": "review-data.schema.json",
+    "requiredEntries": [
+      "ref-clock-002",
+      "ref-clock-003",
+      "ref-clock-004"
+    ],
+    "templates": [
+      {
+        "id": "half",
+        "tokens": [
+          "halb"
+        ],
+        "hourOffset": -1,
+        "minute": 30,
+        "inputHours": [
+          2,
+          12
+        ]
+      },
+      {
+        "id": "quarterAfter",
+        "tokens": [
+          "viertel",
+          "nach"
+        ],
+        "hourOffset": 0,
+        "minute": 15,
+        "inputHours": [
+          1,
+          11
+        ]
+      }
+    ],
+    "anchors": [
+      "um",
+      "gegen",
+      "bis",
+      "ab",
+      "für"
+    ],
+    "trailingMarker": "uhr",
+    "outputSeparator": ":",
+    "syntaxProvenance": "Implementation admission and template data for the bounded clock scope (founder option B, halb H and viertel nach H only), grounded in the approved plan and the frozen development expectations. The input-hour ranges exclude halb eins and viertel nach zwoelf, which would need a noon/midnight face choice. This is not a reviewed refusal entry and not a general German clock grammar; the pending regional forms (viertel vor H, bare viertel H, dreiviertel H) and the pending noon/midnight entry are neither converted nor lowered.",
+    "note": "Lowers ONLY the reviewed clock refusal entries (literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted."
   }
 }

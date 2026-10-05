@@ -30,6 +30,11 @@ A bounded ORDINAL extraction is declared per CLDR source in the manifest (`ordin
   excluded (negative, decimal, scale rules and the undeclared `-s` / `-m` inflections). A rule that
   fits none of those fails the run.
 
+A fourth, separate output (manifest `clockIdiom`) carries the clock-idiom SYNTAX data (templates,
+  anchors, trailing marker, separator: implementation admission data grounded in the approved scope,
+  never derived from corpus sentences and not a reviewed refusal) and the reviewed clock refusal
+  entries, which are all complete literal phrases.
+
 A third, separate output (manifest `ordinalRefusals`) lowers the reviewed ORDINAL refusal entries the
   same way, keeping context-shape entries and literal-phrase entries distinct. No output carries a
   context lexicon: the reviewed entries supply tokens and shapes, not complete phrases.
@@ -74,6 +79,7 @@ DEFAULT_MANIFEST = HERE / "manifest.json"
 DEFAULT_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift"
 DEFAULT_PHONE_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanPhonePrefixData.swift"
 DEFAULT_ORDINAL_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanOrdinalData.swift"
+DEFAULT_CLOCK_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanClockIdiomData.swift"
 
 SOFT_HYPHEN = "­"
 ROLE_ORDER = ["zero", "unit", "teen", "tens"]
@@ -699,6 +705,144 @@ def emit_ordinal(result):
     return "\n".join(out)
 
 
+def build_clock(manifest, base):
+    """The clock-idiom syntax data and the reviewed clock refusal entries (all literal phrases), or
+    None when not declared. The syntax data (templates, anchors, marker, separator) is
+    implementation admission data grounded in the approved scope; it is NOT a reviewed refusal and
+    nothing is derived from corpus sentences."""
+    loaded = refusal_inputs(manifest, base, "clockIdiom",
+                            ("category", "refusalsFile", "schemaFile", "requiredEntries",
+                             "templates", "anchors", "trailingMarker", "outputSeparator",
+                             "syntaxProvenance"))
+    if loaded is None:
+        return None
+    decl, chosen, shapes, pending_excluded = loaded
+    templates, seen_ids = [], set()
+    for template in decl["templates"]:
+        where = f"clockIdiom:template:{template.get('id')}"
+        tokens = [normalize_spoken(t) for t in template.get("tokens") or []]
+        low_high = template.get("inputHours")
+        offset, minute = template.get("hourOffset"), template.get("minute")
+        if not template.get("id") or template["id"] in seen_ids:
+            raise GenerationError(f"{where}: a template needs a unique id")
+        seen_ids.add(template["id"])
+        if not tokens or any(not t or re.search(r"\s", t) for t in tokens):
+            raise GenerationError(f"{where}: tokens must be non-empty single words")
+        if not (isinstance(low_high, list) and len(low_high) == 2
+                and all(isinstance(v, int) for v in low_high) and 1 <= low_high[0] <= low_high[1] <= 12):
+            raise GenerationError(f"{where}: inputHours must be two ints inside 1..12")
+        if not isinstance(offset, int) or not isinstance(minute, int) or not 0 <= minute <= 59:
+            raise GenerationError(f"{where}: hourOffset must be an int and minute 0..59")
+        if not (1 <= low_high[0] + offset and low_high[1] + offset <= 12):
+            raise GenerationError(f"{where}: the output hour would leave 1..12; the template "
+                                  "must exclude the hours that need a clock-face choice")
+        templates.append({"id": template["id"], "tokens": tokens, "hourOffset": offset,
+                          "minute": minute, "low": low_high[0], "high": low_high[1]})
+    anchors = [normalize_spoken(a) for a in decl["anchors"]]
+    if len(set(anchors)) != len(anchors) or any(not a or re.search(r"\s", a) for a in anchors):
+        raise GenerationError("clockIdiom: anchors must be distinct non-empty single words")
+    marker = normalize_spoken(decl["trailingMarker"])
+    if not marker or re.search(r"\s", marker):
+        raise GenerationError("clockIdiom: trailingMarker must be one non-empty word")
+    separator = decl["outputSeparator"]
+    if len(separator) != 1 or separator.isalnum():
+        raise GenerationError("clockIdiom: outputSeparator must be one punctuation character")
+    refusal_hash = load_refusal_hash()
+    rows, seen_phrases = [], set()
+    for entry in sorted(chosen, key=lambda e: e["id"]):
+        where, ref = check_reviewed(entry, "clockIdiom", refusal_hash)
+        match = entry.get("match") or {}
+        if match.get("kind") != "literal_phrase" or match.get("context_shape") is not None:
+            raise GenerationError(f"{where}: clock refusals are literal phrases without a shape")
+        phrases = [normalize_spoken(t) for t in match.get("tokens") or []]
+        if not phrases or any(not re.fullmatch(r"\S+( \S+)*", t) for t in phrases):
+            raise GenerationError(f"{where}: phrases must be non-empty words joined by single spaces")
+        for phrase in phrases:
+            if phrase in seen_phrases:
+                raise GenerationError(f"{where}: phrase {phrase!r} appears twice")
+            seen_phrases.add(phrase)
+        rows.append({"id": entry["id"], "version": entry["version"],
+                     "contentSHA256": entry["content_sha256"], "reasonCode": entry["reason_code"],
+                     "phrases": phrases, "reviewRef": ref})
+    return {
+        "category": decl["category"], "templates": templates, "anchors": anchors,
+        "trailingMarker": marker, "outputSeparator": separator,
+        "syntaxProvenance": decl["syntaxProvenance"], "rows": rows,
+        "pending_excluded": pending_excluded, "refusalsFile": decl["refusalsFile"],
+    }
+
+
+def clock_inventory_lines(result):
+    return [
+        "Source-to-output inventory (clock syntax data plus reviewed literal refusals, not a clock parser):",
+        f"  source {result['refusalsFile']}: reviewed entries of category {result['category']}",
+        f"  emitted: {len(result['rows'])} reviewed literal-phrase entries, each checked against its "
+        "semantic hash and version; syntax data is separate and is NOT a reviewed refusal",
+        f"  syntax data: {len(result['templates'])} templates, {len(result['anchors'])} anchors, "
+        f"marker {result['trailingMarker']!r}, separator {result['outputSeparator']!r}",
+        f"  excluded: {result['pending_excluded']} pending entries of this category, every other "
+        "category",
+    ]
+
+
+def emit_clock(result):
+    out = ["// GENERATED by scripts/itn/generate.py from scripts/itn/manifest.json. DO NOT EDIT.",
+           "// Regenerate with scripts/itn/generate.py; scripts/itn/generate.py --check verifies it.",
+           "//"]
+    out += ["// " + line for line in clock_inventory_lines(result)]
+    out += [
+        "//",
+        "// Implementation syntax data and reviewed refusal data only (#1677). The syntax data is not a",
+        "// reviewed refusal and not a general German clock grammar; the refusals are complete literal",
+        "// phrases. Nothing here is derived from corpus sentences.",
+        "",
+        "enum GermanClockIdiomData {",
+        "  /// One idiom template: the spoken tokens before an hour word, the hour offset and the minutes",
+        "  /// written, and the input hours it admits (the others need a clock-face choice).",
+        "  struct Template: Equatable {",
+        "    let id: String",
+        "    let tokens: [String]",
+        "    let hourOffset: Int",
+        "    let minute: Int",
+        "    let inputHourLow: Int",
+        "    let inputHourHigh: Int",
+        "  }",
+        "",
+        "  /// One reviewed refusal entry (a set of complete literal phrases), exactly as approved.",
+        "  struct Refusal: Equatable {",
+        "    let id: String",
+        "    let version: Int",
+        "    let contentSHA256: String",
+        "    let reasonCode: String",
+        "    let phrases: [String]",
+        "    let reviewRef: String",
+        "  }",
+        "",
+        f"  static let syntaxProvenance = {swift_string(result['syntaxProvenance'])}",
+        f"  static let trailingMarker = {swift_string(result['trailingMarker'])}",
+        f"  static let outputSeparator = {swift_string(result['outputSeparator'])}",
+        "",
+        "  static let anchors: [String] = [",
+    ]
+    out += [f"    {swift_string(a)}," for a in result["anchors"]]
+    out += ["  ]", "", "  static let templates: [Template] = ["]
+    for t in result["templates"]:
+        tokens = ", ".join(swift_string(x) for x in t["tokens"])
+        out.append(f"    Template(id: {swift_string(t['id'])}, tokens: [{tokens}], "
+                   f"hourOffset: {t['hourOffset']}, minute: {t['minute']}, "
+                   f"inputHourLow: {t['low']}, inputHourHigh: {t['high']}),")
+    out += ["  ]", "", "  static let refusals: [Refusal] = ["]
+    for r in result["rows"]:
+        phrases = ", ".join(swift_string(x) for x in r["phrases"])
+        out.append(
+            f"    Refusal(id: {swift_string(r['id'])}, version: {r['version']}, "
+            f"contentSHA256: {swift_string(r['contentSHA256'])}, "
+            f"reasonCode: {swift_string(r['reasonCode'])}, phrases: [{phrases}], "
+            f"reviewRef: {swift_string(r['reviewRef'])}),")
+    out += ["  ]", "}", ""]
+    return "\n".join(out)
+
+
 def phone_inventory_lines(result):
     return [
         "Source-to-output inventory (reviewed refusal lowering only, not telephone grammar):",
@@ -952,6 +1096,14 @@ def generate_ordinal_bytes(manifest_path):
     return None if result is None else emit_ordinal(result).encode("utf-8")
 
 
+def generate_clock_bytes(manifest_path):
+    """The clock-idiom output, or None when the manifest declares none."""
+    manifest_path = Path(manifest_path)
+    manifest = load_manifest(manifest_path)
+    result = build_clock(manifest, manifest_path.parent)
+    return None if result is None else emit_clock(result).encode("utf-8")
+
+
 def write_atomically(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -970,7 +1122,7 @@ def write_atomically(path, data):
 # Modes
 
 
-def run_check(manifest_path, out_path, phone_out_path, ordinal_out_path):
+def run_check(manifest_path, out_path, phone_out_path, ordinal_out_path, clock_out_path):
     """Verifies EVERY declared generated file without rewriting any of them."""
     with tempfile.TemporaryDirectory(prefix="itn-check-") as tmp:
         pairs = [(generate_bytes(manifest_path), out_path)]
@@ -980,6 +1132,9 @@ def run_check(manifest_path, out_path, phone_out_path, ordinal_out_path):
         ordinal = generate_ordinal_bytes(manifest_path)
         if ordinal is not None:
             pairs.append((ordinal, ordinal_out_path))
+        clock = generate_clock_bytes(manifest_path)
+        if clock is not None:
+            pairs.append((clock, clock_out_path))
         for index, (fresh, committed) in enumerate(pairs):
             regenerated = Path(tmp) / f"fresh-{index}.swift"
             write_atomically(regenerated, fresh)
@@ -1027,6 +1182,7 @@ def main(argv=None):
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--phone-out", default=str(DEFAULT_PHONE_OUT))
     parser.add_argument("--ordinal-out", default=str(DEFAULT_ORDINAL_OUT))
+    parser.add_argument("--clock-out", default=str(DEFAULT_CLOCK_OUT))
     mode = parser.add_mutually_exclusive_group()
     for flag in ("--check", "--self-test", "--refresh", "--inventory"):
         mode.add_argument(flag, action="store_true")
@@ -1037,7 +1193,7 @@ def main(argv=None):
         if args.refresh:
             run_refresh(args.manifest)
         elif args.check:
-            run_check(args.manifest, args.out, args.phone_out, args.ordinal_out)
+            run_check(args.manifest, args.out, args.phone_out, args.ordinal_out, args.clock_out)
         elif args.inventory:
             manifest = load_manifest(args.manifest)
             print("\n".join(inventory_lines(build(manifest, Path(args.manifest).parent))))
@@ -1047,11 +1203,15 @@ def main(argv=None):
             ordinal = build_ordinal(manifest, Path(args.manifest).parent)
             if ordinal is not None:
                 print("\n".join(ordinal_inventory_lines(ordinal)))
+            clock = build_clock(manifest, Path(args.manifest).parent)
+            if clock is not None:
+                print("\n".join(clock_inventory_lines(clock)))
         else:
             # Build and validate EVERY output before publishing any, so a failure writes nothing.
             data = generate_bytes(args.manifest)
             phone = generate_phone_bytes(args.manifest)
             ordinal = generate_ordinal_bytes(args.manifest)
+            clock = generate_clock_bytes(args.manifest)
             write_atomically(args.out, data)
             print(f"wrote {args.out} ({len(data)} bytes, sha256 {hashlib.sha256(data).hexdigest()})")
             if phone is not None:
@@ -1062,6 +1222,10 @@ def main(argv=None):
                 write_atomically(args.ordinal_out, ordinal)
                 print(f"wrote {args.ordinal_out} ({len(ordinal)} bytes, sha256 "
                       f"{hashlib.sha256(ordinal).hexdigest()})")
+            if clock is not None:
+                write_atomically(args.clock_out, clock)
+                print(f"wrote {args.clock_out} ({len(clock)} bytes, sha256 "
+                      f"{hashlib.sha256(clock).hexdigest()})")
     except GenerationError as exc:
         print(f"generate.py: {exc}", file=sys.stderr)
         return 1
