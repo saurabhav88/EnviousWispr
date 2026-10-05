@@ -400,6 +400,8 @@ struct SpokenPunctuationRoutingTests {
 
     func release() {
       released = true
+      for waiter in enterWaiters { waiter.resume() }
+      enterWaiters = []
       for waiter in releaseWaiters { waiter.resume() }
       releaseWaiters = []
     }
@@ -427,7 +429,17 @@ struct SpokenPunctuationRoutingTests {
 
     let context = ctx("alpha Diktiere Punkt beta", language: "de")
     let task = Task { @MainActor in try await step.process(context) }
-    await gate.waitUntilEntered()
+    // Bounded: a `process` that returned or threw before calling the work would otherwise leave this
+    // wait suspended forever and hang the suite instead of failing the test.
+    let entered = await withDeadline(seconds: 5) {
+      await gate.waitUntilEntered()
+      return true
+    }
+    if entered != true {
+      task.cancel()
+      await gate.release()
+    }
+    try #require(entered == true, "the normalization work never entered")
 
     // Both halves change after the work began.
     step.spokenPunctuation = SpokenPunctuationSettings(

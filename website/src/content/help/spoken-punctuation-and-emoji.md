@@ -131,7 +131,7 @@ Picking a language here only chooses which start word you edit. It does not chan
 
 Pick a word you would not say in a normal sentence. A start word is one word of 2 to 20 letters. It cannot be a command word, or the first word of one. If your word does not fit, the field goes back to the old start word and tells you why.
 
-When **Remove filler words** is on, sounds such as "um", "uh", "hmm", "mm" and "ah" are removed before the start word is read. A start word like that would never work, so do not choose one.
+When **Remove filler words** is on, sounds such as "uh", "hmm", "mm" and "ah" can be removed before the start word is read. Avoid choosing a filler sound as your start word. Removal depends on the dictation language: German keeps "um" and "er" because they are ordinary German words.
 
 Spoken punctuation is meant for dictating with AI polish off. With AI polish on, polish can change the marks a command inserted.
 
