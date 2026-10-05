@@ -20,7 +20,7 @@ import Testing
 /// the concrete `final` homes. Action dispatch is exercised through the real
 /// `@objc` selector wired into each rendered menu item.
 @MainActor
-@Suite("MenuBarController")
+@Suite("MenuBarController", .tags(.productOutcome))
 struct MenuBarControllerTests {
 
   /// Populates the `NSApp` global before any SUT line touches it
