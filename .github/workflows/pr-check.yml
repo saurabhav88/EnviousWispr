@@ -723,6 +723,21 @@ jobs:
           # only the stdlib and reads no key, so it runs here on the same terms.
           python3 scripts/eval/acceptance_gate.py --mode selftest
 
+      - name: Language data generator (#1677)
+        run: |
+          set -euo pipefail
+          # The committed German data files under Sources/EnviousWisprPostProcessing/Generated/
+          # are OUTPUT of scripts/itn/generate.py from pinned local sources. Without this
+          # step a hand edit, a source change or a generator change that no longer
+          # reproduces a committed file would pass every other lane, because the Swift
+          # tests read the committed bytes, not the generator. --check regenerates all four
+          # outputs in a temp dir and byte-compares; it reads only files already in the
+          # checkout and makes no network request (--refresh is the only download path and
+          # is never run here). The unittest pattern names the one generator suite, so
+          # discovery cannot reach the acceptance corpus. Needs only python3 and the stdlib.
+          python3 scripts/itn/generate.py --check
+          python3 -m unittest discover -s scripts/itn/tests -p 'test_generate.py'
+
       - name: Require every lane
         env:
           BUILD: ${{ needs.build-and-test.result }}
