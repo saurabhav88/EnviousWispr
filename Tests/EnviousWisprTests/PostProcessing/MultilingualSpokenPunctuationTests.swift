@@ -223,6 +223,42 @@ struct MultilingualSpokenPunctuationTests {
     #expect(Self.text(input) == expected)
   }
 
+  /// Shapes the shipping recogniser (Parakeet v3) writes around a spoken command, taken from spoken
+  /// samples (#2450 second-pass check): it punctuates the clause before the start word as a question
+  /// or a sentence ("dir? Setze Fragezeichen"), ends with its own mark, and writes a French question
+  /// mark after a space. The command REPLACES a mark the recogniser put on the word before it, and
+  /// absorbs one it put after. Expected outputs are literal.
+  @Test(
+    "A mark the recogniser wrote around a command is replaced, never doubled",
+    arguments: [
+      ("de", "Wie geht es dir? Setze Fragezeichen.", "Wie geht es dir?"),
+      ("de", "Das ist toll. Setze Ausrufezeichen.", "Das ist toll!"),
+      ("de", "Wie geht es dir Setze Fragezeichen?", "Wie geht es dir?"),
+      ("de", "Toll Setze Ausrufezeichen!", "Toll!"),
+      ("de", "Hallo, Setze Komma wie geht es dir", "Hallo, wie geht es dir"),
+      ("de", "Es kostet 5. Setze Punkt", "Es kostet 5."),
+      ("fr", "Comment \u{00E7}a va ? Ins\u{00E8}re point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va Ins\u{00E8}re point d'interrogation ?", "Comment \u{00E7}a va?"),
+      ("fr", "C'est super Ins\u{00E8}re point d'exclamation !", "C'est super!"),
+      ("es", "\u{00BF}C\u{00F3}mo est\u{00E1}s? Pon signo de interrogaci\u{00F3}n.", "\u{00BF}C\u{00F3}mo est\u{00E1}s?"),
+      ("it", "Come stai? Metti punto interrogativo", "Come stai?"),
+    ])
+  func recogniserMarksAroundACommand(language: String, input: String, expected: String) {
+    #expect(Self.text(input, language) == expected)
+  }
+
+  @Test("A line break keeps the sentence end it follows, and a lone ellipsis is not a recogniser mark")
+  func breakAndEllipsisKeepTheirMarks() {
+    #expect(Self.text("Erste Zeile. Setze neue Zeile zweite") == "Erste Zeile.\nZweite")
+    #expect(Self.text("Moment\u{2026} Setze Punkt") == "Moment\u{2026}.")
+    #expect(Self.text("Wirklich?! Setze Punkt") == "Wirklich?!.")
+  }
+
+  @Test("Two commands in a row still stack: the second never eats the first's mark")
+  func adjacentCommandsStack() {
+    #expect(Self.text("alpha Setze Komma Setze Punkt beta") == "alpha,. Beta")
+  }
+
   @Test("A dot glued to the next token is not absorbed")
   func gluedDotIsKept() {
     #expect(Self.text("alpha Setze Punkt.com") == "alpha..com")
