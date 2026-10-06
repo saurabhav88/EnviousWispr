@@ -60,8 +60,7 @@ struct AppearanceSettingsView: View {
             SettingsRow(
               icon: "globe", title: "Language",
               short: "The language of the app interface.",
-              help:
-                "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."
+              help: "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."
             ) {
               Picker("Language", selection: $language) {
                 Text("System default").tag("")
@@ -99,8 +98,7 @@ struct AppearanceSettingsView: View {
             SettingsRow(
               icon: "dock.rectangle", title: "Show app in Dock",
               short: "Keep EnviousWispr in your Dock.",
-              help:
-                "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."
+              help: "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."
             ) {
               Toggle("", isOn: $settings.showInDock)
                 .labelsHidden()
@@ -115,8 +113,7 @@ struct AppearanceSettingsView: View {
             SettingsRow(
               icon: "menubar.rectangle", title: "Update alert in menu bar",
               short: "Show gold lips when an update is ready.",
-              help:
-                "When off, the menu bar icon stays plain while an update waits. You can still install it from the menu bar menu or What's New."
+              help: "When off, the menu bar icon stays plain while an update waits. You can still install it from the menu bar menu or What's New."
             ) {
               Toggle("", isOn: $settings.showMenuBarUpdateAlert)
                 .labelsHidden()
