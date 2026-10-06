@@ -120,6 +120,25 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
       "Чтобы забронировать переговорную, отправь письмо на info.собака.yandex.ru с датой и числом участников.",
       "Чтобы забронировать переговорную, отправь письмо на info@yandex.ru с датой и числом участников."
     ),
+    // #1677 measured engine shapes (Azure TTS, Parakeet and WhisperKit,
+    // `docs/audits/2026-10-06-1677-full-list-eval/`): a space before the glued Italian word, the
+    // Italian "scrivimi" cue, Polish `małpa` and Latin `sobaka` glued to a dotted name.
+    ("La mia email è marco.rossi23 chiocciolalibero.it", "La mia email è marco.rossi23@libero.it"),
+    ("La mia email è marco.rossi23chiocciolalibero.it", "La mia email è marco.rossi23@libero.it"),
+    ("Scrivimi a anna.rossichiocciola gmail.com", "Scrivimi a anna.rossi@gmail.com"),
+    ("Mój e-mail to jan.kowalski23małpa.wp.pl", "Mój e-mail to jan.kowalski23@wp.pl"),
+    ("Napisz do mnie na anna.nowakmałpa gmail.com", "Napisz do mnie na anna.nowak@gmail.com"),
+    ("Napisz do mnie na anna.nowakmałpa.gmail.com", "Napisz do mnie na anna.nowak@gmail.com"),
+    ("Моя почта: иван.петров23sobaka.mail.ru", "Моя почта: иван.петров23@mail.ru"),
+    ("Моя почта anna.ивановаsobaka gmail.com", "Моя почта anna.иванова@gmail.com"),
+    // Measured shapes that already convert, bound so they stay converted.
+    ("Mail me op anna.jansenapenstaartje gmail.com", "Mail me op anna.jansen@gmail.com"),
+    ("juan.perez23 arroba gmail punto com", "juan.perez23@gmail.com"),
+    ("ana.garcía arroba gmail.com", "ana.garcía@gmail.com"),
+    ("ejemplo.es barra contacto", "ejemplo.es/contacto"),
+    ("Localhost Doppelpunkt 3000", "Localhost:3000"),
+    ("localhost dubbele punt 3000", "localhost:3000"),
+    ("ABC trattino 123", "ABC-123"),
   ]
 
   @Test("converts the whole address, link or code", arguments: rows)
@@ -202,6 +221,10 @@ struct InverseTextNormalizerNeutralAddressesMoreLanguagesTests {
     "versão 2 ponto\n5 ponto 0",
     "версия 2 точка\n5 точка 0",
     "La chiocciola azienda.it era scritta sul muro.",
+    // #1677: no address cue, a file name, an inflected word, a one-word name, a doubled Italian c.
+    "anna.nowakmałpa.gmail.com", "anna.ivanovasobaka gmail.com",
+    "Napisz do raport.pdfmałpa.gmail.com", "Napisz do anna.nowakmałpami.gmail.com",
+    "Napisz do mnie na nowakmałpa gmail.com", "Scrivimi a niccolocchiocciolaesempio.it",
     // G7: a one-word mailbox in another language still converts (checked in `rows` of #3226)
   ]
 
