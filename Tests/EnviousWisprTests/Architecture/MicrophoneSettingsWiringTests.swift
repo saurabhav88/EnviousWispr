@@ -25,8 +25,12 @@ struct MicrophoneSettingsWiringTests {
   @Test("choosing a microphone still writes both preferences, through the shared owner")
   func selectionWritesBothPreferences() throws {
     let writes = Self.setterAssignments(binding: "inputDeviceSelection", in: try Self.source(Self.audioPath))
+    // #3486: the setter first refuses a device that is no longer plugged in.
     #expect(
-      writes == ["settingsManager.chooseInputDevice(uid: $0)"], "setter writes: \(writes)")
+      writes == [
+        "guard MicrophoneChoiceValidation.isSelectable(uid: uid) else { return }",
+        "settingsManager.chooseInputDevice(uid: uid)",
+      ], "setter writes: \(writes)")
   }
 
   @Test("the page describes the device from the one shared resolver")
