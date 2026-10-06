@@ -97,7 +97,11 @@ enum LanguagePassCatalog {
       .union(LanguageClockIdiomRules.languages).subtracting(["de"])
     for code in codes {
       // The language's number grammar, when it has one (Dutch), also lets the phone pass refuse a
-      // spoken operand before the plus word ("een plus 31 …" is a sum).
+      // spoken operand before the plus word ("een plus 31 …" is a sum). KNOWN LIMIT (#1677): a
+      // language without a grammar (French, Spanish, Italian, Portuguese, Polish) refuses only a
+      // WRITTEN operand, so a spoken sum whose second operand is itself a valid international
+      // number ("dwa plus 48 501 234 567") gains a "+"; every digit is kept. Closing it needs a
+      // sourced number lexicon per language.
       let grammar = (try? LanguageNumberGrammar.forLanguage(code)).flatMap { $0 }
       let phone = (try? LanguagePhonePrefixRules.signedOnly(language: code)).map {
         LanguagePhonePrefixPass(grammar: grammar, rules: $0)
