@@ -122,6 +122,8 @@ struct LanguageHourFirstClockPassTests {
       // Minute words after a "to" idiom with digit minutes.
       ("fr", "On se retrouve à 10h moins 10 minutes."), ("es", "Nos vemos a las 10 menos 20 minutos."),
       ("it", "Ci vediamo alle 4 meno 5 minuti."),
+      // An opening mark before the minutes stays.
+      ("es", "Nos vemos a las 8 y (un cuarto."), ("es", "Nos vemos a las 10 menos (20)."),
     ]
     for (language, text) in cases {
       #expect(bytes(try converted(text, language: language)) == bytes(text), "\(language): \(text)")

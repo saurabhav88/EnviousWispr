@@ -280,6 +280,8 @@ struct LanguageHourFirstClockPass: Sendable {
     else { return nil }
     let op = words[operatorIndex].folded
     let tail = operatorIndex + 1
+    // An opening mark before the minutes ("y (un cuarto") would be dropped by the edit.
+    guard tail < words.count, !words[tail].hasLeadingPunctuation else { return nil }
     var minutes: Int?
     var last = -1
     var isTo = false
