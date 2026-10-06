@@ -197,16 +197,119 @@ struct SettingsSearchVocabularyTests {
       #expect(kinds.isSuperset(of: ["phase0-content", "stop-and-markers"]), "\(language.language)")
       #expect(language.phraseExemptions.isEmpty, "\(language.language)")
     }
-    // An id added after Phase 0 names its own review output, which must be in the repository.
-    for added in receipt.addedIDs {
-      #expect(vocabulary.entries[added.id] != nil, "\(added.id)")
+    // An id added after Phase 0 is bound to its own review output: hash, id and content.
+    let edits = try Self.addedRecords()
+    #expect(Set(receipt.addedIDs.map(\.id)) == Set(edits.keys))
+    for (id, record) in edits {
       #expect(
-        FileManager.default.fileExists(
-          atPath: RepoRoot.sourceURL("scripts/settings-map/receipts/\(added.review)").path),
-        "\(added.id): \(added.review)")
+        Self.additionProblems(id: id, record: record, vocabulary: vocabulary, receipts: Self.receiptsRoot)
+          == [], "\(id)")
     }
     let german = try #require(receipt.languages.first { $0.language == "de" })
     #expect(german.reviews.contains { $0.kind == "german-council" })
+  }
+
+  // MARK: - Ids added after Phase 0
+
+  struct AddedRecord: Sendable {
+    let review: String
+    let reviewSHA256: String
+  }
+
+  static let receiptsRoot = RepoRoot.sourceURL("scripts/settings-map/receipts")
+
+  /// reviewed-edits.json's `added` records.
+  static func addedRecords() throws -> [String: AddedRecord] {
+    let data = try Data(contentsOf: receiptsRoot.appendingPathComponent("reviewed-edits.json"))
+    let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let added = object["added"] as? [String: [String: Any]] ?? [:]
+    return try added.mapValues {
+      AddedRecord(
+        review: try #require($0["review"] as? String),
+        reviewSHA256: try #require($0["reviewSHA256"] as? String))
+    }
+  }
+
+  /// Every way an added id's shipped blocks fail to be the ones its review output holds.
+  static func additionProblems(
+    id: String, record: AddedRecord, vocabulary: SettingsSearchVocabulary, receipts: URL
+  ) -> [String] {
+    let root = receipts.standardizedFileURL.path + "/"
+    let url = receipts.appendingPathComponent(record.review).standardizedFileURL
+    guard url.path.hasPrefix(root) else { return ["review outside receipts"] }
+    guard let data = try? Data(contentsOf: url), !data.isEmpty else { return ["review missing or empty"] }
+    guard sha256(data) == record.reviewSHA256 else { return ["review hash differs"] }
+    guard let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      return ["review is not a JSON object"]
+    }
+    guard document["id"] as? String == id else { return ["review names another id"] }
+    guard let reviewed = document["blocks"] as? [String: [String: Any]],
+      let shipped = vocabulary.entries[id]
+    else { return ["review or vocabulary lacks the blocks"] }
+    for code in languages {
+      guard let block = shipped[code], let review = reviewed[code],
+        review["title"] as? String == block.title,
+        review["words"] as? [String] == block.words,
+        review["phrases"] as? [String] == block.phrases,
+        review["phraseExemption"] as? String == block.phraseExemption,
+        Set(review.keys).isSubset(of: ["title", "words", "phrases", "phraseExemption"])
+      else { return ["\(code): shipped block differs from the review"] }
+    }
+    return []
+  }
+
+  enum AdditionCase: String, CaseIterable, Sendable {
+    case reviewed, missing, empty, wrongID, staleHash, changedContent, outsideReceipts
+  }
+
+  @Test("an added id binds to its review output", arguments: AdditionCase.allCases)
+  func additionControls(additionCase: AdditionCase) throws {
+    let vocabulary = try Self.fixtureVocabulary()
+    let receipts = FileManager.default.temporaryDirectory
+      .appendingPathComponent("vocabulary-additions-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(
+      at: receipts.appendingPathComponent("additions"), withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: receipts) }
+
+    var blocks: [String: Any] = [:]
+    for (code, block) in try #require(vocabulary.entries["alpha.one"]) {
+      var review: [String: Any] = ["words": block.words, "phrases": block.phrases]
+      review["title"] = block.title
+      blocks[code] = review
+    }
+    let id = additionCase == .wrongID ? "alpha.two" : "alpha.one"
+    let review = try JSONSerialization.data(withJSONObject: ["id": id, "blocks": blocks])
+    let file = receipts.appendingPathComponent("additions/alpha.one.json")
+    switch additionCase {
+    case .missing: break
+    case .empty: try Data().write(to: file)
+    default: try review.write(to: file)
+    }
+    let record = AddedRecord(
+      review: additionCase == .outsideReceipts ? "../alpha.one.json" : "additions/alpha.one.json",
+      reviewSHA256: additionCase == .staleHash ? String(repeating: "0", count: 64) : Self.sha256(review))
+    var shipped = vocabulary
+    if additionCase == .changedContent {
+      var entries = vocabulary.entries
+      let fr = try #require(entries["alpha.one"]?["fr"])
+      entries["alpha.one"]?["fr"] = .init(
+        title: fr.title, words: fr.words + ["extra"], phrases: fr.phrases, phraseExemption: nil)
+      shipped = SettingsSearchVocabulary(
+        version: 1, languageData: vocabulary.languageData, entries: entries, byteCount: 0)
+    }
+
+    let expected: [String] =
+      switch additionCase {
+      case .reviewed: []
+      case .missing, .empty: ["review missing or empty"]
+      case .wrongID: ["review names another id"]
+      case .staleHash: ["review hash differs"]
+      case .changedContent: ["fr: shipped block differs from the review"]
+      case .outsideReceipts: ["review outside receipts"]
+      }
+    #expect(
+      Self.additionProblems(id: "alpha.one", record: record, vocabulary: shipped, receipts: receipts)
+        == expected)
   }
 
   @Test("a receipt goes stale when one word changes")

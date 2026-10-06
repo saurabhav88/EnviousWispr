@@ -98,6 +98,9 @@ def build(source_bytes, inventory, edits):
         raise BuildError(f"{entry_id} is added but is not a mapped id")
     for entry_id in sorted(set(mapped) - phase0 - set(added)):
         raise BuildError(f"{entry_id} is mapped but has no vocabulary: draft it, review it, add it")
+    for entry_id, reason in retired.items():
+        if not isinstance(reason, str) or not reason.strip():
+            raise BuildError(f"{entry_id}: retirement needs a nonblank reason")
     for entry_id in sorted(set(retired) & set(mapped)):
         raise BuildError(f"{entry_id} is retired but still mapped")
     for entry_id in sorted(set(retired) - phase0):
@@ -113,9 +116,9 @@ def build(source_bytes, inventory, edits):
         blocks = []
         for code in LANGUAGES:
             if entry_id in added:
-                review = added[entry_id].get("review", "")
-                if not review:
-                    raise BuildError(f"{entry_id}: an added id names its review output")
+                record = added[entry_id]
+                if not record.get("review") or not record.get("reviewSHA256"):
+                    raise BuildError(f"{entry_id}: an added id names its review output and its SHA-256")
                 original = added[entry_id]["blocks"].get(code)
                 if original is None:
                     raise BuildError(f"{entry_id}/{code}: an added id needs every declared language")
@@ -178,7 +181,7 @@ def self_test():
     def edits(**extra):
         return {"sourceSHA256": sha256(source), "languageData": lists, "blocks": {}} | extra
 
-    new = {"blocks": entry("n"), "review": "receipts/additions/new.txt"}
+    new = {"blocks": entry("n"), "review": "additions/new.json", "reviewSHA256": "0" * 64}
     cases = [
         ("retained and retired", inventory(["keep"]), edits(retired={"gone": "removed in #1"}), ["keep"]),
         ("added with its review", inventory(["keep", "new"]),
@@ -192,6 +195,8 @@ def self_test():
          edits(added={"new": {"blocks": entry("n")}}, retired={"gone": "x"}), "names its review output"),
         ("retired id still mapped", inventory(["keep", "gone"]), edits(retired={"gone": "x"}),
          "still mapped"),
+        ("retired without a reason", inventory(["keep"]), edits(retired={"gone": " "}),
+         "nonblank reason"),
         ("canonically equal list words", inventory(["keep"]),
          edits(retired={"gone": "x"}, languageData=lists | {"hi": {"stop": ["filler"],
                "markers": ["\u095c", "\u0921\u093c"]}}), "canonically equal"),

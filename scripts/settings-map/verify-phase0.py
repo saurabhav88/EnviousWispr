@@ -19,6 +19,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import pathlib
 import sys
@@ -39,6 +40,29 @@ def answer(path):
     return json.loads(text[text.index("{"):text.rindex("}") + 1])
 
 
+def added_review(entry_id, record, receipts):
+    """The reviewed blocks of an id added after Phase 0, read from its review output, which
+    must stay under receipts/, match the recorded hash, name this id and equal what the edits
+    adopt."""
+    root = receipts.resolve()
+    path = (root / record["review"]).resolve()
+    if not path.is_relative_to(root):
+        sys.exit(f"{entry_id}: review must stay under receipts/")
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        sys.exit(f"{entry_id}: review {record['review']} is missing")
+    if hashlib.sha256(raw).hexdigest() != record["reviewSHA256"]:
+        sys.exit(f"{entry_id}: review hash differs")
+    document = json.loads(raw)
+    if document.get("id") != entry_id:
+        sys.exit(f"{entry_id}: review names another id")
+    blocks = document.get("blocks")
+    if blocks != record["blocks"]:
+        sys.exit(f"{entry_id}: adopted blocks differ from the review")
+    return blocks
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     for name in ("resource", "inventory", "edits", "phase0"):
@@ -51,6 +75,10 @@ def main():
     # Added ids carry their own review (reviewed-edits.json "added"); Phase 0 never covers them.
     added = edit_file.get("added", {})
     inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
+    addition_reviews = {
+        entry_id: added_review(entry_id, record, args.edits.parent)
+        for entry_id, record in added.items()
+    }
     mapped = {i["id"] for i in inventory["items"] if i["disposition"] == "mapped"}
 
     reviewed = {code: {} for code in INTERFACE}
@@ -84,7 +112,7 @@ def main():
             if entry_id in overlap:
                 continue
             if entry_id in added:
-                expected = dict(added[entry_id]["blocks"][code])
+                expected = dict(addition_reviews[entry_id][code])
             else:
                 expected = dict(reviewed[code][entry_id])
             replacement = edits.get(entry_id, {}).get(code, {})
