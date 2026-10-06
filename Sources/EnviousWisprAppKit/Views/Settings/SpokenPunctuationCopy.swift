@@ -61,15 +61,12 @@ enum SpokenPunctuationCopy {
     comment: "Speech engine settings, spoken punctuation: the Start word row's name.")
   static let startWordShort = String(
     localized:
-      "The word you say before a mark. Leave it blank to use command words on their own. Pick a word you would not say in a normal sentence.",
+      "The word you say before a mark.",
     comment: "Speech engine settings, Start word row: the short line under the row's name.")
   static let startWordHelp = String(
     localized:
-      "Say your start word and then the mark. The start word is what tells a command from an ordinary word. You can set a different word for each language.",
+      "Say your start word and then the mark. The start word tells a command from an ordinary word. Pick a word you would not say in a normal sentence. Leave the field blank to use command words on their own. You can set a different word for each language.",
     comment: "Speech engine settings, Start word row: the help behind the question mark.")
-  static let startWordBlankHint = String(
-    localized: "Leave it blank to use no start word.",
-    comment: "Speech engine settings, Start word row: how to turn the start word off.")
   static let noStartWordWarning = String(
     localized:
       "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence.",
@@ -90,6 +87,12 @@ enum SpokenPunctuationCopy {
     comment:
       "Speech engine settings, Start word row: the language picker does not set the dictation language."
   )
+  static let saveLabel = String(
+    localized: "Save word",
+    comment: "Speech engine settings, Start word row: button that saves the typed start word.")
+  static let saveAccessibilityLabel = String(
+    localized: "Save start word",
+    comment: "Speech engine settings, Start word row: spoken name of the Save button.")
   static let resetLabel = String(
     localized: "Reset",
     comment: "Speech engine settings, Start word row: button that restores the default start word.")

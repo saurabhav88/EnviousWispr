@@ -11,7 +11,7 @@ import Observation
 /// persistence have exactly one owner. The model never decides whether a word is acceptable.
 ///
 /// The draft is kept apart from the stored value on purpose: the field shows what the user is typing,
-/// and only a commit (Return, losing focus, switching language, or the row leaving) writes it.
+/// and only a commit (Return, the Save button, losing focus, switching language, or the row leaving) writes it.
 ///
 /// The picker is not the dictation language. It only chooses which table's start word is being
 /// edited, so changing it never touches `languageMode`.
@@ -87,6 +87,9 @@ final class SpokenPunctuationStartWordEditor {
     hasNoStartWord || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
+  /// True while the field shows text that is not yet the stored word, which is when Save does something.
+  var hasUnsavedDraft: Bool { draft != effectiveWord }
+
   /// True while the picked language has a word of the user's own, which is when Reset does something.
   var isCustomised: Bool { settings.spokenPunctuation.startWordOverrides[language] != nil }
 
@@ -114,7 +117,7 @@ final class SpokenPunctuationStartWordEditor {
   func commitDraft() {
     // Nothing to write when the field already shows the stored word, which is what the second of
     // "Return, then focus loss" sees. Leaving the rejection alone here is what keeps it on screen.
-    guard draft != effectiveWord else { return }
+    guard hasUnsavedDraft else { return }
     switch settings.commitSpokenPunctuationStartWord(draft, language: language) {
     case .accepted:
       rejection = nil

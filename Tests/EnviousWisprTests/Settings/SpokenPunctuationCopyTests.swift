@@ -35,11 +35,13 @@ struct SpokenPunctuationCopyTests {
     #expect(SpokenPunctuationCopy.helpPolish.contains("protect") == false)
   }
 
-  @Test("The row says how to pick a word and that the picker is not the dictation language")
+  @Test("The row keeps one short line; the help says how to pick a word, that blank means none, and that the picker is not the dictation language")
   func rowLines() {
+    #expect(SpokenPunctuationCopy.startWordShort == "The word you say before a mark.")
     #expect(
-      SpokenPunctuationCopy.startWordShort.contains(
+      SpokenPunctuationCopy.startWordHelp.contains(
         "Pick a word you would not say in a normal sentence"))
+    #expect(SpokenPunctuationCopy.startWordHelp.contains("Leave the field blank"))
     #expect(SpokenPunctuationCopy.languagePickerLabel == "Start word for")
     #expect(
       SpokenPunctuationCopy.pickerIsNotDictationLanguage.contains(

@@ -20,9 +20,10 @@ struct SpokenPunctuationStartWordRow: View {
       SettingsRow(
         icon: "text.cursor",
         resolvedTitle: SpokenPunctuationCopy.startWordTitle,
-        resolvedShort: SpokenPunctuationCopy.startWordShort,
-        resolvedHelp: SpokenPunctuationCopy.startWordHelp
+        resolvedShort: SpokenPunctuationCopy.startWordShort
       ) {
+        SpokenPunctuationStartWordHelpPanel()
+      } control: {
         languagePicker
       }
       editorBlock
@@ -46,14 +47,17 @@ struct SpokenPunctuationStartWordRow: View {
           .foregroundStyle(.stTextPrimary)
           .accessibilityHidden(true)
         field
-        if editor.isCustomised {
-          Button(SpokenPunctuationCopy.resetLabel) { editor.reset() }
-            .buttonStyle(.plain)
-            .font(.stHelper)
-            .foregroundStyle(Color.stAccent)
-            .settingsHoverQuiet()
-            .accessibilityLabel(Text(SpokenPunctuationCopy.resetAccessibilityLabel))
-        }
+        // Clicking elsewhere in the window does not always take focus off the field, so a typed word
+        // needs a button that saves it; Return and focus loss still save it too.
+        SettingsActionButton(
+          verbatimTitle: SpokenPunctuationCopy.saveLabel, isEnabled: editor.hasUnsavedDraft,
+          emphasis: .filled
+        ) { editor.commitDraft() }
+        .accessibilityLabel(Text(SpokenPunctuationCopy.saveAccessibilityLabel))
+        SettingsActionButton(
+          verbatimTitle: SpokenPunctuationCopy.resetLabel, isEnabled: editor.isCustomised
+        ) { editor.reset() }
+        .accessibilityLabel(Text(SpokenPunctuationCopy.resetAccessibilityLabel))
       }
       if let example = editor.exampleCommand {
         Text(SpokenPunctuationCopy.example(command: example))
@@ -70,20 +74,7 @@ struct SpokenPunctuationStartWordRow: View {
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
-      } else {
-        Text(SpokenPunctuationCopy.startWordBlankHint)
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
       }
-      Text(SpokenPunctuationCopy.pickerIsNotDictationLanguage)
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
-      Text(SpokenPunctuationCopy.helpEnglish)
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
@@ -133,19 +124,44 @@ struct SpokenPunctuationHelpPanel: View {
         .settingsReadingCopy()
       Text(SpokenPunctuationCopy.helpFootnote)
         .settingsReadingCopy()
-      if let url = SpokenPunctuationCopy.learnMoreURL {
-        Link(destination: url) {
-          HStack(spacing: 4) {
-            Text(SpokenPunctuationCopy.learnMoreLabel)
-            Image(systemName: "arrow.up.right")
-          }
-          .font(.stHelper)
-        }
-        .foregroundStyle(.stAccent)
-        .accessibilityLabel(Text(SpokenPunctuationCopy.learnMoreAccessibilityLabel))
-      }
+      SpokenPunctuationLearnMoreLink()
     }
     .frame(maxWidth: 300, alignment: .leading)
     .padding(16)
+  }
+}
+
+/// #2450: what the Start word "?" shows. The row keeps one short line; how the word works, what the
+/// language picker does and how English fits in live here, with the link to the article.
+struct SpokenPunctuationStartWordHelpPanel: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(SpokenPunctuationCopy.startWordHelp)
+        .settingsReadingCopy()
+      Text(SpokenPunctuationCopy.pickerIsNotDictationLanguage)
+        .settingsReadingCopy()
+      Text(SpokenPunctuationCopy.helpEnglish)
+        .settingsReadingCopy()
+      SpokenPunctuationLearnMoreLink()
+    }
+    .frame(maxWidth: 300, alignment: .leading)
+    .padding(16)
+  }
+}
+
+/// The link to the Help Center article that owns the word list, shared by both "?" panels.
+struct SpokenPunctuationLearnMoreLink: View {
+  var body: some View {
+    if let url = SpokenPunctuationCopy.learnMoreURL {
+      Link(destination: url) {
+        HStack(spacing: 4) {
+          Text(SpokenPunctuationCopy.learnMoreLabel)
+          Image(systemName: "arrow.up.right")
+        }
+        .font(.stHelper)
+      }
+      .foregroundStyle(.stAccent)
+      .accessibilityLabel(Text(SpokenPunctuationCopy.learnMoreAccessibilityLabel))
+    }
   }
 }

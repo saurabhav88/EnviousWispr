@@ -9291,17 +9291,6 @@
         }
       }
     },
-    "Leave it blank to use no start word." : {
-      "comment" : "Speech engine settings, Start word row: how to turn the start word off.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lass das Feld leer, um kein Startwort zu verwenden."
-          }
-        }
-      }
-    },
     "LLM Deactivated" : {
       "comment" : "Sidebar and menu: no AI polish provider is chosen.",
       "localizations" : {
@@ -14565,12 +14554,34 @@
         }
       }
     },
+    "Save start word" : {
+      "comment" : "Speech engine settings, Start word row: spoken name of the Save button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startwort sichern"
+          }
+        }
+      }
+    },
     "Save the text you type over and over. An email address, a signature, a link you always paste." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Speichere Text, den du oft eingibst: eine E-Mail-Adresse, eine Signatur oder einen häufig verwendeten Link."
+          }
+        }
+      }
+    },
+    "Save word" : {
+      "comment" : "Speech engine settings, Start word row: button that saves the typed start word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wort sichern"
           }
         }
       }
@@ -14726,13 +14737,13 @@
         }
       }
     },
-    "Say your start word and then the mark. The start word is what tells a command from an ordinary word. You can set a different word for each language." : {
+    "Say your start word and then the mark. The start word tells a command from an ordinary word. Pick a word you would not say in a normal sentence. Leave the field blank to use command words on their own. You can set a different word for each language." : {
       "comment" : "Speech engine settings, Start word row: the help behind the question mark.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sag dein Startwort und dann das Zeichen. Das Startwort unterscheidet einen Befehl von einem gewöhnlichen Wort. Du kannst für jede Sprache ein eigenes Wort festlegen."
+            "value" : "Sag dein Startwort und dann das Zeichen. Das Startwort unterscheidet einen Befehl von einem gewöhnlichen Wort. Wähle ein Wort, das du in einem normalen Satz nicht sagen würdest. Lass das Feld leer, um Befehlswörter allein zu verwenden. Du kannst für jede Sprache ein eigenes Wort festlegen."
           }
         }
       }
@@ -17422,13 +17433,13 @@
         }
       }
     },
-    "The word you say before a mark. Leave it blank to use command words on their own. Pick a word you would not say in a normal sentence." : {
+    "The word you say before a mark." : {
       "comment" : "Speech engine settings, Start word row: the short line under the row's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Wort, das du vor einem Zeichen sagst. Lass das Feld leer, um Befehlswörter allein zu verwenden. Wähle ein Wort, das du in einem normalen Satz nicht sagen würdest."
+            "value" : "Das Wort, das du vor einem Zeichen sagst."
           }
         }
       }

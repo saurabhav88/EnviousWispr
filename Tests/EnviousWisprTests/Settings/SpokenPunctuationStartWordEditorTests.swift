@@ -60,6 +60,22 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(editor.language == "de")
   }
 
+  @Test("Save is live only while the field holds a word that is not stored yet, and saving stores it")
+  func saveButtonState() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    #expect(editor.hasUnsavedDraft == false)
+    editor.userEdited("Schreibe")
+    #expect(editor.hasUnsavedDraft)
+    editor.commitDraft()  // what the Save button calls
+    #expect(editor.hasUnsavedDraft == false)
+    #expect(editor.effectiveWord == "Schreibe")
+    #expect(editor.isCustomised)
+    editor.reset()
+    #expect(editor.effectiveWord == "Diktiere")
+    #expect(editor.isCustomised == false)
+  }
+
   // MARK: - What the row shows
 
   @Test("It shows the default word and a command built from the rules for every language")
