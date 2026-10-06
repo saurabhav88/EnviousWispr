@@ -213,6 +213,9 @@ enum LanguageProtectedSpans {
     "kilogramm", "gramm", "liter", "minute", "minuten", "sekunde", "sekunden", "stunde",
     "stunden", "tag", "tage", "tagen", "woche", "wochen", "monat", "monate", "monaten", "jahr",
     "jahre", "jahren",
+    // French, Spanish, Italian and Portuguese minute and second words.
+    "minutes", "minuto", "minutos", "minuti", "seconde", "secondes", "segundo", "segundos",
+    "secondo", "secondi",
   ]
 
   private static let units: Set<String> = temperatureAndPercentUnits.union(otherUnits)

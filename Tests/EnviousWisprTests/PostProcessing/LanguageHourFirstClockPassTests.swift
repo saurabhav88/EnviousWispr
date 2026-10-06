@@ -119,6 +119,9 @@ struct LanguageHourFirstClockPassTests {
       // A clock-face choice, a number or unit continuing, punctuation inside the idiom.
       ("es", "Quedamos a la una menos cuarto."), ("es", "Son las 3 y media 4 veces."),
       ("es", "Cuesta a las 3 y media euros."), ("es", "A las 9, menos cuarto."),
+      // Minute words after a "to" idiom with digit minutes.
+      ("fr", "On se retrouve à 10h moins 10 minutes."), ("es", "Nos vemos a las 10 menos 20 minutos."),
+      ("it", "Ci vediamo alle 4 meno 5 minuti."),
     ]
     for (language, text) in cases {
       #expect(bytes(try converted(text, language: language)) == bytes(text), "\(language): \(text)")
