@@ -86,7 +86,7 @@ def declaration_lines(map_source, id_source, parents, choices):
         parent_case = cases.get(parents.get(raw) or "")
         family = [n for n, text in enumerate(map_lines, 1)
                   if parent_case and re.search(r"\bof: \." + re.escape(parent_case) + r",", text)]
-        if len(family) == 1:
+        if raw in choices and len(family) == 1:
             found[raw] = (MAP_FILE, family[0], f"choices(of: .{parent_case})")
         elif raw in choices and len(generators) == 1:
             found[raw] = (MAP_FILE, generators[0], "SettingsMap.choices (shared choice producer)")
@@ -440,6 +440,12 @@ def self_test():
             check("an id with no producer is refused", True)
         found = declaration_lines(map_source, id_source.replace('case orphan = "orphan"\n', ""), {"item.a": "item"}, {"item.a"})
         shared = declaration_lines(map_source.replace("of: .item,", "of: .elsewhere,"), id_source.replace('case orphan = "orphan"\n', ""), {"item.a": "item"}, {"item.a"})
+        try:
+            declaration_lines(map_source, id_source.replace('case orphan = "orphan"', 'case notChoice = "item.b"'),
+                              {"item.a": "item", "item.b": "item"}, {"item.a"})
+            check("a non-choice child of a choice family is refused", False)
+        except PublishError:
+            check("a non-choice child of a choice family is refused", True)
         check("a choice with no family call cites the shared constructor", shared["item.a"] == (MAP_FILE, 6, "SettingsMap.choices (shared choice producer)"))
         check("a literal node cites its own line", found["page"] == (MAP_FILE, 2, "node"))
         check("a generated choice cites its family call", found["item.a"] == (MAP_FILE, 5, "choices(of: .item)"))
