@@ -180,6 +180,10 @@ class RealSourcesTests(unittest.TestCase):
 PHONE_SHAPES = ["plus_between_operands", "plus_joining_nouns", "plus_before_temperature_or_percent",
                 "plus_not_followed_by_digit", "ordinal_adverb"]
 PHONE_IDS = ["ref-phone-001", "ref-phone-002", "ref-phone-003", "ref-phone-004"]
+UNSIGNED_FIXTURE = {"linkersBefore": ["ist"], "phoneWords": ["nummer"], "nonNounWords": ["sie"],
+                    "valueVerbs": ["kostet"], "possessorArticles": ["der"],
+                    "fieldSuffixes": ["nummer"], "localQualifiers": ["lokal"],
+                    "possessiveSuffix": "s", "provenance": "fixture provenance"}
 
 
 def phone_stamp(entry):
@@ -224,7 +228,7 @@ class PhoneFixture(Fixture):
             {"x-closed-vocabulary": {"context_shape": PHONE_SHAPES}}))
         self.declaration = {"category": "phone_country_prefix", "refusalsFile": "refusals/de.json",
                             "schemaFile": "review-data.schema.json", "requiredEntries": PHONE_IDS,
-                            "replacement": "+"}
+                            "replacement": "+", "unsignedContext": UNSIGNED_FIXTURE}
         self.declaration.update(declaration or {})
         self.phone_out = self.dir / "out" / "GermanPhonePrefixData.swift"
 
@@ -482,7 +486,8 @@ class OrdinalRefusalFixture(Fixture):
             overrides["phonePrefix"] = {"category": "phone_country_prefix",
                                         "refusalsFile": "refusals/de.json",
                                         "schemaFile": "review-data.schema.json",
-                                        "requiredEntries": PHONE_IDS, "replacement": "+"}
+                                        "requiredEntries": PHONE_IDS, "replacement": "+",
+                                        "unsignedContext": UNSIGNED_FIXTURE}
         manifest = self.manifest(**overrides)
         return run("--manifest", str(manifest), "--out", str(self.out), "--phone-out",
                    str(self.phone_out), "--ordinal-out", str(self.ordinal_out), *extra)

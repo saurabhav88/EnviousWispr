@@ -6,9 +6,11 @@
 //   emitted: 4 reviewed entries, each checked against its semantic hash, its version and the closed shape vocabulary
 //   excluded: 0 pending entries of this category, every other category
 //   trigger tokens: plus; replacement '+'
+//   unsigned-number word classes: linkersBefore 20, phoneWords 22, nonNounWords 38, valueVerbs 16, possessorArticles 4, fieldSuffixes 2, localQualifiers 22 (admission data, not reviewed refusals)
 //
-// Reviewed refusal data only (#1677). It is not a telephone grammar and makes no claim
-// that a German sentence converts correctly.
+// Reviewed refusal data plus the unsigned-number word classes (admission data, not reviewed
+// refusals) (#1677). It is not a telephone grammar and makes no claim that a German
+// sentence converts correctly.
 
 enum GermanPhonePrefixData {
   /// One reviewed refusal entry, exactly as the panel approved it.
@@ -26,6 +28,150 @@ enum GermanPhonePrefixData {
   static let triggerTokens: [String] = [
     "plus",
   ]
+
+  /// Word classes for numbers written without a sign (admission data, not reviewed
+  /// refusals). Provenance: Founder direction for #1677 evolution: a phone number by default, refused only when the number belongs to something else. Word classes for the shared unsigned-number gates: words that may stand between a label and the number, phone words that do not make the number another field, capitalised words that are not nouns, value verbs that make the number an amount, possessor articles, number-field suffixes, and explicit local or national qualifiers. Chosen from the failure analysis of the fresh German acceptance run; not reviewed refusals.
+  enum Unsigned {
+    static let linkersBefore: [String] = [
+      "ist",
+      "sind",
+      "lautet",
+      "lauten",
+      "war",
+      "wäre",
+      "jetzt",
+      "nämlich",
+      "also",
+      "bitte",
+      "unter",
+      "neue",
+      "neu",
+      "die",
+      "der",
+      "dem",
+      "meine",
+      "seine",
+      "ihre",
+      "unsere",
+    ]
+    static let phoneWords: [String] = [
+      "nummer",
+      "nummern",
+      "telefonnummer",
+      "telefonnummern",
+      "handynummer",
+      "handynummern",
+      "festnetznummer",
+      "festnetznummern",
+      "mobilnummer",
+      "mobilnummern",
+      "mobilfunknummer",
+      "rufnummer",
+      "rufnummern",
+      "faxnummer",
+      "rückrufnummer",
+      "durchwahl",
+      "telefon",
+      "handy",
+      "festnetz",
+      "mobiltelefon",
+      "hotline",
+      "whatsapp",
+    ]
+    static let nonNounWords: [String] = [
+      "sie",
+      "ihnen",
+      "ihr",
+      "ihre",
+      "ihrer",
+      "ich",
+      "wir",
+      "er",
+      "es",
+      "du",
+      "man",
+      "ruf",
+      "rufen",
+      "rufe",
+      "schreib",
+      "schreiben",
+      "notier",
+      "notiere",
+      "unter",
+      "bei",
+      "die",
+      "der",
+      "das",
+      "den",
+      "dem",
+      "meine",
+      "mein",
+      "seine",
+      "unsere",
+      "bitte",
+      "erreichen",
+      "melden",
+      "hier",
+      "also",
+      "und",
+      "oder",
+      "nämlich",
+      "kurz",
+    ]
+    static let valueVerbs: [String] = [
+      "kostet",
+      "kosten",
+      "beträgt",
+      "betragen",
+      "wiegt",
+      "wiegen",
+      "misst",
+      "messen",
+      "zählt",
+      "zählen",
+      "zahlen",
+      "zahlt",
+      "summiert",
+      "ergibt",
+      "ergeben",
+      "umfasst",
+    ]
+    static let possessorArticles: [String] = [
+      "der",
+      "des",
+      "vom",
+      "von",
+    ]
+    static let fieldSuffixes: [String] = [
+      "nummer",
+      "nummern",
+    ]
+    static let localQualifiers: [String] = [
+      "lokal",
+      "lokale",
+      "lokalen",
+      "lokaler",
+      "lokales",
+      "national",
+      "nationale",
+      "nationalen",
+      "nationaler",
+      "nationales",
+      "inländisch",
+      "inländische",
+      "inländischen",
+      "inländischer",
+      "ortsnetz",
+      "ortsnummer",
+      "intern",
+      "interne",
+      "internen",
+      "interner",
+      "hausintern",
+      "nebenstelle",
+    ]
+    static let possessiveSuffix = "s"
+  }
 
   static let refusals: [Refusal] = [
     Refusal(id: "ref-phone-001", version: 2, contentSHA256: "c207ff9bd6407413e3608f1e43ce62baacb1bfec74edba093c1f66ee21cc9309", reasonCode: "plus_arithmetic", contextShape: "plus_between_operands", reviewRef: "refusal-ledger:ref-phone-001:v2"),

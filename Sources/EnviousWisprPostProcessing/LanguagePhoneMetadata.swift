@@ -30,6 +30,9 @@ import os
 // REGION
 // The library's parse requires a region argument. It is irrelevant for input that starts with
 // "+" and is passed explicitly so the library never consults the device locale or Contacts.
+// `national(digits:region:)` reads a DOMESTIC number (leading trunk prefix, no calling code) for
+// the ONE region its caller names; the answer is valid only when the number belongs to that
+// region, so a number that fits two countries is grouped only for the caller's.
 
 final class LanguagePhoneMetadata: @unchecked Sendable {
 
@@ -55,6 +58,13 @@ final class LanguagePhoneMetadata: @unchecked Sendable {
     case valid(International)
     case invalid(Invalid)
     /// The metadata could not be loaded; no number can be validated.
+    case unavailable(String)
+  }
+
+  enum NationalAnswer: Sendable, Equatable {
+    /// The region's national grouping, joined by spaces, carrying exactly the input digits.
+    case valid(String)
+    case invalid(Invalid)
     case unavailable(String)
   }
 
@@ -109,6 +119,20 @@ final class LanguagePhoneMetadata: @unchecked Sendable {
       digits.utf8.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 })
     else { return .invalid(.notDigits) }
     switch withLoaded({ Self.answer(digits: digits, utility: $0.utility) }) {
+    case .success(let answer): return answer
+    case .failure(let failure): return .unavailable(failure.description)
+    }
+  }
+
+  /// A domestic number (`digits` with its trunk prefix, no calling code) read for `region` (an
+  /// ISO 3166 code such as "DE"): valid only when it is a documented number OF that region and the
+  /// national grouping keeps every digit.
+  func national(digits: String, region: String) -> NationalAnswer {
+    guard (2...Self.maxDigits).contains(digits.utf8.count),
+      digits.utf8.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 }),
+      region.utf8.count == 2, region.utf8.allSatisfy({ $0 >= 0x41 && $0 <= 0x5A })
+    else { return .invalid(.notDigits) }
+    switch withLoaded({ Self.nationalAnswer(digits: digits, region: region, utility: $0.utility) }) {
     case .success(let answer): return answer
     case .failure(let failure): return .unavailable(failure.description)
     }
@@ -194,6 +218,28 @@ final class LanguagePhoneMetadata: @unchecked Sendable {
       International(
         countryCode: code, nationalNumber: String(digits.dropFirst(code.count)),
         formatted: formatted))
+  }
+}
+
+extension LanguagePhoneMetadata {
+  fileprivate static func nationalAnswer(
+    digits: String, region: String, utility: PhoneNumberUtility
+  ) -> NationalAnswer {
+    let number: PhoneNumber
+    do {
+      number = try utility.parse(digits, withRegion: region)
+    } catch {
+      return .invalid(.notANumber)
+    }
+    guard number.numberExtension == nil, utility.getRegionCode(of: number) == region else {
+      return .invalid(.notANumber)
+    }
+    let national = utility.format(number, toType: .national)
+    let formatted = String(national.unicodeScalars.map { $0 == "-" ? " " : Character($0) })
+    guard formatted.unicodeScalars.allSatisfy({ ($0 >= "0" && $0 <= "9") || $0 == " " }),
+      formatted.filter(\.isASCIIDigitCharacter) == digits
+    else { return .invalid(.digitsChanged) }
+    return .valid(formatted)
   }
 }
 

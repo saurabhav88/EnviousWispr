@@ -15,8 +15,13 @@ import Foundation
 //  2. written: a plus sign glued to a digit run whose groups use a separator other than spaces
 //     (`+81/3/4567/8901`, `+43.664.9081122`, `+32-2-601`). A written number grouped only by
 //     spaces, or not at all, is already well formed and is never touched.
-// A number without an explicit plus (`33 5 6789 0123`, `00 49 ...`) is never a candidate: digits
-// alone do not say a number is international, and the pass never guesses a country.
+//  3. unsigned (founder direction 2026-10-06, "phone number by default"): a run with no sign that
+//     STARTS with an assigned calling code (`49 176 9087654`, an engine that dropped the spoken
+//     plus) is read as international; a run that starts with a trunk zero (`030 86 0800`) is read
+//     as a domestic number of the caller's home region, when the caller names one. Unsigned runs
+//     need 8 to 15 digits; international ones also need two or more groups. They are refused only
+//     when the number belongs to something else (see UNSIGNED GATES). A run starting with `00`,
+//     and every other unsigned run, is not a candidate.
 //
 // THE DIGIT RUN is complete or refused as a whole: groups of ASCII digits joined by horizontal
 // whitespace, a comma (with optional whitespace either side), or a dot, slash or hyphen. It ends
@@ -42,6 +47,19 @@ import Foundation
 // digits, the pass replaces only the trigger word and its separator with the sign and keeps every
 // digit and separator as written. Engines mishear single digits and speakers say trunk zeros
 // (`plus 41 0 22 ...`); the sign is still right where the regrouping is not.
+//
+// UNSIGNED GATES (word classes from `LanguagePhonePrefixRules.Unsigned`, logic shared):
+//  - a number, sign or trigger word directly before the run, or a unit or currency after it;
+//  - ATTACHED: the nearest word before the run (skipping linker words such as "ist") is a value
+//    verb ("kostet") or a capitalised noun that is not a phone word ("Projekt", "Rechnung"),
+//    unless it is the possessor of a phone word ("Nummer der Praxis"); a bare "Nummer" right
+//    after such a noun ("Projekt Nummer") but not after a possessive name ("Lisas Nummer"); or a
+//    capitalised noun right after the run ("358 ... Besucher");
+//  - a number-field word ("Kundennummer") anywhere in the sentence;
+//  - international reading only: an explicit local or national qualifier in the sentence.
+// Policy (declared inference, not proof): a calling-code first group is read as international;
+// a local or prefix-omitted national number can be misread. No digit is ever added or removed.
+// A domestic number already written in its region's grouping is left as it is.
 //
 // LIMITS: validity is a documented numbering range, not a reachable subscriber. Digits the
 // engine misheard stay misheard; the pass can only refuse them when they form no valid number.
@@ -82,6 +100,10 @@ struct LanguagePhonePrefixPass: Sendable {
     case notAValidNumber(LanguagePhoneMetadata.Invalid)
     /// The metadata could not be loaded; no number is validated.
     case metadataUnavailable(String)
+    /// Unsigned: the number belongs to another field, a label, a quantity or an amount.
+    case attachedToAnotherField
+    /// Unsigned international reading: the sentence names the number local or national.
+    case localOrNationalQualifier
     case editRefused(LanguageEditRefusal)
   }
 
@@ -91,7 +113,8 @@ struct LanguagePhonePrefixPass: Sendable {
   }
 
   struct Candidate: Sendable, Equatable {
-    /// The trigger word's (or the plus sign's) UTF-16 range in the original text.
+    /// The trigger word's (or the plus sign's) UTF-16 range in the original text; for an unsigned
+    /// run, its first digit.
     let trigger: Range<Int>
     let decision: Decision
   }
@@ -122,7 +145,9 @@ struct LanguagePhonePrefixPass: Sendable {
 
   // MARK: Entry
 
-  func propose(in snapshot: LanguageTextSnapshot) -> Outcome {
+  /// `homeRegion` (ISO 3166, e.g. "DE") enables domestic numbers for that region only; nil leaves
+  /// every trunk-prefixed number as written.
+  func propose(in snapshot: LanguageTextSnapshot, homeRegion: String? = nil) -> Outcome {
     for shape in LanguagePhonePrefixRules.Shape.allCases where rules.refusal(for: shape) == nil {
       return .unavailable("reviewed shape \(shape.rawValue) is missing")
     }
@@ -135,8 +160,25 @@ struct LanguagePhonePrefixPass: Sendable {
     var candidates: [Candidate] = []
     var truncated = false
     var consumedUpTo = 0
+    let words = Self.words(of: chunks, snapshot: snapshot)
     for index in chunks.indices where chunks[index].range.lowerBound >= consumedUpTo {
-      guard let anchor = anchor(in: chunks[index], snapshot: snapshot) else { continue }
+      guard let anchor = anchor(in: chunks[index], snapshot: snapshot) else {
+        if let (marker, decision, end) = decideUnsigned(
+          chunkIndex: index, chunks: chunks, words: words, snapshot: snapshot, parser: parser,
+          homeRegion: homeRegion)
+        {
+          if case .proposed(let edit) = decision {
+            edits.append(edit)
+            consumedUpTo = end
+          }
+          if candidates.count < Run.diagnosticLimit {
+            candidates.append(Candidate(trigger: marker, decision: decision))
+          } else {
+            truncated = true
+          }
+        }
+        continue
+      }
       let (decision, end) = decide(
         anchor: anchor, chunkIndex: index, chunks: chunks, snapshot: snapshot,
         parser: parser)
@@ -204,6 +246,187 @@ struct LanguagePhonePrefixPass: Sendable {
     }
     guard scanner.isASCIIDigit(at: wordEnd) else { return nil }
     return Anchor(kind: .spokenGlued, marker: start..<wordEnd, chunkStart: chunk.range.lowerBound)
+  }
+
+  // MARK: Unsigned numbers
+
+  /// One chunk reduced to its word, for the unsigned gates: the text without opening or closing
+  /// punctuation, its fold, whether it is capitalised, and whether a sentence ends after it.
+  private struct Word {
+    let core: String
+    let folded: String
+    let capitalised: Bool
+    let endsSentence: Bool
+  }
+
+  private static let closingPunctuation = CharacterSet(charactersIn: ".,;:!?)]}\"'»”’“‘")
+  private static let sentenceEnders: Set<Character> = [".", "!", "?", ";"]
+
+  private static func words(
+    of chunks: [LanguageProtectedSpans.Chunk], snapshot: LanguageTextSnapshot
+  ) -> [Word] {
+    chunks.map { chunk in
+      var scalars = Array(chunk.text.unicodeScalars)
+      while let first = scalars.first, openingPunctuation.contains(first) { scalars.removeFirst() }
+      var trailing = ""
+      while let last = scalars.last, closingPunctuation.contains(last) {
+        trailing.unicodeScalars.insert(last, at: trailing.unicodeScalars.startIndex)
+        scalars.removeLast()
+      }
+      var view = String.UnicodeScalarView()
+      view.append(contentsOf: scalars)
+      let core = String(view)
+      return Word(
+        core: core, folded: LanguageNumberGrammar.fold(core),
+        capitalised: core.first?.isUppercase ?? false,
+        endsSentence: trailing.contains(where: { sentenceEnders.contains($0) })
+          || !chunk.gapAfterIsHorizontal)
+    }
+  }
+
+  /// The decision for an unsigned run starting in this chunk, its first digit, and the edit end;
+  /// nil when the chunk does not start a structurally possible unsigned number.
+  private func decideUnsigned(
+    chunkIndex: Int, chunks: [LanguageProtectedSpans.Chunk], words: [Word],
+    snapshot: LanguageTextSnapshot, parser: LanguageNumberParser, homeRegion: String?
+  ) -> (Range<Int>, Decision, Int)? {
+    let units = snapshot.units
+    let scanner = UnitScanner(units: units)
+    let chunk = chunks[chunkIndex]
+    var runStart = chunk.range.lowerBound
+    while runStart < chunk.range.upperBound, let scalar = scanner.scalar(at: runStart),
+      Self.openingPunctuation.contains(scalar)
+    {
+      runStart += scanner.width(at: runStart)
+    }
+    guard scanner.isASCIIDigit(at: runStart) else { return nil }
+    // Inside a longer run, or right after a sign or trigger word: not an unsigned start.
+    if chunkIndex > 0, !words[chunkIndex - 1].endsSentence {
+      let previous = chunks[chunkIndex - 1]
+      if let last = scanner.scalar(at: previous.range.upperBound - 1),
+        last.properties.numericType != nil || "+-−".unicodeScalars.contains(last)
+      {
+        return nil
+      }
+      if rules.triggers.contains(words[chunkIndex - 1].folded) { return nil }
+    }
+    guard case .run(let digits, let separators, let firstGroup, let runEnd) = scanner.scanRun(
+      from: runStart),
+      (8...Self.maxDigits).contains(digits.utf8.count), !digits.hasPrefix("00")
+    else { return nil }
+    let marker = runStart..<(runStart + 1)
+    let domestic = digits.hasPrefix("0")
+
+    let formatted: String
+    if domestic {
+      guard let homeRegion else { return nil }
+      switch metadata.national(digits: digits, region: homeRegion) {
+      case .valid(let national): formatted = national
+      case .invalid: return nil
+      case .unavailable(let reason): return (marker, .refused(.metadataUnavailable(reason)), 0)
+      }
+      // Already written in the region's grouping: nothing to do.
+      if snapshot.substring(runStart..<runEnd) == formatted { return nil }
+    } else {
+      guard !separators.isEmpty else { return nil }
+      switch metadata.international(digits: digits) {
+      case .valid(let number) where number.countryCode == String(digits.prefix(firstGroup)):
+        formatted = number.formatted
+      case .unavailable(let reason): return (marker, .refused(.metadataUnavailable(reason)), 0)
+      default: return nil
+      }
+    }
+
+    if numberPrecedes(chunkIndex: chunkIndex, chunks: chunks, snapshot: snapshot, parser: parser) {
+      return (marker, .refused(.arithmeticOperandBefore), 0)
+    }
+    switch unitTail(after: runEnd, chunks: chunks, scanner: scanner) {
+    case .temperatureOrPercent: return (marker, .refused(.temperatureOrPercentTail), 0)
+    case .otherUnitOrCurrency: return (marker, .refused(.measurementOrCurrencyTail), 0)
+    case .none: break
+    }
+    guard
+      let lastIndex = chunks.firstIndex(where: {
+        $0.range.lowerBound < runEnd && runEnd <= $0.range.upperBound
+      })
+    else { return (marker, .refused(.malformedContinuation), 0) }
+    let sentence = sentenceWords(around: chunkIndex, through: lastIndex, words: words)
+    if attached(before: sentence.before, after: sentence.after)
+      || sentence.all.contains(where: isNumberField)
+    {
+      return (marker, .refused(.attachedToAnotherField), 0)
+    }
+    if !domestic, sentence.all.contains(where: { rules.unsigned.localQualifiers.contains($0.folded) }) {
+      return (marker, .refused(.localOrNationalQualifier), 0)
+    }
+
+    guard let leading = snapshot.substring(chunk.range.lowerBound..<runStart),
+      let trailing = snapshot.substring(runEnd..<chunks[lastIndex].range.upperBound)
+    else { return (marker, .refused(.malformedContinuation), 0) }
+    let range = chunk.range.lowerBound..<chunks[lastIndex].range.upperBound
+    switch snapshot.edit(regroupingDigitsIn: range, with: leading + formatted + trailing) {
+    case .success(let edit): return (marker, .proposed(edit), range.upperBound)
+    case .failure(let refusal): return (marker, .refused(.editRefused(refusal)), 0)
+    }
+  }
+
+  /// The sentence's words before the run (nearest first) and after it (nearest first), and all.
+  private func sentenceWords(around first: Int, through last: Int, words: [Word])
+    -> (before: [Word], after: [Word], all: [Word])
+  {
+    var before: [Word] = []
+    var index = first - 1
+    while index >= 0, !words[index].endsSentence {
+      if !words[index].core.isEmpty { before.append(words[index]) }
+      index -= 1
+    }
+    var after: [Word] = []
+    if !words[last].endsSentence {
+      index = last + 1
+      while index < words.count {
+        if !words[index].core.isEmpty { after.append(words[index]) }
+        if words[index].endsSentence { break }
+        index += 1
+      }
+    }
+    return (before, after, before + after)
+  }
+
+  private func isNoun(_ word: Word) -> Bool {
+    let classes = rules.unsigned
+    return word.capitalised && word.core.first?.isLetter == true
+      && !classes.phoneWords.contains(word.folded) && !classes.nonNounWords.contains(word.folded)
+  }
+
+  private func isNumberField(_ word: Word) -> Bool {
+    let classes = rules.unsigned
+    return !classes.phoneWords.contains(word.folded)
+      && classes.fieldSuffixes.contains(where: { word.folded.hasSuffix($0) && word.folded != $0 })
+  }
+
+  /// The number belongs to a label, a quantity or an amount (see UNSIGNED GATES).
+  private func attached(before: [Word], after: [Word]) -> Bool {
+    let classes = rules.unsigned
+    var i = 0
+    while i < before.count, classes.linkersBefore.contains(before[i].folded) { i += 1 }
+    if i < before.count {
+      let word = before[i]
+      if classes.valueVerbs.contains(word.folded) { return true }
+      let bareFieldWord = classes.fieldSuffixes.contains(word.folded)
+      if bareFieldWord, i + 1 < before.count, isNoun(before[i + 1]),
+        !before[i + 1].folded.hasSuffix(classes.possessiveSuffix)
+      {
+        return true
+      }
+      if isNoun(word) {
+        let possessorOfPhoneWord =
+          i + 2 < before.count && classes.possessorArticles.contains(before[i + 1].folded)
+          && classes.phoneWords.contains(before[i + 2].folded)
+        if !possessorOfPhoneWord { return true }
+      }
+    }
+    if let next = after.first, isNoun(next) { return true }
+    return false
   }
 
   // MARK: Decision

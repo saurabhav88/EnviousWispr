@@ -554,7 +554,7 @@ def build_phone(manifest, base):
     """The reviewed phone-prefix refusal entries as typed rows, or None when not declared."""
     loaded = refusal_inputs(manifest, base, "phonePrefix",
                             ("category", "refusalsFile", "schemaFile", "requiredEntries",
-                             "replacement"))
+                             "replacement", "unsignedContext"))
     if loaded is None:
         return None
     decl, chosen, shapes, pending_excluded = loaded
@@ -583,10 +583,48 @@ def build_phone(manifest, base):
         "category": category,
         "replacement": decl["replacement"],
         "triggers": triggers,
+        "unsigned": build_unsigned_context(decl["unsignedContext"]),
         "rows": rows,
         "pending_excluded": pending_excluded,
         "refusalsFile": decl["refusalsFile"],
     }
+
+
+UNSIGNED_WORD_ROLES = ("linkersBefore", "phoneWords", "nonNounWords", "valueVerbs",
+                       "possessorArticles", "fieldSuffixes", "localQualifiers")
+
+
+def build_unsigned_context(decl):
+    """The word classes the phone pass's unsigned-number gates read (#1677 evolution): admission
+    data for a shared algorithm, NOT a reviewed refusal and not a phone grammar. Every role must be
+    a non-empty list of distinct lower-case single words; the possessive suffix is one short
+    lower-case ending; the provenance says where the lists come from."""
+    if not isinstance(decl, dict):
+        raise GenerationError("phonePrefix: unsignedContext must be an object")
+    known = set(UNSIGNED_WORD_ROLES) | {"possessiveSuffix", "provenance"}
+    unknown = sorted(set(decl) - known)
+    if unknown:
+        raise GenerationError(f"phonePrefix: unsignedContext has unknown roles {unknown}")
+    out = {}
+    for role in UNSIGNED_WORD_ROLES:
+        words = decl.get(role)
+        if not isinstance(words, list) or not words:
+            raise GenerationError(f"phonePrefix: unsignedContext.{role} must be a non-empty list")
+        folded = [normalize_spoken(w) for w in words]
+        if any(not w or re.search(r"\s", w) or w != w.lower() for w in folded):
+            raise GenerationError(f"phonePrefix: unsignedContext.{role} needs lower-case single words")
+        if len(set(folded)) != len(folded):
+            raise GenerationError(f"phonePrefix: unsignedContext.{role} lists a word twice")
+        out[role] = folded
+    suffix = decl.get("possessiveSuffix")
+    if not isinstance(suffix, str) or not re.fullmatch(r"[a-zäöüß]{1,3}", suffix):
+        raise GenerationError("phonePrefix: unsignedContext.possessiveSuffix must be 1-3 lower-case letters")
+    out["possessiveSuffix"] = suffix
+    provenance = decl.get("provenance")
+    if not isinstance(provenance, str) or not provenance.strip():
+        raise GenerationError("phonePrefix: unsignedContext.provenance is empty")
+    out["provenance"] = provenance
+    return out
 
 
 def build_ordinal(manifest, base):
@@ -852,6 +890,9 @@ def phone_inventory_lines(result):
         f"  excluded: {result['pending_excluded']} pending entries of this category, every "
         "other category",
         f"  trigger tokens: {', '.join(result['triggers'])}; replacement {result['replacement']!r}",
+        "  unsigned-number word classes: " + ", ".join(
+            f"{role} {len(result['unsigned'][role])}" for role in UNSIGNED_WORD_ROLES)
+        + " (admission data, not reviewed refusals)",
     ]
 
 
@@ -862,8 +903,9 @@ def emit_phone(result):
     out += ["// " + line for line in phone_inventory_lines(result)]
     out += [
         "//",
-        "// Reviewed refusal data only (#1677). It is not a telephone grammar and makes no claim",
-        "// that a German sentence converts correctly.",
+        "// Reviewed refusal data plus the unsigned-number word classes (admission data, not reviewed",
+        "// refusals) (#1677). It is not a telephone grammar and makes no claim that a German",
+        "// sentence converts correctly.",
         "",
         "enum GermanPhonePrefixData {",
         "  /// One reviewed refusal entry, exactly as the panel approved it.",
@@ -881,7 +923,17 @@ def emit_phone(result):
         "  static let triggerTokens: [String] = [",
     ]
     out += [f"    {swift_string(t)}," for t in result["triggers"]]
-    out += ["  ]", "", "  static let refusals: [Refusal] = ["]
+    out += ["  ]", ""]
+    unsigned = result["unsigned"]
+    out += ["  /// Word classes for numbers written without a sign (admission data, not reviewed",
+            "  /// refusals). Provenance: " + unsigned["provenance"].replace("\n", " "),
+            "  enum Unsigned {"]
+    for role in UNSIGNED_WORD_ROLES:
+        out.append(f"    static let {role}: [String] = [")
+        out += [f"      {swift_string(w)}," for w in unsigned[role]]
+        out.append("    ]")
+    out += [f"    static let possessiveSuffix = {swift_string(unsigned['possessiveSuffix'])}",
+            "  }", "", "  static let refusals: [Refusal] = ["]
     for r in result["rows"]:
         out.append(
             f"    Refusal(id: {swift_string(r['id'])}, version: {r['version']}, "

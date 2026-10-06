@@ -130,7 +130,8 @@ struct LanguagePhonePrefixPassTests {
     {
       do {
         _ = try LanguagePhonePrefixRules.build(
-          rows: rows, triggerTokens: triggers, replacement: replacement)
+          rows: rows, triggerTokens: triggers, replacement: replacement,
+          unsigned: try LanguagePhonePrefixRules.Unsigned.german())
         return nil
       } catch let error as LanguagePhonePrefixRules.BuildError {
         return error
@@ -149,6 +150,14 @@ struct LanguagePhonePrefixPassTests {
     #expect(build(good, triggers: []) == .noTriggerToken)
     #expect(build(good, triggers: [""]) == .noTriggerToken)
     #expect(build(good, replacement: "") == .emptyReplacement)
+    // An empty unsigned-number word class fails the whole adaptation.
+    let U = GermanPhonePrefixData.Unsigned.self
+    #expect(throws: LanguagePhonePrefixRules.BuildError.emptyWordClass("valueVerbs")) {
+      _ = try LanguagePhonePrefixRules.Unsigned.build(
+        linkersBefore: U.linkersBefore, phoneWords: U.phoneWords, nonNounWords: U.nonNounWords,
+        valueVerbs: [], possessorArticles: U.possessorArticles, fieldSuffixes: U.fieldSuffixes,
+        localQualifiers: U.localQualifiers, possessiveSuffix: U.possessiveSuffix)
+    }
   }
 
   @Test("a pass whose rules lack a reviewed shape is unavailable and proposes nothing")
@@ -156,7 +165,7 @@ struct LanguagePhonePrefixPassTests {
     let full = try LanguagePhonePrefixRules.german()
     let partial = LanguagePhonePrefixRules(
       triggers: full.triggers, replacement: full.replacement,
-      refusals: Array(full.refusals.dropLast()))
+      refusals: Array(full.refusals.dropLast()), unsigned: full.unsigned)
     let broken = LanguagePhonePrefixPass(grammar: pass.grammar, rules: partial)
     let snapshot = LanguageTextSnapshot("Ruf plus 49 176 9087654 an")
     guard case .unavailable(let reason) = broken.propose(in: snapshot) else {
@@ -228,18 +237,19 @@ struct LanguagePhonePrefixPassTests {
 
   @Test("only a complete trigger word, alone or glued to digits, is a spoken anchor")
   func triggerBoundaries() throws {
+    // A trunk-zero run: only a spoken trigger signs it (fallback); unsigned it is no candidate.
     for text in [
-      "Ruf surplus 49 176 9087654 an", "Ruf plusquamperfekt 49 176 9087654 an",
-      "Ruf plus, 49 176 9087654 an", "Ruf plus-Konto 49 176 9087654 an",
-      "Ruf plus/minus 49 176 9087654 an",
-      "Siehe https://beispiel.de/plus 49 176 9087654 jetzt",
-      "Mail plus@beispiel.de 49 176 9087654 jetzt",
+      "Ruf surplus 41 0 22 700 45 61 an", "Ruf plusquamperfekt 41 0 22 700 45 61 an",
+      "Ruf plus, 41 0 22 700 45 61 an", "Ruf plus-Konto 41 0 22 700 45 61 an",
+      "Ruf plus/minus 41 0 22 700 45 61 an",
+      "Siehe https://beispiel.de/plus 41 0 22 700 45 61 jetzt",
+      "Mail plus@beispiel.de 41 0 22 700 45 61 jetzt",
     ] {
       let (_, result) = try run(text)
       #expect(result.candidates.isEmpty, "\(text)")
       #expect(bytes(try converted(text)) == bytes(text), "\(text)")
     }
-    #expect(try converted("Siehe plus 49 176 9087654 jetzt") == "Siehe +49 176 9087654 jetzt")
+    #expect(try converted("Siehe plus 41 0 22 700 45 61 jetzt") == "Siehe +41 0 22 700 45 61 jetzt")
   }
 
   // MARK: What is never converted
@@ -254,16 +264,94 @@ struct LanguagePhonePrefixPassTests {
     #expect(try converted("Ruf +49/176/9087654 an") == "Ruf +49 176 9087654 an")
   }
 
-  @Test("a number without an explicit plus is never a candidate")
-  func noPlusNoCandidate() throws {
-    for text in [
-      "Ruf 00 49 30 12345678 an", "Ruf 0049 30 12345678 an", "Ruf 33 5 6789 0123 an",
-      "Ruf 030 12345678 an", "Ruf 49 176 9087654 an",
-    ] {
-      let (_, result) = try run(text)
-      #expect(result.candidates.isEmpty, "\(text)")
+  private func converted(_ text: String, home: String?) throws -> String {
+    let snapshot = LanguageTextSnapshot(text)
+    guard case .ran(let result) = pass.propose(in: snapshot, homeRegion: home) else {
+      Issue.record("the pass reported itself unavailable")
+      return text
+    }
+    switch LanguageTextEditor.apply(result.edits, to: snapshot) {
+    case .applied(let output): return output
+    case .refused(let refusal):
+      Issue.record("the editor refused the pass's own edits: \(refusal)")
+      return text
+    }
+  }
+
+  // MARK: Unsigned numbers (phone number by default)
+
+  @Test("an unsigned run that starts with a calling code is a phone number unless it belongs elsewhere")
+  func unsignedInternational() throws {
+    let cases: [(String, String)] = [
+      ("Meine Handynummer ist 49 176 9087654.", "Meine Handynummer ist +49 176 9087654."),
+      ("Die Nummer ist 43 664 1168 97.", "Die Nummer ist +43 664 116897."),
+      ("Nummer 49 176 9087654 bitte.", "Nummer +49 176 9087654 bitte."),
+      ("Lisas Nummer ist 49 176 9087654.", "Lisas Nummer ist +49 176 9087654."),
+      ("Erreichen Sie uns unter 41 79 123 45 67.", "Erreichen Sie uns unter +41 79 123 45 67."),
+      ("Unter 41 79 123 45 67 sind wir erreichbar.", "Unter +41 79 123 45 67 sind wir erreichbar."),
+      ("Ruf 41 79 123 45 67 an.", "Ruf +41 79 123 45 67 an."),
+      ("Die Festnetznummer der Praxis lautet 49 30958061.", "Die Festnetznummer der Praxis lautet +49 30 958061."),
+      ("Die Nummer vom Restaurant ist 43 1 2 38 85 64 70.", "Die Nummer vom Restaurant ist +43 1 238856470."),
+      ("Ihre Mobilnummer, also bitte 39 312 592 0762 eintragen.", "Ihre Mobilnummer, also bitte +39 312 592 0762 eintragen."),
+      ("(49 176 9087654)", "(+49 176 9087654)"),
+    ]
+    for (input, expected) in cases {
+      #expect(bytes(try converted(input)) == bytes(expected), "\(input)")
+    }
+  }
+
+  @Test("an unsigned run that belongs to a label, a quantity, an amount or a field is left alone")
+  func unsignedRefusals() throws {
+    let refused: [(String, LanguagePhonePrefixPass.Refusal)] = [
+      ("Das Projekt 49 176 9087654 läuft.", .attachedToAnotherField),
+      ("Seine Steuer-ID ist 49 176 9087654.", .attachedToAnotherField),
+      ("Wir zählen 49 176 9087654 Besucher.", .attachedToAnotherField),
+      ("Das Handy kostet 49 176 9087654.", .attachedToAnotherField),
+      ("Rechnung 49 176 9087654 wurde bezahlt.", .attachedToAnotherField),
+      ("Projekt Nummer 49 176 9087654 startet.", .attachedToAnotherField),
+      ("Ihre Kundennummer lautet 33 612 75 04 86.", .attachedToAnotherField),
+      ("Meine lokale Telefonnummer ist 49 176 9087654.", .localOrNationalQualifier),
+      ("Das sind 49 176 9087654 Euro.", .measurementOrCurrencyTail),
+      ("Rechne 7, 49 176 9087654 dazu.", .arithmeticOperandBefore),
+    ]
+    for (text, reason) in refused {
+      #expect(try refusals(text) == [reason], "\(text)")
       #expect(bytes(try converted(text)) == bytes(text), "\(text)")
     }
+    // Not candidates at all: too short, one block, unassigned code, 00 prefix, inside a run.
+    for text in [
+      "Ruf 49 176 90 an.", "Ruf 491769087654 an.", "Ruf 99 176 9087654 an.",
+      "Ruf 00 49 30 12345678 an.", "Ruf 0049 30 12345678 an.", "Version 2.5 49 176 9087654",
+      "Ruf -49 176 9087654 an.", "Am 05.05.2024 kommt er.",
+    ] {
+      #expect(try run(text).1.edits.isEmpty, "\(text)")
+      #expect(bytes(try converted(text)) == bytes(text), "\(text)")
+    }
+    // A second pass over a converted number proposes nothing.
+    #expect(try run("Meine Handynummer ist +49 176 9087654.").1.edits.isEmpty)
+  }
+
+  @Test("a domestic number is grouped for the home region only, every digit kept")
+  func domesticNumbers() throws {
+    let de: [(String, String)] = [
+      ("Ruf mich unter 030 86 0800 an.", "Ruf mich unter 030 860800 an."),
+      ("Meine Nummer ist 015122916272.", "Meine Nummer ist 01512 2916272."),
+      ("Festnetz 030-408-406, danke.", "Festnetz 030 408406, danke."),
+      ("Meine Nummer ist 0781 97 59 98.", "Meine Nummer ist 0781 975998."),
+    ]
+    for (input, expected) in de {
+      #expect(bytes(try converted(input, home: "DE")) == bytes(expected), "\(input)")
+    }
+    // The same Swiss mobile digits group for Switzerland when the Mac says Switzerland.
+    #expect(
+      bytes(try converted("Meine Nummer ist 0781 97 59 98.", home: "CH"))
+        == bytes("Meine Nummer ist 078 197 59 98."))
+    // No home region, a number invalid for the home region, already written: left as written.
+    #expect(try converted("Ruf mich unter 030 86 0800 an.", home: nil) == "Ruf mich unter 030 86 0800 an.")
+    #expect(try converted("Ruf mich unter 0511 1234567 an.", home: "AT") == "Ruf mich unter 0511 1234567 an.")
+    #expect(try converted("Ruf mich unter 030 860800 an.", home: "DE") == "Ruf mich unter 030 860800 an.")
+    // Gates apply to domestic numbers too.
+    #expect(try converted("Die Rechnung 030 86 0800 ist offen.", home: "DE") == "Die Rechnung 030 86 0800 ist offen.")
   }
 
   @Test("digits that form no documented number and fail the fallback are refused as written")
