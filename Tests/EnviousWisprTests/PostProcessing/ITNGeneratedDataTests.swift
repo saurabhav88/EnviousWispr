@@ -289,9 +289,9 @@ struct ITNGeneratedDataTests {
     #expect(DutchNumberData.articleForms == ["een"])
   }
 
-  @Test("only the named grammar adapter reads the generated data; the registry lists seven languages")
+  @Test("only the named grammar adapter reads the generated data; the registry lists nine languages")
   func notReachableFromRuntime() throws {
-    #expect(LanguageRuleRegistry.production.count == 7)
+    #expect(LanguageRuleRegistry.production.count == 9)
     let sources = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // PostProcessing
       .deletingLastPathComponent()  // EnviousWisprTests
