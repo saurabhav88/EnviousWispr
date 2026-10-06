@@ -1216,5 +1216,30 @@ class ModeTests(unittest.TestCase):
         self.assertIn("cannot read manifest", result.stderr)
 
 
+class PhoneTriggerTests(unittest.TestCase):
+    """The four-language spoken plus words (`phoneTriggers`) are validated, never coerced."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("itn_generate", GENERATOR)
+        cls.gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.gen)
+
+    def entry(self, tokens):
+        return {"phoneTriggers": {"fr": {
+            "triggerTokens": tokens, "replacement": "+", "provenance": "measured"}}}
+
+    def test_a_list_of_words_is_accepted(self):
+        self.assertEqual(self.gen.build_phone_triggers(self.entry(["plus"])),
+                         [("fr", ["plus"], "measured")])
+
+    def test_a_string_or_non_word_tokens_fail(self):
+        for tokens in ("plus", ["plus", 3], None):
+            with self.subTest(tokens=tokens):
+                with self.assertRaisesRegex(self.gen.GenerationError, "triggerTokens"):
+                    self.gen.build_phone_triggers(self.entry(tokens))
+
+
 if __name__ == "__main__":
     unittest.main()

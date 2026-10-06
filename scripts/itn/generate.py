@@ -1236,7 +1236,10 @@ def build_phone_triggers(manifest):
             raise GenerationError("phoneTriggers: German owns its reviewed phonePrefix section")
         if not isinstance(entry, dict) or set(entry) - {"triggerTokens", "replacement", "provenance"}:
             raise GenerationError(f"phoneTriggers.{code}: fields are triggerTokens, replacement, provenance")
-        words = [normalize_spoken(w) for w in entry.get("triggerTokens") or []]
+        tokens = entry.get("triggerTokens")
+        if not isinstance(tokens, list) or not all(isinstance(w, str) for w in tokens):
+            raise GenerationError(f"phoneTriggers.{code}: triggerTokens must be a list of words")
+        words = [normalize_spoken(w) for w in tokens]
         if not words or any(not w or re.search(r"\s", w) or w != w.lower() for w in words) \
                 or len(set(words)) != len(words):
             raise GenerationError(f"phoneTriggers.{code}: triggerTokens need distinct lower-case single words")
