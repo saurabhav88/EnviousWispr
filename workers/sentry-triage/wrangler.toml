@@ -1,6 +1,7 @@
 # Secrets (set via `wrangler secret put <NAME>`, not committed here):
 #   SENTRY_WEBHOOK_SECRET — HMAC key for verifying inbound Sentry webhooks.
-#   DISCORD_WEBHOOK_URL   — Discord channel webhook for triage alerts.
+#   DISCORD_WEBHOOK_URL   — Discord channel webhook for Mac triage alerts.
+#   DISCORD_ANDROID_WEBHOOK_URL — existing #enviouswispr-android webhook; Android issues only.
 #   SENTRY_AUTH_TOKEN     — GCP secret `sentry-workers-readonly-token`, a
 #     personal Sentry token scoped to exactly `event:read` + `org:read`. This
 #     worker makes TWO different Sentry calls and one token has to serve both:

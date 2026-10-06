@@ -344,7 +344,12 @@ export async function handleTriage(body, env) {
     priority: decision.priority,
   });
 
-  const result = await postDiscord(env.DISCORD_WEBHOOK_URL, embed, {
+  // Sentry's issue lookup owns project identity; feedback text and tags cannot choose a channel.
+  // A missing Android binding must refuse delivery, never fall back into the Mac channel.
+  const webhookUrl = issue.project?.id === "4512117176795136"
+    ? env.DISCORD_ANDROID_WEBHOOK_URL
+    : env.DISCORD_WEBHOOK_URL;
+  const result = await postDiscord(webhookUrl, embed, {
     issueId,
     deadlineAt: operationDeadlineAt,
   });
@@ -528,10 +533,10 @@ export function displayVersion(release) {
   return at >= 0 ? release.slice(at + 1) : release;
 }
 
-/** Render an OS value as "macOS X", tolerating a source that already includes the prefix. */
-export function formatOs(osVersion) {
+/** Preserve the API's named OS; bare legacy versions default to macOS. */
+export function formatOs(osVersion, osName = "macOS") {
   if (!osVersion) return null;
-  return /^macos/i.test(osVersion) ? osVersion : `macOS ${osVersion}`;
+  return /^macos/i.test(osVersion) || /^android(?:\s|$)/i.test(osVersion) ? osVersion : `${osName} ${osVersion}`;
 }
 
 function compareRelease(a, b) {
@@ -963,6 +968,7 @@ export function extractEventRecord(event) {
     // tags there (os="macOS 26.6.0", device="Mac16,8"). Read tags first, keep the
     // contexts path as a defensive fallback for any richer event serialization.
     osVersion: tagValue("os") ?? event?.contexts?.os?.version ?? null,
+    osName: tagValue("os.name") ?? event?.contexts?.os?.name ?? undefined,
     deviceModel: tagValue("device") ?? event?.contexts?.device?.model ?? null,
   };
 }
@@ -1228,6 +1234,7 @@ export function buildEmbedFromLookup(eventLookup, { issueId, title, permalink, t
     buildType: rep.buildType,
     release: rep.release,
     osVersion: rep.osVersion,
+    osName: rep.osName,
     deviceModel: rep.deviceModel,
   };
   return buildEnrichedEmbed({ issueId, title, permalink, timesSeen, userCount, priority, metadata, buildType });
@@ -1290,7 +1297,7 @@ export function readableHeadline(title, metadata) {
 export function metadataFields(metadata) {
   const what = [metadata.category, metadata.stage].filter(Boolean).join(" / ") || "unknown";
   const system =
-    [formatOs(metadata.osVersion), metadata.deviceModel].filter(Boolean).join(", ") || "unknown";
+    [formatOs(metadata.osVersion, metadata.osName), metadata.deviceModel].filter(Boolean).join(", ") || "unknown";
   return { what, system };
 }
 
