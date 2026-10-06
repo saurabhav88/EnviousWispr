@@ -72,9 +72,10 @@ import EnviousWisprPostProcessing
     step.backendSupportsLID = true
     let out = try await step.process(ctx("mandalo a marco arroba esempio punto com", language: "es"))
     #expect(out.text == "mandalo a marco@esempio.com")
-    #expect(step.lastRun?.ran == false)
+    // Spanish has a registered rule set (#1677): the language route runs the neutral subset first.
+    #expect(step.lastRun?.ran == true)
     #expect(step.lastRun?.changed == true)
-    #expect(step.lastRun?.skipReason == "non_english")
+    #expect(step.lastRun?.skipReason == nil)
   }
 
   /// The neutral subset reads no English number words: the English digit read stays spoken on
@@ -83,8 +84,8 @@ import EnviousWisprPostProcessing
   func neutralSubsetOnSkippedTake() async throws {
     let step = InverseTextNormalizationStep()
     step.backendSupportsLID = true
-    // French: an unregistered non-English take runs the neutral subset (German has rules, #1677).
-    let out = try await step.process(ctx("Frage B Bindestrich 2, Code zwei null drei", language: "fr"))
+    // Dutch: an unregistered non-English take runs the neutral subset (#1677 registers de/fr/es/it/pt).
+    let out = try await step.process(ctx("Frage B Bindestrich 2, Code zwei null drei", language: "nl"))
     #expect(out.text == "Frage B-2, Code zwei null drei")
     #expect(step.lastRun?.ran == false)
     #expect(step.lastRun?.changed == true)
@@ -107,7 +108,7 @@ import EnviousWisprPostProcessing
   func skipsForNonEnglishLanguage() async throws {
     let step = InverseTextNormalizationStep()
     step.backendSupportsLID = true
-    let out = try await step.process(ctx("the code is two zero three", language: "es"))
+    let out = try await step.process(ctx("the code is two zero three", language: "nl"))
     #expect(out.text == "the code is two zero three")
     #expect(step.lastRun?.ran == false)
     #expect(step.lastRun?.skipReason == "non_english")

@@ -66,12 +66,14 @@ import Foundation
 
 struct LanguagePhonePrefixPass: Sendable {
 
-  let grammar: LanguageNumberGrammar
+  /// The language's number grammar, for spoken operands before a trigger ("sieben plus ...");
+  /// nil for a language without generated number data (written operands are still refused).
+  let grammar: LanguageNumberGrammar?
   let rules: LanguagePhonePrefixRules
   let metadata: LanguagePhoneMetadata
 
   init(
-    grammar: LanguageNumberGrammar, rules: LanguagePhonePrefixRules,
+    grammar: LanguageNumberGrammar?, rules: LanguagePhonePrefixRules,
     metadata: LanguagePhoneMetadata = .shared
   ) {
     self.grammar = grammar
@@ -98,6 +100,9 @@ struct LanguagePhonePrefixPass: Sendable {
     case alreadyWellFormed
     /// The metadata rejects the digits.
     case notAValidNumber(LanguagePhoneMetadata.Invalid)
+    /// The metadata rejects the digits and they are grouped in thousands (`1.000.000`,
+    /// `2 500 000`): an amount, so the sign-only fallback does not apply.
+    case thousandsGroupedAmount
     /// The metadata could not be loaded; no number is validated.
     case metadataUnavailable(String)
     /// Unsigned: the number belongs to another field, a label, a quantity or an amount.
@@ -155,7 +160,7 @@ struct LanguagePhonePrefixPass: Sendable {
       return .unavailable("no trigger or replacement")
     }
     let chunks = LanguageProtectedSpans.chunks(of: snapshot.text)
-    let parser = LanguageNumberParser(grammar: grammar)
+    let parser = grammar.map { LanguageNumberParser(grammar: $0) }
     var edits: [LanguageTextEdit] = []
     var candidates: [Candidate] = []
     var truncated = false
@@ -288,8 +293,10 @@ struct LanguagePhonePrefixPass: Sendable {
   /// nil when the chunk does not start a structurally possible unsigned number.
   private func decideUnsigned(
     chunkIndex: Int, chunks: [LanguageProtectedSpans.Chunk], words: [Word],
-    snapshot: LanguageTextSnapshot, parser: LanguageNumberParser, homeRegion: String?
+    snapshot: LanguageTextSnapshot, parser: LanguageNumberParser?, homeRegion: String?
   ) -> (Range<Int>, Decision, Int)? {
+    // A language without unsigned word classes runs the signed path only.
+    guard let classes = rules.unsigned else { return nil }
     let units = snapshot.units
     let scanner = UnitScanner(units: units)
     let chunk = chunks[chunkIndex]
@@ -310,8 +317,9 @@ struct LanguagePhonePrefixPass: Sendable {
       }
       if rules.triggers.contains(words[chunkIndex - 1].folded) { return nil }
     }
-    guard case .run(let digits, let separators, let firstGroup, let runEnd) = scanner.scanRun(
-      from: runStart),
+    guard
+      case .run(let digits, let separators, let firstGroup, let runEnd) = scanner.scanRun(
+        from: runStart),
       (8...Self.maxDigits).contains(digits.utf8.count), !digits.hasPrefix("00")
     else { return nil }
     // Dates and other dotted numbers are never unsigned telephone numbers: a dot separator, or
@@ -360,12 +368,12 @@ struct LanguagePhonePrefixPass: Sendable {
       })
     else { return (marker, .refused(.malformedContinuation), 0) }
     let sentence = sentenceWords(around: chunkIndex, through: lastIndex, words: words)
-    if attached(before: sentence.before, after: sentence.after)
-      || sentence.all.contains(where: isNumberField)
+    if attached(before: sentence.before, after: sentence.after, classes: classes)
+      || sentence.all.contains(where: { isNumberField($0, classes: classes) })
     {
       return (marker, .refused(.attachedToAnotherField), 0)
     }
-    if !domestic, sentence.all.contains(where: { rules.unsigned.localQualifiers.contains($0.folded) }) {
+    if !domestic, sentence.all.contains(where: { classes.localQualifiers.contains($0.folded) }) {
       return (marker, .refused(.localOrNationalQualifier), 0)
     }
 
@@ -401,40 +409,39 @@ struct LanguagePhonePrefixPass: Sendable {
     return (before, after, before + after)
   }
 
-  private func isNoun(_ word: Word) -> Bool {
-    let classes = rules.unsigned
+  private func isNoun(_ word: Word, classes: LanguagePhonePrefixRules.Unsigned) -> Bool {
     return word.capitalised && word.core.first?.isLetter == true
       && !classes.phoneWords.contains(word.folded) && !classes.nonNounWords.contains(word.folded)
   }
 
-  private func isNumberField(_ word: Word) -> Bool {
-    let classes = rules.unsigned
+  private func isNumberField(_ word: Word, classes: LanguagePhonePrefixRules.Unsigned) -> Bool {
     return !classes.phoneWords.contains(word.folded)
       && classes.fieldSuffixes.contains(where: { word.folded.hasSuffix($0) && word.folded != $0 })
   }
 
   /// The number belongs to a label, a quantity or an amount (see UNSIGNED GATES).
-  private func attached(before: [Word], after: [Word]) -> Bool {
-    let classes = rules.unsigned
+  private func attached(
+    before: [Word], after: [Word], classes: LanguagePhonePrefixRules.Unsigned
+  ) -> Bool {
     var i = 0
     while i < before.count, classes.linkersBefore.contains(before[i].folded) { i += 1 }
     if i < before.count {
       let word = before[i]
       if classes.valueVerbs.contains(word.folded) { return true }
       let bareFieldWord = classes.fieldSuffixes.contains(word.folded)
-      if bareFieldWord, i + 1 < before.count, isNoun(before[i + 1]),
+      if bareFieldWord, i + 1 < before.count, isNoun(before[i + 1], classes: classes),
         !before[i + 1].folded.hasSuffix(classes.possessiveSuffix)
       {
         return true
       }
-      if isNoun(word) {
+      if isNoun(word, classes: classes) {
         let possessorOfPhoneWord =
           i + 2 < before.count && classes.possessorArticles.contains(before[i + 1].folded)
           && classes.phoneWords.contains(before[i + 2].folded)
         if !possessorOfPhoneWord { return true }
       }
     }
-    if let next = after.first, isNoun(next) { return true }
+    if let next = after.first, isNoun(next, classes: classes) { return true }
     return false
   }
 
@@ -443,7 +450,7 @@ struct LanguagePhonePrefixPass: Sendable {
   /// The decision for one anchor, and the UTF-16 offset the proposed edit ends at (0 when refused).
   private func decide(
     anchor: Anchor, chunkIndex: Int, chunks: [LanguageProtectedSpans.Chunk],
-    snapshot: LanguageTextSnapshot, parser: LanguageNumberParser
+    snapshot: LanguageTextSnapshot, parser: LanguageNumberParser?
   ) -> (Decision, Int) {
     let units = snapshot.units
     let scanner = UnitScanner(units: units)
@@ -508,6 +515,9 @@ struct LanguagePhonePrefixPass: Sendable {
     case .valid(let number): formatted = number.formatted
     case .unavailable(let reason): return (.refused(.metadataUnavailable(reason)), 0)
     case .invalid(let reason):
+      if Self.isThousandsGrouped(snapshot.substring(runStart..<runEnd)) {
+        return (.refused(.thousandsGroupedAmount), 0)
+      }
       return fallback(
         anchor: anchor, digits: digits, firstGroup: firstGroup, reason: reason, snapshot: snapshot)
     }
@@ -526,6 +536,19 @@ struct LanguagePhonePrefixPass: Sendable {
     case .success(let edit): return (.proposed(edit), range.upperBound)
     case .failure(let refusal): return (.refused(.editRefused(refusal)), 0)
     }
+  }
+
+  /// True when a run is written as a thousands-grouped amount: one to three digits, then two or
+  /// more groups of exactly three (`1.000.000`, `2 500 000`, `12,345,678`). Numbers dictated as
+  /// telephone numbers are grouped by the engine in pairs or calling-code-first and carry a
+  /// shorter or longer group; an invalid number in this shape is a quantity or a price.
+  static func isThousandsGrouped(_ run: String?) -> Bool {
+    guard let run else { return false }
+    let groups = run.split(whereSeparator: { !("0"..."9").contains($0) }).map(\.count)
+    guard groups.count >= 3, let first = groups.first, (1...3).contains(first) else {
+      return false
+    }
+    return groups.dropFirst().allSatisfy { $0 == 3 }
   }
 
   /// The sign-only edit for a spoken number the metadata does not accept (a misheard digit, a
@@ -565,10 +588,11 @@ struct LanguagePhonePrefixPass: Sendable {
   /// across horizontal whitespace only (one to three words for a spoken compound).
   private func numberPrecedes(
     chunkIndex: Int, chunks: [LanguageProtectedSpans.Chunk], snapshot: LanguageTextSnapshot,
-    parser: LanguageNumberParser
+    parser: LanguageNumberParser?
   ) -> Bool {
     guard chunkIndex > 0, chunks[chunkIndex - 1].gapAfterIsHorizontal else { return false }
     if chunks[chunkIndex - 1].hasDecimalDigit { return true }
+    guard let parser else { return false }
     for width in 1...3 {
       let first = chunkIndex - width
       guard first >= 0 else { return false }

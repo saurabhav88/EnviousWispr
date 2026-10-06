@@ -534,8 +534,8 @@ class RealOrdinalRefusalTests(unittest.TestCase):
     def test_the_real_check_verifies_every_generated_file(self):
         result = run("--check")
         self.assertEqual(result.returncode, 0, result.stderr)
-        # Number, phone, ordinal, clock and number-style outputs.
-        self.assertEqual(result.stdout.count("check ok"), 5)
+        # Number, phone, ordinal, clock, number-style and phone-trigger outputs.
+        self.assertEqual(result.stdout.count("check ok"), 6)
 
     def test_the_manifest_declares_the_six_required_entries(self):
         manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
@@ -1214,6 +1214,31 @@ class ModeTests(unittest.TestCase):
         result = run("--manifest", "/nonexistent/manifest.json")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cannot read manifest", result.stderr)
+
+
+class PhoneTriggerTests(unittest.TestCase):
+    """The four-language spoken plus words (`phoneTriggers`) are validated, never coerced."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("itn_generate", GENERATOR)
+        cls.gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.gen)
+
+    def entry(self, tokens):
+        return {"phoneTriggers": {"fr": {
+            "triggerTokens": tokens, "replacement": "+", "provenance": "measured"}}}
+
+    def test_a_list_of_words_is_accepted(self):
+        self.assertEqual(self.gen.build_phone_triggers(self.entry(["plus"])),
+                         [("fr", ["plus"], "measured")])
+
+    def test_a_string_or_non_word_tokens_fail(self):
+        for tokens in ("plus", ["plus", 3], None):
+            with self.subTest(tokens=tokens):
+                with self.assertRaisesRegex(self.gen.GenerationError, "triggerTokens"):
+                    self.gen.build_phone_triggers(self.entry(tokens))
 
 
 if __name__ == "__main__":

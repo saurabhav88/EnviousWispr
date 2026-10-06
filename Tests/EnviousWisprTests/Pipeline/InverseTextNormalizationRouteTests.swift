@@ -89,12 +89,15 @@ struct InverseTextNormalizationRouteTests {
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
           let route = InverseTextNormalizationGate.route(
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
-          // The production registry lists German only: the German rows (literal labels, not the
-          // subject's canonicaliser) route to `.language("de")`; every other row is unchanged.
-          let germanRows: Set<String> = ["de", "DE", "de-DE"]
+          // The production registry lists de, fr, es, it and pt: the rows for those languages
+          // (literal labels to literal codes, not the subject's canonicaliser) route to
+          // `.language`; every other row is unchanged.
+          let registeredRows: [String: String] = [
+            "de": "de", "DE": "de", "de-DE": "de", "pt-BR": "pt", "es": "es",
+          ]
           let expectedRoute: InverseTextNormalizationGate.Route =
-            expected == Self.nonEnglish && germanRows.contains(row.label)
-            ? .language("de") : (expected.map { .neutral($0) } ?? .english)
+            expected == Self.nonEnglish && registeredRows[row.label] != nil
+            ? .language(registeredRows[row.label]!) : (expected.map { .neutral($0) } ?? .english)
           checked += 1
           table.append(
             "\(row.label.debugDescription) | \(veto) | \(lid) | \(expected ?? "run") | \(legacy ?? "run") | \(route)"
@@ -159,12 +162,14 @@ struct InverseTextNormalizationRouteTests {
     #expect(route("", lid: true) == .neutral("lid_backend_nil"))
   }
 
-  /// A drift guard, not product coverage: the shipped registry lists German only (#1677).
-  @Test("the production registry lists German only", .tags(.driftGuard))
-  func productionRegistryIsGermanOnly() {
-    #expect(LanguageRuleRegistry.production.count == 1)
-    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "de")?.baseCode == "de")
-    for code in ["es", "fr", "ru", "nl", "pt", "it", "pl", "no", "zh"] {
+  /// A drift guard, not product coverage: the shipped registry lists de, fr, es, it, pt (#1677).
+  @Test("the production registry lists exactly de, fr, es, it and pt", .tags(.driftGuard))
+  func productionRegistryMembers() {
+    #expect(LanguageRuleRegistry.production.count == 5)
+    for code in ["de", "fr", "es", "it", "pt"] {
+      #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: code)?.baseCode == code, "\(code)")
+    }
+    for code in ["ru", "nl", "pl", "no", "zh"] {
       #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: code) == nil, "\(code)")
     }
   }
@@ -210,8 +215,8 @@ struct InverseTextNormalizationRouteTests {
   @Test("each skip bucket runs the neutral subset and never the English time rule")
   func everySkipBucketRunsNeutralOnly() async throws {
     let cases: [(String, String?, Bool, Bool, String)] = [
-      // French: a non-English language with no registered rule set (German has one, #1677).
-      ("non_english", "fr", false, true, "non_english"),
+      // Dutch: a non-English language with no registered rule set (#1677 registers de/fr/es/it/pt).
+      ("non_english", "nl", false, true, "non_english"),
       ("language_vetoed", nil, true, true, "language_vetoed"),
       ("lid_backend_nil", nil, false, true, "lid_backend_nil"),
     ]
@@ -232,7 +237,7 @@ struct InverseTextNormalizationRouteTests {
   func skippedNoOpIsByteIdentical() async throws {
     // Leading/trailing whitespace, CRLF and DECOMPOSED Unicode (e + U+0301), all untouched.
     let input = "  Ruhe\u{0301} bitte,\r\num sieben am Abend.\n  "
-    for (language, vetoed, lid) in [("fr", false, true), (nil, true, true), (nil, false, true)]
+    for (language, vetoed, lid) in [("nl", false, true), (nil, true, true), (nil, false, true)]
       as [(String?, Bool, Bool)]
     {
       let step = InverseTextNormalizationStep()
@@ -252,7 +257,7 @@ struct InverseTextNormalizationRouteTests {
     let neutral = InverseTextNormalizationStep()
     neutral.backendSupportsLID = true
     let n = try await neutral.process(
-      ctx("mandalo a marco arroba esempio punto com", language: "es"))
+      ctx("mandalo a marco arroba esempio punto com", language: "nl"))
     #expect(n.text == "mandalo a marco@esempio.com")
     #expect(neutral.lastRun?.ran == false)
 

@@ -193,6 +193,11 @@ enum LanguageProtectedSpans {
   private static let currencies: Set<String> = [
     "€", "$", "£", "¥", "₹", "₽", "₩", "₺", "₪", "₫", "฿", "eur", "usd", "gbp", "chf", "jpy",
     "cny", "inr", "euro", "euros", "dollar", "cent", "franken", "rappen", "pfund",
+    // French, Spanish, Italian, Portuguese.
+    "brl", "mxn", "ars", "cop", "clp", "dollars", "dólar", "dólares", "dollaro", "dollari",
+    "real", "reais", "peso", "pesos", "franc", "francs", "franchi", "livre", "livres",
+    "libra", "libras", "sterline", "centime", "centimes", "céntimo", "céntimos", "centesimi",
+    "centavo", "centavos", "cêntimo", "cêntimos",
   ]
 
   /// Units that make a number a temperature or a percentage. One authority: `units` is built from
