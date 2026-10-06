@@ -80,6 +80,7 @@ struct LanguagePhoneSignedLanguagesTests {
       ("nl", "Morgen wordt het plus 20 graden."), ("nl", "Je doet 1 plus 1, dat is 2."),
       ("nl", "Bel me op 06 12 34 56 78."), ("pl", "Jutro będzie plus 20 stopni."),
       ("pl", "Dwa plus dwa to 4: 2 plus 2."), ("pl", "Zadzwoń pod numer 501 234 567."),
+      ("pl", "To kosztuje plus 48 501 234 567 PLN."), ("pl", "Razem plus 48 501 234 567 złotych."),
     ]
     for (language, text) in cases {
       #expect(bytes(try converted(text, language: language)) == bytes(text), "\(language): \(text)")

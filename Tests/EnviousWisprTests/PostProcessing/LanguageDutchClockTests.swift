@@ -79,7 +79,8 @@ struct LanguageDutchClockTests {
       "Over een paar uur komt de video online.", "Een half uur later.", "Het glas is half vol.",
       "Het is half werk.", "Het duurt ten minste tien minuten.",
       // The article-shaped hour before a noun, a currency, a clock-face hour, a number continuation.
-      "We zien elkaar om 5 over een week.", "Het kost om 5 voor 3 euro.", "We eten om half een.",
+      "We zien elkaar om 5 over een week.", "We zien elkaar om 5 over 1 week.",
+      "Het kost om 5 voor 3 euro.", "We eten om half een.",
       "Het was om 5 over 3 tweeëntwintig.",
       // No anchor, already written, hour-marker-minute forms (not in scope).
       "Tien over drie was de beste tijd.", "We zien elkaar om 8.30 uur.",
