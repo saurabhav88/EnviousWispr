@@ -9297,7 +9297,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lass es leer, um kein Startwort zu verwenden."
+            "value" : "Lass das Feld leer, um kein Startwort zu verwenden."
           }
         }
       }
