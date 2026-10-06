@@ -130,7 +130,6 @@ struct LanguagePhonePrefixPass: Sendable {
       return .unavailable("no trigger or replacement")
     }
     let chunks = LanguageProtectedSpans.chunks(of: snapshot.text)
-    let protected = LanguageProtectedSpans.collect(in: snapshot)
     let parser = LanguageNumberParser(grammar: grammar)
     var edits: [LanguageTextEdit] = []
     var candidates: [Candidate] = []
@@ -140,7 +139,7 @@ struct LanguagePhonePrefixPass: Sendable {
       guard let anchor = anchor(in: chunks[index], snapshot: snapshot) else { continue }
       let (decision, end) = decide(
         anchor: anchor, chunkIndex: index, chunks: chunks, snapshot: snapshot,
-        protected: protected, parser: parser)
+        parser: parser)
       if case .proposed(let edit) = decision {
         edits.append(edit)
         consumedUpTo = end
@@ -212,8 +211,7 @@ struct LanguagePhonePrefixPass: Sendable {
   /// The decision for one anchor, and the UTF-16 offset the proposed edit ends at (0 when refused).
   private func decide(
     anchor: Anchor, chunkIndex: Int, chunks: [LanguageProtectedSpans.Chunk],
-    snapshot: LanguageTextSnapshot, protected: [LanguageProtectedSpan],
-    parser: LanguageNumberParser
+    snapshot: LanguageTextSnapshot, parser: LanguageNumberParser
   ) -> (Decision, Int) {
     let units = snapshot.units
     let scanner = UnitScanner(units: units)
@@ -234,7 +232,7 @@ struct LanguagePhonePrefixPass: Sendable {
     let scan = startsWithDigit ? scanner.scanRun(from: runStart) : nil
     var tail = UnitTail.none
     if case .run(_, _, _, let runEnd)? = scan {
-      tail = unitTail(after: runEnd, chunks: chunks, protected: protected, scanner: scanner)
+      tail = unitTail(after: runEnd, chunks: chunks, scanner: scanner)
     }
     let operandBefore = numberPrecedes(
       chunkIndex: chunkIndex, chunks: chunks, snapshot: snapshot, parser: parser)
@@ -349,13 +347,11 @@ struct LanguagePhonePrefixPass: Sendable {
     case otherUnitOrCurrency
   }
 
-  /// What the first word after the digit run (across horizontal whitespace) is, read from the
-  /// protection file's authority: the word is a unit or currency exactly when protection marks it
-  /// as a measurement or money span beside the run's last number, and it is a temperature or
-  /// percentage when that authority says so. No unit word is listed here.
+  /// What the first word after the digit run (across horizontal whitespace and closing marks) is,
+  /// read from the protection file's unit and currency authority, which also says whether it is a
+  /// temperature or percentage. No unit word is listed here.
   private func unitTail(
-    after runEnd: Int, chunks: [LanguageProtectedSpans.Chunk], protected: [LanguageProtectedSpan],
-    scanner: UnitScanner
+    after runEnd: Int, chunks: [LanguageProtectedSpans.Chunk], scanner: UnitScanner
   ) -> UnitTail {
     // The chunk that holds the run's last digit, closing punctuation included, so a bracket or a
     // sentence mark cannot hide the unit behind it.
@@ -364,16 +360,17 @@ struct LanguagePhonePrefixPass: Sendable {
         $0.range.lowerBound < runEnd && runEnd <= $0.range.upperBound
       })
     else { return .none }
-    let chunkEnd = numericChunk.range.upperBound
-    var cursor = chunkEnd
-    while cursor < scanner.units.count, scanner.isHorizontalWhitespace(at: cursor) {
+    // A separate closing mark (`) Euro`) hides the unit from protection's neighbour check, so the
+    // word itself is asked of protection's unit and currency authority.
+    var cursor = numericChunk.range.upperBound
+    while cursor < scanner.units.count,
+      scanner.isHorizontalWhitespace(at: cursor) || scanner.isEndingPunctuation(at: cursor)
+    {
       cursor += scanner.width(at: cursor)
     }
-    guard cursor > chunkEnd, cursor < scanner.units.count,
+    guard cursor < scanner.units.count,
       let chunk = chunks.first(where: { $0.range.lowerBound == cursor }),
-      protected.contains(where: {
-        $0.range == chunk.range && ($0.kind == .measurement || $0.kind == .money)
-      })
+      LanguageProtectedSpans.isMeasurementOrCurrencyUnit(chunk.text)
     else { return .none }
     return LanguageProtectedSpans.isTemperatureOrPercentUnit(chunk.text)
       ? .temperatureOrPercent : .otherUnitOrCurrency
@@ -444,6 +441,11 @@ private struct UnitScanner {
     return scalar.properties.isWhitespace && !Self.lineBreaks.contains(scalar.value)
   }
 
+  func isEndingPunctuation(at index: Int) -> Bool {
+    guard let value = scalar(at: index) else { return false }
+    return Self.endingPunctuation.contains(value.value)
+  }
+
   func isLetter(at index: Int) -> Bool {
     scalar(at: index)?.properties.isAlphabetic ?? false
   }
@@ -464,12 +466,17 @@ private struct UnitScanner {
       .run(digits: digits, separators: separators, firstGroup: firstGroup, end: end)
     }
 
+    // The run ends here only if the next letter-or-number after whitespace and punctuation is not
+    // a number: `9087654 . 99`, `9087654 ) 99` and `9087654 /` + line break + `99` hide a
+    // continuation and refuse the whole candidate.
     func finishAtBoundary(from boundary: Int) -> RunScan {
       var cursor = boundary
-      while let value = scalar(at: cursor), value.properties.isWhitespace {
+      while let value = scalar(at: cursor), !value.properties.isAlphabetic,
+        value.properties.numericType == nil
+      {
         cursor += width(at: cursor)
       }
-      if scalar(at: cursor)?.properties.numericType == .decimal {
+      if scalar(at: cursor)?.properties.numericType != nil {
         return .malformed
       }
       return completed()
@@ -551,8 +558,8 @@ private struct UnitScanner {
       }
 
       if hadHorizontalGap {
-        // Prose follows the run; sentence punctuation after a gap is not part of the number.
-        return completed()
+        // Prose or spaced punctuation follows the run; a number behind that punctuation refuses.
+        return finishAtBoundary(from: nextPosition)
       }
 
       if Self.endingPunctuation.contains(following.value) {

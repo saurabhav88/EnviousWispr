@@ -311,6 +311,148 @@ struct LanguageNumberParserTests {
     #expect(refusal(.clockHour, "halb eins") == .notAdmitted)
   }
 
+  // MARK: Unicode: lookup is folded, ranges are original
+
+  @Test("NFC and NFD spellings mean the same number and keep their own original ranges")
+  func nfcAndNfdKeepOriginalRanges() throws {
+    let nfc = "Der zw\u{00F6}lfte Platz"
+    let nfd = "Der zwo\u{0308}lfte Platz"
+    #expect(nfc.utf16.count == 17)
+    #expect(nfd.utf16.count == 18)
+    for (text, wordText, length) in [(nfc, "zw\u{00F6}lfte", 7), (nfd, "zwo\u{0308}lfte", 8)] {
+      let snapshot = LanguageTextSnapshot(text)
+      let word = try #require(ITNFixtureRanges.range(of: wordText, in: text))
+      #expect(word == 4..<(4 + length))
+      guard case .parsed(let number) = parser.parse(.ordinal, in: snapshot, range: word) else {
+        Issue.record("\(wordText.debugDescription) did not parse")
+        continue
+      }
+      #expect(number.value == 12)
+      #expect(number.range == word)
+      #expect(number.tokenRanges == [word])
+      #expect(Array(number.source.utf8) == Array(wordText.utf8))
+      #expect(snapshot.substring(word).map { Array($0.utf8) } == Array(wordText.utf8))
+    }
+    // The same holds for a cardinal and for a decomposed compound.
+    #expect(value(.cardinal, "fu\u{0308}nf") == 5)
+    #expect(value(.cardinal, "fu\u{0308}nfundvierzig") == 45)
+    #expect(value(.ordinal, "fu\u{0308}nften") == 5)
+  }
+
+  @Test("combining marks are part of the word: a split before one is a refusal")
+  func combiningBoundaries() {
+    let text = "zwo\u{0308}lf"
+    let snapshot = LanguageTextSnapshot(text)
+    #expect(snapshot.utf16Count == 6)
+    #expect(parser.parse(.cardinal, in: snapshot, range: 0..<6).isParsed)
+    // 0..<3 ends between the o and its diaeresis: it would split an original character.
+    #expect(parser.parse(.cardinal, in: snapshot, range: 0..<3) == .refused(.splitsCharacter))
+    // The same letters as a separate word are only an unknown word.
+    #expect(refusal(.cardinal, "zwo") == .notAdmitted)
+  }
+
+  // MARK: Mixed language
+
+  @Test("English number and time words inside German text are not numbers")
+  func englishWordsAreNotNumbers() {
+    for word in ["one", "two", "three", "ten", "twenty", "thirty", "am", "pm", "a.m."] {
+      #expect(value(.cardinal, word) == nil, "\(word)")
+      #expect(value(.ordinal, word) == nil, "\(word)")
+      #expect(value(.clockHour, word) == nil, "\(word)")
+    }
+  }
+
+  @Test("German prose am Abend is not a meridiem and holds no number")
+  func amAbend() {
+    #expect(value(.cardinal, "am Abend") == nil)
+    #expect(value(.clockHour, "am") == nil)
+    #expect(value(.clockHour, "Abend") == nil)
+  }
+
+  @Test("fraction, article and idiom phrases that contain a known atom are not numbers")
+  func lookAlikes() {
+    for text in [
+      "halb eins", "ein Viertel", "ein Drittel", "eine Million", "Erste Hilfe", "zweimal",
+      "einmal", "dreifach", "zweitens", "Dreiviertel", "einzeln", "Einerseits", "vierteln",
+    ] {
+      #expect(value(.cardinal, text) == nil, "\(text)")
+      #expect(value(.ordinal, text) == nil, "\(text)")
+    }
+  }
+
+  // MARK: Frozen development rows (independent oracles from the corpus fields)
+
+  @Test("the frozen development rows load with pending rows excluded")
+  func developmentMembership() throws {
+    let loaded = try ITNDevelopmentFixtures.development()
+    #expect(loaded.rows.count == 60)
+    #expect(loaded.rows.allSatisfy { $0.expectedAction == "convert" && $0.split == "development" })
+    #expect(Set(loaded.rows.map(\.category)) == ["clock_idiom", "ordinal", "phone_country_prefix"])
+    for category in ["clock_idiom", "ordinal", "phone_country_prefix"] {
+      #expect(loaded.rows.filter { $0.category == category }.count == 20, "\(category)")
+    }
+    #expect(loaded.pendingExcluded == loaded.totalInFile - 60)
+    #expect(loaded.pendingExcluded > 0, "the pending clock rows must be present and excluded")
+  }
+
+  @Test("every development ordinal's spoken span parses to the value its written form states")
+  func developmentOrdinals() throws {
+    var asserted = 0
+    for row in try ITNDevelopmentFixtures.development().rows where row.category == "ordinal" {
+      let span = try #require(row.targetSpans.first, "\(row.id)")
+      let written = try #require(span.writtenForms.first, "\(row.id)")
+      let expected = try #require(Int(written.dropLast()), "\(row.id): \(written)")
+      #expect(written.hasSuffix("."), "\(row.id)")
+      let snapshot = LanguageTextSnapshot(row.spokenInput)
+      let range = try #require(
+        ITNFixtureRanges.range(of: span.spokenSpan, in: row.spokenInput), "\(row.id)")
+      guard case .parsed(let number) = parser.parse(.ordinal, in: snapshot, range: range) else {
+        Issue.record("\(row.id): \(span.spokenSpan) did not parse as an ordinal")
+        continue
+      }
+      #expect(number.value == expected, "\(row.id)")
+      #expect(number.range == range, "\(row.id)")
+      asserted += 1
+    }
+    #expect(asserted == 20)
+  }
+
+  @Test("every development clock row's hour word parses to the hour its written form implies")
+  func developmentClockHours() throws {
+    var asserted = 0
+    for row in try ITNDevelopmentFixtures.development().rows where row.category == "clock_idiom" {
+      let span = try #require(row.targetSpans.first, "\(row.id)")
+      let written = try #require(span.writtenForms.first, "\(row.id)")
+      let writtenHour = try #require(
+        Int(written.prefix { $0 != ":" && $0 != "." }), "\(row.id): \(written)")
+      let words = span.spokenSpan.split(separator: " ").map(String.init)
+      let hourWord = try #require(words.last, "\(row.id)")
+      // "halb sieben" is 6:30; "viertel nach vier" is 4:15 (independent of the parser).
+      let expectedHour: Int
+      switch words.first {
+      case "halb": expectedHour = writtenHour + 1
+      case "viertel": expectedHour = writtenHour
+      default:
+        Issue.record("\(row.id): unexpected clock form \(span.spokenSpan)")
+        continue
+      }
+      let spanRange = try #require(
+        ITNFixtureRanges.range(of: span.spokenSpan, in: row.spokenInput), "\(row.id)")
+      let hourRange = try #require(
+        ITNFixtureRanges.range(
+          of: hourWord, in: row.spokenInput, within: spanRange, backwards: true), "\(row.id)")
+      let snapshot = LanguageTextSnapshot(row.spokenInput)
+      guard case .parsed(let number) = parser.parse(.clockHour, in: snapshot, range: hourRange)
+      else {
+        Issue.record("\(row.id): \(hourWord) did not parse as a clock hour")
+        continue
+      }
+      #expect(number.value == expectedHour, "\(row.id)")
+      asserted += 1
+    }
+    #expect(asserted == 20)
+  }
+
   // MARK: Frozen control rows: only the primitive property a row genuinely reaches
 
   @Test("control rows whose lexical trap is a fraction word or an adverb refuse as ordinals")

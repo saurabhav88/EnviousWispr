@@ -306,7 +306,9 @@ struct LanguagePhonePrefixPassTests {
   func metadataUnavailable() throws {
     let broken = LanguagePhonePrefixPass(
       grammar: pass.grammar, rules: pass.rules,
-      metadata: LanguagePhoneMetadata(loadMetadata: { throw LanguagePhoneMetadata.LoadError.missing }))
+      metadata: LanguagePhoneMetadata(loadMetadata: {
+        throw LanguagePhoneMetadata.LoadError.missing
+      }))
     let snapshot = LanguageTextSnapshot("Ruf plus 49 176 9087654 an")
     guard case .ran(let result) = broken.propose(in: snapshot) else {
       Issue.record("the pass itself must still run")
@@ -325,18 +327,48 @@ struct LanguagePhonePrefixPassTests {
   func hiddenContinuations() throws {
     #expect(try refusals("Ruf plus\n49 176 9087654 an") == [.notFollowedByDigit])
     for text in [
-      "Ruf plus 49 176\n9087654 an", "Ruf plus 49 176 9087654. 3 Leute", "Ruf plus 49 176 9087654, ٤ an",
+      "Ruf plus 49 176\n9087654 an", "Ruf plus 49 176 9087654. 3 Leute",
+      "Ruf plus 49 176 9087654, ٤ an",
     ] {
       #expect(try refusals(text) == [.malformedContinuation], "\(text.debugDescription)")
       #expect(bytes(try converted(text)) == bytes(text))
     }
-    #expect(bytes(try converted("Ruf plus 49 176 9087654\nDanke")) == bytes("Ruf +49 176 9087654\nDanke"))
+    #expect(
+      bytes(try converted("Ruf plus 49 176 9087654\nDanke")) == bytes("Ruf +49 176 9087654\nDanke"))
+  }
+
+  @Test(
+    "spaced punctuation cannot hide a numeric continuation; spaced punctuation before prose converts"
+  )
+  func spacedPunctuationContinuations() throws {
+    for text in [
+      "Ruf plus 49 176 9087654 . 99 an", "Ruf plus 49 176 9087654 ) 99 an",
+      "Ruf plus 49 176 9087654 / \n99 an", "Ruf plus 49 176 9087654 -\n99 an",
+      "Ruf plus 49 176 9087654.\n(99) an",
+    ] {
+      #expect(try refusals(text) == [.malformedContinuation], "\(text.debugDescription)")
+      #expect(bytes(try converted(text)) == bytes(text), "\(text.debugDescription)")
+    }
+    let cases: [(String, String)] = [
+      ("Ruf plus 49 176 9087654 . Danke", "Ruf +49 176 9087654 . Danke"),
+      ("Ruf (plus 49 176 9087654 ) an", "Ruf (+49 176 9087654 ) an"),
+      (
+        "Ruf plus 49 176 9087654 - weitere Infos folgen",
+        "Ruf +49 176 9087654 - weitere Infos folgen"
+      ),
+      ("Ruf plus 49 176 9087654.\nDanke", "Ruf +49 176 9087654.\nDanke"),
+    ]
+    for (input, expected) in cases {
+      #expect(bytes(try converted(input)) == bytes(expected), "\(input.debugDescription)")
+    }
   }
 
   @Test("a malformed tail refuses the whole candidate, never a prefix of it")
   func malformedContinuations() throws {
-    for tail in ["9087654x", "9087654°", "9087654€", "9087654%", "9087654@x.de", "9087654٤",
-                 "9087654:12", "9087654..1", "9087654_1"] {
+    for tail in [
+      "9087654x", "9087654°", "9087654€", "9087654%", "9087654@x.de", "9087654٤",
+      "9087654:12", "9087654..1", "9087654_1",
+    ] {
       let text = "Ruf plus 49 176 \(tail) an"
       #expect(try refusals(text) == [.malformedContinuation], "\(text)")
       #expect(bytes(try converted(text)) == bytes(text), "\(text)")
@@ -363,14 +395,16 @@ struct LanguagePhonePrefixPassTests {
     #expect(try refusals("Hotline 3, plus 49 176 9087654 an") == [.arithmeticOperandBefore])
     #expect(try refusals("Rechne 7 +49/176/9087654 aus") == [.arithmeticOperandBefore])
     #expect(try converted("Rechne 7 plus 8 9 aus") == "Rechne 7 plus 8 9 aus")
-    #expect(try converted("Rechne bitte plus 41 44 683 21 90 aus") == "Rechne bitte +41 44 683 21 90 aus")
+    #expect(
+      try converted("Rechne bitte plus 41 44 683 21 90 aus") == "Rechne bitte +41 44 683 21 90 aus")
     #expect(try converted("Ein plus 41 44 683 21 90 aus") == "Ein +41 44 683 21 90 aus")
   }
 
   @Test("plus_joining_nouns and plus_not_followed_by_digit: no digit group follows the trigger")
   func noDigitGroupFollows() throws {
     #expect(try refusals("Der Preis gilt plus Versand und Verpackung.") == [.wordFollowsTrigger])
-    #expect(try refusals("Wir liefern den Schrank plus Montage bis Freitag.") == [.wordFollowsTrigger])
+    #expect(
+      try refusals("Wir liefern den Schrank plus Montage bis Freitag.") == [.wordFollowsTrigger])
     #expect(try refusals("Am Ende steht plus") == [.notFollowedByDigit])
     #expect(try refusals("Am Ende steht plus ") == [.notFollowedByDigit])
     #expect(try refusals("Am Ende steht plus … 49 176 9087654") == [.notFollowedByDigit])
@@ -398,7 +432,20 @@ struct LanguagePhonePrefixPassTests {
     #expect(try refusals("Es sind (plus 3,5) Meter mehr") == [.measurementOrCurrencyTail])
     #expect(try refusals("Dazu plus 3,5 Meter Seil") == [.measurementOrCurrencyTail])
     #expect(try refusals("Das kostet plus 5 20 Euro") == [.measurementOrCurrencyTail])
-    #expect(bytes(try converted("Ruf (plus 49 176 9087654) an")) == bytes("Ruf (+49 176 9087654) an"))
+    #expect(
+      bytes(try converted("Ruf (plus 49 176 9087654) an")) == bytes("Ruf (+49 176 9087654) an"))
+  }
+
+  @Test("a separate closing mark cannot hide a unit or currency behind it")
+  func spacedClosingMarkUnitTail() throws {
+    for text in ["Es kostet (plus 49 176 9087654 ) Euro", "Es sind (plus 49 176 9087654 ) Liter"] {
+      #expect(try refusals(text) == [.measurementOrCurrencyTail], "\(text)")
+      #expect(bytes(try converted(text)) == bytes(text), "\(text)")
+    }
+    let degrees = "Es sind (plus 49 176 9087654 ) Grad"
+    #expect(try refusals(degrees) == [.temperatureOrPercentTail])
+    #expect(bytes(try converted(degrees)) == bytes(degrees))
+    #expect(try converted("Ruf (plus 49 176 9087654 ) an") == "Ruf (+49 176 9087654 ) an")
   }
 
   // MARK: The editor's digit guarantee
@@ -408,7 +455,9 @@ struct LanguagePhonePrefixPassTests {
     let snapshot = LanguageTextSnapshot("Ruf plus 49 176 9087654 an")
     let range = 4..<23
     #expect(snapshot.substring(range) == "plus 49 176 9087654")
-    guard case .failure(.changesDigits) = snapshot.edit(regroupingDigitsIn: range, with: "+49 176 9087653")
+    guard
+      case .failure(.changesDigits) = snapshot.edit(
+        regroupingDigitsIn: range, with: "+49 176 9087653")
     else {
       Issue.record("a changed digit must not mint")
       return
@@ -428,7 +477,8 @@ struct LanguagePhonePrefixPassTests {
     let snapshot = LanguageTextSnapshot("Ruf plus 49 176 9087654 an")
     // Ends inside the chunk "9087654".
     let partial = try snapshot.edit(regroupingDigitsIn: 4..<20, with: "+49 1769087").get()
-    guard case .refused(.intersectsProtectedSpan) = LanguageTextEditor.apply([partial], to: snapshot)
+    guard
+      case .refused(.intersectsProtectedSpan) = LanguageTextEditor.apply([partial], to: snapshot)
     else {
       Issue.record("a partly covered number chunk must refuse")
       return
