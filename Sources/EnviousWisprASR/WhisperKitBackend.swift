@@ -822,7 +822,13 @@ public actor WhisperKitBackend: ASRBackend {
         var endSeconds = Float(clipEnd) / sampleRate
         // The clip list is Float seconds, and past about 34 minutes (2048 s) one Float step is
         // several samples, so a one-sample step can round back to the exact duration. Step down
-        // in Float instead, never below the clip's own start.
+        // in Float instead, never below the clip's own start. KNOWN LIMIT: a segment that starts
+        // within one Float step of the duration (under a quarter of a millisecond before the end
+        // of an hour-long capture) still rounds to a zero-width [duration, duration] pair, the same
+        // degenerate shape as a zero-width pair at the end. The detector feeds the VAD in
+        // 4096-sample chunks (`SilenceDetector.chunkSize`), so such a segment is not expected,
+        // though a segment's start offset inside a chunk was not checked; whether such a pair
+        // crashes is unmeasured (Codex review of #2190, classified hypothetical).
         let durationSeconds = Float(sampleCount) / sampleRate
         if sampleCount > 0, endSeconds >= durationSeconds, startSeconds < durationSeconds {
           endSeconds = max(startSeconds, durationSeconds.nextDown)
