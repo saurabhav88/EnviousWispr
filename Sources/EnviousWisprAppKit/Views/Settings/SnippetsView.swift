@@ -11,7 +11,13 @@ import SwiftUI
 struct SnippetsView: View {
   @Environment(SnippetsCoordinator.self) private var coordinator
 
-  @State private var query = ""
+  @State private var query: String
+
+  /// `initialQuery` lets a render test show the list mid-search (the Clear button, #3482); the
+  /// app always opens it empty.
+  init(initialQuery: String = "") {
+    _query = State(initialValue: initialQuery)
+  }
   /// ONE route for both sheets, so the two can never be presented at once: two independent
   /// `.sheet(item:)` states are not mutually exclusive, and macOS 14 behaviour with two
   /// presented sheets is unverified (plan §3.5).

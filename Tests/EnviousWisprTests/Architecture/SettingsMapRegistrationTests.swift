@@ -143,31 +143,63 @@ struct SettingsMapRegistrationTests {
       counts.filter { $0.value > 1 }.isEmpty, "registered twice: \(counts.filter { $0.value > 1 })")
   }
 
+  /// The map's own files declare every id; they are never evidence that a control registers one.
+  static let mapFiles: Set<String> = [
+    "SettingsMap.swift", "SettingsMapID.swift", "SettingsMapTypes.swift",
+    "SettingsMapRegistration.swift", "SettingsMapChoiceIDs.swift", "SettingsItemCopy.swift",
+  ]
+
+  /// Controls whose identity is computed rather than written at the control: each producer, the
+  /// file whose control consumes it, and the consuming expression that must appear there.
+  static let indirectProducers: [(ids: [SettingsMapID], file: String, consumer: String)] = [
+    (DictationTab.allCases.map(\.mapID), "DictationSettingsView.swift", "map: $0.mapID"),
+    (AppSettingsTab.allCases.map(\.mapID), "AppSettingsView.swift", "map: $0.mapID"),
+    (DictionaryTab.allCases.map(\.mapID), "YourWordsView.swift", ".settingsMapRegistration(tab.mapID)"),
+    (EngineChoicePresentation.choices.map(\.mapID), "SpeechEngineSettingsView.swift", "map: .id(choice.mapID)"),
+    (
+      LivePreviewEngineChoice.allCases.map { LivePreviewSettingsView.mapID(for: $0) },
+      "LivePreviewSettingsView.swift", "map: .id(Self.mapID(for: choice))"
+    ),
+    (
+      RecordingSoundPairing.allCases.map { RecordingChimeCard.mapID(for: $0) },
+      "RecordingChimesContent.swift", "card.settingsMapRegistration(Self.mapID(for: pairing))"
+    ),
+    ([.apiKeyOpenAI, .apiKeyGemini, .apiKeyClaude], "ProviderSetup.swift", "map: .id(mapID)"),
+    ([.transcriptionEngineChange, .transcriptionEngineKeepCurrent], "SpeechEngineSettingsView.swift", "keepCurrent: .transcriptionEngineKeepCurrent"),
+    ([.previewEngineChange, .previewEngineKeepCurrent], "LivePreviewSettingsView.swift", "keepCurrent: .previewEngineKeepCurrent"),
+    ([.localModelResumeUpgrade, .localModelFinishUpgrade], "LocalEngineStatusCard.swift", ".settingsMapRegistration(action.id)"),
+    ([.fastModelResume, .fastModelTryAgain], "SpeechEngineSettingsView.swift", ".settingsMapRegistration(action)"),
+    (
+      [
+        .aiPolishWhyUseEgOne, .aiPolishWhyUseS1Mini, .aiPolishWhyUseAppleIntelligence,
+        .aiPolishWhyUseOllama, .aiPolishWhyUseOpenAI, .aiPolishWhyUseGemini, .aiPolishWhyUseClaude,
+        .aiPolishLinkAboutAppleIntelligence, .aiPolishLinkOllamaLibrary,
+        .aiPolishLinkOpenAIRateLimits, .aiPolishLinkGeminiRateLimits, .aiPolishLinkClaudeRateLimits,
+      ], "ProviderSetup.swift", "PolishWhyBlock("
+    ),
+  ]
+
   @Test("every place a search can land on is registered by some control")
   func everyTargetIsRegistered() throws {
-    let source = try Self.sources().map { $0.tree.description }.joined(separator: "\n")
-    // Identities reached through typed helpers rather than a literal at the control.
-    var indirect: Set<SettingsMapID> = [
-      .localModelResumeUpgrade, .localModelFinishUpgrade, .fastModelResume, .fastModelTryAgain,
-    ]
-    indirect.formUnion(DictationTab.allCases.map(\.mapID))
-    indirect.formUnion(AppSettingsTab.allCases.map(\.mapID))
-    indirect.formUnion(DictionaryTab.allCases.map(\.mapID))
-    indirect.formUnion(EngineChoicePresentation.choices.map(\.mapID))
-    indirect.formUnion(
-      LivePreviewEngineChoice.allCases.map { LivePreviewSettingsView.mapID(for: $0) })
-    indirect.formUnion(RecordingSoundPairing.allCases.map { RecordingChimeCard.mapID(for: $0) })
-    indirect.formUnion([.apiKeyOpenAI, .apiKeyGemini, .apiKeyClaude])
-    indirect.formUnion([
-      .aiPolishWhyUseEgOne, .aiPolishWhyUseS1Mini, .aiPolishWhyUseAppleIntelligence,
-      .aiPolishWhyUseOllama, .aiPolishWhyUseOpenAI, .aiPolishWhyUseGemini, .aiPolishWhyUseClaude,
-      .aiPolishLinkAboutAppleIntelligence, .aiPolishLinkOllamaLibrary,
-      .aiPolishLinkOpenAIRateLimits, .aiPolishLinkGeminiRateLimits, .aiPolishLinkClaudeRateLimits,
-      .transcriptionEngineChange, .transcriptionEngineKeepCurrent, .previewEngineChange,
-      .previewEngineKeepCurrent,
-    ])
-    for id in indirect {
-      #expect(source.contains(".\(Self.caseName(id))"), "\(id.rawValue) is never named in the app")
+    let files = try Self.sources().filter {
+      !Self.mapFiles.contains(URL(fileURLWithPath: $0.path).lastPathComponent)
+    }
+    #expect(files.count > 100)
+    let byName = Dictionary(
+      files.map { (URL(fileURLWithPath: $0.path).lastPathComponent, $0.tree.description) },
+      uniquingKeysWith: { first, _ in first })
+    let source = files.map { $0.tree.description }.joined(separator: "\n")
+    var indirect: Set<SettingsMapID> = []
+    for producer in Self.indirectProducers {
+      let text = try #require(byName[producer.file], "\(producer.file) is gone")
+      #expect(text.contains(producer.consumer), "\(producer.file) no longer consumes \(producer.consumer)")
+      for id in producer.ids {
+        indirect.insert(id)
+        #expect(
+          text.contains(".\(Self.caseName(id))") || producer.consumer.contains("mapID")
+            || producer.consumer.contains("for:"),
+          "\(id.rawValue) is not named where its consumer is")
+      }
     }
     // Multi-line `.dynamic(` references read as one line.
     let compact = source.replacingOccurrences(
@@ -183,6 +215,56 @@ struct SettingsMapRegistrationTests {
     }
     #expect(missing.isEmpty, "targets no control registers: \(missing.sorted())")
     #expect(targets.count >= 100, "only \(targets.count) distinct targets")
+  }
+
+  /// Every registration site in shipped code: the file, the component or modifier, and the
+  /// identity it names (a map reference, an exemption reason, or a computed expression). Read
+  /// with SwiftParser, so comments and strings cannot satisfy it.
+  static func registrationSites() throws -> [String] {
+    var sites: [String] = []
+    for (path, tree) in try Self.sources() {
+      let file = URL(fileURLWithPath: path).lastPathComponent
+      guard !Self.mapFiles.contains(file) else { continue }
+      for name in Self.components {
+        for call in ClipboardSettingsWiringTests.calls(named: name, in: tree) {
+          let identity =
+            ClipboardSettingsWiringTests.argument("map", of: call).map { "map " + $0 }
+            ?? ClipboardSettingsWiringTests.argument("notInSettingsMap", of: call).map {
+              "exempt " + $0
+            } ?? "none"
+          sites.append("\(file) | \(name) | \(identity.split(whereSeparator: \.isWhitespace).joined(separator: " "))")
+        }
+      }
+      for token in tree.tokens(viewMode: .sourceAccurate)
+      where ["settingsMapRegistration", "settingsMapExemption", "settingsMapExemptScope"]
+        .contains(token.text)
+      {
+        guard let member = token.parent?.parent?.as(MemberAccessExprSyntax.self),
+          let call = member.parent?.as(FunctionCallExprSyntax.self)
+        else { continue }
+        let argument = call.arguments.map(\.expression.trimmedDescription).joined(separator: ", ")
+        sites.append("\(file) | \(token.text) | \(argument.split(whereSeparator: \.isWhitespace).joined(separator: " "))")
+      }
+    }
+    return sites.sorted()
+  }
+
+  @Test("every registration site matches the reviewed site list")
+  func sitesMatchTheFixture() throws {
+    let sites = try Self.registrationSites()
+    let url = RepoRoot.sourceURL("Tests/Fixtures/settings-map/registration-sites.json")
+    let expected = try JSONDecoder().decode([String].self, from: Data(contentsOf: url))
+    if sites != expected {
+      let data = try JSONSerialization.data(withJSONObject: sites, options: [.prettyPrinted])
+      print("MAP-SITES \(String(decoding: data, as: UTF8.self))")
+    }
+    let have = Dictionary(sites.map { ($0, 1) }, uniquingKeysWith: +)
+    let want = Dictionary(expected.map { ($0, 1) }, uniquingKeysWith: +)
+    #expect(
+      have == want,
+      "new: \(have.filter { want[$0.key] != $0.value }.keys.sorted()); gone: \(want.filter { have[$0.key] != $0.value }.keys.sorted())"
+    )
+    #expect(sites.count > 150, "only \(sites.count) sites; the scan stopped matching")
   }
 
   static func caseName(_ id: SettingsMapID) -> String {

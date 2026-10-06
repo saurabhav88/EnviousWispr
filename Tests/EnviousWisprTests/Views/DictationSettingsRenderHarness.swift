@@ -1,5 +1,6 @@
 import AppKit
 import CoreAudio
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprPipeline
 @testable import EnviousWisprServices
@@ -128,6 +129,9 @@ struct DictationSettingsRenderHarness {
     /// #3482: the rows these switches reveal.
     var stopOnSilence = false
     var spokenPunctuation = false
+    /// Microphones the page lists, and the chosen one's UID ("" follows macOS).
+    var devices: [AudioInputDevice] = []
+    var preferredInputUID = ""
   }
 
   static func page(tab: DictationTab, german: Bool, scenario: Scenario = Scenario(),
@@ -164,7 +168,8 @@ struct DictationSettingsRenderHarness {
       ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: NoOverlay(), onLanguageAccepted: { _ in }, defaults: defaults)
     let devices = AudioDeviceList()
-    devices.availableInputDevices = []
+    devices.availableInputDevices = scenario.devices
+    settings.preferredInputDeviceIDOverride = scenario.preferredInputUID
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = TranscriptStore(directory: runDirectory.appending(path: "fixture-history"))

@@ -24,8 +24,11 @@ struct CustomTermsSection<Actions: View>: View {
   /// and still puts them on one line.
   @ViewBuilder let actions: Actions
 
-  init(@ViewBuilder actions: () -> Actions) {
+  /// `initialSearchQuery` lets a render test show the list mid-search (the Clear button,
+  /// #3482); the app always opens it empty.
+  init(initialSearchQuery: String = "", @ViewBuilder actions: () -> Actions) {
     self.actions = actions()
+    _searchQuery = State(initialValue: initialSearchQuery)
   }
 
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
