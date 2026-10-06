@@ -54,7 +54,11 @@ struct AudioSettingsView: View {
       resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID)
     let inputDeviceSelection = Binding<String>(
       get: { settingsManager.preferredInputDeviceIDOverride },
-      set: { settingsManager.chooseInputDevice(uid: $0) }
+      // #3486: a mic unplugged while the dropdown was open must not be saved.
+      set: { uid in
+        guard MicrophoneChoiceValidation.isSelectable(uid: uid) else { return }
+        settingsManager.chooseInputDevice(uid: uid)
+      }
     )
     // #2664: the socket control sits on the SAME line as the device picker,
     // sized to its own text (founder, 2026-09-05: a full-width segmented bar
