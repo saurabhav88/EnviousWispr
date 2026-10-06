@@ -249,7 +249,7 @@ struct InverseTextNormalizationExecutionTests {
       },
       onTimeoutForTesting: { timeouts.append($0) })
 
-    step.spokenPunctuationEnabled = true
+    step.spokenPunctuation = SpokenPunctuationSettings(enabled: true, startWordOverrides: [:])
     step.backendSupportsLID = false
     let context = ctx(Self.germanInput, language: "de-DE")
     let task = Task { @MainActor in try await step.process(context) }
@@ -262,7 +262,7 @@ struct InverseTextNormalizationExecutionTests {
     }
     try #require(enteredInTime == true, "normalization work never entered")
 
-    step.spokenPunctuationEnabled = false  // a settings toggle lands mid-run
+    step.spokenPunctuation = SpokenPunctuationSettings(enabled: false, startWordOverrides: [:])  // a settings toggle lands mid-run
     step.backendSupportsLID = true
     releaseSignal.yield()
 

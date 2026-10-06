@@ -79,6 +79,15 @@ final class KernelFinalizationOutcome {
   var itnLatencyMs: Double?
   var itnLenBefore: Int?
   var itnLenAfter: Int?
+  /// #2450: what the spoken-punctuation start-word pass did for this take (`punctuation_status`,
+  /// a closed vocabulary) and how many commands it rewrote. Both nil on the English route when no start word is configured. A
+  /// ROUTING fact, never a precision claim. `punctuationLanguage` is the language this take's
+  /// punctuation routing used (`en` on the English route, even when `cleanup_language` is nil) and
+  /// `punctuationResolutionSource` the resolver rung that answered.
+  var punctuationStatus: String?
+  var punctuationRulesFired: Int?
+  var punctuationLanguage: String?
+  var punctuationResolutionSource: String?
   /// #2614: the language the cleanup chain resolved (a base code such as "de"),
   /// which resolver rung answered, and the text rung's confidence bucket. Read
   /// from the chain's context right after the runner returns; threaded onto
@@ -591,6 +600,17 @@ struct KernelFinalizationWiring {
         outcome.itnLatencyMs = itn.latencyMs
         outcome.itnLenBefore = itn.lenBefore
         outcome.itnLenAfter = itn.lenAfter
+        outcome.punctuationStatus = itn.punctuationStatus?.rawValue
+        outcome.punctuationRulesFired = itn.punctuationRulesFired
+        outcome.punctuationLanguage = itn.punctuationLanguage
+        outcome.punctuationResolutionSource = itn.punctuationResolutionSource
+      } else {
+        // The outcome object is reused across takes, so a missing run must clear these rather
+        // than leave the previous take's values to ride a later transcript.
+        outcome.punctuationStatus = nil
+        outcome.punctuationRulesFired = nil
+        outcome.punctuationLanguage = nil
+        outcome.punctuationResolutionSource = nil
       }
       // #761: thread the emoji-restore outcome onto `dictation.completed`
       // (counts only — `telemetry-privacy-boundary`). The always-on step stamps
@@ -1696,6 +1716,10 @@ struct KernelFinalizationWiring {
       itnLatencyMs: outcome.itnLatencyMs,
       itnLenBefore: outcome.itnLenBefore,
       itnLenAfter: outcome.itnLenAfter,
+      punctuationStatus: outcome.punctuationStatus,
+      punctuationRulesFired: outcome.punctuationRulesFired,
+      punctuationLanguage: outcome.punctuationLanguage,
+      punctuationResolutionSource: outcome.punctuationResolutionSource,
       // #2614: carried through unchanged, like the repair's resolution fields above.
       cleanupLanguage: outcome.cleanupLanguage,
       cleanupLanguageSource: outcome.cleanupLanguageSource,

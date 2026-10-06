@@ -82,6 +82,19 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   /// compile-time force on `RecoveryCoordinator` to pass the record-time value. Giving
   /// it a default would let a new spool silently carry `nil` forever.
   public let spokenPunctuationEnabled: Bool?
+  /// #2450: the EFFECTIVE start word for each supported language at record time (the override when
+  /// the user had one, else the default), so a recovered take replays under the words in force when
+  /// it was recorded and never under whatever defaults a later build ships. OPTIONAL for the same
+  /// reason as `spokenPunctuationEnabled`: spools written before this field exist, and synthesized
+  /// `Codable` would fail the whole settings decode on a missing non-optional key. `nil` means the
+  /// spool predates start words; recovery then uses the shipped defaults of the build doing the
+  /// replay, which is the accepted behaviour for spools older than the feature.
+  ///
+  /// The initializer parameter is deliberately NOT defaulted, exactly like its siblings: it is the
+  /// only compile-time force on a writer to state which case applies. Optional decoding (a missing
+  /// key) and caller omission (a forgotten argument) are separate contracts; legacy fixtures pass
+  /// `nil` explicitly.
+  public let spokenPunctuationStartWords: [String: String]?
   /// Version/hash of the custom-words vocabulary at record time, so recovery
   /// can note when the vocabulary has since changed. Nil when unknown.
   public let customWordsVersion: String?
@@ -117,6 +130,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     fillerRemovalEnabled: Bool,
     emojiFormatterEnabled: Bool,
     spokenPunctuationEnabled: Bool?,
+    spokenPunctuationStartWords: [String: String]?,
     customWordsVersion: String? = nil,
     llmProvider: String,
     llmModel: String,
@@ -131,12 +145,24 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.fillerRemovalEnabled = fillerRemovalEnabled
     self.emojiFormatterEnabled = emojiFormatterEnabled
     self.spokenPunctuationEnabled = spokenPunctuationEnabled
+    self.spokenPunctuationStartWords = spokenPunctuationStartWords
     self.customWordsVersion = customWordsVersion
     self.llmProvider = llmProvider
     self.llmModel = llmModel
     self.polishPromptVersion = polishPromptVersion
     self.s1Control = s1Control
     self.englishSpelling = englishSpelling
+  }
+
+  /// The spoken-punctuation settings this snapshot replays under (#2450): the recorded switch (absent
+  /// means OFF, the founder-directed default) and the recorded effective start words, re-validated
+  /// because a spool is data read back from disk. Effective words are kept even when they equal
+  /// today's default, so the captured vocabulary stays authoritative.
+  public var spokenPunctuationSettings: SpokenPunctuationSettings {
+    SpokenPunctuationSettings(
+      enabled: spokenPunctuationEnabled ?? false,
+      startWordOverrides: SpokenPunctuationRules.validatedStartWords(
+        spokenPunctuationStartWords ?? [:], dropDefaults: false))
   }
 }
 

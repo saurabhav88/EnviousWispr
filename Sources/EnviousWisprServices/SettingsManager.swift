@@ -49,7 +49,7 @@ public final class SettingsManager {
     case wordCorrectionEnabled
     case fillerRemovalEnabled
     case emojiFormatterEnabled
-    case spokenPunctuationEnabled
+    case spokenPunctuation
     case crashRecoveryEnabled
     /// #3269: the PostHog usage-metrics switch.
     case shareUsageMetrics
@@ -121,6 +121,7 @@ public final class SettingsManager {
     "smartInsertion", "escapeRecoveryEnabled",
     "wordCorrectionEnabled",
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
+    "spokenPunctuationStartWords",
     "crashRecoveryEnabled", "shareUsageMetrics", "sendCrashReports", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "whisperKitLanguage", "languageMode", "englishSpelling",
@@ -732,15 +733,93 @@ public final class SettingsManager {
     }
   }
 
-  /// Spoken-punctuation commands (#1794). Default OFF — the only Text-cleanup toggle
-  /// that ships off, because these rules compete with the punctuation both recognizers
-  /// already add and fire on content words. Canonical default in
-  /// `SettingsDefaultValues.spokenPunctuationEnabled`.
-  public var spokenPunctuationEnabled: Bool {
+  /// Spoken-punctuation commands (#1794, #2450) as ONE value: the switch plus the per-language start
+  /// words the user changed. Default OFF, nothing customised — the only Text-cleanup toggle that
+  /// ships off, because these rules compete with the punctuation both recognizers already add.
+  /// Canonical defaults in `SettingsDefaultValues.spokenPunctuationEnabled` and
+  /// `SettingsDefaultValues.spokenPunctuationStartWordOverrides`.
+  ///
+  /// Persisted as two keys: the existing `"spokenPunctuationEnabled"` Bool (user data already on
+  /// disk, kept) and a sparse `"spokenPunctuationStartWords"` dictionary that exists only while at
+  /// least one language is customised. Every write goes through `didSet`, so the pipeline sync sees
+  /// one change whichever half moved. Change a start word through
+  /// `commitSpokenPunctuationStartWord` / `resetSpokenPunctuationStartWord`, which validate; writing
+  /// `startWordOverrides` directly bypasses that and is for tests and migrations only.
+  public var spokenPunctuation: SpokenPunctuationSettings {
     didSet {
-      defaults.set(spokenPunctuationEnabled, forKey: "spokenPunctuationEnabled")
-      onChange?(.spokenPunctuationEnabled)
+      defaults.set(spokenPunctuation.enabled, forKey: "spokenPunctuationEnabled")
+      if spokenPunctuation.startWordOverrides.isEmpty {
+        defaults.removeObject(forKey: "spokenPunctuationStartWords")
+      } else {
+        defaults.set(spokenPunctuation.startWordOverrides, forKey: "spokenPunctuationStartWords")
+      }
+      onChange?(.spokenPunctuation)
     }
+  }
+
+  /// The one entry point a Settings control uses to change a start word (#2450). Validates with
+  /// `SpokenPunctuationStartWord.validate` against the language's complete command forms and stores
+  /// the accepted NFC word, or REFUSES and leaves the stored value untouched. A word that equals
+  /// the language's default (ignoring case) is stored as no override, so the override map stays
+  /// sparse and "customised" means what it says. A blank `raw` stores `""`, the choice of no start
+  /// word, and returns `.accepted("")`. Returns the validator's outcome so the control can show why a
+  /// word was refused.
+  @discardableResult
+  public func commitSpokenPunctuationStartWord(_ raw: String, language: String)
+    -> SpokenPunctuationStartWord.Outcome
+  {
+    guard let code = LanguageNormalizer.baseCode(language),
+      let forms = SpokenPunctuationRules.startWordForms(for: code)
+    else { return .refused(.unsupportedLanguage) }
+    // A blank field is the user's choice of NO start word: stored as `""`, accepted, and never
+    // equal to a default. The matcher then reads the language's command words bare.
+    if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      // English's default already IS no start word, so a blank there is "not customised": no override.
+      if SpokenPunctuationRules.startWordDefault(for: code) == "" {
+        if spokenPunctuation.startWordOverrides[code] != nil {
+          spokenPunctuation.startWordOverrides.removeValue(forKey: code)
+        }
+      } else if spokenPunctuation.startWordOverrides[code] != "" {
+        spokenPunctuation.startWordOverrides[code] = ""
+      }
+      return .accepted("")
+    }
+    let outcome = SpokenPunctuationStartWord.validate(raw, language: code, spokenForms: forms)
+    guard case .accepted(let word) = outcome else { return outcome }
+    var overrides = spokenPunctuation.startWordOverrides
+    let defaultWord = SpokenPunctuationRules.startWordDefault(for: code)
+    if let defaultWord, word.lowercased() == defaultWord.lowercased() {
+      overrides.removeValue(forKey: code)
+    } else {
+      overrides[code] = word
+    }
+    if overrides != spokenPunctuation.startWordOverrides {
+      spokenPunctuation.startWordOverrides = overrides
+    }
+    return outcome
+  }
+
+  /// Remove a language's override so its default applies again. No-op when none is stored.
+  public func resetSpokenPunctuationStartWord(language: String) {
+    guard let code = LanguageNormalizer.baseCode(language),
+      spokenPunctuation.startWordOverrides[code] != nil
+    else { return }
+    spokenPunctuation.startWordOverrides.removeValue(forKey: code)
+  }
+
+  /// Rebuild the persisted overrides from whatever `UserDefaults` holds (#2450). A value that is not a
+  /// dictionary, and any entry whose value is not a string, are dropped; the rest go through
+  /// `SpokenPunctuationRules.validatedStartWords`, which drops each invalid entry on its own and keeps
+  /// the file sparse. One bad entry never discards a good one, and never the switch.
+  nonisolated static func validatedStartWordOverrides(_ stored: Any?) -> [String: String] {
+    guard let dictionary = stored as? [String: Any] else {
+      return SettingsDefaultValues.spokenPunctuationStartWordOverrides
+    }
+    var strings: [String: String] = [:]
+    for (key, value) in dictionary {
+      if let word = value as? String { strings[key] = word }
+    }
+    return SpokenPunctuationRules.validatedStartWords(strings, dropDefaults: true)
   }
 
   /// Crash-recovery audio safety copy (#1063). Default ON. When on, every
@@ -1292,9 +1371,11 @@ public final class SettingsManager {
     emojiFormatterEnabled =
       defaults.object(forKey: "emojiFormatterEnabled") as? Bool
       ?? SettingsDefaultValues.emojiFormatterEnabled
-    spokenPunctuationEnabled =
-      defaults.object(forKey: "spokenPunctuationEnabled") as? Bool
-      ?? SettingsDefaultValues.spokenPunctuationEnabled
+    spokenPunctuation = SpokenPunctuationSettings(
+      enabled: defaults.object(forKey: "spokenPunctuationEnabled") as? Bool
+        ?? SettingsDefaultValues.spokenPunctuationEnabled,
+      startWordOverrides: Self.validatedStartWordOverrides(
+        defaults.object(forKey: "spokenPunctuationStartWords")))
     crashRecoveryEnabled =
       defaults.object(forKey: "crashRecoveryEnabled") as? Bool
       ?? SettingsDefaultValues.crashRecoveryEnabled

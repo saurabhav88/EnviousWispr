@@ -76,7 +76,7 @@ struct LanguageGateBenchmarkTests {
     let emoji = EmojiFormatterStep()
     emoji.emojiFormatterEnabled = true
     let itn = InverseTextNormalizationStep()
-    itn.spokenPunctuationEnabled = false
+    itn.spokenPunctuation = .off
     // The per-session capability hint `KernelFinalizationWiring` wires from the adapter:
     // WhisperKit declares language detection, Parakeet does not.
     itn.backendSupportsLID = engine == "whisperkit"

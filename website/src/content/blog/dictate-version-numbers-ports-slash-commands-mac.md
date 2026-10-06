@@ -18,7 +18,7 @@ faqs:
   - question: "Can I dictate localhost and a port number?"
     answer: "Yes. Say \"localhost colon three thousand\" and EnviousWispr writes localhost:3000. IP addresses work the same way: \"one nine two dot one six eight dot one dot one\" becomes 192.168.1.1."
   - question: "How do I dictate a slash command such as /clear?"
-    answer: "Say \"slash clear\" and you get /clear, even with Convert spoken punctuation switched off. \"command is slash wfp\" gives command is /wfp, with the space kept. Ordinary phrases like \"slash the budget\" stay as words, though some verb uses such as \"slash prices\" can still become a symbol."
+    answer: "Say \"slash clear\" and you get /clear, even with Spoken punctuation switched off. \"command is slash wfp\" gives command is /wfp, with the space kept. Ordinary phrases like \"slash the budget\" stay as words, though some verb uses such as \"slash prices\" can still become a symbol."
   - question: "Is this formatting done in the cloud?"
     answer: "No. The formatting is a step that runs on your Mac before any AI polish, automatically. Transcription runs on your Mac too. Text leaves your Mac only if you choose a cloud polish provider under your own key, and then it goes directly to that provider."
 ---
@@ -58,14 +58,14 @@ Say a date with "dash" between its parts and it is written as a dashed date: "tw
 
 ## Slash commands, without turning on punctuation
 
-Many chat tools, editors and terminal assistants take commands that start with a slash. EnviousWispr writes those even with **Convert spoken punctuation** switched off, which is its default:
+Many chat tools, editors and terminal assistants take commands that start with a slash. EnviousWispr writes those even with **Spoken punctuation** switched off, which is its default:
 
 - "slash clear" becomes /clear.
 - "command is slash wfp" becomes command is /wfp, with the space kept before the command.
 - "pros slash cons" becomes pros/cons.
 - "slash the budget" stays as words, because it is a normal phrase.
 
-The honest limit: some verb uses, like "slash prices", can still become a symbol, because the app cannot always tell the verb from a command name. A backslash is different; it needs Convert spoken punctuation turned on.
+The honest limit: some verb uses, like "slash prices", can still become a symbol, because the app cannot always tell the verb from a command name. A backslash is different; it needs Spoken punctuation turned on.
 
 ## What it will not guess
 

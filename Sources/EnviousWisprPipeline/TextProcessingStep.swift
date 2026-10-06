@@ -137,8 +137,11 @@ public struct TextProcessingContext: Sendable {
   /// Snippet expansions owed to the user (#628): each sentinel standing in the text, and the
   /// saved text that must replace it before anything is stored, shown or pasted.
   ///
-  /// Written ONLY by `SnippetExpansionStep` and read ONLY by `SnippetFinalizer` — one writer,
-  /// one reader, so "which spans must survive the chain byte-for-byte" has a single authority.
+  /// Written ONLY by `SnippetExpansionStep`. Read by `InverseTextNormalizationStep`, which hands the
+  /// exact sentinel strings to the spoken-punctuation pass so it never edits one (#2450), and by
+  /// `SnippetFinalizer`, which restores the owed expansions. One writer, so "which spans must survive
+  /// the chain byte-for-byte" still has a single authority; this comment names the readers and does
+  /// not define how a reader protects a span.
   ///
   /// Deliberately NOT folded into `KernelFinalizationWiring`'s `protectedSpellings`, which
   /// looks adjacent and is not: that set is custom-word canonicals, its only consumer is

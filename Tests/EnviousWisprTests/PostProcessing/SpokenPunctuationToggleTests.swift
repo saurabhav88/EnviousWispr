@@ -20,9 +20,8 @@ struct SpokenPunctuationToggleTests {
   private static let itn = InverseTextNormalizer()
 
   /// The spoken phrases the SETTING gates, line breaks aside: the nine marks in `punct` and the
-  /// backslash joiner. Mirrors `SpokenPunctuationCopy.phrases` plus the two-word "back slash"
-  /// alias the panel does not list; the copy-freeze test in the AppKit suite pins the
-  /// user-facing side.
+  /// backslash joiner, plus the two-word "back slash" alias. The in-app panel lists no
+  /// phrases since #2450; the Help Center article is the user-facing list.
   static let gatedTriggers: [(spoken: String, mark: String)] = [
     ("comma", ","), ("period", "."), ("full stop", "."),
     ("question mark", "?"), ("exclamation mark", "!"), ("exclamation point", "!"),

@@ -3593,3 +3593,76 @@ extension KernelFinalizationWiringTests {
     #expect(outcome.cleanupLanguage == "en")
   }
 }
+
+// MARK: - #2450 the spoken-punctuation facts reach the transcript metrics
+
+@MainActor
+extension KernelFinalizationWiringTests {
+
+  /// The default fake adapter is Parakeet-class: no language detection, so the resolver reads the
+  /// text, exactly as in the #2614 rows above. The switch is turned ON on the step the wiring uses.
+  private func punctuationSteps() -> LimbSteps {
+    let steps = makeSteps()
+    steps.inverseTextNormalization.spokenPunctuation = SpokenPunctuationSettings(
+      enabled: true, startWordOverrides: [:])
+    return steps
+  }
+
+  @Test("#2450 a German take's punctuation status and count travel from the step to the transcript metrics")
+  func punctuationFactsReachMetrics() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(outcome: outcome, context: context, steps: punctuationSteps())
+
+    let german = "Ich gehe heute Abend zum See und danach in die Stadt zurück Diktiere Punkt"
+    let text = try await wiring.processText(german) {}
+    #expect(text == "Ich gehe heute Abend zum See und danach in die Stadt zurück.")
+    // Hop 1 and 2: the step's run outcome reached the finalization outcome.
+    #expect(outcome.cleanupLanguage == "de")
+    #expect(outcome.punctuationStatus == "rewrote")
+    #expect(outcome.punctuationRulesFired == 1)
+    #expect(outcome.punctuationLanguage == "de")
+    #expect(outcome.punctuationResolutionSource == "dictation")
+
+    // Hop 3: the metrics the transcript stores, written when the take is delivered (the same
+    // order the #2614 rows above use).
+    try await wiring.store(text, UUID(), .ordinary)
+    _ = await wiring.deliver(text, .ordinary)
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.punctuationStatus == "rewrote")
+    #expect(metrics.punctuationRulesFired == 1)
+    #expect(metrics.punctuationLanguage == "de")
+    #expect(metrics.punctuationResolutionSource == "dictation")
+  }
+
+  @Test("#2450 a German take with no command reports ran_no_match and a zero count")
+  func noCommandReportsRanNoMatch() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(outcome: outcome, context: context, steps: punctuationSteps())
+
+    _ = try await wiring.processText("Ich gehe heute Abend zum See und danach in die Stadt zurück.") {}
+    #expect(outcome.punctuationStatus == "ran_no_match")
+    #expect(outcome.punctuationRulesFired == 0)
+  }
+
+  @Test("#2450 a later English take on the same outcome carries no punctuation fields")
+  func nothingRidesALaterTake() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(outcome: outcome, context: context, steps: punctuationSteps())
+
+    _ = try await wiring.processText("Ich gehe heute Abend zum See und danach in die Stadt zurück Diktiere Punkt") {}
+    #expect(outcome.punctuationStatus == "rewrote")
+
+    _ = try await wiring.processText("please send the invoice to the client before the meeting tomorrow") {}
+    #expect(outcome.cleanupLanguage == "en")
+    #expect(outcome.punctuationStatus == nil)
+    #expect(outcome.punctuationRulesFired == nil)
+    #expect(outcome.punctuationLanguage == "en", "the English route names its language")
+    #expect(outcome.punctuationResolutionSource == outcome.cleanupLanguageSource)
+  }
+}

@@ -18,7 +18,7 @@ faqs:
   - question: "Can I dictate an email address or a website?"
     answer: "Yes. Say 'casey at proton dot me' and you get 'casey@proton.me'. Say 'stackoverflow dot io slash blog' and you get 'stackoverflow.io/blog'. The app recognizes the spoken 'at', 'dot', and 'slash' markers and assembles the address."
   - question: "Do I need AI polish turned on for this?"
-    answer: "No. This formatting is a separate, on-device step that runs before AI polish on every dictation. It works whether polish is on or off, and whether you use on-device or cloud polish. There is no setting to enable; it is always on for English."
+    answer: "No. This formatting is a separate, on-device step that runs before AI polish on every dictation. It works whether polish is on or off, and whether you use on-device or cloud polish. There is no setting to enable for numbers, dates and addresses; it is always on for English. Spoken punctuation is separate and off until you turn it on."
   - question: "What if a number is ambiguous?"
     answer: "When a phrase could mean more than one thing, the formatter leaves it alone rather than guessing wrong. Idiomatic times like 'quarter past five' stay as words, and a loose phrase like 'one twenty people' is left untouched so the AI step or your own edit can decide. The goal is to never corrupt your text."
 ---
@@ -94,6 +94,8 @@ It only fires on the clear "name at domain dot something" shape, so an ordinary 
 
 ## Spoken punctuation and breaks
 
+These English examples work once you turn on **Spoken punctuation**, which is off by default. In German, French, Spanish and Italian you say a start word first; the [help article](/help/spoken-punctuation-and-emoji/) lists every command.
+
 - "hello comma world period" becomes "hello, world."
 - "are you free question mark" becomes "are you free?"
 - "new paragraph" and "new line" insert the breaks for you
@@ -110,7 +112,7 @@ This is not the AI step. It is a separate, rule-based pass that runs entirely on
 
 It is fast, it is predictable, and it works even when you turn AI polish off. If you prefer fully [offline, on-device dictation](/blog/macos-dictation-offline-private/) with no polishing model at all, your "78,547" and "March 15, 2026" still come out formatted. And because it runs before polish, the AI step receives clean, formatted text to work with rather than a wall of spelled-out numbers.
 
-There is nothing to switch on. It is on by default for everyone.
+There is nothing to switch on for numbers, dates and addresses. It is on by default for everyone. Spoken punctuation is separate: it is off until you turn it on in **Dictation Settings** > **Engine**.
 
 ## What changes for you
 

@@ -33,7 +33,7 @@ public enum TriggerSource: String, Sendable, CaseIterable {
 ///
 /// Contains only values that must be frozen per recording. Live-mutable settings
 /// (hotkey registration, `wordCorrectionEnabled`, `fillerRemovalEnabled`,
-/// `spokenPunctuationEnabled`, custom-words dictionary, Ollama RAM eviction
+/// `spokenPunctuation` (the switch and the per-language start words, #2450), custom-words dictionary, Ollama RAM eviction
 /// side-effects) stay in `PipelineSettingsSync`.
 ///
 /// #1794 note: the live-mutable Cleanup toggles are ALSO frozen into

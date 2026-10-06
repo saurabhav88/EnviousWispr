@@ -49,7 +49,10 @@ enum FileImportSettingsFreeze {
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
-      spokenPunctuationEnabled: settings.spokenPunctuationEnabled,
+      spokenPunctuationEnabled: settings.spokenPunctuation.enabled,
+      // #2450: the EFFECTIVE start word per language, frozen at Start like the language itself.
+      spokenPunctuationStartWords: SpokenPunctuationRules.effectiveStartWords(
+        overrides: settings.spokenPunctuation.startWordOverrides),
       customWordsVersion: nil,
       llmProvider: settings.effectiveFileImportLLMProvider.rawValue,
       llmModel: settings.effectiveFileImportLLMModel,

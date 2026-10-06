@@ -85,7 +85,7 @@ struct SpeechSettingsCopyTests {
     #expect(LiveTranscriptionCopy.parakeet.comparisons.map(\.on) == ["3.7%", "51"])
   }
 
-  @Test("the spoken-punctuation setting keeps its English, and spoken phrases stay as spoken")
+  @Test("the spoken-punctuation setting keeps its English")
   func spokenPunctuation() {
     // #3385: the row name is "Spoken punctuation"; the short line under it says what it does.
     #expect(SpokenPunctuationCopy.toggleLabel == "Spoken punctuation")
@@ -93,16 +93,8 @@ struct SpeechSettingsCopyTests {
       SpokenPunctuationCopy.toggleDescription
         == "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it."
     )
-    #expect(SpokenPunctuationCopy.helpTitle == "Words you can say")
-    #expect(SpokenPunctuationCopy.helpSayColumn == "Say this")
-    #expect(SpokenPunctuationCopy.helpGetColumn == "You get")
-    #expect(
-      SpokenPunctuationCopy.helpFootnote
-        == "These words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol."
-    )
-    let lineBreaks = SpokenPunctuationCopy.phrases.filter { $0.spoken.hasPrefix("new ") }
-    #expect(lineBreaks.map(\.spoken) == ["new line", "new paragraph"])
-    #expect(lineBreaks.map(\.result) == ["a line break", "a blank line"])
+    // #2450: the in-app word table is gone; the phrase and footnote wording is pinned in
+    // `SpokenPunctuationCopyTests`, and the list lives in the Help Center article.
   }
 
   @Test("every speech-model download failure keeps its English")

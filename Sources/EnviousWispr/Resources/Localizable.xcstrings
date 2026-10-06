@@ -12,16 +12,6 @@
         }
       }
     },
-    "\"%@\"" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„%@“"
-          }
-        }
-      }
-    },
     "\"%@\" added to %@" : {
       "comment" : "Quick Add panel: confirmation after adding a spelling. The first %@ is the misheard text, the second the word; use this language's quotation marks.",
       "localizations" : {
@@ -6856,6 +6846,17 @@
         }
       }
     },
+    "English works as it does today: say the word on its own. You can also give English a start word." : {
+      "comment" : "Speech engine settings, spoken punctuation help: English needs no start word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englisch funktioniert wie bisher: Sag das Wort einfach allein. Du kannst auch für Englisch ein Startwort festlegen."
+          }
+        }
+      }
+    },
     "EnviousWispr can't read %@ files yet. Try a file you exported from EnviousWispr, or a plain text list." : {
       "comment" : "Your Words, import: error. %@ is the file's type, such as a file extension.",
       "localizations" : {
@@ -8653,6 +8654,28 @@
         }
       }
     },
+    "In English with no start word, these words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol." : {
+      "comment" : "Speech engine settings, spoken punctuation help footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Englischen ohne Startwort werden diese Wörter zu Satzzeichen, selbst wenn du das Wort selbst meintest, etwa in „the grace period expires“. Der Befehl „slash“ funktioniert auch bei ausgeschalteter Einstellung: „slash clear“ wird zu /clear, „command is slash wfp“ zu command is /wfp und „pros slash cons“ zu pros/cons. „slash the budget“ bleibt als Wörter stehen. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen."
+          }
+        }
+      }
+    },
+    "German, French, Spanish and Italian use a start word by default. You can change it or leave it blank. Say the start word first, then the mark. With a start word, a command word on its own stays an ordinary word." : {
+      "comment" : "Speech engine settings, spoken punctuation help: how the start word works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsch, Französisch, Spanisch und Italienisch nutzen standardmäßig ein Startwort. Du kannst es ändern oder leer lassen. Sag zuerst das Startwort und dann das Zeichen. Mit Startwort bleibt ein Befehlswort allein ein gewöhnliches Wort."
+          }
+        }
+      }
+    },
     "In a hurry? Skip ahead" : {
       "localizations" : {
         "de" : {
@@ -9455,12 +9478,23 @@
       }
     },
     "Learn more" : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: link to the help article.",
+      "comment" : "Speech engine settings, spoken punctuation help: link to the Help Center article.\nYour Words, Learn from: the self-learning dictionary row: link to the help article.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mehr erfahren"
+          }
+        }
+      }
+    },
+    "Learn more about spoken punctuation" : {
+      "comment" : "Speech engine settings, spoken punctuation help: spoken name of the Help Center link.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr über gesprochene Satzzeichen erfahren"
           }
         }
       }
@@ -11147,6 +11181,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine gesprochenen Varianten"
+          }
+        }
+      }
+    },
+    "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence." : {
+      "comment" : "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du das Feld leer lässt, gibt es kein Startwort. Befehlswörter werden überall dort zu Satzzeichen, wo du sie sagst, auch mitten in einem normalen Satz."
+          }
+        }
+      }
+    },
+    "No start word" : {
+      "comment" : "Speech engine settings, Start word row: the blank field's placeholder, meaning no start word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Startwort"
           }
         }
       }
@@ -14089,6 +14145,7 @@
       }
     },
     "Reset" : {
+      "comment" : "Speech engine settings, Start word row: button that restores the default start word.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14105,6 +14162,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tastenkürzel auf Standard zurücksetzen"
+          }
+        }
+      }
+    },
+    "Reset start word to the default" : {
+      "comment" : "Speech engine settings, Start word row: spoken name of the Reset button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startwort auf den Standardwert zurücksetzen"
           }
         }
       }
@@ -14486,12 +14554,34 @@
         }
       }
     },
+    "Save start word" : {
+      "comment" : "Speech engine settings, Start word row: spoken name of the Save button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startwort sichern"
+          }
+        }
+      }
+    },
     "Save the text you type over and over. An email address, a signature, a link you always paste." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Speichere Text, den du oft eingibst: eine E-Mail-Adresse, eine Signatur oder einen häufig verwendeten Link."
+          }
+        }
+      }
+    },
+    "Save word" : {
+      "comment" : "Speech engine settings, Start word row: button that saves the typed start word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wort sichern"
           }
         }
       }
@@ -14573,6 +14663,17 @@
         }
       }
     },
+    "Say \"%@\" to insert a period." : {
+      "comment" : "Speech engine settings, Start word row: an example. The placeholder is a spoken command in the dictation language, for example Diktiere Punkt; keep it exactly.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag „%@“, um einen Punkt einzufügen."
+          }
+        }
+      }
+    },
     "Say \"<phrase> emoji\" to get the glyph. Bare words never convert." : {
       "localizations" : {
         "de" : {
@@ -14616,17 +14717,6 @@
         }
       }
     },
-    "Say this" : {
-      "comment" : "Speech engine settings, spoken punctuation: help table column: the words the user says.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sag dies"
-          }
-        }
-      }
-    },
     "Say this first, then your trigger. One word." : {
       "localizations" : {
         "de" : {
@@ -14643,6 +14733,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sag dein Schlüsselwort und dann die Wörter, unter denen du den Textbaustein gespeichert hast. Er wird daraufhin eingefügt."
+          }
+        }
+      }
+    },
+    "Say your start word and then the mark. The start word tells a command from an ordinary word. Pick a word you would not say in a normal sentence. Leave the field blank to use command words on their own. You can set a different word for each language." : {
+      "comment" : "Speech engine settings, Start word row: the help behind the question mark.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag dein Startwort und dann das Zeichen. Das Startwort unterscheidet einen Befehl von einem gewöhnlichen Wort. Wähle ein Wort, das du in einem normalen Satz nicht sagen würdest. Lass das Feld leer, um Befehlswörter allein zu verwenden. Du kannst für jede Sprache ein eigenes Wort festlegen."
           }
         }
       }
@@ -15805,6 +15906,39 @@
         }
       }
     },
+    "Start word" : {
+      "comment" : "Speech engine settings, spoken punctuation: the Start word row's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startwort"
+          }
+        }
+      }
+    },
+    "Start word for" : {
+      "comment" : "Speech engine settings, Start word row: label of the picker that chooses which language's start word is edited.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startwort für"
+          }
+        }
+      }
+    },
+    "Start word for %@" : {
+      "comment" : "Speech engine settings, Start word row: spoken name of the text field. The placeholder is a language name such as German.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startwort für %@"
+          }
+        }
+      }
+    },
     "Starting" : {
       "comment" : "AI Polish provider status chip.",
       "localizations" : {
@@ -16643,6 +16777,17 @@
         }
       }
     },
+    "That word is already a command word. The last start word was kept." : {
+      "comment" : "Start word row: refusal shown when the word is itself a spoken punctuation command.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Wort ist bereits ein Befehlswort. Das bisherige Startwort bleibt erhalten."
+          }
+        }
+      }
+    },
     "That word is no longer in your words. Create it as a new word instead." : {
       "comment" : "Quick Add panel: follows 'Not saved.': the chosen word was deleted meanwhile.",
       "localizations" : {
@@ -17288,6 +17433,17 @@
         }
       }
     },
+    "The word you say before a mark." : {
+      "comment" : "Speech engine settings, Start word row: the short line under the row's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Wort, das du vor einem Zeichen sagst."
+          }
+        }
+      }
+    },
     "Theme" : {
       "localizations" : {
         "de" : {
@@ -17358,17 +17514,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Wörter sind nur hier sichtbar. Kopiere oder speichere sie, bevor du die Ansicht verlässt."
-          }
-        }
-      }
-    },
-    "These words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol." : {
-      "comment" : "Speech engine settings, spoken punctuation: help panel footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese Wörter werden zu Satzzeichen, selbst wenn du das Wort selbst meintest, etwa in „the grace period expires“. „Slash“ funktioniert auch bei ausgeschalteter Einstellung: „slash clear“ wird zu /clear, „command is slash wfp“ zu command is /wfp und „pros slash cons“ zu pros/cons. „slash the budget“ bleibt Text. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen."
           }
         }
       }
@@ -17588,12 +17733,34 @@
         }
       }
     },
+    "This is meant for dictating with AI polish off. AI polish can change punctuation afterwards." : {
+      "comment" : "Speech engine settings, spoken punctuation help: the setting is meant for polish off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist für das Diktieren ohne KI-Nachbearbeitung gedacht. Die KI-Nachbearbeitung kann Satzzeichen danach ändern."
+          }
+        }
+      }
+    },
     "This keybind starts and stops recording." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieses Tastenkürzel startet und stoppt die Aufnahme."
+          }
+        }
+      }
+    },
+    "This language has no start word. Nothing was changed." : {
+      "comment" : "Start word row: refusal shown when the language has no spoken punctuation table.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Sprache gibt es kein Startwort. Es wurde nichts geändert."
           }
         }
       }
@@ -17657,6 +17824,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieses Modell benötigt eine neuere Version von EnviousWispr."
+          }
+        }
+      }
+    },
+    "This only picks which start word you edit. It does not change your dictation language." : {
+      "comment" : "Speech engine settings, Start word row: the language picker does not set the dictation language.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier wählst du nur, welches Startwort du bearbeitest. Deine Diktiersprache ändert sich dadurch nicht."
           }
         }
       }
@@ -18314,6 +18492,17 @@
         }
       }
     },
+    "Type a start word. The last one was kept." : {
+      "comment" : "Start word row: refusal shown when the field was left empty.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gib ein Startwort ein. Das bisherige Startwort bleibt erhalten."
+          }
+        }
+      }
+    },
     "USB" : {
       "comment" : "Microphone settings: the microphone is connected over USB.",
       "localizations" : {
@@ -18672,12 +18861,56 @@
         }
       }
     },
+    "Use at least %lld letters. The last start word was kept." : {
+      "comment" : "Start word row: refusal shown when the word is too short.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze mindestens %lld Buchstaben. Das bisherige Startwort bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Use at most %lld letters. The last start word was kept." : {
+      "comment" : "Start word row: refusal shown when the word is too long.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze höchstens %lld Buchstaben. Das bisherige Startwort bleibt erhalten."
+          }
+        }
+      }
+    },
     "Use dictation's polish settings" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeitungseinstellungen für Diktate verwenden"
+          }
+        }
+      }
+    },
+    "Use letters only. The last start word was kept." : {
+      "comment" : "Start word row: refusal shown when the text has digits or symbols.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze nur Buchstaben. Das bisherige Startwort bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Use one word, with no spaces. The last start word was kept." : {
+      "comment" : "Start word row: refusal shown when the text has more than one word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze ein einzelnes Wort ohne Leerzeichen. Das bisherige Startwort bleibt erhalten."
           }
         }
       }
@@ -19505,17 +19738,6 @@
         }
       }
     },
-    "Words you can say" : {
-      "comment" : "Speech engine settings, spoken punctuation: help panel title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wörter, die du sagen kannst"
-          }
-        }
-      }
-    },
     "Work out the language from what you say." : {
       "localizations" : {
         "de" : {
@@ -19752,17 +19974,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du hast diesen Eintrag aus dem Verlauf gelöscht. Kopiere oder speichere ihn, bevor du die Ansicht verlässt."
-          }
-        }
-      }
-    },
-    "You get" : {
-      "comment" : "Speech engine settings, spoken punctuation: help table column: what appears in the text.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Du erhältst"
           }
         }
       }
@@ -20431,28 +20642,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ein leerer Eintrag"
-          }
-        }
-      }
-    },
-    "a blank line" : {
-      "comment" : "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "eine Leerzeile"
-          }
-        }
-      }
-    },
-    "a line break" : {
-      "comment" : "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ein Zeilenumbruch"
           }
         }
       }
@@ -22111,16 +22300,16 @@
       "comment" : "Menu bar menu, VoiceOver: the icon beside Help Center.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hilfe"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Help"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe"
           }
         }
       }
@@ -22129,16 +22318,16 @@
       "comment" : "Menu bar menu, VoiceOver: the icon beside Microphone.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofon"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Microphone"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
           }
         }
       }
@@ -22147,16 +22336,16 @@
       "comment" : "Menu bar menu, VoiceOver: the icon beside Open EnviousWispr.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fenster"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Window"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster"
           }
         }
       }
@@ -22956,20 +23145,56 @@
         }
       }
     },
+    "whatsNew.spoken-punctuation-more-languages.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry spoken-punctuation-more-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spoken punctuation in German, French, Spanish and Italian"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesprochene Satzzeichen auf Deutsch, Französisch, Spanisch und Italienisch"
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-punctuation-more-languages.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry spoken-punctuation-more-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before, and you can give English a start word too."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte „Gesprochene Satzzeichen“ unter Diktateinstellungen > Engine ein und sag dann vor dem Zeichen ein Startwort. Auf Deutsch sagst du „Diktiere Punkt“, auf Französisch „Place point“, auf Spanisch „Añade punto“ und auf Italienisch „Metti punto“. Du kannst das Startwort für jede Sprache ändern. Englisch funktioniert wie bisher, und du kannst auch für Englisch ein Startwort festlegen."
+          }
+        }
+      }
+    },
     "whatsNew.menu-bar-menu-shortcuts.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry menu-bar-menu-shortcuts).",
       "extractionState" : "manual",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein schnelleres Menü in der Menüleiste"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "A quicker menu bar menu"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein schnelleres Menü in der Menüleiste"
           }
         }
       }
@@ -22978,16 +23203,16 @@
       "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry menu-bar-menu-shortcuts).",
       "extractionState" : "manual",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Menü in der Menüleiste bietet jetzt ein paar Schnellzugriffe:"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "The menu bar menu now has a few shortcuts:"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Menü in der Menüleiste bietet jetzt ein paar Schnellzugriffe:"
           }
         }
       }
@@ -22996,16 +23221,16 @@
       "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
       "extractionState" : "manual",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„Mikrofon“: Mikrofon wechseln, ohne die App zu öffnen"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Microphone: switch microphones without opening the app"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Mikrofon“: Mikrofon wechseln, ohne die App zu öffnen"
           }
         }
       }
@@ -23014,16 +23239,16 @@
       "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
       "extractionState" : "manual",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„EnviousWispr öffnen“: ersetzt „Einstellungen“ und öffnet die App auf der Seite „Verlauf“"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open EnviousWispr: replaces Settings and opens on your History"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„EnviousWispr öffnen“: ersetzt „Einstellungen“ und öffnet die App auf der Seite „Verlauf“"
           }
         }
       }
@@ -23032,16 +23257,16 @@
       "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
       "extractionState" : "manual",
       "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„Hilfe-Center“: öffnet die Hilfe-Website"
-          }
-        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Help Center: opens the help website"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Hilfe-Center“: öffnet die Hilfe-Website"
           }
         }
       }

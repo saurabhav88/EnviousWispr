@@ -27,7 +27,7 @@ struct RecoveryTextProcessorTests {
       wordCorrectionEnabled: false,
       fillerRemovalEnabled: fillerRemoval,
       emojiFormatterEnabled: false,
-      spokenPunctuationEnabled: false,
+      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
       customWordsVersion: nil,
       llmProvider: provider,
       llmModel: "none",

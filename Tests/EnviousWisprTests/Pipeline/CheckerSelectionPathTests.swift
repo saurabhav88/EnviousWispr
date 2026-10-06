@@ -46,7 +46,7 @@ struct CheckerSelectionPathTests {
       backendType: backend, backendSupportsLanguageDetection: engineDetectsLanguage,
       languageMode: languageMode, wordCorrectionEnabled: true,
       fillerRemovalEnabled: false, emojiFormatterEnabled: false,
-      spokenPunctuationEnabled: false, llmProvider: LLMProvider.egOne.rawValue,
+      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, llmProvider: LLMProvider.egOne.rawValue,
       llmModel: "none", s1Control: nil, englishSpelling: nil)
   }
 

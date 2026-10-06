@@ -754,15 +754,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var emojiFormatter: EmojiFormatterStep { steps.emojiFormatter }
   public var llmPolish: LLMPolishStep { steps.llmPolish }
 
-  /// Spoken-punctuation gate (#1794). A narrow `Bool` rather than an
+  /// Spoken-punctuation setting (#1794, #2450). A narrow value rather than an
   /// `InverseTextNormalizationStep` accessor like its siblings above: those work only
   /// because their step types are `public`, and `InverseTextNormalizationStep` is
-  /// internal. Widening the whole type across a module boundary to pass one flag would
+  /// internal. Widening the whole type across a module boundary to pass one setting would
   /// violate `architecture-rules.md` RULE: minimize-visibility, so AppKit gets the
-  /// Boolean and nothing else. `package` because only first-party targets consume it.
-  package var spokenPunctuationEnabled: Bool {
-    get { steps.inverseTextNormalization.spokenPunctuationEnabled }
-    set { steps.inverseTextNormalization.spokenPunctuationEnabled = newValue }
+  /// settings value and nothing else. `package` because only first-party targets consume it.
+  package var spokenPunctuation: SpokenPunctuationSettings {
+    get { steps.inverseTextNormalization.spokenPunctuation }
+    set { steps.inverseTextNormalization.spokenPunctuation = newValue }
   }
 
   // MARK: Caller-visible signals

@@ -2350,9 +2350,9 @@ public struct InverseTextNormalizer: Sendable {
   /// Matching is case-INSENSITIVE (`reSub` defaults `caseInsensitive: true` and the
   /// loop below does not override it), so "Period" at a sentence start converts too.
   ///
-  /// User-facing copy mirrors this table BY HAND in `SpokenPunctuationCopy`
-  /// (EnviousWisprAppKit). Change one, change the other, or the in-app help panel
-  /// starts lying about what the app does. A freeze test pins that copy.
+  /// The user-facing word list is the Help Center article `spoken-punctuation-and-emoji`
+  /// (`website/src/content/help/`), kept by hand. The app lists no phrases of its own (#2450).
+  /// Change this table, change that article.
   ///
   /// Spoken symbol words in CONTEXTUAL conversions (email at/dot, URL dot/slash,
   /// numeric slash, percent, decimal dot) are NOT here and are never gated.
@@ -2395,7 +2395,8 @@ public struct InverseTextNormalizer: Sendable {
   /// WHAT EACH MATCH BECOMES is not decided here. Backslash: `\` when the setting is on, the span
   /// kept verbatim (comma included) when it is off. Slash: `slashReading` decides, in both switch
   /// positions, whether the word stays, glues, or takes a space before it. User-facing copy for
-  /// the gated rows lives in `SpokenPunctuationCopy`; the always-on slash is described there too.
+  /// the gated rows lives in the Help Center article; the always-on slash is described in
+  /// `SpokenPunctuationCopy.helpFootnote` too.
   static let joinerCommands =
     #"[^\S\r\n]*(?:(?<=\S),)?[^\S\r\n]*(?<![^\s"'(\[{“‘«])(back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])(?![.,;:!?]\S)[^\S\r\n]*"#
 

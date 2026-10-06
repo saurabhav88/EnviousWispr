@@ -1,0 +1,568 @@
+import Foundation
+import Testing
+
+@testable import EnviousWisprCore
+@testable import EnviousWisprPostProcessing
+
+/// #2450: spoken punctuation in German, French, Spanish and Italian, behind a start word.
+///
+/// **Product Outcome.** When these fail a user either loses a command they asked for or, worse, loses a
+/// word they said. The start word exists so the second cannot happen with a shipped default, and
+/// `ordinaryUseIsNeverConverted` and the near-miss rows are what bind it.
+///
+/// Expected outputs are LITERAL throughout. `SpokenPunctuationRules` supplies some INPUTS (every form
+/// of every table); it never supplies an expectation, because a test whose two sides both come from the
+/// mechanism under test can only prove the mechanism agrees with itself.
+///
+/// NOT proven here, by design: behaviour through the real cleanup chain (snippet expansion before this
+/// pass, polish after it), and what the shipping recogniser really writes around a command. Those belong
+/// to the routing chunk and to Live UAT, and are recorded as pending.
+@Suite(.tags(.productOutcome))
+struct MultilingualSpokenPunctuationTests {
+
+  private static let itn = InverseTextNormalizer()
+
+  private static func apply(
+    _ text: String, _ language: String = "de", start: String? = nil, sentinels: [String] = []
+  ) -> SpokenPunctuationResult {
+    itn.applyStartWordPunctuation(
+      text, language: language,
+      startWord: start ?? SpokenPunctuationRules.defaultStartWord(for: language) ?? "",
+      protectedSentinels: sentinels)
+  }
+
+  private static func text(_ input: String, _ language: String = "de") -> String {
+    apply(input, language).text
+  }
+
+  private static func scalars(_ text: String) -> [UInt32] { text.unicodeScalars.map(\.value) }
+
+  // MARK: - German commands
+
+  @Test(
+    "German commands convert after the start word",
+    arguments: [
+      (
+        "wir treffen uns morgen Diktiere Punkt das Wetter ist gut",
+        "wir treffen uns morgen. Das Wetter ist gut"
+      ),
+      (
+        "wir treffen uns morgen Diktiere Komma das Wetter ist gut",
+        "wir treffen uns morgen, das Wetter ist gut"
+      ),
+      ("ist das gut Diktiere Fragezeichen", "ist das gut?"),
+      ("das ist gut Diktiere Ausrufezeichen", "das ist gut!"),
+      ("hier kommt Diktiere Doppelpunkt der Rest", "hier kommt: der Rest"),
+      ("erstens Diktiere Semikolon zweitens", "erstens; zweitens"),
+      ("erstens Diktiere Strichpunkt zweitens", "erstens; zweitens"),
+    ])
+  func germanMarks(input: String, expected: String) {
+    #expect(Self.text(input) == expected)
+  }
+
+  @Test(
+    "German line and paragraph breaks, including the form the reporting user said",
+    arguments: [
+      ("alpha Diktiere neue Zeile beta", "alpha\nBeta"),
+      ("alpha Diktiere neuer Absatz beta", "alpha\n\nBeta"),
+      ("alpha Diktiere neuen Absatz beta", "alpha\n\nBeta"),
+      ("alpha Diktiere Neuabsatz beta", "alpha\n\nBeta"),
+    ])
+  func germanBreaks(input: String, expected: String) {
+    #expect(Self.text(input) == expected)
+  }
+
+  @Test("Case does not matter for the start word or the command")
+  func caseVariants() {
+    #expect(Self.text("alpha DIKTIERE PUNKT beta") == "alpha. Beta")
+    #expect(Self.text("alpha diktiere punkt beta") == "alpha. Beta")
+    #expect(Self.text("alpha dIkTiErE KoMmA beta") == "alpha, beta")
+  }
+
+  // MARK: - French, Spanish, Italian
+
+  @Test(
+    "French commands, longest form first",
+    arguments: [
+      ("c'est fini Place point", "c'est fini."),
+      ("voulez-vous venir Place point d'interrogation", "voulez-vous venir?"),
+      ("quelle surprise Place point d'exclamation", "quelle surprise!"),
+      ("un deux Place point-virgule trois", "un deux; trois"),
+      ("un deux Place virgule trois", "un deux, trois"),
+      ("voici la liste Place deux points les voici", "voici la liste: les voici"),
+      ("alpha Place nouvelle ligne beta", "alpha\nBeta"),
+      ("alpha Place à la ligne beta", "alpha\nBeta"),
+      ("alpha Place nouveau paragraphe beta", "alpha\n\nBeta"),
+    ])
+  func french(input: String, expected: String) {
+    #expect(Self.text(input, "fr") == expected)
+  }
+
+  @Test("A typographic apostrophe from the engine still matches a French form")
+  func frenchTypographicApostrophe() {
+    #expect(
+      Self.text("voulez-vous venir Place point d\u{2019}interrogation", "fr")
+        == "voulez-vous venir?")
+  }
+
+  @Test(
+    "Spanish commands, longest form first",
+    arguments: [
+      ("hola Añade punto y coma adiós", "hola; adiós"),
+      ("hola Añade punto adiós", "hola. Adiós"),
+      ("hola Añade coma adiós", "hola, adiós"),
+      ("mira esto Añade dos puntos aquí", "mira esto: aquí"),
+      ("quién es Añade signo de interrogación", "quién es?"),
+      ("qué bien Añade signo de exclamación", "qué bien!"),
+      ("alpha Añade nueva línea beta", "alpha\nBeta"),
+      ("alpha Añade nuevo párrafo beta", "alpha\n\nBeta"),
+    ])
+  func spanish(input: String, expected: String) {
+    #expect(Self.text(input, "es") == expected)
+  }
+
+  @Test(
+    "Italian commands, longest form first",
+    arguments: [
+      ("ciao Metti punto e virgola dopo", "ciao; dopo"),
+      ("ciao Metti punto dopo", "ciao. Dopo"),
+      ("ciao Metti virgola dopo", "ciao, dopo"),
+      ("guarda Metti due punti ecco", "guarda: ecco"),
+      ("come stai Metti punto interrogativo", "come stai?"),
+      ("che bello Metti punto esclamativo", "che bello!"),
+      ("alpha Metti nuova riga beta", "alpha\nBeta"),
+      ("alpha Metti nuovo paragrafo beta", "alpha\n\nBeta"),
+    ])
+  func italian(input: String, expected: String) {
+    #expect(Self.text(input, "it") == expected)
+  }
+
+  // MARK: - Ordinary use is never converted
+
+  @Test(
+    "Every command form of every language is untouched without its start word",
+    arguments: SpokenPunctuationRules.supportedLanguages)
+  func ordinaryUseIsNeverConverted(language: String) throws {
+    let forms = try #require(SpokenPunctuationRules.spokenForms(for: language))
+    #expect(forms.isEmpty == false)
+    for form in forms {
+      let sentence = "wir sagen \(form) und dann weiter"
+      let result = Self.apply(sentence, language)
+      #expect(result.text == sentence, "form: \(form)")
+      #expect(result.rulesFired == 0, "form: \(form)")
+    }
+  }
+
+  @Test(
+    "German near misses and ordinary sentences stay byte-identical with the toggle's pass applied",
+    arguments: [
+      "Zeitpunkt",
+      "der Standpunkt ist klar",
+      "ein Schwerpunkt der Arbeit",
+      "am Fußpunkt der Säule",
+      "Punkt für Punkt gehen wir vor",
+      "das ist der springende Punkt",
+      "wir kommen auf den Punkt",
+      "es kostet drei Komma fünf Prozent",
+      "Rediktiere Punkt",
+      "Diktieren Punkt",
+      "Diktiere mir bitte einen Brief",
+      "Diktiere Punktuation",
+      "das ist ein Punkt Diktiere",
+      "Diktiere",
+      "",
+    ])
+  func germanNearMisses(input: String) {
+    let result = Self.apply(input)
+    #expect(result.text == input)
+    #expect(result.rulesFired == 0)
+  }
+
+  @Test("A start word split from its command by a line break is not a command")
+  func startWordAndCommandNeverSpanALineBreak() {
+    #expect(Self.text("alpha Diktiere\nPunkt beta") == "alpha Diktiere\nPunkt beta")
+    #expect(Self.text("alpha Diktiere\r\nPunkt beta") == "alpha Diktiere\r\nPunkt beta")
+  }
+
+  // MARK: - Whitespace
+
+  @Test("Tabs and no-break spaces count as horizontal whitespace")
+  func horizontalWhitespaceVariants() {
+    #expect(Self.text("alpha\tDiktiere\u{00A0}Punkt beta") == "alpha. Beta")
+    #expect(Self.text("alpha   Diktiere    Komma   beta") == "alpha,   beta")
+  }
+
+  @Test("The leading whitespace a match eats never includes a line break")
+  func leadingWhitespaceStopsAtALineBreak() {
+    #expect(Self.text("alpha\nDiktiere Punkt beta") == "alpha\n. Beta")
+  }
+
+  @Test("A line break a command produced survives the next command")
+  func consecutiveBreakThenMark() {
+    #expect(Self.text("alpha Diktiere neue Zeile Diktiere Punkt beta") == "alpha\n. Beta")
+  }
+
+  @Test("Indentation and list lines around a rewrite are untouched")
+  func indentationAndListsAreKept() {
+    #expect(Self.text("- item eins Diktiere Punkt\n- item zwei") == "- item eins.\n- item zwei")
+    #expect(Self.text("    code Diktiere Komma weiter") == "    code, weiter")
+    #expect(Self.text("alpha Diktiere neue Zeile   beta") == "alpha\nBeta")
+  }
+
+  // MARK: - Recogniser marks around a command
+
+  @Test(
+    "One recogniser period or comma directly after the command is absorbed",
+    arguments: [
+      ("Das ist gut Diktiere Punkt. Es geht weiter", "Das ist gut. Es geht weiter"),
+      ("alpha Diktiere Komma, und beta", "alpha, und beta"),
+      ("alpha Diktiere Neuer Absatz. Hallo", "alpha\n\nHallo"),
+      ("alpha Diktiere Punkt.", "alpha."),
+    ])
+  func trailingRecogniserMark(input: String, expected: String) {
+    #expect(Self.text(input) == expected)
+  }
+
+  /// Shapes the shipping recogniser (Parakeet v3) writes around a spoken command, taken from spoken
+  /// samples (#2450 second-pass check): it punctuates the clause before the start word as a question
+  /// or a sentence ("dir? Diktiere Fragezeichen"), ends with its own mark, and writes a French question
+  /// mark after a space. The command REPLACES a mark the recogniser put on the word before it, and
+  /// absorbs one it put after. Expected outputs are literal.
+  @Test(
+    "A mark the recogniser wrote around a command is replaced, never doubled",
+    arguments: [
+      ("de", "Wie geht es dir? Diktiere Fragezeichen.", "Wie geht es dir?"),
+      ("de", "Das ist toll! Diktiere Ausrufezeichen.", "Das ist toll!"),
+      ("de", "Wie geht es dir Diktiere Fragezeichen?", "Wie geht es dir?"),
+      ("de", "Toll Diktiere Ausrufezeichen!", "Toll!"),
+      ("de", "Hallo, Diktiere Komma wie geht es dir", "Hallo, wie geht es dir"),
+      ("de", "Es kostet 5. Diktiere Punkt", "Es kostet 5."),
+      ("fr", "Comment \u{00E7}a va ? Place point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va Place point d'interrogation ?", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va\u{00A0}? Place point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va\u{202F}? Place point d'interrogation", "Comment \u{00E7}a va?"),
+      ("fr", "Comment \u{00E7}a va Place point d'interrogation\u{00A0}?", "Comment \u{00E7}a va?"),
+      ("fr", "C'est super Place point d'exclamation\u{202F}!", "C'est super!"),
+      ("fr", "C'est super Place point d'exclamation !", "C'est super!"),
+      ("es", "\u{00BF}C\u{00F3}mo est\u{00E1}s? Añade signo de interrogaci\u{00F3}n.", "\u{00BF}C\u{00F3}mo est\u{00E1}s?"),
+      ("it", "Come stai? Metti punto interrogativo", "Come stai?"),
+    ])
+  func recogniserMarksAroundACommand(language: String, input: String, expected: String) {
+    #expect(Self.text(input, language) == expected)
+  }
+
+  /// The pass cannot tell whether the recogniser or the user wrote a mark that DIFFERS from the one the
+  /// command writes, so it keeps it: an abbreviation's dot, a list marker, a decimal, a different mark.
+  @Test("A different mark before the start word is kept, never deleted")
+  func differentMarksBeforeTheStartWordAreKept() {
+    #expect(Self.text("z.B. Diktiere Komma weiter") == "z.B., weiter")
+    #expect(Self.text("1. Diktiere Komma weiter") == "1., weiter")
+    #expect(Self.text("3.14 Diktiere Punkt") == "3.14.")
+    #expect(Self.text("Das ist toll. Diktiere Ausrufezeichen.") == "Das ist toll.!")
+    #expect(Self.text("Wie geht es dir. Diktiere Fragezeichen") == "Wie geht es dir.?")
+  }
+
+  @Test("A line break keeps the sentence end it follows, and a lone ellipsis is not a recogniser mark")
+  func breakAndEllipsisKeepTheirMarks() {
+    #expect(Self.text("Erste Zeile. Diktiere neue Zeile zweite") == "Erste Zeile.\nZweite")
+    #expect(Self.text("Moment\u{2026} Diktiere Punkt") == "Moment\u{2026}.")
+    #expect(Self.text("Wirklich?! Diktiere Punkt") == "Wirklich?!.")
+  }
+
+  @Test("Two commands in a row still stack: the second never eats the first's mark")
+  func adjacentCommandsStack() {
+    #expect(Self.text("alpha Diktiere Komma Diktiere Punkt beta") == "alpha,. Beta")
+    // Identical marks are the case the guard exists for: without it the second command would read the
+    // first command's own mark as a recogniser duplicate and drop it.
+    #expect(Self.text("alpha Diktiere Punkt Diktiere Punkt beta") == "alpha.. Beta")
+    #expect(Self.text("alpha Diktiere Komma Diktiere Komma beta") == "alpha,, beta")
+  }
+
+  @Test("A dot glued to the next token is not absorbed")
+  func gluedDotIsKept() {
+    #expect(Self.text("alpha Diktiere Punkt.com") == "alpha..com")
+  }
+
+  // MARK: - Capitalisation
+
+  @Test("Capitalisation happens only after a sentence-ending rewrite")
+  func capitalisationScope() {
+    #expect(Self.text("alpha Diktiere Komma beta gamma. delta") == "alpha, beta gamma. delta")
+    #expect(Self.text("alpha Diktiere Punkt beta gamma. delta") == "alpha. Beta gamma. delta")
+    #expect(Self.text("alpha Diktiere Punkt 42 beta") == "alpha. 42 beta")
+    #expect(Self.text("alpha Diktiere Punkt «beta»") == "alpha. «Beta»")
+    #expect(Self.text("alpha Diktiere Punkt\nbeta") == "alpha.\nBeta")
+    #expect(Self.text("alpha Diktiere Punkt ßeta") == "alpha. SSeta")
+    #expect(
+      Self.apply("alpha Diktiere Punkt «zzsnip42»", sentinels: ["zzsnip42"]).text
+        == "alpha. «zzsnip42»")
+    #expect(Self.text("alpha Añade punto ¿cómo", "es") == "alpha. ¿Cómo")
+  }
+
+  @Test("An accented first letter is capitalised")
+  func accentedCapital() {
+    #expect(Self.text("alpha Añade punto élite", "es") == "alpha. Élite")
+  }
+
+  // MARK: - Consecutive commands and text edges
+
+  @Test("Consecutive commands")
+  func consecutiveCommands() {
+    let result = Self.apply("alpha Diktiere Punkt Diktiere neuer Absatz beta")
+    #expect(result.text == "alpha.\n\nBeta")
+    #expect(result.rulesFired == 2)
+  }
+
+  @Test(
+    "Commands at the very start and end of the text",
+    arguments: [
+      ("Diktiere Punkt", "."),
+      ("Diktiere Komma", ","),
+      ("Diktiere neue Zeile hallo", "\nHallo"),
+      ("hallo Diktiere Punkt", "hallo."),
+      ("hallo Diktiere Fragezeichen", "hallo?"),
+    ])
+  func edges(input: String, expected: String) {
+    #expect(Self.text(input) == expected)
+  }
+
+  // MARK: - The start word is a setting
+
+  @Test("A custom start word works and the default no longer does")
+  func customStartWord() {
+    #expect(Self.apply("alpha Sprich Punkt beta", start: "Sprich").text == "alpha. Beta")
+    #expect(
+      Self.apply("alpha Diktiere Punkt beta", start: "Sprich").text == "alpha Diktiere Punkt beta")
+  }
+
+  @Test("A start word with an apostrophe or hyphen is matched literally")
+  func customStartWordWithSeparators() {
+    #expect(
+      Self.apply("alpha mets-moi virgule beta", "fr", start: "mets-moi").text == "alpha, beta")
+    #expect(Self.apply("alpha l'ordre point beta", "fr", start: "l'ordre").text == "alpha. Beta")
+  }
+
+  @Test("A start word full of regex metacharacters cannot widen the match")
+  func startWordIsEscaped() {
+    // Validation would refuse these; the pass must still treat them literally if one ever arrives.
+    #expect(Self.apply("alpha Setzex Punkt beta", start: "Setz.").text == "alpha Setzex Punkt beta")
+    #expect(
+      Self.apply("alpha Diktiere Punkt beta", start: "(Diktiere|alpha)").text == "alpha Diktiere Punkt beta")
+  }
+
+  @Test("A decomposed start word is normalised and matches NFC text, and the result is exact")
+  func decomposedStartWordMatchesComposedText() {
+    let result = Self.apply("à demain Insère point", "fr", start: "Inse\u{0300}re")
+    #expect(result.rulesFired == 1)
+    #expect(Self.scalars(result.text) == Self.scalars("à demain."))
+  }
+
+  @Test("Decomposed commands match without normalising the surrounding text")
+  func decomposedCommandsMatch() {
+    let prefix = "cafe\u{0301}"
+    let french = Self.apply("\(prefix) Place a\u{0300} la ligne beta", "fr")
+    #expect(Self.scalars(french.text) == Self.scalars("\(prefix)\nBeta"))
+    #expect(french.rulesFired == 1)
+
+    let spanish = Self.apply("alpha Añade nuevo pa\u{0301}rrafo beta", "es")
+    #expect(Self.scalars(spanish.text) == Self.scalars("alpha\n\nBeta"))
+    #expect(spanish.rulesFired == 1)
+  }
+
+  @Test(
+    "A language with no table, English included, is never given another table",
+    arguments: ["en", "nl", "pl", "xx", ""])
+  func unsupportedLanguage(language: String) {
+    let input = "alpha Diktiere Punkt beta period comma"
+    let result = Self.apply(input, language, start: "Diktiere")
+    #expect(result.text == input)
+    #expect(result.rulesFired == 0)
+  }
+
+  @Test(
+    "A regional tag and any casing reach the same table",
+    arguments: ["de", "de-DE", "de_DE", "DE", "De-at"])
+  func regionalTags(language: String) {
+    #expect(Self.apply("alpha Diktiere Punkt beta", language, start: "Diktiere").text == "alpha. Beta")
+  }
+
+  @Test("An empty or blank start word is the no-start-word choice: commands are read bare")
+  func emptyStartWord() {
+    #expect(Self.apply("alpha Punkt beta", start: "").text == "alpha. Beta")
+    #expect(Self.apply("alpha  Punkt beta", start: "  ").text == "alpha. Beta")
+  }
+
+  // MARK: - Protected sentinels
+
+  @Test("Capitalisation skips a protected sentinel and takes an ordinary word")
+  func capitalisationSkipsASentinel() {
+    let sentinel = "zzsnip42"
+    #expect(
+      Self.apply("alpha Diktiere Punkt zzsnip42 beta", sentinels: [sentinel]).text
+        == "alpha. zzsnip42 beta")
+    // Control: the same text without the sentinel being declared protected IS capitalised.
+    #expect(Self.apply("alpha Diktiere Punkt zzsnip42 beta").text == "alpha. Zzsnip42 beta")
+  }
+
+  @Test("A sentinel before or after a command is carried through unchanged")
+  func sentinelsSurviveAroundCommands() {
+    let sentinel = "EWSNIP0123456789abcdef0123456789abcdef"
+    let before = Self.apply("\(sentinel) Diktiere Punkt beta", sentinels: [sentinel])
+    #expect(before.text == "\(sentinel). Beta")
+    let after = Self.apply("alpha Diktiere Komma \(sentinel) beta", sentinels: [sentinel])
+    #expect(after.text == "alpha, \(sentinel) beta")
+  }
+
+  // MARK: - Counts and idempotence
+
+  @Test("The fired count is exact")
+  func firedCounts() {
+    #expect(Self.apply("alpha Diktiere Punkt beta Diktiere Komma gamma").rulesFired == 2)
+    #expect(
+      Self.apply("alpha Diktiere Punkt beta Diktiere Komma gamma Diktiere Fragezeichen").rulesFired == 3)
+    #expect(Self.apply("alpha beta gamma").rulesFired == 0)
+  }
+
+  @Test("A second application changes nothing and fires nothing")
+  func idempotence() {
+    let inputs = [
+      "alpha Diktiere Punkt beta Diktiere Komma gamma",
+      "alpha Diktiere neuer Absatz beta Diktiere Fragezeichen",
+      "alpha Diktiere Punkt. Es geht weiter",
+    ]
+    for input in inputs {
+      let once = Self.apply(input)
+      let twice = Self.apply(once.text)
+      #expect(twice.text == once.text, "input: \(input)")
+      #expect(twice.rulesFired == 0, "input: \(input)")
+    }
+  }
+
+  // MARK: - The tables themselves
+
+  @Test("Only de, fr, es and it have tables; nil, never empty, for the rest")
+  func tableCoverage() {
+    #expect(SpokenPunctuationRules.supportedLanguages == ["de", "fr", "es", "it"])
+    for language in SpokenPunctuationRules.supportedLanguages {
+      #expect(SpokenPunctuationRules.rules(for: language)?.isEmpty == false)
+    }
+    for language in ["en", "nl", "pl", "xx", ""] {
+      #expect(SpokenPunctuationRules.rules(for: language) == nil, "language: \(language)")
+      #expect(
+        SpokenPunctuationRules.defaultStartWord(for: language) == nil, "language: \(language)")
+    }
+  }
+
+  @Test("The German paragraph forms keep their display order, including the authored one")
+  func germanParagraphFormsOrder() throws {
+    let rules = try #require(SpokenPunctuationRules.rules(for: "de"))
+    let paragraph = try #require(rules.first { $0.command == .paragraphBreak })
+    #expect(paragraph.spokenForms == ["neuer Absatz", "neuen Absatz", "Neuabsatz"])
+    #expect(paragraph.replacement == "\n\n")
+  }
+
+  @Test("Every language covers all eight commands exactly once")
+  func everyLanguageCoversEveryCommand() throws {
+    for language in SpokenPunctuationRules.supportedLanguages {
+      let rules = try #require(SpokenPunctuationRules.rules(for: language))
+      let commands = rules.map(\.command)
+      #expect(Set(commands) == Set(SpokenPunctuationCommand.allCases), "language: \(language)")
+      #expect(commands.count == SpokenPunctuationCommand.allCases.count, "language: \(language)")
+    }
+  }
+
+  @Test("No spoken form is empty or repeated within a language")
+  func formsAreWellFormed() throws {
+    for language in SpokenPunctuationRules.supportedLanguages {
+      let forms = try #require(SpokenPunctuationRules.spokenForms(for: language))
+      #expect(forms.allSatisfy { $0.isEmpty == false }, "language: \(language)")
+      let lowered = forms.map { $0.lowercased() }
+      #expect(Set(lowered).count == lowered.count, "language: \(language)")
+    }
+  }
+
+  // MARK: - No start word (the user cleared the field)
+
+  @Test(
+    "With no start word the command words are read bare, in every language",
+    arguments: [
+      ("de", "Das Wetter ist schön Punkt", "Das Wetter ist schön."),
+      ("de", "Hallo Komma wie geht es dir Fragezeichen", "Hallo, wie geht es dir?"),
+      ("de", "Erste Zeile neue Zeile zweite Zeile", "Erste Zeile\nZweite Zeile"),
+      ("fr", "Comment ça va point d'interrogation", "Comment ça va?"),
+      ("es", "Cómo estás signo de interrogación", "Cómo estás?"),
+      ("it", "Come stai punto interrogativo", "Come stai?"),
+    ])
+  func bareCommandsWithNoStartWord(language: String, input: String, expected: String) {
+    #expect(Self.apply(input, language, start: "").text == expected)
+  }
+
+  @Test("With no start word a command word inside a sentence is a mark: the cost the user chose")
+  func noStartWordConvertsOrdinaryUse() {
+    #expect(Self.apply("Das ist der springende Punkt", "de", start: "").text == "Das ist der springende.")
+    #expect(Self.apply("Drei Komma fünf Prozent", "de", start: "").text == "Drei, fünf Prozent")
+  }
+
+  @Test("With no start word the recogniser's mark around a command is still collapsed once")
+  func noStartWordCollapsesTheRecogniserMark() {
+    #expect(Self.apply("Wie geht es dir? Fragezeichen.", "de", start: "").text == "Wie geht es dir?")
+  }
+
+  @Test("With no start word the word 'Diktiere' is just a word again")
+  func noStartWordLeavesTheOldDefaultAlone() {
+    #expect(Self.apply("Diktiere mir bitte einen Brief", "de", start: "").text == "Diktiere mir bitte einen Brief")
+  }
+
+  // MARK: - English with a start word (the optional mode)
+
+  @Test("English is offered a start word but is not one of the four required-start-word languages")
+  func englishIsAnOptionNotATable() {
+    #expect(SpokenPunctuationRules.startWordLanguages == ["en", "de", "fr", "es", "it"])
+    #expect(SpokenPunctuationRules.rules(for: "en") == nil, "the four-language table lookup stays nil")
+    #expect(SpokenPunctuationRules.startWordRules(for: "en")?.isEmpty == false)
+    #expect(SpokenPunctuationRules.startWordDefault(for: "en") == "", "English default is no start word")
+    #expect(SpokenPunctuationRules.startWordDefault(for: "de") == "Diktiere")
+    #expect(SpokenPunctuationRules.startWordDefault(for: "nl") == nil)
+    #expect(SpokenPunctuationRules.effectiveStartWords(overrides: [:])["en"] == "")
+  }
+
+  /// Every English start-word form, with what the BARE English path (`InverseTextNormalizer.punct`) writes
+  /// for the same words. Both paths are run on the same literal expectation, so a change to one table
+  /// that the other does not follow fails here. It covers the ten forms listed, NOT every regex row of
+  /// `punct`: the sentence-end context variants of the two break rows are not exercised, and an alias
+  /// added only to `punct` would not be noticed.
+  private static let englishParity: [(form: String, expected: String)] = [
+    ("comma", "Alpha, beta"), ("period", "Alpha. Beta"), ("full stop", "Alpha. Beta"),
+    ("question mark", "Alpha? Beta"), ("exclamation mark", "Alpha! Beta"),
+    ("exclamation point", "Alpha! Beta"), ("colon", "Alpha: beta"), ("semicolon", "Alpha; beta"),
+    ("new line", "Alpha\nBeta"), ("new paragraph", "Alpha\n\nBeta"),
+  ]
+
+  @Test("The English start-word table covers exactly the forms the parity rows name")
+  func englishParityCoversEveryForm() {
+    let forms = Set(SpokenPunctuationRules.startWordForms(for: "en") ?? [])
+    #expect(forms == Set(Self.englishParity.map(\.form)))
+  }
+
+  @Test("Each English form writes the same thing bare and after a start word", arguments: [
+    "comma", "period", "full stop", "question mark", "exclamation mark", "exclamation point",
+    "colon", "semicolon", "new line", "new paragraph",
+  ])
+  func englishBareAndStartWordAgree(form: String) throws {
+    let expected = try #require(Self.englishParity.first { $0.form == form }).expected
+    // The marks and their order must agree. Spaces around a break and the capital after it are tidied
+    // by later stages of the real chain on the bare path, so they are compared without them.
+    func squash(_ text: String) -> String { text.replacingOccurrences(of: " ", with: "").lowercased() }
+    let bare = InverseTextNormalizer().normalize("Alpha \(form) beta", spokenPunctuation: true)
+    #expect(squash(bare) == squash(expected), "bare path: \(bare.debugDescription)")
+    let viaStartWord = Self.apply("Alpha Insert \(form) beta", "en", start: "Insert").text
+    #expect(viaStartWord == expected, "start-word path: \(viaStartWord.debugDescription)")
+  }
+
+  @Test("An English start word does not convert bare words or other languages' commands")
+  func englishStartWordIsRequired() {
+    #expect(Self.apply("The grace period expires", "en", start: "Insert").rulesFired == 0)
+    #expect(Self.apply("alpha period beta", "en", start: "Insert").text == "alpha period beta")
+    #expect(Self.apply("alpha Insert Punkt beta", "en", start: "Insert").rulesFired == 0)
+  }
+}

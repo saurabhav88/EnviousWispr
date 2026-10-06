@@ -17,6 +17,8 @@
 #
 # Classify contract (lifted VERBATIM from the pre-#1151 inline step):
 #   - a change to pr-check.yml / main-post-merge.yml self-forces a full build
+#   - so does the one help article a Swift test reads (see the comment above
+#     the first build-forcing grep)
 #   - any path outside (website/ docs/ .github/ .claude/ CLAUDE.md) forces a
 #     full build
 #   - otherwise content-only -> skip
@@ -65,10 +67,19 @@ classify() {
   # are asymmetric: a needless full build costs CI minutes, whereas a skipped
   # one ships unvalidated build infrastructure. Any action added under that
   # directory is by construction used by a workflow here.
-  if grep -qE '^\.github/(workflows/(pr-check|main-post-merge)\.yml$|actions/)' <<<"$changed"; then
+  #
+  # ONE help article is in the same list, by exact path (#2450):
+  # website/src/content/help/spoken-punctuation-and-emoji.md. A Swift test
+  # (SpokenPunctuationHelpArticleParityTests) reads it and compares its command
+  # tables with the rules the app really applies. Everything under website/ is
+  # otherwise excluded from the build decision below, so an edit to that article
+  # alone classified as needs_build=false and the test that guards it never
+  # ran. The match is the exact path, not the help directory: every other help
+  # article stays a website-only change.
+  if grep -qE '^(\.github/(workflows/(pr-check|main-post-merge)\.yml$|actions/)|website/src/content/help/spoken-punctuation-and-emoji\.md$)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
-    echo "==> CI build workflow or composite action changed — full Xcode build required (needs_website=$website)"
+    echo "==> CI build workflow, composite action or the spoken-punctuation help article changed — full Xcode build required (needs_website=$website)"
   elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
@@ -292,6 +303,13 @@ self_test() {
   _expect_classify $'website/a.astro\nSources/B.swift' true "website+swift -> both" true
   _expect_classify ".github/workflows/pr-check.yml" true "workflow only -> self-forces website too" true
   _expect_classify $'website/x.md\n.github/workflows/pr-check.yml' true "workflow+website -> both" true
+  # #2450: the spoken-punctuation help article is read by a Swift parity test, so an article-only
+  # change must build. Two-way controls: a near-miss filename and another help article stay
+  # website-only, so the match is the exact path and not the help directory.
+  _expect_classify "website/src/content/help/spoken-punctuation-and-emoji.md" true "parity article alone -> build and website" true
+  _expect_classify $'docs/x.md\nwebsite/src/content/help/spoken-punctuation-and-emoji.md' true "parity article plus docs -> build and website" true
+  _expect_classify "website/src/content/help/spoken-punctuation-and-emojis.md" false "near-miss article name -> website only" true
+  _expect_classify "website/src/content/help/using-snippets.md" false "another help article -> website only" true
 
   echo "== three-dot diff + #825 fail-safe (temp repos) =="
   local sb orig head head2 maintip

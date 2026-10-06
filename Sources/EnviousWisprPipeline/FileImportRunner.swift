@@ -261,7 +261,8 @@ public final class FileImportRunner {
   }
 
   /// Builds this part's own step instances and applies the frozen settings.
-  private func makeSteps(settings: RecordingSettingsSnapshot) -> LimbSteps {
+  /// Internal, not private, so a test can see which settings reached the steps it builds (#2450).
+  func makeSteps(settings: RecordingSettingsSnapshot) -> LimbSteps {
     let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent())
     // Standalone, exactly like the recovery replay: no live kernel is attached,
     // so there is nothing to stream tokens to and no lifecycle to notify.
@@ -307,7 +308,7 @@ public final class FileImportRunner {
     emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
 
     let itn = InverseTextNormalizationStep()
-    itn.spokenPunctuationEnabled = settings.spokenPunctuationEnabled ?? false
+    itn.spokenPunctuation = settings.spokenPunctuationSettings
     itn.backendSupportsLID = settings.backendSupportsLanguageDetection
 
     return LimbSteps(

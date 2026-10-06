@@ -86,7 +86,7 @@ The keyword field is at the top of the Snippets screen. Pick a word you would no
 
 Clearing the field puts the default back rather than switching snippets off.
 
-If you turn on **Convert spoken punctuation**, a `backslash` that no snippet claims types the `\` symbol instead. A saved snippet always wins when its words follow the keyword, even in the middle of a file path. If you dictate paths that collide with your snippet names, pick a different keyword.
+In English, if you turn on **Spoken punctuation**, a `backslash` that no snippet claims types the `\` symbol instead. A saved snippet always wins when its words follow the keyword, even in the middle of a file path. If you dictate paths that collide with your snippet names, pick a different keyword.
 
 ### Will AI Polish change my snippet?
 

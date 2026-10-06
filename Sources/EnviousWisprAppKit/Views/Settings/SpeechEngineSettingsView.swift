@@ -442,19 +442,18 @@ struct SpeechEngineSettingsView: View {
             resolvedTitle: SpokenPunctuationCopy.toggleLabel,
             resolvedShort: String(localized: Copy.punctuationShort)
           ) {
-            VStack(alignment: .leading, spacing: 12) {
-              Text(SpokenPunctuationCopy.toggleDescription)
-                .settingsReadingCopy()
-              spokenPunctuationHelpPanel
-            }
-            // The panel's 280pt footnote plus its 16pt padding each side.
-            .frame(width: 312, alignment: .leading)
+            SpokenPunctuationHelpPanel()
           } control: {
-            Toggle("", isOn: $settings.spokenPunctuationEnabled)
+            Toggle("", isOn: $settings.spokenPunctuation.enabled)
             .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
             .fixedSize()
             .accessibilityLabel(Text(SpokenPunctuationCopy.toggleLabel))
+          }
+        }
+        if settings.spokenPunctuation.enabled {
+          BrandedRow {
+            SpokenPunctuationStartWordRow(settings: settings)
           }
         }
         BrandedRow(showDivider: false) {
@@ -1127,40 +1126,5 @@ struct SpeechEngineSettingsView: View {
         .foregroundStyle(Color.stTextSecondary)
       content()
     }
-  }
-
-  // MARK: - Spoken punctuation help (#1794)
-
-  // A real `Button`, never a hover-only reveal. Hover cannot be reached by keyboard and
-  // does not exist for VoiceOver, and the personas who most need this vocabulary are the
-  // ones least able to reach a hover target. `.help()` gives the mouse-hover tooltip on
-  // top; the button is what makes it reachable at all. (#3385: that button is now the
-  // shared `SettingsInfoButton` on the Spoken punctuation row.)
-
-  private var spokenPunctuationHelpPanel: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text(SpokenPunctuationCopy.helpTitle)
-        .font(.stSectionHeader)
-      Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
-        GridRow {
-          Text(SpokenPunctuationCopy.helpSayColumn)
-            .foregroundStyle(Color.stTextSecondary)
-          Text(SpokenPunctuationCopy.helpGetColumn)
-            .foregroundStyle(Color.stTextSecondary)
-        }
-        .font(.stHelper)
-        ForEach(SpokenPunctuationCopy.phrases) { phrase in
-          GridRow {
-            Text("\"\(phrase.spoken)\"")
-            Text(phrase.result)
-          }
-        }
-      }
-      .font(.stBody)
-      Text(SpokenPunctuationCopy.helpFootnote)
-        .settingsReadingCopy()
-        .frame(maxWidth: 280, alignment: .leading)
-    }
-    .padding(16)
   }
 }

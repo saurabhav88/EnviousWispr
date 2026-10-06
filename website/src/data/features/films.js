@@ -33,7 +33,7 @@ export const SCENES = {
   formatting: [
     { label: 'Versions', title: 'Version numbers, whole.', where: 'On your Mac', raw: 'ship version two point five point zero tonight', out: 'Ship version 2.5.0 tonight.', raw_marks: ['version two point five point zero'], out_marks: ['version 2.5.0'], saved: 'Version number', explain: 'Formatted on your Mac, before any AI polish.' },
     { label: 'Hosts', title: 'Hosts and ports.', where: 'On your Mac', raw: 'the app runs on localhost colon three thousand', out: 'The app runs on localhost:3000.', raw_marks: ['localhost colon three thousand'], out_marks: ['localhost:3000'], saved: 'Host and port', explain: 'Formatted on your Mac, before any AI polish.' },
-    { label: 'Commands', title: 'Slash commands.', where: 'On your Mac', raw: 'type slash clear and start again', out: 'Type /clear and start again.', raw_marks: ['slash clear'], out_marks: ['/clear'], saved: 'Slash command', explain: 'Works with Convert spoken punctuation on or off.' },
+    { label: 'Commands', title: 'Slash commands.', where: 'On your Mac', raw: 'type slash clear and start again', out: 'Type /clear and start again.', raw_marks: ['slash clear'], out_marks: ['/clear'], saved: 'Slash command', explain: 'Works with Spoken punctuation on or off.' },
     { label: 'Dates', title: 'Dates in the format you asked for.', where: 'On your Mac', raw: 'the release is twenty twenty six dash nine dash twenty six', out: 'The release is 2026-09-26.', raw_marks: ['twenty twenty six dash nine dash twenty six'], out_marks: ['2026-09-26'], saved: 'Dashed date', explain: 'Formatted on your Mac, before any AI polish.' },
   ],
   // Languages (2.5.1 What's New): British spelling and addresses said with each

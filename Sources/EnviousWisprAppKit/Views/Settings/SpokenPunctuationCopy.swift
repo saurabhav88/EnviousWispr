@@ -1,18 +1,14 @@
+import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
-/// #1794: canonical copy for the spoken-punctuation setting and its in-app help panel.
+/// #1794, #2450: canonical copy for the spoken-punctuation setting, its "?" help and its Start word row.
 ///
-/// `phrases` is a HAND-MAINTAINED mirror of `InverseTextNormalizer.punct` plus the backslash
-/// half of its `joinerCommands` sibling (one rule can yield more than one spoken phrase:
-/// `exclamation (mark|point)` does; the two-word "back slash" alias is accepted but not
-/// listed). The spoken SLASH is not in this table since #3038: it converts in both switch
-/// positions (`InverseTextNormalizer.slashReading`), so the panel, which documents what the
-/// setting does, describes it in the footnote instead. The regex table
-/// is `private` and deliberately stays that way: deriving this list from it at runtime
-/// would mean widening the engine's internals across a module boundary to render a
-/// static help panel. The cost of the mirror is drift; the guard is
-/// `SpokenPunctuationCopyTests`, which pins every pair verbatim, plus a comment on the
-/// `punct` table pointing back here. Change the rules, change this list.
+/// The word list is not shown in the app. The Help Center article owns it, and the row shows only the
+/// start word in force and one command built from the rules table, so there is no second inventory of
+/// phrases here to drift from the rules. Spoken commands stay in the dictation language: they are what
+/// the user says, never interface text, so they are interpolated into a localized sentence and not
+/// translated themselves.
 ///
 /// No em-dashes or en-dashes (brand rule).
 enum SpokenPunctuationCopy {
@@ -25,61 +21,137 @@ enum SpokenPunctuationCopy {
         "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it.",
       comment: "Speech engine settings, spoken punctuation: description under the toggle.")
 
-  static let helpTitle = String(
-    localized: "Words you can say",
-    comment: "Speech engine settings, spoken punctuation: help panel title.")
-  static let helpSayColumn = String(
-    localized: "Say this",
-    comment:
-      "Speech engine settings, spoken punctuation: help table column: the words the user says.")
-  static let helpGetColumn = String(
-    localized: "You get",
-    comment:
-      "Speech engine settings, spoken punctuation: help table column: what appears in the text.")
-  /// Closing note in the panel: names the failure mode a user will otherwise discover
-  /// by having a sentence quietly broken.
+  // MARK: - "?" help for the toggle
+
+  static let helpStartWord = String(
+    localized:
+      "German, French, Spanish and Italian use a start word by default. You can change it or leave it blank. Say the start word first, then the mark. With a start word, a command word on its own stays an ordinary word.",
+    comment: "Speech engine settings, spoken punctuation help: how the start word works.")
+  static let helpEnglish = String(
+    localized: "English works as it does today: say the word on its own. You can also give English a start word.",
+    comment: "Speech engine settings, spoken punctuation help: English needs no start word.")
+  static let helpPolish = String(
+    localized:
+      "This is meant for dictating with AI polish off. AI polish can change punctuation afterwards.",
+    comment: "Speech engine settings, spoken punctuation help: the setting is meant for polish off."
+  )
+  /// Names the failure mode a user will otherwise discover by having a sentence quietly broken, and
+  /// the always-on slash, which does not depend on the switch (#3038).
   static let helpFootnote =
     String(
       localized:
-        "These words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol.",
+        "In English with no start word, these words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol.",
       comment:
-        "Speech engine settings, spoken punctuation: help panel footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly."
+        "Speech engine settings, spoken punctuation help footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly."
     )
+  static let learnMoreLabel = String(
+    localized: "Learn more",
+    comment: "Speech engine settings, spoken punctuation help: link to the Help Center article.")
+  static let learnMoreAccessibilityLabel = String(
+    localized: "Learn more about spoken punctuation",
+    comment:
+      "Speech engine settings, spoken punctuation help: spoken name of the Help Center link.")
+  /// The Help Center article that owns the word list. The slug is pinned by the help article tests.
+  static let learnMoreURL = URL(string: HelpCenter.rootURL + "spoken-punctuation-and-emoji/")
 
-  /// Spoken phrase paired with what the user sees. Order is the order shown.
-  /// `result` is display copy, not the literal replacement: "new line" inserts a real
-  /// line break, which cannot be rendered meaningfully in a table cell. `spoken` is what the
-  /// dictation engine accepts, so it stays in the dictation language, never translated; a
-  /// result that is a word ("a line break") is interface text and is localized (#3142).
-  struct Phrase: Identifiable, Equatable {
-    let spoken: String
-    let result: String
-    var id: String { spoken }
+  // MARK: - Start word row
+
+  static let startWordTitle = String(
+    localized: "Start word",
+    comment: "Speech engine settings, spoken punctuation: the Start word row's name.")
+  static let startWordShort = String(
+    localized:
+      "The word you say before a mark.",
+    comment: "Speech engine settings, Start word row: the short line under the row's name.")
+  static let startWordHelp = String(
+    localized:
+      "Say your start word and then the mark. The start word tells a command from an ordinary word. Pick a word you would not say in a normal sentence. Leave the field blank to use command words on their own. You can set a different word for each language.",
+    comment: "Speech engine settings, Start word row: the help behind the question mark.")
+  static let noStartWordWarning = String(
+    localized:
+      "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence.",
+    comment:
+      "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark."
+  )
+  static let noStartWordPlaceholder = String(
+    localized: "No start word",
+    comment: "Speech engine settings, Start word row: the blank field's placeholder, meaning no start word.")
+  static let languagePickerLabel = String(
+    localized: "Start word for",
+    comment:
+      "Speech engine settings, Start word row: label of the picker that chooses which language's start word is edited."
+  )
+  static let pickerIsNotDictationLanguage = String(
+    localized:
+      "This only picks which start word you edit. It does not change your dictation language.",
+    comment:
+      "Speech engine settings, Start word row: the language picker does not set the dictation language."
+  )
+  static let saveLabel = String(
+    localized: "Save word",
+    comment: "Speech engine settings, Start word row: button that saves the typed start word.")
+  static let saveAccessibilityLabel = String(
+    localized: "Save start word",
+    comment: "Speech engine settings, Start word row: spoken name of the Save button.")
+  static let resetLabel = String(
+    localized: "Reset",
+    comment: "Speech engine settings, Start word row: button that restores the default start word.")
+  static let resetAccessibilityLabel = String(
+    localized: "Reset start word to the default",
+    comment: "Speech engine settings, Start word row: spoken name of the Reset button.")
+
+  /// Spoken name of the text field, which has no visible label of its own.
+  static func fieldAccessibilityLabel(languageName: String) -> String {
+    String(
+      localized: "Start word for \(languageName)",
+      comment:
+        "Speech engine settings, Start word row: spoken name of the text field. The placeholder is a language name such as German."
+    )
   }
 
-  static let phrases: [Phrase] = [
-    Phrase(spoken: "comma", result: ","),
-    Phrase(spoken: "period", result: "."),
-    Phrase(spoken: "full stop", result: "."),
-    Phrase(spoken: "question mark", result: "?"),
-    Phrase(spoken: "exclamation mark", result: "!"),
-    Phrase(spoken: "exclamation point", result: "!"),
-    Phrase(spoken: "colon", result: ":"),
-    Phrase(spoken: "semicolon", result: ";"),
-    Phrase(spoken: "backslash", result: "\\"),
-    Phrase(
-      spoken: "new line",
-      result: String(
-        localized: "a line break",
+  /// One command the picked language accepts, in the language the user dictates. The command is
+  /// interpolated, never translated.
+  static func example(command: String) -> String {
+    String(
+      localized: "Say \"\(command)\" to insert a period.",
+      comment:
+        "Speech engine settings, Start word row: an example. The placeholder is a spoken command in the dictation language, for example Diktiere Punkt; keep it exactly."
+    )
+  }
+
+  /// The reason a word was refused, in plain words. One message per validator outcome; the validator
+  /// stays the only place that decides.
+  static func rejection(_ reason: SpokenPunctuationStartWord.Refusal) -> String {
+    switch reason {
+    case .empty:
+      return String(
+        localized: "Type a start word. The last one was kept.",
+        comment: "Start word row: refusal shown when the field was left empty.")
+    case .notOneToken:
+      return String(
+        localized: "Use one word, with no spaces. The last start word was kept.",
+        comment: "Start word row: refusal shown when the text has more than one word.")
+    case .invalidCharacters:
+      return String(
+        localized: "Use letters only. The last start word was kept.",
+        comment: "Start word row: refusal shown when the text has digits or symbols.")
+    case .tooShort:
+      return String(
+        localized: "Use at least \(SpokenPunctuationStartWord.minimumLength) letters. The last start word was kept.",
+        comment: "Start word row: refusal shown when the word is too short.")
+    case .tooLong:
+      return String(
+        localized: "Use at most \(SpokenPunctuationStartWord.maximumLength) letters. The last start word was kept.",
+        comment: "Start word row: refusal shown when the word is too long.")
+    case .collidesWithCommand:
+      return String(
+        localized: "That word is already a command word. The last start word was kept.",
         comment:
-          "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
-      )),
-    Phrase(
-      spoken: "new paragraph",
-      result: String(
-        localized: "a blank line",
-        comment:
-          "Speech engine settings, spoken punctuation: what a spoken command produces, shown in the help table's result column."
-      )),
-  ]
+          "Start word row: refusal shown when the word is itself a spoken punctuation command.")
+    case .unsupportedLanguage:
+      return String(
+        localized: "This language has no start word. Nothing was changed.",
+        comment: "Start word row: refusal shown when the language has no spoken punctuation table.")
+    }
+  }
 }

@@ -79,6 +79,18 @@ enum WhatsNewContent {
       version: "2.5.3"
     ),
 
+    // #2450: Settings > Dictation Settings > Engine, "Spoken punctuation" (OFF by default) and its
+    // "Start word" row. Checked against the code: the defaults are the Core rules table's, the
+    // period forms are its `.period` rows, and English is routed through the unchanged table.
+    Entry(
+      id: "spoken-punctuation-more-languages",
+      icon: "text.quote",
+      title: "Spoken punctuation in German, French, Spanish and Italian",
+      description:
+        "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before, and you can give English a start word too.",
+      version: "2.5.3"
+    ),
+
     // #3454: the menu bar menu's Microphone submenu, "Settings..." renamed "Open EnviousWispr"
     // (opens on History, no Cmd+,) and the Help Center item.
     Entry(
