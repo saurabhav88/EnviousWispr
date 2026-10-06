@@ -809,8 +809,17 @@ public actor WhisperKitBackend: ASRBackend {
         let start = max(0, min(segment.startSample, sampleCount))
         let end = max(start, min(segment.endSample, sampleCount))
         if segment.startSample != start || segment.endSample != end { didClamp = true }
+        // #2190: one sample of headroom, so a clip never ends at the audio's exact duration.
+        // `whisperkit-cli` built from our pinned argmax-oss-swift 25c62997 crashes (SIGTRAP,
+        // exit -5) whenever a clip end equals the duration, and exits 0 when it is 0.34 s short
+        // (bisected on the issue). VAD closes its last open segment at the exact sample count, so
+        // this app routinely builds that shape. Whether the in-process framework path shares the
+        // crash is UNMEASURED; this costs 62 microseconds at 16 kHz and removes the class either
+        // way, so it is headroom, not a fix for a confirmed defect. It is NOT a coordinate
+        // clamp, so it does not set `didClamp`. Do not simplify it back.
+        let clipEnd = max(start, min(end, sampleCount - 1))
         clipTimestamps.append(Float(start) / sampleRate)
-        clipTimestamps.append(Float(end) / sampleRate)
+        clipTimestamps.append(Float(clipEnd) / sampleRate)
       }
       if didClamp {
         let requestedMax = options.speechSegments.map(\.endSample).max() ?? 0

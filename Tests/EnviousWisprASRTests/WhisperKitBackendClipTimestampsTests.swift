@@ -92,6 +92,61 @@ struct WhisperKitBackendClipTimestampsTests {
     #expect(opts.clipTimestamps == [1.0, 1.0])
   }
 
+  /// #2190: a clip must never end at the audio's exact duration (the pinned `whisperkit-cli`
+  /// crashes on that shape). Two-way control: a clip that ends well before the end is untouched,
+  /// so the headroom is not a blanket shortening.
+  @Test("a clip ending at the exact duration ends one sample earlier (#2190)")
+  func clipTimestamps_endAtDurationGetsOneSampleOfHeadroom() async {
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
+    let rate = Int(WhisperKit.sampleRate)
+    let total = rate * 3
+    let opts = await backend.makeDecodeOptions(
+      from: TranscriptionOptions(
+        speechSegments: [
+          SpeechSegment(startSample: 0, endSample: rate),
+          SpeechSegment(startSample: rate * 2, endSample: total),
+        ]),
+      sampleCount: total
+    )
+
+    let duration = Float(total) / Float(WhisperKit.sampleRate)
+    #expect(opts.clipTimestamps.count == 4)
+    #expect(opts.clipTimestamps[1] == 1.0, "a clip well before the end must be unchanged")
+    #expect(opts.clipTimestamps[3] < duration, "the last clip still ends at the exact duration")
+    #expect(opts.clipTimestamps[3] == Float(total - 1) / Float(WhisperKit.sampleRate))
+  }
+
+  @Test("a segment past the end is clamped, then given the same headroom (#2190)")
+  func clipTimestamps_overshootEndsOneSampleBeforeDuration() async {
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
+    let rate = Int(WhisperKit.sampleRate)
+    let opts = await backend.makeDecodeOptions(
+      from: TranscriptionOptions(
+        speechSegments: [SpeechSegment(startSample: rate, endSample: rate * 10)]),
+      sampleCount: rate * 2
+    )
+
+    #expect(opts.clipTimestamps == [1.0, Float(rate * 2 - 1) / Float(WhisperKit.sampleRate)])
+  }
+
+  @Test("the headroom cannot underflow on an empty or one-sample capture (#2190)")
+  func clipTimestamps_headroomCannotUnderflow() async {
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
+    for count in [0, 1] {
+      let opts = await backend.makeDecodeOptions(
+        from: TranscriptionOptions(
+          speechSegments: [SpeechSegment(startSample: 0, endSample: count)]),
+        sampleCount: count
+      )
+      #expect(opts.clipTimestamps.count == 2)
+      #expect(opts.clipTimestamps[0] == 0)
+      #expect(
+        opts.clipTimestamps[1] >= opts.clipTimestamps[0], "sampleCount \(count) gave a reversed clip"
+      )
+      #expect(opts.clipTimestamps[1] >= 0, "sampleCount \(count) gave a negative clip end")
+    }
+  }
+
   @Test("empty speechSegments produces same options as default")
   func emptySpeechSegments_producesSameOptionsAsToday() async {
     let backend = WhisperKitBackend(admittedModelFolder: { nil })
