@@ -311,6 +311,28 @@ struct LanguageNumberParserTests {
     #expect(refusal(.clockHour, "halb eins") == .notAdmitted)
   }
 
+  @Test("a clock hour may be one or two ASCII digits 1 to 12; digits are never a cardinal or ordinal")
+  func digitClockHours() {
+    for hour in 1...12 {
+      #expect(value(.clockHour, "\(hour)") == hour, "\(hour)")
+    }
+    for (word, expected) in [("01", 1), ("08", 8), ("09", 9)] {
+      #expect(value(.clockHour, word) == expected, "\(word)")
+    }
+    for word in ["0", "00", "13", "20", "99", "008", "123"] {
+      #expect(value(.clockHour, word) == nil, "\(word)")
+    }
+    #expect(refusal(.clockHour, "13") == .outOfRange)
+    #expect(refusal(.clockHour, "0") == .outOfRange)
+    for word in ["8:30", "8.", "8%", "8er", "\u{FF18}", "\u{0668}", "8 9", "-8", "+8"] {
+      #expect(value(.clockHour, word) == nil, "\(word.debugDescription)")
+    }
+    for word in ["8", "12", "08"] {
+      #expect(value(.cardinal, word) == nil, "\(word)")
+      #expect(value(.ordinal, word) == nil, "\(word)")
+    }
+  }
+
   // MARK: Unicode: lookup is folded, ranges are original
 
   @Test("NFC and NFD spellings mean the same number and keep their own original ranges")

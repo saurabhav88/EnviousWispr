@@ -33,8 +33,8 @@ enum LanguageNumberRefusal: Error, Sendable, Equatable {
   case crossesLineBreak
   /// The candidate starts or ends with whitespace, so it is not one tight span.
   case notTight
-  /// A word or a combination the grammar does not admit (including digits, English words,
-  /// scale words, negative and decimal forms, and the `-s`/`-m` ordinal forms).
+  /// A word or a combination the grammar does not admit (including digits outside a clock hour,
+  /// English words, scale words, negative and decimal forms, and the `-s`/`-m` ordinal forms).
   case notAdmitted
   /// A bare article form (`ein`, `eine`): a determiner here, not a number.
   case articleForm
@@ -101,7 +101,11 @@ struct LanguageNumberParser: Sendable {
       case .failure(let refusal): return .refused(refusal)
       }
     case .clockHour:
-      guard tokens.count == 1 else { return .refused(.notAdmitted) }
+      guard tokens.count == 1, let token = tokens.first else { return .refused(.notAdmitted) }
+      if let digits = digitHour(token) {
+        guard grammar.limits.clockHourRange.contains(digits) else { return .refused(.outOfRange) }
+        return make(digits)
+      }
       switch cardinal(tokens) {
       case .failure(let refusal): return .refused(refusal)
       case .success(let value):
@@ -161,6 +165,17 @@ struct LanguageNumberParser: Sendable {
     close(at: offset)
     if sawEdgeSpace || lastWasSpace { return .failure(.notTight) }
     return .success(tokens)
+  }
+
+  // MARK: Digit hours
+
+  /// A clock hour written as one or two ASCII digits (`8`, `08`, `12`), or nil when the token is
+  /// anything else. Only `.clockHour` reads digits; cardinals and ordinals still refuse them.
+  private func digitHour(_ token: Token) -> Int? {
+    guard (1...2).contains(token.folded.count),
+      token.folded.allSatisfy({ (0x30...0x39).contains($0.value) })
+    else { return nil }
+    return token.folded.reduce(0) { $0 * 10 + Int($1.value - 0x30) }
   }
 
   // MARK: Cardinals

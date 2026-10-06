@@ -12,7 +12,8 @@ import Foundation
 //    unit-before-tens composition (`<unit><connector><tens>`), glued or split at its two joints;
 //  - ordinals 1 through 31 in the base, `-n` and `-r` forms, composed from the source's irregular
 //    forms below 9 and its regular suffix rules; the `-s` and `-m` forms are NOT admitted;
-//  - clock hours 1 through 12, a range check on a single cardinal word.
+//  - clock hours 1 through 12, a range check on a single cardinal word or on one or two ASCII
+//    digits (`8`, `08`); digits are read only as a clock hour.
 // Telephone numbers are not grammar: `LanguagePhoneMetadata` validates them.
 // Anything else (negative, decimal, fraction, scale words, values above 99, article forms such as
 // bare `ein`) is outside the grammar, and the parser refuses it as a whole.

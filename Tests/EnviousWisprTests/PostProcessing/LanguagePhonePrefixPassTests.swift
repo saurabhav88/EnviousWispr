@@ -465,7 +465,7 @@ struct LanguagePhonePrefixPassTests {
     // A forged edit carrying the flag is checked again by the editor.
     let forged = LanguageTextEdit(
       range: range, replacement: "+49 176 908765", snapshotIdentity: snapshot.identity,
-      regroupsDigits: true)
+      permission: .regroupsDigits)
     #expect(LanguageTextEditor.apply([forged], to: snapshot) == .refused(.changesDigits))
     // The honest edit applies.
     let honest = try snapshot.edit(regroupingDigitsIn: range, with: "+49 176 9087654").get()

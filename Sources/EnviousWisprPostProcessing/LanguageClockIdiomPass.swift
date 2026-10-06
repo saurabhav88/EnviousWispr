@@ -5,7 +5,9 @@ import Foundation
 // ONE pure pass: where an anchored spoken clock idiom (German `um halb sieben`, `gegen viertel nach
 // vier`) stands, propose an edit that replaces ONLY the idiom span with its written time (`6:30`,
 // `4:15`): unpadded hour, a separator, two-digit minutes. The anchor, `Uhr`, day-part words,
-// articles and punctuation stay as written. The pass proposes edits against one immutable snapshot;
+// articles and punctuation stay as written. An hour the engine already wrote as digits (`um halb 8`)
+// is an already-written number chunk: that edit runs to the end of the chunk through the editor's
+// digit-hour permission and carries the chunk's closing punctuation (`halb 8.` to `7:30.`). The pass proposes edits against one immutable snapshot;
 // the shared editor applies them. Nothing registers or calls this pass yet.
 //
 // SCOPE (founder option B): only the templates in the rules convert (`halb H` and `viertel nach H`
@@ -15,8 +17,8 @@ import Foundation
 //
 // ADMISSION (all must hold, otherwise no edit and a named refusal):
 //  1. a complete template token sequence followed by ONE complete hour word that the shared parser
-//     reads as a clock hour (1 to 12); `halb so`, `halb` alone, `um sieben am Abend` and unsupported
-//     forms are not candidates at all;
+//     reads as a clock hour (1 to 12, spelled or as one or two ASCII digits); `halb so`, `halb`
+//     alone, `halb 8:30`, `halb 20`, `um sieben am Abend` and unsupported forms are not candidates;
 //  2. the idiom span fits 128 UTF-16 units and 8 tokens (whitespace counts);
 //  3. an immediately preceding whole anchor word, across horizontal whitespace, with no punctuation
 //     between: a CONSERVATIVE scope restriction, not proof that every phrase after an anchor is a
@@ -32,7 +34,7 @@ import Foundation
 // complete token sequences, and consume their words; a refusal elsewhere never suppresses an
 // independent valid candidate.
 //
-// Not a general time parser: no spoken minutes, no digit hours, no restyling of written times.
+// Not a general time parser: no spoken minutes, no 24-hour digits, no restyling of written times.
 
 struct LanguageClockIdiomPass: Sendable {
 
@@ -166,6 +168,8 @@ struct LanguageClockIdiomPass: Sendable {
     let hasTrailingPunctuation: Bool
     let gapAfterIsHorizontal: Bool
     let chunkText: String
+    /// The end of the whole chunk, closing punctuation included.
+    let chunkEnd: Int
   }
 
   private static let openingPunctuation = CharacterSet(charactersIn: "([{\"'«„“‘")
@@ -191,7 +195,7 @@ struct LanguageClockIdiomPass: Sendable {
         start: chunk.range.lowerBound + lead, end: chunk.range.upperBound - trail, text: text,
         folded: LanguageNumberGrammar.fold(text), hasLeadingPunctuation: lead > 0,
         hasTrailingPunctuation: trail > 0, gapAfterIsHorizontal: chunk.gapAfterIsHorizontal,
-        chunkText: chunk.text)
+        chunkText: chunk.text, chunkEnd: chunk.range.upperBound)
     }
   }
 
@@ -242,7 +246,19 @@ struct LanguageClockIdiomPass: Sendable {
     }
     let minutes = template.minute < 10 ? "0\(template.minute)" : "\(template.minute)"
     let written = "\(hour + template.hourOffset)\(rules.outputSeparator)\(minutes)"
-    switch snapshot.edit(replacing: range, with: written) {
+    let hourWord = words[hourIndex]
+    let minted: Result<LanguageTextEdit, LanguageEditRefusal>
+    if hourWord.chunkText.unicodeScalars.contains(where: { $0.properties.numericType != nil }) {
+      // A digit hour is a protected number chunk: replace the whole chunk, punctuation carried.
+      let chunk = hourWord.start..<hourWord.chunkEnd
+      let closing = snapshot.substring(hourWord.end..<hourWord.chunkEnd) ?? ""
+      minted = snapshot.edit(
+        replacing: words[first].start..<hourWord.chunkEnd, consumingDigitHourChunk: chunk,
+        with: written + closing)
+    } else {
+      minted = snapshot.edit(replacing: range, with: written)
+    }
+    switch minted {
     case .success(let edit):
       return Candidate(range: range, hour: hour, disposition: .proposed(edit))
     case .failure(let refusal): return refuse(.editRefused(refusal))

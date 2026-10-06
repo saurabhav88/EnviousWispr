@@ -466,6 +466,115 @@ struct LanguageClockIdiomPassTests {
     #expect(bounded.candidatesTruncated)
   }
 
+  // MARK: Digit hours the engine already wrote
+
+  @Test("a digit hour converts like a spelled one, over the whole chunk, punctuation carried")
+  func digitHours() throws {
+    let cases: [(String, String)] = [
+      ("Wir kommen um halb 8", "Wir kommen um 7:30"),
+      ("Wir kommen um halb 08 an", "Wir kommen um 7:30 an"),
+      ("Wir kommen um viertel nach 1 an", "Wir kommen um 1:15 an"),
+      ("Wir kommen gegen halb 12.", "Wir kommen gegen 11:30."),
+      ("Wir kommen (um halb 8), ja.", "Wir kommen (um 7:30), ja."),
+      ("Wir kommen um halb 8 Uhr an.", "Wir kommen um 7:30 Uhr an."),
+      ("Wir kommen um halb 8!", "Wir kommen um 7:30!"),
+      ("Wir kommen um halb 8.) Danke", "Wir kommen um 7:30.) Danke"),
+      ("Die Zeit: um halb 8\nDanach", "Die Zeit: um 7:30\nDanach"),
+      ("Um halb 7 essen wir, ab halb zehn schlafen wir.", "Um 6:30 essen wir, ab 9:30 schlafen wir."),
+    ]
+    for (input, expected) in cases {
+      #expect(bytes(try converted(input)) == bytes(expected), "\(input.debugDescription)")
+    }
+    let (snapshot, result) = try run("Wir kommen gegen halb 12.")
+    let edit = try #require(result.edits.first)
+    #expect(snapshot.substring(edit.range) == "halb 12.")
+    #expect(edit.replacement == "11:30.")
+    // A second pass over the output proposes nothing.
+    #expect(try run("Wir kommen um 7:30 Uhr an.").1.candidates.isEmpty)
+  }
+
+  @Test("digit hours outside 1 to 12, clock-face hours and other written forms never convert")
+  func digitHourExclusions() throws {
+    #expect(try dispositions("Wir treffen uns um halb 1.") == [.refused(.ambiguousClockFace)])
+    #expect(try dispositions("Der Anruf kam um viertel nach 12.") == [.refused(.ambiguousClockFace)])
+    for text in [
+      "Wir kommen um halb 0.", "Wir kommen um halb 00.", "Wir kommen um halb 13.",
+      "Wir kommen um halb 20.", "Wir kommen um halb 008.", "Wir kommen um halb 8:30.",
+      "Wir kommen um halb 8%.", "Wir kommen um halb \u{FF18}.", "Wir kommen um halb 8er.",
+      "Wir kommen um halb (8).", "Wir kommen um viertel vor 8.",
+    ] {
+      #expect(try run(text).1.candidates.isEmpty, "\(text)")
+      #expect(bytes(try converted(text)) == bytes(text), "\(text)")
+    }
+    for text in ["Wir treffen uns um halb 1.", "Der Anruf kam um viertel nach 12."] {
+      #expect(bytes(try converted(text)) == bytes(text), "\(text)")
+    }
+  }
+
+  @Test("a digit hour keeps every refusal a spelled hour has")
+  func digitHourRefusals() throws {
+    #expect(try dispositions("Es ist halb 8 so") == [.refused(.noAnchor)])
+    #expect(try dispositions("Wir kommen um halb 8 5 Leute.") == [.refused(.numberContinuationAfter)])
+    #expect(try dispositions("Wir kommen um halb 8, 20 Leute.") == [.refused(.numberContinuationAfter)])
+    #expect(try dispositions("Wir füllen um halb 8 Liter ein.") == [.refused(.measurementOrCurrencyTail)])
+    #expect(try dispositions("Das kostet um halb 8 Euro.") == [.refused(.measurementOrCurrencyTail)])
+    for text in [
+      "Es ist halb 8 so", "Wir kommen um halb 8 5 Leute.", "Wir füllen um halb 8 Liter ein.",
+      "Das kostet um halb 8 Euro.",
+    ] {
+      #expect(bytes(try converted(text)) == bytes(text), "\(text)")
+    }
+  }
+
+  @Test("the editor rechecks the digit-hour permission and refuses every forged variant")
+  func digitHourPermission() throws {
+    let snapshot = LanguageTextSnapshot("um halb 8. dann 9 Leute")
+    // "halb 8." is 3..<10; the chunk "8." is 8..<10; "9" is 16..<17.
+    let honest = try snapshot.edit(
+      replacing: 3..<10, consumingDigitHourChunk: 8..<10, with: "7:30.").get()
+    #expect(LanguageTextEditor.apply([honest], to: snapshot) == .applied("um 7:30. dann 9 Leute"))
+    // Minting refuses a chunk that does not end the edit, a dropped mark, and an edit with no
+    // word before the chunk.
+    for (range, chunk, replacement) in [
+      (3..<10, 8..<9, "7:30."), (3..<10, 8..<10, "7:30"), (8..<10, 8..<10, "7:30."),
+    ] {
+      guard case .failure(.notADigitHourChunk) = snapshot.edit(
+        replacing: range, consumingDigitHourChunk: chunk, with: replacement)
+      else {
+        Issue.record("\(range) \(chunk) \(replacement) must not mint")
+        continue
+      }
+    }
+    let long = LanguageTextSnapshot("um halb 123")
+    guard case .failure(.notADigitHourChunk) = long.edit(
+      replacing: 3..<11, consumingDigitHourChunk: 8..<11, with: "1:30")
+    else {
+      Issue.record("three digits must not mint")
+      return
+    }
+    // Forged values: a dropped mark, and a permission naming one chunk while covering another.
+    let dropped = LanguageTextEdit(
+      range: 3..<10, replacement: "7:30", snapshotIdentity: snapshot.identity,
+      permission: .replacesDigitHourChunk(8..<10))
+    #expect(LanguageTextEditor.apply([dropped], to: snapshot) == .refused(.notADigitHourChunk))
+    let wide = LanguageTextEdit(
+      range: 3..<17, replacement: "7:30. dann 9", snapshotIdentity: snapshot.identity,
+      permission: .replacesDigitHourChunk(16..<17))
+    guard case .refused(.intersectsProtectedSpan(let span)) = LanguageTextEditor.apply([wide], to: snapshot)
+    else {
+      Issue.record("an edit covering a second number chunk must be refused")
+      return
+    }
+    #expect(span.range == 8..<10)
+    // A plain edit over the digit chunk is refused as before.
+    let plain = try snapshot.edit(replacing: 3..<10, with: "7:30.").get()
+    guard case .refused(.intersectsProtectedSpan) = LanguageTextEditor.apply([plain], to: snapshot)
+    else {
+      Issue.record("a plain edit must not cover a number chunk")
+      return
+    }
+  }
+
   // MARK: The frozen clock rows: the disposition ledger
 
   private enum Expected: Equatable {

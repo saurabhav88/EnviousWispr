@@ -30,6 +30,9 @@ enum LanguageEditRefusal: Error, Sendable, Equatable {
   /// A digit-regrouping edit whose replacement does not carry exactly the original ASCII digits in
   /// order, or whose range holds a non-ASCII decimal digit.
   case changesDigits
+  /// A digit-hour edit whose named chunk is not one or two ASCII digits plus closing punctuation,
+  /// is not the end of the edit, or whose replacement drops that punctuation.
+  case notADigitHourChunk
 }
 
 /// An immutable original text with UTF-16 coordinates.
@@ -122,7 +125,52 @@ struct LanguageTextSnapshot: Sendable, Equatable {
     guard keepsDigits(range, replacement) else { return .failure(.changesDigits) }
     return .success(
       LanguageTextEdit(
-        range: range, replacement: replacement, snapshotIdentity: identity, regroupsDigits: true))
+        range: range, replacement: replacement, snapshotIdentity: identity,
+        permission: .regroupsDigits))
+  }
+
+  /// Mints an edit that replaces ONE already-written number chunk a pass has read as a clock hour
+  /// (`halb 8` to `7:30`). The chunk must be one or two ASCII digits followed only by closing
+  /// punctuation, it must end the edit, and the replacement must end with that same punctuation, so
+  /// a sentence mark or a bracket is carried, never dropped. The editor checks all of it again on
+  /// apply and refuses any other protected span the edit touches. For the clock pass's digit hours;
+  /// every other edit uses `edit(replacing:with:)` or `edit(regroupingDigitsIn:with:)`.
+  func edit(
+    replacing range: Range<Int>, consumingDigitHourChunk chunk: Range<Int>,
+    with replacement: String
+  ) -> Result<LanguageTextEdit, LanguageEditRefusal> {
+    if let refusal = validate(range) { return .failure(refusal) }
+    guard isDigitHourEdit(range, chunk: chunk, replacement: replacement) else {
+      return .failure(.notADigitHourChunk)
+    }
+    return .success(
+      LanguageTextEdit(
+        range: range, replacement: replacement, snapshotIdentity: identity,
+        permission: .replacesDigitHourChunk(chunk)))
+  }
+
+  /// Closing punctuation a digit-hour chunk may carry after its digits.
+  private static let digitHourClosing = Set(".,;:!?)]}\"'»”’“‘".unicodeScalars.map(\.value))
+
+  /// True when `chunk` ends `range`, starts inside it, is one or two ASCII digits followed only by
+  /// closing punctuation, and `replacement` ends with that punctuation.
+  fileprivate func isDigitHourEdit(_ range: Range<Int>, chunk: Range<Int>, replacement: String)
+    -> Bool
+  {
+    guard chunk.upperBound == range.upperBound, chunk.lowerBound > range.lowerBound,
+      let text = substring(chunk)
+    else { return false }
+    let scalars = Array(text.unicodeScalars)
+    var digitCount = 0
+    while digitCount < scalars.count, (0x30...0x39).contains(scalars[digitCount].value) {
+      digitCount += 1
+    }
+    guard (1...2).contains(digitCount),
+      scalars[digitCount...].allSatisfy({ Self.digitHourClosing.contains($0.value) })
+    else { return false }
+    var closing = String.UnicodeScalarView()
+    closing.append(contentsOf: scalars[digitCount...])
+    return replacement.hasSuffix(String(closing))
   }
 
   /// True when `replacement` holds exactly the ASCII digits of `range`, in order, and neither
@@ -162,14 +210,30 @@ struct LanguageTextEdit: Sendable, Equatable {
   let replacement: String
   /// The identity of the snapshot this edit was proposed against.
   let snapshotIdentity: UInt64
-  /// Minted by `edit(regroupingDigitsIn:with:)`: may cover whole number chunks, digits kept.
-  let regroupsDigits: Bool
+  /// Which already-written number chunks the edit may cover. The editor rechecks every permission
+  /// against the snapshot, so a forged value is refused.
+  let permission: Permission
 
-  init(range: Range<Int>, replacement: String, snapshotIdentity: UInt64, regroupsDigits: Bool = false) {
+  enum Permission: Sendable, Equatable {
+    /// No protected span may be touched.
+    case plain
+    /// Minted by `edit(regroupingDigitsIn:with:)`: may cover whole number chunks, digits kept.
+    case regroupsDigits
+    /// Minted by `edit(replacing:consumingDigitHourChunk:with:)`: may replace this one digit-hour
+    /// chunk.
+    case replacesDigitHourChunk(Range<Int>)
+  }
+
+  var regroupsDigits: Bool { permission == .regroupsDigits }
+
+  init(
+    range: Range<Int>, replacement: String, snapshotIdentity: UInt64,
+    permission: Permission = .plain
+  ) {
     self.range = range
     self.replacement = replacement
     self.snapshotIdentity = snapshotIdentity
-    self.regroupsDigits = regroupsDigits
+    self.permission = permission
   }
 }
 
@@ -202,16 +266,19 @@ enum LanguageTextEditor {
       return .refused(.overlappingEdits)
     }
     for edit in ordered {
-      if edit.regroupsDigits {
-        // Checked again here: the flag is a property of a value, so the editor cannot trust that
-        // the snapshot minted it.
+      // Each permission is checked again here: it is a property of a value, so the editor cannot
+      // trust that the snapshot minted it.
+      let intersecting = spans.filter {
+        $0.range.lowerBound < edit.range.upperBound && edit.range.lowerBound < $0.range.upperBound
+      }
+      switch edit.permission {
+      case .plain:
+        if let span = intersecting.first { return .refused(.intersectsProtectedSpan(span)) }
+      case .regroupsDigits:
         guard snapshot.keepsDigits(edit.range, edit.replacement) else {
           return .refused(.changesDigits)
         }
-        for span in spans
-        where span.range.lowerBound < edit.range.upperBound
-          && edit.range.lowerBound < span.range.upperBound
-        {
+        for span in intersecting {
           let covered =
             edit.range.lowerBound <= span.range.lowerBound
             && span.range.upperBound <= edit.range.upperBound
@@ -219,8 +286,12 @@ enum LanguageTextEditor {
             return .refused(.intersectsProtectedSpan(span))
           }
         }
-      } else if let span = LanguageProtectedSpans.firstIntersecting(edit.range, in: spans) {
-        return .refused(.intersectsProtectedSpan(span))
+      case .replacesDigitHourChunk(let chunk):
+        guard snapshot.isDigitHourEdit(edit.range, chunk: chunk, replacement: edit.replacement)
+        else { return .refused(.notADigitHourChunk) }
+        for span in intersecting where span.kind != .number || span.range != chunk {
+          return .refused(.intersectsProtectedSpan(span))
+        }
       }
     }
     var output: [UInt16] = []
