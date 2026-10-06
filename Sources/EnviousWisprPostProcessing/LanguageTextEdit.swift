@@ -149,6 +149,21 @@ struct LanguageTextSnapshot: Sendable, Equatable {
         permission: .replacesDigitHourChunk(chunk)))
   }
 
+  /// Mints an edit that rewrites a written number together with the unit word after it ("48
+  /// Prozent" to "48%"): like `edit(regroupingDigitsIn:with:)` it must keep exactly the original
+  /// ASCII digits, and it may also cover WHOLE measurement chunks; the editor checks both again and
+  /// still refuses any address or money span and any chunk covered in part.
+  func edit(rewritingNumberAndUnitIn range: Range<Int>, with replacement: String)
+    -> Result<LanguageTextEdit, LanguageEditRefusal>
+  {
+    if let refusal = validate(range) { return .failure(refusal) }
+    guard keepsDigits(range, replacement) else { return .failure(.changesDigits) }
+    return .success(
+      LanguageTextEdit(
+        range: range, replacement: replacement, snapshotIdentity: identity,
+        permission: .rewritesNumberAndUnit))
+  }
+
   /// Closing punctuation a digit-hour chunk may carry after its digits.
   private static let digitHourClosing = Set(".,;:!?)]}\"'»”’“‘".unicodeScalars.map(\.value))
 
@@ -222,6 +237,9 @@ struct LanguageTextEdit: Sendable, Equatable {
     /// Minted by `edit(replacing:consumingDigitHourChunk:with:)`: may replace this one digit-hour
     /// chunk.
     case replacesDigitHourChunk(Range<Int>)
+    /// Minted by `edit(rewritingNumberAndUnitIn:with:)`: may cover whole number and measurement
+    /// chunks, digits kept ("48 Prozent" to "48%").
+    case rewritesNumberAndUnit
   }
 
   var regroupsDigits: Bool { permission == .regroupsDigits }
@@ -283,6 +301,18 @@ enum LanguageTextEditor {
             edit.range.lowerBound <= span.range.lowerBound
             && span.range.upperBound <= edit.range.upperBound
           guard span.kind == .number, covered else {
+            return .refused(.intersectsProtectedSpan(span))
+          }
+        }
+      case .rewritesNumberAndUnit:
+        guard snapshot.keepsDigits(edit.range, edit.replacement) else {
+          return .refused(.changesDigits)
+        }
+        for span in intersecting {
+          let covered =
+            edit.range.lowerBound <= span.range.lowerBound
+            && span.range.upperBound <= edit.range.upperBound
+          guard span.kind == .number || span.kind == .measurement, covered else {
             return .refused(.intersectsProtectedSpan(span))
           }
         }

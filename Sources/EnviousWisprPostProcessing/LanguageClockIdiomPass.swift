@@ -8,7 +8,7 @@ import Foundation
 // articles and punctuation stay as written. An hour the engine already wrote as digits (`um halb 8`)
 // is an already-written number chunk: that edit runs to the end of the chunk through the editor's
 // digit-hour permission and carries the chunk's closing punctuation (`halb 8.` to `7:30.`). The pass proposes edits against one immutable snapshot;
-// the shared editor applies them. Nothing registers or calls this pass yet.
+// the shared editor applies them. The German language route runs it (`InverseTextNormalizer+Language`).
 //
 // SCOPE (founder option B): only the templates in the rules convert (`halb H` and `viertel nach H`
 // for German). Regional forms (`viertel vor H`, bare `viertel H`, `dreiviertel H`) are neither

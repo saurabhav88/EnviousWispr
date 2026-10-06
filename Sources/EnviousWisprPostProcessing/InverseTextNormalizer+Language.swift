@@ -5,7 +5,8 @@ extension InverseTextNormalizer {
   /// The language route's text execution (#1677): what runs on a take whose language HAS a vetted
   /// rule set.
   ///
-  /// The language-neutral subset runs first; then each of the language's passes runs on a FRESH
+  /// The language-neutral subset runs first; then each of the language's passes (number style,
+  /// phone, clock) runs on a FRESH
   /// snapshot of the previous stage's output, and the shared editor applies its edits or refuses
   /// the whole set. A pass that is unavailable or whose edits the editor refuses leaves its input
   /// unchanged, so a failure never costs the neutral result or an earlier pass's edits.
@@ -23,6 +24,12 @@ extension InverseTextNormalizer {
   ) -> String {
     var output = normalizeLanguageNeutral(text)
     guard let passes = LanguagePassCatalog.passes(for: ruleSet.baseCode) else { return output }
+    if let style = passes.numberStyle {
+      let snapshot = LanguageTextSnapshot(output)
+      if case .applied(let applied) = LanguageTextEditor.apply(style.propose(in: snapshot), to: snapshot) {
+        output = applied
+      }
+    }
     if let phone = passes.phone {
       let snapshot = LanguageTextSnapshot(output)
       if case .ran(let run) = phone.propose(in: snapshot, homeRegion: homeRegion),
@@ -50,6 +57,7 @@ extension InverseTextNormalizer {
 enum LanguagePassCatalog {
 
   struct Passes: Sendable {
+    let numberStyle: LanguageNumberStylePass?
     let phone: LanguagePhonePrefixPass?
     let clock: LanguageClockIdiomPass?
   }
@@ -57,6 +65,7 @@ enum LanguagePassCatalog {
   private static let german: Passes? = {
     guard let grammar = try? LanguageNumberGrammar.german() else { return nil }
     return Passes(
+      numberStyle: (try? LanguageNumberStyleRules.german()).map { LanguageNumberStylePass(rules: $0) },
       phone: (try? LanguagePhonePrefixRules.german()).map {
         LanguagePhonePrefixPass(grammar: grammar, rules: $0)
       },

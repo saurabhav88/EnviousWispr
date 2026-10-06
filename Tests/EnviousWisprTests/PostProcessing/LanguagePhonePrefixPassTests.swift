@@ -352,6 +352,11 @@ struct LanguagePhonePrefixPassTests {
     #expect(try converted("Ruf mich unter 030 860800 an.", home: "DE") == "Ruf mich unter 030 860800 an.")
     // Gates apply to domestic numbers too.
     #expect(try converted("Die Rechnung 030 86 0800 ist offen.", home: "DE") == "Die Rechnung 030 86 0800 ist offen.")
+    // Dates are never telephone numbers, even when the digits form a valid domestic number.
+    for text in ["Die Frist endet am 05.05.2024.", "Die Frist endet am 05-05-2024.", "Am 05/05/2024 geht es los.",
+                 "Am 5 5 2024 geht es los."] {
+      #expect(bytes(try converted(text, home: "DE")) == bytes(text), "\(text)")
+    }
   }
 
   @Test("digits that form no documented number and fail the fallback are refused as written")

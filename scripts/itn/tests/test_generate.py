@@ -534,7 +534,8 @@ class RealOrdinalRefusalTests(unittest.TestCase):
     def test_the_real_check_verifies_every_generated_file(self):
         result = run("--check")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.count("check ok"), 4)
+        # Number, phone, ordinal, clock and number-style outputs.
+        self.assertEqual(result.stdout.count("check ok"), 5)
 
     def test_the_manifest_declares_the_six_required_entries(self):
         manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))

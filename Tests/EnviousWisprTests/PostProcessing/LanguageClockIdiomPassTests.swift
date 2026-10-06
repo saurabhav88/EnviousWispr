@@ -5,8 +5,8 @@ import Testing
 
 // MARK: - The clock-idiom pass (#1677, PR 2 chunk 6)
 //
-// These tests drive the real pass and the real shared editor. Nothing registers or calls the pass
-// from production, and nothing here certifies the German clock cell. Expected outputs are
+// These tests drive the real pass and the real shared editor (the German language route runs the
+// pass in production); nothing here certifies the German clock cell. Expected outputs are
 // independent literals or the frozen rows' accepted written variants, compared as UTF-8 bytes.
 // Every refusal is paired with the near-identical input that converts.
 //

@@ -539,7 +539,7 @@ struct LanguageNumberParserTests {
       "LanguageNumberGrammar.swift", "LanguageNumberParser.swift", "LanguageProtectedSpans.swift",
       "LanguageTextEdit.swift", "LanguagePhonePrefixRules.swift", "LanguagePhonePrefixPass.swift",
       "LanguageOrdinalRules.swift", "LanguageOrdinalPass.swift", "LanguageClockIdiomRules.swift",
-      "LanguageClockIdiomPass.swift", "LanguagePhoneMetadata.swift",
+      "LanguageClockIdiomPass.swift", "LanguagePhoneMetadata.swift", "LanguageNumberStylePass.swift",
     ]
     let names = [
       "LanguageNumberGrammar", "LanguageNumberParser", "LanguageProtectedSpans",

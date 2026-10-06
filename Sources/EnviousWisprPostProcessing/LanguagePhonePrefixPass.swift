@@ -7,7 +7,7 @@ import Foundation
 // metadata's international grouping. Every digit is kept, in order: the edit is minted by
 // `edit(regroupingDigitsIn:with:)`, so the snapshot and the shared editor both refuse any edit
 // whose replacement changes a digit. The pass proposes edits against one immutable snapshot; the
-// shared editor applies them. Nothing registers or calls this pass yet.
+// shared editor applies them. The German language route runs it (`InverseTextNormalizer+Language`).
 //
 // CANDIDATES (the only two ways a number is explicitly international):
 //  1. spoken: a standalone trigger word (German `plus`), then horizontal whitespace and a digit
@@ -314,6 +314,15 @@ struct LanguagePhonePrefixPass: Sendable {
       from: runStart),
       (8...Self.maxDigits).contains(digits.utf8.count), !digits.hasPrefix("00")
     else { return nil }
+    // Dates and other dotted numbers are never unsigned telephone numbers: a dot separator, or
+    // three groups shaped like a day, a month and a year ("05.05.2024", "05-05-2024").
+    if separators.contains(.dot) { return nil }
+    if let written = snapshot.substring(runStart..<runEnd) {
+      let groups = written.split(whereSeparator: { !$0.isASCII || !$0.isNumber }).map(\.count)
+      if groups.count == 3, groups[0] <= 2, groups[1] <= 2, groups[2] == 2 || groups[2] == 4 {
+        return nil
+      }
+    }
     let marker = runStart..<(runStart + 1)
     let domestic = digits.hasPrefix("0")
 

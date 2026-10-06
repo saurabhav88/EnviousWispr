@@ -6,7 +6,7 @@ import Foundation
 // stands before a word it may modify, propose an edit that replaces ONLY the ordinal span with its
 // digits and the written suffix (`3.`). External whitespace, articles, following words and
 // punctuation stay as written. The pass proposes edits against one immutable snapshot; the shared
-// editor applies them. Nothing registers or calls this pass yet.
+// editor applies them. Nothing calls this pass yet: its month, phrase and name data are pending.
 //
 // CANDIDATES: an ordinal the shared parser admits (values 1 to 31 in the base, -n and -r spellings,
 // licensed spaced compounds), a reviewed adverb token (`erstens`), or a reviewed literal phrase

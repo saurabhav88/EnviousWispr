@@ -218,23 +218,38 @@ struct LanguageGateBenchmarkTests {
     text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
   }
 
-  @Test("a foreign row the resolver placed comes out of the deterministic chain untouched")
+  /// German has registered cleanup passes (#1677): these rows are EXPECTED to change, to exactly
+  /// this text, on every engine. Every other resolved foreign row must stay untouched.
+  static let expectedGermanConversions: [String: String] = [
+    "de_de_itn_08": "Der Termin ist um 9:30 am Dienstag."
+  ]
+
+  @Test("a foreign row the resolver placed is untouched, except the listed German conversions")
   func resolvedForeignRowsAreUntouched() async throws {
     let rows = try Self.loadRows().filter { !$0.bucket.hasPrefix("english") && $0.lang != "en" }
     var resolved = 0
     var changed: [String] = []
+    var expectedSeen = 0
     for row in rows {
       let ctx = try await Self.cleanContext(row)
       guard ctx.languageSource == .engine || ctx.languageSource == .dictation,
         ctx.language != "en"
       else { continue }
       resolved += 1
+      if let expected = Self.expectedGermanConversions[row.id], ctx.language == "de" {
+        expectedSeen += 1
+        if Self.normalizedWhitespace(ctx.text) != Self.normalizedWhitespace(expected) {
+          changed.append("\(row.id) [\(row.engine)] expected \(expected) -> got \(ctx.text)")
+        }
+        continue
+      }
       if Self.normalizedWhitespace(ctx.text) != Self.normalizedWhitespace(row.raw) {
         changed.append("\(row.id) [\(row.engine)] \(ctx.language ?? "?"): \(row.raw) -> \(ctx.text)")
       }
     }
     for c in changed { print("  RESOLVED-CHANGED \(c)") }
     #expect(resolved >= 150, "too few resolved foreign rows to mean anything: \(resolved)")
+    #expect(expectedSeen >= 2, "the expected German conversion rows must be resolved: \(expectedSeen)")
     let changeList = changed.joined(separator: "\n")
     #expect(changed.isEmpty, "\(changed.count) resolved foreign rows were rewritten:\n\(changeList)")
   }
