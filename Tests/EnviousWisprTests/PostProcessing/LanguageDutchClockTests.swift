@@ -85,6 +85,8 @@ struct LanguageDutchClockTests {
       // No anchor, already written, hour-marker-minute forms (not in scope).
       "Tien over drie was de beste tijd.", "We zien elkaar om 8.30 uur.",
       "Ik zat op mijn kamer twee uur 's nachts.", "Het is nu 1 uur 39.",
+      // A spoken operand before the plus word is a sum, not a phone number.
+      "Reken uit: een plus 31 612 345 678.", "Twee plus 31 612 345 678 is veel.",
     ]
     for text in unchanged {
       #expect(bytes(try normalized(text)) == bytes(text), "\(text)")

@@ -96,16 +96,17 @@ enum LanguagePassCatalog {
     let codes = Set(PhoneTriggerData.triggerTokens.keys).union(HourFirstClockData.languages.keys)
       .union(LanguageClockIdiomRules.languages).subtracting(["de"])
     for code in codes {
+      // The language's number grammar, when it has one (Dutch), also lets the phone pass refuse a
+      // spoken operand before the plus word ("een plus 31 …" is a sum).
+      let grammar = (try? LanguageNumberGrammar.forLanguage(code)).flatMap { $0 }
       let phone = (try? LanguagePhonePrefixRules.signedOnly(language: code)).map {
-        LanguagePhonePrefixPass(grammar: nil, rules: $0)
+        LanguagePhonePrefixPass(grammar: grammar, rules: $0)
       }
       let hourFirstClock = LanguageHourFirstClockRules(language: code).map {
         LanguageHourFirstClockPass(rules: $0)
       }
       var clock: LanguageClockIdiomPass?
-      if let rules = (try? LanguageClockIdiomRules.forLanguage(code)).flatMap({ $0 }),
-        let grammar = (try? LanguageNumberGrammar.forLanguage(code)).flatMap({ $0 })
-      {
+      if let rules = (try? LanguageClockIdiomRules.forLanguage(code)).flatMap({ $0 }), let grammar {
         clock = LanguageClockIdiomPass(grammar: grammar, rules: rules)
       }
       guard phone != nil || hourFirstClock != nil || clock != nil else { continue }
