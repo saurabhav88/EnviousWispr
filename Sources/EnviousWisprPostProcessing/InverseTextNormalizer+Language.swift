@@ -6,7 +6,7 @@ extension InverseTextNormalizer {
   /// rule set.
   ///
   /// The language-neutral subset runs first; then each of the language's passes (number style,
-  /// phone, clock) runs on a FRESH
+  /// phone, clock, hour-first clock) runs on a FRESH
   /// snapshot of the previous stage's output, and the shared editor applies its edits or refuses
   /// the whole set. A pass that is unavailable or whose edits the editor refuses leaves its input
   /// unchanged, so a failure never costs the neutral result or an earlier pass's edits.
@@ -46,6 +46,14 @@ extension InverseTextNormalizer {
         output = applied
       }
     }
+    if let hourFirstClock = passes.hourFirstClock {
+      let snapshot = LanguageTextSnapshot(output)
+      if case .ran(let edits) = hourFirstClock.propose(in: snapshot),
+        case .applied(let applied) = LanguageTextEditor.apply(edits, to: snapshot)
+      {
+        output = applied
+      }
+    }
     return output
   }
 }
@@ -53,7 +61,7 @@ extension InverseTextNormalizer {
 /// The language passes each registered base code runs, built ONCE from the generated data. A
 /// language whose data does not build has no passes (it runs the neutral subset only); nothing
 /// throws at dictation time. German runs number style, phone and clock; French, Spanish, Italian
-/// and Portuguese run the signed phone path only for now. The ordinal pass is not listed: its
+/// and Portuguese run the signed phone path and the hour-first clock pass. The ordinal pass is not listed: its
 /// month, fixed-phrase and name data are still pending.
 enum LanguagePassCatalog {
 
@@ -61,6 +69,7 @@ enum LanguagePassCatalog {
     let numberStyle: LanguageNumberStylePass?
     let phone: LanguagePhonePrefixPass?
     let clock: LanguageClockIdiomPass?
+    let hourFirstClock: LanguageHourFirstClockPass?
   }
 
   private static let german: Passes? = {
@@ -72,16 +81,25 @@ enum LanguagePassCatalog {
       },
       clock: (try? LanguageClockIdiomRules.german()).map {
         LanguageClockIdiomPass(grammar: grammar, rules: $0)
-      })
+      },
+      hourFirstClock: nil)
   }()
 
-  /// Languages whose phone pass runs the signed path only (spoken plus word, written sign).
+  /// Languages whose phone pass runs the signed path only (spoken plus word, written sign) and
+  /// whose clock idioms say the hour first. Each pass is present when its own data builds.
   private static let signedPhoneOnly: [String: Passes] = {
     var table: [String: Passes] = [:]
-    for code in PhoneTriggerData.triggerTokens.keys {
-      guard let rules = try? LanguagePhonePrefixRules.signedOnly(language: code) else { continue }
+    let codes = Set(PhoneTriggerData.triggerTokens.keys).union(HourFirstClockData.languages.keys)
+    for code in codes {
+      let phone = (try? LanguagePhonePrefixRules.signedOnly(language: code)).map {
+        LanguagePhonePrefixPass(grammar: nil, rules: $0)
+      }
+      let hourFirstClock = LanguageHourFirstClockRules(language: code).map {
+        LanguageHourFirstClockPass(rules: $0)
+      }
+      guard phone != nil || hourFirstClock != nil else { continue }
       table[code] = Passes(
-        numberStyle: nil, phone: LanguagePhonePrefixPass(grammar: nil, rules: rules), clock: nil)
+        numberStyle: nil, phone: phone, clock: nil, hourFirstClock: hourFirstClock)
     }
     return table
   }()

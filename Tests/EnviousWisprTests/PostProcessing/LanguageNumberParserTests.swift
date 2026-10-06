@@ -540,13 +540,14 @@ struct LanguageNumberParserTests {
       "LanguageTextEdit.swift", "LanguagePhonePrefixRules.swift", "LanguagePhonePrefixPass.swift",
       "LanguageOrdinalRules.swift", "LanguageOrdinalPass.swift", "LanguageClockIdiomRules.swift",
       "LanguageClockIdiomPass.swift", "LanguagePhoneMetadata.swift", "LanguageNumberStylePass.swift",
+      "LanguageHourFirstClockPass.swift",
     ]
     let names = [
       "LanguageNumberGrammar", "LanguageNumberParser", "LanguageProtectedSpans",
       "LanguageTextEditor", "LanguageTextSnapshot", "LanguageTextEdit", "LanguagePhonePrefixPass",
       "LanguagePhonePrefixRules", "LanguageOrdinalPass", "LanguageOrdinalRules",
       "LanguageOrdinalContextEvidence", "LanguageClockIdiomPass", "LanguageClockIdiomRules",
-      "LanguagePhoneMetadata",
+      "LanguagePhoneMetadata", "LanguageHourFirstClockPass", "LanguageHourFirstClockRules",
     ]
     var scanned = 0
     var callers: [String] = []
@@ -573,7 +574,7 @@ struct LanguageNumberParserTests {
         "LanguageNumberParserTests.swift", "LanguageProtectedSpansTests.swift",
         "ITNDevelopmentFixtureSupport.swift", "LanguagePhonePrefixPassTests.swift",
         "LanguageOrdinalPassTests.swift", "LanguageClockIdiomPassTests.swift",
-        "LanguagePhoneMetadataTests.swift",
+        "LanguagePhoneMetadataTests.swift", "LanguageHourFirstClockPassTests.swift",
       ].map { root.appending(path: "Tests/EnviousWisprTests/PostProcessing/\($0)") }
     for url in newFiles {
       let text = try String(contentsOf: url, encoding: .utf8)

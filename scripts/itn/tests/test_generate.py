@@ -535,7 +535,7 @@ class RealOrdinalRefusalTests(unittest.TestCase):
         result = run("--check")
         self.assertEqual(result.returncode, 0, result.stderr)
         # Number, phone, ordinal, clock, number-style and phone-trigger outputs.
-        self.assertEqual(result.stdout.count("check ok"), 6)
+        self.assertEqual(result.stdout.count("check ok"), 7)
 
     def test_the_manifest_declares_the_six_required_entries(self):
         manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
@@ -1239,6 +1239,59 @@ class PhoneTriggerTests(unittest.TestCase):
             with self.subTest(tokens=tokens):
                 with self.assertRaisesRegex(self.gen.GenerationError, "triggerTokens"):
                     self.gen.build_phone_triggers(self.entry(tokens))
+
+
+class HourFirstClockTests(unittest.TestCase):
+    """`hourFirstClock` entries are validated, never coerced (#1677)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("itn_generate_clock", GENERATOR)
+        cls.gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.gen)
+        cls.real = json.loads((HERE.parent / "manifest.json").read_text(encoding="utf-8"))
+
+    def entry(self, code="es", **changes):
+        entry = json.loads(json.dumps(self.real["hourFirstClock"][code]))
+        entry.update(changes)
+        return {"hourFirstClock": {code: entry}}
+
+    def test_the_real_entries_build(self):
+        rows = self.gen.build_hour_first_clock(self.real)
+        self.assertEqual([r["code"] for r in rows], ["es", "fr", "it", "pt"])
+        es = rows[0]
+        self.assertIn((["un", "cuarto"], 15), es["fractions"])
+        self.assertTrue(es["articleBeforeTime"])
+
+    def test_malformed_entries_fail(self):
+        bad = [
+            ("style", "dot"),
+            ("hours", {"una": 1}),
+            ("hours", {**self.real["hourFirstClock"]["es"]["hours"], "una": True}),
+            ("hourAnchors", []),
+            ("hourAnchors", "a las"),
+            ("connector", "Y"),
+            ("fractions", {"media": 20}),
+            ("minusFractions", {"cuarto": 30}),
+            ("gluedAnchors", ["all"]),
+            ("noon", ["mediodía"]),
+            ("before", {"word": "para", "articles": ["las"]}),
+            ("before", {"word": "para", "articles": ["las"], "articleBeforeTime": "yes"}),
+            ("minuteFirstAnchors", []),
+            ("provenance", " "),
+        ]
+        for field, value in bad:
+            with self.subTest(field=field, value=value):
+                with self.assertRaises(self.gen.GenerationError):
+                    self.gen.build_hour_first_clock(self.entry(**{field: value}))
+
+    def test_german_and_unknown_fields_fail(self):
+        with self.assertRaises(self.gen.GenerationError):
+            self.gen.build_hour_first_clock(
+                {"hourFirstClock": {"de": self.real["hourFirstClock"]["es"]}})
+        with self.assertRaises(self.gen.GenerationError):
+            self.gen.build_hour_first_clock(self.entry(extra=1))
 
 
 if __name__ == "__main__":

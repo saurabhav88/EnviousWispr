@@ -218,10 +218,22 @@ struct LanguageGateBenchmarkTests {
     text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
   }
 
-  /// German has registered cleanup passes (#1677): these rows are EXPECTED to change, to exactly
-  /// this text, on every engine. Every other resolved foreign row must stay untouched.
-  static let expectedGermanConversions: [String: String] = [
-    "de_de_itn_08": "Der Termin ist um 9:30 am Dienstag."
+  /// Languages with registered cleanup passes (#1677): these rows are EXPECTED to change, to
+  /// exactly this text, when resolved to that language. Every other resolved foreign row must stay
+  /// untouched. Engine spellings differ (WhisperKit writes `veinticinco`), so a row may list one
+  /// expected text per raw input.
+  static let expectedConversions: [String: (language: String, byRaw: [String: String])] = [
+    "de_de_itn_08": ("de", ["*": "Der Termin ist um 9:30 am Dienstag."]),
+    "it_it_numbers_01": ("it", ["*": "La riunione è alle 10:30 e costa 25 euro."]),
+    "es_es_numbers_01": (
+      "es",
+      [
+        "La reunión es a las 10 y media y cuesta 25 euros.":
+          "La reunión es a las 10:30 y cuesta 25 euros.",
+        "La reunión es a las diez y media y cuesta veinticinco euros.":
+          "La reunión es a las 10:30 y cuesta veinticinco euros.",
+      ]
+    ),
   ]
 
   @Test("a foreign row the resolver placed is untouched, except the listed German conversions")
@@ -236,8 +248,10 @@ struct LanguageGateBenchmarkTests {
         ctx.language != "en"
       else { continue }
       resolved += 1
-      if let expected = Self.expectedGermanConversions[row.id], ctx.language == "de" {
+      if let conversion = Self.expectedConversions[row.id], ctx.language == conversion.language {
         expectedSeen += 1
+        let expected =
+          conversion.byRaw[Self.normalizedWhitespace(row.raw)] ?? conversion.byRaw["*"] ?? "<none listed>"
         if Self.normalizedWhitespace(ctx.text) != Self.normalizedWhitespace(expected) {
           changed.append("\(row.id) [\(row.engine)] expected \(expected) -> got \(ctx.text)")
         }
@@ -249,7 +263,7 @@ struct LanguageGateBenchmarkTests {
     }
     for c in changed { print("  RESOLVED-CHANGED \(c)") }
     #expect(resolved >= 150, "too few resolved foreign rows to mean anything: \(resolved)")
-    #expect(expectedSeen >= 2, "the expected German conversion rows must be resolved: \(expectedSeen)")
+    #expect(expectedSeen >= 6, "the expected conversion rows must be resolved: \(expectedSeen)")
     let changeList = changed.joined(separator: "\n")
     #expect(changed.isEmpty, "\(changed.count) resolved foreign rows were rewritten:\n\(changeList)")
   }

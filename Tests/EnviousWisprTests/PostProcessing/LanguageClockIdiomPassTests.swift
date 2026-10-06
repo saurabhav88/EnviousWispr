@@ -569,40 +569,66 @@ struct LanguageClockIdiomPassTests {
     }
   }
 
-  @Test("the editor rechecks the digit-hour chunk shape and its span; hour meaning stays the pass's")
-  func digitHourPermission() throws {
+  @Test("the editor rechecks every clock chunk's shape and span; clock meaning stays the pass's")
+  func clockChunkPermission() throws {
     let snapshot = LanguageTextSnapshot("um halb 8. dann 9 Leute")
     // "halb 8." is 3..<10; the chunk "8." is 8..<10; "9" is 16..<17.
     let honest = try snapshot.edit(
-      replacing: 3..<10, consumingDigitHourChunk: 8..<10, with: "7:30.").get()
+      replacing: 3..<10, consumingClockChunks: [8..<10], with: "7:30.").get()
     #expect(LanguageTextEditor.apply([honest], to: snapshot) == .applied("um 7:30. dann 9 Leute"))
-    // Minting refuses a chunk that does not end the edit, a dropped mark, and an edit with no
-    // word before the chunk.
-    for (range, chunk, replacement) in [
-      (3..<10, 8..<9, "7:30."), (3..<10, 8..<10, "7:30"), (8..<10, 8..<10, "7:30."),
+    // Minting refuses a dropped mark, a chunk outside the edit, overlapping or unordered chunks,
+    // and no chunk at all.
+    for (range, chunks, replacement) in [
+      (3..<10, [8..<10], "7:30"), (3..<9, [8..<10], "7:30."),
+      (3..<17, [8..<10, 8..<10], "x"), (3..<17, [16..<17, 8..<10], "x"), (3..<10, [], "7:30."),
     ] {
-      guard case .failure(.notADigitHourChunk) = snapshot.edit(
-        replacing: range, consumingDigitHourChunk: chunk, with: replacement)
+      guard case .failure(.notAClockChunk) = snapshot.edit(
+        replacing: range, consumingClockChunks: chunks, with: replacement)
       else {
-        Issue.record("\(range) \(chunk) \(replacement) must not mint")
+        Issue.record("\(range) \(chunks) \(replacement) must not mint")
         continue
       }
     }
+    // A chunk naming only part of the number "8." mints (its shape is fine) and is refused on apply.
+    let partial = try snapshot.edit(replacing: 3..<10, consumingClockChunks: [8..<9], with: "7:30.").get()
+    guard case .refused = LanguageTextEditor.apply([partial], to: snapshot) else {
+      Issue.record("a chunk that is part of a number must be refused on apply")
+      return
+    }
     let long = LanguageTextSnapshot("um halb 123")
-    guard case .failure(.notADigitHourChunk) = long.edit(
-      replacing: 3..<11, consumingDigitHourChunk: 8..<11, with: "1:30")
+    guard case .failure(.notAClockChunk) = long.edit(
+      replacing: 3..<11, consumingClockChunks: [8..<11], with: "1:30")
     else {
       Issue.record("three digits must not mint")
+      return
+    }
+    // Two chunks, the digits changed, the mark carried: "a las 10 menos 20." to "a las 9:40.".
+    let minus = LanguageTextSnapshot("a las 10 menos 20.")
+    let both = try minus.edit(
+      replacing: 6..<18, consumingClockChunks: [6..<8, 15..<18], with: "9:40.").get()
+    #expect(LanguageTextEditor.apply([both], to: minus) == .applied("a las 9:40."))
+    // Naming only one of the two number chunks the edit covers is refused.
+    let half = try minus.edit(replacing: 6..<18, consumingClockChunks: [15..<18], with: "9:40.").get()
+    guard case .refused(.intersectsProtectedSpan(let skipped)) = LanguageTextEditor.apply([half], to: minus)
+    else {
+      Issue.record("an edit covering an unnamed number chunk must be refused")
+      return
+    }
+    #expect(skipped.range == 6..<8)
+    // A named chunk that is only part of a number span is refused.
+    let part = try minus.edit(replacing: 6..<18, consumingClockChunks: [6..<7, 15..<18], with: "9:40.").get()
+    guard case .refused = LanguageTextEditor.apply([part], to: minus) else {
+      Issue.record("a chunk that splits a number must be refused")
       return
     }
     // Forged values: a dropped mark, and a permission naming one chunk while covering another.
     let dropped = LanguageTextEdit(
       range: 3..<10, replacement: "7:30", snapshotIdentity: snapshot.identity,
-      permission: .replacesDigitHourChunk(8..<10))
-    #expect(LanguageTextEditor.apply([dropped], to: snapshot) == .refused(.notADigitHourChunk))
+      permission: .replacesClockChunks([8..<10]))
+    #expect(LanguageTextEditor.apply([dropped], to: snapshot) == .refused(.notAClockChunk))
     let wide = LanguageTextEdit(
       range: 3..<17, replacement: "7:30. dann 9", snapshotIdentity: snapshot.identity,
-      permission: .replacesDigitHourChunk(16..<17))
+      permission: .replacesClockChunks([16..<17]))
     guard case .refused(.intersectsProtectedSpan(let span)) = LanguageTextEditor.apply([wide], to: snapshot)
     else {
       Issue.record("an edit covering a second number chunk must be refused")

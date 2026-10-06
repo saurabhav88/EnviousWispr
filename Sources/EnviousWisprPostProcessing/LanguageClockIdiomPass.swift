@@ -7,7 +7,7 @@ import Foundation
 // `4:15`): unpadded hour, a separator, two-digit minutes. The anchor, `Uhr`, day-part words,
 // articles and punctuation stay as written. An hour the engine already wrote as digits (`um halb 8`)
 // is an already-written number chunk: that edit runs to the end of the chunk through the editor's
-// digit-hour permission and carries the chunk's closing punctuation (`halb 8.` to `7:30.`). The pass proposes edits against one immutable snapshot;
+// clock-chunk permission and carries the chunk's closing punctuation (`halb 8.` to `7:30.`). The pass proposes edits against one immutable snapshot;
 // the shared editor applies them. The German language route runs it (`InverseTextNormalizer+Language`).
 //
 // SCOPE (founder option B): only the templates in the rules convert (`halb H` and `viertel nach H`
@@ -304,7 +304,7 @@ struct LanguageClockIdiomPass: Sendable {
       let chunk = hourWord.start..<hourWord.chunkEnd
       let closing = snapshot.substring(hourWord.end..<hourWord.chunkEnd) ?? ""
       minted = snapshot.edit(
-        replacing: idiomStart..<hourWord.chunkEnd, consumingDigitHourChunk: chunk,
+        replacing: idiomStart..<hourWord.chunkEnd, consumingClockChunks: [chunk],
         with: space + written + closing)
     } else {
       minted = snapshot.edit(replacing: range, with: space + written)
