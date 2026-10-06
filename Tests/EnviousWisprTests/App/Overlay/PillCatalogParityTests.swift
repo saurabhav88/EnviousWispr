@@ -247,13 +247,12 @@ struct PillCatalogParityTests {
   /// The two frozen rows an entry-by-entry table cannot reach (review r1 finding 1).
   ///
   /// **`reduceAccessibilityNotice` is a COMPOSITION of two catalog requests, and
-  /// its whole point is that the halves come from different ones.** When
-  /// eligibility refuses the toast it draws the CLIPBOARD definition and retains
-  /// the ACCESSIBILITY announcement — the only place in the system where that is
-  /// legitimate. Asserting the toast entry and the clipboard entry separately
-  /// proves each is right and says nothing about the substitution, so C0 froze
-  /// the composed outcome in both eligibility states and this is where those two
-  /// rows are spent.
+  /// it composes the clipboard picture and its spoken sentence itself.** When
+  /// eligibility refuses the toast it draws the CLIPBOARD definition and speaks the
+  /// pill's own sentence (#2321). Asserting the toast entry and the clipboard entry
+  /// separately proves each is right and says nothing about the substitution, so C0
+  /// froze the composed outcome in both eligibility states and this is where those
+  /// two rows are spent.
   @Test("both accessibility outcomes reproduce their frozen rows")
   func accessibilityCompositionParity() throws {
     for (label, showsToast) in Self.accessibilityCompositionCases {
