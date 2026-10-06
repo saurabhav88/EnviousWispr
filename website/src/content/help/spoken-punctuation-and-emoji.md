@@ -145,7 +145,7 @@ If you do not see the **Start word** row, check that **Spoken punctuation** is o
 
 ### A punctuation word appears in the wrong place
 
-In English, with **Spoken punctuation** on, EnviousWispr cannot tell when you meant the word itself. Saying "the grace period expires" puts a full stop in the middle of your sentence.
+In English with no start word, and **Spoken punctuation** on, EnviousWispr cannot tell when you meant the word itself. Saying "the grace period expires" puts a full stop in the middle of your sentence. Give English a start word to stop this.
 
 In German, French, Spanish and Italian a command word stays a word unless the start word comes right before it. A start word of your own can still come up in a normal sentence, so choose one you would not say. If you chose no start word, a command word is a mark every time you say it.
 
@@ -153,4 +153,4 @@ EnviousWispr already punctuates for you, so spoken punctuation competes with tha
 
 ### Type a backslash
 
-In English, saying "backslash" types `\` only when **Spoken punctuation** is on. If you use [Snippets](/help/using-snippets/), a saved snippet wins when its words follow your snippet keyword, which is `backslash` unless you changed it. A saved snippet wins over a start word command in the same way.
+In English, saying "backslash" types `\` when **Spoken punctuation** is on and English has no start word. If you use [Snippets](/help/using-snippets/), a saved snippet wins when its words follow your snippet keyword, which is `backslash` unless you changed it. A saved snippet wins over a start word command in the same way.

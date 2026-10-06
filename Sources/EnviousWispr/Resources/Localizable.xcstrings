@@ -8654,24 +8654,24 @@
         }
       }
     },
-    "In English these words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol." : {
+    "In English with no start word, these words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol." : {
       "comment" : "Speech engine settings, spoken punctuation help footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Im Englischen werden diese Wörter zu Satzzeichen, selbst wenn du das Wort selbst meintest, etwa in „the grace period expires“. Der Befehl „slash“ funktioniert auch bei ausgeschalteter Einstellung: „slash clear“ wird zu /clear, „command is slash wfp“ zu command is /wfp und „pros slash cons“ zu pros/cons. „slash the budget“ bleibt als Wörter stehen. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen."
+            "value" : "Im Englischen ohne Startwort werden diese Wörter zu Satzzeichen, selbst wenn du das Wort selbst meintest, etwa in „the grace period expires“. Der Befehl „slash“ funktioniert auch bei ausgeschalteter Einstellung: „slash clear“ wird zu /clear, „command is slash wfp“ zu command is /wfp und „pros slash cons“ zu pros/cons. „slash the budget“ bleibt als Wörter stehen. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen."
           }
         }
       }
     },
-    "In German, French, Spanish and Italian you say a start word first, then the mark. A command word on its own stays an ordinary word." : {
+    "German, French, Spanish and Italian use a start word by default. You can change it or leave it blank. Say the start word first, then the mark. With a start word, a command word on its own stays an ordinary word." : {
       "comment" : "Speech engine settings, spoken punctuation help: how the start word works.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Im Deutschen, Französischen, Spanischen und Italienischen sagst du zuerst ein Startwort und dann das Zeichen. Ein Befehlswort allein bleibt ein gewöhnliches Wort."
+            "value" : "Deutsch, Französisch, Spanisch und Italienisch nutzen standardmäßig ein Startwort. Du kannst es ändern oder leer lassen. Sag zuerst das Startwort und dann das Zeichen. Mit Startwort bleibt ein Befehlswort allein ein gewöhnliches Wort."
           }
         }
       }
@@ -17422,13 +17422,13 @@
         }
       }
     },
-    "The word you say before a mark. German, French, Spanish and Italian need one; English does not. Pick a word you would not say in a normal sentence." : {
+    "The word you say before a mark. Leave it blank to use command words on their own. Pick a word you would not say in a normal sentence." : {
       "comment" : "Speech engine settings, Start word row: the short line under the row's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Wort, das du vor einem Zeichen sagst. Deutsch, Französisch, Spanisch und Italienisch brauchen eines, Englisch nicht. Wähle ein Wort, das du in einem normalen Satz nicht sagen würdest."
+            "value" : "Das Wort, das du vor einem Zeichen sagst. Lass das Feld leer, um Befehlswörter allein zu verwenden. Wähle ein Wort, das du in einem normalen Satz nicht sagen würdest."
           }
         }
       }

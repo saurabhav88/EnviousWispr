@@ -57,8 +57,8 @@ struct ITNWorkResult: Sendable {
 }
 
 /// The closed vocabulary of `punctuation_status` on `dictation.completed` (#2450). A ROUTING fact:
-/// it says what the start-word pass did, never whether a rewrite was right. English takes carry no
-/// status. `ran_no_match` (the pass ran, nothing matched) and `timed_out` (the pass was abandoned)
+/// it says what the start-word pass did, never whether a rewrite was right. English takes carry a status
+/// only while English has a start word. `ran_no_match` (the pass ran, nothing matched) and `timed_out` (the pass was abandoned)
 /// are kept apart so a hung run can never read as an ordinary no-op.
 enum SpokenPunctuationStatus: String, Sendable, CaseIterable {
   /// The toggle is off, so the pass was not attempted.

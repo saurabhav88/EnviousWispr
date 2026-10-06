@@ -112,7 +112,7 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var itnLenAfter: Int?
   /// #2450: what the spoken-punctuation start-word pass did for this take, one of a closed
   /// vocabulary (`disabled`, `unresolved`, `unsupported`, `ran_no_match`, `rewrote`, `timed_out`),
-  /// and how many commands it rewrote (both nil on the English route), the language the routing used
+  /// and how many commands it rewrote (both nil on the English route when no start word is configured), the language the routing used
   /// (`en` on the English route) and which resolver rung answered. All nil on transcripts written
   /// before these fields existed (additive optional Codable, back-compatible). A routing fact,
   /// never a precision claim; metadata only (`telemetry-privacy-boundary`).

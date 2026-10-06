@@ -80,7 +80,7 @@ final class KernelFinalizationOutcome {
   var itnLenBefore: Int?
   var itnLenAfter: Int?
   /// #2450: what the spoken-punctuation start-word pass did for this take (`punctuation_status`,
-  /// a closed vocabulary) and how many commands it rewrote. Both nil on the English route. A
+  /// a closed vocabulary) and how many commands it rewrote. Both nil on the English route when no start word is configured. A
   /// ROUTING fact, never a precision claim. `punctuationLanguage` is the language this take's
   /// punctuation routing used (`en` on the English route, even when `cleanup_language` is nil) and
   /// `punctuationResolutionSource` the resolver rung that answered.

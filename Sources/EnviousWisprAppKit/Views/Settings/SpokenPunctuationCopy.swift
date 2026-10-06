@@ -25,7 +25,7 @@ enum SpokenPunctuationCopy {
 
   static let helpStartWord = String(
     localized:
-      "In German, French, Spanish and Italian you say a start word first, then the mark. A command word on its own stays an ordinary word.",
+      "German, French, Spanish and Italian use a start word by default. You can change it or leave it blank. Say the start word first, then the mark. With a start word, a command word on its own stays an ordinary word.",
     comment: "Speech engine settings, spoken punctuation help: how the start word works.")
   static let helpEnglish = String(
     localized: "English works as it does today: say the word on its own. You can also give English a start word.",
@@ -40,7 +40,7 @@ enum SpokenPunctuationCopy {
   static let helpFootnote =
     String(
       localized:
-        "In English these words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol.",
+        "In English with no start word, these words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol.",
       comment:
         "Speech engine settings, spoken punctuation help footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly."
     )
@@ -61,7 +61,7 @@ enum SpokenPunctuationCopy {
     comment: "Speech engine settings, spoken punctuation: the Start word row's name.")
   static let startWordShort = String(
     localized:
-      "The word you say before a mark. German, French, Spanish and Italian need one; English does not. Pick a word you would not say in a normal sentence.",
+      "The word you say before a mark. Leave it blank to use command words on their own. Pick a word you would not say in a normal sentence.",
     comment: "Speech engine settings, Start word row: the short line under the row's name.")
   static let startWordHelp = String(
     localized:

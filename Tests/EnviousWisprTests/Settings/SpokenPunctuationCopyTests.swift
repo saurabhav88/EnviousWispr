@@ -18,7 +18,7 @@ struct SpokenPunctuationCopyTests {
   func footnoteIsFrozen() {
     #expect(
       SpokenPunctuationCopy.helpFootnote
-        == "In English these words become marks even when you meant the word itself, like \"the grace "
+        == "In English with no start word, these words become marks even when you meant the word itself, like \"the grace "
         + "period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, "
         + "\"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes "
         + "pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", "

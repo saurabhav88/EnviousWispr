@@ -528,7 +528,9 @@ struct MultilingualSpokenPunctuationTests {
 
   /// Every English start-word form, with what the BARE English path (`InverseTextNormalizer.punct`) writes
   /// for the same words. Both paths are run on the same literal expectation, so a change to one table
-  /// that the other does not follow fails here.
+  /// that the other does not follow fails here. It covers the ten forms listed, NOT every regex row of
+  /// `punct`: the sentence-end context variants of the two break rows are not exercised, and an alias
+  /// added only to `punct` would not be noticed.
   private static let englishParity: [(form: String, expected: String)] = [
     ("comma", "Alpha, beta"), ("period", "Alpha. Beta"), ("full stop", "Alpha. Beta"),
     ("question mark", "Alpha? Beta"), ("exclamation mark", "Alpha! Beta"),

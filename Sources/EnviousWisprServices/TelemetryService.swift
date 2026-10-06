@@ -1958,7 +1958,7 @@ public final class TelemetryService {
     // #2450: what the spoken-punctuation start-word pass did (a closed vocabulary), how many
     // commands it rewrote (an Int on the wire), the language the routing used and which resolver
     // rung answered. A routing fact on the EXISTING row, never content or a precision claim. The
-    // status and count are absent on the English route; the language is `en` there, which
+    // status and count are absent on the English route when no start word is configured; the language is `en` there, which
     // `cleanup_language` cannot say when the language was never resolved.
     if let ps = punctuationStatus { props["punctuation_status"] = ps }
     if let pr = punctuationRulesFired { props["punctuation_rules_fired"] = pr }
