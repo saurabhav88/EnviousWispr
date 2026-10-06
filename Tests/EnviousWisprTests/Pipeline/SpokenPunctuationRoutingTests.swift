@@ -179,8 +179,10 @@ struct SpokenPunctuationRoutingTests {
       ctx("Das ist gut Diktiere Punkt es geht weiter", language: "de-DE", source: .dictation))
     #expect(out.text == "Das ist gut. Es geht weiter")
     let run = try #require(step.lastRun)
-    #expect(run.ran == false)
-    #expect(run.skipReason == "non_english")
+    // #1677 registered German: the take runs the German language route, which owns the start-word
+    // pass after its own passes; the rewrite and its count are unchanged.
+    #expect(run.ran == true)
+    #expect(run.skipReason == nil)
     #expect(run.changed == true)
     #expect(run.punctuationStatus == .rewrote)
     #expect(run.punctuationRulesFired == 1)
@@ -363,7 +365,7 @@ struct SpokenPunctuationRoutingTests {
     #expect(run.punctuationRulesFired == nil, "the abandoned run's count is discarded")
     #expect(run.changed == false)
     #expect(timeouts.count == 1)
-    #expect(timeouts.first?["route"] as? String == "neutral")
+    #expect(timeouts.first?["route"] as? String == "language:de", "German runs its language route (#1677)")
   }
 
   @Test("A hung non-English run with nothing attempted is not reported as a punctuation timeout")
