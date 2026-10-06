@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Clock-idiom syntax and reviewed refusals as typed data (#1677, PR 2 chunk 6)
 //
-// The language-specific half of the clock-idiom pass: two idiom templates, the anchors that may
+// The language-specific half of the clock-idiom pass: the idiom templates, the anchors that may
 // precede one, the trailing clock marker, the output separator, and the three REVIEWED refusal
 // entries (all complete literal phrases). Adapted from the generated data; this file is the only
 // reader of it. The shared algorithm (`LanguageClockIdiomPass`) holds no language word.
@@ -31,6 +31,16 @@ struct LanguageClockIdiomRules: Sendable, Equatable {
     let minute: Int
     /// The input hours this template converts; the others need a clock-face choice.
     let inputHours: ClosedRange<Int>
+    /// A spoken minute before the tokens (`5 nach`, `10 vor halb`): nil for a fixed idiom. The
+    /// written minute is `minute + sign x spoken minute`, for a spoken minute in `minutes`.
+    let minuteSlot: (sign: Int, minutes: ClosedRange<Int>)?
+
+    static func == (lhs: Template, rhs: Template) -> Bool {
+      lhs.id == rhs.id && lhs.tokens == rhs.tokens && lhs.hourOffset == rhs.hourOffset
+        && lhs.minute == rhs.minute && lhs.inputHours == rhs.inputHours
+        && lhs.minuteSlot?.sign == rhs.minuteSlot?.sign
+        && lhs.minuteSlot?.minutes == rhs.minuteSlot?.minutes
+    }
   }
 
   /// The kinds of reviewed refusal the pass executes. Exhaustive.
@@ -108,12 +118,25 @@ struct LanguageClockIdiomRules: Sendable, Equatable {
       guard !template.id.isEmpty, !tokens.isEmpty, tokens.allSatisfy({ !$0.isEmpty }),
         (1...12).contains(low), (1...12).contains(high), low <= high,
         (1...12).contains(low + template.hourOffset), (1...12).contains(high + template.hourOffset),
-        (0...59).contains(template.minute)
+        template.minuteSign == 0 || template.minuteMax >= 1
       else { throw BuildError.invalidTemplate(template.id) }
+      let slot: (sign: Int, minutes: ClosedRange<Int>)?
+      switch template.minuteSign {
+      case 0:
+        guard (0...59).contains(template.minute) else { throw BuildError.invalidTemplate(template.id) }
+        slot = nil
+      case 1, -1:
+        let sign = template.minuteSign
+        guard (0...59).contains(template.minute + sign),
+          (0...59).contains(template.minute + sign * template.minuteMax)
+        else { throw BuildError.invalidTemplate(template.id) }
+        slot = (sign, 1...template.minuteMax)
+      default: throw BuildError.invalidTemplate(template.id)
+      }
       built.append(
         Template(
           id: template.id, tokens: tokens, hourOffset: template.hourOffset,
-          minute: template.minute, inputHours: low...high))
+          minute: template.minute, inputHours: low...high, minuteSlot: slot))
     }
     guard !anchors.isEmpty else { throw BuildError.noAnchors }
     let foldedAnchors = anchors.map(LanguageNumberGrammar.fold)

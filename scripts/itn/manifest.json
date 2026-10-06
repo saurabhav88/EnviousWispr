@@ -353,6 +353,85 @@
           1,
           11
         ]
+      },
+      {
+        "id": "quarterTo",
+        "tokens": [
+          "viertel",
+          "vor"
+        ],
+        "hourOffset": -1,
+        "minute": 45,
+        "inputHours": [
+          2,
+          12
+        ]
+      },
+      {
+        "id": "minutesAfter",
+        "tokens": [
+          "nach"
+        ],
+        "hourOffset": 0,
+        "minute": 0,
+        "inputHours": [
+          1,
+          11
+        ],
+        "minuteSlot": {
+          "sign": 1,
+          "max": 29
+        }
+      },
+      {
+        "id": "minutesBefore",
+        "tokens": [
+          "vor"
+        ],
+        "hourOffset": -1,
+        "minute": 60,
+        "inputHours": [
+          2,
+          12
+        ],
+        "minuteSlot": {
+          "sign": -1,
+          "max": 29
+        }
+      },
+      {
+        "id": "minutesAfterHalf",
+        "tokens": [
+          "nach",
+          "halb"
+        ],
+        "hourOffset": -1,
+        "minute": 30,
+        "inputHours": [
+          2,
+          12
+        ],
+        "minuteSlot": {
+          "sign": 1,
+          "max": 14
+        }
+      },
+      {
+        "id": "minutesBeforeHalf",
+        "tokens": [
+          "vor",
+          "halb"
+        ],
+        "hourOffset": -1,
+        "minute": 30,
+        "inputHours": [
+          2,
+          12
+        ],
+        "minuteSlot": {
+          "sign": -1,
+          "max": 14
+        }
       }
     ],
     "anchors": [
@@ -364,7 +443,7 @@
     ],
     "trailingMarker": "uhr",
     "outputSeparator": ":",
-    "syntaxProvenance": "Implementation admission and template data for the bounded clock scope (founder option B, halb H and viertel nach H only), grounded in the approved plan and the frozen development expectations. The input-hour ranges exclude halb eins and viertel nach zwoelf, which would need a noon/midnight face choice. This is not a reviewed refusal entry and not a general German clock grammar; the pending regional forms (viertel vor H, bare viertel H, dreiviertel H) and the pending noon/midnight entry are neither converted nor lowered.",
+    "syntaxProvenance": "Implementation admission and template data for the bounded clock scope, grounded in the approved plan, the frozen development expectations and the 2026-10-06 engine measurement (docs/audits/2026-10-06-1677-de-clock-minutes-shapes: both engines write spoken minutes as digits, '5 nach 2', '20 vor 5', '10 nach halb 8', and keep 'viertel vor acht' as words). Templates: halb H, viertel nach H, viertel vor H, M nach H, M vor H, M nach halb H, M vor halb H. The input-hour ranges exclude every hour whose written result needs a noon/midnight face choice (halb eins, viertel nach zwoelf, viertel vor eins, M nach zwoelf, M vor eins). This is not a reviewed refusal and not a general German clock grammar; bare viertel H, dreiviertel H (Parakeet garbles it) and the pending noon/midnight entry are neither converted nor lowered.",
     "note": "Lowers ONLY the reviewed clock refusal entries (literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted."
   },
   "numberStyle": {

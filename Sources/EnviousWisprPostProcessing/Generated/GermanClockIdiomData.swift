@@ -4,7 +4,7 @@
 // Source-to-output inventory (clock syntax data plus reviewed literal refusals, not a clock parser):
 //   source refusals/de.json: reviewed entries of category clock_idiom
 //   emitted: 3 reviewed literal-phrase entries, each checked against its semantic hash and version; syntax data is separate and is NOT a reviewed refusal
-//   syntax data: 2 templates, 5 anchors, marker 'uhr', separator ':'
+//   syntax data: 7 templates, 5 anchors, marker 'uhr', separator ':'
 //   excluded: 3 pending entries of this category, every other category
 //
 // Implementation syntax data and reviewed refusal data only (#1677). The syntax data is not a
@@ -13,7 +13,9 @@
 
 enum GermanClockIdiomData {
   /// One idiom template: the spoken tokens before an hour word, the hour offset and the minutes
-  /// written, and the input hours it admits (the others need a clock-face choice).
+  /// written, and the input hours it admits (the others need a clock-face choice). A template
+  /// with a minute slot (`minuteSign` 1 or -1) reads a spoken minute 1...minuteMax BEFORE its
+  /// tokens and writes minute + minuteSign x that minute.
   struct Template: Equatable {
     let id: String
     let tokens: [String]
@@ -21,6 +23,8 @@ enum GermanClockIdiomData {
     let minute: Int
     let inputHourLow: Int
     let inputHourHigh: Int
+    let minuteSign: Int
+    let minuteMax: Int
   }
 
   /// One reviewed refusal entry (a set of complete literal phrases), exactly as approved.
@@ -33,7 +37,7 @@ enum GermanClockIdiomData {
     let reviewRef: String
   }
 
-  static let syntaxProvenance = "Implementation admission and template data for the bounded clock scope (founder option B, halb H and viertel nach H only), grounded in the approved plan and the frozen development expectations. The input-hour ranges exclude halb eins and viertel nach zwoelf, which would need a noon/midnight face choice. This is not a reviewed refusal entry and not a general German clock grammar; the pending regional forms (viertel vor H, bare viertel H, dreiviertel H) and the pending noon/midnight entry are neither converted nor lowered."
+  static let syntaxProvenance = "Implementation admission and template data for the bounded clock scope, grounded in the approved plan, the frozen development expectations and the 2026-10-06 engine measurement (docs/audits/2026-10-06-1677-de-clock-minutes-shapes: both engines write spoken minutes as digits, '5 nach 2', '20 vor 5', '10 nach halb 8', and keep 'viertel vor acht' as words). Templates: halb H, viertel nach H, viertel vor H, M nach H, M vor H, M nach halb H, M vor halb H. The input-hour ranges exclude every hour whose written result needs a noon/midnight face choice (halb eins, viertel nach zwoelf, viertel vor eins, M nach zwoelf, M vor eins). This is not a reviewed refusal and not a general German clock grammar; bare viertel H, dreiviertel H (Parakeet garbles it) and the pending noon/midnight entry are neither converted nor lowered."
   static let trailingMarker = "uhr"
   static let outputSeparator = ":"
 
@@ -46,8 +50,13 @@ enum GermanClockIdiomData {
   ]
 
   static let templates: [Template] = [
-    Template(id: "half", tokens: ["halb"], hourOffset: -1, minute: 30, inputHourLow: 2, inputHourHigh: 12),
-    Template(id: "quarterAfter", tokens: ["viertel", "nach"], hourOffset: 0, minute: 15, inputHourLow: 1, inputHourHigh: 11),
+    Template(id: "half", tokens: ["halb"], hourOffset: -1, minute: 30, inputHourLow: 2, inputHourHigh: 12, minuteSign: 0, minuteMax: 0),
+    Template(id: "quarterAfter", tokens: ["viertel", "nach"], hourOffset: 0, minute: 15, inputHourLow: 1, inputHourHigh: 11, minuteSign: 0, minuteMax: 0),
+    Template(id: "quarterTo", tokens: ["viertel", "vor"], hourOffset: -1, minute: 45, inputHourLow: 2, inputHourHigh: 12, minuteSign: 0, minuteMax: 0),
+    Template(id: "minutesAfter", tokens: ["nach"], hourOffset: 0, minute: 0, inputHourLow: 1, inputHourHigh: 11, minuteSign: 1, minuteMax: 29),
+    Template(id: "minutesBefore", tokens: ["vor"], hourOffset: -1, minute: 60, inputHourLow: 2, inputHourHigh: 12, minuteSign: -1, minuteMax: 29),
+    Template(id: "minutesAfterHalf", tokens: ["nach", "halb"], hourOffset: -1, minute: 30, inputHourLow: 2, inputHourHigh: 12, minuteSign: 1, minuteMax: 14),
+    Template(id: "minutesBeforeHalf", tokens: ["vor", "halb"], hourOffset: -1, minute: 30, inputHourLow: 2, inputHourHigh: 12, minuteSign: -1, minuteMax: 14),
   ]
 
   static let refusals: [Refusal] = [

@@ -766,18 +766,38 @@ class RealClockTests(unittest.TestCase):
         self.assertIn('static let trailingMarker = "uhr"', text)
         self.assertIn('static let outputSeparator = ":"', text)
         self.assertIn('Template(id: "half", tokens: ["halb"], hourOffset: -1, minute: 30, '
-                      'inputHourLow: 2, inputHourHigh: 12)', text)
+                      'inputHourLow: 2, inputHourHigh: 12, minuteSign: 0, minuteMax: 0)', text)
         self.assertIn('Template(id: "quarterAfter", tokens: ["viertel", "nach"], hourOffset: 0, '
-                      'minute: 15, inputHourLow: 1, inputHourHigh: 11)', text)
+                      'minute: 15, inputHourLow: 1, inputHourHigh: 11, minuteSign: 0, minuteMax: 0)',
+                      text)
+        self.assertIn('Template(id: "minutesBefore", tokens: ["vor"], hourOffset: -1, minute: 60, '
+                      'inputHourLow: 2, inputHourHigh: 12, minuteSign: -1, minuteMax: 29)', text)
         for anchor in ("um", "gegen", "bis", "ab", "für"):
             self.assertIn(f'    "{anchor}",', text)
 
-    def test_the_manifest_declares_the_three_required_entries_and_both_templates(self):
+    def test_the_manifest_declares_the_three_required_entries_and_the_templates(self):
         manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
         decl = manifest["clockIdiom"]
         self.assertEqual(decl["requiredEntries"], CLOCK_IDS)
-        self.assertEqual([t["id"] for t in decl["templates"]], ["half", "quarterAfter"])
+        self.assertEqual([t["id"] for t in decl["templates"]],
+                         ["half", "quarterAfter", "quarterTo", "minutesAfter", "minutesBefore",
+                          "minutesAfterHalf", "minutesBeforeHalf"])
         self.assertEqual(decl["anchors"], ["um", "gegen", "bis", "ab", "für"])
+
+    def test_a_malformed_minute_slot_fails(self):
+        manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+        base = HERE.parent
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("itn_generate_slot", GENERATOR)
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        for slot in ({"sign": 2, "max": 5}, {"sign": 1, "max": 0}, {"sign": 1}, {"sign": True, "max": 5},
+                     {"sign": 1, "max": 60}, {"sign": -1, "max": 29, "extra": 1}):
+            with self.subTest(slot=slot):
+                bad = json.loads(json.dumps(manifest))
+                bad["clockIdiom"]["templates"][3]["minuteSlot"] = slot
+                with self.assertRaises(gen.GenerationError):
+                    gen.build_clock(bad, base)
 
 
 class ClockFixtureTests(unittest.TestCase):
