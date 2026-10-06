@@ -21,7 +21,6 @@ enum LanguageNumberKind: Sendable, Equatable {
   case cardinal
   case ordinal
   case clockHour
-  case phonePrefixDigits
 }
 
 enum LanguageNumberRefusal: Error, Sendable, Equatable {
@@ -41,9 +40,6 @@ enum LanguageNumberRefusal: Error, Sendable, Equatable {
   case articleForm
   case ambiguous
   case outOfRange
-  case invalidDigits
-  /// More ASCII digits than a telephone country-prefix group may hold.
-  case exceedsDigitLimit
 }
 
 struct LanguageNumber: Sendable, Equatable {
@@ -53,7 +49,7 @@ struct LanguageNumber: Sendable, Equatable {
   let range: Range<Int>
   /// Each token's UTF-16 range in the original text.
   let tokenRanges: [Range<Int>]
-  /// The candidate exactly as written, byte for byte (a digit group keeps leading zeros).
+  /// The candidate exactly as written, byte for byte.
   let source: String
 }
 
@@ -80,10 +76,6 @@ struct LanguageNumberParser: Sendable {
     guard !range.isEmpty else { return .refused(.emptyCandidate) }
     guard range.count <= grammar.limits.candidateUTF16Max else {
       return .refused(.exceedsUTF16Limit)
-    }
-
-    if kind == .phonePrefixDigits {
-      return parseDigits(source: source, range: range)
     }
 
     let tokens: [Token]
@@ -121,8 +113,6 @@ struct LanguageNumberParser: Sendable {
       case .success(let value): return make(value)
       case .failure(let refusal): return .refused(refusal)
       }
-    case .phonePrefixDigits:
-      return .refused(.notAdmitted)
     }
   }
 
@@ -233,28 +223,5 @@ struct LanguageNumberParser: Sendable {
     guard jointsAllowTokens(tokens, allowed: form.joints) else { return .failure(.notAdmitted) }
     guard grammar.limits.ordinalRange.contains(form.value) else { return .failure(.outOfRange) }
     return .success(form.value)
-  }
-
-  // MARK: Telephone country-prefix digit groups
-
-  /// One to three ASCII digits, numeric value at most the limit. Digit-group SYNTAX only: it does
-  /// not check that a real country code was assigned, and it keeps the digits as written.
-  private func parseDigits(source: String, range: Range<Int>) -> LanguageNumberResult {
-    let scalars = Array(source.unicodeScalars)
-    guard scalars.count <= grammar.limits.phoneDigitCountMax else {
-      return .refused(.exceedsDigitLimit)
-    }
-    var value = 0
-    for scalar in scalars {
-      guard scalar.value >= 0x30, scalar.value <= 0x39 else { return .refused(.invalidDigits) }
-      let (times, overflowA) = value.multipliedReportingOverflow(by: 10)
-      let (sum, overflowB) = times.addingReportingOverflow(Int(scalar.value - 0x30))
-      guard !overflowA, !overflowB else { return .refused(.outOfRange) }
-      value = sum
-    }
-    guard value <= grammar.limits.phoneValueMax else { return .refused(.outOfRange) }
-    return .parsed(
-      LanguageNumber(
-        kind: .phonePrefixDigits, value: value, range: range, tokenRanges: [range], source: source))
   }
 }

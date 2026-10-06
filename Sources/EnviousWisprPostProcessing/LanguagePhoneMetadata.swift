@@ -83,9 +83,15 @@ final class LanguagePhoneMetadata: @unchecked Sendable {
     case missing
   }
 
+  private struct Loaded {
+    let utility: PhoneNumberUtility
+    /// Every assigned calling code, as digits (prefix-free by E.164 design).
+    let callingCodes: Set<String>
+  }
+
   private enum State {
     case unloaded
-    case loaded(PhoneNumberUtility)
+    case loaded(Loaded)
     case failed(String)
   }
 
@@ -102,24 +108,42 @@ final class LanguagePhoneMetadata: @unchecked Sendable {
     guard (2...Self.maxDigits).contains(digits.utf8.count),
       digits.utf8.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 })
     else { return .invalid(.notDigits) }
-    return state.withLockUnchecked { state -> Answer in
-      let utility: PhoneNumberUtility
+    switch withLoaded({ Self.answer(digits: digits, utility: $0.utility) }) {
+    case .success(let answer): return answer
+    case .failure(let failure): return .unavailable(failure.description)
+    }
+  }
+
+  /// Whether `digits` (1 to 3 ASCII digits) is exactly an assigned calling code; nil when the
+  /// metadata is unavailable.
+  func isAssignedCallingCode(_ digits: String) -> Bool? {
+    guard (1...3).contains(digits.utf8.count),
+      digits.utf8.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 })
+    else { return false }
+    switch withLoaded({ $0.callingCodes.contains(digits) }) {
+    case .success(let assigned): return assigned
+    case .failure: return nil
+    }
+  }
+
+  /// Runs `body` under the lock with the loaded metadata, loading it on first use.
+  private func withLoaded<T>(_ body: (Loaded) -> T) -> Result<T, Failure> {
+    state.withLockUnchecked { state -> Result<T, Failure> in
       switch state {
       case .loaded(let loaded):
-        utility = loaded
+        return .success(body(loaded))
       case .failed(let reason):
-        return .unavailable(reason)
+        return .failure(Failure(description: reason))
       case .unloaded:
-        switch Self.makeUtility(loadMetadata) {
-        case .success(let made):
-          state = .loaded(made)
-          utility = made
-        case .failure(let reason):
-          state = .failed(reason.description)
-          return .unavailable(reason.description)
+        switch Self.load(loadMetadata) {
+        case .success(let loaded):
+          state = .loaded(loaded)
+          return .success(body(loaded))
+        case .failure(let failure):
+          state = .failed(failure.description)
+          return .failure(failure)
         }
       }
-      return Self.answer(digits: digits, utility: utility)
     }
   }
 
@@ -129,9 +153,9 @@ final class LanguagePhoneMetadata: @unchecked Sendable {
     let description: String
   }
 
-  private static func makeUtility(
+  private static func load(
     _ load: @Sendable () throws -> Data
-  ) -> Result<PhoneNumberUtility, Failure> {
+  ) -> Result<Loaded, Failure> {
     let data: Data
     do {
       data = try load()
@@ -144,7 +168,8 @@ final class LanguagePhoneMetadata: @unchecked Sendable {
     guard (try? utility.parse("+4930123456", withRegion: parseRegion)) != nil else {
       return .failure(Failure(description: "phone metadata did not decode"))
     }
-    return .success(utility)
+    let codes = Set(utility.allCountries().compactMap { utility.countryCode(for: $0) }.map(String.init))
+    return .success(Loaded(utility: utility, callingCodes: codes))
   }
 
   private static func answer(digits: String, utility: PhoneNumberUtility) -> Answer {

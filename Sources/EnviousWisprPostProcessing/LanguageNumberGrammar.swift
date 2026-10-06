@@ -12,8 +12,8 @@ import Foundation
 //    unit-before-tens composition (`<unit><connector><tens>`), glued or split at its two joints;
 //  - ordinals 1 through 31 in the base, `-n` and `-r` forms, composed from the source's irregular
 //    forms below 9 and its regular suffix rules; the `-s` and `-m` forms are NOT admitted;
-//  - clock hours 1 through 12, a range check on a single cardinal word;
-//  - telephone country-prefix digit groups of one to three ASCII digits.
+//  - clock hours 1 through 12, a range check on a single cardinal word.
+// Telephone numbers are not grammar: `LanguagePhoneMetadata` validates them.
 // Anything else (negative, decimal, fraction, scale words, values above 99, article forms such as
 // bare `ein`) is outside the grammar, and the parser refuses it as a whole.
 //
@@ -29,14 +29,12 @@ struct LanguageNumberGrammar: Sendable, Equatable {
     let cardinalMax: Int
     let ordinalRange: ClosedRange<Int>
     let clockHourRange: ClosedRange<Int>
-    let phoneDigitCountMax: Int
-    let phoneValueMax: Int
     let candidateUTF16Max: Int
     let candidateTokenMax: Int
 
     static let supported = Limits(
-      cardinalMax: 99, ordinalRange: 1...31, clockHourRange: 1...12, phoneDigitCountMax: 3,
-      phoneValueMax: 999, candidateUTF16Max: 128, candidateTokenMax: 8)
+      cardinalMax: 99, ordinalRange: 1...31, clockHourRange: 1...12, candidateUTF16Max: 128,
+      candidateTokenMax: 8)
   }
 
   /// One admitted ordinal spelling: its value and, for a compound, the scalar offsets of the two

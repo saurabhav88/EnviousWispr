@@ -92,6 +92,26 @@ struct LanguagePhoneMetadataTests {
     #expect(metadata.international(digits: input) == .invalid(.notDigits))
   }
 
+  @Test("a parseable international number is refused when parsing removes a digit")
+  func nationalPrefixRemovalIsRefused() {
+    // The library strips the British trunk 0 and parses the rest; the adapter must refuse the
+    // dropped digit. Paired with the same number written without the trunk 0.
+    #expect(metadata.international(digits: "4402070313000") == .invalid(.digitsChanged))
+    #expect(formatted("442070313000") == "+44 20 7031 3000")
+  }
+
+  @Test("calling codes are read from the metadata, exactly, never as a prefix")
+  func callingCodes() {
+    for code in ["1", "7", "41", "44", "49", "420", "886"] {
+      #expect(metadata.isAssignedCallingCode(code) == true, "\(code)")
+    }
+    for code in ["0", "2", "999", "4917", "", "4a", "٤٩"] {
+      #expect(metadata.isAssignedCallingCode(code) == false, "\(code)")
+    }
+    let broken = LanguagePhoneMetadata(loadMetadata: { throw LanguagePhoneMetadata.LoadError.missing })
+    #expect(broken.isAssignedCallingCode("49") == nil)
+  }
+
   // MARK: Failure safety
 
   @Test("a missing metadata resource answers unavailable on every call and never converts")

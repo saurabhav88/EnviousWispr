@@ -27,6 +27,9 @@ enum LanguageEditRefusal: Error, Sendable, Equatable {
   case overlappingEdits
   /// The edit crosses a span that is already written.
   case intersectsProtectedSpan(LanguageProtectedSpan)
+  /// A digit-regrouping edit whose replacement does not carry exactly the original ASCII digits in
+  /// order, or whose range holds a non-ASCII decimal digit.
+  case changesDigits
 }
 
 /// An immutable original text with UTF-16 coordinates.
@@ -106,6 +109,43 @@ struct LanguageTextSnapshot: Sendable, Equatable {
       LanguageTextEdit(range: range, replacement: replacement, snapshotIdentity: identity))
   }
 
+  /// Mints an edit that may rewrite already-written NUMBER chunks it fully covers, because it
+  /// keeps their digits: the replacement must carry exactly the ASCII digits of the original range,
+  /// in order, and the range must hold no other decimal digit. The editor checks both again when
+  /// it applies the edit, and still refuses any address, money or measurement span and any number
+  /// chunk the edit covers only in part. For a pass that has validated a complete number and only
+  /// regroups it (the phone pass); every other edit uses `edit(replacing:with:)`.
+  func edit(regroupingDigitsIn range: Range<Int>, with replacement: String)
+    -> Result<LanguageTextEdit, LanguageEditRefusal>
+  {
+    if let refusal = validate(range) { return .failure(refusal) }
+    guard keepsDigits(range, replacement) else { return .failure(.changesDigits) }
+    return .success(
+      LanguageTextEdit(
+        range: range, replacement: replacement, snapshotIdentity: identity, regroupsDigits: true))
+  }
+
+  /// True when `replacement` holds exactly the ASCII digits of `range`, in order, and neither
+  /// side holds a non-ASCII decimal digit.
+  fileprivate func keepsDigits(_ range: Range<Int>, _ replacement: String) -> Bool {
+    guard let original = substring(range) else { return false }
+    func asciiDigits(_ text: String) -> [UInt8]? {
+      var digits: [UInt8] = []
+      for scalar in text.unicodeScalars {
+        if scalar.value >= 0x30 && scalar.value <= 0x39 {
+          digits.append(UInt8(scalar.value))
+        } else if scalar.properties.numericType == .decimal {
+          return nil
+        }
+      }
+      return digits
+    }
+    guard let before = asciiDigits(original), let after = asciiDigits(replacement) else {
+      return false
+    }
+    return before == after
+  }
+
   fileprivate func validate(_ range: Range<Int>) -> LanguageEditRefusal? {
     guard contains(range) else { return .outOfBounds }
     guard !range.isEmpty else { return .emptyRange }
@@ -122,6 +162,15 @@ struct LanguageTextEdit: Sendable, Equatable {
   let replacement: String
   /// The identity of the snapshot this edit was proposed against.
   let snapshotIdentity: UInt64
+  /// Minted by `edit(regroupingDigitsIn:with:)`: may cover whole number chunks, digits kept.
+  let regroupsDigits: Bool
+
+  init(range: Range<Int>, replacement: String, snapshotIdentity: UInt64, regroupsDigits: Bool = false) {
+    self.range = range
+    self.replacement = replacement
+    self.snapshotIdentity = snapshotIdentity
+    self.regroupsDigits = regroupsDigits
+  }
 }
 
 enum LanguageEditOutcome: Sendable, Equatable {
@@ -153,7 +202,24 @@ enum LanguageTextEditor {
       return .refused(.overlappingEdits)
     }
     for edit in ordered {
-      if let span = LanguageProtectedSpans.firstIntersecting(edit.range, in: spans) {
+      if edit.regroupsDigits {
+        // Checked again here: the flag is a property of a value, so the editor cannot trust that
+        // the snapshot minted it.
+        guard snapshot.keepsDigits(edit.range, edit.replacement) else {
+          return .refused(.changesDigits)
+        }
+        for span in spans
+        where span.range.lowerBound < edit.range.upperBound
+          && edit.range.lowerBound < span.range.upperBound
+        {
+          let covered =
+            edit.range.lowerBound <= span.range.lowerBound
+            && span.range.upperBound <= edit.range.upperBound
+          guard span.kind == .number, covered else {
+            return .refused(.intersectsProtectedSpan(span))
+          }
+        }
+      } else if let span = LanguageProtectedSpans.firstIntersecting(edit.range, in: spans) {
         return .refused(.intersectsProtectedSpan(span))
       }
     }

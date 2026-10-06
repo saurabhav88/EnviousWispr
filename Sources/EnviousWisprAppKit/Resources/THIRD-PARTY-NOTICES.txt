@@ -2769,6 +2769,13 @@ libphonenumber phone-number metadata (bundled in PhoneNumberKit, copied into the
   Source:  https://github.com/google/libphonenumber
 --------------------------------------------------------------------------------
 
+Copyright (C) 2009 The Libphonenumber Authors
+
+Phone-number metadata derived from Google libphonenumber v9.0.40,
+commit 9d77a67180fc7d342bf04da469968501317bbc91,
+through PhoneNumberKit 5.0.11. The bundled JSON is unchanged.
+The pinned libphonenumber distribution carries no NOTICE file.
+
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
