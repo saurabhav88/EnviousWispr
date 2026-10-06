@@ -350,6 +350,10 @@ struct LanguagePhonePrefixPassTests {
     #expect(try converted("Ruf mich unter 030 86 0800 an.", home: nil) == "Ruf mich unter 030 86 0800 an.")
     #expect(try converted("Ruf mich unter 0511 1234567 an.", home: "AT") == "Ruf mich unter 0511 1234567 an.")
     #expect(try converted("Ruf mich unter 030 860800 an.", home: "DE") == "Ruf mich unter 030 860800 an.")
+    // Another region's own convention is used verbatim, brackets and hyphens included.
+    #expect(try converted("Ruf 02 93 74 40 00 an.", home: "AU") == "Ruf (02) 9374 4000 an.")
+    // A region without a trunk zero (the United States) has no domestic candidates at all.
+    #expect(try converted("Ruf 212 555 12 34 an.", home: "US") == "Ruf 212 555 12 34 an.")
     // Gates apply to domestic numbers too.
     #expect(try converted("Die Rechnung 030 86 0800 ist offen.", home: "DE") == "Die Rechnung 030 86 0800 ist offen.")
     // Dates are never telephone numbers, even when the digits form a valid domestic number.

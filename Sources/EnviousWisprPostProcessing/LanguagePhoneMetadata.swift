@@ -62,7 +62,8 @@ final class LanguagePhoneMetadata: @unchecked Sendable {
   }
 
   enum NationalAnswer: Sendable, Equatable {
-    /// The region's national grouping, joined by spaces, carrying exactly the input digits.
+    /// The region's national format as the metadata writes it (spaces, hyphens, brackets),
+    /// carrying exactly the input digits.
     case valid(String)
     case invalid(Invalid)
     case unavailable(String)
@@ -234,9 +235,13 @@ extension LanguagePhoneMetadata {
     guard number.numberExtension == nil, utility.getRegionCode(of: number) == region else {
       return .invalid(.notANumber)
     }
-    let national = utility.format(number, toType: .national)
-    let formatted = String(national.unicodeScalars.map { $0 == "-" ? " " : Character($0) })
-    guard formatted.unicodeScalars.allSatisfy({ ($0 >= "0" && $0 <= "9") || $0 == " " }),
+    // The region's own national convention, verbatim: brackets and hyphens are part of it
+    // ("(02) 9374 4000" in Australia, "(212) 555-1234" in the United States).
+    let formatted = utility.format(number, toType: .national)
+    guard
+      formatted.unicodeScalars.allSatisfy({
+        ($0 >= "0" && $0 <= "9") || $0 == " " || $0 == "-" || $0 == "(" || $0 == ")"
+      }),
       formatted.filter(\.isASCIIDigitCharacter) == digits
     else { return .invalid(.digitsChanged) }
     return .valid(formatted)
