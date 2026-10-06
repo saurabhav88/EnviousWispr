@@ -1,0 +1,914 @@
+{
+ "schema": "settings-search-vocabulary",
+ "version": 1,
+ "languages": [
+  "ar",
+  "bg",
+  "cs",
+  "da",
+  "de",
+  "el",
+  "en",
+  "es",
+  "et",
+  "fi",
+  "fr",
+  "hi",
+  "hr",
+  "hu",
+  "it",
+  "ja",
+  "ko",
+  "lt",
+  "lv",
+  "mt",
+  "nl",
+  "pl",
+  "pt",
+  "ro",
+  "ru",
+  "sk",
+  "sl",
+  "sv",
+  "tr",
+  "uk",
+  "vi",
+  "zh"
+ ],
+ "languageData": [
+  {
+   "language": "ar",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "bg",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "cs",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "da",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "de",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "el",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "en",
+   "stop": [
+    "the",
+    "a"
+   ],
+   "markers": [
+    "not",
+    "off"
+   ]
+  },
+  {
+   "language": "es",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "et",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "fi",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "fr",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "hi",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "hr",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "hu",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "it",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "ja",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "ko",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "lt",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "lv",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "mt",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "nl",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "pl",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "pt",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "ro",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "ru",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "sk",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "sl",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "sv",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "tr",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "uk",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "vi",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  },
+  {
+   "language": "zh",
+   "stop": [
+    "filler"
+   ],
+   "markers": [
+    "marker"
+   ]
+  }
+ ],
+ "entries": [
+  {
+   "id": "alpha.one",
+   "blocks": [
+    {
+     "language": "ar",
+     "title": "title 1 ar",
+     "words": [
+      "word1ar"
+     ],
+     "phrases": [
+      "phrase 1 ar"
+     ]
+    },
+    {
+     "language": "bg",
+     "title": "title 1 bg",
+     "words": [
+      "word1bg"
+     ],
+     "phrases": [
+      "phrase 1 bg"
+     ]
+    },
+    {
+     "language": "cs",
+     "title": "title 1 cs",
+     "words": [
+      "word1cs"
+     ],
+     "phrases": [
+      "phrase 1 cs"
+     ]
+    },
+    {
+     "language": "da",
+     "title": "title 1 da",
+     "words": [
+      "word1da"
+     ],
+     "phrases": [
+      "phrase 1 da"
+     ]
+    },
+    {
+     "language": "de",
+     "words": [
+      "word1de"
+     ],
+     "phrases": [
+      "phrase 1 de"
+     ]
+    },
+    {
+     "language": "el",
+     "title": "title 1 el",
+     "words": [
+      "word1el"
+     ],
+     "phrases": [
+      "phrase 1 el"
+     ]
+    },
+    {
+     "language": "en",
+     "words": [
+      "word1en"
+     ],
+     "phrases": [
+      "phrase 1 en"
+     ]
+    },
+    {
+     "language": "es",
+     "title": "title 1 es",
+     "words": [
+      "word1es"
+     ],
+     "phrases": [
+      "phrase 1 es"
+     ]
+    },
+    {
+     "language": "et",
+     "title": "title 1 et",
+     "words": [
+      "word1et"
+     ],
+     "phrases": [
+      "phrase 1 et"
+     ]
+    },
+    {
+     "language": "fi",
+     "title": "title 1 fi",
+     "words": [
+      "word1fi"
+     ],
+     "phrases": [
+      "phrase 1 fi"
+     ]
+    },
+    {
+     "language": "fr",
+     "title": "title 1 fr",
+     "words": [
+      "word1fr"
+     ],
+     "phrases": [
+      "phrase 1 fr"
+     ]
+    },
+    {
+     "language": "hi",
+     "title": "title 1 hi",
+     "words": [
+      "word1hi"
+     ],
+     "phrases": [
+      "phrase 1 hi"
+     ]
+    },
+    {
+     "language": "hr",
+     "title": "title 1 hr",
+     "words": [
+      "word1hr"
+     ],
+     "phrases": [
+      "phrase 1 hr"
+     ]
+    },
+    {
+     "language": "hu",
+     "title": "title 1 hu",
+     "words": [
+      "word1hu"
+     ],
+     "phrases": [
+      "phrase 1 hu"
+     ]
+    },
+    {
+     "language": "it",
+     "title": "title 1 it",
+     "words": [
+      "word1it"
+     ],
+     "phrases": [
+      "phrase 1 it"
+     ]
+    },
+    {
+     "language": "ja",
+     "title": "title 1 ja",
+     "words": [
+      "word1ja"
+     ],
+     "phrases": [
+      "phrase 1 ja"
+     ]
+    },
+    {
+     "language": "ko",
+     "title": "title 1 ko",
+     "words": [
+      "word1ko"
+     ],
+     "phrases": [
+      "phrase 1 ko"
+     ]
+    },
+    {
+     "language": "lt",
+     "title": "title 1 lt",
+     "words": [
+      "word1lt"
+     ],
+     "phrases": [
+      "phrase 1 lt"
+     ]
+    },
+    {
+     "language": "lv",
+     "title": "title 1 lv",
+     "words": [
+      "word1lv"
+     ],
+     "phrases": [
+      "phrase 1 lv"
+     ]
+    },
+    {
+     "language": "mt",
+     "title": "title 1 mt",
+     "words": [
+      "word1mt"
+     ],
+     "phrases": [
+      "phrase 1 mt"
+     ]
+    },
+    {
+     "language": "nl",
+     "title": "title 1 nl",
+     "words": [
+      "word1nl"
+     ],
+     "phrases": [
+      "phrase 1 nl"
+     ]
+    },
+    {
+     "language": "pl",
+     "title": "title 1 pl",
+     "words": [
+      "word1pl"
+     ],
+     "phrases": [
+      "phrase 1 pl"
+     ]
+    },
+    {
+     "language": "pt",
+     "title": "title 1 pt",
+     "words": [
+      "word1pt"
+     ],
+     "phrases": [
+      "phrase 1 pt"
+     ]
+    },
+    {
+     "language": "ro",
+     "title": "title 1 ro",
+     "words": [
+      "word1ro"
+     ],
+     "phrases": [
+      "phrase 1 ro"
+     ]
+    },
+    {
+     "language": "ru",
+     "title": "title 1 ru",
+     "words": [
+      "word1ru"
+     ],
+     "phrases": [
+      "phrase 1 ru"
+     ]
+    },
+    {
+     "language": "sk",
+     "title": "title 1 sk",
+     "words": [
+      "word1sk"
+     ],
+     "phrases": [
+      "phrase 1 sk"
+     ]
+    },
+    {
+     "language": "sl",
+     "title": "title 1 sl",
+     "words": [
+      "word1sl"
+     ],
+     "phrases": [
+      "phrase 1 sl"
+     ]
+    },
+    {
+     "language": "sv",
+     "title": "title 1 sv",
+     "words": [
+      "word1sv"
+     ],
+     "phrases": [
+      "phrase 1 sv"
+     ]
+    },
+    {
+     "language": "tr",
+     "title": "title 1 tr",
+     "words": [
+      "word1tr"
+     ],
+     "phrases": [
+      "phrase 1 tr"
+     ]
+    },
+    {
+     "language": "uk",
+     "title": "title 1 uk",
+     "words": [
+      "word1uk"
+     ],
+     "phrases": [
+      "phrase 1 uk"
+     ]
+    },
+    {
+     "language": "vi",
+     "title": "title 1 vi",
+     "words": [
+      "word1vi"
+     ],
+     "phrases": [
+      "phrase 1 vi"
+     ]
+    },
+    {
+     "language": "zh",
+     "title": "title 1 zh",
+     "words": [
+      "word1zh"
+     ],
+     "phrases": [
+      "phrase 1 zh"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "alpha.two",
+   "blocks": [
+    {
+     "language": "ar",
+     "title": "title 2 ar",
+     "words": [],
+     "phrases": [
+      "phrase 2 ar"
+     ]
+    },
+    {
+     "language": "bg",
+     "title": "title 2 bg",
+     "words": [],
+     "phrases": [
+      "phrase 2 bg"
+     ]
+    },
+    {
+     "language": "cs",
+     "title": "title 2 cs",
+     "words": [],
+     "phrases": [
+      "phrase 2 cs"
+     ]
+    },
+    {
+     "language": "da",
+     "title": "title 2 da",
+     "words": [],
+     "phrases": [
+      "phrase 2 da"
+     ]
+    },
+    {
+     "language": "de",
+     "words": [],
+     "phrases": [
+      "phrase 2 de"
+     ]
+    },
+    {
+     "language": "el",
+     "title": "title 2 el",
+     "words": [],
+     "phrases": [
+      "phrase 2 el"
+     ]
+    },
+    {
+     "language": "en",
+     "words": [],
+     "phrases": [
+      "phrase 2 en"
+     ]
+    },
+    {
+     "language": "es",
+     "title": "title 2 es",
+     "words": [],
+     "phrases": [
+      "phrase 2 es"
+     ]
+    },
+    {
+     "language": "et",
+     "title": "title 2 et",
+     "words": [],
+     "phrases": [
+      "phrase 2 et"
+     ]
+    },
+    {
+     "language": "fi",
+     "title": "title 2 fi",
+     "words": [],
+     "phrases": [
+      "phrase 2 fi"
+     ]
+    },
+    {
+     "language": "fr",
+     "title": "title 2 fr",
+     "words": [],
+     "phrases": [
+      "phrase 2 fr"
+     ]
+    },
+    {
+     "language": "hi",
+     "title": "title 2 hi",
+     "words": [],
+     "phrases": [
+      "phrase 2 hi"
+     ]
+    },
+    {
+     "language": "hr",
+     "title": "title 2 hr",
+     "words": [],
+     "phrases": [
+      "phrase 2 hr"
+     ]
+    },
+    {
+     "language": "hu",
+     "title": "title 2 hu",
+     "words": [],
+     "phrases": [
+      "phrase 2 hu"
+     ]
+    },
+    {
+     "language": "it",
+     "title": "title 2 it",
+     "words": [],
+     "phrases": [
+      "phrase 2 it"
+     ]
+    },
+    {
+     "language": "ja",
+     "title": "title 2 ja",
+     "words": [],
+     "phrases": [
+      "phrase 2 ja"
+     ]
+    },
+    {
+     "language": "ko",
+     "title": "title 2 ko",
+     "words": [],
+     "phrases": [
+      "phrase 2 ko"
+     ]
+    },
+    {
+     "language": "lt",
+     "title": "title 2 lt",
+     "words": [],
+     "phrases": [
+      "phrase 2 lt"
+     ]
+    },
+    {
+     "language": "lv",
+     "title": "title 2 lv",
+     "words": [],
+     "phrases": [
+      "phrase 2 lv"
+     ]
+    },
+    {
+     "language": "mt",
+     "title": "title 2 mt",
+     "words": [],
+     "phrases": [
+      "phrase 2 mt"
+     ]
+    },
+    {
+     "language": "nl",
+     "title": "title 2 nl",
+     "words": [],
+     "phrases": [
+      "phrase 2 nl"
+     ]
+    },
+    {
+     "language": "pl",
+     "title": "title 2 pl",
+     "words": [],
+     "phrases": [
+      "phrase 2 pl"
+     ]
+    },
+    {
+     "language": "pt",
+     "title": "title 2 pt",
+     "words": [],
+     "phrases": [
+      "phrase 2 pt"
+     ]
+    },
+    {
+     "language": "ro",
+     "title": "title 2 ro",
+     "words": [],
+     "phrases": [
+      "phrase 2 ro"
+     ]
+    },
+    {
+     "language": "ru",
+     "title": "title 2 ru",
+     "words": [],
+     "phrases": [
+      "phrase 2 ru"
+     ]
+    },
+    {
+     "language": "sk",
+     "title": "title 2 sk",
+     "words": [],
+     "phrases": [
+      "phrase 2 sk"
+     ]
+    },
+    {
+     "language": "sl",
+     "title": "title 2 sl",
+     "words": [],
+     "phrases": [
+      "phrase 2 sl"
+     ]
+    },
+    {
+     "language": "sv",
+     "title": "title 2 sv",
+     "words": [],
+     "phrases": [
+      "phrase 2 sv"
+     ]
+    },
+    {
+     "language": "tr",
+     "title": "title 2 tr",
+     "words": [],
+     "phrases": [
+      "phrase 2 tr"
+     ]
+    },
+    {
+     "language": "uk",
+     "title": "title 2 uk",
+     "words": [],
+     "phrases": [
+      "phrase 2 uk"
+     ]
+    },
+    {
+     "language": "vi",
+     "title": "title 2 vi",
+     "words": [],
+     "phrases": [
+      "phrase 2 vi"
+     ]
+    },
+    {
+     "language": "zh",
+     "title": "title 2 zh",
+     "words": [],
+     "phrases": [
+      "phrase 2 zh"
+     ]
+    }
+   ]
+  }
+ ]
+}

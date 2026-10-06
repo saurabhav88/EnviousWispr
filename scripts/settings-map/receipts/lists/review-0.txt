@@ -1,0 +1,61 @@
+{
+  "ar": {
+    "verdict": "changed",
+    "markers": ["لا", "ليس", "ليست", "لم", "لن", "بدون", "دون", "بلا", "غير", "ما", "أبدا", "ولا", "ولم", "تشغيل", "إيقاف", "شغل", "شغّل", "أوقف", "وقف", "تفعيل", "تعطيل", "فعّل", "عطل", "عطّل", "ابدأ", "توقف", "أظهر", "إظهار", "إخفاء", "أخف", "كتم", "أكثر", "أقل", "أعلى", "أخفض", "أسرع", "أبطأ", "أكبر", "أصغر", "مجددا"],
+    "stop": ["في", "من", "على", "ان", "الى", "و", "عن", "هذا", "مع", "التي", "هذه", "او", "هو", "كان", "الذي", "ذلك", "بين", "كانت", "قد", "هي", "كما", "اي", "حيث", "انه", "عليه", "وهو", "تم", "اذا", "فى", "له", "مثل", "هناك", "لك", "لي", "ثم", "يمكن", "به", "انت", "لكن", "وفي", "ومن", "فيه", "فيها", "الذين", "يكون", "عندما", "وقد", "بها", "لو", "بشكل", "تلك", "هنا", "هل", "عند", "انا", "لها", "بان", "كيف", "حول", "وهي", "ب", "فان", "انها", "بما", "بسبب", "منها", "عليها", "مما", "بل", "عليك", "هم", "لنا", "بك", "حين", "وكان", "اما", "نحن", "ام", "أن", "إلى", "أو", "إنه", "إذا", "أنت", "أنا", "بأن", "فإن", "إنها", "أما", "أم", "فضلا", "رجاء"],
+    "notes": "Removed ambiguous شيء and فعل, moved ولا and ولم from stop into markers, and preserved timing, quantity, exception and setting words."
+  },
+  "bg": {
+    "verdict": "changed",
+    "markers": ["не", "няма", "нямам", "нямаме", "без", "никога", "нищо", "никой", "никакъв", "никаква", "никакво", "включи", "включване", "изключи", "изключване", "активирай", "деактивирай", "започни", "спри", "спиране", "покажи", "скрий", "заглуши", "пауза", "повече", "по-малко", "увеличи", "намали", "нагоре", "надолу", "отново", "пак", "продължи", "по-силно", "по-тихо", "по-бързо", "по-бавно", "по-голямо", "още", "само"],
+    "stop": ["на", "и", "в", "да", "е", "от", "за", "се", "с", "си", "че", "ще", "са", "това", "като", "а", "ми", "но", "го", "има", "му", "ако", "към", "може", "съм", "ти", "ли", "аз", "които", "при", "ви", "или", "как", "какво", "той", "ни", "трябва", "във", "което", "те", "така", "със", "когато", "този", "я", "тази", "ги", "която", "нещо", "ме", "беше", "защото", "им", "тези", "тя", "бъде", "защо", "както", "между", "тук", "мен", "него", "там", "сме", "кои", "сте", "тях", "чрез", "би", "ето", "нас", "дали", "ние", "според", "то", "бе", "заради", "имат", "къде", "където", "нея", "бил", "вас", "иска", "могат", "мога", "у", "моля"],
+    "notes": "Fixed нямамe and помалко, moved още and само from stop into markers, and removed quantities, timing, directions and content words from stop."
+  },
+  "cs": {
+    "verdict": "changed",
+    "markers": ["ne", "není", "nejsou", "bez", "nikdy", "nic", "žádný", "žádná", "žádné", "žádnou", "ani", "zapnout", "zapni", "vypnout", "vypni", "povolit", "povol", "zakázat", "zakaž", "spustit", "spusť", "zastavit", "zastav", "zobrazit", "ukaž", "skrýt", "ztlumit", "pozastavit", "více", "víc", "méně", "míň", "hlasitěji", "tišeji", "rychleji", "pomaleji", "větší", "menší", "nahoru", "dolů"],
+    "stop": ["se", "v", "na", "je", "ze", "si", "do", "jsem", "ale", "o", "i", "tak", "pro", "ve", "za", "co", "k", "jako", "jak", "od", "jsou", "mi", "kdyz", "me", "nebo", "byl", "bude", "ja", "u", "ma", "jsme", "ktere", "ty", "jeho", "ktery", "bylo", "aby", "byla", "byt", "pri", "tam", "toho", "ten", "kde", "mam", "ktera", "ho", "protoze", "tu", "podle", "pokud", "tom", "neco", "tim", "mezi", "nas", "vam", "vas", "jste", "kdo", "proc", "sve", "tomu", "asi", "jejich", "muze", "kdy", "ji", "ti", "ci", "mit", "takze", "nam", "vsak", "jestli", "maji", "ta", "tady", "ke", "jeji", "proto", "musi", "budou", "jsi", "nekdo", "tohle", "jde", "kteri", "kvuli", "zde", "jim", "tedy", "chci", "byly", "mozna", "mame", "tento", "budu", "proste", "my", "ni", "teto", "byli", "kterou", "moje", "chce", "coz", "když", "mě", "já", "má", "které", "který", "být", "při", "mám", "která", "protože", "něco", "tím", "nás", "vám", "vás", "proč", "své", "může", "či", "mít", "takže", "nám", "však", "mají", "její", "musí", "někdo", "kteří", "kvůli", "možná", "máme", "prostě", "ní", "této", "což", "prosím"],
+    "notes": "Moved ani from stop into markers, prioritized common imperatives within 40 entries, and removed restriction, quantity, timing and direction words from stop."
+  },
+  "da": {
+    "verdict": "changed",
+    "markers": ["ikke", "nej", "uden", "aldrig", "intet", "ingen", "ingenting", "fra", "til", "tænd", "tænde", "sluk", "slukke", "aktiver", "aktivere", "deaktiver", "deaktivere", "start", "starte", "stop", "stoppe", "vis", "vise", "skjul", "skjule", "dæmp", "pause", "fortsæt", "mere", "mindre", "højere", "lavere", "hurtigere", "langsommere", "større", "op", "ned", "igen", "øg", "sænk"],
+    "stop": ["i", "og", "er", "af", "det", "en", "pa", "jeg", "har", "med", "de", "kan", "som", "sa", "et", "var", "vi", "om", "han", "men", "skal", "ved", "vil", "ogsa", "være", "hvor", "man", "hvis", "sig", "mig", "eller", "her", "hvad", "noget", "da", "dig", "kunne", "min", "nar", "blev", "bliver", "havde", "hun", "have", "selv", "din", "vores", "deres", "jo", "ma", "denne", "dette", "hans", "været", "blive", "os", "ville", "hvordan", "nogle", "skulle", "ham", "sin", "sadan", "fordi", "nogen", "dog", "dit", "hvorfor", "mit", "hos", "dine", "disse", "hendes", "mine", "hvem", "på", "så", "også", "når", "må", "sådan", "venligst"],
+    "notes": "Added øg and sænk and removed quantities, size, timing, spatial direction and content words from stop."
+  },
+  "de": {
+    "verdict": "changed",
+    "markers": ["nicht", "nein", "kein", "keine", "keinen", "keinem", "keiner", "keines", "ohne", "nie", "niemals", "nichts", "aus", "an", "ein", "einschalten", "ausschalten", "aktivieren", "deaktivieren", "starten", "stoppen", "beenden", "anzeigen", "zeigen", "verbergen", "ausblenden", "stummschalten", "pausieren", "fortsetzen", "mehr", "weniger", "lauter", "leiser", "schneller", "langsamer", "größer", "kleiner", "hoch", "runter", "wieder"],
+    "stop": ["ich", "es", "der", "die", "das", "eine", "wenn", "wie", "mein", "meine", "bitte", "machen", "wo", "was", "ist", "kann", "den", "dem", "zu", "fur", "für", "im", "in", "auf", "und", "oder", "mit", "du", "mir", "mich", "möchte", "will", "können", "soll"],
+    "notes": "Kept all 40 markers and added common fillers and correctly spelled für."
+  },
+  "el": {
+    "verdict": "changed",
+    "markers": ["δεν", "δε", "μη", "μην", "όχι", "χωρίς", "ποτέ", "τίποτα", "δυνατά", "κανένα", "κανένας", "καμία", "ενεργοποίηση", "απενεργοποίηση", "ενεργοποίησε", "απενεργοποίησε", "άνοιξε", "κλείσε", "ξεκίνα", "σταμάτα", "δείξε", "κρύψε", "σίγαση", "παύση", "συνέχισε", "περισσότερο", "περισσότερα", "λιγότερο", "λιγότερα", "δυνατότερα", "χαμηλότερα", "γρηγορότερα", "αργά", "μεγαλύτερο", "μικρότερο", "πάνω", "κάτω", "ξανά", "πάλι", "πιο"],
+    "stop": ["και", "το", "να", "του", "η", "με", "την", "της", "για", "ο", "που", "τα", "από", "σε", "θα", "τον", "είναι", "στο", "στην", "οι", "των", "μου", "τη", "τους", "μας", "τις", "ότι", "μια", "ένα", "στη", "ήταν", "τι", "σας", "σου", "στα", "αν", "στον", "έχει", "αλλά", "αυτό", "στις", "κι", "όταν", "πως", "όπως", "αυτή", "πρέπει", "μπορεί", "είχε", "έχουν", "έχω", "σαν", "εγώ", "κάτι", "ένας", "έτσι", "αυτά", "όμως", "ενώ", "είμαι", "είσαι", "οποία", "έναν", "έχουμε", "απ", "καθώς", "έχεις", "ας", "όπου", "εκεί", "οποίο", "μεταξύ", "αυτός", "είμαστε", "ενός", "εσύ", "έχετε", "αυτές", "εμείς", "αφού", "λόγω", "παρακαλώ"],
+    "notes": "Replaced unnatural σιγότερα and the later sense of αργότερα, moved πιο into markers, and removed negation, quantities, timing and content words from stop."
+  },
+  "en": {
+    "verdict": "changed",
+    "markers": ["not", "no", "without", "never", "don't", "doesn't", "can't", "none", "on", "off", "enable", "disable", "start", "stop", "show", "hide", "mute", "unmute", "pause", "more", "less", "louder", "quieter", "faster", "slower", "bigger", "smaller", "up", "down", "again", "cannot", "won't", "isn't", "aren't", "increase", "decrease", "resume", "didn't", "wasn't", "weren't"],
+    "stop": ["make", "it", "the", "a", "an", "to", "i", "my", "me", "when", "how", "do", "can", "want", "please", "use", "set", "is", "where", "what", "of", "for", "in", "and", "or", "with", "you", "your", "this", "that", "would", "could"],
+    "notes": "Prioritized common negative contractions within 40 markers and added fillers while keeping turn, nothing and neither out of stop."
+  },
+  "es": {
+    "verdict": "changed",
+    "markers": ["no", "sin", "nunca", "nada", "ningún", "ninguno", "ninguna", "ni", "nadie", "activar", "activa", "desactivar", "desactiva", "encender", "enciende", "apagar", "apaga", "iniciar", "parar", "para", "detener", "detén", "mostrar", "muestra", "ocultar", "oculta", "silenciar", "pausar", "reanudar", "más", "menos", "subir", "bajar", "aumentar", "reducir", "arriba", "abajo", "rápido", "lento", "mayor"],
+    "stop": ["de", "la", "que", "el", "en", "y", "los", "un", "se", "por", "es", "las", "con", "una", "lo", "su", "al", "como", "me", "si", "pero", "te", "o", "mi", "le", "este", "esta", "ha", "cuando", "yo", "ser", "son", "hay", "fue", "tu", "sobre", "eso", "tiene", "nos", "porque", "asi", "entre", "puede", "hacer", "era", "esto", "hace", "donde", "algo", "ese", "han", "tengo", "estan", "esa", "estoy", "les", "sea", "habia", "tener", "ellos", "creo", "aunque", "soy", "estos", "he", "sido", "aqui", "ella", "estas", "estaba", "estar", "tienen", "quien", "mis", "nuestro", "parece", "nuestra", "poder", "pueden", "pues", "cual", "debe", "tal", "fueron", "así", "están", "había", "aquí", "quién", "cuál", "a", "quiero", "favor"],
+    "notes": "Moved nadie and mayor from stop into markers, added lento, and removed restriction, quantities, timing and content words from stop."
+  },
+  "phrases": {
+    "dictionary.tab.vocabularyPacks": {
+      "en": ["enable lists of specialist terms", "recognise medical terms", "enable lists of brand names"],
+      "de": ["Listen mit Fachbegriffen einschalten", "medizinische Begriffe erkennen", "Listen mit Markennamen einschalten"]
+    },
+    "dictionary.tab.learnFrom": {
+      "en": ["learn new words from my corrections", "learn words I correct after dictating", "learn names from my contacts"],
+      "de": ["lerne neue Wörter aus meinen Korrekturen", "merk dir Wörter, die ich nach dem Diktieren korrigiere", "lerne Namen aus meinen Kontakten"]
+    },
+    "verdict": "changed"
+  }
+}

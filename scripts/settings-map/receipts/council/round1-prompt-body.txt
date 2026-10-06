@@ -1,0 +1,742 @@
+German stop list (filler words search may ignore): ["ich", "es", "der", "die", "das", "eine", "wenn", "wie", "mein", "meine", "bitte", "machen", "wo", "was", "ist", "kann", "den", "dem", "zu", "fur", "für", "im", "in", "auf", "und", "oder", "mit", "du", "mir", "mich", "möchte", "will", "können", "soll"]
+German protected markers (never ignored; they change meaning): ["nicht", "nein", "kein", "keine", "keinen", "keinem", "keiner", "keines", "ohne", "nie", "niemals", "nichts", "aus", "an", "ein", "einschalten", "ausschalten", "aktivieren", "deaktivieren", "starten", "stoppen", "beenden", "anzeigen", "zeigen", "verbergen", "ausblenden", "stummschalten", "pausieren", "fortsetzen", "mehr", "weniger", "lauter", "leiser", "schneller", "langsamer", "größer", "kleiner", "hoch", "runter", "wieder"]
+
+Places (246), format: id | kind | page > tab > section | EN title | DE title | description, then the German words and phrases:
+dictation.tab.engine | feature | Dictation Settings > Engine | EN: Engine | DE: Engine | -
+  DE words: []
+  DE phrases: ["zeig mir den Tab mit den Engine-Einstellungen", "öffne die Engine-Seite in den Diktiereinstellungen"]
+dictation.tab.microphone | feature | Dictation Settings > Microphone | EN: Microphone | DE: Mikrofon | -
+  DE words: []
+  DE phrases: ["öffne den Tab mit den Mikrofoneinstellungen", "zeig mir die Einstellungsseite fürs Mikrofon"]
+dictation.tab.livePreview | feature | Dictation Settings > Live Preview | EN: Live Preview | DE: Live-Vorschau | -
+  DE words: []
+  DE phrases: ["öffne den Tab für die Live-Vorschau", "zeig mir die Einstellungsseite für die Live-Vorschau"]
+dictation.tab.pill | feature | Dictation Settings > Recording Pill | EN: Recording Pill | DE: Aufnahmeanzeige | -
+  DE words: ["Overlay", "Widget", "Aufnahmefenster"]
+  DE phrases: ["öffne den Tab für die Aufnahmeanzeige", "zeig mir die Einstellungsseite für die schwebende Aufnahmeanzeige"]
+dictation.tab.chimes | feature | Dictation Settings > Chimes | EN: Chimes | DE: Signaltöne | -
+  DE words: []
+  DE phrases: ["öffne den Tab für die Signaltöne", "zeig mir die Einstellungsseite für die Aufnahmetöne"]
+dictation.tab.clipboard | feature | Dictation Settings > Clipboard | EN: Clipboard | DE: Zwischenablage | -
+  DE words: ["Clipboard", "kopieren", "einfügen", "kopiert"]
+  DE phrases: ["wo sind die Einstellungen für kopierten Text", "zeig mir die Einstellungen für die Zwischenablage"]
+transcriptionEngine | setting | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: TRANSCRIPTION ENGINE | DE: TRANSKRIPTIONS-ENGINE | Changes apply to the next recording
+  DE words: ["Diktiermodell"]
+  DE phrases: ["welches Modell macht aus meinem Diktat den fertigen Text", "wo wähle ich das Modell fürs Diktieren aus"]
+transcriptionEngine.change | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Change | DE: Ändern | - (VoiceOver: Change speech engine) | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["wechsle das Modell fürs Diktieren", "wähle eine andere Engine für mein fertiges Diktat"]
+transcriptionEngine.fast | choice | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Fast | DE: Schnell | Pick this for everyday English and European dictation. (Model Parakeet v3 · 25 European languages · Apple Neural Engine · Usually ~0.1s after you speak) | parent transcriptionEngine
+  DE words: ["Parakeet", "europäisch", "ANE"]
+  DE phrases: ["nimm Parakeet fürs Diktieren", "wähle das Diktiermodell für europäische Sprachen"]
+transcriptionEngine.allLanguages | choice | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: All Languages | DE: Alle Sprachen | Pick this for other languages or the toughest audio. (Model Whisper Large v3 Turbo · 99+ languages · Apple GPU · Usually 1-2s after you speak) | parent transcriptionEngine
+  DE words: ["Whisper", "Turbo", "GPU"]
+  DE phrases: ["nimm Whisper fürs Diktieren", "wähle das Diktiermodell für schwierige Aufnahmen", "ich möchte in einer außereuropäischen Sprache diktieren"]
+transcriptionEngine.keepCurrent | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Keep current engine | DE: Aktuelle Engine beibehalten | - | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["behalte mein bisheriges Diktiermodell", "lass die Engine fürs Diktieren unverändert"]
+transcriptionEngine.recheckFast | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Re-check Fast model status | DE: Modellstatus von „Schnell“ erneut prüfen | - | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["prüfe erneut, ob das schnelle Modell bereit ist", "prüfe den Status von Parakeet noch einmal"]
+fastModel.cancelDownload | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Cancel | DE: Abbrechen | - | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["brich den Download von Parakeet ab", "stoppe den Download des schnellen Diktiermodells"]
+fastModel.resume | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Resume | DE: Fortsetzen | Download paused. Resume anytime. | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["setze den pausierten Parakeet-Download fort", "lade das schnelle Diktiermodell weiter herunter"]
+fastModel.tryAgain | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Try Again | DE: Erneut versuchen | Speech model download failed. | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["versuche den fehlgeschlagenen Parakeet-Download noch einmal", "lade das schnelle Diktiermodell erneut herunter"]
+whisperModel.setUp | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Set up model | DE: Modell einrichten | Model not set up · Runs on your Mac after the model is set up. | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["richte Whisper auf meinem Mac ein", "installiere das Diktiermodell für alle Sprachen"]
+whisperModel.cancelDownload | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Cancel | DE: Abbrechen | - | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["brich den Whisper-Download ab", "stoppe den Download des Diktiermodells für alle Sprachen"]
+whisperModel.resume | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Resume | DE: Fortsetzen | Download paused. Resume anytime. | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["setze den pausierten Whisper-Download fort", "lade das Diktiermodell für alle Sprachen weiter herunter"]
+whisperModel.remove | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Remove Model | DE: Modell entfernen | - | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["lösche das installierte Whisper-Modell", "entferne das Diktiermodell für alle Sprachen von meinem Mac"]
+whisperModel.recheck | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Re-check model status | DE: Modellstatus erneut prüfen | - | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["prüfe, ob Whisper bereit ist", "prüfe den Status des Modells für alle Sprachen erneut"]
+whisperModel.tryAgain | action | Dictation Settings > Engine > TRANSCRIPTION ENGINE | EN: Try Again | DE: Erneut versuchen | Something went wrong | parent transcriptionEngine
+  DE words: []
+  DE phrases: ["versuche die Einrichtung von Whisper noch einmal", "richte das Diktiermodell für alle Sprachen erneut ein"]
+currentEngineSection | feature | Dictation Settings > Engine > FAST · PARAKEET V3 | EN: FAST · PARAKEET V3 | DE: - | -
+  DE words: []
+  DE phrases: ["zeig mir die Einstellungen für meine aktive Diktierengine", "wo sind die Optionen für das Diktiermodell, das ich gerade nutze"]
+autoDetectLanguage | setting | Dictation Settings > Engine > FAST · PARAKEET V3 | EN: Auto-detect language | DE: Sprache automatisch erkennen | Detects the language you speak. 25 European languages. (dynamic: "...99+ languages." on All Languages)
+  DE words: ["Spracherkennung", "Spracherkennungautomatik"]
+  DE phrases: ["erkenne automatisch, welche Sprache ich spreche", "finde meine Diktiersprache selbst heraus", "ich möchte die Diktiersprache nicht von Hand auswählen"]
+autoDetectLanguage.resetSuggestions | action | Dictation Settings > Engine > FAST · PARAKEET V3 | EN: Reset suggestions | DE: Vorschläge zurücksetzen | Reset to allow the app to suggest locking a detected language again. | parent autoDetectLanguage
+  DE words: []
+  DE phrases: ["schlage mir wieder vor, die erkannte Sprache festzulegen", "setze die Vorschläge zum Festlegen der Diktiersprache zurück"]
+lockedLanguage | setting | Dictation Settings > Engine > FAST · PARAKEET V3 | EN: (language name, e.g. English) | DE: - | Choose the language for dictation and preview.
+  DE words: ["Diktiersprache", "festlegen", "fest"]
+  DE phrases: ["verwende fürs Diktieren immer dieselbe Sprache", "lege die Sprache für Diktat und Vorschau fest", "erkenne meine Diktiersprache nicht automatisch"]
+lockedLanguage.change | action | Dictation Settings > Engine > FAST · PARAKEET V3 | EN: Change | DE: Ändern | - (VoiceOver: Change dictation language) | parent lockedLanguage
+  DE words: []
+  DE phrases: ["ändere meine festgelegte Diktiersprache im Engine-Tab"]
+fasterTranscription | setting | Dictation Settings > Engine > FAST · PARAKEET V3 | EN: Faster Transcription | DE: Schnellere Transkription | Works during recording; may miss the last words. (dynamic: "Works during recording with a selected language." on All Languages)
+  DE words: ["Verarbeitung", "Wartezeit", "Latenz"]
+  DE phrases: ["verarbeite mein Diktat schon während der Aufnahme", "verkürze die Wartezeit auf den fertigen Text", "beginne mit der Transkription, bevor ich die Aufnahme beende"]
+stopOnSilence | setting | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Stop recording on silence | DE: Aufnahme bei Stille stoppen | Ends recording after you stop speaking.
+  DE words: ["Stille", "Autostopp", "Sprechpause"]
+  DE phrases: ["stoppe die Aufnahme, wenn ich nicht mehr spreche", "beende mein Diktat automatisch bei Stille", "beende die Aufnahme, ohne dass ich eine Taste drücken muss"]
+pauseDuration | setting | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Pause duration | DE: Pausendauer | How long a pause ends the recording. (slider 0.5s to 3.0s) | parent stopOnSilence
+  DE words: ["Zeitlimit", "Verzögerung", "Pausenlänge"]
+  DE phrases: ["wie lange darf ich still sein, bevor die Aufnahme endet", "warte bei Stille länger, bevor du die Aufnahme stoppst", "ändere, wie lang die Pause zum Beenden der Aufnahme sein muss"]
+fillerRemoval | setting | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Remove filler words (um, uh, hmm...) | DE: Füllwörter entfernen (ähm, äh, hm...) | Strips common filler words from transcriptions.
+  DE words: ["ähm", "äh", "hm", "Ähms", "Fülllaute"]
+  DE phrases: ["lass die Ähms aus meinem Text weg", "entferne meine Füllwörter beim Diktieren", "schreib meine Ähs und Ähms nicht mit"]
+spokenEmoji | setting | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Convert spoken emoji (e.g. "thumbs up emoji" → 👍) | DE: Gesprochene Emojis umwandeln (z. B. „Daumen hoch Emoji“ → 👍) | Say a phrase followed by emoji to get its symbol.
+  DE words: ["Smiley", "Smileys", "👍"]
+  DE phrases: ["mach aus gesprochenen Emoji-Namen die passenden Symbole", "füge einen Daumen hoch ein, wenn ich Daumen hoch Emoji sage", "ich möchte Smileys mit ihrem Namen und dem Wort Emoji diktieren"]
+spokenPunctuation | setting | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Spoken punctuation | DE: Gesprochene Satzzeichen | Say comma or new paragraph to insert it.
+  DE words: ["Komma", "Punkt", "Absatz", "Doppelpunkt", "Semikolon"]
+  DE phrases: ["füge Satzzeichen mit einem gesprochenen Befehl ein", "beginne mit einem Sprachbefehl einen neuen Absatz", "ich möchte Kommas und Punkte diktieren"]
+startWordLanguage | setting | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Start word | DE: Startwort | The word you say before a mark. (picker: Start word for) | parent spokenPunctuation
+  DE words: []
+  DE phrases: ["wähle, für welche Sprache ich das Startwort für Satzzeichen bearbeite", "für welche Sprache stelle ich den Satzzeichenauslöser ein"]
+startWordLanguage.en | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: English | DE: Englisch | (dynamic: Locale name plus the current start word) | parent startWordLanguage
+  DE words: []
+  DE phrases: ["wähle Englisch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für englische Satzzeichen"]
+startWordLanguage.de | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: German | DE: Deutsch | dynamic | parent startWordLanguage
+  DE words: []
+  DE phrases: ["wähle Deutsch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für deutsche Satzzeichen"]
+startWordLanguage.fr | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: French | DE: Französisch | dynamic | parent startWordLanguage
+  DE words: []
+  DE phrases: ["wähle Französisch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für französische Satzzeichen"]
+startWordLanguage.es | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Spanish | DE: Spanisch | dynamic | parent startWordLanguage
+  DE words: []
+  DE phrases: ["wähle Spanisch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für spanische Satzzeichen"]
+startWordLanguage.it | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Italian | DE: Italienisch | dynamic | parent startWordLanguage
+  DE words: []
+  DE phrases: ["wähle Italienisch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für italienische Satzzeichen"]
+startWordField | setting | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Start word for | DE: Startwort für | - | parent spokenPunctuation
+  DE words: ["Auslösewort", "Befehlswort", "Signalwort"]
+  DE phrases: ["lege fest, welches Wort ich vor einem Satzzeichen sagen muss", "gib mein eigenes Auslösewort für Satzzeichen ein", "ändere das Wort vor dem Satzzeichenbefehl"]
+startWord.save | action | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Save word | DE: Wort sichern | - | parent startWordField
+  DE words: []
+  DE phrases: ["speichere mein eingegebenes Startwort für Satzzeichen", "übernimm mein neues Auslösewort für Satzzeichen"]
+startWord.reset | action | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Reset | DE: Zurücksetzen | - (VoiceOver: Reset start word to the default) | parent startWordField
+  DE words: []
+  DE phrases: ["stell das voreingestellte Startwort für Satzzeichen wieder her", "setze mein eigenes Auslösewort für Satzzeichen zurück"]
+unloadModel | setting | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Unload model after | DE: Modell entladen nach | Frees memory when you are not dictating.
+  DE words: ["RAM", "Arbeitsspeicher", "Speicher", "entladen"]
+  DE phrases: ["gib den Arbeitsspeicher frei, wenn ich nicht diktiere", "wie lange soll das Diktiermodell im Speicher bleiben", "ändere, wann das Diktiermodell aus dem Speicher entfernt wird"]
+unloadModel.never | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Never | DE: Nie | - | parent unloadModel
+  DE words: []
+  DE phrases: ["lass das Diktiermodell dauerhaft geladen", "entferne das Diktiermodell nie aus dem Speicher"]
+unloadModel.immediately | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: Immediately | DE: Sofort | Model is freed after every transcription. Expect a reload delay on each recording. | parent unloadModel
+  DE words: []
+  DE phrases: ["entlade das Modell nach jedem Diktat", "gib den Modellspeicher frei, sobald der Text fertig ist"]
+unloadModel.twoMinutes | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: After 2 minutes | DE: Nach 2 Minuten | - | parent unloadModel
+  DE words: []
+  DE phrases: ["entlade das Diktiermodell nach zwei Minuten ohne Diktat", "lass das Diktiermodell 2 Minuten im Speicher"]
+unloadModel.fiveMinutes | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: After 5 minutes | DE: Nach 5 Minuten | - | parent unloadModel
+  DE words: []
+  DE phrases: ["entlade das Diktiermodell nach fünf Minuten ohne Diktat", "lass das Diktiermodell 5 Minuten im Speicher"]
+unloadModel.tenMinutes | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: After 10 minutes | DE: Nach 10 Minuten | - | parent unloadModel
+  DE words: []
+  DE phrases: ["entlade das Diktiermodell nach zehn Minuten ohne Diktat", "lass das Diktiermodell 10 Minuten im Speicher"]
+unloadModel.fifteenMinutes | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: After 15 minutes | DE: Nach 15 Minuten | - | parent unloadModel
+  DE words: ["Viertelstunde"]
+  DE phrases: ["entlade das Diktiermodell nach einer Viertelstunde ohne Diktat", "lass das Diktiermodell 15 Minuten im Speicher"]
+unloadModel.oneHour | choice | Dictation Settings > Engine > APPLIES TO BOTH ENGINES | EN: After 1 hour | DE: Nach 1 Stunde | - | parent unloadModel
+  DE words: ["Stunde"]
+  DE phrases: ["entlade das Diktiermodell nach einer Stunde ohne Diktat", "lass das Diktiermodell 60 Minuten im Speicher"]
+inputDevice | setting | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Input device | DE: Eingabegerät | Choose the microphone used for recording.
+  DE words: ["Mikro", "Mikroauswahl", "Aufnahmegerät"]
+  DE phrases: ["wähle das Mikrofon, das meine Stimme aufnimmt", "welches Mikro soll ich fürs Diktieren benutzen", "wo wähle ich mein Aufnahmegerät aus"]
+inputDevice.auto | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Auto | DE: Auto | Follows macOS | parent inputDevice
+  DE words: ["Standardmikrofon", "Systemmikrofon"]
+  DE phrases: ["nimm das Mikrofon, das in macOS ausgewählt ist", "verwende die Toneingabe aus den Mac-Einstellungen"]
+inputDevice.device | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: (device name) | DE: - | Built-in / USB / Bluetooth (transport badge) | parent inputDevice
+  DE words: ["USB", "Headset", "intern", "extern"]
+  DE phrases: ["wähle ein bestimmtes Mikrofon aus der Geräteliste", "nimm mein USB-Mikrofon", "nimm das Mikrofon meines Headsets statt des eingebauten Mikros"]
+inputSocket | setting | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Mic is on | DE: Mikrofon ist an | Choose the socket your microphone is plugged into. | parent inputDevice
+  DE words: ["Buchse", "Anschluss", "Kanal", "Audiointerface"]
+  DE phrases: ["wähle die Buchse, an der mein Mikrofon steckt", "stelle den Mikrofonkanal an meinem Audiointerface ein"]
+inputSocket.input | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Input 1, Input 2, ... | DE: Eingang 1, Input 2, ... | Remembered for (device). | parent inputSocket
+  DE words: []
+  DE phrases: ["nimm Eingang 1 für dieses Mikrofon", "nimm Eingang 2 für dieses Mikrofon", "wähle den nummerierten Eingang, an dem mein Mikrofon steckt"]
+mediaDuringDictation | setting | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Media during dictation | DE: Medien beim Diktieren | What music and video do while you dictate.
+  DE words: ["Musik", "Video", "Podcast", "Wiedergabe", "Hintergrundton"]
+  DE phrases: ["was soll mit meiner Musik beim Diktieren passieren", "stelle ein, was Videos während der Aufnahme machen", "ändere, was beim Diktieren mit dem Hintergrundton passiert"]
+mediaDuringDictation.continue | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Continue | DE: Fortfahren | Music and other audio keep playing as they are. | parent mediaDuringDictation
+  DE words: ["unverändert", "weiterlaufen"]
+  DE phrases: ["lass meine Musik beim Diktieren mit normaler Lautstärke weiterlaufen", "lass den Hintergrundton während der Aufnahme unverändert"]
+mediaDuringDictation.lower | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Lower | DE: Leiser | Lowers what plays through your current speakers or headphones to about half while you dictate, then puts it back. ... | parent mediaDuringDictation
+  DE words: ["absenken", "runterdrehen", "halbieren", "Ducking"]
+  DE phrases: ["dreh die Wiedergabe beim Diktieren leiser", "senke die Lautsprecherlautstärke während der Aufnahme ab und stell sie danach wieder her"]
+mediaDuringDictation.mute | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Mute | DE: Stummschalten | Silences your current speakers or headphones while you dictate, including calls and spoken feedback, then puts the volume back. ... | parent mediaDuringDictation
+  DE words: ["stumm", "lautlos", "Lautsprecher", "Kopfhörer"]
+  DE phrases: ["schalte meine Lautsprecher beim Diktieren stumm", "mach den Kopfhörerton während der Aufnahme aus", "schalte den Ton von Anrufen beim Diktieren stumm"]
+mediaDuringDictation.pause | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Pause | DE: Pausieren | Pauses whatever is playing (music, a video, a podcast), then resumes it when you stop. ... | parent mediaDuringDictation
+  DE words: ["anhalten", "unterbrechen"]
+  DE phrases: ["halte meinen Podcast beim Diktieren an und spiel danach weiter", "pausiere das Video, bis die Aufnahme fertig ist", "unterbrich die Musikwiedergabe während des Diktierens"]
+micReadiness | setting | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Microphone readiness | DE: Mikrofonbereitschaft | How long the mic stays ready after recording.
+  DE words: ["Standby", "Bereitschaft", "warmhalten"]
+  DE phrases: ["wie lange soll das Mikro nach der Aufnahme bereit bleiben", "halte das Mikrofon zwischen Aufnahmen bereit", "ändere die Bereitschaftszeit des Mikrofons"]
+micReadiness.off | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Off | DE: Aus | - | parent micReadiness
+  DE words: []
+  DE phrases: ["schalte die Mikrofonbereitschaft nach der Aufnahme aus", "gib das Mikrofon direkt nach der Aufnahme frei"]
+micReadiness.10s | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: 10 sec | DE: 10 Sek. | - | parent micReadiness
+  DE words: []
+  DE phrases: ["halte das Mikrofon nach der Aufnahme zehn Sekunden bereit", "stelle die Mikrofonbereitschaft auf 10 Sekunden"]
+micReadiness.30s | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: 30 sec | DE: 30 Sek. | - | parent micReadiness
+  DE words: []
+  DE phrases: ["halte das Mikrofon nach der Aufnahme eine halbe Minute bereit", "stelle die Mikrofonbereitschaft auf 30 Sekunden"]
+micReadiness.60s | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: 60 sec | DE: 60 Sek. | - | parent micReadiness
+  DE words: []
+  DE phrases: ["halte das Mikrofon nach der Aufnahme eine Minute bereit", "stelle die Mikrofonbereitschaft auf 60 Sekunden"]
+micReadiness.always | choice | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Always | DE: Immer | Always keeps the microphone engine active. The macOS microphone indicator may stay visible and power use may increase. | parent micReadiness
+  DE words: []
+  DE phrases: ["halte das Mikrofon dauerhaft bereit", "lass die Mikrofonengine zwischen allen Aufnahmen aktiv", "warum kann bei Immer die Mikrofonanzeige anbleiben"]
+bluetoothGuide | feature | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Using a Bluetooth microphone? | DE: Verwendest du ein Bluetooth-Mikrofon? | Keeping your mic ready reduces Bluetooth startup delay.
+  DE words: ["Bluetooth", "Startverzögerung", "Anlaufzeit"]
+  DE phrases: ["warum braucht mein Bluetooth-Mikro so lange zum Starten", "wie startet mein Bluetooth-Mikro schneller", "erkläre mir, warum ein bereites Mikro bei Bluetooth hilft"]
+bluetoothGuide.learnMore | action | Dictation Settings > Microphone > INPUT & BEHAVIOR | EN: Learn more | DE: Mehr erfahren | - | parent bluetoothGuide
+  DE words: []
+  DE phrases: ["öffne die Hilfe zur Startverzögerung von Bluetooth-Mikros", "zeig mir den Ratgeber zur Bereitschaft von Bluetooth-Mikrofonen"]
+livePreview | setting | Dictation Settings > Live Preview > LIVE PREVIEW | EN: Show words while you speak | DE: Wörter beim Sprechen anzeigen | See words before you finish your dictation.
+  DE words: ["Echtzeit", "mitlesen", "Zwischentext"]
+  DE phrases: ["zeig mir meinen Text, bevor ich fertig diktiert habe", "ich möchte meine Wörter beim Sprechen mitlesen", "schalte die Live-Vorschau ein oder aus"]
+livePreview.language | action | Dictation Settings > Live Preview > LIVE PREVIEW | EN: (language name + provenance; VoiceOver "Change dictation language: …") | DE: - | This changes dictation too, not just the preview. | parent livePreview
+  DE words: []
+  DE phrases: ["ändere die Diktiersprache in den Einstellungen der Live-Vorschau", "ändere hier die Sprache für Vorschau und Diktat zusammen"]
+livePreview.browseDownloads | action | Dictation Settings > Live Preview > LIVE PREVIEW | EN: Browse downloads | DE: Downloads ansehen | - | parent livePreview
+  DE words: []
+  DE phrases: ["öffne die Downloadliste in den Einstellungen der Live-Vorschau", "zeig mir die Downloads für die laufende Textvorschau"]
+previewEngine | setting | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Preview engine | DE: Vorschau-Engine | Choose which engine shows words while you speak.
+  DE words: ["Vorschaumodell"]
+  DE phrases: ["wähle die Engine für die Wörter in der Live-Vorschau", "welches Modell erkennt den Text, den ich beim Sprechen sehe", "wo wähle ich die Vorschau-Engine aus"]
+previewEngine.change | action | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Change | DE: Ändern | - (VoiceOver: Change preview engine) | parent previewEngine
+  DE words: []
+  DE phrases: ["wechsle die Engine für die Live-Vorschau", "wähle ein anderes Modell für den Text beim Sprechen"]
+previewEngine.compare | action | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Compare engines | DE: Engines vergleichen | - (link) | parent previewEngine
+  DE words: ["Vergleich", "Unterschiede"]
+  DE phrases: ["vergleiche Apple und Universal für die Live-Vorschau", "zeig mir die Unterschiede zwischen den Vorschau-Engines"]
+previewEngine.apple | choice | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Apple | DE: Apple | Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26. | parent previewEngine
+  DE words: []
+  DE phrases: ["nimm Apples Spracherkennung für die Live-Vorschau", "wähle die Vorschau-Engine, die macOS 26 braucht", "nimm die Vorschau ohne separaten Download eines Vorschaumodells"]
+previewEngine.universal | choice | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Universal | DE: Universal | Works on macOS 14 and later, in more languages. Needs one optional 217 MB download. | parent previewEngine
+  DE words: ["217MB"]
+  DE phrases: ["nimm Universal für die Live-Vorschau", "wähle die Vorschau-Engine, die auf macOS 14 läuft", "nimm die Vorschau-Engine mit mehr Sprachen"]
+previewEngine.keepCurrent | action | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Keep current preview engine | DE: Aktuelle Vorschau-Engine beibehalten | - | parent previewEngine
+  DE words: []
+  DE phrases: ["behalte meine bisherige Vorschau-Engine", "lass das Modell für die Live-Vorschau unverändert"]
+previewEngine.universal.download | action | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Download | DE: Laden | Not downloaded yet. | parent previewEngine.universal
+  DE words: []
+  DE phrases: ["lade das Universal-Modell für die Live-Vorschau herunter", "installiere Universal für die Textvorschau"]
+previewEngine.universal.cancel | action | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Cancel | DE: Abbrechen | - | parent previewEngine.universal
+  DE words: []
+  DE phrases: ["brich den Download des Universal-Vorschaumodells ab", "stoppe den Universal-Download für die Live-Vorschau"]
+previewEngine.universal.resume | action | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Resume | DE: Fortsetzen | Download paused. It will pick up where it stopped. | parent previewEngine.universal
+  DE words: []
+  DE phrases: ["setze den pausierten Download des Universal-Vorschaumodells fort", "lade Universal an der unterbrochenen Stelle weiter"]
+previewEngine.universal.retry | action | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Try Again | DE: Erneut versuchen | The download did not finish. | parent previewEngine.universal
+  DE words: []
+  DE phrases: ["versuche den fehlgeschlagenen Universal-Download erneut", "lade das Universal-Vorschaumodell noch einmal herunter"]
+previewEngine.universal.remove | action | Dictation Settings > Live Preview > PREVIEW ENGINE | EN: Remove | DE: Entfernen | - | parent previewEngine.universal
+  DE words: []
+  DE phrases: ["lösche das installierte Universal-Vorschaumodell", "entferne das heruntergeladene Universal-Modell von meinem Mac"]
+previewLanguages | feature | Dictation Settings > Live Preview > LANGUAGES | EN: Languages | DE: Sprachen | (N) of (M) installed on this Mac
+  DE words: ["Sprachpakete", "installiert"]
+  DE phrases: ["welche Vorschausprachen sind auf meinem Mac installiert", "zeig mir die installierten Sprachpakete für die Live-Vorschau", "wie viele Sprachen sind für die Vorschau schon installiert"]
+previewLanguages.install | action | Dictation Settings > Live Preview > LANGUAGES | EN: Install new languages | DE: Neue Sprachen installieren | Download a language from macOS to preview it. | parent previewLanguages
+  DE words: []
+  DE phrases: ["lade eine weitere macOS-Sprache für die Live-Vorschau herunter", "installiere ein neues Apple-Sprachpaket für die Textvorschau"]
+pillPosition | setting | Dictation Settings > Recording Pill > RECORDING PILL | EN: Position on screen | DE: Position auf dem Bildschirm | Where the pill floats while you dictate.
+  DE words: ["verschieben", "Anzeigeort", "Platzierung"]
+  DE phrases: ["ändere, wo die Aufnahmeanzeige auf dem Bildschirm erscheint", "verschiebe die schwebende Aufnahmeanzeige", "stelle die Position des Aufnahmefensters ein"]
+pillPosition.top | choice | Dictation Settings > Recording Pill > RECORDING PILL | EN: Top | DE: Oben | - | parent pillPosition
+  DE words: ["oberhalb"]
+  DE phrases: ["setz die Aufnahmeanzeige oben auf den Bildschirm", "zeig die Aufnahmeanzeige am oberen Bildschirmrand"]
+pillPosition.bottom | choice | Dictation Settings > Recording Pill > RECORDING PILL | EN: Bottom | DE: Unten | - | parent pillPosition
+  DE words: ["unterhalb"]
+  DE phrases: ["setz die Aufnahmeanzeige unten auf den Bildschirm", "zeig die Aufnahmeanzeige am unteren Bildschirmrand"]
+pillStyle | setting | Dictation Settings > Recording Pill > RECORDING PILL | EN: Style | DE: Stil | What the floating pill shows while you record.
+  DE words: ["Aussehen", "Design", "Layout"]
+  DE phrases: ["ändere das Aussehen der Aufnahmeanzeige", "wähle, was die schwebende Aufnahmeanzeige zeigt", "stelle das Design des Aufnahmefensters ein"]
+pillStyle.capsule | choice | Dictation Settings > Recording Pill > RECORDING PILL | EN: Capsule | DE: Kapsel | A compact pill with a dot and level meter. | parent pillStyle
+  DE words: ["Aufnahmepunkt", "kompakt"]
+  DE phrases: ["nimm die kleine Aufnahmeanzeige mit Punkt und Pegel", "wähle die kompakte Anzeige mit Punkt und Lautstärkemesser"]
+pillStyle.levelRail | choice | Dictation Settings > Recording Pill > RECORDING PILL | EN: Level Rail | DE: Pegelanzeige | A slim rail that follows your volume. | parent pillStyle
+  DE words: ["Balken", "Leiste", "Streifen", "schmal"]
+  DE phrases: ["nimm einen schmalen Aufnahmebalken, der meiner Lautstärke folgt", "wähle die dünne Pegelleiste als Aufnahmeanzeige"]
+pillStyle.readingWell | choice | Dictation Settings > Recording Pill > RECORDING PILL | EN: Reading Well | DE: Lesefeld | Shows words as you speak. Turns Live Preview on. | parent pillStyle
+  DE words: ["Textfeld"]
+  DE phrases: ["wähle den Stil der Aufnahmeanzeige, der meine Wörter zeigt", "nimm ein schwebendes Textfeld als Aufnahmeanzeige", "wähle das Lesefeld und schalte damit die Live-Vorschau ein"]
+pillStyle.configureLivePreview | action | Dictation Settings > Recording Pill > RECORDING PILL | EN: Configure Live Preview | DE: Live-Vorschau einrichten | - | parent pillStyle
+  DE words: []
+  DE phrases: ["öffne die Live-Vorschau-Einstellungen bei den Stilen der Aufnahmeanzeige"]
+recordingChimes | setting | Dictation Settings > Chimes > RECORDING CHIMES | EN: Play recording chimes | DE: Aufnahmesignaltöne abspielen | Plays a short chime when recording starts and stops.
+  DE words: ["piepen", "Piepton", "Pieptöne", "Aufnahmetöne"]
+  DE phrases: ["schalte die Töne für Aufnahmestart und Aufnahmeende ein oder aus", "spiel einen Ton, wenn die Aufnahme beginnt und endet", "schalte das Piepen beim Starten und Stoppen der Aufnahme aus"]
+recordingChime | setting | Dictation Settings > Chimes > RECORDING CHIMES | EN:  | DE: - | Hear this chime without changing your choice.
+  DE words: ["probehören", "Klangprobe", "anhören", "Tonprobe"]
+  DE phrases: ["spiel mir diesen Aufnahmeton zur Probe vor", "lass mich den Ton hören, ohne meine Auswahl zu ändern", "ich möchte diesen Ton erst einmal anhören"]
+recordingChime.dustMote | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Dust Mote | DE: Staubflöckchen | Soft filtered air, no tone. | parent recordingChime
+  DE words: ["tonlos", "Luftrauschen", "Luftgeräusch"]
+  DE phrases: ["nimm das sanfte Luftrauschen ohne Tonhöhe", "wähle das gefilterte Luftgeräusch ohne hörbaren Ton"]
+recordingChime.velvetHush | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Velvet Hush | DE: Samtflüstern | Two close tones, gentle warmth. | parent recordingChime
+  DE words: []
+  DE phrases: ["nimm den warmen Klang mit zwei ähnlichen Tonhöhen", "wähle das sanfte Tonpaar mit dicht beieinanderliegenden Tönen"]
+recordingChime.mutedConfirm | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Muted Confirm | DE: Leises Okay | Same pitch both ways, plain. | parent recordingChime
+  DE words: ["schlicht", "gleich"]
+  DE phrases: ["nimm beim Aufnahmestart und Aufnahmeende dieselbe Tonhöhe", "wähle den schlichten Ton, der beim Starten und Stoppen gleich klingt"]
+recordingChime.whisperTick | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Whisper Tick | DE: Flüstertick | Barely-there tick. | parent recordingChime
+  DE words: ["Ticken", "Tick", "Tickgeräusch"]
+  DE phrases: ["nimm das Ticken, das kaum zu hören ist", "wähle das ganz leise Tickgeräusch"]
+recordingChime.roundPebble | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Round Pebble | DE: Runder Kiesel | Rounded, no edge. | parent recordingChime
+  DE words: ["rund", "abgerundet"]
+  DE phrases: ["nimm den rund klingenden Aufnahmeton ohne scharfe Kante", "wähle den Klang, der als abgerundet beschrieben wird"]
+recordingChime.paperTap | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Paper Tap | DE: Papierklopfen | Soft paper-like tap. | parent recordingChime
+  DE words: ["Papier", "Papiergeräusch"]
+  DE phrases: ["nimm den Aufnahmeton, der wie sanftes Tippen auf Papier klingt", "wähle das leise papierartige Klopfgeräusch"]
+recordingChime.softHush | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Soft Hush | DE: Sanftes Säuseln | Slow fade, like a breath. | parent recordingChime
+  DE words: ["Atem", "Atemzug", "Ausatmen", "ausklingen"]
+  DE phrases: ["nimm den Klang, der wie ein Atemzug langsam ausklingt", "wähle das langsam verklingende Atemgeräusch"]
+recordingChime.lowNod | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Low Nod | DE: Tiefes Nicken | Low, warm, unhurried. | parent recordingChime
+  DE words: ["tief", "dunkel", "gemächlich"]
+  DE phrases: ["nimm den tiefen warmen Aufnahmeton", "wähle den dunklen Klang, der ruhig und gemächlich klingt"]
+recordingChime.cloudPop | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Cloud Pop | DE: Wolkenplopp | Tiny filtered-air pop. | parent recordingChime
+  DE words: ["Plopp", "ploppen", "Luftplopp"]
+  DE phrases: ["nimm den kleinen gefilterten Luftplopp", "wähle das kurze luftige Ploppgeräusch"]
+recordingChime.velvetTap | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Velvet Tap | DE: Samttipp | Muted, compact tap. | parent recordingChime
+  DE words: ["gedämpft"]
+  DE phrases: ["nimm das kurze gedämpfte Tippgeräusch", "wähle den kompakten gedämpften Klopfton"]
+recordingChime.satinShift | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Satin Shift | DE: Satin-Schimmer | Smooth two-tone shift. | parent recordingChime
+  DE words: ["Tonwechsel", "Tonübergang"]
+  DE phrases: ["nimm den sanften Wechsel zwischen zwei Tönen", "wähle den Aufnahmeton mit dem fließenden Tonübergang"]
+recordingChime.airGlint | choice | Dictation Settings > Chimes > RECORDING CHIMES | EN: Air Glint | DE: Luftfunkeln | Clean, airy glint. | parent recordingChime
+  DE words: ["luftig", "schimmernd", "funkelnd"]
+  DE phrases: ["nimm den luftig klingenden Ton", "wähle den schimmernden Klang"]
+recordingChime.preview | action | Dictation Settings > Chimes > RECORDING CHIMES | EN: Preview (chime name) | DE: Vorschau für (chime name) | Preview is unavailable while a recording is in progress. (when disabled) | parent recordingChime
+  DE words: ["anhören", "probehören"]
+  DE phrases: ["spiel mir diesen Ton vor", "lass mich den Klang anhören"]
+autoCopyToClipboard | setting | Dictation Settings > Clipboard > CLIPBOARD | EN: Auto-copy to clipboard | DE: Automatisch in die Zwischenablage kopieren | Copies dictation when automatic pasting is skipped.
+  DE words: []
+  DE phrases: ["kopiere mein Diktat, wenn es nicht automatisch eingefügt wird", "leg mein Diktat in die Zwischenablage, wenn das Einfügen übersprungen wird"]
+restoreClipboard | setting | Dictation Settings > Clipboard > CLIPBOARD | EN: Restore clipboard after paste | DE: Zwischenablage nach dem Einfügen wiederherstellen | Puts back what was on your clipboard before pasting.
+  DE words: []
+  DE phrases: ["stell nach dem Einfügen meinen alten Zwischenablageinhalt wieder her", "behalte das, was ich vor dem Diktieren kopiert habe"]
+smartInsertion | setting | Dictation Settings > Clipboard > CLIPBOARD | EN: Smart insertion | DE: Intelligentes Einfügen | Fits text to the spacing and capitals around your cursor.
+  DE words: ["Leerzeichen", "Großschreibung", "Abstände", "Cursor"]
+  DE phrases: ["pass die Leerzeichen an den Text um den Cursor an", "pass die Großschreibung an den umgebenden Text an"]
+quickAddClipboardFallback | setting | Dictation Settings > Clipboard > QUICK ADD | EN: Read selections through the clipboard | DE: Auswahl über die Zwischenablage lesen | Reads hidden selections and restores your clipboard.
+  DE words: []
+  DE phrases: ["lies das markierte Wort fürs Wörterbuch über die Zwischenablage", "erkenne mein markiertes Wort auch dann, wenn die App die Auswahl nicht freigibt"]
+recordingMode | setting | Keybinds > RECORDING | EN: Recording mode | DE: Aufnahmemodus | Hold to talk, or press once to start and again to stop.
+  DE words: ["Tastenverhalten", "Bedienung"]
+  DE phrases: ["stell ein, wie die Diktattaste funktioniert", "lass mich zwischen Gedrückthalten und zweimaligem Drücken wählen"]
+recordingMode.pushToTalk | choice | Keybinds > RECORDING | EN: Push to Talk | DE: Zum Sprechen drücken | Hold the keybind to record. Release to stop. Double-press to lock it on. Triple-press to cancel. | parent recordingMode
+  DE words: ["gedrückthalten", "loslassen", "einrasten"]
+  DE phrases: ["nimm auf, solange ich die Taste gedrückt halte", "beende die Aufnahme, wenn ich die Taste loslasse", "lass die Aufnahme nach zweimaligem Drücken weiterlaufen", "brich im Modus zum Gedrückthalten nach dreimaligem Drücken ab"]
+recordingMode.toggle | choice | Keybinds > RECORDING | EN: Toggle | DE: Umschalten | Press once to start recording. Press again to stop. | parent recordingMode
+  DE words: ["antippen"]
+  DE phrases: ["starte die Aufnahme beim ersten Drücken und beende sie beim nächsten", "lass mich zum Aufnehmen einmal drücken statt die Taste zu halten"]
+recordKeybind | setting | Keybinds > RECORDING | EN: Start / stop recording | DE: Aufnahme starten / stoppen | Click Change to choose the keys you use.
+  DE words: ["Diktattaste", "Diktierkürzel"]
+  DE phrases: ["ändere mein Tastenkürzel fürs Diktieren", "leg die Tasten zum Starten und Stoppen der Aufnahme fest"]
+cancelKeybind | setting | Keybinds > RECORDING | EN: Cancel recording | DE: Aufnahme abbrechen | Cancels the current recording.
+  DE words: ["Abbruchtaste", "Abbruchkürzel"]
+  DE phrases: ["ändere mein Tastenkürzel zum Abbrechen der Aufnahme", "leg eine Taste zum Verwerfen der laufenden Aufnahme fest"]
+escapeRecovery | setting | Keybinds > RECORDING | EN: Escape Recovery | DE: Wiederherstellung bei Escape | Keeps cancelled dictations in History for 24 hours.
+  DE words: ["retten", "Verlauf", "Wiederherstellung"]
+  DE phrases: ["bewahre abgebrochene Diktate 24 Stunden lang auf", "rette mein Diktat, wenn ich versehentlich Escape drücke"]
+quickAddKeybind | setting | Keybinds > SHORTCUTS | EN: Add selected word to Dictionary | DE: Markiertes Wort zum Wörterbuch hinzufügen | Select a misheard word, then press these keys.
+  DE words: ["Wortschatz", "Wörterbuchkürzel"]
+  DE phrases: ["leg ein Tastenkürzel zum Hinzufügen markierter Wörter fest", "füge ein falsch erkanntes Wort per Tastendruck zum Wörterbuch hinzu"]
+pasteLastKeybind | setting | Keybinds > SHORTCUTS | EN: Paste last dictation | DE: Letztes Diktat einfügen | Pastes your last dictation.
+  DE words: []
+  DE phrases: ["leg ein Tastenkürzel zum Einfügen meines letzten Diktats fest", "füge meinen zuletzt diktierten Text nochmal ein"]
+copyLastKeybind | setting | Keybinds > SHORTCUTS | EN: Copy last dictation | DE: Letztes Diktat kopieren | Copies your last dictation.
+  DE words: []
+  DE phrases: ["leg ein Tastenkürzel zum Kopieren meines letzten Diktats fest", "kopiere meinen zuletzt diktierten Text in die Zwischenablage"]
+keybind.resetToDefault | action | Keybinds > RECORDING / SHORTCUTS | EN: Reset to default | DE: Auf Standard zurücksetzen | - (VoiceOver: Reset keybind to default) | parent recordKeybind, cancelKeybind, quickAddKeybind, pasteLastKeybind, copyLastKeybind
+  DE words: ["zurücksetzen", "Standard"]
+  DE phrases: ["stell die ursprünglichen Tasten für dieses Kürzel wieder her"]
+transcribeFile.steps | feature | Transcribe a File > step bar | EN: Upload · Transcription · Polish · Review · Working · Done | DE: - | -
+  DE words: ["Schritte", "Ablauf", "Fortschritt"]
+  DE phrases: ["zeig mir die Schritte von der Datei bis zum fertigen Text", "zeig mir, bei welchem Schritt die Dateitranskription gerade ist"]
+enableAIPolish | setting | AI Polish | EN: Enable AI Polish | DE: KI-Nachbearbeitung aktivieren | Fixes grammar, punctuation and formatting
+  DE words: ["Grammatik", "Satzzeichen", "Zeichensetzung", "Formatierung"]
+  DE phrases: ["verbessere nach dem Diktieren automatisch die Grammatik", "korrigiere Satzzeichen und Formatierung meiner Diktate"]
+aiPolishProvider | setting | AI Polish > MODEL | EN: (provider card showing the chosen name, with a "Change" cue; VoiceOver "AI polish model") | DE: - | Changes apply to the next recording
+  DE words: []
+  DE phrases: ["wähle das Modell für die Nachbearbeitung meiner Diktate", "wechsle den KI-Anbieter für meinen diktierten Text"]
+aiPolishProvider.egOne | choice | AI Polish > MODEL › On this Mac | EN: EG-1 | DE: EG-1 | Our tuned model / Our model for cleaning up dictation on this Mac. (Recommended) | parent aiPolishProvider
+  DE words: []
+  DE phrases: ["verbessere meine Diktate mit dem eigenen Modell der App", "wähle EG-1 für die Diktatkorrektur auf diesem Mac"]
+aiPolishProvider.s1Mini | choice | AI Polish > MODEL › On this Mac | EN: S1-mini | DE: S1-mini | by Superwhisper / Small model by Superwhisper, on this Mac and happiest in English. | parent aiPolishProvider
+  DE words: ["Superwhisper", "klein", "kompakt"]
+  DE phrases: ["verbessere meine Diktate mit dem Modell von Superwhisper", "nimm das kleine lokale Modell für englische Diktate"]
+aiPolishProvider.appleIntelligence | choice | AI Polish > MODEL › On this Mac | EN: Apple Intelligence | DE: Apple Intelligence | Built into macOS / On-device polish on supported Macs with macOS 26+. | parent aiPolishProvider
+  DE words: []
+  DE phrases: ["verbessere meine Diktate mit Apples eingebautem Modell", "wähle Apple Intelligence für die Diktatkorrektur"]
+aiPolishProvider.ollama | choice | AI Polish > MODEL › Your own setup | EN: Ollama | DE: Ollama | Your models, local or hosted | parent aiPolishProvider
+  DE words: []
+  DE phrases: ["verbessere meine Diktate mit meinen Ollama-Modellen", "nutze für die Diktatkorrektur meine eigene lokale oder gehostete Ollama-Umgebung"]
+aiPolishProvider.openAI | choice | AI Polish > MODEL › Cloud | EN: OpenAI | DE: OpenAI | Your API key / Use your OpenAI API key for cloud polish. | parent aiPolishProvider
+  DE words: []
+  DE phrases: ["wähle OpenAI für die Nachbearbeitung meiner Diktate", "verbessere meinen diktierten Text mit OpenAI in der Cloud"]
+aiPolishProvider.gemini | choice | AI Polish > MODEL › Cloud | EN: Google Gemini | DE: Google Gemini | Your API key / Use your Gemini API key for cloud polish. | parent aiPolishProvider
+  DE words: []
+  DE phrases: ["wähle Googles Modell für die Nachbearbeitung meiner Diktate", "verbessere meinen diktierten Text mit Gemini in der Cloud"]
+aiPolishProvider.claude | choice | AI Polish > MODEL › Cloud | EN: Claude | DE: Claude | Your API key / Use your Claude API key for cloud polish. | parent aiPolishProvider
+  DE words: []
+  DE phrases: ["wähle Anthropics Modell für die Nachbearbeitung meiner Diktate", "verbessere meinen diktierten Text mit Claude in der Cloud"]
+aiPolish.providerSection | feature | AI Polish > (NAME) · ONLY FOR THIS MODEL | EN: (PROVIDER NAME) · only for this model | DE: - | - | parent aiPolishProvider
+  DE words: []
+  DE phrases: ["zeig mir die Einstellungen speziell für mein gewähltes Diktatkorrekturmodell", "zeig mir die Optionen, die nur für meinen gewählten Diktatanbieter gelten"]
+aiPolish.whyUse.egOne | feature | AI Polish > EG-1 · only for this model | EN: Why use EG-1 | DE: Warum EG-1 verwenden? | (paragraphs: When to pick something else. / How long?) | parent aiPolishProvider.egOne
+  DE words: []
+  DE phrases: ["wie lange dauert die Nachbearbeitung mit EG-1", "wann sollte ich statt EG-1 ein anderes Modell nehmen"]
+aiPolish.whyUse.s1Mini | feature | AI Polish > S1-mini · only for this model | EN: Why use S1-mini | DE: Warum S1-mini verwenden? | (Best fit. / Other languages?) | parent aiPolishProvider.s1Mini
+  DE words: []
+  DE phrases: ["eignet sich S1-mini für meine Sprache", "wann ist S1-mini die richtige Wahl"]
+aiPolish.whyUse.appleIntelligence | feature | AI Polish > Apple Intelligence · only for this model | EN: Why use Apple Intelligence | DE: Warum Apple Intelligence verwenden? | (Best fit. / Not available?) | parent aiPolishProvider.appleIntelligence
+  DE words: []
+  DE phrases: ["warum ist Apple Intelligence nicht verfügbar", "wann eignet sich Apples eingebautes Modell zur Nachbearbeitung"]
+aiPolish.whyUse.ollama | feature | AI Polish > Ollama · only for this model | EN: Why use Ollama | DE: Warum Ollama verwenden? | (Picking the right model. / Model missing?) | parent aiPolishProvider.ollama
+  DE words: []
+  DE phrases: ["welches Ollama-Modell eignet sich zur Nachbearbeitung", "warum fehlt mein Ollama-Modell"]
+aiPolish.whyUse.openAI | feature | AI Polish > OpenAI · only for this model | EN: Why use OpenAI | DE: Warum OpenAI verwenden? | (Picking the right model. / Missing models?) | parent aiPolishProvider.openAI
+  DE words: []
+  DE phrases: ["welches OpenAI-Modell eignet sich für die Diktatkorrektur", "warum fehlen manche OpenAI-Modelle"]
+aiPolish.whyUse.gemini | feature | AI Polish > Google Gemini · only for this model | EN: Why use Gemini | DE: Warum Gemini verwenden? | (Picking the right model. / Locked models?) | parent aiPolishProvider.gemini
+  DE words: []
+  DE phrases: ["welches Gemini-Modell eignet sich zur Nachbearbeitung", "warum sind manche Gemini-Modelle gesperrt"]
+aiPolish.whyUse.claude | feature | AI Polish > Claude · only for this model | EN: Why use Claude | DE: Warum Claude verwenden? | (Picking the right model. / API access. / Missing models?) | parent aiPolishProvider.claude
+  DE words: []
+  DE phrases: ["welches Claude-Modell eignet sich zur Nachbearbeitung", "warum fehlen manche Claude-Modelle", "welchen API-Zugang brauche ich für Claude"]
+aiPolish.link.aboutAppleIntelligence | action | AI Polish > Apple Intelligence · only for this model | EN: About Apple Intelligence | DE: Über Apple Intelligence | - (link) | parent aiPolish.whyUse.appleIntelligence
+  DE words: []
+  DE phrases: ["öffne die Infoseite zu Apple Intelligence"]
+aiPolish.link.ollamaLibrary | action | AI Polish > Ollama · only for this model | EN: Ollama model library | DE: Ollama-Modellbibliothek | - (link) | parent aiPolish.whyUse.ollama
+  DE words: []
+  DE phrases: ["öffne die Webseite mit der Ollama-Modellbibliothek"]
+aiPolish.link.openAIRateLimits | action | AI Polish > OpenAI · only for this model | EN: OpenAI rate limits by tier | DE: OpenAI-Ratenlimits nach Stufe | - (link) | parent aiPolish.whyUse.openAI
+  DE words: []
+  DE phrases: ["zeig mir die OpenAI-Anfragelimits für meine Nutzungsstufe"]
+aiPolish.link.geminiRateLimits | action | AI Polish > Google Gemini · only for this model | EN: Gemini API rate limits by tier | DE: Ratenlimits der Gemini-API nach Nutzungsstufe | - (link) | parent aiPolish.whyUse.gemini
+  DE words: []
+  DE phrases: ["zeig mir die Gemini-Anfragelimits für meine Nutzungsstufe"]
+aiPolish.link.claudeRateLimits | action | AI Polish > Claude · only for this model | EN: Claude API rate limits | DE: Claude-API-Ratenlimits | - (link) | parent aiPolish.whyUse.claude
+  DE words: []
+  DE phrases: ["zeig mir die Anfragelimits der Claude-API"]
+localModel.download | action | AI Polish > EG-1 / S1-mini · only for this model | EN: Download EG-1 (row title, dynamic engine name) + button "Download" | DE: EG-1 (row title, dynamic engine name) + button "Download" herunterladen | (size) download · needs (space) free · stays on this Mac | parent aiPolishProvider.egOne / s1Mini
+  DE words: []
+  DE phrases: ["lade EG-1 oder S1-mini auf meinen Mac herunter"]
+localModel.cancel | action | AI Polish > EG-1 / S1-mini · only for this model | EN: Cancel | DE: Abbrechen | Downloading (engine) ((size)) | parent aiPolishProvider.egOne / s1Mini
+  DE words: []
+  DE phrases: ["brich den Download von EG-1 oder S1-mini ab"]
+localModel.resume | action | AI Polish > EG-1 / S1-mini · only for this model | EN: Resume | DE: Fortsetzen | Download paused. Resume anytime. | parent aiPolishProvider.egOne / s1Mini
+  DE words: ["weiterladen"]
+  DE phrases: ["setz den pausierten Download von EG-1 oder S1-mini fort"]
+localModel.resumeUpgrade | action | AI Polish > EG-1 / S1-mini · only for this model | EN: Resume upgrade | DE: Upgrade fortsetzen | AI cleanup is paused. Your upgrade to the new (engine) stopped part-way. | parent aiPolishProvider.egOne / s1Mini
+  DE words: []
+  DE phrases: ["setz das unterbrochene Upgrade von EG-1 oder S1-mini fort"]
+localModel.finishUpgrade | action | AI Polish > EG-1 / S1-mini · only for this model | EN: Finish upgrade | DE: Upgrade abschließen | AI cleanup is paused until (engine) V(n) finishes installing. | parent aiPolishProvider.egOne / s1Mini
+  DE words: []
+  DE phrases: ["schließ die Installation der neuen Modellversion ab, damit die Nachbearbeitung wieder funktioniert"]
+localModel.tryAgain | action | AI Polish > EG-1 / S1-mini · only for this model | EN: Try Again | DE: Erneut versuchen | (failure message) | parent aiPolishProvider.egOne / s1Mini
+  DE words: []
+  DE phrases: ["versuch es nach dem Fehler bei EG-1 oder S1-mini nochmal"]
+localModel.testLive | action | AI Polish > EG-1 / S1-mini · only for this model | EN: Test that EG-1 is live | DE: Prüfen, ob EG-1 läuft | - | parent aiPolishProvider.egOne / s1Mini
+  DE words: ["Funktionstest", "testen"]
+  DE phrases: ["teste, ob das heruntergeladene Nachbearbeitungsmodell funktioniert"]
+s1Tone | setting | AI Polish > S1-mini · only for this model | EN: Tone | DE: Ton | Choose how formal your text sounds.
+  DE words: ["Formalität", "Sprachstil", "Schreibstil"]
+  DE phrases: ["stell ein, wie förmlich S1-mini meinen Text schreibt", "pass den Schreibstil von S1-mini an"]
+s1Tone.casual | choice | AI Polish > S1-mini · only for this model | EN: Casual | DE: Locker | - | parent s1Tone
+  DE words: ["umgangssprachlich", "salopp", "ungezwungen"]
+  DE phrases: ["lass S1-mini ganz ungezwungen schreiben", "formuliere meinen Text so locker wie in einem Chat"]
+s1Tone.semiCasual | choice | AI Polish > S1-mini · only for this model | EN: Semi-casual | DE: Eher locker | - | parent s1Tone
+  DE words: []
+  DE phrases: ["lass S1-mini eher locker schreiben", "formuliere entspannt, aber nicht zu salopp"]
+s1Tone.semiFormal | choice | AI Polish > S1-mini · only for this model | EN: Semi-formal | DE: Eher förmlich | - | parent s1Tone
+  DE words: []
+  DE phrases: ["lass S1-mini eher förmlich schreiben", "formuliere professionell, aber nicht steif"]
+s1Tone.formal | choice | AI Polish > S1-mini · only for this model | EN: Formal | DE: Förmlich | - | parent s1Tone
+  DE words: ["formell", "geschäftlich", "offiziell"]
+  DE phrases: ["lass S1-mini sehr förmlich schreiben", "verwende einen formellen Stil für meinen Text"]
+s1Structure | setting | AI Polish > S1-mini · only for this model | EN: Structure | DE: Struktur | Keep sentences or turn spoken items into lists.
+  DE words: ["Textaufbau", "Anordnung"]
+  DE phrases: ["stell ein, ob S1-mini Sätze beibehält oder Listen erstellt", "ändere, wie S1-mini meinen diktierten Text aufbaut"]
+s1Structure.prose | choice | AI Polish > S1-mini · only for this model | EN: Prose | DE: Fließtext | - | parent s1Structure
+  DE words: ["Sätze", "Absätze"]
+  DE phrases: ["lass S1-mini in ganzen Sätzen schreiben", "schreib Absätze statt Stichpunkte"]
+s1Structure.lists | choice | AI Polish > S1-mini · only for this model | EN: Lists | DE: Listen | - | parent s1Structure
+  DE words: ["Stichpunkte", "Aufzählung", "Listenpunkte"]
+  DE phrases: ["mach mit S1-mini aus meinen gesprochenen Punkten eine Liste", "formatiere meine diktierten Punkte als Aufzählung"]
+s1Context | setting | AI Polish > S1-mini · only for this model | EN: Context | DE: Kontext | Format dictated greetings and sign-offs as email.
+  DE words: []
+  DE phrases: ["stell ein, ob S1-mini normalen Text oder eine E-Mail formatiert", "wähle den Kontext für die Formatierung meiner S1-mini-Diktate"]
+s1Context.general | choice | AI Polish > S1-mini · only for this model | EN: General | DE: Allgemein | - | parent s1Context
+  DE words: []
+  DE phrases: ["behandle mein S1-mini-Diktat als normalen Text", "formatiere meinen S1-mini-Text nicht als E-Mail"]
+s1Context.email | choice | AI Polish > S1-mini · only for this model | EN: Email | DE: E-Mail | - | parent s1Context
+  DE words: ["Mail", "Anrede", "Grußformel"]
+  DE phrases: ["formatiere meine diktierte Anrede und Grußformel wie in einer E-Mail", "lass S1-mini meinen Text als E-Mail formatieren"]
+appleIntelligence.status | feature | AI Polish > Apple Intelligence · only for this model | EN: Status | DE: Status | - | parent aiPolishProvider.appleIntelligence
+  DE words: []
+  DE phrases: ["zeig mir, ob Apple Intelligence auf diesem Mac bereit ist", "zeig mir die aktuelle Verfügbarkeit von Apples Nachbearbeitungsmodell"]
+appleIntelligence.recheck | action | AI Polish > Apple Intelligence · only for this model | EN: Check Apple Intelligence availability | DE: Verfügbarkeit von Apple Intelligence prüfen | - | parent appleIntelligence.status
+  DE words: []
+  DE phrases: ["prüf nochmal, ob Apple Intelligence verfügbar ist"]
+ollama.downloadOllama | action | AI Polish > Ollama · only for this model | EN: Download Ollama | DE: Ollama herunterladen | Install Ollama (step title) | parent aiPolishProvider.ollama
+  DE words: ["Laufzeitumgebung"]
+  DE phrases: ["installiere Ollama selbst auf meinem Mac"]
+ollama.start | action | AI Polish > Ollama · only for this model | EN: Start Ollama | DE: Ollama starten | Ollama is installed but isn't running yet. Or run `ollama serve` in Terminal. | parent aiPolishProvider.ollama
+  DE words: ["serve"]
+  DE phrases: ["starte Ollama nach der Installation"]
+ollama.downloadModel | action | AI Polish > Ollama · only for this model | EN: Download (model) | DE: (model) herunterladen | Download a model / Ollama needs a language model to polish your text. | parent aiPolishProvider.ollama
+  DE words: []
+  DE phrases: ["lade ein Modell herunter, damit Ollama Text nachbearbeiten kann"]
+ollama.cancelPull | action | AI Polish > Ollama · only for this model | EN: Cancel | DE: Abbrechen | - | parent aiPolishProvider.ollama
+  DE words: []
+  DE phrases: ["brich den Modelldownload in Ollama ab"]
+ollama.server | feature | AI Polish > Ollama · only for this model | EN: Server | DE: Server | (server address) · Running | parent aiPolishProvider.ollama
+  DE words: ["Adresse", "Serveradresse", "Verbindung"]
+  DE phrases: ["zeig mir die Adresse meines Ollama-Servers", "zeig mir den laufenden Ollama-Server"]
+ollama.recheck | action | AI Polish > Ollama · only for this model | EN: Re-check Ollama status | DE: Ollama-Status erneut prüfen | - | parent aiPolishProvider.ollama
+  DE words: []
+  DE phrases: ["prüf nochmal, ob Ollama läuft"]
+ollama.tryAgain | action | AI Polish > Ollama · only for this model | EN: Try Again | DE: Erneut versuchen | Something went wrong | parent aiPolishProvider.ollama
+  DE words: []
+  DE phrases: ["versuch es nach dem Ollama-Fehler nochmal"]
+ollama.browseModels | action | AI Polish > Ollama · only for this model | EN: Download more models | DE: Weitere Modelle laden | Pull a local model from Ollama. Nothing downloads on its own. | parent aiPolishProvider.ollama
+  DE words: []
+  DE phrases: ["zeig mir weitere Modelle zum Herunterladen über Ollama"]
+ollama.prepareModel | action | AI Polish > Ollama · only for this model | EN: Prepare model | DE: Modell vorbereiten | - | parent polishModel
+  DE words: ["vorbereiten", "startklar"]
+  DE phrases: ["mach mein gewähltes Ollama-Modell für die Nachbearbeitung bereit"]
+apiKey.openAI | setting | AI Polish > OpenAI · only for this model | EN: OpenAI API Key | DE: OpenAI-API-Schlüssel | Sends text and dictation context to OpenAI.
+  DE words: []
+  DE phrases: ["trag meinen OpenAI-API-Schlüssel für die Diktatkorrektur ein", "ändere den OpenAI-API-Schlüssel zum Senden von Diktattext und Kontext"]
+apiKey.gemini | setting | AI Polish > Google Gemini · only for this model | EN: Google Gemini API Key | DE: Google Gemini-API-Schlüssel | Sends text and dictation context to Google.
+  DE words: []
+  DE phrases: ["trag meinen Google-API-Schlüssel für die Diktatkorrektur mit Gemini ein", "ändere den Gemini-API-Schlüssel zum Senden von Diktattext und Kontext"]
+apiKey.claude | setting | AI Polish > Claude · only for this model | EN: Claude API Key | DE: Claude-API-Schlüssel | Sends text and dictation context to Anthropic.
+  DE words: ["Anthropic", "Zugangsdaten", "Token"]
+  DE phrases: ["meinen API-Schlüssel von Anthropic eintragen", "Claude mit meinem Anthropic-Schlüssel nutzen"]
+apiKey.save | action | AI Polish > (cloud provider) · only for this model | EN: Save | DE: Sichern | - | parent apiKey.*
+  DE words: []
+  DE phrases: ["meinen eingegebenen API-Schlüssel speichern"]
+apiKey.clear | action | AI Polish > (cloud provider) · only for this model | EN: Clear | DE: Löschen | - | parent apiKey.*
+  DE words: []
+  DE phrases: ["meinen gespeicherten API-Schlüssel entfernen"]
+apiKey.reveal | action | AI Polish > (cloud provider) · only for this model | EN: Show key / Hide key | DE: - | - | parent apiKey.*
+  DE words: []
+  DE phrases: ["meinen API-Schlüssel sichtbar machen", "meinen API-Schlüssel wieder verbergen"]
+apiKey.getKeyLink | action | AI Polish > (cloud provider) · only for this model | EN: Get your free API key at platform.openai.com / Get your free API key at aistudio.google.com / Get your Claude API key | DE: - | - (link) | parent apiKey.*
+  DE words: []
+  DE phrases: ["wo bekomme ich einen API-Schlüssel", "die Anbieterseite für einen API-Schlüssel öffnen"]
+polishModel | setting | AI Polish > (cloud provider or Ollama) · only for this model | EN: Model | DE: Modell | Choose the model used to polish your text. (dynamic: Ollama "Local models stay on this Mac; hosted models send text to Ollama's servers. ...")
+  DE words: ["KI", "LLM", "Ollama"]
+  DE phrases: ["eine andere KI zum Überarbeiten wählen", "ändern, welches Modell meinen Text verbessert"]
+polishModel.refresh | action | AI Polish > (cloud provider or Ollama) · only for this model | EN: Refresh available models | DE: Verfügbare Modelle aktualisieren | - | parent polishModel
+  DE words: []
+  DE phrases: ["die Liste der verfügbaren Modelle neu laden", "noch mal nach Modellen zum Überarbeiten suchen"]
+enableDictionary | setting | Dictionary > DICTIONARY | EN: Enable Dictionary | DE: Wörterbuch aktivieren | Use your words and vocabulary to improve recognition.
+  DE words: ["Worterkennung", "Erkennung"]
+  DE phrases: ["mein Wörterbuch beim Diktieren berücksichtigen", "die Wörterbuchhilfe für die Erkennung ausschalten"]
+dictionary.tab.yourWords | feature | Dictionary > Your Words | EN: Your Words | DE: Deine Wörter | Words you added
+  DE words: ["Wörterbucheinträge", "Schreibweisen"]
+  DE phrases: ["wo sind meine selbst hinzugefügten Wörter", "meine persönliche Wortliste ansehen"]
+dictionary.tab.vocabularyPacks | feature | Dictionary > Vocabulary Packs | EN: Vocabulary Packs | DE: Wortschatzpakete | Ready-made lists
+  DE words: []
+  DE phrases: ["Listen mit Fachbegriffen einschalten", "medizinische Begriffe erkennen", "Listen mit Markennamen einschalten"]
+dictionary.tab.learnFrom | feature | Dictionary > Learn from... | EN: Learn from... | DE: Lernen aus... | Learn as you go
+  DE words: []
+  DE phrases: ["lerne neue Wörter aus meinen Korrekturen", "merk dir Wörter, die ich nach dem Diktieren korrigiere", "lerne Namen aus meinen Kontakten"]
+dictionary.tab.quickAdd | feature | Dictionary > Quick Add | EN: Quick Add | DE: Schnell hinzufügen | Add from any app
+  DE words: ["Anleitung"]
+  DE phrases: ["wie füge ich Wörter aus anderen Apps hinzu", "wie funktioniert Schnell hinzufügen"]
+yourWords.add | action | Dictionary > Your Words > (N) WORDS | EN: Add word | DE: Wort hinzufügen | -
+  DE words: []
+  DE phrases: ["ein Wort direkt in meiner persönlichen Wortliste anlegen"]
+yourWords.import | action | Dictionary > Your Words > (N) WORDS | EN: Import | DE: Importieren | -
+  DE words: []
+  DE phrases: ["eine vorhandene Wortliste in mein Wörterbuch einlesen"]
+yourWords.export | action | Dictionary > Your Words > (N) WORDS | EN: Export your words | DE: Deine Wörter exportieren | -
+  DE words: []
+  DE phrases: ["meine persönlichen Wörterbucheinträge exportieren"]
+yourWords.search | setting | Dictionary > Your Words > (N) WORDS | EN: Search by word, mishearing, or category | DE: Nach Wort, Fehlerkennung oder Kategorie suchen | -
+  DE words: ["Wörterbuchsuche"]
+  DE phrases: ["ein Wort in meinem persönlichen Wörterbuch suchen", "meine eigenen Einträge nach falscher Erkennung oder Kategorie durchsuchen"]
+yourWords.clearSearch | action | Dictionary > Your Words > (N) WORDS | EN: Clear search | DE: Suche löschen | - | parent yourWords.search
+  DE words: []
+  DE phrases: ["das Suchfeld bei meinen eigenen Wörtern leeren"]
+yourWords.categoryFilter | setting | Dictionary > Your Words > (N) WORDS | EN: (category filter pills) | DE: - | -
+  DE words: ["Kategoriefilter", "Wortgruppen", "Eintragstypen"]
+  DE phrases: ["meine eigenen Wörter nach Kategorie filtern", "nur eine bestimmte Art von Wörterbucheinträgen anzeigen"]
+yourWords.category.all | choice | Dictionary > Your Words > (N) WORDS | EN: All categories | DE: Alle Kategorien | - | parent yourWords.categoryFilter
+  DE words: ["ungefiltert"]
+  DE phrases: ["meine Wörter aus allen Kategorien anzeigen", "den Kategoriefilter für meine Wörter aufheben"]
+yourWords.category.general | choice | Dictionary > Your Words > (N) WORDS | EN: General | DE: Allgemein | - | parent yourWords.categoryFilter
+  DE words: ["Alltagswörter", "Alltag"]
+  DE phrases: ["meine Einträge in der Kategorie Allgemein anzeigen", "meine Wortliste nach Alltagswörtern filtern"]
+yourWords.category.person | choice | Dictionary > Your Words > (N) WORDS | EN: Person | DE: Person | - | parent yourWords.categoryFilter
+  DE words: []
+  DE phrases: ["meine eigene Wortliste nach Personennamen filtern", "die Vor- und Nachnamen anzeigen, die ich selbst hinzugefügt habe"]
+yourWords.category.brand | choice | Dictionary > Your Words > (N) WORDS | EN: Brand | DE: Marke | - | parent yourWords.categoryFilter
+  DE words: []
+  DE phrases: ["meine eigenen Einträge nach Marken filtern", "die Firmen- und Produktnamen anzeigen, die ich selbst hinzugefügt habe"]
+yourWords.category.acronym | choice | Dictionary > Your Words > (N) WORDS | EN: Acronym | DE: Akronym | - | parent yourWords.categoryFilter
+  DE words: ["Abkürzungen", "Kürzel", "Kurzformen"]
+  DE phrases: ["meine gespeicherten Abkürzungen anzeigen", "meine eigene Wortliste nach Kürzeln filtern"]
+yourWords.category.domain | choice | Dictionary > Your Words > (N) WORDS | EN: Domain | DE: Fachgebiet | - | parent yourWords.categoryFilter
+  DE words: []
+  DE phrases: ["meine eigenen Einträge nach Fachbegriffen filtern", "die Fachwörter anzeigen, die ich selbst hinzugefügt habe"]
+yourWords.category.autoLearned | choice | Dictionary > Your Words > (N) WORDS | EN: Auto-learned | DE: Automatisch gelernt | - | parent yourWords.categoryFilter
+  DE words: []
+  DE phrases: ["nur die aus meinen Korrekturen gelernten Wörter anzeigen", "meine Wortliste nach automatisch gelernten Einträgen filtern"]
+yourWords.massEdit | action | Dictionary > Your Words > (N) WORDS | EN: Mass edit | DE: Mehrere auswählen | -
+  DE words: ["Mehrfachauswahl", "Sammelauswahl"]
+  DE phrases: ["mehrere Wörterbucheinträge auf einmal auswählen"]
+learnFrom | feature | Dictionary > Learn from... > Learn from... | EN: Learn from... | DE: Lernen aus... | Let EnviousWispr pick up new words on its own, from things you already have.
+  DE words: ["Lernquellen", "Wortquellen"]
+  DE phrases: ["welche Quellen kann die App zum Wörterlernen nutzen", "neue Wörter aus vorhandenen Quellen übernehmen lassen"]
+selfLearningDictionary | setting | Dictionary > Learn from... > Learn from... | EN: Self-Learning Dictionary (Beta) | DE: Selbstlernendes Wörterbuch (Beta) | Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.
+  DE words: ["Korrekturlernen", "Korrekturerkennung"]
+  DE phrases: ["Wörter merken, wenn ich ein Diktat korrigiere", "korrigierte Wörter automatisch ins Wörterbuch aufnehmen", "nicht mehr aus meinen Diktatkorrekturen lernen"]
+selfLearningDictionary.learnMore | action | Dictionary > Learn from... > Learn from... | EN: Learn more | DE: Mehr erfahren | - (link) | parent selfLearningDictionary
+  DE words: []
+  DE phrases: ["nachlesen, wie das Lernen aus Diktatkorrekturen funktioniert"]
+importContacts | feature | Dictionary > Learn from... > Learn from... | EN: Import from Contacts | DE: Aus Kontakten importieren | Add the names of people you know to your word list, so dictation spells them right.
+  DE words: ["Adressbuch"]
+  DE phrases: ["die Namen aus meinem Adressbuch fürs Diktieren nutzen", "Namen aus meinen Kontakten richtig erkennen lassen"]
+contactsSyncOnLaunch | setting | Dictionary > Learn from... > Learn from... | EN: Keep in sync on launch | DE: Beim Start synchron halten | Check for new contacts each time EnviousWispr starts. Off by default. | parent importContacts
+  DE words: ["Kontaktabgleich", "Synchronisierung"]
+  DE phrases: ["bei jedem Appstart nach neuen Kontaktnamen suchen", "meine Kontaktwörter beim Start aktuell halten"]
+quickAdd.step1 | feature | Dictionary > Quick Add | EN: Highlight a word | DE: Wort markieren | Select the word you want to fix in an email, chat, or document.
+  DE words: ["Textauswahl", "Textmarkierung"]
+  DE phrases: ["das Wort zum Korrigieren in einer anderen App markieren", "vor Schnell hinzufügen ein Wort auswählen"]
+quickAdd.step2 | feature | Dictionary > Quick Add | EN: Trigger Quick Add | DE: „Schnell hinzufügen“ aufrufen | Press (shortcut), or open the EnviousWispr menu and choose the Add item. (dynamic)
+  DE words: []
+  DE phrases: ["Schnell hinzufügen für das markierte Wort aufrufen", "nach dem Markieren die Wortübernahme starten"]
+quickAdd.step3 | feature | Dictionary > Quick Add | EN: Choose and save | DE: Auswählen und sichern | Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary.
+  DE words: []
+  DE phrases: ["bei Schnell hinzufügen das gemeinte Wort auswählen", "die markierte Schreibweise beim richtigen Wörterbucheintrag speichern"]
+quickAdd.shortcut | action | Dictionary > Quick Add | EN: Keyboard shortcut | DE: Tastenkürzel | (shortcut). Change it under Keybinds. (dynamic; "Currently unavailable — set one under Keybinds.")
+  DE words: ["Hotkey", "Tastenkombination"]
+  DE phrases: ["welche Tasten öffnen Schnell hinzufügen", "wo kann ich das Tastenkürzel für Schnell hinzufügen ändern"]
+quickAdd.menuBar | feature | Dictionary > Quick Add | EN: Menu bar | DE: Menüleiste | Click the EnviousWispr icon, then choose the item that starts with "Add"
+  DE words: []
+  DE phrases: ["ein markiertes Wort über das EnviousWispr-Menü hinzufügen", "den Eintrag zum Hinzufügen unter dem EnviousWispr-Symbol finden"]
+snippets | feature | Snippets | EN: Paste the text you type over and over, by voice | DE: Füge Text, den du oft tippst, per Stimme ein | Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone.
+  DE words: ["Texterweiterung", "Textersetzung"]
+  DE phrases: ["gespeicherten Text per Stimme einfügen", "wiederkehrenden Text mit einem Sprachbefehl einsetzen", "eine gespeicherte Signatur per Stimme einfügen"]
+snippetKeyword | setting | Snippets | EN: Keyword | DE: Schlüsselwort | Say this first, then your trigger. One word.
+  DE words: ["Startwort", "Einleitungswort"]
+  DE phrases: ["das Wort vor dem Textbausteinauslöser ändern", "festlegen, mit welchem Wort meine Textbausteinbefehle anfangen"]
+yourSnippets | feature | Snippets > YOUR SNIPPETS | EN: Your snippets | DE: Deine Textbausteine | (N) snippets
+  DE words: ["Bausteinsammlung"]
+  DE phrases: ["meine gespeicherte Textbausteinsammlung ansehen", "wo sind die Texte, die ich schon als Bausteine gespeichert habe"]
+snippets.search | setting | Snippets > YOUR SNIPPETS | EN: Search snippets | DE: Textbausteine durchsuchen | -
+  DE words: ["Bausteinsuche"]
+  DE phrases: ["einen Textbaustein in meiner Sammlung finden", "meine vorhandenen Textbausteine durchsuchen"]
+snippets.import | action | Snippets > YOUR SNIPPETS | EN: Import | DE: Importieren | -
+  DE words: []
+  DE phrases: ["eine vorhandene Textbausteinsammlung einlesen"]
+snippets.export | action | Snippets > YOUR SNIPPETS | EN: Export | DE: Exportieren | -
+  DE words: []
+  DE phrases: ["meine gespeicherte Textbausteinsammlung exportieren"]
+snippets.add | action | Snippets > YOUR SNIPPETS | EN: Add snippet | DE: Textbaustein hinzufügen | -
+  DE words: []
+  DE phrases: ["meiner vorhandenen Sammlung einen weiteren Textbaustein hinzufügen"]
+snippets.addFirst | action | Snippets > YOUR SNIPPETS | EN: Add your first snippet | DE: Ersten Textbaustein hinzufügen | No snippets yet
+  DE words: []
+  DE phrases: ["meinen ersten Textbaustein in der noch leeren Liste anlegen"]
+snippets.clearSearch | action | Snippets > YOUR SNIPPETS | EN: Clear search | DE: Suche löschen | No snippets match "(query)" | parent snippets.search
+  DE words: []
+  DE phrases: ["das Suchfeld in meiner Textbausteinliste leeren"]
+appSettings.tab.appearance | feature | App Settings > Appearance | EN: Appearance | DE: Erscheinungsbild | -
+  DE words: []
+  DE phrases: ["den Bereich Erscheinungsbild in den App-Einstellungen öffnen", "wo ist der Reiter Erscheinungsbild"]
+appSettings.tab.permissions | feature | App Settings > Permissions | EN: Permissions | DE: Berechtigungen | -
+  DE words: ["Zugriffsrechte", "Freigaben", "Appzugriffe"]
+  DE phrases: ["alle benötigten Mac-Berechtigungen ansehen", "die Übersicht der App-Berechtigungen öffnen"]
+appSettings.tab.privacy | feature | App Settings > Privacy | EN: Privacy | DE: Datenschutz | -
+  DE words: ["Privatsphäre"]
+  DE phrases: ["den Datenschutzbereich der App-Einstellungen öffnen", "wo sind die Einstellungen zur Datenweitergabe"]
+appSettings.tab.licenses | feature | App Settings > Licenses | EN: Licenses | DE: Lizenzen | -
+  DE words: ["Urheberrecht", "Lizenzübersicht"]
+  DE phrases: ["die Übersicht der App- und Drittanbieterlizenzen öffnen", "wo finde ich alle Lizenzdokumente"]
+theme | setting | App Settings > Appearance > APPEARANCE | EN: Theme | DE: Design | Choose how EnviousWispr looks.
+  DE words: ["Farbschema", "Farben", "Farbmodus"]
+  DE phrases: ["das Farbschema der App ändern", "den Darstellungsmodus der App auswählen"]
+theme.system | choice | App Settings > Appearance > APPEARANCE | EN: System | DE: System | Choose System to follow your Mac, or choose Light or Dark. | parent theme
+  DE words: []
+  DE phrases: ["das Farbschema meines Macs übernehmen", "mit meinem Mac zwischen hell und dunkel wechseln"]
+theme.light | choice | App Settings > Appearance > APPEARANCE | EN: Light | DE: Hell | - | parent theme
+  DE words: ["Tagmodus", "heller"]
+  DE phrases: ["die App im hellen Modus anzeigen", "dauerhaft das helle Design verwenden"]
+theme.dark | choice | App Settings > Appearance > APPEARANCE | EN: Dark | DE: Dunkel | - | parent theme
+  DE words: ["Nachtmodus", "dunkler"]
+  DE phrases: ["die App im dunklen Modus anzeigen", "dauerhaft das dunkle Design verwenden"]
+appLanguage | setting | App Settings > Appearance > APPEARANCE | EN: Language | DE: Sprache | The language of the app interface.
+  DE words: ["Oberflächensprache", "Menüsprache", "Übersetzung"]
+  DE phrases: ["die Sprache der Appmenüs ändern", "die Sprache der Einstellungen ändern"]
+appLanguage.systemDefault | choice | App Settings > Appearance > APPEARANCE | EN: System default | DE: Systemstandard | System default follows your Mac. | parent appLanguage
+  DE words: []
+  DE phrases: ["die Appsprache vom Mac übernehmen", "die App in derselben Sprache wie meinen Mac anzeigen"]
+appLanguage.shipped | choice | App Settings > Appearance > APPEARANCE | EN: (each shipped localization, by its own name) | DE: - | - | parent appLanguage
+  DE words: ["Deutsch", "Englisch", "English"]
+  DE phrases: ["die Appmenüs auf Deutsch anzeigen", "die Appmenüs auf Englisch anzeigen"]
+appLanguage.relaunch | action | App Settings > Appearance > APPEARANCE | EN: Relaunch to apply | DE: Zum Übernehmen neu starten | EnviousWispr uses the new language after it relaunches. | parent appLanguage
+  DE words: []
+  DE phrases: ["die App neu starten, um die neue Menüsprache zu übernehmen"]
+showInDock | setting | App Settings > Appearance > APPEARANCE | EN: Show app in Dock | DE: App im Dock anzeigen | Keep EnviousWispr in your Dock.
+  DE words: []
+  DE phrases: ["das EnviousWispr-Symbol im Dock behalten", "EnviousWispr aus dem Dock ausblenden"]
+updateAlertInMenuBar | setting | App Settings > Appearance > APPEARANCE | EN: Update alert in menu bar | DE: Update-Hinweis in der Menüleiste | Show gold lips when an update is ready.
+  DE words: ["gold", "golden", "Lippen", "Updatesymbol"]
+  DE phrases: ["goldene Lippen anzeigen, wenn ein Update bereitsteht", "den Update-Hinweis in der Menüleiste ausblenden"]
+permission.microphone | feature | App Settings > Permissions > PERMISSIONS | EN: Microphone | DE: Mikrofon | Needed to record your voice. (status: Allowed / Microphone access denied)
+  DE words: ["Mikro", "Aufnahme", "Sprachaufnahme"]
+  DE phrases: ["prüfen, ob die App meine Stimme aufnehmen darf", "warum ist der Mikrofonzugriff gesperrt"]
+permission.microphone.request | action | App Settings > Permissions > PERMISSIONS | EN: Request Access | DE: Zugriff anfordern | - | parent permission.microphone
+  DE words: []
+  DE phrases: ["die Erlaubnis für den Mikrofonzugriff anfordern"]
+permission.accessibility | feature | App Settings > Permissions > PERMISSIONS | EN: Accessibility | DE: Bedienungshilfen | Needed to paste text into other apps. (status: Allowed / Accessibility access required for paste)
+  DE words: ["Einfügeberechtigung", "Einfügen", "Texteingabe"]
+  DE phrases: ["die Berechtigung zum Einfügen von Diktaten prüfen", "warum braucht die Texteingabe Zugriff auf Bedienungshilfen"]
+permission.accessibility.openSettings | action | App Settings > Permissions > PERMISSIONS | EN: Open System Settings | DE: Systemeinstellungen öffnen | After rebuilding the app you may need to re-grant this permission. | parent permission.accessibility
+  DE words: []
+  DE phrases: ["die Mac-Einstellungen für den Zugriff auf Bedienungshilfen öffnen", "nach einem neuen App-Build die Bedienungshilfen erneut freigeben"]
+shareUsageMetrics | setting | App Settings > Privacy > PRIVACY | EN: Share usage metrics | DE: Nutzungsstatistiken teilen | Help us catch broken updates.
+  DE words: ["Nutzungsdaten", "Nutzungsanalyse"]
+  DE phrases: ["Nutzungsdaten teilen, um fehlerhafte Updates zu erkennen", "die Nutzungsanalyse ausschalten"]
+sendCrashReports | setting | App Settings > Privacy > PRIVACY | EN: Send crash reports | DE: Absturzberichte senden | Help us fix crashes and errors.
+  DE words: ["Abstürze", "Fehler", "Fehlerdiagnose"]
+  DE phrases: ["Informationen zu Abstürzen und Fehlern senden", "keine Absturzberichte mehr senden"]
+sendCrashReports.restart | action | App Settings > Privacy > PRIVACY | EN: Restart now | DE: Jetzt neu starten | Takes effect when EnviousWispr restarts | parent sendCrashReports
+  DE words: []
+  DE phrases: ["die App neu starten, um meine Einstellung für Absturzberichte zu übernehmen"]
+whatWeCollect | feature | App Settings > Privacy > PRIVACY | EN: What we collect | DE: Was wir erfassen | Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form.
+  DE words: ["Datenerfassung", "Feedbackdaten"]
+  DE phrases: ["welche Daten erfasst die App", "werden meine Aufnahmen oder Diktate gesammelt", "werden mein Wörterbuch oder meine API-Schlüssel erfasst"]
+whatWeCollect.seeDetails | action | App Settings > Privacy > PRIVACY | EN: See details | DE: Details ansehen | - (link; VoiceOver "See what we collect") | parent whatWeCollect
+  DE words: []
+  DE phrases: ["die ausführliche Erklärung zur Datenerfassung öffnen"]
+license.gpl | feature | App Settings > Licenses > ABOUT | EN: EnviousWispr · GPLv3 | DE: EnviousWispr · GPLv3 | Open source under the GNU GPL version 3.
+  DE words: ["quelloffen", "Copyleft", "GNU", "GPL"]
+  DE phrases: ["ist EnviousWispr Open Source", "unter welcher freien Lizenz steht EnviousWispr"]
+license.gpl.view | action | App Settings > Licenses > ABOUT | EN: View license | DE: Lizenz ansehen | - | parent license.gpl
+  DE words: []
+  DE phrases: ["den vollständigen GPLv3-Lizenztext öffnen"]
+license.notices | feature | App Settings > Licenses > ABOUT | EN: Third-Party Notices | DE: Hinweise zu Drittanbietern | Licenses for the tools EnviousWispr uses.
+  DE words: ["Bibliothekslizenzen", "Komponentenlizenzen", "Fremdsoftware"]
+  DE phrases: ["welche Lizenzen gelten für die verwendeten Werkzeuge", "Lizenzinformationen zu den eingebauten Bibliotheken finden"]
+license.notices.view | action | App Settings > Licenses > ABOUT | EN: View notices | DE: Hinweise ansehen | - | parent license.notices
+  DE words: []
+  DE phrases: ["die Lizenzhinweise zu Drittanbietern öffnen"]

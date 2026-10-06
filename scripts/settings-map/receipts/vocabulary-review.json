@@ -1,0 +1,1583 @@
+{
+ "schema": "settings-search-vocabulary-review",
+ "resource": {
+  "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
+  "sha256": "5206ccc386294606d2b6b4e3abf86d6e0806e492268f35a48c30b22fef6aba21",
+  "bytes": 1555313
+ },
+ "sources": [
+  {
+   "name": "multilingual-v2.json",
+   "benchPath": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-settings-search-bench/scripts/eval/settings_search_bench/vocabulary/multilingual-v2.json",
+   "sha256": "811e1b21fc30edfdf5d109e712997f80f074debaa52f025b806aa7a821f30ae3",
+   "bytes": 2386721,
+   "note": "Phase 0 vocabulary, all 310 ids; its status line says the German council review was still owed, which council/digest.md now records"
+  },
+  {
+   "name": "reviewed-v2.json",
+   "benchPath": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-settings-search-bench/scripts/eval/settings_search_bench/vocabulary/reviewed-v2.json",
+   "sha256": "1ffe28f6c47c5491cd941ca27c461171776765b60e4865c9bc16799e64188d56",
+   "note": "Phase 0 reviewed English and German; equal to the English and German blocks of multilingual-v2.json"
+  },
+  {
+   "name": "reviewed-edits.json",
+   "path": "scripts/settings-map/receipts/reviewed-edits.json",
+   "sha256": "03b379cf27d843b8f20578417f2b00732e2ba396c504b99e526b126e5933fa89"
+  }
+ ],
+ "excludedIDs": [
+  {
+   "id": "apiKey.checkAgain",
+   "reason": "savedKeyRetry"
+  },
+  {
+   "id": "importContacts.import",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "importContacts.openSettings",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "importContacts.removeImported",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "localModel.remove",
+   "reason": "bundledModelRemove"
+  },
+  {
+   "id": "selfLearningDictionary.cancel",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.download",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.removeAndDownload",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.retryChecker",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.retryLoad",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "snippets.editRow",
+   "reason": "userContent"
+  },
+  {
+   "id": "transcribeFile.changePolisher",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.chooseDifferentFile",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.chooseFile",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.continue",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.copy",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine.allLanguages",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine.fast",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.engines",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.original",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.polish",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.privacy",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.newTranscription",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.appleIntelligence",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.claude",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.egOne",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.gemini",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.ollama",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.openAI",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polishSetup",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.removeFile",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.retrySpeakers",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.save",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.share",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.start",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.stopSpeakers",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.times",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.useDictationPolish",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.cleaned",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.markedUp",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.original",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "vocabularyPack.brands",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.addMishearing",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.back",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.mishearing",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.packOn",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.restore",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.search",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.wordToggle",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.legal",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.medical",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.names",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.seeAll",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.tech",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPacks",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "yourWords.cancelSelection",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.delete",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.edit",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.nextPage",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.previousPage",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.selectAll",
+   "reason": "userContent"
+  }
+ ],
+ "emptyWords": "An empty words array is valid when the title and phrases carry the place (orchestrator answer Q2, 2026-10-06); no per-block record.",
+ "languages": [
+  {
+   "language": "ar",
+   "contentSHA256": "e9ce10e48a03312eb7225242a653ae630cc734d9dd1ce855f6b92ca0b592e4fb",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ar.txt",
+      "sha256": "60f26af4d0a3b9bd9c2bfb87b03d1793338ebb7cc18541fa84e9d109545102b7"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ar.md",
+       "sha256": "8b4f13166434a72c2e414e840819a100359c9dbcbd991861b605134416dbace9"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ar.txt.last",
+       "sha256": "904926ba4b172434c584afa64cf3b99429f3d11632997c5a27bdc535107e2eac"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "bg",
+   "contentSHA256": "105ca958c96c5fedf4a7d1fc17f7b67d8f0eca5a43370556c5d07f3fa5b33a50",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-bg.txt",
+      "sha256": "c4552dcb3736c0860fdac82576bd610e16e747957200a9f39eecd62f3baefed5"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-bg.md",
+       "sha256": "aeabf3ed635693ee7989095d007b837edde47d7ab3e32967eddccc78038d8d38"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-bg.txt.last",
+       "sha256": "f7223aeb04e92d3abb126cc2d34145fb2133c50cb3942201ca4ada19bf835b2a"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "cs",
+   "contentSHA256": "83ff56bc1c8998d23b12889e220df1aa07ad8973891ff204b1bae67a13a1b0ca",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-cs.txt",
+      "sha256": "33c41dddc412381d1c98f6e5cfd407034d3ff7bfb767f51139638d3749e714eb"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-cs.md",
+       "sha256": "628589d20ccf4a042aafa6d4fef6fd6fcec0c2cc41f053c10c16e58f2449ead4"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-cs.txt.last",
+       "sha256": "8df5c996b35ca69794a9c47a952495ef25c3624b3f1dcbb881869e8319e9b347"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "da",
+   "contentSHA256": "c164ac0e99fd9d133ec2ee264ff94b8a8025fd1ddcff597228f39e0e6e254e7a",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-da.txt",
+      "sha256": "dd2e7bb909b59b6754836fdc65e33bef9a9fa74ff6f7dc30d24ef4f83d8fa9a1"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-da.md",
+       "sha256": "0f0fe0113b847e654a6a3baf43e04647bd5e14a6da3690799d791ad2e6531e65"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-da.txt.last",
+       "sha256": "ba1493eeca796bb4a919681a91bea2d1c0a6ea703733a19afc864d02bb4b8d5c"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "de",
+   "contentSHA256": "a24f31c2f8a13e8f999f4879a560166583c7c3ad74a17664aa60d76a8d4758e9",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, three fresh isolated sessions covering all 310 ids in English and German (accuracy, collisions, reach, German)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "prompts": [
+      "phase0/ende/review-prompt-aa.md",
+      "phase0/ende/review-prompt-ab.md",
+      "phase0/ende/review-prompt-ac.md"
+     ],
+     "outputs": [
+      {
+       "path": "phase0/ende/review-aa.txt",
+       "sha256": "7c5abafdc82ee8d5558f11f09acc4c4c4b891adbc4407644fc44f28db183ffde"
+      },
+      {
+       "path": "phase0/ende/review-ab.txt",
+       "sha256": "cc9174b93c76abd509655186247d861f1e09fb8099e64d72b0897342c439baeb"
+      },
+      {
+       "path": "phase0/ende/review-ac.txt",
+       "sha256": "e588753631f79b294ca7e8d2d92b6fe66ac9183d63360abf19caa8138b588772"
+      }
+     ],
+     "disposition": "content identical to the reviewed outputs for the 246 searchable ids; the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list and markers adopted as returned then changed by the German council review"
+    },
+    {
+     "kind": "phrases",
+     "scope": [
+      "dictionary.tab.learnFrom",
+      "dictionary.tab.vocabularyPacks"
+     ],
+     "method": "drafted in a fresh isolated Codex session (lists/phrases-draft-prompt.md), reviewed in list review group 0",
+     "date": "2026-10-06",
+     "disposition": "adopted as the review returned them"
+    },
+    {
+     "kind": "german-council",
+     "method": "Council: GPT gpt-6-sol and Gemini gemini-3.8-flash, session settings-search-german-2026-10-06, two rounds",
+     "date": "2026-10-06",
+     "scope": "every German block of the 246 ids, the stop list and the markers",
+     "digest": "council/digest.md",
+     "disposition": "7 findings adopted, 4 rejected with evidence; round 2: no changes from either provider"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "el",
+   "contentSHA256": "da0ec6ac92cfbc647aa57d979f7a19bfcf9433674322ff98a6bc95e16f13bfaf",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-el.txt",
+      "sha256": "9c48cd56d6e9455b4e9426de72db4d9188213e165d33c1746bc5dcd5157c972b"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-el.md",
+       "sha256": "8f47917947f40960edbfb0779be7fdb4ba4c939e0231734250c3cdb8e35093ed"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-el.txt.last",
+       "sha256": "d5ba7473391ed8863d9dff0ae6a0b556f73e474126d1cdf24feee749865140da"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "en",
+   "contentSHA256": "c92b57198616f1bf8015c28b86df4e671722da57117b52b6a9cf2f98a45aa6b1",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, three fresh isolated sessions covering all 310 ids in English and German (accuracy, collisions, reach, German)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "prompts": [
+      "phase0/ende/review-prompt-aa.md",
+      "phase0/ende/review-prompt-ab.md",
+      "phase0/ende/review-prompt-ac.md"
+     ],
+     "outputs": [
+      {
+       "path": "phase0/ende/review-aa.txt",
+       "sha256": "7c5abafdc82ee8d5558f11f09acc4c4c4b891adbc4407644fc44f28db183ffde"
+      },
+      {
+       "path": "phase0/ende/review-ab.txt",
+       "sha256": "cc9174b93c76abd509655186247d861f1e09fb8099e64d72b0897342c439baeb"
+      },
+      {
+       "path": "phase0/ende/review-ac.txt",
+       "sha256": "e588753631f79b294ca7e8d2d92b6fe66ac9183d63360abf19caa8138b588772"
+      }
+     ],
+     "disposition": "content identical to the reviewed outputs for the 246 searchable ids; the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    },
+    {
+     "kind": "phrases",
+     "scope": [
+      "dictionary.tab.learnFrom",
+      "dictionary.tab.vocabularyPacks"
+     ],
+     "method": "drafted in a fresh isolated Codex session (lists/phrases-draft-prompt.md), reviewed in list review group 0",
+     "date": "2026-10-06",
+     "disposition": "adopted as the review returned them"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "es",
+   "contentSHA256": "8523501489d3bda9ccb5838d3f0d566107eda74577f29e7f77ebe38aa84d3192",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-es.txt",
+      "sha256": "d0e331bc8177a7c19d6d86878e61527296381e8fcec30c78730f3c6b32f8c4a4"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-es.md",
+       "sha256": "80d6090f122cc177905aeea4412949e7b9928658ad680dfa43af6dfa67c31a65"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-es.txt.last",
+       "sha256": "5aa5147f55034cfd577d9865dbfd2556a92ab81b8765923560976241d687fdee"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "et",
+   "contentSHA256": "da5a57eff60d619f6b768bc10718095b592ad6e293462ee25447725d7f36da8f",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-et.txt",
+      "sha256": "3cc9b7ea658e504a800dd75dae17bde02459573cd31560c6656cfa5c16e45a72"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-et.md",
+       "sha256": "38d1de4cc88e9d403c5c4a31d8e0ea0eeeca24df2601dfebad410e1743b59469"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-et.txt.last",
+       "sha256": "9d68cbc2ed553ba9b26dca379dfb40f5d6bc58e0c23a127705fc8c0d6d25073d"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "fi",
+   "contentSHA256": "d7899974ba7acde95686db7677810a46a2f56427a397440fd9f4cefc5ed846a6",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-fi.txt",
+      "sha256": "454c19e69c25f454fb15bcec5a2462b40a4e877307ccb9f71e6588c03268b843"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-fi.md",
+       "sha256": "9de5681871063447c8ff1218d00171b94a0dbcf31c580250535651ef60651f96"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-fi.txt.last",
+       "sha256": "7f87c87f41ae3df3419f5078ec5d7c456320ada2ccf00041801d252bfb4ffd14"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "fr",
+   "contentSHA256": "fb231a5854440047b7bb58b478393d8797c385ac73a78d4b75333040856bf11f",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-fr.txt",
+      "sha256": "60c6501507179fe4a826d5e434cc62ccf6cad0e2715430fafb005e94c8006690"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-fr.md",
+       "sha256": "f52c69771ba936b608bb596c3c2a848bd69075bfc1929463efc79e4f800d0a66"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-fr.txt.last",
+       "sha256": "1e40cdd00b480e90fff71982c9875037d742515f395627f1e2a8a3c4e6783bd4"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "hi",
+   "contentSHA256": "dbabef872968b8afcb4cf2cebd8e1677b60cdc0840f266a0652322340c0e4eb3",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-hi.txt",
+      "sha256": "ae275034ca610f5ed437cfb33cb688ad8aa3cb5b638febe7ae67ff83ab3463b7"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-hi.md",
+       "sha256": "f3f3d6da6950aa218aa38509b0b8005e8fd0c2bae52a94b960c83145be62e0d8"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-hi.txt.last",
+       "sha256": "d501490efea7bbb3a9f4053fc304d462ab33e8c30f2ecbff705ceb8becb04af8"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "hr",
+   "contentSHA256": "59dcd6920d2f141f25a6eff877cc5a40242f924817dfc066a12850cbc40ce9f2",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-hr.txt",
+      "sha256": "a4cff2a86eb7fea7f67938558e00cef8881ae377901ef51267875abfcec4619f"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-hr.md",
+       "sha256": "8935492f5be8d41aca55e745a9f47971f05c3ce10080bc7515efd3c3bbd65d39"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-hr.txt.last",
+       "sha256": "63e942100a72168f536aae0eec1931aea8c6ddf3b290f9f334e7c24fd2f74122"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "hu",
+   "contentSHA256": "f11bd5cc1c809368d2b3194a2a6693ac2f3b987eb47ecf9b03c5bf67bdcbbdfb",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-hu.txt",
+      "sha256": "ad7fbfc91c4fa563c047d87b3dcd2dda82f435615a61e143928afc682be153e5"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-hu.md",
+       "sha256": "4c225b17543cb6d35254dfd4a3c8ca60894d6e97d029a1acbbe19ecbebee844e"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-hu.txt.last",
+       "sha256": "0b34b1c75dc362aaea3957a3c64b6bbe38bc710d428f88661395ba72e2494f80"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "it",
+   "contentSHA256": "4fc5a08ad61dfed60f9c535e30c43e5d844099141098066e34567ff05f010bbb",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-it.txt",
+      "sha256": "5db2c744179a9275f46b86e04ae4b6bf5d8e49ffcd0ed5fe7d5de06e0a0c90ed"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-it.md",
+       "sha256": "076bc564b22af8eae5acb098edcf88ac7245ffb00eabaee235323c7044828485"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-it.txt.last",
+       "sha256": "e5e112d5b64f9a94a3ef9df8041adad18ff4bdb50855016d3e1f2ed16f91c4d0"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "ja",
+   "contentSHA256": "76c6f3782b4ab1da59d9c6ee0a9c1cf6321997cda469b44108796cbde25d61da",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ja.txt",
+      "sha256": "84430a4a7187d1c2395b7e63ed0fbdcee426d6d81ec13cf821c3a1841896aea7"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ja.md",
+       "sha256": "4a5ef7016c6ad2df8aca56831516d3f3410ff1d4342f3f87078d6e9201215b46"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ja.txt.last",
+       "sha256": "b24eb8cd77a2cee984a5be7952e9b131dc5a5876f928d43980bf34bb703e9652"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "ko",
+   "contentSHA256": "e79ef848cfce3f706392bdb8b7fef715c0366c06200031d1d4aba19650836764",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ko.txt",
+      "sha256": "31df4e614250373ec282937b2b8c16dd7498a64072db95b3072b094b9a00f5e4"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ko.md",
+       "sha256": "140d56b52a7f5721b695c290911eeac35f7b6837439dad72de03bab8741a4fe3"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ko.txt.last",
+       "sha256": "dc7e36ad0b711d121011bcaf21ed59525a1d714f8c8c30c4bc32eaa86885d2d6"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "lt",
+   "contentSHA256": "8cf1e6c95817ceec043a94c7082d9bc94db07690abb1bb9c7711958b69770e6b",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-lt.txt",
+      "sha256": "a91232185815dd7caf002f20138848f3ca004bae785713d60c3fa5f0b66d16d6"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-lt.md",
+       "sha256": "811a996ec3ed36d5678aa70b7f35571b50980a232b4354efd8a5ce925e6ca4c6"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-lt.txt.last",
+       "sha256": "e4ea2b071096599a8ad36f32f33e0e326a00c8559dbbf3f106bd61917260af29"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "lv",
+   "contentSHA256": "91f7d0b5eaaadf97265c29510ffff7c50b399c6b97d0170972443278dc82911a",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-lv.txt",
+      "sha256": "0f5c1b3b5c3fcbc7053fc500c3642280f1d05b482385d965dc31a2676f41032d"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-lv.md",
+       "sha256": "3d196455c53138ef4b913169d3e0f1a60a4d25226bccbf2b03fc29004d002bd5"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-lv.txt.last",
+       "sha256": "2f524bba9e2b14b398207c0d9bb1a08b34a0a6c6015237b2514ff8deb35e8df6"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "mt",
+   "contentSHA256": "303dde0b04f53c91d632210a7bae93a5a564f4c2b4b768dc32d7afaab11705ea",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-mt.txt",
+      "sha256": "5831a63ed7703b8c6a8ba8944a0d27f7f34c54650ce080df3b4b4f869b1dc437"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-mt.md",
+       "sha256": "6735fbc89b418c27c8bbd29d6d7d179fcd7a31d08feba9f25cf5b39d26a5bd32"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-mt.txt.last",
+       "sha256": "51db0a1f767d6af4cd4db5cd4219548b0ae1f674f5c636e42f9ccb652295bf35"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "nl",
+   "contentSHA256": "58489cb3fac0d7d7e37dacafae30cd936342a3ef8fbe46350a99b1295b01e4d9",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-nl.txt",
+      "sha256": "762169df89a9bad6d6e3ffb963f6021f75850211ee314dd7efe44d3a38bab13a"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-nl.md",
+       "sha256": "c43c9cdd3f1fca2d4b7d2c9bcf5144a259158ee84929495c1ad8bec9ee2e5f8d"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-nl.txt.last",
+       "sha256": "9552bd5b94b0a067f24b108252611617493b52f6c8a82e209080e4a2fde2272e"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "pl",
+   "contentSHA256": "939077e00c735e23258ede1ec6ebbefa6c77ff732c0d8b368d0400a9abcedc1d",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-pl.txt",
+      "sha256": "c644ab3a36226ad545dd204ca78ef149a13b4aeea9d25169d3ff1dd0601c20d5"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-pl.md",
+       "sha256": "fe51577b9240d76841cccb3b83a8a67b08082f534e78091475c51d237aeb553b"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-pl.txt.last",
+       "sha256": "122c3d98d14e354546dc6028b29059e2e16e51b6dc27bc49157093adbb7f146f"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "pt",
+   "contentSHA256": "ba5381199916ad3abbf77aa49ea98516d5a5b83e7065ae21caa6b6374f46f867",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-pt.txt",
+      "sha256": "7e04ca37a2e4e96749bfbe5bb127562be324741ec5fbd7efd6adc1dfb9d1921c"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-pt.md",
+       "sha256": "1de6c6a399d99e29263b33ceddb0e40b00265dc49b6d980060af357d1ac0f623"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-pt.txt.last",
+       "sha256": "f471742e4519933241317e6b5df06d2f9bfdd4147e3fdd77d0319909368cf1d6"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    },
+    {
+     "kind": "guard-edit",
+     "scope": [
+      "fillerRemoval"
+     ],
+     "date": "2026-10-06",
+     "disposition": "removed the word \"um\" (Portuguese \"a\", a reviewed stop word) so the filler list cannot make it unsearchable; no new content"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "ro",
+   "contentSHA256": "155cfd74784ab0499bca442358d1f3594efb5fc9a7b8e5757af74193abb744ee",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ro.txt",
+      "sha256": "07020d391c526bc2e8cd26ef0b390e20e3a49ba6ebdf8abc07f76912503ea954"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ro.md",
+       "sha256": "d8a570eb34c10c5f0994c5d2d63a78d25e71eac1df0904fa62e3f56867362017"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ro.txt.last",
+       "sha256": "4c792e0a5f0f3f4a9596d1188622e59cb4f2b43b6c93b9f4161af063287c07c3"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "ru",
+   "contentSHA256": "e653d6a13ad27b904e9402e228699725041ff1882d475c153122c4043821391a",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ru.txt",
+      "sha256": "86da978c5f3c82172598551619d386c0b5351df5c21871930bf3fe874331938b"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ru.md",
+       "sha256": "2daf76e12924ff16291e3007eb6e832a6a8b4c3d33c674e44ed0f27571725769"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ru.txt.last",
+       "sha256": "e4a8836036413065350622fcc92fa92e79aba609787b7172ef83040b0fa4c0c2"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "sk",
+   "contentSHA256": "ef4afadb65b38c67b9cd89a57f447cc6bde26900687ce31fbf97553085631d7a",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-sk.txt",
+      "sha256": "18b03759976958671537947f03d8d2c843980287ba4cb224ae21f998e326b3b2"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-sk.md",
+       "sha256": "bb6dc151022d001dc6bbb9424b3dc61d1279b096976ac8321351e6b5070f6a7a"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-sk.txt.last",
+       "sha256": "58effa88f88eb85bfe8bf04ae27cbbba0739dc3a446aed8e38c88fcc1083a555"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "sl",
+   "contentSHA256": "4c10a2df1e0594e48e92acfa3769216b111b5798666005bc139f53647b464a87",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-sl.txt",
+      "sha256": "4bf748eb5623d6c5c3f2a4cdc64f28df5a938ada5cc2e3c221a7fbffdbb0b5f1"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-sl.md",
+       "sha256": "510e5f54d52ceada77e990032d1d49a3b35f8be7332593aed5d50a615afa27b2"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-sl.txt.last",
+       "sha256": "ec7d8e225dbe74008a9e088cca5797bf25112ce15deb2497d2dd743113941b33"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "sv",
+   "contentSHA256": "d30731e98c0ef54ae8e016395519e1995730512edce202f8c305d96109de8477",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-sv.txt",
+      "sha256": "e5eff32e564af8668d890d5eedab36b8566031fc1636a74e2c77e0a948a6bf72"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-sv.md",
+       "sha256": "b0f633be4416cbec96e28895edc8b60f449377519f0058212b7d50bef65e7648"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-sv.txt.last",
+       "sha256": "30a4836381275a1c551281b1cc095f3b52a03bd0a9918ab0e6ea53a3b197921e"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "tr",
+   "contentSHA256": "3d1c43dc10b86c2f6325bc6ac6b5cf5ce929d838488080cc4313199ad56e6458",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-tr.txt",
+      "sha256": "772136fa33c40bf4520884d832329680521908d8b18a13e73c9ded42f2e3fb8c"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-tr.md",
+       "sha256": "29bb6137e65855d9c219fa6bf5ad74ae2b34b29f906a7be042fe43ab4b6bab46"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-tr.txt.last",
+       "sha256": "e82673c2e94684e110da7bce6b87159ebe6b48d22dd42532c4bdf39a3dd93595"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "uk",
+   "contentSHA256": "400e1516a8f8df814c25749e0c60e13fe7e1f5239c41931272b7ac751c3c472b",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-uk.txt",
+      "sha256": "69869d41ff79c215136c5d1262900c6ad2259045483fd6584579271a077a368f"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-uk.md",
+       "sha256": "48ae17f6635a2ca18110aeae23bd7dd62761d5e52a121552f01e97556603c0d4"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-uk.txt.last",
+       "sha256": "78a1f7a724960947cddc777ea50ccbf12ceddb93b384f97ef6a4dfd13ba21d24"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "vi",
+   "contentSHA256": "8c257522ad5026cc26bb37cfbb6875dd4b33b01374f78dc3c5d621e7a83b763d",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-vi.txt",
+      "sha256": "e2a0ae2870e60fe44955070f703aeefb2953bc7acee37c23ad9458b1015f8456"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-vi.md",
+       "sha256": "47db870666657ece987e7ddec637857ba45c299bbd66275307ca14cfe20cab09"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-vi.txt.last",
+       "sha256": "b14773d92487443f4cb71fd36edeba943dcf2d8c18a0e90b740de1bb0aaf1474"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "zh",
+   "contentSHA256": "f33e173042acf8a52c354096c5ea591b1aa6682149f19d7f7164d28dad0741a8",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-zh.txt",
+      "sha256": "45844f8c1a4680356019a4d7631d9bf85e839ad188ce566a6d4ad9f965f59110"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-zh.md",
+       "sha256": "98941ecd30defad39ae225737f27af2ee65bfa1d68922f6e603290bcca163747"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-zh.txt.last",
+       "sha256": "ee0b04a624c2eed85e700868bc80d1556f1a428144f8750b9ce3e1359d2b75ba"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list and markers adopted as returned"
+    }
+   ],
+   "phraseExemptions": []
+  }
+ ]
+}

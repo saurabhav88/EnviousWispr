@@ -1,0 +1,1022 @@
+{
+  "apiKey.claude": {
+    "en": {
+      "words": ["Anthropic", "credential", "token"],
+      "phrases": ["enter my Anthropic API key", "use my Anthropic key for AI Polish"]
+    },
+    "de": {
+      "words": ["Anthropic", "Zugangsdaten", "Token"],
+      "phrases": ["meinen API-Schlüssel von Anthropic eintragen", "Claude mit meinem Anthropic-Schlüssel nutzen"]
+    }
+  },
+  "apiKey.save": {
+    "en": {
+      "words": [],
+      "phrases": ["save the API key I entered"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meinen eingegebenen API-Schlüssel speichern"]
+    }
+  },
+  "apiKey.clear": {
+    "en": {
+      "words": [],
+      "phrases": ["remove my saved API key"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meinen gespeicherten API-Schlüssel entfernen"]
+    }
+  },
+  "apiKey.reveal": {
+    "en": {
+      "words": ["unmask", "conceal"],
+      "phrases": ["show the hidden API key", "hide my API key again"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meinen API-Schlüssel sichtbar machen", "meinen API-Schlüssel wieder verbergen"]
+    }
+  },
+  "apiKey.checkAgain": {
+    "en": {
+      "words": ["revalidate"],
+      "phrases": ["try checking my saved API key again"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meinen gespeicherten API-Schlüssel noch mal prüfen"]
+    }
+  },
+  "apiKey.getKeyLink": {
+    "en": {
+      "words": [],
+      "phrases": ["where do I get an API key", "open the provider website to get a key"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["wo bekomme ich einen API-Schlüssel", "die Anbieterseite für einen API-Schlüssel öffnen"]
+    }
+  },
+  "polishModel": {
+    "en": {
+      "words": ["LLM", "Ollama"],
+      "phrases": ["choose which AI polishes my text", "switch the model used for AI Polish"]
+    },
+    "de": {
+      "words": ["KI", "LLM", "Ollama"],
+      "phrases": ["eine andere KI zum Überarbeiten wählen", "ändern, welches Modell meinen Text verbessert"]
+    }
+  },
+  "polishModel.refresh": {
+    "en": {
+      "words": [],
+      "phrases": ["reload the list of available polish models", "check for newly available polish models"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die Liste der verfügbaren Modelle neu laden", "noch mal nach Modellen zum Überarbeiten suchen"]
+    }
+  },
+  "enableDictionary": {
+    "en": {
+      "words": ["recognition"],
+      "phrases": ["use my dictionary to improve dictation recognition", "stop using my dictionary when I dictate"]
+    },
+    "de": {
+      "words": ["Worterkennung", "Erkennung"],
+      "phrases": ["mein Wörterbuch beim Diktieren berücksichtigen", "die Wörterbuchhilfe für die Erkennung ausschalten"]
+    }
+  },
+  "dictionary.tab.yourWords": {
+    "en": {
+      "words": ["entries", "spellings", "lexicon"],
+      "phrases": ["show the words I added myself", "where is my personal word list"]
+    },
+    "de": {
+      "words": ["Wörterbucheinträge", "Schreibweisen"],
+      "phrases": ["wo sind meine selbst hinzugefügten Wörter", "meine persönliche Wortliste ansehen"]
+    }
+  },
+  "dictionary.tab.vocabularyPacks": {
+    "en": {
+      "words": [],
+      "phrases": []
+    },
+    "de": {
+      "words": [],
+      "phrases": []
+    }
+  },
+  "dictionary.tab.learnFrom": {
+    "en": {
+      "words": [],
+      "phrases": []
+    },
+    "de": {
+      "words": [],
+      "phrases": []
+    }
+  },
+  "dictionary.tab.quickAdd": {
+    "en": {
+      "words": ["guide", "instructions"],
+      "phrases": ["how do I add words from another app", "show me how Quick Add works"]
+    },
+    "de": {
+      "words": ["Anleitung"],
+      "phrases": ["wie füge ich Wörter aus anderen Apps hinzu", "wie funktioniert Schnell hinzufügen"]
+    }
+  },
+  "yourWords.add": {
+    "en": {
+      "words": [],
+      "phrases": ["add a word directly to my personal word list"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["ein Wort direkt in meiner persönlichen Wortliste anlegen"]
+    }
+  },
+  "yourWords.import": {
+    "en": {
+      "words": [],
+      "phrases": ["bring an existing word list into my dictionary"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["eine vorhandene Wortliste in mein Wörterbuch einlesen"]
+    }
+  },
+  "yourWords.export": {
+    "en": {
+      "words": [],
+      "phrases": ["export my personal dictionary entries"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meine persönlichen Wörterbucheinträge exportieren"]
+    }
+  },
+  "yourWords.search": {
+    "en": {
+      "words": [],
+      "phrases": ["find a word in my personal dictionary", "search my own entries by mishearing or category"]
+    },
+    "de": {
+      "words": ["Wörterbuchsuche"],
+      "phrases": ["ein Wort in meinem persönlichen Wörterbuch suchen", "meine eigenen Einträge nach falscher Erkennung oder Kategorie durchsuchen"]
+    }
+  },
+  "yourWords.clearSearch": {
+    "en": {
+      "words": [],
+      "phrases": ["clear the search field in my personal word list"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["das Suchfeld bei meinen eigenen Wörtern leeren"]
+    }
+  },
+  "yourWords.categoryFilter": {
+    "en": {
+      "words": ["filter", "groups", "types"],
+      "phrases": ["filter my own words by category", "show only one type of dictionary entry"]
+    },
+    "de": {
+      "words": ["Kategoriefilter", "Wortgruppen", "Eintragstypen"],
+      "phrases": ["meine eigenen Wörter nach Kategorie filtern", "nur eine bestimmte Art von Wörterbucheinträgen anzeigen"]
+    }
+  },
+  "yourWords.category.all": {
+    "en": {
+      "words": ["unfiltered"],
+      "phrases": ["show my words from every category", "remove the category filter from my word list"]
+    },
+    "de": {
+      "words": ["ungefiltert"],
+      "phrases": ["meine Wörter aus allen Kategorien anzeigen", "den Kategoriefilter für meine Wörter aufheben"]
+    }
+  },
+  "yourWords.category.general": {
+    "en": {
+      "words": ["everyday", "ordinary"],
+      "phrases": ["show my entries in the general category", "filter my own words for everyday vocabulary"]
+    },
+    "de": {
+      "words": ["Alltagswörter", "Alltag"],
+      "phrases": ["meine Einträge in der Kategorie Allgemein anzeigen", "meine Wortliste nach Alltagswörtern filtern"]
+    }
+  },
+  "yourWords.category.person": {
+    "en": {
+      "words": [],
+      "phrases": ["filter my own word list for people's names", "show the first and last names I added myself"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meine eigene Wortliste nach Personennamen filtern", "die Vor- und Nachnamen anzeigen, die ich selbst hinzugefügt habe"]
+    }
+  },
+  "yourWords.category.brand": {
+    "en": {
+      "words": [],
+      "phrases": ["filter my own entries for brands", "show the company and product names I added myself"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meine eigenen Einträge nach Marken filtern", "die Firmen- und Produktnamen anzeigen, die ich selbst hinzugefügt habe"]
+    }
+  },
+  "yourWords.category.acronym": {
+    "en": {
+      "words": ["abbreviations", "initialisms", "shortenings"],
+      "phrases": ["show the abbreviations I saved", "filter my own word list for acronyms"]
+    },
+    "de": {
+      "words": ["Abkürzungen", "Kürzel", "Kurzformen"],
+      "phrases": ["meine gespeicherten Abkürzungen anzeigen", "meine eigene Wortliste nach Kürzeln filtern"]
+    }
+  },
+  "yourWords.category.domain": {
+    "en": {
+      "words": [],
+      "phrases": ["filter my own entries for specialist terms", "show the industry vocabulary I added myself"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meine eigenen Einträge nach Fachbegriffen filtern", "die Fachwörter anzeigen, die ich selbst hinzugefügt habe"]
+    }
+  },
+  "yourWords.category.autoLearned": {
+    "en": {
+      "words": [],
+      "phrases": ["show only the words learned from my corrections", "filter my word list for automatically learned entries"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["nur die aus meinen Korrekturen gelernten Wörter anzeigen", "meine Wortliste nach automatisch gelernten Einträgen filtern"]
+    }
+  },
+  "yourWords.massEdit": {
+    "en": {
+      "words": ["bulk", "batch", "multiselect"],
+      "phrases": ["select several dictionary entries at once"]
+    },
+    "de": {
+      "words": ["Mehrfachauswahl", "Sammelauswahl"],
+      "phrases": ["mehrere Wörterbucheinträge auf einmal auswählen"]
+    }
+  },
+  "yourWords.selectAll": {
+    "en": {
+      "words": [],
+      "phrases": ["select every entry in my personal word list"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["alle Einträge in meiner persönlichen Wortliste markieren"]
+    }
+  },
+  "yourWords.cancelSelection": {
+    "en": {
+      "words": ["deselect"],
+      "phrases": ["leave selection mode in my personal word list"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die Mehrfachauswahl in meiner persönlichen Wortliste beenden"]
+    }
+  },
+  "yourWords.delete": {
+    "en": {
+      "words": [],
+      "phrases": ["delete the dictionary entries I selected"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die ausgewählten Wörterbucheinträge löschen"]
+    }
+  },
+  "yourWords.edit": {
+    "en": {
+      "words": [],
+      "phrases": ["change an existing entry in my personal dictionary"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["einen vorhandenen Eintrag in meinem persönlichen Wörterbuch bearbeiten"]
+    }
+  },
+  "yourWords.previousPage": {
+    "en": {
+      "words": [],
+      "phrases": ["go back one page in my personal word list"]
+    },
+    "de": {
+      "words": ["zurückblättern"],
+      "phrases": ["in meiner persönlichen Wortliste eine Seite zurückblättern"]
+    }
+  },
+  "yourWords.nextPage": {
+    "en": {
+      "words": [],
+      "phrases": ["go forward one page in my personal word list"]
+    },
+    "de": {
+      "words": ["weiterblättern"],
+      "phrases": ["in meiner persönlichen Wortliste eine Seite weiterblättern"]
+    }
+  },
+  "vocabularyPacks": {
+    "en": {
+      "words": ["presets", "bundles"],
+      "phrases": ["find ready-made word lists for my field", "use a built-in list of specialist words", "fix known recognition mistakes with a vocabulary pack"]
+    },
+    "de": {
+      "words": ["Fachwortlisten", "Fachwörterbücher"],
+      "phrases": ["fertige Wortlisten für mein Fach finden", "eine vorgefertigte Liste mit Fachwörtern nutzen", "bekannte Erkennungsfehler mit einem Wortschatzpaket korrigieren"]
+    }
+  },
+  "vocabularyPack.tech": {
+    "en": {
+      "words": ["programming", "coding", "cloud", "developers", "software"],
+      "phrases": ["use the ready-made list for programming terms", "turn on the vocabulary pack for developer tools"]
+    },
+    "de": {
+      "words": ["Programmierung", "Softwareentwicklung", "Cloud", "Entwicklertools", "Code"],
+      "phrases": ["die fertige Wortliste für Programmierbegriffe nutzen", "das Wortschatzpaket für Entwicklertools einschalten"]
+    }
+  },
+  "vocabularyPack.medical": {
+    "en": {
+      "words": ["medications", "drugs", "conditions", "clinical", "healthcare"],
+      "phrases": ["use the ready-made list for medication names", "turn on the vocabulary pack for clinical terms"]
+    },
+    "de": {
+      "words": ["Medikamente", "Krankheiten", "Diagnosen", "Klinik", "Arzt"],
+      "phrases": ["die fertige Wortliste für Medikamentennamen nutzen", "das Wortschatzpaket für medizinische Begriffe einschalten"]
+    }
+  },
+  "vocabularyPack.legal": {
+    "en": {
+      "words": ["law", "contracts", "court", "litigation", "lawyer"],
+      "phrases": ["use the ready-made list for contract terminology", "turn on the vocabulary pack for court terms"]
+    },
+    "de": {
+      "words": ["Jura", "Verträge", "Gericht", "Anwalt", "Prozess"],
+      "phrases": ["die fertige Wortliste für Vertragsbegriffe nutzen", "das Wortschatzpaket für juristische Begriffe einschalten"]
+    }
+  },
+  "vocabularyPack.brands": {
+    "en": {
+      "words": [],
+      "phrases": ["use the ready-made list of company names", "turn on the vocabulary pack for product and app names"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die fertige Liste für Firmennamen nutzen", "das Wortschatzpaket für Produkt- und Appnamen einschalten"]
+    }
+  },
+  "vocabularyPack.names": {
+    "en": {
+      "words": [],
+      "phrases": ["use the built-in list of common first names", "turn on the vocabulary pack for common surnames"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die fertige Liste mit häufigen Vornamen nutzen", "das Wortschatzpaket für gängige Nachnamen einschalten"]
+    }
+  },
+  "vocabularyPack.seeAll": {
+    "en": {
+      "words": ["contents"],
+      "phrases": ["show all the words included in this vocabulary pack"]
+    },
+    "de": {
+      "words": ["Paketinhalt"],
+      "phrases": ["alle enthaltenen Wörter dieses Wortschatzpakets ansehen"]
+    }
+  },
+  "vocabularyPack.detail.back": {
+    "en": {
+      "words": [],
+      "phrases": ["go back from this pack to the pack overview"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["von diesem Paket zurück zur Paketübersicht gehen"]
+    }
+  },
+  "vocabularyPack.detail.packOn": {
+    "en": {
+      "words": [],
+      "phrases": ["turn this entire vocabulary pack off", "enable all corrections from this pack"]
+    },
+    "de": {
+      "words": ["Paketschalter"],
+      "phrases": ["dieses ganze Wortschatzpaket ausschalten", "Korrekturen aus diesem gesamten Paket aktivieren"]
+    }
+  },
+  "vocabularyPack.detail.search": {
+    "en": {
+      "words": [],
+      "phrases": ["find a word inside this vocabulary pack", "check whether this pack contains a word"]
+    },
+    "de": {
+      "words": ["Paketsuche"],
+      "phrases": ["ein Wort in diesem Wortschatzpaket suchen", "prüfen, ob ein Wort in diesem Paket enthalten ist"]
+    }
+  },
+  "vocabularyPack.detail.wordToggle": {
+    "en": {
+      "words": [],
+      "phrases": ["disable just one word in this pack", "enable an individual word in this pack"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["ein einzelnes Wort in diesem Paket ausschalten", "ein einzelnes Wort in diesem Paket einschalten"]
+    }
+  },
+  "vocabularyPack.detail.restore": {
+    "en": {
+      "words": ["revert"],
+      "phrases": ["restore this pack word to its original state"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["dieses Paketwort auf den ursprünglichen Stand zurücksetzen"]
+    }
+  },
+  "vocabularyPack.detail.mishearing": {
+    "en": {
+      "words": [],
+      "phrases": ["enter how this pack word is misheard", "type the incorrect transcription for this pack word"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["eintragen, wie dieses Paketwort falsch erkannt wird", "die falsch verstandene Schreibweise für dieses Paketwort eingeben"]
+    }
+  },
+  "vocabularyPack.detail.addMishearing": {
+    "en": {
+      "words": [],
+      "phrases": ["save the mishearing I entered for this pack word"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die eingegebene falsche Erkennung für dieses Paketwort speichern"]
+    }
+  },
+  "learnFrom": {
+    "en": {
+      "words": ["sources", "discovery"],
+      "phrases": ["find ways for the app to learn new words", "let the app pick up vocabulary from things I already have"]
+    },
+    "de": {
+      "words": ["Lernquellen", "Wortquellen"],
+      "phrases": ["welche Quellen kann die App zum Wörterlernen nutzen", "neue Wörter aus vorhandenen Quellen übernehmen lassen"]
+    }
+  },
+  "selfLearningDictionary": {
+    "en": {
+      "words": ["selflearning"],
+      "phrases": ["remember words when I correct a dictation", "automatically add corrected words to my dictionary", "stop learning from my dictation corrections"]
+    },
+    "de": {
+      "words": ["Korrekturlernen", "Korrekturerkennung"],
+      "phrases": ["Wörter merken, wenn ich ein Diktat korrigiere", "korrigierte Wörter automatisch ins Wörterbuch aufnehmen", "nicht mehr aus meinen Diktatkorrekturen lernen"]
+    }
+  },
+  "selfLearningDictionary.learnMore": {
+    "en": {
+      "words": [],
+      "phrases": ["read how learning from dictation corrections works"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["nachlesen, wie das Lernen aus Diktatkorrekturen funktioniert"]
+    }
+  },
+  "selfLearningDictionary.retryChecker": {
+    "en": {
+      "words": [],
+      "phrases": ["retry the failed download for the learned-word checker"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die fehlgeschlagene Prüfungskomponente für gelernte Wörter noch mal herunterladen"]
+    }
+  },
+  "selfLearningDictionary.download": {
+    "en": {
+      "words": [],
+      "phrases": ["start the download for the self-learning dictionary"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["den Download für das selbstlernende Wörterbuch starten"]
+    }
+  },
+  "selfLearningDictionary.cancel": {
+    "en": {
+      "words": [],
+      "phrases": ["cancel the current operation for the self-learning dictionary"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["den laufenden Vorgang für das selbstlernende Wörterbuch abbrechen"]
+    }
+  },
+  "selfLearningDictionary.retryLoad": {
+    "en": {
+      "words": [],
+      "phrases": ["try loading the self-learning dictionary again"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["das selbstlernende Wörterbuch noch mal laden"]
+    }
+  },
+  "selfLearningDictionary.removeAndDownload": {
+    "en": {
+      "words": [],
+      "phrases": ["remove the self-learning dictionary download and download it again"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["den Download für das selbstlernende Wörterbuch entfernen und neu herunterladen"]
+    }
+  },
+  "importContacts": {
+    "en": {
+      "words": ["addressbook"],
+      "phrases": ["teach dictation the names in my address book", "use names from my contacts to improve spelling"]
+    },
+    "de": {
+      "words": ["Adressbuch"],
+      "phrases": ["die Namen aus meinem Adressbuch fürs Diktieren nutzen", "Namen aus meinen Kontakten richtig erkennen lassen"]
+    }
+  },
+  "importContacts.import": {
+    "en": {
+      "words": [],
+      "phrases": ["import names from my contacts into the dictionary now"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["jetzt die Namen aus meinen Kontakten ins Wörterbuch übernehmen"]
+    }
+  },
+  "importContacts.openSettings": {
+    "en": {
+      "words": [],
+      "phrases": ["open Mac settings to allow contact access"]
+    },
+    "de": {
+      "words": ["Kontaktberechtigung", "Adressbuchzugriff"],
+      "phrases": ["die Mac-Einstellungen für den Zugriff auf Kontakte öffnen"]
+    }
+  },
+  "importContacts.removeImported": {
+    "en": {
+      "words": [],
+      "phrases": ["remove all contact-imported names from my dictionary"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["alle aus Kontakten importierten Namen aus meinem Wörterbuch entfernen"]
+    }
+  },
+  "contactsSyncOnLaunch": {
+    "en": {
+      "words": ["sync", "synchronization"],
+      "phrases": ["check for new contact names when the app starts", "keep my contact vocabulary updated on launch"]
+    },
+    "de": {
+      "words": ["Kontaktabgleich", "Synchronisierung"],
+      "phrases": ["bei jedem Appstart nach neuen Kontaktnamen suchen", "meine Kontaktwörter beim Start aktuell halten"]
+    }
+  },
+  "quickAdd.step1": {
+    "en": {
+      "words": ["highlight", "highlighting"],
+      "phrases": ["highlight the word I want to fix in another app", "select a word before using Quick Add"]
+    },
+    "de": {
+      "words": ["Textauswahl", "Textmarkierung"],
+      "phrases": ["das Wort zum Korrigieren in einer anderen App markieren", "vor Schnell hinzufügen ein Wort auswählen"]
+    }
+  },
+  "quickAdd.step2": {
+    "en": {
+      "words": [],
+      "phrases": ["start Quick Add after selecting a word", "open Quick Add for the highlighted word"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["Schnell hinzufügen für das markierte Wort aufrufen", "nach dem Markieren die Wortübernahme starten"]
+    }
+  },
+  "quickAdd.step3": {
+    "en": {
+      "words": [],
+      "phrases": ["choose the intended word in Quick Add", "save the highlighted spelling with the right dictionary word"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["bei Schnell hinzufügen das gemeinte Wort auswählen", "die markierte Schreibweise beim richtigen Wörterbucheintrag speichern"]
+    }
+  },
+  "quickAdd.shortcut": {
+    "en": {
+      "words": ["hotkey", "keybind"],
+      "phrases": ["which keys open Quick Add", "where can I change the Quick Add shortcut"]
+    },
+    "de": {
+      "words": ["Hotkey", "Tastenkombination"],
+      "phrases": ["welche Tasten öffnen Schnell hinzufügen", "wo kann ich das Tastenkürzel für Schnell hinzufügen ändern"]
+    }
+  },
+  "quickAdd.menuBar": {
+    "en": {
+      "words": [],
+      "phrases": ["add a selected word through the EnviousWispr menu", "find the Add item under the EnviousWispr icon"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["ein markiertes Wort über das EnviousWispr-Menü hinzufügen", "den Eintrag zum Hinzufügen unter dem EnviousWispr-Symbol finden"]
+    }
+  },
+  "snippets": {
+    "en": {
+      "words": ["expander", "expansion"],
+      "phrases": ["insert saved text by voice", "say a command instead of typing repeated text", "paste a saved signature with my voice"]
+    },
+    "de": {
+      "words": ["Texterweiterung", "Textersetzung"],
+      "phrases": ["gespeicherten Text per Stimme einfügen", "wiederkehrenden Text mit einem Sprachbefehl einsetzen", "eine gespeicherte Signatur per Stimme einfügen"]
+    }
+  },
+  "snippetKeyword": {
+    "en": {
+      "words": ["prefix", "opener"],
+      "phrases": ["change the word I say before a snippet trigger", "choose the opening word for snippet commands"]
+    },
+    "de": {
+      "words": ["Startwort", "Einleitungswort"],
+      "phrases": ["das Wort vor dem Textbausteinauslöser ändern", "festlegen, mit welchem Wort meine Textbausteinbefehle anfangen"]
+    }
+  },
+  "yourSnippets": {
+    "en": {
+      "words": [],
+      "phrases": ["show my saved snippet collection", "where are the reusable texts I already saved"]
+    },
+    "de": {
+      "words": ["Bausteinsammlung"],
+      "phrases": ["meine gespeicherte Textbausteinsammlung ansehen", "wo sind die Texte, die ich schon als Bausteine gespeichert habe"]
+    }
+  },
+  "snippets.search": {
+    "en": {
+      "words": [],
+      "phrases": ["find a snippet in my saved collection", "search my existing text snippets"]
+    },
+    "de": {
+      "words": ["Bausteinsuche"],
+      "phrases": ["einen Textbaustein in meiner Sammlung finden", "meine vorhandenen Textbausteine durchsuchen"]
+    }
+  },
+  "snippets.import": {
+    "en": {
+      "words": [],
+      "phrases": ["import an existing collection of text snippets"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["eine vorhandene Textbausteinsammlung einlesen"]
+    }
+  },
+  "snippets.export": {
+    "en": {
+      "words": [],
+      "phrases": ["export my saved text snippet collection"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meine gespeicherte Textbausteinsammlung exportieren"]
+    }
+  },
+  "snippets.add": {
+    "en": {
+      "words": [],
+      "phrases": ["add another snippet to my existing collection"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meiner vorhandenen Sammlung einen weiteren Textbaustein hinzufügen"]
+    }
+  },
+  "snippets.addFirst": {
+    "en": {
+      "words": [],
+      "phrases": ["create my first snippet while the list is empty"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["meinen ersten Textbaustein in der noch leeren Liste anlegen"]
+    }
+  },
+  "snippets.clearSearch": {
+    "en": {
+      "words": [],
+      "phrases": ["clear the search field in my snippet list"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["das Suchfeld in meiner Textbausteinliste leeren"]
+    }
+  },
+  "snippets.editRow": {
+    "en": {
+      "words": [],
+      "phrases": ["edit the trigger or text of an existing snippet"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["den Auslöser oder Text eines vorhandenen Textbausteins bearbeiten"]
+    }
+  },
+  "appSettings.tab.appearance": {
+    "en": {
+      "words": [],
+      "phrases": ["open the Appearance tab in App Settings", "where is the Appearance section of App Settings"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["den Bereich Erscheinungsbild in den App-Einstellungen öffnen", "wo ist der Reiter Erscheinungsbild"]
+    }
+  },
+  "appSettings.tab.permissions": {
+    "en": {
+      "words": ["authorizations", "privileges"],
+      "phrases": ["see all the Mac permissions the app needs", "open the app permissions overview"]
+    },
+    "de": {
+      "words": ["Zugriffsrechte", "Freigaben", "Appzugriffe"],
+      "phrases": ["alle benötigten Mac-Berechtigungen ansehen", "die Übersicht der App-Berechtigungen öffnen"]
+    }
+  },
+  "appSettings.tab.privacy": {
+    "en": {
+      "words": [],
+      "phrases": ["open the Privacy tab in App Settings", "where are the app's data-sharing settings"]
+    },
+    "de": {
+      "words": ["Privatsphäre"],
+      "phrases": ["den Datenschutzbereich der App-Einstellungen öffnen", "wo sind die Einstellungen zur Datenweitergabe"]
+    }
+  },
+  "appSettings.tab.licenses": {
+    "en": {
+      "words": ["copyright"],
+      "phrases": ["show the overview of app and third-party licenses", "where are all the software licensing documents"]
+    },
+    "de": {
+      "words": ["Urheberrecht", "Lizenzübersicht"],
+      "phrases": ["die Übersicht der App- und Drittanbieterlizenzen öffnen", "wo finde ich alle Lizenzdokumente"]
+    }
+  },
+  "theme": {
+    "en": {
+      "words": ["colors", "colours", "palette"],
+      "phrases": ["change the app's color scheme", "choose the app's appearance mode"]
+    },
+    "de": {
+      "words": ["Farbschema", "Farben", "Farbmodus"],
+      "phrases": ["das Farbschema der App ändern", "den Darstellungsmodus der App auswählen"]
+    }
+  },
+  "theme.system": {
+    "en": {
+      "words": [],
+      "phrases": ["make the app follow my Mac's appearance", "switch between light and dark with my Mac"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["das Farbschema meines Macs übernehmen", "mit meinem Mac zwischen hell und dunkel wechseln"]
+    }
+  },
+  "theme.light": {
+    "en": {
+      "words": ["bright", "day", "daytime"],
+      "phrases": ["use a light app interface", "keep the app in light mode"]
+    },
+    "de": {
+      "words": ["Tagmodus", "heller"],
+      "phrases": ["die App im hellen Modus anzeigen", "dauerhaft das helle Design verwenden"]
+    }
+  },
+  "theme.dark": {
+    "en": {
+      "words": ["night", "nighttime", "darker"],
+      "phrases": ["use a dark app interface", "keep the app in dark mode"]
+    },
+    "de": {
+      "words": ["Nachtmodus", "dunkler"],
+      "phrases": ["die App im dunklen Modus anzeigen", "dauerhaft das dunkle Design verwenden"]
+    }
+  },
+  "appLanguage": {
+    "en": {
+      "words": ["locale", "localization", "translation"],
+      "phrases": ["change the language of the app menus", "change the language used in Settings"]
+    },
+    "de": {
+      "words": ["Oberflächensprache", "Menüsprache", "Übersetzung"],
+      "phrases": ["die Sprache der Appmenüs ändern", "die Sprache der Einstellungen ändern"]
+    }
+  },
+  "appLanguage.systemDefault": {
+    "en": {
+      "words": [],
+      "phrases": ["use the same app language as my Mac", "let my Mac choose the interface language"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die Appsprache vom Mac übernehmen", "die App in derselben Sprache wie meinen Mac anzeigen"]
+    }
+  },
+  "appLanguage.shipped": {
+    "en": {
+      "words": ["English", "German", "Deutsch"],
+      "phrases": ["show the app menus in English", "show the app menus in German"]
+    },
+    "de": {
+      "words": ["Deutsch", "Englisch", "English"],
+      "phrases": ["die Appmenüs auf Deutsch anzeigen", "die Appmenüs auf Englisch anzeigen"]
+    }
+  },
+  "appLanguage.relaunch": {
+    "en": {
+      "words": [],
+      "phrases": ["restart the app to apply the new menu language"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die App neu starten, um die neue Menüsprache zu übernehmen"]
+    }
+  },
+  "showInDock": {
+    "en": {
+      "words": [],
+      "phrases": ["keep the EnviousWispr icon in my Dock", "hide EnviousWispr from the Dock"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["das EnviousWispr-Symbol im Dock behalten", "EnviousWispr aus dem Dock ausblenden"]
+    }
+  },
+  "updateAlertInMenuBar": {
+    "en": {
+      "words": ["gold", "golden", "lips", "badge"],
+      "phrases": ["show gold lips when an update is ready", "hide the update indicator in the menu bar"]
+    },
+    "de": {
+      "words": ["gold", "golden", "Lippen", "Updatesymbol"],
+      "phrases": ["goldene Lippen anzeigen, wenn ein Update bereitsteht", "den Update-Hinweis in der Menüleiste ausblenden"]
+    }
+  },
+  "permission.microphone": {
+    "en": {
+      "words": ["mic", "recording", "audio"],
+      "phrases": ["check whether the app can record my voice", "why is microphone access denied"]
+    },
+    "de": {
+      "words": ["Mikro", "Aufnahme", "Sprachaufnahme"],
+      "phrases": ["prüfen, ob die App meine Stimme aufnehmen darf", "warum ist der Mikrofonzugriff gesperrt"]
+    }
+  },
+  "permission.microphone.request": {
+    "en": {
+      "words": [],
+      "phrases": ["request permission to use the microphone"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die Erlaubnis für den Mikrofonzugriff anfordern"]
+    }
+  },
+  "permission.accessibility": {
+    "en": {
+      "words": ["paste", "pasting", "insertion"],
+      "phrases": ["check the permission needed to paste dictation into other apps", "why does text insertion need Accessibility access"]
+    },
+    "de": {
+      "words": ["Einfügeberechtigung", "Einfügen", "Texteingabe"],
+      "phrases": ["die Berechtigung zum Einfügen von Diktaten prüfen", "warum braucht die Texteingabe Zugriff auf Bedienungshilfen"]
+    }
+  },
+  "permission.accessibility.openSettings": {
+    "en": {
+      "words": [],
+      "phrases": ["open Mac settings to grant Accessibility permission", "open Mac settings to grant Accessibility access again after rebuilding"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die Mac-Einstellungen für den Zugriff auf Bedienungshilfen öffnen", "nach einem neuen App-Build die Bedienungshilfen erneut freigeben"]
+    }
+  },
+  "shareUsageMetrics": {
+    "en": {
+      "words": ["analytics", "statistics"],
+      "phrases": ["share usage data to help spot broken updates", "turn off usage analytics"]
+    },
+    "de": {
+      "words": ["Nutzungsdaten", "Nutzungsanalyse"],
+      "phrases": ["Nutzungsdaten teilen, um fehlerhafte Updates zu erkennen", "die Nutzungsanalyse ausschalten"]
+    }
+  },
+  "sendCrashReports": {
+    "en": {
+      "words": ["crashes", "errors", "diagnostics"],
+      "phrases": ["send information about app crashes and errors", "stop sending crash reports"]
+    },
+    "de": {
+      "words": ["Abstürze", "Fehler", "Fehlerdiagnose"],
+      "phrases": ["Informationen zu Abstürzen und Fehlern senden", "keine Absturzberichte mehr senden"]
+    }
+  },
+  "sendCrashReports.restart": {
+    "en": {
+      "words": [],
+      "phrases": ["restart the app to apply my crash-reporting setting"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die App neu starten, um meine Einstellung für Absturzberichte zu übernehmen"]
+    }
+  },
+  "whatWeCollect": {
+    "en": {
+      "words": ["collection", "feedback"],
+      "phrases": ["what information does the app collect", "are my recordings or dictations collected", "does the app collect my dictionary or API keys"]
+    },
+    "de": {
+      "words": ["Datenerfassung", "Feedbackdaten"],
+      "phrases": ["welche Daten erfasst die App", "werden meine Aufnahmen oder Diktate gesammelt", "werden mein Wörterbuch oder meine API-Schlüssel erfasst"]
+    }
+  },
+  "whatWeCollect.seeDetails": {
+    "en": {
+      "words": [],
+      "phrases": ["open the detailed explanation of what data is collected"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die ausführliche Erklärung zur Datenerfassung öffnen"]
+    }
+  },
+  "license.gpl": {
+    "en": {
+      "words": ["opensource", "copyleft", "GNU", "GPL"],
+      "phrases": ["is EnviousWispr open source", "which open-source license covers EnviousWispr"]
+    },
+    "de": {
+      "words": ["quelloffen", "Copyleft", "GNU", "GPL"],
+      "phrases": ["ist EnviousWispr Open Source", "unter welcher freien Lizenz steht EnviousWispr"]
+    }
+  },
+  "license.gpl.view": {
+    "en": {
+      "words": [],
+      "phrases": ["open the full GPLv3 license text"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["den vollständigen GPLv3-Lizenztext öffnen"]
+    }
+  },
+  "license.notices": {
+    "en": {
+      "words": ["dependencies", "libraries", "components"],
+      "phrases": ["which licenses cover the tools used by EnviousWispr", "find licensing information for the app's dependencies"]
+    },
+    "de": {
+      "words": ["Bibliothekslizenzen", "Komponentenlizenzen", "Fremdsoftware"],
+      "phrases": ["welche Lizenzen gelten für die verwendeten Werkzeuge", "Lizenzinformationen zu den eingebauten Bibliotheken finden"]
+    }
+  },
+  "license.notices.view": {
+    "en": {
+      "words": [],
+      "phrases": ["open the third-party licensing notices"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["die Lizenzhinweise zu Drittanbietern öffnen"]
+    }
+  }
+}

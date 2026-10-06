@@ -1,0 +1,1552 @@
+{
+  "dictation.tab.engine": {
+    "title": "Diktēšanas dzinis",
+    "words": ["dziņa cilne", "diktēšanas iestatījumi"],
+    "phrases": ["atvērt diktēšanas dziņa sadaļu"]
+  },
+  "dictation.tab.microphone": {
+    "title": "Mikrofons",
+    "words": ["mikrofona cilne", "mikrofona iestatījumi"],
+    "phrases": ["atvērt mikrofona iestatījumu sadaļu"]
+  },
+  "dictation.tab.livePreview": {
+    "title": "Teksta priekšskatījums",
+    "words": ["priekšskatījuma cilne", "priekšskatījuma iestatījumi"],
+    "phrases": ["atvērt teksta priekšskatījuma sadaļu"]
+  },
+  "dictation.tab.pill": {
+    "title": "Ieraksta indikators",
+    "words": ["logrīks", "overlay", "ieraksta indikators"],
+    "phrases": ["atvērt peldošā ieraksta indikatora iestatījumus"]
+  },
+  "dictation.tab.chimes": {
+    "title": "Ieraksta skaņas",
+    "words": ["skaņu cilne", "signālu iestatījumi"],
+    "phrases": ["atvērt ieraksta skaņu sadaļu"]
+  },
+  "dictation.tab.clipboard": {
+    "title": "Starpliktuve",
+    "words": ["starpliktuve", "clipboard", "pasteboard"],
+    "phrases": ["kur ir starpliktuves iestatījumi"]
+  },
+  "transcriptionEngine": {
+    "title": "Diktēšanas modelis",
+    "words": ["diktēšanas modelis", "diktēšanas atpazinējs"],
+    "phrases": ["kur izvēlēties modeli diktējuma gala tekstam"]
+  },
+  "transcriptionEngine.change": {
+    "title": "Mainīt diktēšanas modeli",
+    "words": ["mainīt diktēšanas modeli"],
+    "phrases": ["nomainīt modeli, kas atpazīst manu diktējumu"]
+  },
+  "transcriptionEngine.fast": {
+    "title": "Ātrais",
+    "words": ["Parakeet diktēšanai", "ANE diktēšanai", "ātrais diktēšanai"],
+    "phrases": ["diktēšanai izmantot Parakeet", "izvēlēties ātro diktēšanas modeli Eiropas valodām"]
+  },
+  "transcriptionEngine.allLanguages": {
+    "title": "Visas valodas",
+    "words": ["Whisper diktēšanai", "Turbo diktēšanai", "GPU diktēšanai"],
+    "phrases": ["diktēšanai izmantot Whisper", "izvēlēties diktēšanas modeli sarežģītam audio"]
+  },
+  "transcriptionEngine.keepCurrent": {
+    "title": "Paturēt pašreizējo diktēšanas modeli",
+    "words": ["paturēt diktēšanas modeli"],
+    "phrases": ["atstāt pašreizējo diktēšanas modeli nemainītu"]
+  },
+  "transcriptionEngine.recheckFast": {
+    "title": "Vēlreiz pārbaudīt ātrā modeļa statusu",
+    "words": ["pārbaudīt Parakeet"],
+    "phrases": ["vēlreiz pārbaudīt, vai Parakeet ir gatavs"]
+  },
+  "fastModel.cancelDownload": {
+    "title": "Atcelt Parakeet lejupielādi",
+    "words": ["atcelt Parakeet lejupielādi"],
+    "phrases": ["pārtraukt Parakeet lejupielādi"]
+  },
+  "fastModel.resume": {
+    "title": "Turpināt Parakeet lejupielādi",
+    "words": ["atsākt Parakeet lejupielādi"],
+    "phrases": ["turpināt apturēto Parakeet lejupielādi"]
+  },
+  "fastModel.tryAgain": {
+    "title": "Mēģināt lejupielādēt Parakeet vēlreiz",
+    "words": ["atkārtot Parakeet lejupielādi"],
+    "phrases": ["pēc kļūdas vēlreiz mēģināt lejupielādēt Parakeet"]
+  },
+  "whisperModel.setUp": {
+    "title": "Instalēt Whisper modeli",
+    "words": ["instalēt Whisper", "uzstādīt Whisper"],
+    "phrases": ["sagatavot Whisper lietošanai šajā Mac"]
+  },
+  "whisperModel.cancelDownload": {
+    "title": "Atcelt Whisper lejupielādi",
+    "words": ["atcelt Whisper lejupielādi"],
+    "phrases": ["pārtraukt Whisper lejupielādi"]
+  },
+  "whisperModel.resume": {
+    "title": "Turpināt Whisper lejupielādi",
+    "words": ["atsākt Whisper lejupielādi"],
+    "phrases": ["turpināt apturēto Whisper lejupielādi"]
+  },
+  "whisperModel.remove": {
+    "title": "Noņemt Whisper modeli",
+    "words": ["dzēst Whisper", "noņemt Whisper"],
+    "phrases": ["noņemt instalēto Whisper modeli no Mac"]
+  },
+  "whisperModel.recheck": {
+    "title": "Vēlreiz pārbaudīt Whisper statusu",
+    "words": ["pārbaudīt Whisper"],
+    "phrases": ["vēlreiz pārbaudīt, vai Whisper ir gatavs"]
+  },
+  "whisperModel.tryAgain": {
+    "title": "Mēģināt instalēt Whisper vēlreiz",
+    "words": ["atkārtot Whisper instalēšanu"],
+    "phrases": ["pēc kļūdas vēlreiz mēģināt sagatavot Whisper"]
+  },
+  "currentEngineSection": {
+    "title": "Pašreizējā diktēšanas modeļa iestatījumi",
+    "words": ["aktīvā dziņa iestatījumi", "pašreizējā dziņa opcijas"],
+    "phrases": ["kur ir tā diktēšanas modeļa iestatījumi, kuru pašlaik izmantoju"]
+  },
+  "autoDetectLanguage": {
+    "title": "Automātiski noteikt valodu",
+    "words": ["autodetect", "valodas noteikšana", "valodas atpazīšana"],
+    "phrases": ["automātiski noteikt, kurā valodā runāju", "negribu pats izvēlēties diktēšanas valodu"]
+  },
+  "autoDetectLanguage.resetSuggestions": {
+    "title": "Atiestatīt valodas ieteikumus",
+    "words": ["atiestatīt valodas ieteikumus"],
+    "phrases": ["atkal piedāvāt izmantot atpazīto valodu kā pastāvīgo diktēšanas valodu"]
+  },
+  "lockedLanguage": {
+    "title": "Diktēšanas valoda",
+    "words": ["fiksēta valoda", "pastāvīga valoda"],
+    "phrases": ["vienmēr diktēt vienā valodā", "iestatīt pastāvīgu valodu diktēšanai un priekšskatījumam"]
+  },
+  "lockedLanguage.change": {
+    "title": "Mainīt diktēšanas valodu",
+    "words": ["mainīt fiksēto valodu"],
+    "phrases": ["diktēšanas dziņa sadaļā nomainīt pastāvīgo valodu"]
+  },
+  "fasterTranscription": {
+    "title": "Ātrāka transkripcija",
+    "words": ["ātrāka transkripcija", "apstrādes aizkave", "gala teksta ātrums"],
+    "phrases": ["apstrādāt diktējumu jau ieraksta laikā", "mazāk gaidīt gala tekstu pēc diktēšanas"]
+  },
+  "stopOnSilence": {
+    "title": "Beigt ierakstu, kad iestājas klusums",
+    "words": ["autostop", "automātiska apturēšana", "beigt klusumā"],
+    "phrases": ["beigt ierakstu, kad pārstāju runāt", "automātiski apturēt diktēšanu bez taustiņa nospiešanas"]
+  },
+  "pauseDuration": {
+    "title": "Pauzes ilgums",
+    "words": ["pauzes ilgums", "klusuma ilgums", "klusuma taimauts"],
+    "phrases": ["cik ilga pauze beidz ierakstu", "ilgāk gaidīt klusumā pirms ieraksta beigām"]
+  },
+  "fillerRemoval": {
+    "title": "Izņemt liekos runas iespraudumus",
+    "words": ["ēē", "emm", "hmm", "um", "uh", "fillers"],
+    "phrases": ["izņemt ēē un emm no diktētā teksta", "nerakstīt vilcināšanās skaņas"]
+  },
+  "spokenEmoji": {
+    "title": "Ievietot emocijzīmes ar balsi",
+    "words": ["emocijzīmes", "emodži", "emoji", "smaidiņi", "👍"],
+    "phrases": ["ievietot emocijzīmi, pasakot tās nosaukumu un vārdu emoji", "diktēt smaidiņus, pēc nosaukuma sakot emoji"]
+  },
+  "spokenPunctuation": {
+    "title": "Pieturzīmju diktēšana",
+    "words": ["komats", "punkts", "rindkopa", "kols", "semikols", "pieturzīmes"],
+    "phrases": ["ievietot pieturzīmes ar balss komandu", "sākt jaunu rindkopu ar balsi"]
+  },
+  "startWordLanguage": {
+    "title": "Pieturzīmju ievadvārda valoda",
+    "words": ["ievadvārda valoda", "prefiksa valoda"],
+    "phrases": ["izvēlēties, kurai valodai mainīt pieturzīmju ievadvārdu"]
+  },
+  "startWordLanguage.en": {
+    "title": "Angļu",
+    "words": ["angļu ievadvārds", "English ievadvārds"],
+    "phrases": ["izvēlēties angļu valodu pieturzīmju ievadvārda iestatīšanai"]
+  },
+  "startWordLanguage.de": {
+    "title": "Vācu",
+    "words": ["vācu ievadvārds", "Deutsch ievadvārds"],
+    "phrases": ["izvēlēties vācu valodu pieturzīmju ievadvārda iestatīšanai"]
+  },
+  "startWordLanguage.fr": {
+    "title": "Franču",
+    "words": ["franču ievadvārds", "franču prefikss"],
+    "phrases": ["izvēlēties franču valodu pieturzīmju ievadvārda iestatīšanai"]
+  },
+  "startWordLanguage.es": {
+    "title": "Spāņu",
+    "words": ["spāņu ievadvārds", "spāņu prefikss"],
+    "phrases": ["izvēlēties spāņu valodu pieturzīmju ievadvārda iestatīšanai"]
+  },
+  "startWordLanguage.it": {
+    "title": "Itāļu",
+    "words": ["itāļu ievadvārds", "itāļu prefikss"],
+    "phrases": ["izvēlēties itāļu valodu pieturzīmju ievadvārda iestatīšanai"]
+  },
+  "startWordField": {
+    "title": "Vārds pirms pieturzīmes",
+    "words": ["pieturzīmju ievadvārds", "pieturzīmju prefikss", "pieturzīmju trigeris"],
+    "phrases": ["mainīt vārdu, ko saku pirms pieturzīmes", "ierakstīt savu pieturzīmju ievadvārdu"]
+  },
+  "startWord.save": {
+    "title": "Saglabāt ievadvārdu",
+    "words": ["saglabāt pieturzīmju ievadvārdu"],
+    "phrases": ["saglabāt ievadīto pieturzīmju komandas vārdu"]
+  },
+  "startWord.reset": {
+    "title": "Atjaunot sākotnējo ievadvārdu",
+    "words": ["atiestatīt pieturzīmju ievadvārdu"],
+    "phrases": ["atjaunot noklusēto pieturzīmju ievadvārdu"]
+  },
+  "unloadModel": {
+    "title": "Atbrīvot modeļa atmiņu pēc",
+    "words": ["RAM", "operatīvā atmiņa", "modeļa izlāde"],
+    "phrases": ["atbrīvot diktēšanas modeļa atmiņu, kad nediktēju", "cik ilgi diktēšanas modelis paliek atmiņā"]
+  },
+  "unloadModel.never": {
+    "title": "Nekad",
+    "words": ["neizlādēt modeli", "modelis vienmēr atmiņā"],
+    "phrases": ["vienmēr paturēt diktēšanas modeli atmiņā"]
+  },
+  "unloadModel.immediately": {
+    "title": "Uzreiz",
+    "words": ["izlādēt uzreiz", "izlādēt tūlīt"],
+    "phrases": ["atbrīvot modeļa atmiņu uzreiz pēc katra diktējuma"]
+  },
+  "unloadModel.twoMinutes": {
+    "title": "Pēc 2 minūtēm",
+    "words": ["modelis 2 min", "modelis divas minūtes"],
+    "phrases": ["izņemt modeli no atmiņas pēc divām minūtēm bez diktēšanas"]
+  },
+  "unloadModel.fiveMinutes": {
+    "title": "Pēc 5 minūtēm",
+    "words": ["modelis 5 min", "modelis piecas minūtes"],
+    "phrases": ["izņemt modeli no atmiņas pēc piecām minūtēm bez diktēšanas"]
+  },
+  "unloadModel.tenMinutes": {
+    "title": "Pēc 10 minūtēm",
+    "words": ["modelis 10 min", "modelis desmit minūtes"],
+    "phrases": ["izņemt modeli no atmiņas pēc desmit minūtēm bez diktēšanas"]
+  },
+  "unloadModel.fifteenMinutes": {
+    "title": "Pēc 15 minūtēm",
+    "words": ["modelis 15 min", "modelis ceturtdaļstundu"],
+    "phrases": ["izņemt modeli no atmiņas pēc ceturtdaļstundas bez diktēšanas"]
+  },
+  "unloadModel.oneHour": {
+    "title": "Pēc 1 stundas",
+    "words": ["modelis stundu", "modelis 60 min"],
+    "phrases": ["izņemt modeli no atmiņas pēc stundas bez diktēšanas"]
+  },
+  "inputDevice": {
+    "title": "Ieraksta mikrofons",
+    "words": ["mikrofona izvēle", "ieraksta avots", "ievades ierīce"],
+    "phrases": ["izvēlēties, kurā mikrofonā diktēt"]
+  },
+  "inputDevice.auto": {
+    "title": "Automātiski",
+    "words": ["sistēmas mikrofons", "noklusētais mikrofons"],
+    "phrases": ["izmantot macOS izvēlēto mikrofonu"]
+  },
+  "inputDevice.device": {
+    "title": "Konkrēts mikrofons",
+    "words": ["USB mikrofons", "austiņu mikrofons", "iebūvētais mikrofons", "ārējais mikrofons", "Bluetooth ierīce"],
+    "phrases": ["izvēlēties konkrētu mikrofonu no ierīču saraksta", "izmantot austiņu mikrofonu iebūvētā vietā"]
+  },
+  "inputSocket": {
+    "title": "Mikrofona pieslēgvieta",
+    "words": ["ligzda", "ports", "kanāls", "audio interfeiss"],
+    "phrases": ["izvēlēties ligzdu, kurā pieslēgts mikrofons", "izvēlēties mikrofona kanālu skaņas kartē"]
+  },
+  "inputSocket.input": {
+    "title": "Ieeja 1, ieeja 2, …",
+    "words": ["ieeja 1", "ieeja 2", "numurēta ieeja"],
+    "phrases": ["šim mikrofonam izmantot pirmo ieeju", "šim mikrofonam izmantot otro ieeju"]
+  },
+  "mediaDuringDictation": {
+    "title": "Atskaņošana diktēšanas laikā",
+    "words": ["mūzika", "video", "podkāsti", "atskaņošana", "multivide"],
+    "phrases": ["kas notiek ar mūziku, kamēr diktēju", "izvēlēties, kā video uzvedas ieraksta laikā"]
+  },
+  "mediaDuringDictation.continue": {
+    "title": "Turpināt atskaņošanu",
+    "words": ["netraucēta atskaņošana", "nemainīts skaļums"],
+    "phrases": ["diktējot turpināt atskaņot mūziku parastajā skaļumā"]
+  },
+  "mediaDuringDictation.lower": {
+    "title": "Samazināt skaļumu",
+    "words": ["pieklusināt", "klusāk", "pusskaļums", "ducking"],
+    "phrases": ["diktējot samazināt atskaņošanas skaļumu un pēc tam to atjaunot"]
+  },
+  "mediaDuringDictation.mute": {
+    "title": "Izslēgt skaņu",
+    "words": ["mute", "apklusināt", "izslēgt skaļruņus", "apklusināt zvanu"],
+    "phrases": ["diktējot izslēgt skaņu skaļruņos vai austiņās un pēc tam to atjaunot"]
+  },
+  "mediaDuringDictation.pause": {
+    "title": "Pauzēt atskaņošanu",
+    "words": ["pauzēt mūziku", "pauzēt video", "pauzēt podkāstu"],
+    "phrases": ["apturēt podkāsta atskaņošanu, kamēr diktēju, un pēc tam turpināt"]
+  },
+  "micReadiness": {
+    "title": "Mikrofona gatavība",
+    "words": ["mikrofona gaidstāve", "mikrofona gatavība", "mikrofona standby"],
+    "phrases": ["cik ilgi mikrofons paliek gatavs pēc ieraksta", "mainīt mikrofona gatavības laiku starp ierakstiem"]
+  },
+  "micReadiness.off": {
+    "title": "Izslēgta",
+    "words": ["bez gaidstāves", "atbrīvot mikrofonu"],
+    "phrases": ["neturēt mikrofonu gatavu pēc ieraksta"]
+  },
+  "micReadiness.10s": {
+    "title": "10 sekundes",
+    "words": ["mikrofons 10 s", "mikrofons desmit sekundes"],
+    "phrases": ["turēt mikrofonu gatavu desmit sekundes pēc ieraksta"]
+  },
+  "micReadiness.30s": {
+    "title": "30 sekundes",
+    "words": ["mikrofons 30 s", "mikrofons pusminūti"],
+    "phrases": ["turēt mikrofonu gatavu pusminūti pēc ieraksta"]
+  },
+  "micReadiness.60s": {
+    "title": "60 sekundes",
+    "words": ["mikrofons 60 s", "mikrofons minūti"],
+    "phrases": ["turēt mikrofonu gatavu minūti pēc ieraksta"]
+  },
+  "micReadiness.always": {
+    "title": "Vienmēr",
+    "words": ["mikrofons vienmēr gatavs", "pastāvīgi aktīvs mikrofons"],
+    "phrases": ["visu laiku turēt mikrofonu gatavu", "kāpēc mikrofona indikators paliek redzams, ja izvēlēts Vienmēr"]
+  },
+  "bluetoothGuide": {
+    "title": "Izmantojat Bluetooth mikrofonu?",
+    "words": ["Bluetooth aizkave", "Bluetooth ieslēgšanās"],
+    "phrases": ["kāpēc Bluetooth mikrofons tik ilgi sāk darboties", "kā samazināt Bluetooth mikrofona palaišanas aizkavi"]
+  },
+  "bluetoothGuide.learnMore": {
+    "title": "Lasīt par Bluetooth mikrofona gatavību",
+    "words": ["Bluetooth pamācība"],
+    "phrases": ["atvērt pamācību par Bluetooth mikrofona ātrāku palaišanu"]
+  },
+  "livePreview": {
+    "title": "Rādīt vārdus, kamēr runājat",
+    "words": ["teksts reāllaikā", "vārdi runājot", "live teksts"],
+    "phrases": ["rādīt tekstu, kamēr runāju", "ieslēgt teksta rādīšanu pirms diktēšanas beigām"]
+  },
+  "livePreview.language": {
+    "title": "Mainīt diktēšanas un priekšskatījuma valodu",
+    "words": ["mainīt priekšskatījuma valodu"],
+    "phrases": ["priekšskatījuma sadaļā mainīt valodu arī diktēšanai"]
+  },
+  "livePreview.browseDownloads": {
+    "title": "Skatīt priekšskatījuma lejupielādes",
+    "words": ["priekšskatījuma lejupielādes"],
+    "phrases": ["atvērt lejupielāžu sarakstu teksta priekšskatījuma sadaļā"]
+  },
+  "previewEngine": {
+    "title": "Priekšskatījuma dzinis",
+    "words": ["priekšskatījuma dzinis", "priekšskatījuma atpazinējs"],
+    "phrases": ["kur izvēlēties dzini, kas atpazīst priekšskatījuma tekstu"]
+  },
+  "previewEngine.change": {
+    "title": "Mainīt priekšskatījuma dzini",
+    "words": ["mainīt priekšskatījuma dzini"],
+    "phrases": ["pārslēgt teksta priekšskatījumu uz citu atpazīšanas dzini"]
+  },
+  "previewEngine.compare": {
+    "title": "Salīdzināt priekšskatījuma dziņus",
+    "words": ["priekšskatījuma salīdzinājums", "Apple Universal atšķirības"],
+    "phrases": ["salīdzināt Apple un Universal priekšskatījuma dziņus"]
+  },
+  "previewEngine.apple": {
+    "title": "Apple",
+    "words": ["Apple priekšskatījums", "Apple atpazīšana"],
+    "phrases": ["priekšskatījumam izmantot Apple runas atpazīšanu", "izvēlēties priekšskatījumu bez atsevišķa priekšskatījuma modeļa lejupielādes"]
+  },
+  "previewEngine.universal": {
+    "title": "Universālais",
+    "words": ["Universal priekšskatījums", "universālais priekšskatījums", "217 MB"],
+    "phrases": ["izvēlēties Universal teksta priekšskatījumam", "izmantot priekšskatījuma dzini, kas darbojas macOS 14"]
+  },
+  "previewEngine.keepCurrent": {
+    "title": "Paturēt pašreizējo priekšskatījuma dzini",
+    "words": ["paturēt priekšskatījuma dzini"],
+    "phrases": ["atstāt pašreizējo teksta priekšskatījuma dzini nemainītu"]
+  },
+  "previewEngine.universal.download": {
+    "title": "Lejupielādēt Universal",
+    "words": ["lejupielādēt Universal"],
+    "phrases": ["lejupielādēt Universal modeli teksta priekšskatījumam"]
+  },
+  "previewEngine.universal.cancel": {
+    "title": "Atcelt Universal lejupielādi",
+    "words": ["atcelt Universal lejupielādi"],
+    "phrases": ["pārtraukt Universal priekšskatījuma modeļa lejupielādi"]
+  },
+  "previewEngine.universal.resume": {
+    "title": "Turpināt Universal lejupielādi",
+    "words": ["atsākt Universal lejupielādi"],
+    "phrases": ["turpināt Universal lejupielādi no vietas, kur tā apstājās"]
+  },
+  "previewEngine.universal.retry": {
+    "title": "Mēģināt lejupielādēt Universal vēlreiz",
+    "words": ["atkārtot Universal lejupielādi"],
+    "phrases": ["pēc kļūdas vēlreiz mēģināt lejupielādēt Universal priekšskatījuma modeli"]
+  },
+  "previewEngine.universal.remove": {
+    "title": "Noņemt Universal modeli",
+    "words": ["dzēst Universal"],
+    "phrases": ["noņemt instalēto Universal priekšskatījuma modeli"]
+  },
+  "previewLanguages": {
+    "title": "Instalētās priekšskatījuma valodas",
+    "words": ["instalētās valodas", "priekšskatījuma valodu saraksts"],
+    "phrases": ["kuras priekšskatījuma valodas jau ir instalētas šajā Mac"]
+  },
+  "previewLanguages.install": {
+    "title": "Instalēt jaunas priekšskatījuma valodas",
+    "words": ["instalēt priekšskatījuma valodu"],
+    "phrases": ["lejupielādēt vēl vienu macOS valodas pakotni priekšskatījumam"]
+  },
+  "pillPosition": {
+    "title": "Indikatora novietojums ekrānā",
+    "words": ["indikatora novietojums", "indikatora atrašanās vieta", "pārvietot indikatoru"],
+    "phrases": ["mainīt, kur ekrānā parādās ieraksta indikators"]
+  },
+  "pillPosition.top": {
+    "title": "Augšā",
+    "words": ["augšā", "augšējā mala"],
+    "phrases": ["novietot ieraksta indikatoru ekrāna augšā"]
+  },
+  "pillPosition.bottom": {
+    "title": "Apakšā",
+    "words": ["apakšā", "apakšējā mala"],
+    "phrases": ["novietot ieraksta indikatoru ekrāna apakšā"]
+  },
+  "pillStyle": {
+    "title": "Indikatora stils",
+    "words": ["indikatora izskats", "indikatora dizains", "indikatora stils"],
+    "phrases": ["mainīt ieraksta indikatora izskatu", "izvēlēties, ko rāda peldošais ieraksta indikators"]
+  },
+  "pillStyle.capsule": {
+    "title": "Kapsula",
+    "words": ["kapsula", "punkts", "kompakts indikators"],
+    "phrases": ["izvēlēties mazo ieraksta indikatoru ar punktu un skaļuma mērītāju"]
+  },
+  "pillStyle.levelRail": {
+    "title": "Skaļuma josla",
+    "words": ["šaura josla", "plāna josla", "skaļuma josla"],
+    "phrases": ["izvēlēties plānu ieraksta joslu, kas seko balss skaļumam"]
+  },
+  "pillStyle.readingWell": {
+    "title": "Teksta panelis",
+    "words": ["teksta panelis", "Reading Well", "indikators ar tekstu"],
+    "phrases": ["izvēlēties peldošu teksta paneli kā ieraksta indikatoru", "izvēlēties Reading Well stilu un ieslēgt priekšskatījumu"]
+  },
+  "pillStyle.configureLivePreview": {
+    "title": "Iestatīt teksta priekšskatījumu",
+    "words": ["priekšskatījums no indikatora"],
+    "phrases": ["no ieraksta indikatora stila izvēles atvērt priekšskatījuma iestatījumus"]
+  },
+  "recordingChimes": {
+    "title": "Atskaņot ieraksta skaņas signālus",
+    "words": ["pīkstieni", "beep", "sākuma signāls", "beigu signāls"],
+    "phrases": ["ieslēgt skaņu ieraksta sākumā un beigās", "izslēgt ieraksta sākuma un beigu pīkstienus"]
+  },
+  "recordingChime": {
+    "title": "Ieraksta skaņas paraugs",
+    "words": ["skaņas paraugs", "signāla paraugs"],
+    "phrases": ["kur ir ieraksta skaņas paraugs, ko var dzirdēt, nemainot izvēli"]
+  },
+  "recordingChime.dustMote": {
+    "title": "Puteklītis",
+    "words": ["Dust Mote", "bez toņa", "gaisa šalkoņa"],
+    "phrases": ["izvēlēties maigu filtrēta gaisa skaņu bez muzikāla toņa"]
+  },
+  "recordingChime.velvetHush": {
+    "title": "Samta klusums",
+    "words": ["Velvet Hush", "tuvi toņi", "silts toņu pāris"],
+    "phrases": ["izvēlēties maigu signālu ar diviem tuviem toņiem"]
+  },
+  "recordingChime.mutedConfirm": {
+    "title": "Pieklusināts apstiprinājums",
+    "words": ["Muted Confirm", "vienāds augstums", "vienādi toņi"],
+    "phrases": ["izmantot vienādu toņa augstumu ieraksta sākumā un beigās"]
+  },
+  "recordingChime.whisperTick": {
+    "title": "Čuksta tikšķis",
+    "words": ["Whisper Tick", "tikšķis", "tikšķēšana"],
+    "phrases": ["izvēlēties tikšķi, ko tik tikko var dzirdēt"]
+  },
+  "recordingChime.roundPebble": {
+    "title": "Apaļš olītis",
+    "words": ["Round Pebble", "apaļš skanējums", "bez asuma"],
+    "phrases": ["izvēlēties ieraksta skaņu ar apaļu skanējumu bez asas malas"]
+  },
+  "recordingChime.paperTap": {
+    "title": "Papīra piesitiens",
+    "words": ["Paper Tap", "papīrs", "papīra piesitiens"],
+    "phrases": ["izvēlēties skaņu kā maigu piesitienu papīram"]
+  },
+  "recordingChime.softHush": {
+    "title": "Maiga nopūta",
+    "words": ["Soft Hush", "elpa", "izelpa", "lēna izdzišana"],
+    "phrases": ["izvēlēties elpai līdzīgu skaņu, kas lēni izdziest"]
+  },
+  "recordingChime.lowNod": {
+    "title": "Zems mājiens",
+    "words": ["Low Nod", "zems tonis", "dziļš tonis", "nesteidzīgs"],
+    "phrases": ["izvēlēties zemu, siltu un nesteidzīgu ieraksta skaņu"]
+  },
+  "recordingChime.cloudPop": {
+    "title": "Mākoņa plaukšķis",
+    "words": ["Cloud Pop", "plaukšķis", "gaisa plaukšķis"],
+    "phrases": ["izvēlēties mazu filtrēta gaisa plaukšķi"]
+  },
+  "recordingChime.velvetTap": {
+    "title": "Samta piesitiens",
+    "words": ["Velvet Tap", "slāpēts piesitiens", "īss piesitiens"],
+    "phrases": ["izvēlēties īsu un slāpētu piesitiena skaņu"]
+  },
+  "recordingChime.satinShift": {
+    "title": "Satīna pāreja",
+    "words": ["Satin Shift", "toņu pāreja", "toņu maiņa"],
+    "phrases": ["izvēlēties skaņu ar plūstošu pāreju starp diviem toņiem"]
+  },
+  "recordingChime.airGlint": {
+    "title": "Gaisa mirdzums",
+    "words": ["Air Glint", "mirdzums", "dzirkstošs signāls"],
+    "phrases": ["izvēlēties gaisīgu, mirdzošu ieraksta signālu"]
+  },
+  "recordingChime.preview": {
+    "title": "Noklausīties signālu",
+    "words": ["noklausīties signālu", "atskaņot signālu"],
+    "phrases": ["atskaņot šo ieraksta skaņu"]
+  },
+  "autoCopyToClipboard": {
+    "title": "Automātiski kopēt starpliktuvē",
+    "words": ["automātiska kopēšana", "neielīmēts diktējums"],
+    "phrases": ["kopēt diktēto tekstu, ja automātiskā ielīmēšana tiek izlaista", "paturēt diktējumu starpliktuvē, ja tas netiek ielīmēts"]
+  },
+  "restoreClipboard": {
+    "title": "Atjaunot starpliktuvi pēc ielīmēšanas",
+    "words": ["iepriekšējā starpliktuve", "atjaunot starpliktuvi"],
+    "phrases": ["pēc ielīmēšanas atjaunot iepriekšējo starpliktuves saturu"]
+  },
+  "smartInsertion": {
+    "title": "Viedā ievietošana",
+    "words": ["atstarpes", "lielie burti", "burtu reģistrs", "kursors", "Smart Insertion"],
+    "phrases": ["pielāgot atstarpes tekstam ap kursoru", "pielāgot lielos burtus apkārtējam tekstam"]
+  },
+  "quickAddClipboardFallback": {
+    "title": "Nolasīt atlasīto tekstu ar starpliktuvi",
+    "words": ["slēpta atlase", "atlases nolasīšana"],
+    "phrases": ["ar starpliktuvi nolasīt vārdnīcai atlasīto vārdu, ja lietotne slēpj atlasi"]
+  },
+  "recordingMode": {
+    "title": "Ieraksta režīms",
+    "words": ["ieraksta režīms", "taustiņa darbība", "ieraksta aktivizēšana"],
+    "phrases": ["izvēlēties, vai diktējot turēt taustiņu vai nospiest to sākumā un beigās"]
+  },
+  "recordingMode.pushToTalk": {
+    "title": "Turēt, lai runātu",
+    "words": ["Push to Talk", "turēt taustiņu", "atlaist taustiņu", "dubultspiediens", "trīskāršs spiediens"],
+    "phrases": ["ierakstīt, kamēr turu taustiņu, un beigt, kad to atlaižu", "turēšanas režīmā nospiest divreiz, lai fiksētu ierakstu, vai trīsreiz, lai atceltu"]
+  },
+  "recordingMode.toggle": {
+    "title": "Nospiest, lai sāktu un beigtu",
+    "words": ["toggle", "pārslēgšana", "bez turēšanas"],
+    "phrases": ["nospiest vienreiz, lai sāktu ierakstu, un vēlreiz, lai beigtu"]
+  },
+  "recordKeybind": {
+    "title": "Sākt un beigt ierakstu",
+    "words": ["diktēšanas saīsne", "ieraksta taustiņi", "diktēšanas hotkey"],
+    "phrases": ["mainīt taustiņus, kas sāk un beidz diktēšanu"]
+  },
+  "cancelKeybind": {
+    "title": "Atcelt ierakstu",
+    "words": ["atcelšanas saīsne", "atcelšanas taustiņš"],
+    "phrases": ["izvēlēties taustiņu pašreizējā ieraksta atcelšanai"]
+  },
+  "escapeRecovery": {
+    "title": "Atceltu diktējumu atgūšana",
+    "words": ["Escape Recovery", "atcelta diktējuma atgūšana", "nejaušs Escape", "24 stundas"],
+    "phrases": ["atgūt diktējumu pēc nejaušas Escape nospiešanas", "saglabāt atceltos diktējumus vēsturē 24 stundas"]
+  },
+  "quickAddKeybind": {
+    "title": "Pievienot atlasīto vārdu vārdnīcai",
+    "words": ["vārdnīcas pievienošanas saīsne", "Quick Add keybind"],
+    "phrases": ["iestatīt taustiņus atlasīta vārda pievienošanai vārdnīcai"]
+  },
+  "pasteLastKeybind": {
+    "title": "Ielīmēt pēdējo diktējumu",
+    "words": ["pēdējā diktējuma ielīmēšana", "atkārtota ielīmēšana"],
+    "phrases": ["iestatīt saīsni pēdējā diktējuma ielīmēšanai"]
+  },
+  "copyLastKeybind": {
+    "title": "Kopēt pēdējo diktējumu",
+    "words": ["pēdējā diktējuma kopēšana", "kopēšanas saīsne"],
+    "phrases": ["iestatīt saīsni pēdējā diktējuma kopēšanai"]
+  },
+  "keybind.resetToDefault": {
+    "title": "Atjaunot sākotnējos taustiņus",
+    "words": ["atiestatīt saīsni"],
+    "phrases": ["atjaunot šīs saīsnes sākotnējos taustiņus"]
+  },
+  "transcribeFile.steps": {
+    "title": "Faila transkripcijas posmi",
+    "words": ["transkripcijas progress", "transkripcijas posmi", "faila apstrādes soļi"],
+    "phrases": ["kurā posmā ir faila transkripcija", "parādīt soļus no faila ielādes līdz gatavam tekstam"]
+  },
+  "transcribeFile.chooseFile": {
+    "title": "Izvēlēties failu",
+    "words": ["importēt audio", "ievilkt failu", "atvērt ierakstu"],
+    "phrases": ["atvērt audio vai video failu transkripcijai"]
+  },
+  "transcribeFile.feature.privacy": {
+    "title": "Audio paliek šajā Mac",
+    "words": ["audio privātums", "audio konfidencialitāte"],
+    "phrases": ["vai importētais audio paliek šajā Mac", "vai mans audio fails tiek kaut kur nosūtīts"]
+  },
+  "transcribeFile.feature.engines": {
+    "title": "Divi transkripcijas dziņi",
+    "words": ["divi dziņi", "divi transkripcijas modeļi"],
+    "phrases": ["ko nozīmē divi transkripcijas dziņi failiem"]
+  },
+  "transcribeFile.feature.polish": {
+    "title": "Seši veidi, kā uzlabot tekstu",
+    "words": ["seši uzlabošanas veidi", "seši uzlabotāji"],
+    "phrases": ["kādi ir seši veidi importētā faila teksta uzlabošanai"]
+  },
+  "transcribeFile.feature.original": {
+    "title": "Oriģinālais fails paliek nemainīts",
+    "words": ["avota fails", "faila pārrakstīšana", "oriģinālais ieraksts"],
+    "phrases": ["vai transkripcija pārrakstīs manu sākotnējo failu", "vai importētais ieraksts paliek nemainīts"]
+  },
+  "transcribeFile.chooseDifferentFile": {
+    "title": "Izvēlēties citu failu",
+    "words": ["nomainīt failu", "cits ieraksts"],
+    "phrases": ["izvēlētā faila vietā izmantot citu ierakstu"]
+  },
+  "transcribeFile.removeFile": {
+    "title": "Noņemt izvēlēto failu",
+    "words": ["atcelt faila izvēli"],
+    "phrases": ["noņemt transkripcijai izvēlēto failu"]
+  },
+  "transcribeFile.continue": {
+    "title": "Turpināt",
+    "words": ["nākamais transkripcijas solis"],
+    "phrases": ["pāriet uz nākamo faila transkripcijas iestatīšanas soli"]
+  },
+  "transcribeFile.engine": {
+    "title": "Faila transkripcijas dzinis",
+    "words": ["faila transkripcijas modelis", "faila atpazinējs"],
+    "phrases": ["izvēlēties dzini, kas pārvērš runu no faila tekstā"]
+  },
+  "transcribeFile.engine.fast": {
+    "title": "Ātrais",
+    "words": ["Parakeet failiem", "ātrais failiem", "ANE failiem"],
+    "phrases": ["šo failu transkribēt ar Parakeet", "izvēlēties ātro modeli Eiropas valodu ierakstam"]
+  },
+  "transcribeFile.engine.allLanguages": {
+    "title": "Visas valodas",
+    "words": ["Whisper failiem", "Turbo failiem", "GPU failiem"],
+    "phrases": ["šo failu transkribēt ar Whisper", "izvēlēties faila transkripcijas modeli sarežģītam audio"]
+  },
+  "transcribeFile.polish": {
+    "title": "Faila teksta uzlabošanas modelis",
+    "words": ["faila teksta uzlabotājs", "transkripcijas uzlabotājs"],
+    "phrases": ["izvēlēties, kurš modelis sakārto importētā faila tekstu"]
+  },
+  "transcribeFile.polish.egOne": {
+    "title": "EG-1",
+    "words": ["EG-1 failiem", "EG-1 transkripcijai"],
+    "phrases": ["uzlabot importētā faila tekstu ar EG-1", "ar EG-1 izņemt vairāk runas iespraudumu no faila transkripcijas"]
+  },
+  "transcribeFile.polish.appleIntelligence": {
+    "title": "Apple Intelligence",
+    "words": ["Apple Intelligence failiem", "Apple Intelligence transkripcijai"],
+    "phrases": ["uzlabot importētā faila tekstu ar Apple Intelligence"]
+  },
+  "transcribeFile.polish.ollama": {
+    "title": "Ollama",
+    "words": ["Ollama failiem", "Ollama transkripcijai"],
+    "phrases": ["uzlabot faila transkripciju ar Ollama modeli"]
+  },
+  "transcribeFile.polish.openAI": {
+    "title": "OpenAI",
+    "words": ["OpenAI failiem", "OpenAI transkripcijai"],
+    "phrases": ["uzlabot faila tekstu ar savu OpenAI atslēgu", "nosūtīt OpenAI faila tekstu bez audio"]
+  },
+  "transcribeFile.polish.gemini": {
+    "title": "Gemini",
+    "words": ["Gemini failiem", "Google transkripcijai"],
+    "phrases": ["uzlabot faila tekstu ar savu Google atslēgu", "nosūtīt Gemini faila tekstu bez audio"]
+  },
+  "transcribeFile.polish.claude": {
+    "title": "Claude",
+    "words": ["Claude failiem", "Anthropic transkripcijai"],
+    "phrases": ["uzlabot faila tekstu ar savu Anthropic atslēgu", "nosūtīt Claude faila tekstu bez audio"]
+  },
+  "transcribeFile.polishSetup": {
+    "title": "Faila uzlabotāja iestatījumi",
+    "words": ["faila uzlabotāja iestatījumi", "nākamā faila opcijas"],
+    "phrases": ["pielāgot izvēlētā uzlabošanas modeļa iestatījumus nākamajam failam"]
+  },
+  "transcribeFile.useDictationPolish": {
+    "title": "Izmantot diktēšanas teksta uzlabošanas iestatījumus",
+    "words": ["pārņemt diktēšanas iestatījumus"],
+    "phrases": ["šim failam izmantot manus diktējuma teksta uzlabošanas iestatījumus"]
+  },
+  "transcribeFile.start": {
+    "title": "Sākt transkripciju",
+    "words": ["sākt faila transkripciju"],
+    "phrases": ["tagad sākt pārvērst izvēlēto failu tekstā"]
+  },
+  "transcribeFile.view": {
+    "title": "Transkripcijas skats",
+    "words": ["transkripcijas skats", "teksta versijas"],
+    "phrases": ["izvēlēties, kuru gatavās transkripcijas versiju rādīt"]
+  },
+  "transcribeFile.view.cleaned": {
+    "title": "Sakārtotais teksts",
+    "words": ["labota transkripcija", "uzlabots transkripcijas teksts"],
+    "phrases": ["parādīt sakārtoto faila transkripciju"]
+  },
+  "transcribeFile.view.markedUp": {
+    "title": "Ar atzīmētām izmaiņām",
+    "words": ["transkripcijas labojumi", "izceltas izmaiņas", "teksta atšķirības"],
+    "phrases": ["izcelt, kas mainīts faila teksta uzlabošanas laikā"]
+  },
+  "transcribeFile.view.original": {
+    "title": "Sākotnējais teksts",
+    "words": ["nelabota transkripcija", "sākotnējā transkripcija"],
+    "phrases": ["parādīt transkripciju pirms teksta uzlabošanas"]
+  },
+  "transcribeFile.times": {
+    "title": "Laika atzīmes",
+    "words": ["laika atzīmes", "timestamps", "transkripcijas laiki"],
+    "phrases": ["parādīt laika atzīmes pie gatavās transkripcijas"]
+  },
+  "transcribeFile.copy": {
+    "title": "Kopēt visu",
+    "words": ["kopēt transkripciju"],
+    "phrases": ["nokopēt visu faila transkripciju starpliktuvē"]
+  },
+  "transcribeFile.save": {
+    "title": "Saglabāt kā…",
+    "words": ["eksportēt transkripciju", "saglabāt transkripciju"],
+    "phrases": ["saglabāt gatavo transkripciju failā"]
+  },
+  "transcribeFile.share": {
+    "title": "Kopīgot…",
+    "words": ["nosūtīt transkripciju", "kopīgot transkripciju"],
+    "phrases": ["kopīgot gatavo faila transkripciju"]
+  },
+  "transcribeFile.newTranscription": {
+    "title": "Jauna transkripcija",
+    "words": ["jauna transkripcija"],
+    "phrases": ["pēc šī faila pabeigšanas sākt jaunu transkripciju"]
+  },
+  "transcribeFile.changePolisher": {
+    "title": "Mainīt transkripcijas uzlabotāju",
+    "words": ["mainīt transkripcijas uzlabotāju"],
+    "phrases": ["gatavās transkripcijas skatā nomainīt teksta uzlabošanas pakalpojumu"]
+  },
+  "transcribeFile.stopSpeakers": {
+    "title": "Apturēt runātāju noteikšanu",
+    "words": ["apturēt runātāju noteikšanu"],
+    "phrases": ["pārtraukt runātāju noteikšanu šajā ierakstā"]
+  },
+  "transcribeFile.retrySpeakers": {
+    "title": "Vēlreiz noteikt runātājus",
+    "words": ["atkārtot runātāju noteikšanu"],
+    "phrases": ["pēc kļūdas vēlreiz mēģināt noteikt runātājus"]
+  },
+  "enableAIPolish": {
+    "title": "Ieslēgt AI Polish",
+    "words": ["gramatika", "korektūra", "formatēšana", "pieturzīmju labošana", "AI Polish"],
+    "phrases": ["automātiski labot gramatiku pēc diktēšanas", "sakārtot diktētā teksta pieturzīmes un noformējumu"]
+  },
+  "aiPolishProvider": {
+    "title": "AI Polish pakalpojums",
+    "words": ["AI pakalpojuma izvēle", "diktējuma uzlabotājs"],
+    "phrases": ["izvēlēties, kura pakalpojuma modelis sakārto manu diktējumu"]
+  },
+  "aiPolishProvider.egOne": {
+    "title": "EG-1",
+    "words": ["EG-1 diktēšanai", "lietotnes pašu modelis"],
+    "phrases": ["izvēlēties EG-1 diktējuma uzlabošanai šajā Mac"]
+  },
+  "aiPolishProvider.s1Mini": {
+    "title": "S1-mini",
+    "words": ["S1-mini", "Superwhisper", "mazs vietējais modelis"],
+    "phrases": ["izvēlēties Superwhisper mazo modeli diktējuma uzlabošanai"]
+  },
+  "aiPolishProvider.appleIntelligence": {
+    "title": "Apple Intelligence",
+    "words": ["Apple Intelligence diktēšanai", "iebūvētais uzlabotājs"],
+    "phrases": ["diktējuma sakārtošanai izmantot Apple Intelligence"]
+  },
+  "aiPolishProvider.ollama": {
+    "title": "Ollama",
+    "words": ["Ollama diktēšanai", "savs Ollama risinājums"],
+    "phrases": ["diktējumu uzlabošanai izmantot savus vietējos vai attālinātos Ollama modeļus"]
+  },
+  "aiPolishProvider.openAI": {
+    "title": "OpenAI",
+    "words": ["OpenAI diktēšanai", "OpenAI mākoņpakalpojums"],
+    "phrases": ["izvēlēties OpenAI diktētā teksta uzlabošanai"]
+  },
+  "aiPolishProvider.gemini": {
+    "title": "Google Gemini",
+    "words": ["Gemini diktēšanai", "Google mākoņpakalpojums"],
+    "phrases": ["izvēlēties Gemini diktētā teksta uzlabošanai"]
+  },
+  "aiPolishProvider.claude": {
+    "title": "Claude",
+    "words": ["Claude diktēšanai", "Anthropic mākoņpakalpojums"],
+    "phrases": ["izvēlēties Claude diktētā teksta uzlabošanai"]
+  },
+  "aiPolish.providerSection": {
+    "title": "Iestatījumi tikai izvēlētajam modelim",
+    "words": ["uzlabotāja īpašie iestatījumi", "pakalpojuma opcijas"],
+    "phrases": ["parādīt iestatījumus tikai manam izvēlētajam diktējuma uzlabotājam"]
+  },
+  "aiPolish.whyUse.egOne": {
+    "title": "Kāpēc izmantot EG-1",
+    "words": ["EG-1 priekšrocības", "EG-1 ātrums", "EG-1 alternatīvas"],
+    "phrases": ["cik ilgi EG-1 uzlabo tekstu", "kad EG-1 vietā izvēlēties citu modeli"]
+  },
+  "aiPolish.whyUse.s1Mini": {
+    "title": "Kāpēc izmantot S1-mini",
+    "words": ["S1-mini piemērotība", "S1-mini valodas"],
+    "phrases": ["vai S1-mini der manai valodai", "kādos gadījumos izvēlēties S1-mini"]
+  },
+  "aiPolish.whyUse.appleIntelligence": {
+    "title": "Kāpēc izmantot Apple Intelligence",
+    "words": ["Apple Intelligence piemērotība", "Apple Intelligence nav pieejams"],
+    "phrases": ["kāpēc Apple Intelligence nav pieejams", "kad teksta uzlabošanai der Apple Intelligence"]
+  },
+  "aiPolish.whyUse.ollama": {
+    "title": "Kāpēc izmantot Ollama",
+    "words": ["Ollama ieteikumi", "trūkstošs Ollama modelis"],
+    "phrases": ["kuru Ollama modeli labāk izmantot teksta uzlabošanai", "kāpēc mans Ollama modelis nav redzams"]
+  },
+  "aiPolish.whyUse.openAI": {
+    "title": "Kāpēc izmantot OpenAI",
+    "words": ["OpenAI ieteikumi", "trūkstoši OpenAI modeļi"],
+    "phrases": ["kuru OpenAI modeli labāk izmantot diktējuma uzlabošanai", "kāpēc daži OpenAI modeļi nav redzami"]
+  },
+  "aiPolish.whyUse.gemini": {
+    "title": "Kāpēc izmantot Gemini",
+    "words": ["Gemini ieteikumi", "bloķēti Gemini modeļi"],
+    "phrases": ["kuru Gemini modeli labāk izmantot teksta uzlabošanai", "kāpēc daži Gemini modeļi ir bloķēti"]
+  },
+  "aiPolish.whyUse.claude": {
+    "title": "Kāpēc izmantot Claude",
+    "words": ["Claude ieteikumi", "trūkstoši Claude modeļi", "Claude API piekļuve"],
+    "phrases": ["kuru Claude modeli labāk izmantot un kāda API piekļuve tam vajadzīga", "kāpēc daži Claude modeļi nav redzami"]
+  },
+  "aiPolish.link.aboutAppleIntelligence": {
+    "title": "Par Apple Intelligence",
+    "words": ["Apple Intelligence informācija"],
+    "phrases": ["atvērt informācijas lapu par Apple Intelligence"]
+  },
+  "aiPolish.link.ollamaLibrary": {
+    "title": "Ollama modeļu bibliotēka",
+    "words": ["Ollama bibliotēka", "Ollama katalogs"],
+    "phrases": ["atvērt Ollama modeļu bibliotēkas vietni"]
+  },
+  "aiPolish.link.openAIRateLimits": {
+    "title": "OpenAI pieprasījumu limiti pēc lietošanas līmeņa",
+    "words": ["OpenAI limiti"],
+    "phrases": ["parādīt OpenAI pieprasījumu limitus manam lietošanas līmenim"]
+  },
+  "aiPolish.link.geminiRateLimits": {
+    "title": "Gemini API pieprasījumu limiti pēc lietošanas līmeņa",
+    "words": ["Gemini limiti"],
+    "phrases": ["parādīt Gemini pieprasījumu limitus manam lietošanas līmenim"]
+  },
+  "aiPolish.link.claudeRateLimits": {
+    "title": "Claude API pieprasījumu limiti",
+    "words": ["Claude limiti"],
+    "phrases": ["parādīt Claude API pieprasījumu limitus"]
+  },
+  "localModel.download": {
+    "title": "Lejupielādēt EG-1 vai S1-mini",
+    "words": ["lejupielādēt EG-1", "lejupielādēt S1-mini"],
+    "phrases": ["lejupielādēt EG-1 vai S1-mini šajā Mac"]
+  },
+  "localModel.cancel": {
+    "title": "Atcelt modeļa lejupielādi",
+    "words": ["atcelt EG-1 lejupielādi", "atcelt S1-mini lejupielādi"],
+    "phrases": ["pārtraukt EG-1 vai S1-mini lejupielādi"]
+  },
+  "localModel.resume": {
+    "title": "Turpināt modeļa lejupielādi",
+    "words": ["atsākt EG-1 lejupielādi", "atsākt S1-mini lejupielādi"],
+    "phrases": ["turpināt apturēto EG-1 vai S1-mini lejupielādi"]
+  },
+  "localModel.resumeUpgrade": {
+    "title": "Atsākt modeļa atjaunināšanu",
+    "words": ["atsākt EG-1 atjaunināšanu", "atsākt S1-mini atjaunināšanu"],
+    "phrases": ["atsākt pusceļā apturēto EG-1 vai S1-mini atjaunināšanu"]
+  },
+  "localModel.finishUpgrade": {
+    "title": "Pabeigt modeļa atjaunināšanu",
+    "words": ["pabeigt EG-1 atjaunināšanu", "pabeigt S1-mini atjaunināšanu"],
+    "phrases": ["pabeigt jaunās EG-1 vai S1-mini versijas instalēšanu, lai teksta uzlabošana atkal darbotos"]
+  },
+  "localModel.tryAgain": {
+    "title": "Mēģināt vēlreiz",
+    "words": ["atkārtot pēc EG-1 kļūdas", "atkārtot pēc S1-mini kļūdas"],
+    "phrases": ["pēc EG-1 vai S1-mini kļūdas mēģināt vēlreiz"]
+  },
+  "localModel.testLive": {
+    "title": "Pārbaudīt, vai modelis darbojas",
+    "words": ["testēt EG-1", "testēt S1-mini"],
+    "phrases": ["izmēģināt, vai lejupielādētais teksta uzlabošanas modelis darbojas"]
+  },
+  "localModel.remove": {
+    "title": "Noņemt teksta uzlabošanas modeli",
+    "words": ["dzēst EG-1", "dzēst S1-mini", "atbrīvot diska vietu"],
+    "phrases": ["izdzēst lejupielādēto teksta uzlabošanas modeli, lai atbrīvotu vietu"]
+  },
+  "s1Tone": {
+    "title": "Tonis",
+    "words": ["formalitāte", "teksta tonis", "S1-mini stils"],
+    "phrases": ["iestatīt, cik formāli S1-mini raksta tekstu"]
+  },
+  "s1Tone.casual": {
+    "title": "Neformāls",
+    "words": ["neformāls", "sarunvaloda", "ikdienišķs"],
+    "phrases": ["lai S1-mini raksta brīvi kā ikdienas sarunā"]
+  },
+  "s1Tone.semiCasual": {
+    "title": "Nedaudz neformāls",
+    "words": ["nedaudz neformāls", "mēreni neformāls"],
+    "phrases": ["lai S1-mini raksta mazliet neformāli, bet ne pārāk familiāri"]
+  },
+  "s1Tone.semiFormal": {
+    "title": "Nedaudz formāls",
+    "words": ["nedaudz formāls", "mēreni formāls"],
+    "phrases": ["lai S1-mini raksta mazliet formāli, bet bez stīvuma"]
+  },
+  "s1Tone.formal": {
+    "title": "Formāls",
+    "words": ["formāls", "lietišķs", "oficiāls"],
+    "phrases": ["lai S1-mini raksta pilnīgi formālā stilā"]
+  },
+  "s1Structure": {
+    "title": "Teksta struktūra",
+    "words": ["struktūra", "teksta uzbūve", "teksta organizēšana"],
+    "phrases": ["izvēlēties, vai S1-mini veido saistītu tekstu vai sarakstus"]
+  },
+  "s1Structure.prose": {
+    "title": "Saistīts teksts",
+    "words": ["proza", "pilni teikumi", "saistīts teksts"],
+    "phrases": ["lai S1-mini raksta pilnos teikumos, nevis punktu sarakstā"]
+  },
+  "s1Structure.lists": {
+    "title": "Saraksti",
+    "words": ["punktu saraksts", "uzskaitījums", "aizzīmes", "bullets"],
+    "phrases": ["lai S1-mini pārvērš nosauktās lietas punktu sarakstā"]
+  },
+  "s1Context": {
+    "title": "Konteksts",
+    "words": ["S1-mini konteksts", "noformējuma konteksts"],
+    "phrases": ["izvēlēties parasta teksta vai e-pasta noformējumu S1-mini"]
+  },
+  "s1Context.general": {
+    "title": "Vispārīgs",
+    "words": ["parasts noformējums", "vispārīgs konteksts"],
+    "phrases": ["S1-mini izmantot parastu teksta noformējumu bez e-pasta formāta"]
+  },
+  "s1Context.email": {
+    "title": "E-pasts",
+    "words": ["e-pasts", "email", "sasveicināšanās", "atvadu frāzes"],
+    "phrases": ["noformēt diktēto sveicienu un atvadas kā e-pastu"]
+  },
+  "appleIntelligence.status": {
+    "title": "Apple Intelligence statuss",
+    "words": ["Apple Intelligence statuss", "Apple Intelligence gatavība"],
+    "phrases": ["parādīt, vai Apple Intelligence šajā Mac ir gatavs"]
+  },
+  "appleIntelligence.recheck": {
+    "title": "Pārbaudīt Apple Intelligence pieejamību",
+    "words": ["pārbaudīt Apple Intelligence"],
+    "phrases": ["vēlreiz pārbaudīt Apple Intelligence pieejamību"]
+  },
+  "ollama.downloadOllama": {
+    "title": "Lejupielādēt Ollama",
+    "words": ["instalēt Ollama", "lejupielādēt Ollama lietotni"],
+    "phrases": ["instalēt pašu Ollama šajā Mac"]
+  },
+  "ollama.start": {
+    "title": "Palaist Ollama",
+    "words": ["palaist Ollama", "ollama serve"],
+    "phrases": ["palaist Ollama pēc instalēšanas"]
+  },
+  "ollama.downloadModel": {
+    "title": "Lejupielādēt Ollama modeli",
+    "words": ["lejupielādēt Ollama modeli"],
+    "phrases": ["lejupielādēt Ollama vajadzīgo valodas modeli, lai varētu uzlabot tekstu"]
+  },
+  "ollama.cancelPull": {
+    "title": "Atcelt Ollama modeļa lejupielādi",
+    "words": ["atcelt Ollama lejupielādi"],
+    "phrases": ["pārtraukt modeļa lejupielādi Ollama"]
+  },
+  "ollama.server": {
+    "title": "Ollama serveris",
+    "words": ["Ollama serveris", "Ollama adrese", "Ollama endpoint"],
+    "phrases": ["parādīt mana Ollama servera adresi", "parādīt darbojošos Ollama serveri"]
+  },
+  "ollama.recheck": {
+    "title": "Vēlreiz pārbaudīt Ollama statusu",
+    "words": ["pārbaudīt Ollama statusu"],
+    "phrases": ["vēlreiz pārbaudīt, vai Ollama darbojas"]
+  },
+  "ollama.tryAgain": {
+    "title": "Mēģināt vēlreiz pēc Ollama kļūdas",
+    "words": ["atkārtot pēc Ollama kļūdas"],
+    "phrases": ["pēc Ollama kļūdas mēģināt vēlreiz"]
+  },
+  "ollama.browseModels": {
+    "title": "Lejupielādēt vēl Ollama modeļus",
+    "words": ["papildu Ollama modeļi"],
+    "phrases": ["apskatīt vēl citus modeļus lejupielādei ar Ollama"]
+  },
+  "ollama.prepareModel": {
+    "title": "Sagatavot Ollama modeli",
+    "words": ["sagatavot Ollama modeli", "inicializēt Ollama modeli"],
+    "phrases": ["sagatavot izvēlēto Ollama modeli teksta uzlabošanai"]
+  },
+  "apiKey.openAI": {
+    "title": "OpenAI API atslēga",
+    "words": ["OpenAI atslēga", "OpenAI API key"],
+    "phrases": ["ievadīt savu OpenAI API atslēgu diktējuma uzlabošanai"]
+  },
+  "apiKey.gemini": {
+    "title": "Google Gemini API atslēga",
+    "words": ["Gemini atslēga", "Google API key"],
+    "phrases": ["ievadīt savu Google API atslēgu Gemini teksta uzlabošanai"]
+  },
+  "apiKey.claude": {
+    "title": "Claude API atslēga",
+    "words": ["Anthropic atslēga", "Claude atslēga", "Claude API key"],
+    "phrases": ["ievadīt savu Anthropic API atslēgu"]
+  },
+  "apiKey.save": {
+    "title": "Saglabāt atslēgu",
+    "words": ["saglabāt API atslēgu"],
+    "phrases": ["saglabāt ievadīto API atslēgu"]
+  },
+  "apiKey.clear": {
+    "title": "Dzēst atslēgu",
+    "words": ["dzēst API atslēgu"],
+    "phrases": ["noņemt saglabāto API atslēgu"]
+  },
+  "apiKey.reveal": {
+    "title": "Rādīt vai paslēpt atslēgu",
+    "words": ["rādīt API atslēgu", "paslēpt API atslēgu"],
+    "phrases": ["parādīt vai paslēpt API atslēgas tekstu"]
+  },
+  "apiKey.checkAgain": {
+    "title": "Pārbaudīt atslēgu vēlreiz",
+    "words": ["pārbaudīt API atslēgu"],
+    "phrases": ["vēlreiz mēģināt pārbaudīt saglabāto API atslēgu"]
+  },
+  "apiKey.getKeyLink": {
+    "title": "Iegūt API atslēgu",
+    "words": ["iegūt API atslēgu"],
+    "phrases": ["atvērt pakalpojuma vietni, kur iegūt API atslēgu"]
+  },
+  "polishModel": {
+    "title": "Teksta uzlabošanas modelis",
+    "words": ["LLM", "konkrētais AI modelis", "pakalpojuma modeļi"],
+    "phrases": ["izvēlēties konkrētu teksta uzlabošanas modeli pašreizējā pakalpojumā vai Ollama"]
+  },
+  "polishModel.refresh": {
+    "title": "Atjaunināt modeļu sarakstu",
+    "words": ["pārlādēt modeļu sarakstu"],
+    "phrases": ["vēlreiz ielādēt pieejamos teksta uzlabošanas modeļus"]
+  },
+  "enableDictionary": {
+    "title": "Ieslēgt vārdnīcu",
+    "words": ["ieslēgt vārdnīcu", "izslēgt vārdnīcu", "lietot vārdnīcu"],
+    "phrases": ["izmantot manu vārdnīcu precīzākai diktēšanai", "izslēgt vārdnīcas lietošanu diktējot"]
+  },
+  "dictionary.tab.yourWords": {
+    "title": "Jūsu vārdi",
+    "words": ["mani vārdi", "personīgā vārdnīca", "paša pievienotie vārdi"],
+    "phrases": ["parādīt vārdus, ko pievienoju pats"]
+  },
+  "dictionary.tab.vocabularyPacks": {
+    "title": "Vārdu pakotnes",
+    "words": ["pakotņu cilne", "pakotņu sadaļa"],
+    "phrases": ["atvērt vārdu pakotņu sadaļu"]
+  },
+  "dictionary.tab.learnFrom": {
+    "title": "Mācīties no…",
+    "words": ["apguves cilne", "mācīšanās sadaļa"],
+    "phrases": ["atvērt jaunu vārdu apguves sadaļu"]
+  },
+  "dictionary.tab.quickAdd": {
+    "title": "Ātrā pievienošana",
+    "words": ["Quick Add", "ātrā pievienošana", "pievienošanas pamācība"],
+    "phrases": ["kā pievienot vārdus no citas lietotnes", "parādīt, kā darbojas ātrā pievienošana"]
+  },
+  "yourWords.add": {
+    "title": "Pievienot vārdu",
+    "words": ["pievienot savu vārdu"],
+    "phrases": ["manuāli pievienot vārdu savam personīgajam sarakstam"]
+  },
+  "yourWords.import": {
+    "title": "Importēt vārdus",
+    "words": ["importēt vārdnīcu", "ielādēt vārdu sarakstu"],
+    "phrases": ["ielādēt esošu vārdu sarakstu manā vārdnīcā"]
+  },
+  "yourWords.export": {
+    "title": "Eksportēt savus vārdus",
+    "words": ["eksportēt vārdnīcu"],
+    "phrases": ["eksportēt savus personīgās vārdnīcas ierakstus"]
+  },
+  "yourWords.search": {
+    "title": "Meklēt pēc vārda, kļūdainā varianta vai kategorijas",
+    "words": ["meklēt savus vārdus", "personīgās vārdnīcas meklēšana"],
+    "phrases": ["atrast vārdu manā personīgajā vārdnīcā", "meklēt savus ierakstus pēc kļūdainā varianta vai kategorijas"]
+  },
+  "yourWords.clearSearch": {
+    "title": "Notīrīt vārdu meklēšanu",
+    "words": ["notīrīt vārdu meklēšanu"],
+    "phrases": ["notīrīt meklēšanas lauku manu vārdu sarakstā"]
+  },
+  "yourWords.categoryFilter": {
+    "title": "Kategoriju filtrs",
+    "words": ["kategoriju filtrs", "vārdu grupas", "ierakstu veidi"],
+    "phrases": ["filtrēt manus vārdus pēc kategorijas"]
+  },
+  "yourWords.category.all": {
+    "title": "Visas kategorijas",
+    "words": ["visas kategorijas", "bez kategoriju filtra"],
+    "phrases": ["parādīt manus vārdus no visām kategorijām"]
+  },
+  "yourWords.category.general": {
+    "title": "Vispārīgi",
+    "words": ["vispārīgā kategorija", "mani ikdienas vārdi"],
+    "phrases": ["parādīt manus vispārīgās kategorijas vārdus"]
+  },
+  "yourWords.category.person": {
+    "title": "Persona",
+    "words": ["mani personvārdi", "mani uzvārdi"],
+    "phrases": ["parādīt cilvēku vārdus un uzvārdus, ko pievienoju pats"]
+  },
+  "yourWords.category.brand": {
+    "title": "Zīmols",
+    "words": ["mani zīmoli", "mani uzņēmumu nosaukumi"],
+    "phrases": ["parādīt zīmolu nosaukumus, ko pievienoju pats"]
+  },
+  "yourWords.category.acronym": {
+    "title": "Saīsinājums",
+    "words": ["saīsinājumi", "abreviatūras", "akronīmi"],
+    "phrases": ["parādīt manus saglabātos saīsinājumus"]
+  },
+  "yourWords.category.domain": {
+    "title": "Nozare",
+    "words": ["mani termini", "nozares kategorija"],
+    "phrases": ["parādīt nozares terminus, ko pievienoju pats"]
+  },
+  "yourWords.category.autoLearned": {
+    "title": "Automātiski apgūti",
+    "words": ["apgūto vārdu filtrs", "automātiski apgūtie ieraksti"],
+    "phrases": ["parādīt tikai vārdus, kas apgūti no maniem labojumiem"]
+  },
+  "yourWords.massEdit": {
+    "title": "Rediģēt vairākus vārdus",
+    "words": ["vairāku vārdu atlase", "grupveida rediģēšana"],
+    "phrases": ["atlasīt vairākus vārdnīcas ierakstus reizē"]
+  },
+  "yourWords.selectAll": {
+    "title": "Atlasīt visu",
+    "words": ["atlasīt visus vārdus"],
+    "phrases": ["atlasīt visus ierakstus manā vārdu sarakstā"]
+  },
+  "yourWords.cancelSelection": {
+    "title": "Atcelt atlasi",
+    "words": ["atcelt vārdu atlasi"],
+    "phrases": ["iziet no atlases režīma manu vārdu sarakstā"]
+  },
+  "yourWords.delete": {
+    "title": "Dzēst atlasītos vārdus",
+    "words": ["dzēst savus vārdus"],
+    "phrases": ["izdzēst atlasītos vārdus no personīgās vārdnīcas"]
+  },
+  "yourWords.edit": {
+    "title": "Rediģēt vārdu",
+    "words": ["labot vārdnīcas ierakstu"],
+    "phrases": ["mainīt esošu ierakstu manā personīgajā vārdnīcā"]
+  },
+  "yourWords.previousPage": {
+    "title": "Iepriekšējā lapa",
+    "words": ["iepriekšējā vārdu lapa"],
+    "phrases": ["manu vārdu sarakstā pāriet vienu lapu atpakaļ"]
+  },
+  "yourWords.nextPage": {
+    "title": "Nākamā lapa",
+    "words": ["nākamā vārdu lapa"],
+    "phrases": ["manu vārdu sarakstā pāriet vienu lapu uz priekšu"]
+  },
+  "vocabularyPacks": {
+    "title": "Gatavas vārdu pakotnes",
+    "words": ["gatavi vārdu saraksti", "iebūvētas vārdnīcas", "terminu pakotnes"],
+    "phrases": ["atrast gatavu vārdu sarakstu savai nozarei", "labot zināmas atpazīšanas kļūdas ar vārdu pakotni"]
+  },
+  "vocabularyPack.tech": {
+    "title": "Tehnoloģijas",
+    "words": ["programmēšana", "kodēšana", "mākoņpakalpojumi", "izstrādātāju rīki", "programmatūra", "coding"],
+    "phrases": ["ieslēgt gatavo programmēšanas terminu pakotni"]
+  },
+  "vocabularyPack.medical": {
+    "title": "Medicīna",
+    "words": ["medikamenti", "zāles", "slimības", "klīniskie termini", "veselības aprūpe"],
+    "phrases": ["ieslēgt gatavo medicīnas terminu pakotni"]
+  },
+  "vocabularyPack.legal": {
+    "title": "Juridiskie termini",
+    "words": ["jurisprudence", "līgumi", "tiesa", "tiesvedība", "juristi"],
+    "phrases": ["izmantot gatavo sarakstu līgumu un tiesas terminiem"]
+  },
+  "vocabularyPack.brands": {
+    "title": "Zīmoli",
+    "words": ["zīmolu pakotne", "gatavi uzņēmumu nosaukumi", "lietotņu nosaukumu pakotne"],
+    "phrases": ["ieslēgt gatavo uzņēmumu, produktu un lietotņu nosaukumu sarakstu"]
+  },
+  "vocabularyPack.names": {
+    "title": "Personvārdi",
+    "words": ["personvārdu pakotne", "gatavs uzvārdu saraksts"],
+    "phrases": ["ieslēgt iebūvēto bieži sastopamo cilvēku vārdu un uzvārdu sarakstu"]
+  },
+  "vocabularyPack.seeAll": {
+    "title": "Skatīt visus pakotnes vārdus",
+    "words": ["skatīt pakotnes saturu"],
+    "phrases": ["parādīt visus šīs vārdu pakotnes vārdus"]
+  },
+  "vocabularyPack.detail.back": {
+    "title": "Atpakaļ uz pakotnēm",
+    "words": ["atpakaļ uz pakotnēm"],
+    "phrases": ["atgriezties no šīs pakotnes pie visu pakotņu pārskata"]
+  },
+  "vocabularyPack.detail.packOn": {
+    "title": "Ieslēgt pakotni",
+    "words": ["pakotnes slēdzis", "ieslēgt pakotni", "izslēgt pakotni"],
+    "phrases": ["ieslēgt visus šīs pakotnes labojumus", "izslēgt visu šo vārdu pakotni"]
+  },
+  "vocabularyPack.detail.search": {
+    "title": "Meklēt pakotnes vārdus",
+    "words": ["meklēt pakotnē", "pakotnes meklēšana"],
+    "phrases": ["atrast vārdu šajā pakotnē", "pārbaudīt, vai šajā pakotnē ir konkrēts vārds"]
+  },
+  "vocabularyPack.detail.wordToggle": {
+    "title": "Ieslēgt pakotnes vārdu",
+    "words": ["vārda slēdzis", "ieslēgt vienu vārdu", "izslēgt vienu vārdu"],
+    "phrases": ["izslēgt tikai vienu vārdu šajā pakotnē", "ieslēgt atsevišķu vārdu šajā pakotnē"]
+  },
+  "vocabularyPack.detail.restore": {
+    "title": "Atjaunot pakotnes vārdu",
+    "words": ["atjaunot pakotnes vārdu"],
+    "phrases": ["atjaunot šī pakotnes vārda sākotnējo stāvokli"]
+  },
+  "vocabularyPack.detail.mishearing": {
+    "title": "Ievadīt kļūdaini atpazīto variantu",
+    "words": ["pakotnes kļūdainais variants", "pakotnes atpazīšanas kļūda"],
+    "phrases": ["ierakstīt, kā šis pakotnes vārds tiek atpazīts nepareizi"]
+  },
+  "vocabularyPack.detail.addMishearing": {
+    "title": "Pievienot kļūdaino variantu",
+    "words": ["saglabāt pakotnes kļūdaino variantu"],
+    "phrases": ["saglabāt šim pakotnes vārdam ievadīto kļūdaino variantu"]
+  },
+  "learnFrom": {
+    "title": "Jaunu vārdu apguves avoti",
+    "words": ["vārdu avoti", "vārdnīcas papildināšana"],
+    "phrases": ["kā lietotne var apgūt vārdus no lietām, kas man jau ir"]
+  },
+  "selfLearningDictionary": {
+    "title": "Vārdnīca, kas mācās no labojumiem (beta)",
+    "words": ["mācīšanās no labojumiem", "pašmācība", "laboto vārdu saglabāšana"],
+    "phrases": ["automātiski pievienot izlabotos vārdus vārdnīcai", "pārtraukt mācīšanos no maniem diktējuma labojumiem"]
+  },
+  "selfLearningDictionary.learnMore": {
+    "title": "Lasīt par mācīšanos no labojumiem",
+    "words": ["vārdnīcas pašmācības pamācība"],
+    "phrases": ["izlasīt, kā vārdnīca mācās no diktējuma labojumiem"]
+  },
+  "selfLearningDictionary.retryChecker": {
+    "title": "Atkārtot vārdu pārbaudītāja lejupielādi",
+    "words": ["atkārtot pārbaudītāja lejupielādi"],
+    "phrases": ["pēc kļūdas vēlreiz lejupielādēt apgūto vārdu pārbaudītāju"]
+  },
+  "selfLearningDictionary.download": {
+    "title": "Lejupielādēt vārdnīcas pašmācībai nepieciešamo",
+    "words": ["lejupielādēt vārdnīcas pašmācībai"],
+    "phrases": ["sākt pašmācošajai vārdnīcai nepieciešamo lejupielādi"]
+  },
+  "selfLearningDictionary.cancel": {
+    "title": "Atcelt pašmācošās vārdnīcas darbību",
+    "words": ["atcelt vārdnīcas pašmācības darbību"],
+    "phrases": ["atcelt pašreizējo pašmācošās vārdnīcas darbību"]
+  },
+  "selfLearningDictionary.retryLoad": {
+    "title": "Vēlreiz ielādēt pašmācošo vārdnīcu",
+    "words": ["atkārtot pašmācošās vārdnīcas ielādi"],
+    "phrases": ["vēlreiz mēģināt ielādēt pašmācošo vārdnīcu"]
+  },
+  "selfLearningDictionary.removeAndDownload": {
+    "title": "Noņemt un lejupielādēt vēlreiz",
+    "words": ["pārlejupielādēt vārdnīcas pašmācībai"],
+    "phrases": ["noņemt pašmācošās vārdnīcas lejupielādētos datus un lejupielādēt tos no jauna"]
+  },
+  "importContacts": {
+    "title": "Importēt vārdus no kontaktiem",
+    "words": ["adrešu grāmata", "kontaktu vārdu apguve"],
+    "phrases": ["iemācīt diktēšanai cilvēku vārdus no maniem kontaktiem"]
+  },
+  "importContacts.import": {
+    "title": "Importēt kontaktu vārdus",
+    "words": ["importēt kontaktus"],
+    "phrases": ["tagad pievienot kontaktos saglabātos cilvēku vārdus vārdnīcai"]
+  },
+  "importContacts.openSettings": {
+    "title": "Atvērt kontaktu piekļuves iestatījumus",
+    "words": ["atļaut kontaktu piekļuvi"],
+    "phrases": ["atvērt Mac iestatījumus, lai atļautu piekļuvi kontaktiem"]
+  },
+  "importContacts.removeImported": {
+    "title": "Noņemt visus no kontaktiem importētos vārdus",
+    "words": ["dzēst importētos kontaktu vārdus"],
+    "phrases": ["izņemt no vārdnīcas visus no kontaktiem importētos cilvēku vārdus"]
+  },
+  "contactsSyncOnLaunch": {
+    "title": "Sinhronizēt kontaktus, palaižot lietotni",
+    "words": ["kontaktu sinhronizācija", "kontaktu sync", "kontakti palaižot"],
+    "phrases": ["pārbaudīt jaunus kontaktu vārdus katrā lietotnes palaišanas reizē"]
+  },
+  "quickAdd.step1": {
+    "title": "Iezīmēt vārdu",
+    "words": ["vārda iezīmēšana", "atlase pirms pievienošanas"],
+    "phrases": ["citā lietotnē iezīmēt vārdu, ko gribu izlabot"]
+  },
+  "quickAdd.step2": {
+    "title": "Palaist ātro pievienošanu",
+    "words": ["Quick Add palaišana", "pievienošana pēc atlases"],
+    "phrases": ["pēc vārda iezīmēšanas palaist ātro pievienošanu"]
+  },
+  "quickAdd.step3": {
+    "title": "Izvēlēties un saglabāt",
+    "words": ["domātā vārda izvēle", "iezīmētās rakstības saglabāšana"],
+    "phrases": ["ātrajā pievienošanā izvēlēties domāto vārdu", "saglabāt iezīmēto rakstību pie pareizā vārdnīcas vārda"]
+  },
+  "quickAdd.shortcut": {
+    "title": "Ātrās pievienošanas īsinājumtaustiņš",
+    "words": ["skatīt Quick Add saīsni"],
+    "phrases": ["parādīt, kuri taustiņi atver ātro pievienošanu"]
+  },
+  "quickAdd.menuBar": {
+    "title": "Pievienošana no izvēļņu joslas",
+    "words": ["Quick Add izvēlne", "pievienošanas izvēlnes vienums"],
+    "phrases": ["atrast Add vienumu EnviousWispr ikonas izvēlnē"]
+  },
+  "snippets": {
+    "title": "Ievietot atkārtoti lietotu tekstu ar balsi",
+    "words": ["teksta izvēršana", "text expander", "balss teksta saīsnes"],
+    "phrases": ["ievietot saglabātu tekstu ar balsi", "ar balsi ielīmēt savu saglabāto parakstu"]
+  },
+  "snippetKeyword": {
+    "title": "Teksta fragmentu ievadvārds",
+    "words": ["fragmentu ievadvārds", "snippet prefikss", "fragmentu atslēgvārds"],
+    "phrases": ["mainīt vārdu, ko saku pirms teksta fragmenta komandas"]
+  },
+  "yourSnippets": {
+    "title": "Jūsu teksta fragmenti",
+    "words": ["mani fragmenti", "saglabātie teksti", "mani snippets"],
+    "phrases": ["parādīt manus saglabātos teksta fragmentus"]
+  },
+  "snippets.search": {
+    "title": "Meklēt teksta fragmentus",
+    "words": ["meklēt fragmentus", "fragmentu meklēšana"],
+    "phrases": ["atrast teksta fragmentu manā saglabātajā kolekcijā"]
+  },
+  "snippets.import": {
+    "title": "Importēt teksta fragmentus",
+    "words": ["importēt fragmentus"],
+    "phrases": ["importēt esošu teksta fragmentu kolekciju"]
+  },
+  "snippets.export": {
+    "title": "Eksportēt teksta fragmentus",
+    "words": ["eksportēt fragmentus"],
+    "phrases": ["eksportēt manus saglabātos teksta fragmentus"]
+  },
+  "snippets.add": {
+    "title": "Pievienot teksta fragmentu",
+    "words": ["pievienot vēl fragmentu"],
+    "phrases": ["pievienot vēl vienu tekstu esošajai fragmentu kolekcijai"]
+  },
+  "snippets.addFirst": {
+    "title": "Pievienot pirmo teksta fragmentu",
+    "words": ["pirmais fragments"],
+    "phrases": ["izveidot pirmo teksta fragmentu, kamēr saraksts ir tukšs"]
+  },
+  "snippets.clearSearch": {
+    "title": "Notīrīt fragmentu meklēšanu",
+    "words": ["notīrīt fragmentu meklēšanu"],
+    "phrases": ["notīrīt meklēšanas lauku teksta fragmentu sarakstā"]
+  },
+  "snippets.editRow": {
+    "title": "Rediģēt teksta fragmentu",
+    "words": ["mainīt fragmenta komandu", "labot fragmenta tekstu"],
+    "phrases": ["mainīt esoša teksta fragmenta komandu vai saturu"]
+  },
+  "appSettings.tab.appearance": {
+    "title": "Izskats",
+    "words": ["izskata cilne", "izskata sadaļa"],
+    "phrases": ["atvērt lietotnes izskata sadaļu"]
+  },
+  "appSettings.tab.permissions": {
+    "title": "Atļaujas",
+    "words": ["atļaujas", "piekļuves tiesības", "permissions"],
+    "phrases": ["parādīt visas lietotnei vajadzīgās Mac atļaujas"]
+  },
+  "appSettings.tab.privacy": {
+    "title": "Privātums",
+    "words": ["privātums", "privacy", "datu kopīgošana"],
+    "phrases": ["atvērt lietotnes privātuma sadaļu"]
+  },
+  "appSettings.tab.licenses": {
+    "title": "Licences",
+    "words": ["licenču pārskats", "autortiesības", "licencēšanas dokumenti"],
+    "phrases": ["parādīt lietotnes un izmantoto rīku licenču pārskatu"]
+  },
+  "theme": {
+    "title": "Krāsu režīms",
+    "words": ["tēma", "krāsu shēma", "palete", "theme"],
+    "phrases": ["mainīt lietotnes krāsu režīmu"]
+  },
+  "theme.system": {
+    "title": "Kā sistēmā",
+    "words": ["sistēmas izskats", "automātisks krāsu režīms"],
+    "phrases": ["mainīt lietotnes gaišo un tumšo režīmu kopā ar Mac"]
+  },
+  "theme.light": {
+    "title": "Gaišs",
+    "words": ["gaišais režīms", "dienas režīms", "light mode"],
+    "phrases": ["vienmēr izmantot gaišo lietotnes režīmu"]
+  },
+  "theme.dark": {
+    "title": "Tumšs",
+    "words": ["tumšais režīms", "nakts režīms", "dark mode"],
+    "phrases": ["vienmēr izmantot tumšo lietotnes režīmu"]
+  },
+  "appLanguage": {
+    "title": "Lietotnes valoda",
+    "words": ["saskarnes valoda", "izvēļņu valoda", "lokalizācija", "tulkojums"],
+    "phrases": ["mainīt lietotnes izvēļņu valodu"]
+  },
+  "appLanguage.systemDefault": {
+    "title": "Sistēmas noklusētā valoda",
+    "words": ["sistēmas saskarnes valoda", "Mac izvēļņu valoda"],
+    "phrases": ["lietotnei izmantot to pašu valodu, ko Mac"]
+  },
+  "appLanguage.shipped": {
+    "title": "Angļu / vācu",
+    "words": ["izvēlnes angliski", "izvēlnes vāciski", "English saskarne", "Deutsch saskarne"],
+    "phrases": ["rādīt lietotnes izvēlnes angļu valodā", "rādīt lietotnes izvēlnes vācu valodā"]
+  },
+  "appLanguage.relaunch": {
+    "title": "Pārstartēt, lai lietotu jauno valodu",
+    "words": ["pārstartēt valodas maiņai"],
+    "phrases": ["pārstartēt lietotni, lai lietotu jauno izvēļņu valodu"]
+  },
+  "showInDock": {
+    "title": "Rādīt lietotni Dock joslā",
+    "words": ["Dock", "Dock ikona"],
+    "phrases": ["paturēt EnviousWispr ikonu Dock joslā", "paslēpt EnviousWispr no Dock joslas"]
+  },
+  "updateAlertInMenuBar": {
+    "title": "Atjauninājuma indikators izvēļņu joslā",
+    "words": ["zelta lūpas", "atjauninājuma indikators", "zelta ikona"],
+    "phrases": ["rādīt zelta lūpas, kad pieejams atjauninājums", "paslēpt atjauninājuma indikatoru izvēļņu joslā"]
+  },
+  "permission.microphone": {
+    "title": "Mikrofona piekļuve",
+    "words": ["mikrofona atļauja", "mikrofona piekļuve", "liegts mikrofons"],
+    "phrases": ["vai lietotnei ir atļauts ierakstīt manu balsi", "kāpēc piekļuve mikrofonam ir liegta"]
+  },
+  "permission.microphone.request": {
+    "title": "Pieprasīt piekļuvi mikrofonam",
+    "words": ["pieprasīt mikrofona atļauju"],
+    "phrases": ["pieprasīt atļauju izmantot mikrofonu"]
+  },
+  "permission.accessibility": {
+    "title": "Piekļūstamība",
+    "words": ["Accessibility", "piekļūstamības atļauja", "ielīmēšanas atļauja"],
+    "phrases": ["kāda atļauja vajadzīga diktējuma ielīmēšanai citās lietotnēs", "kāpēc teksta ievietošanai vajadzīga Accessibility piekļuve"]
+  },
+  "permission.accessibility.openSettings": {
+    "title": "Atvērt piekļūstamības iestatījumus",
+    "words": ["piešķirt Accessibility piekļuvi"],
+    "phrases": ["atvērt Mac iestatījumus, lai piešķirtu piekļūstamības atļauju"]
+  },
+  "shareUsageMetrics": {
+    "title": "Kopīgot lietošanas statistiku",
+    "words": ["analītika", "lietošanas statistika", "lietošanas rādītāji", "analytics"],
+    "phrases": ["izslēgt lietošanas statistikas sūtīšanu", "kopīgot lietošanas datus, lai palīdzētu pamanīt atjauninājumu problēmas"]
+  },
+  "sendCrashReports": {
+    "title": "Sūtīt avāriju ziņojumus",
+    "words": ["avārijas", "kļūdu ziņojumi", "diagnostika", "crash reports"],
+    "phrases": ["sūtīt informāciju par lietotnes avārijām un kļūdām", "pārtraukt avāriju ziņojumu sūtīšanu"]
+  },
+  "sendCrashReports.restart": {
+    "title": "Pārstartēt tagad",
+    "words": ["pārstartēt avāriju ziņošanai"],
+    "phrases": ["pārstartēt lietotni, lai stātos spēkā avāriju ziņošanas iestatījums"]
+  },
+  "whatWeCollect": {
+    "title": "Kādus datus mēs vācam",
+    "words": ["datu vākšana", "savāktie dati", "atsauksmju dati"],
+    "phrases": ["kādu informāciju lietotne vāc", "vai tiek vākti mani ieraksti, diktētais teksts vai API atslēgas"]
+  },
+  "whatWeCollect.seeDetails": {
+    "title": "Skatīt datu vākšanas skaidrojumu",
+    "words": ["atvērt datu vākšanas skaidrojumu"],
+    "phrases": ["atvērt detalizētu skaidrojumu par savāktajiem datiem"]
+  },
+  "license.gpl": {
+    "title": "EnviousWispr · GPLv3",
+    "words": ["atvērtais pirmkods", "open source", "GNU GPL", "copyleft"],
+    "phrases": ["vai EnviousWispr ir atvērtā pirmkoda lietotne", "kāda atvērtā pirmkoda licence attiecas uz EnviousWispr"]
+  },
+  "license.gpl.view": {
+    "title": "Skatīt GPLv3 licenci",
+    "words": ["atvērt GPLv3 tekstu"],
+    "phrases": ["atvērt pilnu GPLv3 licences tekstu"]
+  },
+  "license.notices": {
+    "title": "Trešo pušu licenču paziņojumi",
+    "words": ["bibliotēku licences", "atkarību licences", "komponentu licences"],
+    "phrases": ["kādas licences ir EnviousWispr izmantotajiem rīkiem"]
+  },
+  "license.notices.view": {
+    "title": "Skatīt trešo pušu paziņojumus",
+    "words": ["atvērt trešo pušu paziņojumus"],
+    "phrases": ["atvērt trešo pušu licenču paziņojumus"]
+  }
+}

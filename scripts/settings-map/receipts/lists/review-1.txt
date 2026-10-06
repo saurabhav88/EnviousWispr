@@ -1,0 +1,50 @@
+{
+  "et": {
+    "verdict": "changed",
+    "markers": ["ei", "ära", "ilma", "mitte", "kunagi", "midagi", "ükski", "ühtegi", "pole", "välja", "sisse", "lülita", "lülitada", "aktiveeri", "aktiveerida", "keela", "lubada", "luba", "alusta", "käivita", "peata", "lõpeta", "näita", "peida", "vaigista", "paus", "jätka", "rohkem", "vähem", "valjem", "vaiksem", "kiirem", "aeglasem", "suurem", "väiksem", "üles", "alla", "uuesti", "taas", "peatu"],
+    "stop": ["aga", "et", "ja", "kas", "kui", "ma", "me", "mida", "mind", "minu", "mis", "mu", "mul", "mulle", "nad", "oled", "olen", "oli", "oma", "sa", "seda", "selle", "siis", "ta", "te", "palun"],
+    "notes": "Added common pause and repeat forms and please, and removed affirmation, quantity, and location words from stop."
+  },
+  "fi": {
+    "verdict": "changed",
+    "markers": ["ei", "en", "et", "emme", "ette", "eivät", "älä", "älkää", "ilman", "koskaan", "mitään", "mikään", "pois", "päälle", "poista", "käynnistä", "aloita", "lopeta", "pysäytä", "näytä", "piilota", "mykistä", "keskeytä", "jatka", "enemmän", "vähemmän", "kovempaa", "hiljempaa", "nopeammin", "hitaammin", "suurempi", "pienempi", "ylös", "alas", "uudelleen", "taas", "lisää", "eikä", "ettei", "enää"],
+    "stop": ["ja", "että", "se", "oli", "mutta", "ole", "kun", "hän", "ovat", "voi", "sen", "kuin", "tai", "joka", "olla", "sitä", "mitä", "kanssa", "tämä", "sitten", "olisi", "ollut", "siitä", "ne", "sekä", "miten", "mukaan", "olen", "hänen", "vaan", "koska", "kuitenkin", "vaikka", "mikä", "jotka", "eli", "jossa", "siis", "sillä", "ehkä", "itse", "onko", "tuo", "jonka", "kuten", "miksi", "joku", "siihen", "tästä", "he", "joten", "kiitos", "tätä", "esimerkiksi", "vai", "kuinka", "niitä", "olivat", "tällä", "minä", "missä", "kautta", "tähän", "me", "meillä", "olevan", "voisi", "nämä", "olet", "heidän", "voidaan", "mistä", "meidän", "niiden", "hänet", "jota", "takia", "haluaa", "muuten", "haluan"],
+    "notes": "Added compound negation and no-longer markers, restored Finnish spelling, and removed quantity, timing, frequency, and other content words from stop."
+  },
+  "fr": {
+    "verdict": "changed",
+    "markers": ["pas", "sans", "non", "ne", "n'", "n", "jamais", "rien", "aucun", "aucune", "ni", "plus", "moins", "activer", "active", "désactiver", "désactive", "éteindre", "éteins", "démarrer", "démarre", "arrêter", "arrête", "afficher", "affiche", "masquer", "masque", "couper", "coupe", "pause", "reprendre", "reprends", "augmente", "diminue", "fort", "vite", "lentement", "grand", "petit", "encore"],
+    "stop": ["de", "la", "le", "et", "l", "les", "est", "en", "des", "d", "un", "que", "une", "il", "pour", "dans", "je", "qui", "c", "au", "ce", "qu", "par", "avec", "j", "mais", "se", "vous", "ça", "tu", "elle", "y", "ou", "si", "sont", "nous", "comme", "être", "ils", "cette", "sa", "aux", "me", "ont", "t", "m", "était", "été", "mon", "ses", "lui", "peut", "leur", "moi", "ces", "quand", "suis", "avoir", "va", "alors", "avait", "ma", "dire", "te", "votre", "donc", "notre", "dont", "toi", "quoi", "soit", "leurs", "chez", "ainsi", "mes", "comment", "es", "sera", "nos", "parce", "cela", "doit", "car", "eu", "puis", "cet", "ceux", "elles", "pourquoi", "ta", "fais", "merci", "à"],
+    "notes": "Protected both negation-clitic forms and the resume imperative, and removed sound, quantity, direction, timing, and other content words from stop."
+  },
+  "hi": {
+    "verdict": "changed",
+    "markers": ["नहीं", "नही", "ना", "न", "मत", "बिना", "बगैर", "कभी", "बंद", "चालू", "शुरू", "रोक", "रोको", "रोकें", "रुक", "रुको", "रुकें", "दिखाओ", "दिखाएं", "दिखाएँ", "छिपाओ", "छिपाएं", "छिपाएँ", "म्यूट", "अनम्यूट", "विराम", "ज्यादा", "ज़्यादा", "कम", "तेज", "तेज़", "धीमा", "धीमे", "बड़ा", "छोटा", "ऊपर", "नीचे", "फिर", "दोबारा", "धीरे"],
+    "stop": ["की", "और", "को", "का", "पर", "एक", "तो", "कर", "हो", "लिए", "कि", "इस", "था", "यह", "गया", "किया", "जो", "आप", "साथ", "रहा", "दिया", "थी", "या", "किसी", "वह", "जब", "होता", "अपनी", "जा", "सकता", "करना", "तरह", "करता", "इन", "होती", "उस", "अपना", "उनकी", "तब", "इसका", "इसी", "कौन", "है", "हैं", "मैं", "में", "से", "लेकिन", "करें", "करो", "कृपया", "मुझे", "मेरी", "मेरा"],
+    "notes": "Removed positive indefinite pronouns from markers, protected न and धीरे, and replaced damaged stop tokens with common intact fillers."
+  },
+  "hr": {
+    "verdict": "changed",
+    "markers": ["ne", "nije", "nisu", "nisam", "nisi", "nismo", "niste", "nema", "neće", "neću", "nemoj", "nemojte", "bez", "nikad", "nikada", "ništa", "ni", "uključi", "isključi", "omogući", "onemogući", "pokreni", "zaustavi", "prikaži", "sakrij", "utišaj", "pauziraj", "nastavi", "više", "manje", "glasnije", "tiše", "brže", "sporije", "veće", "gore", "dolje", "opet", "povećaj", "smanji"],
+    "stop": ["ako", "ali", "bi", "bih", "bila", "bili", "bilo", "bio", "bismo", "biste", "biti", "će", "ćemo", "ćeš", "ćete", "ću", "da", "ga", "hoće", "hoćemo", "hoćeš", "hoćete", "hoću", "i", "iako", "ih", "ili", "iz", "ja", "je", "jer", "jesam", "jesi", "jesmo", "jest", "jeste", "jesu", "joj", "ju", "kada", "kako", "kao", "koja", "koje", "koji", "kojima", "koju", "kroz", "li", "me", "mene", "meni", "mi", "moj", "moja", "moje", "mu", "na", "nam", "nama", "nas", "naša", "naše", "našeg", "nego", "neka", "neki", "nekog", "neku", "nešto", "netko", "njega", "njegov", "njegova", "njegovo", "njemu", "njezin", "njezina", "njezino", "njih", "njihov", "njihova", "njihovo", "njim", "njima", "njoj", "nju", "no", "o", "od", "ona", "oni", "ono", "ova", "pa", "pak", "po", "sa", "sam", "se", "sebe", "sebi", "si", "smo", "ste", "što", "su", "svog", "svoj", "svoja", "svoje", "svom", "ta", "taj", "tako", "te", "tebe", "tebi", "ti", "toj", "tome", "tvoj", "tvoja", "tvoje", "u", "uz", "vam", "vama", "vas", "vaša", "vaše", "vi", "za", "zar", "molim", "hvala"],
+    "notes": "Removed the duplicate marker, prioritized common negated auxiliaries within 40 entries, and removed remaining negation, quantity, and direction words from stop."
+  },
+  "hu": {
+    "verdict": "changed",
+    "markers": ["nem", "ne", "nincs", "nincsen", "nincsenek", "nélkül", "soha", "semmi", "se", "sem", "ki", "be", "bekapcsolás", "kikapcsolás", "bekapcsolni", "kikapcsolni", "engedélyezd", "tiltsd", "indítás", "leállítás", "indítsd", "állítsd", "mutasd", "rejtsd", "némítsd", "szünet", "folytasd", "több", "kevesebb", "hangosabb", "halkabb", "gyorsabb", "lassabb", "nagyobb", "kisebb", "fel", "le", "újra", "vissza", "kapcsold"],
+    "stop": ["az", "és", "hogy", "egy", "de", "ha", "van", "volt", "ez", "vagy", "én", "kell", "azt", "akkor", "mint", "ezt", "mert", "így", "olyan", "mi", "lesz", "lehet", "vagyok", "majd", "úgy", "aki", "amikor", "ami", "te", "pedig", "nekem", "amit", "szerint", "mit", "ilyen", "miért", "volna", "azért", "milyen", "lett", "miatt", "lenne", "által", "hát", "ő", "mikor", "valami", "arra", "ezért", "vannak", "ahol", "ezek", "legyen", "neki", "aztán", "valaki", "amely", "tényleg", "erre", "neked", "na", "ahogy", "akik", "szerintem", "hogyan", "valamint", "ezzel", "mivel", "őket", "ennek", "hanem", "ezen", "persze", "azonban", "illetve", "köszönöm", "vele", "talán", "ebben", "kellett", "voltak", "annak", "hozzá", "való", "vagyunk", "hol", "a", "kérem", "szeretném"],
+    "notes": "Added natural command forms and back, and removed verb particles, size, quantity, timing, and other content words from stop."
+  },
+  "it": {
+    "verdict": "changed",
+    "markers": ["non", "no", "senza", "mai", "niente", "nulla", "nessun", "né", "attiva", "attivare", "disattiva", "disattivare", "accendi", "accendere", "spegni", "spegnere", "avvia", "avviare", "ferma", "fermare", "mostra", "mostrare", "nascondi", "nascondere", "silenzia", "pausa", "riprendi", "più", "meno", "aumenta", "riduci", "veloce", "lento", "grande", "piccolo", "su", "giù", "ancora", "forte", "piano"],
+    "stop": ["di", "che", "il", "la", "un", "l", "i", "una", "le", "si", "con", "della", "da", "sono", "ma", "al", "ha", "come", "dei", "se", "nel", "mi", "alla", "anche", "lo", "gli", "delle", "o", "questo", "ho", "ci", "ad", "dal", "essere", "io", "nella", "ti", "cui", "d", "era", "stato", "quando", "ed", "questa", "c", "cosa", "hanno", "suo", "loro", "perché", "sia", "sua", "fare", "così", "dalla", "degli", "sul", "poi", "quello", "fa", "me", "chi", "mio", "può", "mia", "sulla", "dove", "nei", "sei", "quella", "quindi", "hai", "bene", "grazie", "dai", "noi", "nelle", "vi", "sta", "te", "dire", "tu", "questi", "stata", "lui", "siamo", "quel", "qualche", "quale", "suoi", "aveva", "dalle", "sarà", "stati", "tuo", "va", "avere", "dello", "erano", "queste", "ciò", "però", "sarebbe", "aver", "deve", "forse", "nostro", "agli", "qualcosa", "sembra", "fosse", "per", "in", "vorrei"],
+    "notes": "Protected repetition and volume words within 40 markers, and removed quantity, timing, position, and other content words from stop."
+  },
+  "ja": {
+    "verdict": "changed",
+    "markers": ["ない", "なく", "なし", "ず", "ません", "不要", "オン", "オフ", "有効", "無効", "有効化", "無効化", "開始", "停止", "終了", "止める", "止めて", "やめる", "やめて", "表示", "非表示", "隠す", "消す", "ミュート", "解除", "一時停止", "再開", "もっと", "少なく", "大きく", "小さく", "速く", "早く", "遅く", "上", "下", "上げる", "下げる", "もう一度", "もう"],
+    "stop": ["の", "に", "て", "は", "か", "た", "を", "し", "と", "な", "も", "から", "です", "する", "ます", "こと", "いる", "ある", "や", "この", "これ", "よう", "その", "なる", "なら", "という", "それ", "ても", "何", "れる", "私", "ため", "あり", "もの", "へ", "ので", "として", "など", "られ", "できる", "なり", "たり", "たち", "られる", "について", "とき", "そして", "ください", "お願いします"],
+    "notes": "Replaced literary or isolated negation forms with common stop and repeat expressions, and removed negative fragments and content words from stop."
+  }
+}

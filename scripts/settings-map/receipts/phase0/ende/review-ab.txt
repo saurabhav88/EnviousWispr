@@ -1,0 +1,1042 @@
+{
+  "recordingChime.airGlint": {
+    "en": {
+      "words": ["airy", "shimmer", "sparkle"],
+      "phrases": ["pick the airy chime", "use the shimmering sound"]
+    },
+    "de": {
+      "words": ["luftig", "schimmernd", "funkelnd"],
+      "phrases": ["nimm den luftig klingenden Ton", "wähle den schimmernden Klang"]
+    }
+  },
+  "recordingChime.preview": {
+    "en": {
+      "words": ["listen", "hear"],
+      "phrases": ["play this chime for me", "let me hear this sound"]
+    },
+    "de": {
+      "words": ["anhören", "probehören"],
+      "phrases": ["spiel mir diesen Ton vor", "lass mich den Klang anhören"]
+    }
+  },
+  "autoCopyToClipboard": {
+    "en": {
+      "words": [],
+      "phrases": ["copy my dictation when automatic pasting is skipped", "keep my dictation on the clipboard if it is not pasted"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["kopiere mein Diktat, wenn es nicht automatisch eingefügt wird", "leg mein Diktat in die Zwischenablage, wenn das Einfügen übersprungen wird"]
+    }
+  },
+  "restoreClipboard": {
+    "en": {
+      "words": [],
+      "phrases": ["put my previous clipboard contents back after pasting", "keep what I copied before dictating"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["stell nach dem Einfügen meinen alten Zwischenablageinhalt wieder her", "behalte das, was ich vor dem Diktieren kopiert habe"]
+    }
+  },
+  "smartInsertion": {
+    "en": {
+      "words": ["spacing", "capitalization", "spaces", "cursor"],
+      "phrases": ["fit the spaces around my cursor", "match capital letters to the surrounding text"]
+    },
+    "de": {
+      "words": ["Leerzeichen", "Großschreibung", "Abstände", "Cursor"],
+      "phrases": ["pass die Leerzeichen an den Text um den Cursor an", "pass die Großschreibung an den umgebenden Text an"]
+    }
+  },
+  "quickAddClipboardFallback": {
+    "en": {
+      "words": [],
+      "phrases": ["use the clipboard to read a selected dictionary word", "read my selected word when the app hides the selection"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["lies das markierte Wort fürs Wörterbuch über die Zwischenablage", "erkenne mein markiertes Wort auch dann, wenn die App die Auswahl nicht freigibt"]
+    }
+  },
+  "recordingMode": {
+    "en": {
+      "words": ["behavior", "activation"],
+      "phrases": ["change how the dictation key works", "choose between holding the key and pressing it twice"]
+    },
+    "de": {
+      "words": ["Tastenverhalten", "Bedienung"],
+      "phrases": ["stell ein, wie die Diktattaste funktioniert", "lass mich zwischen Gedrückthalten und zweimaligem Drücken wählen"]
+    }
+  },
+  "recordingMode.pushToTalk": {
+    "en": {
+      "words": ["hold", "release", "lock"],
+      "phrases": ["record while I hold the key", "stop recording when I release the key", "double press to keep recording", "triple press to cancel in push to talk mode"]
+    },
+    "de": {
+      "words": ["gedrückthalten", "loslassen", "einrasten"],
+      "phrases": ["nimm auf, solange ich die Taste gedrückt halte", "beende die Aufnahme, wenn ich die Taste loslasse", "lass die Aufnahme nach zweimaligem Drücken weiterlaufen", "brich im Modus zum Gedrückthalten nach dreimaligem Drücken ab"]
+    }
+  },
+  "recordingMode.toggle": {
+    "en": {
+      "words": [],
+      "phrases": ["press once to record and again to stop", "start and stop recording with separate key presses"]
+    },
+    "de": {
+      "words": ["antippen"],
+      "phrases": ["starte die Aufnahme beim ersten Drücken und beende sie beim nächsten", "lass mich zum Aufnehmen einmal drücken statt die Taste zu halten"]
+    }
+  },
+  "recordKeybind": {
+    "en": {
+      "words": [],
+      "phrases": ["change my dictation shortcut", "choose the keys that start and stop recording"]
+    },
+    "de": {
+      "words": ["Diktattaste", "Diktierkürzel"],
+      "phrases": ["ändere mein Tastenkürzel fürs Diktieren", "leg die Tasten zum Starten und Stoppen der Aufnahme fest"]
+    }
+  },
+  "cancelKeybind": {
+    "en": {
+      "words": ["abort"],
+      "phrases": ["change the shortcut that cancels recording", "choose a key to discard the current recording"]
+    },
+    "de": {
+      "words": ["Abbruchtaste", "Abbruchkürzel"],
+      "phrases": ["ändere mein Tastenkürzel zum Abbrechen der Aufnahme", "leg eine Taste zum Verwerfen der laufenden Aufnahme fest"]
+    }
+  },
+  "escapeRecovery": {
+    "en": {
+      "words": ["recover", "recovery", "history"],
+      "phrases": ["keep cancelled dictations for 24 hours", "recover my dictation after I accidentally press escape"]
+    },
+    "de": {
+      "words": ["retten", "Verlauf", "Wiederherstellung"],
+      "phrases": ["bewahre abgebrochene Diktate 24 Stunden lang auf", "rette mein Diktat, wenn ich versehentlich Escape drücke"]
+    }
+  },
+  "quickAddKeybind": {
+    "en": {
+      "words": ["misheard", "vocabulary"],
+      "phrases": ["set a shortcut to add a selected word to the dictionary", "add a misheard word with a key press"]
+    },
+    "de": {
+      "words": ["Wortschatz", "Wörterbuchkürzel"],
+      "phrases": ["leg ein Tastenkürzel zum Hinzufügen markierter Wörter fest", "füge ein falsch erkanntes Wort per Tastendruck zum Wörterbuch hinzu"]
+    }
+  },
+  "pasteLastKeybind": {
+    "en": {
+      "words": ["reinsert"],
+      "phrases": ["set a shortcut to paste my last dictation", "insert what I just dictated again"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["leg ein Tastenkürzel zum Einfügen meines letzten Diktats fest", "füge meinen zuletzt diktierten Text nochmal ein"]
+    }
+  },
+  "copyLastKeybind": {
+    "en": {
+      "words": [],
+      "phrases": ["set a shortcut to copy my last dictation", "copy what I just dictated to the clipboard"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["leg ein Tastenkürzel zum Kopieren meines letzten Diktats fest", "kopiere meinen zuletzt diktierten Text in die Zwischenablage"]
+    }
+  },
+  "keybind.resetToDefault": {
+    "en": {
+      "words": ["reset", "default"],
+      "phrases": ["restore this shortcut's original keys"]
+    },
+    "de": {
+      "words": ["zurücksetzen", "Standard"],
+      "phrases": ["stell die ursprünglichen Tasten für dieses Kürzel wieder her"]
+    }
+  },
+  "transcribeFile.steps": {
+    "en": {
+      "words": ["stages", "steps", "progress"],
+      "phrases": ["show the steps from uploading a file to the finished transcript", "show which stage my file transcription is at"]
+    },
+    "de": {
+      "words": ["Schritte", "Ablauf", "Fortschritt"],
+      "phrases": ["zeig mir die Schritte von der Datei bis zum fertigen Text", "zeig mir, bei welchem Schritt die Dateitranskription gerade ist"]
+    }
+  },
+  "transcribeFile.chooseFile": {
+    "en": {
+      "words": ["import", "mp3", "wav", "m4a"],
+      "phrases": ["open an audio or video file for transcription", "drag a recording here to transcribe it"]
+    },
+    "de": {
+      "words": ["importieren", "reinziehen", "mp3", "wav"],
+      "phrases": ["öffne eine Audio- oder Videodatei zum Transkribieren", "lass mich eine Aufnahme hier reinziehen"]
+    }
+  },
+  "transcribeFile.feature.privacy": {
+    "en": {
+      "words": ["privacy", "private", "confidential"],
+      "phrases": ["does my imported audio leave this Mac", "is my audio file uploaded anywhere"]
+    },
+    "de": {
+      "words": ["Datenschutz", "Privatsphäre", "vertraulich"],
+      "phrases": ["bleibt meine importierte Aufnahme auf diesem Mac", "wird meine Audiodatei irgendwo hochgeladen"]
+    }
+  },
+  "transcribeFile.feature.engines": {
+    "en": {
+      "words": [],
+      "phrases": ["explain the two transcription engines for files", "what does the two transcription engines feature mean"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["erklär mir die zwei Engines für Dateitranskriptionen", "was bedeutet der Hinweis auf zwei Transkriptions-Engines"]
+    }
+  },
+  "transcribeFile.feature.polish": {
+    "en": {
+      "words": [],
+      "phrases": ["explain the six ways to polish an imported transcript", "what does the six ways to polish feature mean"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["erklär mir die sechs Möglichkeiten zur Nachbearbeitung einer Datei", "was bedeutet der Hinweis auf sechs Arten der Nachbearbeitung"]
+    }
+  },
+  "transcribeFile.feature.original": {
+    "en": {
+      "words": ["overwrite", "preservation"],
+      "phrases": ["will transcription overwrite my source file", "does my imported recording stay unchanged"]
+    },
+    "de": {
+      "words": ["überschreiben", "Überschreibschutz", "Quelldatei"],
+      "phrases": ["wird meine ursprüngliche Datei überschrieben", "bleibt die importierte Aufnahme unverändert"]
+    }
+  },
+  "transcribeFile.chooseDifferentFile": {
+    "en": {
+      "words": ["replace", "swap"],
+      "phrases": ["replace the selected file with another recording"]
+    },
+    "de": {
+      "words": ["austauschen", "ersetzen"],
+      "phrases": ["tausch die ausgewählte Datei gegen eine andere Aufnahme aus"]
+    }
+  },
+  "transcribeFile.removeFile": {
+    "en": {
+      "words": ["unselect", "deselect"],
+      "phrases": ["clear the file selected for transcription"]
+    },
+    "de": {
+      "words": ["abwählen"],
+      "phrases": ["nimm die ausgewählte Datei aus der Transkription heraus"]
+    }
+  },
+  "transcribeFile.continue": {
+    "en": {
+      "words": ["next", "proceed"],
+      "phrases": ["go to the next transcription setup step"]
+    },
+    "de": {
+      "words": ["weiter", "weitergehen"],
+      "phrases": ["geh zum nächsten Schritt der Transkription"]
+    }
+  },
+  "transcribeFile.engine": {
+    "en": {
+      "words": ["recognition", "recognizer"],
+      "phrases": ["choose the speech recognition engine for my file", "change the engine that turns speech into text"]
+    },
+    "de": {
+      "words": ["Spracherkennung", "Erkennungsmodell"],
+      "phrases": ["wähle das Modell für die Spracherkennung meiner Datei", "ändere die Engine, die Sprache in Text umwandelt"]
+    }
+  },
+  "transcribeFile.engine.fast": {
+    "en": {
+      "words": ["Parakeet", "European", "quick"],
+      "phrases": ["use Parakeet to transcribe this file", "pick the fast engine for European recordings"]
+    },
+    "de": {
+      "words": ["Parakeet", "europäisch", "flott"],
+      "phrases": ["transkribiere diese Datei mit Parakeet", "nimm die schnelle Engine für europäische Sprachen"]
+    }
+  },
+  "transcribeFile.engine.allLanguages": {
+    "en": {
+      "words": ["Whisper", "Turbo", "GPU"],
+      "phrases": ["use Whisper to transcribe this file", "pick the engine for difficult audio or less common languages"]
+    },
+    "de": {
+      "words": ["Whisper", "Turbo", "GPU"],
+      "phrases": ["transkribiere diese Datei mit Whisper", "nimm die Engine für schwierige Aufnahmen oder seltenere Sprachen"]
+    }
+  },
+  "transcribeFile.polish": {
+    "en": {
+      "words": [],
+      "phrases": ["choose the cleanup engine before transcribing my file", "select which model will polish this imported recording"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["wähle vor der Transkription die Engine für die Nachbearbeitung", "leg fest, welches Modell den Text meiner importierten Aufnahme verbessert"]
+    }
+  },
+  "transcribeFile.polish.egOne": {
+    "en": {
+      "words": ["fillers"],
+      "phrases": ["use EG-1 to clean up my imported recording", "remove more filler words from my file transcript with EG-1"]
+    },
+    "de": {
+      "words": ["Füllwörter"],
+      "phrases": ["bearbeite meine importierte Aufnahme mit EG-1 nach", "entferne mit EG-1 mehr Füllwörter aus meinem Dateitranskript"]
+    }
+  },
+  "transcribeFile.polish.appleIntelligence": {
+    "en": {
+      "words": [],
+      "phrases": ["use Apple's built-in model to polish my file transcript", "clean up my imported recording with Apple Intelligence"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["verbessere mein Dateitranskript mit Apples eingebautem Modell", "bearbeite meine importierte Aufnahme mit Apple Intelligence nach"]
+    }
+  },
+  "transcribeFile.polish.ollama": {
+    "en": {
+      "words": [],
+      "phrases": ["use a model running in Ollama to polish my file transcript", "clean up my imported recording with Ollama"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["verbessere mein Dateitranskript mit einem Modell in Ollama", "bearbeite meine importierte Aufnahme mit Ollama nach"]
+    }
+  },
+  "transcribeFile.polish.openAI": {
+    "en": {
+      "words": [],
+      "phrases": ["use my OpenAI key to polish this file transcript", "send my imported transcript to OpenAI without sending the audio"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["verbessere dieses Dateitranskript mit meinem OpenAI-Schlüssel", "schick nur den Text meiner importierten Aufnahme an OpenAI"]
+    }
+  },
+  "transcribeFile.polish.gemini": {
+    "en": {
+      "words": [],
+      "phrases": ["use my Google key to polish this file transcript", "send my imported transcript to Gemini without sending the audio"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["verbessere dieses Dateitranskript mit meinem Google-Schlüssel", "schick nur den Text meiner importierten Aufnahme an Gemini"]
+    }
+  },
+  "transcribeFile.polish.claude": {
+    "en": {
+      "words": [],
+      "phrases": ["use my Anthropic key to polish this file transcript", "send my imported transcript to Claude without sending the audio"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["verbessere dieses Dateitranskript mit meinem Anthropic-Schlüssel", "schick nur den Text meiner importierten Aufnahme an Claude"]
+    }
+  },
+  "transcribeFile.polishSetup": {
+    "en": {
+      "words": [],
+      "phrases": ["adjust the selected model's cleanup settings for imported files", "configure the polishing model for the next file"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["pass die Einstellungen des gewählten Nachbearbeitungsmodells für Dateien an", "richte das Nachbearbeitungsmodell für die nächste Datei ein"]
+    }
+  },
+  "transcribeFile.useDictationPolish": {
+    "en": {
+      "words": ["reuse", "inherit"],
+      "phrases": ["use my dictation cleanup settings for this file"]
+    },
+    "de": {
+      "words": ["übernehmen"],
+      "phrases": ["übernimm für diese Datei die Nachbearbeitungseinstellungen meiner Diktate"]
+    }
+  },
+  "transcribeFile.start": {
+    "en": {
+      "words": ["begin", "run"],
+      "phrases": ["start turning the selected file into text now"]
+    },
+    "de": {
+      "words": ["loslegen", "beginnen"],
+      "phrases": ["wandle die ausgewählte Datei jetzt in Text um"]
+    }
+  },
+  "transcribeFile.view": {
+    "en": {
+      "words": ["version", "variant", "display"],
+      "phrases": ["choose which version of the transcript to display", "switch between transcript views"]
+    },
+    "de": {
+      "words": ["Textversion", "Ansicht", "Textvariante"],
+      "phrases": ["wähle die angezeigte Version des Transkripts", "wechsle zwischen den Transkriptansichten"]
+    }
+  },
+  "transcribeFile.view.cleaned": {
+    "en": {
+      "words": ["corrected", "polished", "improved"],
+      "phrases": ["show the cleaned-up file transcript", "let me read the corrected version of my transcript"]
+    },
+    "de": {
+      "words": ["korrigiert", "verbessert", "bereinigt"],
+      "phrases": ["zeig mir das nachbearbeitete Dateitranskript", "lass mich die korrigierte Version meines Transkripts lesen"]
+    }
+  },
+  "transcribeFile.view.markedUp": {
+    "en": {
+      "words": ["edits", "highlights", "differences"],
+      "phrases": ["show the edits in my file transcript", "highlight what changed during transcript cleanup"]
+    },
+    "de": {
+      "words": ["Änderungen", "Unterschiede", "Hervorhebungen"],
+      "phrases": ["zeig mir die Änderungen am Dateitranskript", "heb hervor, was bei der Nachbearbeitung geändert wurde"]
+    }
+  },
+  "transcribeFile.view.original": {
+    "en": {
+      "words": ["raw", "unedited", "unpolished"],
+      "phrases": ["show the transcript before cleanup", "let me read the unedited transcription"]
+    },
+    "de": {
+      "words": ["Rohtext", "unbearbeitet", "Rohtranskript"],
+      "phrases": ["zeig mir das Transkript vor der Nachbearbeitung", "lass mich die unbearbeitete Transkription lesen"]
+    }
+  },
+  "transcribeFile.times": {
+    "en": {
+      "words": ["timestamps", "timings"],
+      "phrases": ["show the times in my finished transcript", "show timestamps alongside the transcript"]
+    },
+    "de": {
+      "words": ["Zeitstempel", "Zeitmarken", "Zeiten"],
+      "phrases": ["zeig mir die Zeiten im fertigen Transkript", "zeig Zeitstempel neben dem Transkript an"]
+    }
+  },
+  "transcribeFile.copy": {
+    "en": {
+      "words": [],
+      "phrases": ["copy the entire file transcript to the clipboard"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["kopiere das ganze Dateitranskript in die Zwischenablage"]
+    }
+  },
+  "transcribeFile.save": {
+    "en": {
+      "words": ["export", "disk"],
+      "phrases": ["save the finished transcript as a file"]
+    },
+    "de": {
+      "words": ["exportieren", "speichern"],
+      "phrases": ["speichere das fertige Transkript als Datei"]
+    }
+  },
+  "transcribeFile.share": {
+    "en": {
+      "words": ["send", "forward"],
+      "phrases": ["share the finished file transcript"]
+    },
+    "de": {
+      "words": ["versenden", "weitergeben"],
+      "phrases": ["teile das fertige Dateitranskript"]
+    }
+  },
+  "transcribeFile.newTranscription": {
+    "en": {
+      "words": [],
+      "phrases": ["start a new transcription after finishing this one"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["fang nach dieser Transkription mit einer neuen an"]
+    }
+  },
+  "transcribeFile.changePolisher": {
+    "en": {
+      "words": [],
+      "phrases": ["change the polishing provider from the finished transcript"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["wechsle beim fertigen Transkript den Anbieter für die Nachbearbeitung"]
+    }
+  },
+  "transcribeFile.stopSpeakers": {
+    "en": {
+      "words": [],
+      "phrases": ["stop detecting speakers in this recording"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["brich die Sprechererkennung für diese Aufnahme ab"]
+    }
+  },
+  "transcribeFile.retrySpeakers": {
+    "en": {
+      "words": [],
+      "phrases": ["try detecting speakers again after it failed"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["versuch nach dem Fehler nochmal, die Sprecher zu erkennen"]
+    }
+  },
+  "enableAIPolish": {
+    "en": {
+      "words": ["grammar", "punctuation", "formatting", "proofread"],
+      "phrases": ["turn on automatic grammar correction for dictation", "fix punctuation and formatting after I dictate"]
+    },
+    "de": {
+      "words": ["Grammatik", "Satzzeichen", "Zeichensetzung", "Formatierung"],
+      "phrases": ["verbessere nach dem Diktieren automatisch die Grammatik", "korrigiere Satzzeichen und Formatierung meiner Diktate"]
+    }
+  },
+  "aiPolishProvider": {
+    "en": {
+      "words": [],
+      "phrases": ["choose the model that cleans up my dictation", "switch the AI provider for my dictated text"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["wähle das Modell für die Nachbearbeitung meiner Diktate", "wechsle den KI-Anbieter für meinen diktierten Text"]
+    }
+  },
+  "aiPolishProvider.egOne": {
+    "en": {
+      "words": [],
+      "phrases": ["use the app's own model to clean up my dictation", "choose EG-1 for dictation cleanup on this Mac"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["verbessere meine Diktate mit dem eigenen Modell der App", "wähle EG-1 für die Diktatkorrektur auf diesem Mac"]
+    }
+  },
+  "aiPolishProvider.s1Mini": {
+    "en": {
+      "words": ["Superwhisper", "small", "compact"],
+      "phrases": ["use Superwhisper's model to clean up my dictation", "pick the small local model suited to English dictation"]
+    },
+    "de": {
+      "words": ["Superwhisper", "klein", "kompakt"],
+      "phrases": ["verbessere meine Diktate mit dem Modell von Superwhisper", "nimm das kleine lokale Modell für englische Diktate"]
+    }
+  },
+  "aiPolishProvider.appleIntelligence": {
+    "en": {
+      "words": [],
+      "phrases": ["use Apple's built-in model to clean up my dictation", "choose Apple Intelligence for dictation polish"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["verbessere meine Diktate mit Apples eingebautem Modell", "wähle Apple Intelligence für die Diktatkorrektur"]
+    }
+  },
+  "aiPolishProvider.ollama": {
+    "en": {
+      "words": [],
+      "phrases": ["use my Ollama models to clean up dictation", "choose my own local or hosted Ollama setup for dictation"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["verbessere meine Diktate mit meinen Ollama-Modellen", "nutze für die Diktatkorrektur meine eigene lokale oder gehostete Ollama-Umgebung"]
+    }
+  },
+  "aiPolishProvider.openAI": {
+    "en": {
+      "words": [],
+      "phrases": ["choose OpenAI to clean up my dictation", "use OpenAI cloud polish for dictated text"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["wähle OpenAI für die Nachbearbeitung meiner Diktate", "verbessere meinen diktierten Text mit OpenAI in der Cloud"]
+    }
+  },
+  "aiPolishProvider.gemini": {
+    "en": {
+      "words": [],
+      "phrases": ["choose Google's model to clean up my dictation", "use Gemini cloud polish for dictated text"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["wähle Googles Modell für die Nachbearbeitung meiner Diktate", "verbessere meinen diktierten Text mit Gemini in der Cloud"]
+    }
+  },
+  "aiPolishProvider.claude": {
+    "en": {
+      "words": [],
+      "phrases": ["choose Anthropic's model to clean up my dictation", "use Claude cloud polish for dictated text"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["wähle Anthropics Modell für die Nachbearbeitung meiner Diktate", "verbessere meinen diktierten Text mit Claude in der Cloud"]
+    }
+  },
+  "aiPolish.providerSection": {
+    "en": {
+      "words": [],
+      "phrases": ["show the settings specific to my selected dictation polish model", "find the options that apply only to my chosen dictation provider"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["zeig mir die Einstellungen speziell für mein gewähltes Diktatkorrekturmodell", "zeig mir die Optionen, die nur für meinen gewählten Diktatanbieter gelten"]
+    }
+  },
+  "aiPolish.whyUse.egOne": {
+    "en": {
+      "words": [],
+      "phrases": ["how long does EG-1 cleanup take", "when should I choose something other than EG-1"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["wie lange dauert die Nachbearbeitung mit EG-1", "wann sollte ich statt EG-1 ein anderes Modell nehmen"]
+    }
+  },
+  "aiPolish.whyUse.s1Mini": {
+    "en": {
+      "words": [],
+      "phrases": ["is S1-mini a good fit for my language", "when should I choose S1-mini"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["eignet sich S1-mini für meine Sprache", "wann ist S1-mini die richtige Wahl"]
+    }
+  },
+  "aiPolish.whyUse.appleIntelligence": {
+    "en": {
+      "words": [],
+      "phrases": ["why is Apple Intelligence unavailable", "when is Apple's built-in cleanup model a good fit"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["warum ist Apple Intelligence nicht verfügbar", "wann eignet sich Apples eingebautes Modell zur Nachbearbeitung"]
+    }
+  },
+  "aiPolish.whyUse.ollama": {
+    "en": {
+      "words": [],
+      "phrases": ["which Ollama model should I use for cleanup", "why is my Ollama model missing"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["welches Ollama-Modell eignet sich zur Nachbearbeitung", "warum fehlt mein Ollama-Modell"]
+    }
+  },
+  "aiPolish.whyUse.openAI": {
+    "en": {
+      "words": [],
+      "phrases": ["which OpenAI model should I use for dictation cleanup", "why are some OpenAI models missing"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["welches OpenAI-Modell eignet sich für die Diktatkorrektur", "warum fehlen manche OpenAI-Modelle"]
+    }
+  },
+  "aiPolish.whyUse.gemini": {
+    "en": {
+      "words": [],
+      "phrases": ["which Gemini model should I use for cleanup", "why are some Gemini models locked"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["welches Gemini-Modell eignet sich zur Nachbearbeitung", "warum sind manche Gemini-Modelle gesperrt"]
+    }
+  },
+  "aiPolish.whyUse.claude": {
+    "en": {
+      "words": [],
+      "phrases": ["which Claude model should I use for cleanup", "why are some Claude models missing", "what API access do I need for Claude"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["welches Claude-Modell eignet sich zur Nachbearbeitung", "warum fehlen manche Claude-Modelle", "welchen API-Zugang brauche ich für Claude"]
+    }
+  },
+  "aiPolish.link.aboutAppleIntelligence": {
+    "en": {
+      "words": [],
+      "phrases": ["open the information page about Apple Intelligence"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["öffne die Infoseite zu Apple Intelligence"]
+    }
+  },
+  "aiPolish.link.ollamaLibrary": {
+    "en": {
+      "words": [],
+      "phrases": ["open the Ollama model library website"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["öffne die Webseite mit der Ollama-Modellbibliothek"]
+    }
+  },
+  "aiPolish.link.openAIRateLimits": {
+    "en": {
+      "words": [],
+      "phrases": ["show the OpenAI request limits for my usage tier"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["zeig mir die OpenAI-Anfragelimits für meine Nutzungsstufe"]
+    }
+  },
+  "aiPolish.link.geminiRateLimits": {
+    "en": {
+      "words": [],
+      "phrases": ["show the Gemini request limits for my usage tier"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["zeig mir die Gemini-Anfragelimits für meine Nutzungsstufe"]
+    }
+  },
+  "aiPolish.link.claudeRateLimits": {
+    "en": {
+      "words": [],
+      "phrases": ["show the Claude API request limits"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["zeig mir die Anfragelimits der Claude-API"]
+    }
+  },
+  "localModel.download": {
+    "en": {
+      "words": [],
+      "phrases": ["download EG-1 or S1-mini onto my Mac"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["lade EG-1 oder S1-mini auf meinen Mac herunter"]
+    }
+  },
+  "localModel.cancel": {
+    "en": {
+      "words": [],
+      "phrases": ["cancel the EG-1 or S1-mini download"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["brich den Download von EG-1 oder S1-mini ab"]
+    }
+  },
+  "localModel.resume": {
+    "en": {
+      "words": ["unpause"],
+      "phrases": ["continue the paused EG-1 or S1-mini download"]
+    },
+    "de": {
+      "words": ["weiterladen"],
+      "phrases": ["setz den pausierten Download von EG-1 oder S1-mini fort"]
+    }
+  },
+  "localModel.resumeUpgrade": {
+    "en": {
+      "words": [],
+      "phrases": ["resume the EG-1 or S1-mini upgrade that stopped partway"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["setz das unterbrochene Upgrade von EG-1 oder S1-mini fort"]
+    }
+  },
+  "localModel.finishUpgrade": {
+    "en": {
+      "words": [],
+      "phrases": ["finish installing the new model version so cleanup works again"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["schließ die Installation der neuen Modellversion ab, damit die Nachbearbeitung wieder funktioniert"]
+    }
+  },
+  "localModel.tryAgain": {
+    "en": {
+      "words": [],
+      "phrases": ["retry after the EG-1 or S1-mini error"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["versuch es nach dem Fehler bei EG-1 oder S1-mini nochmal"]
+    }
+  },
+  "localModel.testLive": {
+    "en": {
+      "words": ["test"],
+      "phrases": ["test whether the downloaded cleanup model is working"]
+    },
+    "de": {
+      "words": ["Funktionstest", "testen"],
+      "phrases": ["teste, ob das heruntergeladene Nachbearbeitungsmodell funktioniert"]
+    }
+  },
+  "localModel.remove": {
+    "en": {
+      "words": ["uninstall", "storage"],
+      "phrases": ["delete the downloaded cleanup model to free space"]
+    },
+    "de": {
+      "words": ["deinstallieren", "Speicherplatz"],
+      "phrases": ["lösch das heruntergeladene Nachbearbeitungsmodell, um Platz zu schaffen"]
+    }
+  },
+  "s1Tone": {
+    "en": {
+      "words": ["formality", "style", "register"],
+      "phrases": ["choose how formal S1-mini makes my text", "adjust the writing style in S1-mini"]
+    },
+    "de": {
+      "words": ["Formalität", "Sprachstil", "Schreibstil"],
+      "phrases": ["stell ein, wie förmlich S1-mini meinen Text schreibt", "pass den Schreibstil von S1-mini an"]
+    }
+  },
+  "s1Tone.casual": {
+    "en": {
+      "words": ["informal", "chatty", "relaxed"],
+      "phrases": ["make S1-mini write in an informal style", "make my text sound like everyday chat"]
+    },
+    "de": {
+      "words": ["umgangssprachlich", "salopp", "ungezwungen"],
+      "phrases": ["lass S1-mini ganz ungezwungen schreiben", "formuliere meinen Text so locker wie in einem Chat"]
+    }
+  },
+  "s1Tone.semiCasual": {
+    "en": {
+      "words": [],
+      "phrases": ["make S1-mini slightly informal", "use a relaxed style without being too chatty"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["lass S1-mini eher locker schreiben", "formuliere entspannt, aber nicht zu salopp"]
+    }
+  },
+  "s1Tone.semiFormal": {
+    "en": {
+      "words": [],
+      "phrases": ["make S1-mini somewhat formal", "use a professional style without sounding stiff"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["lass S1-mini eher förmlich schreiben", "formuliere professionell, aber nicht steif"]
+    }
+  },
+  "s1Tone.formal": {
+    "en": {
+      "words": ["businesslike", "official"],
+      "phrases": ["make S1-mini write in a fully formal style", "use formal wording for my text"]
+    },
+    "de": {
+      "words": ["formell", "geschäftlich", "offiziell"],
+      "phrases": ["lass S1-mini sehr förmlich schreiben", "verwende einen formellen Stil für meinen Text"]
+    }
+  },
+  "s1Structure": {
+    "en": {
+      "words": ["organization", "arrangement"],
+      "phrases": ["choose whether S1-mini keeps sentences or makes lists", "change how S1-mini organizes my dictated text"]
+    },
+    "de": {
+      "words": ["Textaufbau", "Anordnung"],
+      "phrases": ["stell ein, ob S1-mini Sätze beibehält oder Listen erstellt", "ändere, wie S1-mini meinen diktierten Text aufbaut"]
+    }
+  },
+  "s1Structure.prose": {
+    "en": {
+      "words": ["sentences", "paragraphs"],
+      "phrases": ["keep S1-mini output in full sentences", "write paragraphs instead of bullet points"]
+    },
+    "de": {
+      "words": ["Sätze", "Absätze"],
+      "phrases": ["lass S1-mini in ganzen Sätzen schreiben", "schreib Absätze statt Stichpunkte"]
+    }
+  },
+  "s1Structure.lists": {
+    "en": {
+      "words": ["bullets", "itemization", "enumeration"],
+      "phrases": ["make S1-mini turn spoken items into bullet points", "format my dictated items as a list"]
+    },
+    "de": {
+      "words": ["Stichpunkte", "Aufzählung", "Listenpunkte"],
+      "phrases": ["mach mit S1-mini aus meinen gesprochenen Punkten eine Liste", "formatiere meine diktierten Punkte als Aufzählung"]
+    }
+  },
+  "s1Context": {
+    "en": {
+      "words": [],
+      "phrases": ["choose whether S1-mini uses general or email formatting", "change the context used to format my S1-mini dictation"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["stell ein, ob S1-mini normalen Text oder eine E-Mail formatiert", "wähle den Kontext für die Formatierung meiner S1-mini-Diktate"]
+    }
+  },
+  "s1Context.general": {
+    "en": {
+      "words": [],
+      "phrases": ["use ordinary text formatting in S1-mini", "do not format my S1-mini dictation as an email"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["behandle mein S1-mini-Diktat als normalen Text", "formatiere meinen S1-mini-Text nicht als E-Mail"]
+    }
+  },
+  "s1Context.email": {
+    "en": {
+      "words": ["mail", "greetings", "signoffs"],
+      "phrases": ["format my dictated greeting and signoff as an email", "use email formatting in S1-mini"]
+    },
+    "de": {
+      "words": ["Mail", "Anrede", "Grußformel"],
+      "phrases": ["formatiere meine diktierte Anrede und Grußformel wie in einer E-Mail", "lass S1-mini meinen Text als E-Mail formatieren"]
+    }
+  },
+  "appleIntelligence.status": {
+    "en": {
+      "words": [],
+      "phrases": ["show whether Apple Intelligence is ready on this Mac", "show the current availability of Apple's cleanup model"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["zeig mir, ob Apple Intelligence auf diesem Mac bereit ist", "zeig mir die aktuelle Verfügbarkeit von Apples Nachbearbeitungsmodell"]
+    }
+  },
+  "appleIntelligence.recheck": {
+    "en": {
+      "words": [],
+      "phrases": ["check Apple Intelligence availability again"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["prüf nochmal, ob Apple Intelligence verfügbar ist"]
+    }
+  },
+  "ollama.downloadOllama": {
+    "en": {
+      "words": ["runtime"],
+      "phrases": ["install Ollama itself on my Mac"]
+    },
+    "de": {
+      "words": ["Laufzeitumgebung"],
+      "phrases": ["installiere Ollama selbst auf meinem Mac"]
+    }
+  },
+  "ollama.start": {
+    "en": {
+      "words": ["serve"],
+      "phrases": ["launch Ollama after installation"]
+    },
+    "de": {
+      "words": ["serve"],
+      "phrases": ["starte Ollama nach der Installation"]
+    }
+  },
+  "ollama.downloadModel": {
+    "en": {
+      "words": [],
+      "phrases": ["download a model so Ollama can polish text"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["lade ein Modell herunter, damit Ollama Text nachbearbeiten kann"]
+    }
+  },
+  "ollama.cancelPull": {
+    "en": {
+      "words": [],
+      "phrases": ["cancel the model download in Ollama"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["brich den Modelldownload in Ollama ab"]
+    }
+  },
+  "ollama.server": {
+    "en": {
+      "words": ["address", "endpoint", "connection"],
+      "phrases": ["show the address of my Ollama server", "show the running Ollama server"]
+    },
+    "de": {
+      "words": ["Adresse", "Serveradresse", "Verbindung"],
+      "phrases": ["zeig mir die Adresse meines Ollama-Servers", "zeig mir den laufenden Ollama-Server"]
+    }
+  },
+  "ollama.recheck": {
+    "en": {
+      "words": [],
+      "phrases": ["check again whether Ollama is running"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["prüf nochmal, ob Ollama läuft"]
+    }
+  },
+  "ollama.tryAgain": {
+    "en": {
+      "words": [],
+      "phrases": ["retry after the Ollama error"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["versuch es nach dem Ollama-Fehler nochmal"]
+    }
+  },
+  "ollama.browseModels": {
+    "en": {
+      "words": [],
+      "phrases": ["browse more models to download through Ollama"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["zeig mir weitere Modelle zum Herunterladen über Ollama"]
+    }
+  },
+  "ollama.prepareModel": {
+    "en": {
+      "words": ["prepare", "initialize"],
+      "phrases": ["prepare my selected Ollama model for cleanup"]
+    },
+    "de": {
+      "words": ["vorbereiten", "startklar"],
+      "phrases": ["mach mein gewähltes Ollama-Modell für die Nachbearbeitung bereit"]
+    }
+  },
+  "apiKey.openAI": {
+    "en": {
+      "words": [],
+      "phrases": ["enter my OpenAI API key for dictation cleanup", "change the OpenAI API key used to send dictation text and context"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["trag meinen OpenAI-API-Schlüssel für die Diktatkorrektur ein", "ändere den OpenAI-API-Schlüssel zum Senden von Diktattext und Kontext"]
+    }
+  },
+  "apiKey.gemini": {
+    "en": {
+      "words": [],
+      "phrases": ["enter my Google API key for Gemini dictation cleanup", "change the Gemini API key used to send dictation text and context"]
+    },
+    "de": {
+      "words": [],
+      "phrases": ["trag meinen Google-API-Schlüssel für die Diktatkorrektur mit Gemini ein", "ändere den Gemini-API-Schlüssel zum Senden von Diktattext und Kontext"]
+    }
+  }
+}
