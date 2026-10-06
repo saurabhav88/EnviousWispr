@@ -138,12 +138,31 @@ struct WhisperKitBackendClipTimestampsTests {
           speechSegments: [SpeechSegment(startSample: 0, endSample: count)]),
         sampleCount: count
       )
-      #expect(opts.clipTimestamps.count == 2)
-      #expect(opts.clipTimestamps[0] == 0)
       #expect(
-        opts.clipTimestamps[1] >= opts.clipTimestamps[0], "sampleCount \(count) gave a reversed clip"
+        opts.clipTimestamps == [0, 0],
+        "sampleCount \(count) must give the empty clip [0, 0], never a negative or reversed one")
+    }
+  }
+
+  /// Float seconds lose the sample: at an hour of audio one Float step is about four samples, so
+  /// `(count - 1) / 16000` and `count / 16000` can be the same number. Dictation is capped at 60
+  /// minutes (#1060), so this size is real.
+  @Test("the headroom survives Float rounding on a very long capture (#2190)")
+  func clipTimestamps_headroomSurvivesFloatRoundingOnALongCapture() async {
+    let backend = WhisperKitBackend(admittedModelFolder: { nil })
+    let rate = Int(WhisperKit.sampleRate)
+    for seconds in [2048, 3600] {
+      let total = rate * seconds
+      let opts = await backend.makeDecodeOptions(
+        from: TranscriptionOptions(
+          speechSegments: [SpeechSegment(startSample: rate * 60, endSample: total)]),
+        sampleCount: total
       )
-      #expect(opts.clipTimestamps[1] >= 0, "sampleCount \(count) gave a negative clip end")
+
+      let duration = Float(total) / Float(WhisperKit.sampleRate)
+      #expect(opts.clipTimestamps.count == 2)
+      #expect(opts.clipTimestamps[0] == 60.0)
+      #expect(opts.clipTimestamps[1] < duration, "\(seconds) s: the clip still ends at the duration")
     }
   }
 

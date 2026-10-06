@@ -818,8 +818,17 @@ public actor WhisperKitBackend: ASRBackend {
         // way, so it is headroom, not a fix for a confirmed defect. It is NOT a coordinate
         // clamp, so it does not set `didClamp`. Do not simplify it back.
         let clipEnd = max(start, min(end, sampleCount - 1))
-        clipTimestamps.append(Float(start) / sampleRate)
-        clipTimestamps.append(Float(clipEnd) / sampleRate)
+        let startSeconds = Float(start) / sampleRate
+        var endSeconds = Float(clipEnd) / sampleRate
+        // The clip list is Float seconds, and past about 34 minutes (2048 s) one Float step is
+        // several samples, so a one-sample step can round back to the exact duration. Step down
+        // in Float instead, never below the clip's own start.
+        let durationSeconds = Float(sampleCount) / sampleRate
+        if sampleCount > 0, endSeconds >= durationSeconds, startSeconds < durationSeconds {
+          endSeconds = max(startSeconds, durationSeconds.nextDown)
+        }
+        clipTimestamps.append(startSeconds)
+        clipTimestamps.append(endSeconds)
       }
       if didClamp {
         let requestedMax = options.speechSegments.map(\.endSample).max() ?? 0
