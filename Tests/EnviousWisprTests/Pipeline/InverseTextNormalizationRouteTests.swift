@@ -89,9 +89,12 @@ struct InverseTextNormalizationRouteTests {
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
           let route = InverseTextNormalizationGate.route(
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
-          // The production registry is EMPTY, so no row may ever route to `.language`.
+          // The production registry lists German only: the German rows (literal labels, not the
+          // subject's canonicaliser) route to `.language("de")`; every other row is unchanged.
+          let germanRows: Set<String> = ["de", "DE", "de-DE"]
           let expectedRoute: InverseTextNormalizationGate.Route =
-            expected.map { .neutral($0) } ?? .english
+            expected == Self.nonEnglish && germanRows.contains(row.label)
+            ? .language("de") : (expected.map { .neutral($0) } ?? .english)
           checked += 1
           table.append(
             "\(row.label.debugDescription) | \(veto) | \(lid) | \(expected ?? "run") | \(legacy ?? "run") | \(route)"
@@ -156,12 +159,12 @@ struct InverseTextNormalizationRouteTests {
     #expect(route("", lid: true) == .neutral("lid_backend_nil"))
   }
 
-  /// A drift guard, not product coverage: the shipped registry lists no language until the
-  /// generator PR adds vetted rows, so today no take can reach `.language`.
-  @Test("the production registry is empty", .tags(.driftGuard))
-  func productionRegistryIsEmpty() {
-    #expect(LanguageRuleRegistry.production.count == 0)
-    for code in ["de", "es", "fr", "ru", "nl", "pt", "it", "pl", "no", "zh"] {
+  /// A drift guard, not product coverage: the shipped registry lists German only (#1677).
+  @Test("the production registry lists German only", .tags(.driftGuard))
+  func productionRegistryIsGermanOnly() {
+    #expect(LanguageRuleRegistry.production.count == 1)
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "de")?.baseCode == "de")
+    for code in ["es", "fr", "ru", "nl", "pt", "it", "pl", "no", "zh"] {
       #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: code) == nil, "\(code)")
     }
   }
@@ -207,7 +210,8 @@ struct InverseTextNormalizationRouteTests {
   @Test("each skip bucket runs the neutral subset and never the English time rule")
   func everySkipBucketRunsNeutralOnly() async throws {
     let cases: [(String, String?, Bool, Bool, String)] = [
-      ("non_english", "de", false, true, "non_english"),
+      // French: a non-English language with no registered rule set (German has one, #1677).
+      ("non_english", "fr", false, true, "non_english"),
       ("language_vetoed", nil, true, true, "language_vetoed"),
       ("lid_backend_nil", nil, false, true, "lid_backend_nil"),
     ]
@@ -228,7 +232,7 @@ struct InverseTextNormalizationRouteTests {
   func skippedNoOpIsByteIdentical() async throws {
     // Leading/trailing whitespace, CRLF and DECOMPOSED Unicode (e + U+0301), all untouched.
     let input = "  Ruhe\u{0301} bitte,\r\num sieben am Abend.\n  "
-    for (language, vetoed, lid) in [("de", false, true), (nil, true, true), (nil, false, true)]
+    for (language, vetoed, lid) in [("fr", false, true), (nil, true, true), (nil, false, true)]
       as [(String?, Bool, Bool)]
     {
       let step = InverseTextNormalizationStep()

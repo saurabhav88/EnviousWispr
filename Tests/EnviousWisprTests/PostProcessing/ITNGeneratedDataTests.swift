@@ -253,9 +253,9 @@ struct ITNGeneratedDataTests {
     }
   }
 
-  @Test("only the named grammar adapter reads the generated data, and the registry stays empty")
+  @Test("only the named grammar adapter reads the generated data; the registry lists German only")
   func notReachableFromRuntime() throws {
-    #expect(LanguageRuleRegistry.production.count == 0)
+    #expect(LanguageRuleRegistry.production.count == 1)
     let sources = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // PostProcessing
       .deletingLastPathComponent()  // EnviousWisprTests

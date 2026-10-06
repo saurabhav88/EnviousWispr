@@ -83,7 +83,8 @@ import EnviousWisprPostProcessing
   func neutralSubsetOnSkippedTake() async throws {
     let step = InverseTextNormalizationStep()
     step.backendSupportsLID = true
-    let out = try await step.process(ctx("Frage B Bindestrich 2, Code zwei null drei", language: "de"))
+    // French: an unregistered non-English take runs the neutral subset (German has rules, #1677).
+    let out = try await step.process(ctx("Frage B Bindestrich 2, Code zwei null drei", language: "fr"))
     #expect(out.text == "Frage B-2, Code zwei null drei")
     #expect(step.lastRun?.ran == false)
     #expect(step.lastRun?.changed == true)

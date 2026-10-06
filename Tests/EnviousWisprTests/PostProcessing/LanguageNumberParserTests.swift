@@ -529,7 +529,7 @@ struct LanguageNumberParserTests {
 
   // MARK: Reachability guards
 
-  @Test("no runtime code uses the new primitives yet, and no new file names the held-out corpus")
+  @Test("only the language route uses the passes, the ordinal pass stays unwired, no corpus is named")
   func nothingCallsThePrimitives() throws {
     let root = RepoRoot.url
     let sources = root.appending(path: "Sources")
@@ -557,7 +557,13 @@ struct LanguageNumberParserTests {
       if names.contains(where: { text.contains($0) }) { callers.append(file.lastPathComponent) }
     }
     #expect(scanned > 100, "the scan must read the source tree (read \(scanned))")
-    #expect(callers.isEmpty, "unexpected runtime users of the chunk 3 primitives: \(callers)")
+    #expect(
+      callers == ["InverseTextNormalizer+Language.swift"],
+      "runtime users of the language primitives must be the language route only: \(callers)")
+    let route = try String(
+      contentsOf: sources.appending(path: "EnviousWisprPostProcessing/InverseTextNormalizer+Language.swift"),
+      encoding: .utf8)
+    #expect(!route.contains("LanguageOrdinal"), "the ordinal pass is pending and must not run")
 
     // The acceptance corpus file is not opened by anything this chunk adds.
     let needle = ["hold", "out.jsonl"].joined()

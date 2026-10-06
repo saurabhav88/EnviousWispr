@@ -59,8 +59,11 @@ struct LanguageRuleRegistryTests {
     }
   }
 
-  @Test("the production registry lists no language yet")
-  func productionIsEmpty() {
-    #expect(LanguageRuleRegistry.production.count == 0)
+  @Test("the production registry lists exactly German")
+  func productionIsGerman() {
+    #expect(LanguageRuleRegistry.production.count == 1)
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "de-DE")?.baseCode == "de")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "fr") == nil)
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "en") == nil)
   }
 }
