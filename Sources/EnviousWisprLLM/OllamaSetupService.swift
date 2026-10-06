@@ -211,6 +211,15 @@ public final class OllamaSetupService {
   /// which has no guaranteed Ollama install.
   private let findOllamaBinaryOverride: (@MainActor () -> String?)?
 
+  /// #3482 render seam: answers the local daemon's requests (`/` and `/api/tags`) when a call
+  /// passes no transport of its own, so a Settings render can reach each setup state with no
+  /// network. nil (the app) means `URLSession`.
+  private let localDaemonTransport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))?
+
+  /// #3482 render seam: runs in place of the streaming pull, so a render can hold the real
+  /// `pullModel` state without the network. nil (the app) means the real pull.
+  private let pullPerformer: (@MainActor (String) async throws -> Void)?
+
   // Per-pull generation token. Bumped on every pullModel/cancelPull call so stale
   // tasks can no-op their writes (Swift Task cancellation is cooperative; without
   // this, a late chunk or terminal-branch cleanup from an old task could clobber
@@ -672,12 +681,16 @@ public final class OllamaSetupService {
     cloudCatalogClient: OllamaCloudCatalogClient,
     now: @escaping @MainActor () -> Date,
     downloadedModels: [OllamaDownloadedModel],
-    findOllamaBinaryOverride: (@MainActor () -> String?)? = nil
+    findOllamaBinaryOverride: (@MainActor () -> String?)? = nil,
+    localDaemonTransport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil,
+    pullPerformer: (@MainActor (String) async throws -> Void)? = nil
   ) {
     self.cloudCatalogClient = cloudCatalogClient
     self.cloudCatalogNow = now
     self.downloadedModels = downloadedModels
     self.findOllamaBinaryOverride = findOllamaBinaryOverride
+    self.localDaemonTransport = localDaemonTransport
+    self.pullPerformer = pullPerformer
   }
 
   public convenience init() {
@@ -697,11 +710,14 @@ public final class OllamaSetupService {
   package convenience init(
     cloudCatalogClient: OllamaCloudCatalogClient,
     now: @escaping @MainActor () -> Date = Date.init,
-    findOllamaBinaryOverride: (@MainActor () -> String?)? = nil
+    findOllamaBinaryOverride: (@MainActor () -> String?)? = nil,
+    localDaemonTransport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil,
+    pullPerformer: (@MainActor (String) async throws -> Void)? = nil
   ) {
     self.init(
       cloudCatalogClient: cloudCatalogClient, now: now, downloadedModels: [],
-      findOllamaBinaryOverride: findOllamaBinaryOverride)
+      findOllamaBinaryOverride: findOllamaBinaryOverride,
+      localDaemonTransport: localDaemonTransport, pullPerformer: pullPerformer)
   }
 
   /// #1914 test seam, approved by the founder on 2026-08-04 (test seams are a
@@ -741,7 +757,7 @@ public final class OllamaSetupService {
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
     request.timeoutInterval = 3
-    let send = transport ?? { try await URLSession.shared.data(for: $0) }
+    let send = transport ?? localDaemonTransport ?? { try await URLSession.shared.data(for: $0) }
     do {
       let (_, response) = try await send(request)
       guard let http = response as? HTTPURLResponse else { return .unavailable }
@@ -762,7 +778,7 @@ public final class OllamaSetupService {
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
     request.timeoutInterval = 5
-    let send = transport ?? { try await URLSession.shared.data(for: $0) }
+    let send = transport ?? localDaemonTransport ?? { try await URLSession.shared.data(for: $0) }
     do {
       let (data, response) = try await send(request)
       guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
@@ -1762,7 +1778,11 @@ public final class OllamaSetupService {
     pullTask = Task { [weak self] in
       guard let self else { return }
       do {
-        try await self.performStreamingPull(modelName: modelName, epoch: epoch)
+        if let pullPerformer = self.pullPerformer {
+          try await pullPerformer(modelName)
+        } else {
+          try await self.performStreamingPull(modelName: modelName, epoch: epoch)
+        }
         guard self.pullEpoch == epoch else { return }
         // Pull stream succeeded. Clear pullTask so cancelPull() short-circuits
         // during the post-success refresh window (see cancelPull guard). Keep

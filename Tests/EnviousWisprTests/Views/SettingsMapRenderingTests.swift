@@ -33,6 +33,7 @@ struct SettingsMapRenderingTests {
   /// until it holds; the deadline is a hang guard, never a pass condition.
   static func registrations(
     _ view: AnyView, width: CGFloat = 900, height: CGFloat = 2600,
+    afterFirstLayout: (@MainActor () -> Void)? = nil,
     until ready: ((Set<SettingsMapID>) -> Bool)? = nil
   ) async throws -> [SettingsMapRegistration] {
     let box = Box()
@@ -51,6 +52,9 @@ struct SettingsMapRenderingTests {
     window.contentView = host
     defer { window.contentView = nil }
     host.layoutSubtreeIfNeeded()
+    host.layoutSubtreeIfNeeded()
+    // A person's action after the page appeared (typing a key, for example).
+    afterFirstLayout?()
     host.layoutSubtreeIfNeeded()
     if let ready {
       while !ready(Set(mapped(box.value))) {
@@ -165,19 +169,24 @@ struct SettingsMapRenderingTests {
       "dictation.engine.choicesOpen", "dictation.engine.allLanguagesAuto",
       "dictation.engine.allLanguagesReady", "dictation.engine.allLanguagesDownloading",
       "dictation.engine.allLanguagesPaused", "dictation.engine.allLanguagesFailed",
-      "dictation.engine.switchesOn", "dictation.microphone.multiInput",
+      "dictation.engine.switchesOn", "dictation.engine.fastDownloading",
+      "dictation.microphone.multiInput",
       "dictation.livePreview.choicesOpen", "dictation.livePreview.off",
       "dictation.livePreview.noPacks", "dictation.livePreview.languageMissing",
       "aiPolish.off", "aiPolish.appleIntelligence", "aiPolish.egOne", "aiPolish.s1Mini",
       "aiPolish.openAI", "aiPolish.gemini", "aiPolish.claude", "aiPolish.openAI.savedKey",
+      "aiPolish.openAI.draftKey",
       "aiPolish.egOne.downloading", "aiPolish.egOne.paused", "aiPolish.egOne.failed",
       "aiPolish.egOne.installed",
+      "aiPolish.ollama.notInstalled", "aiPolish.ollama.notRunning", "aiPolish.ollama.noModels",
+      "aiPolish.ollama.ready", "aiPolish.ollama.error", "aiPolish.ollama.pulling",
       "dictionary.yourWords.empty", "dictionary.yourWords.withWords",
       "dictionary.yourWords.searching", "dictionary.vocabularyPacks", "dictionary.learnFrom",
       "dictionary.quickAdd",
       "snippets", "snippets.empty", "snippets.searching", "keybinds",
     ] + AppSettingsTab.allCases.map { "appSettings.\($0.rawValue)" } + [
-      "appSettings.permissions.denied", "transcribeFile",
+      "appSettings.permissions.denied", "appSettings.privacy.restartNeeded",
+      "appSettings.appearance.languageChange", "transcribeFile",
     ]
 
   static func render(_ label: String) async throws -> Rendered {
@@ -223,6 +232,8 @@ struct SettingsMapRenderingTests {
     case "allLanguagesPaused": scenario.backend = .whisperKit; scenario.setupState = .paused
     case "allLanguagesFailed": scenario.backend = .whisperKit; scenario.setupState = .error("fixture")
     case "switchesOn": scenario.stopOnSilence = true; scenario.spokenPunctuation = true
+    case "fastDownloading":
+      scenario.fastDelivery = .downloading(fractionCompleted: 0.3, bytesWritten: 3, totalBytes: 10)
     case "multiInput":
       scenario.devices = [multiInputDevice]
       scenario.preferredInputUID = multiInputDevice.uid
@@ -276,8 +287,8 @@ struct SettingsMapRenderingTests {
     .appending(path: "ew-settings-map-render-\(UUID().uuidString)")
 
   /// One isolated home: preferences, key files, words, snippets and runtimes. Nothing reaches
-  /// the real Keychain, Application Support, a model server or the network (Ollama is never
-  /// selected: its setup service cannot be replaced).
+  /// the real Keychain, Application Support, a model server or the network (Ollama renders take
+  /// a service whose daemon, catalog, binary lookup and pull are all replaced).
   struct Home {
     let defaults: UserDefaults
     let settings: SettingsManager
@@ -287,7 +298,10 @@ struct SettingsMapRenderingTests {
     let s1: EGOneRuntime
     let directory: URL
 
-    @MainActor init(provider: LLMProvider = .none, seed: (UserDefaults) -> Void = { _ in }) throws {
+    @MainActor init(
+      provider: LLMProvider = .none, ollama: OllamaSetupService? = nil,
+      seed: (UserDefaults) -> Void = { _ in }
+    ) throws {
       directory = SettingsMapRenderingTests.scratch.appending(path: UUID().uuidString)
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       defaults = try #require(TestDefaults.suite("ew.settingsMapRender.\(UUID().uuidString)"))
@@ -302,7 +316,8 @@ struct SettingsMapRenderingTests {
         asrManager: RouterTestASRManager(),
         whisperKitSetup: WhisperKitSetupService(
           engineMutationScope: .alwaysAllowedForTesting, readAvailability: { .notDownloaded }),
-        setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in })
+        setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in },
+        ollamaSetup: ollama)
       egOne = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)
       s1 = EGOneRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults, provider: .s1Mini)
@@ -325,16 +340,83 @@ struct SettingsMapRenderingTests {
 
   // MARK: - AI Polish
 
-  /// Ollama is left out: its setup service is not replaceable and would reach the local daemon
-  /// and ollama.com (scope request in the chunk receipt).
+  /// The local Ollama daemon as a render sees it: unreachable (nil status), or answering `/`
+  /// with `status` and `/api/tags` with `models`. Nothing leaves the process.
+  static func daemon(status: Int?, models: [String])
+    -> @Sendable (URLRequest) async throws -> (Data, URLResponse)
+  {
+    { request in
+      guard let status, let url = request.url else { throw URLError(.cannotConnectToHost) }
+      let body =
+        url.path == "/api/tags"
+        ? try JSONSerialization.data(withJSONObject: ["models": models.map { ["name": $0] }])
+        : Data()
+      let response = try #require(
+        HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil))
+      return (body, response)
+    }
+  }
+
+  /// Ollama in one setup state, with every boundary the page reaches on appear replaced: the
+  /// binary lookup, the local daemon, the ollama.com catalog and the model pull.
+  static func ollamaRender(_ state: String) async throws -> [SettingsMapRegistration] {
+    let installed: Bool
+    let daemon: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    let expected: SettingsMapID
+    switch state {
+    case "notInstalled": (installed, daemon, expected) = (false, Self.daemon(status: nil, models: []), .ollamaDownloadOllama)
+    case "notRunning": (installed, daemon, expected) = (true, Self.daemon(status: nil, models: []), .ollamaStart)
+    case "noModels": (installed, daemon, expected) = (true, Self.daemon(status: 200, models: []), .ollamaDownloadModel)
+    case "ready": (installed, daemon, expected) = (true, Self.daemon(status: 200, models: ["fixture:1b"]), .ollamaServer)
+    case "error": (installed, daemon, expected) = (true, Self.daemon(status: 503, models: []), .ollamaTryAgain)
+    case "pulling": (installed, daemon, expected) = (true, Self.daemon(status: 200, models: []), .ollamaCancelPull)
+    default: throw StateError.unknown(state)
+    }
+    let service = OllamaSetupService(
+      cloudCatalogClient: OllamaCloudCatalogClient { _, _ in throw URLError(.notConnectedToInternet) },
+      findOllamaBinaryOverride: { installed ? "/fixture/ollama" : nil },
+      localDaemonTransport: daemon,
+      // Parks until cancelled, so the real pull state holds and nothing is downloaded.
+      pullPerformer: { _ in
+        try await Task.sleep(for: .seconds(3_600))
+        throw CancellationError()
+      })
+    // Detection records its last verdict in the standard defaults; restore it afterwards.
+    let key = "OllamaSetupService.lastKnownReady"
+    let saved = UserDefaults.standard.object(forKey: key)
+    defer {
+      if let saved { UserDefaults.standard.set(saved, forKey: key) }
+      else { UserDefaults.standard.removeObject(forKey: key) }
+      service.cancelPull()
+    }
+    // An empty model keeps the ready state from warming a model over the network.
+    let home = try Home(provider: .ollama, ollama: service) { defaults in
+      defaults.set("", forKey: "llmModel")
+      defaults.set("", forKey: "ollamaModel")
+    }
+    if state == "pulling" { service.pullModel("fixture:1b") }
+    return try await registrations(
+      home.polish(AIPolishSettingsView()), until: { $0.contains(expected) })
+  }
+
   static func aiPolish(_ label: String) async throws -> Rendered {
     let parts = label.split(separator: ".").map(String.init)
+    if parts[1] == "ollama" {
+      let list = try await ollamaRender(parts[2])
+      return Rendered(list: list, destination: .aiPolish, alwaysOnThisPage: alwaysShown(on: .aiPolish))
+    }
     let provider: LLMProvider =
       parts[1] == "off" ? .none : try #require(LLMProvider(rawValue: parts[1]))
     let home = try Home(provider: provider)
     var ready: ((Set<SettingsMapID>) -> Bool)?
+    let model = ProviderSetupModel()
+    var afterFirstLayout: (@MainActor () -> Void)?
     switch parts.count > 2 ? parts[2] : "" {
     case "": break
+    case "draftKey":
+      // Typed after the page loaded its (empty) saved key, and never saved.
+      afterFirstLayout = { model.openAIKey = "sk-fixture-draft" }
+      ready = { $0.contains(.apiKeyReveal) }
     case "savedKey":
       try home.keys.store(key: KeychainManager.openAIKeyID, value: "fixture-not-a-key")
       ready = { $0.contains(.apiKeyClear) }
@@ -345,7 +427,12 @@ struct SettingsMapRenderingTests {
     case "installed": home.egOne.applyInstallStateForTesting(.installed(version: "1"))
     default: throw StateError.unknown(label)
     }
-    let list = try await registrations(home.polish(AIPolishSettingsView()), until: ready)
+    let list = try await registrations(
+      home.polish(AIPolishSettingsView(setupModel: model)), afterFirstLayout: afterFirstLayout,
+      until: ready)
+    if parts.count > 2, parts[2] == "draftKey" {
+      #expect(!Set(mapped(list)).contains(.apiKeyClear), "Clear shows for an unsaved key")
+    }
     let ids = Set(mapped(list))
     if provider == .none {
       #expect(!ids.contains(.aiPolishProvider), "the provider list shows while off")
@@ -514,12 +601,34 @@ struct SettingsMapRenderingTests {
     let permissions = PermissionsService(
       accessibilityReader: { granted }, microphoneReader: { granted ? .authorized : .denied },
       openMicrophoneSettings: { _ in })
+    let page: AnyView
+    switch state {
+    case "restartNeeded":
+      // The privacy page as App Settings hosts it, in a run that launched with the other
+      // crash-report mode.
+      let launched = !home.settings.sendCrashReports
+      page = AnyView(
+        PrivacySettingsView(launchedCrashReports: { launched })
+          .environment(\.settingsPR1Density, true))
+    case "languageChange":
+      // The appearance page with an isolated language preference that already chose German.
+      let name = "ew.settingsMapLanguage.\(UUID().uuidString)"
+      let defaults = try #require(TestDefaults.suite(name))
+      let preference = AppLanguagePreference(defaults: defaults, domain: name, shipped: ["en", "de"])
+      preference.choose("de")
+      try #require(preference.choice == "de")
+      page = AnyView(
+        AppearanceSettingsView(languagePreference: preference)
+          .environment(\.settingsPR1Density, true))
+    default:
+      page = AnyView(AppSettingsView(selection: .constant(tab)))
+    }
     let list = try await registrations(
       AnyView(
-        AppSettingsView(selection: .constant(tab)).environment(permissions).environment(home.settings)
+        page.environment(permissions).environment(home.settings)
           .environment(PillAppearanceModel(settings: home.settings, capability: { .available }))
           .environment(\.settingsNavigate, { _ in })))
-    if state.isEmpty {
+    if state.isEmpty || state == "denied" {
       let ids = Set(mapped(list))
       for each in AppSettingsTab.allCases {
         #expect(ids.contains(each.mapID), "\(label): the \(each.rawValue) tab is not registered")
@@ -607,32 +716,11 @@ struct SettingsMapRenderingTests {
     let targets = Set(SettingsMap.nodes.compactMap(\.target).map(\.rawValue))
     let unseen = targets.subtracting(shown)
     #expect(
-      unseen == Set(Self.notStaged.keys.map(\.rawValue)),
-      "newly unseen: \(unseen.subtracting(Self.notStaged.keys.map(\.rawValue)).sorted()); staged now: \(Set(Self.notStaged.keys.map(\.rawValue)).subtracting(unseen).sorted())"
-    )
+      unseen.isEmpty, "targets without exposing-state render proof: \(unseen.sorted())")
     for node in SettingsMap.nodes {
       guard let last = node.fallbacks.last else { continue }
       #expect(shown.contains(last.rawValue), "\(node.id.rawValue): last fallback never renders")
     }
   }
 
-  /// Places no state here can show, pending the scope request in the chunk receipt: each needs a
-  /// test seam outside this chunk's allowed files, or the built app bundle.
-  static let notStaged: [SettingsMapID: String] = {
-    let ollama =
-      "SetupCoordinator builds its OllamaSetupService itself (App/SetupCoordinator.swift); staging needs an injected service"
-    var reasons: [SettingsMapID: String] = [:]
-    for id: SettingsMapID in [
-      .aiPolishWhyUseOllama, .ollamaBrowseModels, .ollamaCancelPull, .ollamaDownloadModel,
-      .ollamaDownloadOllama, .ollamaPrepareModel, .ollamaRecheck, .ollamaServer, .ollamaStart,
-      .ollamaTryAgain,
-    ] { reasons[id] = ollama }
-    reasons[.sendCrashReportsRestart] =
-      "shown only when the launched crash-report value differs; that value is fixed by ObservabilityBootstrap at app launch"
-    reasons[.appLanguageRelaunch] =
-      "shown when the chosen language differs from the launch language; the test host ships English only, so no choice differs (AppLanguagePreference.live reads Bundle.main)"
-    reasons[.fastModelCancelDownload] =
-      "a live Fast download state lives in ModelDeliveryHome (App/), which has no staging seam"
-    return reasons
-  }()
 }

@@ -8,6 +8,15 @@ struct PrivacySettingsView: View {
   /// always supplies it. The same busy check the language relaunch uses.
   @Environment(LiveRecordingState.self) private var liveRecordingState: LiveRecordingState?
   @Environment(FileImportCoordinator.self) private var fileImportCoordinator: FileImportCoordinator?
+  /// The crash-report mode this run started in. The app passes nothing and reads
+  /// `ObservabilityBootstrap`; a render test passes a value (#3482).
+  private let launchedCrashReports: @MainActor () -> Bool?
+
+  init(launchedCrashReports: @escaping @MainActor () -> Bool? = {
+    ObservabilityBootstrap.launchedCrashReports
+  }) {
+    self.launchedCrashReports = launchedCrashReports
+  }
 
   /// A relaunch now would lose work in flight (`AppRelauncher.workInFlight` says which).
   private var isBusy: Bool {
@@ -71,7 +80,7 @@ struct PrivacySettingsView: View {
             .rowStatus {
               if Self.needsRestart(
                 stored: settings.sendCrashReports,
-                launched: ObservabilityBootstrap.launchedCrashReports)
+                launched: launchedCrashReports())
               {
                 VStack(alignment: .leading, spacing: 8) {
                   Text(PrivacySettingsCopy.restartNotice)

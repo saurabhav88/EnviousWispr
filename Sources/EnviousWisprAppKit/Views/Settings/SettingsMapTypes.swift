@@ -74,13 +74,14 @@ enum SettingsMapVisibility: Sendable {
   case previewChoicesExpanded
   case universalSetupState
   case appleLanguagePacks
-  case livePreviewOn
+  case previewLanguageKnown
   case previewLanguageMissing
   case aiPolishEnabled
   case providerSelected
   case providerSetupState
   case apiKeyProvider
   case apiKeySaved
+  case apiKeyDraftNonempty
   case relaunchNeeded
   case permissionState
   case crashReportsChanged

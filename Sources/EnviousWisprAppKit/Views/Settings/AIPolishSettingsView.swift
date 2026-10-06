@@ -341,7 +341,12 @@ struct AIPolishSettingsView: View {
 
   /// #2772 chunk 1: the setup editor's state, owned here and handed to both of its
   /// holes and to the lifecycle modifier. See `ProviderSetup.swift`.
-  @State private var setupModel = ProviderSetupModel()
+  @State private var setupModel: ProviderSetupModel
+
+  /// The app passes nothing; a render test passes its own model to type an unsaved key (#3482).
+  init(setupModel: ProviderSetupModel = ProviderSetupModel()) {
+    _setupModel = State(initialValue: setupModel)
+  }
 
   var body: some View {
     @Bindable var settings = settings

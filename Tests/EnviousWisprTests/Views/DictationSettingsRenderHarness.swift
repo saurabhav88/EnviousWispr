@@ -2,6 +2,7 @@ import AppKit
 import CoreAudio
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 @testable import EnviousWisprServices
 import SwiftUI
@@ -132,6 +133,8 @@ struct DictationSettingsRenderHarness {
     /// Microphones the page lists, and the chosen one's UID ("" follows macOS).
     var devices: [AudioInputDevice] = []
     var preferredInputUID = ""
+    /// A Fast model delivery state to show instead of the fixture's own.
+    var fastDelivery: DeliveryState?
   }
 
   static func page(tab: DictationTab, german: Bool, scenario: Scenario = Scenario(),
@@ -238,6 +241,9 @@ struct DictationSettingsRenderHarness {
       // The normal page now renders real async controller admission, rather
       // than omitting its home. Only sparse, isolated files are provided.
       let fixture = try ModelDeliveryHomeTests.fastRenderFixture()
+      if let fastDelivery = scenario.fastDelivery {
+        fixture.home.applyParakeetStateForTesting(fastDelivery)
+      }
       hostedRoot = AnyView(hostedRoot.environment(fixture.home))
       #if DEBUG
       hostedRoot = AnyView(hostedRoot.environment(\.fastAdmissionTestHooks,

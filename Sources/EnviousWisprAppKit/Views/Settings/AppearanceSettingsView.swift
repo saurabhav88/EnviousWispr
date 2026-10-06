@@ -10,9 +10,17 @@ struct AppearanceSettingsView: View {
   @Environment(LiveRecordingState.self) private var liveRecordingState: LiveRecordingState?
   @Environment(FileImportCoordinator.self) private var fileImportCoordinator: FileImportCoordinator?
   /// "" is "System default".
-  @State private var language = AppLanguagePreference.live.choice ?? ""
+  @State private var language: String
+  /// Where the language choice is read and written. The app passes nothing and uses the live
+  /// preference; a render test passes an isolated one (#3482).
+  private let languagePreference: AppLanguagePreference
   /// The language this process launched with; macOS fixes it at launch.
   private static let launchLanguage = Bundle.main.preferredLocalizations.first ?? "en"
+
+  init(languagePreference: AppLanguagePreference = .live) {
+    self.languagePreference = languagePreference
+    _language = State(initialValue: languagePreference.choice ?? "")
+  }
   /// A relaunch now would lose work in flight (`AppRelauncher.workInFlight` says which).
   private var isBusy: Bool {
     AppRelauncher.workInFlight(
@@ -25,7 +33,7 @@ struct AppearanceSettingsView: View {
   /// view updates), and the selection starts from the saved value, so the offer also survives
   /// leaving and reopening this page.
   private var needsRelaunch: Bool {
-    AppLanguagePreference.live.language(
+    languagePreference.language(
       forChoice: language.isEmpty ? nil : language,
       systemPreferences: AppLanguagePreference.systemPreferences) != Self.launchLanguage
   }
@@ -64,7 +72,7 @@ struct AppearanceSettingsView: View {
             ) {
               Picker(SettingsItemCopy.AppSettings.language, selection: $language) {
                 Text(SettingsItemCopy.AppSettings.systemDefault).tag("")
-                ForEach(AppLanguagePreference.live.languages, id: \.self) { code in
+                ForEach(languagePreference.languages, id: \.self) { code in
                   Text(
                     verbatim: SettingsMapRef.dynamic(.appLanguageShipped, .appLanguage(code: code))
                       .title
@@ -77,7 +85,7 @@ struct AppearanceSettingsView: View {
               .controlSize(.large)
               .fixedSize()
               .onChange(of: language) { _, code in
-                AppLanguagePreference.live.choose(code.isEmpty ? nil : code)
+                languagePreference.choose(code.isEmpty ? nil : code)
               }
             }
             .rowStatus {

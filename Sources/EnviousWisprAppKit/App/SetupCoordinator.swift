@@ -12,7 +12,7 @@ import Observation
 @MainActor
 @Observable
 final class SetupCoordinator {
-  let ollamaSetup = OllamaSetupService()
+  let ollamaSetup: OllamaSetupService
   /// #1386 PR-2: injected, because its download/cancel/availability now come
   /// from the delivery layer, which is built beside this coordinator.
   let whisperKitSetup: WhisperKitSetupService
@@ -64,8 +64,11 @@ final class SetupCoordinator {
     ollamaStatusProbe: (@MainActor (String) async -> Void)? = nil,
     ollamaPollDelay: @escaping @MainActor () async throws -> Void = {
       try await Task.sleep(for: .seconds(15))
-    }
+    },
+    // #3482: a render test hands in a service with stubbed local calls; the app passes nothing.
+    ollamaSetup: OllamaSetupService? = nil
   ) {
+    self.ollamaSetup = ollamaSetup ?? OllamaSetupService()
     self.asrManager = asrManager
     self.whisperKitSetup = whisperKitSetup
     self.runDocumentsMigration = runDocumentsMigration
@@ -75,7 +78,7 @@ final class SetupCoordinator {
     // locals (a default parameter value cannot reference `self`).
     let service = whisperKitSetup
     self.setupStateReader = setupStateReader ?? { service.setupState }
-    let ollama = ollamaSetup
+    let ollama = self.ollamaSetup
     self.ollamaStatusProbe =
       ollamaStatusProbe ?? { trigger in await ollama.detectState(trigger: trigger) }
   }

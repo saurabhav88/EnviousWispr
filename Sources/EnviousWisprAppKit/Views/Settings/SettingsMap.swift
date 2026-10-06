@@ -432,7 +432,7 @@ enum SettingsMap {
       title: .dynamic(.previewLanguage),
       description: .resource(DictationSettingsCopy.Preview.languageShort),
       parent: .livePreview, destination: .dictation(.livePreview), dictionaryTab: nil,
-      visibility: .livePreviewOn, target: .livePreviewLanguage, fallbacks: [.livePreview]),
+      visibility: .previewLanguageKnown, target: .livePreviewLanguage, fallbacks: [.livePreview]),
     SettingsMapNode(
       id: .livePreviewBrowseDownloads, structure: .item, item: .action,
       title: .resource(LivePreviewSettingsCopy.browseDownloadsButtonResource),
@@ -870,7 +870,7 @@ enum SettingsMap {
       title: .dynamic(.apiKeyReveal),
       description: nil,
       parent: .aiPolishProviderSection, destination: .aiPolish, dictionaryTab: nil,
-      visibility: .apiKeySaved, target: .apiKeyReveal, fallbacks: [.aiPolishProvider, .enableAIPolish]),
+      visibility: .apiKeyDraftNonempty, target: .apiKeyReveal, fallbacks: [.aiPolishProvider, .enableAIPolish]),
     SettingsMapNode(
       id: .apiKeyGetKeyLink, structure: .item, item: .action,
       title: .dynamic(.apiKeyLink),
