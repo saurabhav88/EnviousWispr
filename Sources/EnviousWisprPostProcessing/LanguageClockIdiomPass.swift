@@ -441,8 +441,11 @@ struct LanguageClockIdiomPass: Sendable {
   /// words ending in `-en` (the inflection of an adjective or determiner after a numeral:
   /// `drei weiteren Treffern`). German capitalizes nouns, and a noun phrase right after a number
   /// pair reads as a quantity (`steigt um 5 nach 3 Treffern`). A sentence mark ends the idiom and
-  /// allows anything after it. An article-led object (`um 5 nach 2 einen Termin`) also stops the
-  /// conversion: the text stays as spoken.
+  /// allows anything after it. An article-led object (`um 5 nach 2 einen Termin`) or an `-en`
+  /// adverb before a noun (`zusammen Kaffee`) also stops the conversion: the text stays as spoken.
+  /// KNOWN LIMIT (accepted, founder direction "no edge-case spirals", #1677): German noun-phrase
+  /// grammar is open, so a quantity whose modifiers do not end in `-en` (`um 5 nach 3 sehr guten
+  /// Treffern`, coordinated modifiers) can still read as a time. Closing it needs a parser.
   private func nounFollows(hourIndex: Int, words: [Word]) -> Bool {
     var index = hourIndex
     while index + 1 < words.count {
