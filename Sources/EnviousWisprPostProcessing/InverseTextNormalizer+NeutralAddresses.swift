@@ -377,7 +377,9 @@ extension InverseTextNormalizer {
   /// Portuguese and Russian read the shapes WhisperKit writes with the language set (#3233 baseline
   /// v1): `infochiocciolaazienda.it` → `info@azienda.it`, `marco.rossichiocciolagmail.com` →
   /// `marco.rossi@gmail.com`, `contato arrobaempresa.com.br` → `contato@empresa.com.br`,
-  /// `info.собака.yandex.ru` → `info@yandex.ru`. Polish `małpa` is never split out of a word.
+  /// `info.собака.yandex.ru` → `info@yandex.ru`. Polish `małpa` and Latin `sobaka` are split out of
+  /// a token only after a DOTTED name (`jan.kowalski23małpa.wp.pl`, `иван.петров23sobaka.mail.ru`,
+  /// #1677 measured engine shapes), never out of a single word (`małpami`).
   func neutralGluedAtWordEmails(_ t: String) -> String {
     let label = Self.uLabel
     let end =
@@ -393,8 +395,10 @@ extension InverseTextNormalizer {
     // linear: unbounded, `chiocciola` x 2000 took 0.87 s of a 1.00 s deadline.
     out = gluedAtWord(
       out,
-      start + #"(?<name>[\p{L}\p{N}][\p{L}\p{M}\p{N}_.-]{0,63}?)(?<![cC])(?<atw>chiocciola)\s?"# + dom
-        + end,
+      // #1677: Parakeet may also leave a space before the glued word (`marco.rossi23
+      // chiocciolalibero.it`).
+      start + #"(?<name>[\p{L}\p{N}][\p{L}\p{M}\p{N}_.-]{0,63}?)(?<![cC])[ \t]?(?<atw>chiocciola)\s?"#
+        + dom + end,
       refused: Self.italianNameRefusedWords)
     // Portuguese (and Spanish): a separate name, `arroba` glued to the host. `arrobas` (the old
     // weight unit, plural) is prose.
@@ -408,18 +412,42 @@ extension InverseTextNormalizer {
     out = gluedAtWord(
       out, start + #"(?<name>"# + dotted + #")\.(?<atw>собака)\."# + dom + end,
       refused: Self.russianNameRefusedWords)
+    // #1677: Polish `małpa` and Latin-spelled Russian `sobaka` glued to the end of a dotted name,
+    // then a dot or a space before the host (the engines' shapes).
+    for row in Self.additionalGluedEmailWords {
+      out = gluedAtWord(
+        out,
+        start + #"(?<name>[\p{L}\p{N}][\p{L}\p{M}\p{N}_.-]{0,63}?)(?<atw>"#
+          + Self.phraseAlt(row.words) + #")(?:\.|[ \t]+)"# + dom + end,
+        refused: row.refused, requireCompoundName: true)
+    }
     return out
   }
+
+  /// The at-words read only when glued to a dotted name (#1677), with their language's refused
+  /// name words.
+  static let additionalGluedEmailWords: [(words: [String], refused: Set<String>)] = [
+    (["małpa", "malpa"], []),
+    (["sobaka"], russianNameRefusedWords),
+  ]
 
   /// One glued at-word shape; converts the whole address or nothing.
   private func gluedAtWord(
     _ t: String, _ pat: String, refused: Set<String>, pluralS: Bool = false,
-    refusedOnlyAfter cue: String? = nil
+    refusedOnlyAfter cue: String? = nil, requireCompoundName: Bool = false
   ) -> String {
     reSub(pat, t) { m in
       let name = m.g("name") ?? ""
       let dom = m.g("dom") ?? ""
       let tld = m.g("tld") ?? ""
+      if requireCompoundName {
+        // A dotted name (`jan.kowalski23`), never one word, and not a file name (`raport.pdf`).
+        let compound = #"^"# + Self.uLabel + #"(?:\."# + Self.uLabel + #"){1,5}$"#
+        guard firstMatch(compound, name) != nil,
+          let last = name.components(separatedBy: ".").last,
+          !Self.dottedNameRefusedSuffixes.contains(last.lowercased())
+        else { return nil }
+      }
       guard !name.isEmpty, !name.hasSuffix("."), !name.hasSuffix("-"),
         !Self.isRefusedNeutralName([name])
       else { return nil }
@@ -448,9 +476,13 @@ extension InverseTextNormalizer {
   /// `hasAddressCue`, which licenses the #3226 passes.
   func hasGluedAtWordCue(_ m: Match) -> Bool {
     hasCue(
-      #"\p{L}*(?:indirizzo|endereço|mensagem|адрес|письм|почт)\p{L}*|(?:^|[^\p{L}])(?:scrivi|manda)(?:[^\p{L}]|$)"#,
+      #"\p{L}*(?:indirizzo|endereço|mensagem|адрес|письм|почт)\p{L}*|(?:^|[^\p{L}])(?:"#
+        + Self.phraseAlt(Self.italianGluedEmailCueWords) + #")(?:[^\p{L}]|$)"#,
       m)
   }
+
+  /// Italian verbs that introduce an address ("scrivimi a …", #1677 measured).
+  static let italianGluedEmailCueWords = ["scrivi", "scrivimi", "manda"]
 
   /// `pattern` within 48 characters before the match.
   func hasCue(_ pattern: String, _ m: Match) -> Bool {
